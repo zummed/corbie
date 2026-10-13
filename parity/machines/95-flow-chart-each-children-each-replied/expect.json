@@ -1,0 +1,21 @@
+{
+  "status": "done",
+  "output": {
+    "answers": [
+      {
+        "item": "disk",
+        "output": {
+          "said": "for disk",
+          "topic": "disk"
+        }
+      },
+      {
+        "item": "memory",
+        "output": {
+          "said": "for memory",
+          "topic": "memory"
+        }
+      }
+    ]
+  }
+}

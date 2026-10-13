@@ -1,0 +1,19 @@
+# One state with two named jobs. One is a child that takes six seconds; the
+# other fails at once. The state's failed: goes to a final state marked
+# failed: true, with an output.
+statechart: parent
+initial: both
+states:
+  both:
+    jobs:
+      slow_side: { machine: ./sleeper.yaml }
+      failing_side: { script: ./fail.js }
+    done: finished
+    failed: gave_up
+  gave_up:
+    final: true
+    failed: true
+    output: { why: "${event.data.error}" }
+  finished:
+    final: true
+    output: { finished: true }

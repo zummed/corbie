@@ -1,0 +1,38 @@
+{
+  "status": "done",
+  "output": {
+    "kids": [
+      {
+        "item": {
+          "n": 1
+        },
+        "output": {
+          "input_seen": {
+            "n": 1
+          },
+          "n": 2
+        }
+      },
+      {
+        "error": {
+          "<contains>": "reached gave_up"
+        },
+        "item": {
+          "fail": true,
+          "n": 2
+        }
+      },
+      {
+        "item": {
+          "n": 3
+        },
+        "output": {
+          "input_seen": {
+            "n": 3
+          },
+          "n": 4
+        }
+      }
+    ]
+  }
+}

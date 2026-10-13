@@ -1,0 +1,11 @@
+{
+  "status": "done",
+  "output": {
+    "seen": {
+      "error": {
+        "<contains>": "failed on purpose"
+      }
+    }
+  },
+  "note": "R-flow-16: a stage handles a failure by reading its error as well as by reading failed, so reads_error_only runs with the error's text and the flow ends well."
+}

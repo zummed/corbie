@@ -1,0 +1,18 @@
+{
+  "status": "done",
+  "output": {
+    "cleanup": {
+      "error": {
+        "<contains>": "reached gave_up"
+      },
+      "output": {
+        "gave_up_at": 2
+      }
+    },
+    "kid_failed": true,
+    "kid_output": {
+      "gave_up_at": 2
+    }
+  },
+  "note": "R-flow-22 and R-mach-48: a stage that reads a failure can read the failed stage's error and whatever output it still gave, so the failed final state's output is read."
+}

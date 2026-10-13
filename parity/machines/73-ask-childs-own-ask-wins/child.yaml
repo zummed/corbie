@@ -1,0 +1,9 @@
+flow: child
+input: [n]
+ask:
+  script: ./yes.js
+stages:
+  guarded:
+    job: { script: ./add.js, input: { n: "${input.n}" }, approve: true }
+output:
+  n: ${stages.guarded.output.n}

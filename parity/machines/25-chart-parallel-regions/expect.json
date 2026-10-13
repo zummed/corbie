@@ -1,0 +1,12 @@
+{
+  "status": "done",
+  "output": {
+    "left": {
+      "side": "left"
+    },
+    "right": {
+      "side": "right"
+    }
+  },
+  "note": "R-chart-16: the state has two named jobs."
+}

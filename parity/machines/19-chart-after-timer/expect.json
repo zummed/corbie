@@ -1,0 +1,19 @@
+{
+  "status": "done",
+  "output": {
+    "came_by": "timer"
+  },
+  "record": [
+    {
+      "machine": "sleeper",
+      "status": "cancelled"
+    },
+    {
+      "machine": "after-timer",
+      "order": [
+        "timer",
+        "done"
+      ]
+    }
+  ]
+}

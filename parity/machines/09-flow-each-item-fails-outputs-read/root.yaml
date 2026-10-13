@@ -1,0 +1,9 @@
+# One item of three fails. The flow's output: reads the stage's output,
+# which handles the failed item: it appears as { item, error }.
+flow: item-fails-read
+stages:
+  work:
+    each: [{ n: 1 }, { n: 2, fail: true }, { n: 3 }]
+    job: { script: ./maybe.js, input: "${item}" }
+output:
+  work: ${stages.work.output}

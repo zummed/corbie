@@ -1,0 +1,17 @@
+# Three statecharts deep. The bottom chart sends news to its parent, the
+# middle chart, which passes it up to the root as relayed. The root answers
+# down the same way: order to the middle, which passes order to the bottom.
+# The bottom then finishes, the middle finishes with its output, and the
+# root with the middle's.
+statechart: top
+initial: running
+states:
+  running:
+    job: { machine: ./middle.yaml, input: { depth: 1 } }
+    on:
+      relayed:
+        send: { to: running, event: order, data: { from: top, heard: "${event.data}" } }
+    done: finished
+  finished:
+    final: true
+    output: { middle: "${event.data}" }

@@ -1,0 +1,10 @@
+statechart: child
+input: [n]
+initial: working
+states:
+  working:
+    job: { script: ./echo.js, input: { n: "${input.n}", seen_input: "${input}", start_event: "${event.name}", start_data: "${event.data}" } }
+    done: finished
+  finished:
+    final: true
+    output: ${states.working.output}

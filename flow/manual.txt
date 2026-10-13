@@ -1,0 +1,93 @@
+Flow: a flow runs each stage once, in dependency order and in parallel, and can stream items from one stage to the next.
+
+A stage is one job. It runs after every stage it reads in an expression, and
+stages that do not depend on each other run in parallel.
+
+    # digest.yaml
+    flow: digest
+    input: [urls]
+
+    stages:
+      fetch:
+        each: ${input.urls}
+        job:
+          script: ./fetch.js
+          input: { url: "${item}" }
+          allow: [net:example.com]
+      summarise:
+        job: { script: ./summarise.js, input: { pages: "${stages.fetch.output}" } }
+      tell_someone:
+        when: stages.summarise.failed
+        job: { script: ./notify.js, input: { why: "${stages.summarise.error}" } }
+
+    output: ${stages.summarise.output}
+
+    // fetch.js
+    return html.parse(http.get(input.url).body).find("title").text
+
+    // summarise.js
+    const failed = input.pages.filter((page) => page.error)
+    if (failed.length > 0) throw new Error(failed.length + " pages failed")
+    return input.pages.map((page) => page.output).join(", ")
+
+    // notify.js
+    log("the digest failed:", input.why)
+
+    corbie test digest.yaml --input '{"urls": ["https://example.com/news"]}'
+      output: "News"
+
+Fields
+------
+
+  stages    the stages, by name
+  output    the flow's result
+  pass      a stage's name: each value its job emits is sent to the flow's
+            parent as it arrives
+
+A stage has these fields.
+
+  job              a script or a machine: see `corbie manual definitions`
+  when             a condition, written without `${ }`: if it is false, the
+                   stage is skipped
+  follows          stages it runs after without reading them: [fetch]
+  each             starts the job once for each item, read as `${item}`
+  one_at_a_time    true: with `each:`, one item at a time, in order
+
+An expression reads `input` and these.
+
+  stages.<name>.output     what the stage's job returned
+  stages.<name>.failed     true if the stage failed
+  stages.<name>.error      the error's text, if it failed
+  stages.<name>.skipped    true if the stage was skipped
+  stages.<name>.emitted    the values its job has emitted so far
+
+Skipping and failing
+--------------------
+
+- A stage that reads or follows a skipped stage is skipped, unless its own
+  `when:` reads that stage's `skipped`.
+- A stage that reads the output of a failed stage, or follows it, is skipped,
+  unless it reads that stage's `failed` or `error`.
+- A failed stage fails the flow, unless a stage that reads its `failed` or
+  `error` runs, or `output:` reads them.
+
+Once for each item
+------------------
+
+  each: [1, 2, 3]                    a list
+  each: ${input.urls}                an expression that gives a list
+  each: fetch                        each value the stage fetch emits, as it arrives
+  each: { blob: "${input.file}" }    the items of a blob: lines, rows or entries
+
+- Between `{ }`, YAML needs quotes round a value that holds `${...}`.
+- The stage's output is a list in the order of the items. Each entry is
+  `{ item, output }` or, for an item whose job failed, `{ item, error }`.
+- A failed item does not fail its stage, and `stages.<name>.failed` stays
+  false. The script that reads the list must check each entry for `error`, as
+  `summarise.js` does. If nothing reads the list, a failed item fails the flow.
+- Where `each:` names a stage, an item is the emitted value without its name.
+  An event that a child machine sends to its parent is an item too.
+- The record names an item's job `fetch.0`, `fetch.1` and so on.
+- To run several jobs for each item, make the stage's job a machine.
+
+A flow has no keys and no timers, and ignores events sent to it.

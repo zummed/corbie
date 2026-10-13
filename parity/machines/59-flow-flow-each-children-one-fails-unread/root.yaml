@@ -1,0 +1,10 @@
+# each: starts three child flows at once. The second fails at once; the
+# other two each run a chart that sleeps two seconds. Nothing reads the
+# stage's output.
+flow: parent
+stages:
+  kids:
+    each: [{ fail: false, n: 1 }, { fail: true, n: 2 }, { fail: false, n: 3 }]
+    job: { machine: ./child.yaml, input: "${item}" }
+output:
+  done: true

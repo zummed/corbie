@@ -1,0 +1,15 @@
+{
+  "status": "done",
+  "output": {
+    "came_by": "done",
+    "leaving_on_emit": null,
+    "listening": {
+      "count": 3
+    },
+    "read": {
+      "got": {
+        "n": 4
+      }
+    }
+  }
+}

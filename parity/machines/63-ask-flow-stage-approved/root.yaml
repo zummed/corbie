@@ -1,0 +1,12 @@
+# A stage marked approve: true and an ask (a script) that approves
+# everything. The ask runs first; the stage's job starts once it is approved.
+flow: asks
+ask:
+  script: ./yes.js
+stages:
+  free:
+    job: { script: ./add.js, input: { n: 1 } }
+  guarded:
+    job: { script: ./add.js, input: { n: "${stages.free.output.n}" }, approve: true }
+output:
+  guarded: ${stages.guarded.output}

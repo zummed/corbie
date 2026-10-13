@@ -1,0 +1,20 @@
+# Two stages with attempts. comes_good fails on its first try and works on
+# its second, a second later: ok_after is 600ms after the step that starts
+# it. never_good fails both of its two tries, and its failure is handled.
+flow: retry
+stages:
+  comes_good:
+    job:
+      script: ./early.js
+      input: { ok_after: "${Date.now() + 600}" }
+      attempts: 3
+  never_good:
+    job:
+      script: ./fail.js
+      attempts: 2
+  report:
+    when: stages.never_good.failed
+    job: { script: ./early.js, input: { ok_after: 0 } }
+output:
+  comes_good: ${stages.comes_good.output}
+  never_good_error: ${stages.never_good.error}

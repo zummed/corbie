@@ -1,0 +1,12 @@
+# A stage that runs a child flow, with attempts. The child fails on the
+# first attempt and works on the second, a second later. Each attempt is a
+# new instance of the child.
+flow: parent
+stages:
+  kid:
+    job:
+      machine: ./child.yaml
+      input: { ok_after: "${Date.now() + 600}" }
+      attempts: 3
+output:
+  kid: ${stages.kid.output}

@@ -1,0 +1,12 @@
+# A statechart state marked approve: true, an ask that approves nothing,
+# and no failed:.
+statechart: asks
+ask:
+  script: ./no.js
+initial: guarded
+states:
+  guarded:
+    job: { script: ./add.js, input: { n: 1 }, approve: true }
+    done: finished
+  finished:
+    final: true

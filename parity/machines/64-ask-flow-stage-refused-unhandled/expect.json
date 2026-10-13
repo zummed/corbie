@@ -1,0 +1,22 @@
+{
+  "status": "failed",
+  "failure": "denied",
+  "error_contains": [
+    "guarded: ",
+    "no to all"
+  ],
+  "record": [
+    {
+      "machine": "sleeper",
+      "status": "cancelled"
+    },
+    {
+      "machine": "asks",
+      "ask": {
+        "kind": "script",
+        "name": "guarded"
+      },
+      "absent": true
+    }
+  ]
+}

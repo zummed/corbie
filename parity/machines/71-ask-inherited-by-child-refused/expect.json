@@ -1,0 +1,28 @@
+{
+  "status": "failed",
+  "failure": "denied",
+  "error_contains": [
+    "second: ",
+    "guarded: ",
+    "no to all"
+  ],
+  "record": [
+    {
+      "machine": "guarded-flow",
+      "status": "failed"
+    },
+    {
+      "machine": "parent",
+      "event": {
+        "name": "done",
+        "from": "noting",
+        "data": {
+          "name": "failed",
+          "error": {
+            "<contains>": "no to all"
+          }
+        }
+      }
+    }
+  ]
+}

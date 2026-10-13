@@ -1,0 +1,30 @@
+{
+  "status": "done",
+  "output": {
+    "text": "Waited.",
+    "usage": {
+      "input": 2,
+      "output": 2
+    }
+  },
+  "record": [
+    {
+      "machine": "waiter",
+      "event": {
+        "name": "poke",
+        "from": "parent",
+        "data": {
+          "from": "parent"
+        }
+      }
+    },
+    {
+      "machine": "waiter",
+      "ask": {
+        "kind": "script",
+        "name": "turn#3"
+      },
+      "absent": true
+    }
+  ]
+}

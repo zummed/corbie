@@ -1,0 +1,10 @@
+statechart: child
+initial: working
+states:
+  working:
+    job: { script: ./fail.js }
+    failed: gave_up
+  gave_up:
+    final: true
+    failed: true
+    output: { why: "${event.data.error}" }

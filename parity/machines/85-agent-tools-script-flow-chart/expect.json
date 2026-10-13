@@ -1,0 +1,102 @@
+{
+  "status": "done",
+  "output": {
+    "reply": "All done.",
+    "conversation": {
+      "turns": [
+        "<blob>",
+        "<blob>",
+        "<blob>"
+      ],
+      "blobs": {}
+    },
+    "tokens": {
+      "input": 3,
+      "output": 3
+    }
+  },
+  "record": [
+    {
+      "machine": "tools",
+      "emit": {
+        "job": "turn#2",
+        "name": "log",
+        "data": {
+          "<contains>": "call_1"
+        }
+      }
+    },
+    {
+      "machine": "tools",
+      "emit": {
+        "job": "turn#2",
+        "name": "log",
+        "data": {
+          "<contains>": "call_2"
+        }
+      }
+    },
+    {
+      "machine": "tools",
+      "emit": {
+        "job": "turn#2",
+        "name": "log",
+        "data": {
+          "<contains>": "call_3"
+        }
+      }
+    },
+    {
+      "machine": "tools",
+      "emit": {
+        "job": "turn#3",
+        "name": "log",
+        "data": {
+          "<contains>": "told to fail"
+        }
+      }
+    },
+    {
+      "machine": "tools",
+      "emit": {
+        "job": "turn#3",
+        "name": "log",
+        "data": {
+          "<contains>": "reached gave_up"
+        }
+      }
+    },
+    {
+      "machine": "tools",
+      "emit": {
+        "job": "turn#3",
+        "name": "log",
+        "data": {
+          "<contains>": "gave_up_at"
+        }
+      }
+    },
+    {
+      "machine": "tools",
+      "ask": {
+        "kind": "script",
+        "name": "add"
+      }
+    },
+    {
+      "machine": "tools",
+      "ask": {
+        "kind": "child",
+        "name": "flow_tool"
+      }
+    },
+    {
+      "machine": "tools",
+      "ask": {
+        "kind": "child",
+        "name": "chart_tool#2"
+      }
+    }
+  ],
+  "note": "R-agent-27: a tool that fails goes back to the model as an error with whatever output it still gave, so the third turn is shown the failed final state's output beside reached gave_up."
+}

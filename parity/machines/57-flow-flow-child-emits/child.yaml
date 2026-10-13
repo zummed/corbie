@@ -1,0 +1,10 @@
+flow: child
+stages:
+  source:
+    job: { script: ./emit.js, input: { items: [{ n: 1 }, { n: 2 }, { n: 3 }] } }
+  per_item:
+    each: source
+    job: { script: ./read.js, input: { item: "${item}" } }
+output:
+  count: ${stages.source.output.count}
+  read_in_child: ${stages.per_item.output.map(r => r.output.got)}

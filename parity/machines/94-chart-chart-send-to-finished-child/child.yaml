@@ -1,0 +1,11 @@
+statechart: child
+initial: working
+states:
+  working:
+    job: { script: ./echo.js, input: { n: 1 } }
+    done: finished
+    on:
+      hello: finished
+  finished:
+    final: true
+    output: { came_by: "${event.name}" }

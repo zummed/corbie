@@ -1,0 +1,13 @@
+# The chart child sends its parent, a flow, an event, and the child's own
+# script emits two values. The flow has a stage that follows what the child
+# stage sends up.
+flow: parent
+stages:
+  kid:
+    job: { machine: ./child.yaml }
+  per_emit:
+    each: kid
+    job: { script: ./read.js, input: { item: "${item}" } }
+output:
+  kid: ${stages.kid.output}
+  per_emit: ${stages.per_emit.output}

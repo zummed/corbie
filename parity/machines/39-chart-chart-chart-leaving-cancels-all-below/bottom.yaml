@@ -1,0 +1,10 @@
+statechart: bottom
+initial: waiting
+states:
+  waiting:
+    wait: answer
+    exit: { send: { to: parent, event: bottom_leaving } }
+    on:
+      answer: finished
+  finished:
+    final: true

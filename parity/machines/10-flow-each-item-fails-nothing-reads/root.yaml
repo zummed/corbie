@@ -1,0 +1,11 @@
+# One item of three fails and nothing reads the stage's output: the flow
+# fails, and the stage still running is cancelled.
+flow: item-fails-unread
+stages:
+  slow:
+    job: { machine: ./sleeper.yaml }
+  work:
+    each: [{ n: 1 }, { n: 2, fail: true }, { n: 3 }]
+    job: { script: ./maybe.js, input: "${item}" }
+output:
+  slow: ${stages.slow.output}

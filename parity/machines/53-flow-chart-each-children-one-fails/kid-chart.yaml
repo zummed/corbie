@@ -1,0 +1,18 @@
+# kid-chart.yaml: a child statechart. It runs one script, then finishes; it
+# ends in a failed final state, with an output, when its input says fail.
+statechart: kid-chart
+input: [n]
+initial: working
+states:
+  working:
+    job: { script: ./add.js, input: { n: "${input.n}" } }
+    done:
+      - { to: gave_up, when: input.fail }
+      - finished
+  finished:
+    final: true
+    output: { n: "${states.working.output.n}", input_seen: "${input}" }
+  gave_up:
+    final: true
+    failed: true
+    output: { gave_up_at: "${states.working.output.n}" }

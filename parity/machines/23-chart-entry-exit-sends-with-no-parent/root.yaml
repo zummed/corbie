@@ -1,0 +1,15 @@
+# A root chart (no parent) with send in entry:, in exit: and on a
+# transition, all addressed to parent.
+statechart: sends-no-parent
+initial: working
+states:
+  working:
+    entry: { send: { to: parent, event: entered, data: { state: working } } }
+    exit: { send: { to: parent, event: left, data: { state: working } } }
+    job: { script: ./echo.js, input: { n: 1 } }
+    done:
+      to: finished
+      send: { to: parent, event: moving, data: { n: "${event.data.n}" } }
+  finished:
+    final: true
+    output: { n: "${states.working.output.n}" }

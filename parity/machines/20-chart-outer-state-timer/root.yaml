@@ -1,0 +1,14 @@
+# A timer written on an outer state fires while the chart is in a state
+# nested inside it, whose job has already finished.
+statechart: outer-timer
+initial: outer
+states:
+  outer:
+    after: { 1s: finished }
+    initial: inner
+    states:
+      inner:
+        job: { script: ./echo.js, input: { n: 1 } }
+  finished:
+    final: true
+    output: { came_by: "${event.name}", inner: "${states.inner.output}" }

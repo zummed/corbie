@@ -1,0 +1,9 @@
+# The root sets jobs: 10 and starts three children at once with each:.
+flow: top
+jobs: 10
+stages:
+  kids:
+    each: [first, second, third]
+    job: { machine: ./child.yaml, input: { which: "${item}" } }
+output:
+  kids: ${stages.kids.output}

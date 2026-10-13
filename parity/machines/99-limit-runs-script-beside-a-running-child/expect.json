@@ -1,0 +1,20 @@
+{
+  "status": "done",
+  "output": {
+    "before": {
+      "n": 2
+    },
+    "slow_kid": {
+      "slept": true
+    },
+    "beside": {
+      "n": 11
+    },
+    "later": {
+      "n": 3
+    },
+    "beside_failed": null,
+    "later_failed": null
+  },
+  "note": "R-mach-79: a job limit counts the jobs the instance itself starts, not the tree below it, and nothing is lent to a child. The four jobs the flow needs all start while the child runs, and it ends well. The flow's output gives beside and later, to show they ran."
+}

@@ -1,0 +1,114 @@
+/* Look: one quiet surface and few lines. Ink on stone paper, in light or in dark. */
+:root {
+  --paper: #E8EBE9;  --plate: #F7F8F6;  --rule: #B2BAB7;
+  --ink: #12161C;    --ink2: #47505A;
+  --petrol: #17606E; --moss: #3F6B35; --rowan: #AB3626;
+  --display: "Besley", Georgia, "Times New Roman", serif;
+  --body: "Libre Franklin", "Helvetica Neue", Arial, sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, Menlo, Consolas, monospace;
+  --ease: cubic-bezier(.2, .75, .2, 1);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --paper: #0C1014; --plate: #131920; --rule: #33404A;
+    --ink: #E6EAE7;   --ink2: #97A3A6;
+    --petrol: #5FC0CF; --moss: #96C781; --rowan: #EC8470;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --paper: #0C1014; --plate: #131920; --rule: #33404A;
+  --ink: #E6EAE7;   --ink2: #97A3A6;
+  --petrol: #5FC0CF; --moss: #96C781; --rowan: #EC8470;
+  color-scheme: dark;
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+body { margin: 0; color: var(--ink); background: var(--paper); font: 400 clamp(16px, .35vw + 13px, 19px)/1.5 var(--body); -webkit-font-smoothing: antialiased; }
+a { color: inherit; }
+:focus-visible { outline: 2px solid var(--petrol); outline-offset: 2px; }
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation: none !important; transition: none !important; }
+}
+@view-transition { navigation: auto; }
+::view-transition-old(root), ::view-transition-new(root) { animation-duration: .22s; }
+
+.app { max-width: 1240px; margin: 0 auto; padding-inline: clamp(16px, 3vw, 48px); padding-block: 22px 96px; }
+
+/* the bar: the mark, and the parts of the manual */
+.bar { display: flex; align-items: center; gap: .4rem 1.1rem; flex-wrap: wrap; }
+.mark { display: flex; align-items: center; gap: .55rem; text-decoration: none; color: var(--ink); font: 700 1.35rem/1 var(--display); letter-spacing: -.01em; }
+.crow { width: 2.1em; height: auto; overflow: visible; transition: transform .3s var(--ease); }
+.crow path { fill: var(--ink); }
+.crow circle { fill: var(--plate); }
+.mark:hover .crow { transform: rotate(-6deg); }
+.bar nav { display: flex; flex-wrap: wrap; gap: .2rem 1.8rem; margin-left: auto; font-size: .92rem; }
+.bar nav a { text-decoration: none; color: var(--ink2); padding: .1rem 0; transition: color .15s; }
+.bar nav a:hover, .bar nav a[aria-current] { color: var(--ink); }
+.bar nav a[aria-current] { font-weight: 650; }
+
+/* the page: the pages of its part down the side, and the page itself */
+.shell { display: grid; grid-template-columns: 13rem minmax(0, 1fr); gap: clamp(2rem, 5vw, 5rem); margin-top: clamp(2rem, 4vw, 3.4rem); align-items: start; }
+.side { position: sticky; top: 14px; max-height: calc(100vh - 28px); overflow-y: auto; padding: 0 .4rem 2rem 0; font-size: .9rem; scrollbar-width: thin; }
+.kicker, .side h2 { font: 600 .7rem/1.2 var(--body); letter-spacing: .12em; text-transform: uppercase; color: var(--ink2); margin: 0 0 .7rem; }
+.side h2 { margin: 1.5rem 0 .45rem; } .side h2:first-child { margin-top: .2rem; }
+.side a { display: block; padding: .22rem 0; color: var(--ink2); text-decoration: none; transition: color .15s; }
+.side a:hover, .side a[aria-current] { color: var(--ink); }
+.side a[aria-current] { font-weight: 650; }
+.side details { margin-top: .35rem; } .side summary { cursor: pointer; padding: .16rem .2rem; color: var(--ink2); font-weight: 600; }
+.side summary:hover { color: var(--ink); }
+/* the pages of a part that is read in order are numbered */
+.side.walk { counter-reset: walk; } .side.walk a { counter-increment: walk; }
+.side.walk a::before { content: counter(walk); display: inline-block; width: 1.5em; font: 600 .78rem var(--mono); color: var(--ink2); }
+@media (max-width: 900px) {
+  .shell { grid-template-columns: minmax(0, 1fr); }
+  .side { position: static; max-height: none; order: 2; border-top: 1px solid var(--rule); padding-top: 1rem; }
+}
+.page { min-width: 0; max-width: 60rem; container-type: inline-size; }
+h1 { font: 700 clamp(2rem, 1.6vw + 1.4rem, 3rem)/1 var(--display); letter-spacing: -.02em; margin: 0 0 .6rem; text-wrap: balance; width: fit-content; }
+.lede { font-size: 1.2em; line-height: 1.4; max-width: 34em; margin: 0 0 clamp(1.6rem, 3vw, 2.6rem); color: var(--ink2); }
+.turn { max-width: 42rem; display: flex; justify-content: space-between; gap: 1rem; margin-top: 2.6rem; padding-top: 1rem; border-top: 1px solid var(--rule); }
+.turn a { text-decoration: none; font: 600 1.05rem/1.3 var(--display); max-width: 48%; }
+.turn a small { display: block; font: 600 .68rem/1.4 var(--body); letter-spacing: .15em; text-transform: uppercase; color: var(--ink2); }
+.turn a:hover { color: var(--petrol); } .turn a:last-child { text-align: right; margin-left: auto; }
+
+/* the text of a page */
+.text { max-width: 42rem; }
+.text h2 { font: 650 1.4rem/1.2 var(--display); letter-spacing: -.012em; margin: 2.6rem 0 .7rem; }
+.text p { margin: 0 0 .95em; }
+.text a { color: var(--petrol); text-decoration-color: color-mix(in srgb, var(--petrol) 40%, transparent); text-underline-offset: 3px; }
+.text a:hover { text-decoration-color: var(--petrol); }
+.text ul, .text ol { margin: 0 0 1em; padding-left: 1.3em; } .text li { margin: 0 0 .45em; }
+.text ol li { margin-bottom: .6em; }
+.text pre { margin: 0 0 1.3em; font: 500 .8rem/1.6 var(--mono); white-space: pre-wrap; overflow-wrap: anywhere; tab-size: 2; }
+/* an example: each file and each run as its own quiet block */
+.text .eg { margin: 0 0 1rem; background: var(--plate); border-radius: 8px; padding: .9rem 1.2rem; }
+.text .eg + p { margin-top: 1.4rem; }
+.text .eg .name { margin: 0 0 .4rem; font: 600 .76rem/1.2 var(--body); letter-spacing: .08em; text-transform: uppercase; color: var(--ink2); }
+.text .eg .mark { display: none; }
+.text .eg pre { margin: 0; font-size: .84rem; }
+.text .eg.run .cmd::before { content: "$ "; color: var(--ink2); }
+.text .eg.run .out { color: var(--petrol); }
+/* a long line of an example wraps, and what wraps is set in under its start */
+.text .eg.run span { display: block; padding-left: 4ch; text-indent: -4ch; }
+/* a table that is wider than the text takes the room the page has, and wraps after that */
+.text pre.rows { padding: .1rem 0; color: var(--ink); width: max-content; min-width: 100%; max-width: 100cqw; }
+/* a command, a field or a name inside a sentence */
+.text code { font-family: var(--mono); font-size: .86em; background: var(--plate); border: 1px solid var(--rule); border-radius: 4px; padding: .08em .38em; white-space: nowrap; }
+/* a page another names: the command that prints it, shown as a way to it */
+.text a.to { text-decoration-color: var(--petrol); }
+.text code:has(> a.to) { background: none; border: 0; padding: 0; font: inherit; }
+/* rows of a term and what is said of it */
+.text .pairs { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: .35rem 1.6rem; margin: 0 0 1.3em; align-items: baseline; max-width: 100cqw; width: max-content; min-width: 100%; box-sizing: border-box; }
+.text .pairs code { white-space: pre; background: none; border: 0; padding: 0; font-size: .84rem; color: var(--ink); }
+.text .pairs span { color: var(--ink2); }
+@media (max-width: 44rem) { .text .pairs { grid-template-columns: minmax(0, 1fr); width: auto; gap: 0; } .text .pairs code { white-space: pre-wrap; overflow-wrap: anywhere; } .text .pairs span { margin-bottom: .6rem; } }
+/* a list of pages, each with what is said of it */
+.text ul.pages { list-style: none; padding: 0; margin: 0 0 1.3em; }
+.text ul.pages li { display: grid; grid-template-columns: minmax(9em, 14em) 1fr; gap: 0 1.2rem; padding: .28rem 0; }
+.text ul.pages span { color: var(--ink2); }
+/* points for and against, under an entry of a list */
+.points { list-style: none; margin: .55em 0 0; padding: 0; font-size: .92em; }
+.points li { margin: .15em 0; padding-left: 1.5em; text-indent: -1.5em; }
+.points li span { display: inline-block; width: 1.5em; text-indent: 0; font-weight: 600; }
+.points .for span { color: var(--moss); } .points .against span { color: var(--rowan); }

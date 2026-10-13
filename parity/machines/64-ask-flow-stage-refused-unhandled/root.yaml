@@ -1,0 +1,11 @@
+# The ask approves nothing and no stage handles the refusal.
+flow: asks
+ask:
+  script: ./no.js
+stages:
+  slow:
+    job: { machine: ./sleeper.yaml }
+  guarded:
+    job: { script: ./add.js, input: { n: 1 }, approve: true }
+output:
+  guarded: ${stages.guarded.output}

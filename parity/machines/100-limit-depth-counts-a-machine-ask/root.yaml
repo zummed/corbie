@@ -1,0 +1,13 @@
+# The root sets depth: 0 and starts no children, but its ask is a machine.
+flow: asks
+depth: 0
+ask:
+  machine: ./ask-person.yaml
+stages:
+  guarded:
+    job: { script: ./add.js, input: { n: 1 }, approve: true }
+  note:
+    when: stages.guarded.failed
+    job: { script: ./echo.js, input: { error: "${stages.guarded.error}" } }
+output:
+  note: ${stages.note.output}

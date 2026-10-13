@@ -1,0 +1,61 @@
+{
+  "status": "done",
+  "output": {
+    "bump": [
+      {
+        "item": 10,
+        "output": {
+          "n": 11
+        }
+      },
+      {
+        "item": 20,
+        "output": {
+          "n": 21
+        }
+      },
+      {
+        "item": 30,
+        "output": {
+          "n": 31
+        }
+      }
+    ],
+    "gathered": [
+      {
+        "item": {
+          "item": 10,
+          "output": {
+            "n": 11
+          }
+        },
+        "output": {
+          "n": 12
+        }
+      },
+      {
+        "item": {
+          "item": 20,
+          "output": {
+            "n": 21
+          }
+        },
+        "output": {
+          "n": 22
+        }
+      },
+      {
+        "item": {
+          "item": 30,
+          "output": {
+            "n": 31
+          }
+        },
+        "output": {
+          "n": 32
+        }
+      }
+    ]
+  },
+  "note": "R-flow-26: a stage that reads a per-item stage's output runs once with the whole list. bump_again is a per-item stage over bump's list, so each of its items is bump's { item, output } entry and not the bare number."
+}

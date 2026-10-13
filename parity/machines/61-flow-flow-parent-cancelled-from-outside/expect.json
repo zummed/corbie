@@ -1,0 +1,14 @@
+{
+  "status": "cancelled",
+  "error_contains": "cancelled",
+  "record": [
+    {
+      "machine": "middle",
+      "status": "cancelled"
+    },
+    {
+      "machine": "sleeper",
+      "status": "cancelled"
+    }
+  ]
+}

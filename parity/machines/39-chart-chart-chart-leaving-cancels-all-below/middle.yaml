@@ -1,0 +1,9 @@
+statechart: middle
+initial: running
+states:
+  running:
+    exit: { send: { to: parent, event: middle_leaving } }
+    job: { machine: ./bottom.yaml }
+    done: finished
+  finished:
+    final: true

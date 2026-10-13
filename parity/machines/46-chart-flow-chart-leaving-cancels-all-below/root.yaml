@@ -1,0 +1,16 @@
+# Chart, flow, chart. The root's timer leaves the state that runs the flow,
+# a second in, while the flow's only stage (a chart that sleeps six
+# seconds) is still running.
+statechart: top
+initial: running
+states:
+  running:
+    job: { machine: ./middle.yaml }
+    done: too_late
+    after: { 1s: finished }
+  too_late:
+    final: true
+    output: { middle_finished: true }
+  finished:
+    final: true
+    output: { left_by: "${event.name}" }

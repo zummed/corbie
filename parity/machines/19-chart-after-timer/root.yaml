@@ -1,0 +1,19 @@
+# after: timers. waiting has two timers; the shorter fires and leaves the
+# state, which clears the longer one and cancels the state's job (a child
+# that sleeps six seconds).
+statechart: after-timer
+initial: waiting
+states:
+  waiting:
+    job: { machine: ./sleeper.yaml }
+    done: too_late
+    after: { 1s: moved_on, 8s: too_late }
+  moved_on:
+    job: { script: ./echo.js, input: { came_by: "${event.name}" } }
+    done: finished
+  too_late:
+    final: true
+    failed: true
+  finished:
+    final: true
+    output: ${states.moved_on.output}

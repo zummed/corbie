@@ -1,0 +1,36 @@
+{
+  "status": "done",
+  "output": {
+    "kid": {
+      "try": {
+        "ok": true
+      }
+    }
+  },
+  "record": [
+    {
+      "machine": "parent",
+      "ask": {
+        "kind": "child",
+        "name": "kid",
+        "attempt": 1
+      }
+    },
+    {
+      "machine": "parent",
+      "ask": {
+        "kind": "child",
+        "name": "kid@2",
+        "attempt": 2
+      }
+    },
+    {
+      "machine": "parent",
+      "ask": {
+        "kind": "child",
+        "name": "kid@3"
+      },
+      "absent": true
+    }
+  ]
+}

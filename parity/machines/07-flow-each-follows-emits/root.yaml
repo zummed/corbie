@@ -1,0 +1,12 @@
+# each: over the values another stage emits, said by naming the stage:
+# per_item starts on each blob as it arrives, before source has finished.
+flow: follows-emits
+stages:
+  source:
+    job: { script: ./emit.js, input: { items: [{ n: 1 }, { n: 2 }, { n: 3 }] } }
+  per_item:
+    each: source
+    job: { script: ./read.js, input: { item: "${item}" } }
+output:
+  count: ${stages.source.output.count}
+  items: ${stages.per_item.output.map(r => r.output.got)}

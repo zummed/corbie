@@ -1,0 +1,11 @@
+# Three statecharts deep, each waiting. After a second the root's timer
+# leaves the state that runs the middle chart.
+statechart: top
+initial: running
+states:
+  running:
+    job: { machine: ./middle.yaml }
+    after: { 1s: finished }
+  finished:
+    final: true
+    output: { left_by: "${event.name}" }

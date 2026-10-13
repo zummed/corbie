@@ -1,0 +1,34 @@
+{
+  "status": "done",
+  "output": {
+    "first": {
+      "error": {
+        "<contains>": "failed on purpose"
+      },
+      "name": "failed",
+      "output": null
+    },
+    "remembered_outputs": [
+      null,
+      null,
+      null
+    ],
+    "second": {
+      "error": {
+        "<contains>": "reached gave_up"
+      },
+      "name": "failed",
+      "output": {
+        "why": "the child gave up"
+      }
+    },
+    "third": {
+      "error": {
+        "<contains>": "how"
+      },
+      "name": "failed",
+      "output": null
+    }
+  },
+  "note": "R-mach-48 and R-chart-10: a failed event carries whatever output the job still gave, so the parent reads the failed final state's output in the second round."
+}

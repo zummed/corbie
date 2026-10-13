@@ -1,0 +1,10 @@
+# A flow has the ask; its agent child has a tool marked approve: true. The
+# model makes two calls in one turn and both go to the ask together.
+flow: parent
+ask:
+  script: ./odd-args.js
+stages:
+  agent:
+    job: { machine: ./agent.yaml }
+output:
+  text: ${stages.agent.output.reply}

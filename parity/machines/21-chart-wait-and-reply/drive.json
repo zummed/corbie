@@ -1,0 +1,40 @@
+[
+  {
+    "wait": {
+      "machine": "wait-and-reply",
+      "key": "answer"
+    },
+    "do": "reply",
+    "wrong_key": true,
+    "value": {
+      "said": "wrong key"
+    },
+    "taken": false,
+    "refused_contains": "not waiting on that key"
+  },
+  {
+    "wait": {
+      "machine": "wait-and-reply",
+      "key": "answer"
+    },
+    "do": "reply",
+    "remember": "k",
+    "value": {
+      "said": "go ahead"
+    },
+    "taken": true
+  },
+  {
+    "wait": {
+      "machine": "wait-and-reply",
+      "status": "done"
+    },
+    "do": "reply",
+    "remembered": "k",
+    "value": {
+      "said": "again"
+    },
+    "taken": false,
+    "refused_contains": "ended"
+  }
+]

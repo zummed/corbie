@@ -1,0 +1,9 @@
+{
+  "status": "done",
+  "output": {
+    "kid": {
+      "n": 3
+    }
+  },
+  "note": "R-mach-79: a job limit counts the jobs the instance itself starts, not the tree below it, and nothing is lent to a child. The root starts two jobs and its child two, so every job starts."
+}

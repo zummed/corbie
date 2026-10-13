@@ -1,0 +1,22 @@
+{
+  "status": "cancelled",
+  "error_contains": "cancelled",
+  "record": [
+    {
+      "machine": "guarded-chart",
+      "status": "cancelled"
+    },
+    {
+      "machine": "ask-person",
+      "status": "cancelled"
+    },
+    {
+      "machine": "guarded-chart",
+      "ask": {
+        "kind": "script",
+        "name": "guarded"
+      },
+      "absent": true
+    }
+  ]
+}

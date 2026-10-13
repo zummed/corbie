@@ -1,0 +1,67 @@
+{
+  "status": "done",
+  "output": {
+    "kid": {
+      "n": 2
+    }
+  },
+  "record": [
+    {
+      "machine": "parent",
+      "ask": {
+        "kind": "hold",
+        "name": "kid"
+      }
+    },
+    {
+      "machine": "parent",
+      "ask": {
+        "kind": "script",
+        "name": "ask",
+        "job": {
+          "input": {
+            "asking": {
+              "machine": "parent"
+            },
+            "jobs": [
+              {
+                "name": "kid",
+                "input": {
+                  "n": 1
+                }
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "machine": "guarded-flow",
+      "ask": {
+        "kind": "script",
+        "name": "ask",
+        "job": {
+          "input": {
+            "asking": {
+              "machine": "guarded-flow"
+            },
+            "jobs": [
+              {
+                "name": "guarded",
+                "input": {
+                  "n": 1
+                }
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "machine": "parent",
+      "order": [
+        "done"
+      ]
+    }
+  ]
+}

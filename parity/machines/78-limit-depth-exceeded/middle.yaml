@@ -1,0 +1,8 @@
+flow: middle
+stages:
+  work:
+    job: { script: ./add.js, input: { n: 1 } }
+  low:
+    job: { machine: ./bottom.yaml, input: { n: "${stages.work.output.n}" } }
+output:
+  low: ${stages.low.output}

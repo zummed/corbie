@@ -1,0 +1,9 @@
+# Three flows deep, run twice by the root: once where the bottom flow
+# works, once where it fails.
+flow: top
+stages:
+  mid:
+    each: [{ n: 1, fail: false }, { n: 10, fail: true }]
+    job: { machine: ./middle.yaml, input: "${item}" }
+output:
+  mid: ${stages.mid.output}

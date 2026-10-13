@@ -1,0 +1,13 @@
+# A statechart state runs an agent whose one tool is a chart that takes two
+# seconds. The parent sends the agent an event meanwhile, a second in.
+statechart: parent
+initial: running
+states:
+  running:
+    job: { machine: ./agent.yaml }
+    after:
+      1s: { send: { to: running, event: poke, data: { from: parent } } }
+    done: finished
+  finished:
+    final: true
+    output: { text: "${event.data.reply}", usage: "${event.data.tokens}" }

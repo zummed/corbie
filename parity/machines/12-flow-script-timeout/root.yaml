@@ -1,0 +1,7 @@
+# A script that never returns, given one second.
+flow: script-timeout
+stages:
+  spin:
+    job: { script: ./spin.js, timeout: 1s }
+output:
+  spin: ${stages.spin.output}

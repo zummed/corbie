@@ -1,0 +1,29 @@
+{
+  "status": "done",
+  "output": {
+    "kids": [
+      {
+        "item": "first",
+        "output": {
+          "n": 3,
+          "which": "first"
+        }
+      },
+      {
+        "item": "second",
+        "output": {
+          "n": 3,
+          "which": "second"
+        }
+      },
+      {
+        "item": "third",
+        "output": {
+          "n": 3,
+          "which": "third"
+        }
+      }
+    ]
+  },
+  "note": "R-mach-79: a job limit counts the jobs the instance itself starts, not the tree below it, and nothing is lent to a child. All three children run."
+}

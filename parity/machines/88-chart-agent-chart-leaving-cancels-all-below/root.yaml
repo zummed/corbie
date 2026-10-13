@@ -1,0 +1,15 @@
+# Chart, agent, chart. The root's timer leaves the state that runs the
+# agent, a second in, while the agent's tool, a chart, is running.
+statechart: top
+initial: running
+states:
+  running:
+    job: { machine: ./agent.yaml }
+    done: too_late
+    after: { 1s: finished }
+  too_late:
+    final: true
+    output: { agent_finished: true }
+  finished:
+    final: true
+    output: { left_by: "${event.name}" }

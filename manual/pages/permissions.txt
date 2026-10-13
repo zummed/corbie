@@ -1,0 +1,89 @@
+Permissions: a job can use files, the network, programs and secrets only where every layer allows it.
+
+A permission is a kind and a scope. A script uses anything outside itself
+only through these six kinds, and Corbie checks each use.
+
+  fs.read:/srv/reports/**    read files
+  fs.write:out/**            write files; no leading / means the job's scratch directory
+  net:api.github.com         connect to a host; net:api.github.com:443 for one port
+  exec:git                   start a program
+  env:HOME                   read an environment variable of the runner
+  secret:TOKEN@net:host      send a secret to one place
+
+  *     any characters in one part of a path, between two /, or of a host, between two dots
+  **    any number of parts of a path
+
+A secret goes to one of these places. The job also needs an entry for the
+place itself, such as `net:host`.
+
+  secret:TOKEN@net:host                to that host, over an encrypted connection
+  secret:TOKEN@net.unencrypted:host    to that host, encrypted or not
+  secret:TOKEN@exec:program            to that program
+  secret:TOKEN@fs.write:path           into that file
+  secret:TOKEN@*                       anywhere the job is allowed
+
+A group is an entry with no scope.
+
+  network    every net scope
+  disk       every fs.read and fs.write scope
+  exec       every exec scope
+  env        every env scope
+  all        everything, secrets included
+
+Layers
+------
+
+Several layers limit a job. A call is allowed only if every layer allows it.
+
+  the job in its definition    allow: [network, fs.read:/srv/**, exec:git]
+  the start message            corbie submit --allow network --allow 'fs.read:/srv/reports/**'
+  each parent's job            the `allow:` of a job that started a child run, if it has one
+  the client's ceiling         corbie controller enrol <client> --ceiling network,disk
+  the runner's ceiling         corbie runner trust <controller> --ceiling disk,exec
+
+Each layer is an allow list and a deny list. It refuses a call that its deny
+list matches, allows a call that its allow list matches, and refuses every
+other call.
+
+- A layer can limit the layers before it and cannot add to them.
+- The controller's owner sets a client's ceiling, and the runner's owner sets
+  the runner's ceiling. Under `corbie test` both allow everything.
+- On a command line, each `--deny <entry>` adds one deny entry, beside
+  `--allow` or `--ceiling`.
+- A child run that a definition names has what its own definition allows,
+  unless the job that starts it has an `allow:` list.
+- A machine that a script made has only what the job that starts it lists.
+  See `corbie manual machines`.
+- In a definition, the scope of an `allow:` entry may read the run's input, as
+  in `fs.read:${input.dir}/**`. Every other layer still applies, so an input
+  cannot raise a limit.
+
+Refusals
+--------
+
+A refused call stops the job with status `denied`. The refusal names the
+permission, the layer that refused it, and the line to add or the command to
+run.
+
+    // status.js
+    return http.get("https://example.com/news").status
+
+    corbie test status.js
+      refused: net:example.com:443
+      by: the job script in the definition of status
+      fix: add the line net:example.com:443 to the allow list of the job script in the definition of status
+
+For a ceiling, `fix:` names who can change it. For a deny list, it names the
+entry to remove.
+
+  fix: the controller's owner runs: corbie controller enrol laptop-client --allow net:example.com:443
+  fix: take the deny entry net:example.com out of the job script in the definition of status
+
+A run's result lists the permissions its jobs used, on the line `used:`.
+
+Reference
+---------
+
+  corbie manual tightening       allow everything, read `used:`, then keep only those entries
+  corbie manual using-secrets    setting a secret and sending it from a script
+  corbie manual limits           the cases that permissions do not cover

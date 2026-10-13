@@ -1,0 +1,147 @@
+The store: one directory or S3 bucket holds every file of every run, and it is the only way the controller, runners and clients communicate.
+
+A message is a file written to the receiver's `inbox/` directory.
+
+Layout
+------
+
+  version                         the layout's version, written when the store is set up
+  <controller>/
+    inbox/<sender>/<message>      messages from clients and runners, and its own for child runs
+    receipts/<sender>/<message>   its answer to each message from a client
+    running/<client>/<run>        the status of each run in progress
+    finished/<client>/<run>       the status of each run that has ended
+    records/<client>/<run>/
+        steps/<number>            one file for each step, written by the controller
+        emits/<job>/<number>      what a script logged or emitted, written by its runner
+        blobs/<name>              the definition, the scripts, and each file or large value
+        carried                   how much of a large step the controller has acted on
+    wakes/<time>/<run>/<name>     an empty file per timer, job timeout, retry, deadline and deletion
+    trust/<name>                  the card of each runner and client it trusts, with tags or ceiling
+    secrets/<name>                its secrets
+  <runner>/
+    inbox/<sender>/<message>      jobs for the runner
+    taken/<due time>/<job>        one file for each job it has taken
+
+`<client>/<run>` is a run's ID. `<run>` begins with the time the run was
+named, and a child run has the `<client>` of its parent.
+
+Who may read and write
+----------------------
+
+  files                       controller   runner        client                viewer
+  version                     reads        reads         reads                 reads
+  <controller>/inbox/         all          adds          adds                  -
+  receipts/                   all          -             reads its own         -
+  running/, finished/         all          -             reads its own         reads
+  records: steps/, carried    all          -             reads its own         -
+  records: emits/             all          adds          reads its own         -
+  records: blobs/             all          reads, adds   reads, adds its own   -
+  wakes/, trust/, secrets/    all          -             -                     -
+  <runner>/inbox/             adds         all           -                     -
+  <runner>/taken/             -            all           -                     -
+
+  all       reads, writes and deletes
+  adds      writes a new file, and cannot change or delete one
+  its own   the files of the runs the client started
+  viewer    reads the status files only, for a dashboard
+
+A runner can add to any run's record. Each file it adds names a job, and
+readers ignore a file from a runner that was not sent that job.
+
+Signing and encryption
+----------------------
+
+Every file except `version`, the blobs and the files under `wakes/` is three
+lines of text. This is the start message `corbie submit` wrote for the run
+`<id>`, with line 1 shown one field to a row and lines 2 and 3 cut short. Its
+content is the run's input, labels and reference to the definition's blob.
+
+  {"by":"laptop-client",                       the writer
+   "at":"laptop-controller/inbox/<id>",        the path of the file
+   "sent":"2026-10-13T18:48:12.924448335Z",    when it was written
+   "until":"2026-10-13T18:53:12.924448335Z",   when it expires
+   "sealed":true}                              line 2 is encrypted
+  AcrqRBCdnV4aW2KSjTevsbHqBcgnOu5Fi_Grkx...    the content as JSON, here encrypted
+  6aa3-5ydznulAN77jgzdBOVwsPl5M8Lml7Mo0v...    the writer's signature of lines 1 and 2
+
+A reader checks the signature against the writer's card and `at` against the
+path where it found the file. It refuses a file that was altered, moved or
+signed by another writer.
+
+  signature     Ed25519
+  content       AES-256-GCM, under a key made for that file
+  that key      HPKE, for the X25519 public key of each reader
+
+  a message in an inbox           encrypted for the process whose inbox it is in
+  a step, an emit                 encrypted for the controller and the client in the run's ID
+  an answer under receipts/       encrypted for the client that sent the message
+  a controller's secret           encrypted for the controller
+  a blob                          encrypted under its own key, and not signed
+  a status, a trust entry,        signed and not encrypted
+    a file under taken/
+
+A blob's key is in the reference to it, which is written only inside an
+encrypted file. A job's message holds the values of the secrets the job names.
+A status holds no input, output, error text or log line.
+
+Each controller, runner and client has two private keys, for signing and for
+decryption, and a card with its two public keys. Two trust each other when
+each has the other's card, and a receiver deletes a message whose sender's
+card it does not have. `corbie manual parties` has the commands.
+
+What the store's operator can do
+--------------------------------
+
+Whoever operates the directory or the bucket can read every path and every
+file that is not encrypted: each client and runner with its ceiling or tags,
+and each run's machine name, status, labels, start time, number of steps and
+which runner took which job. They cannot read an encrypted file, and a signed
+file or a blob they alter or move is refused.
+
+They can delete any file and restore the store to an earlier state. Corbie
+trusts the store not to return an old file in place of a newer one, and
+`corbie manual one-computer` has what a restore repeats. All the processes'
+clocks must agree within five minutes.
+
+Three ways to write a file
+--------------------------
+
+  overwrite           replaces any file at the path
+  only-if-new         writes only if no file is at the path
+  only-if-unchanged   writes only if the file there is the one the writer last read
+
+Corbie has no other coordination: no locks, leases or transactions. Almost
+every file is written only-if-new and never changed, so two controllers cannot
+both write one step and two copies of a runner cannot both take a job.
+
+Kinds of store
+--------------
+
+  a directory          --store ~/corbie       one computer            corbie manual one-computer
+  a served directory   corbie://host:port     a few computers         corbie manual served-directory
+  a bucket             s3://bucket/path       computers, functions    corbie manual bucket
+
+Each kind enforces the table of who may read and write differently.
+
+  a directory          not enforced: a process that can read it can read and write all of it
+  a served directory   the computer that serves it checks each request by its connection's key
+  a bucket             a policy that Corbie prints limits each process's access key to its column
+  corbie test          the store is in memory, and the table is enforced
+
+Looking for yourself
+--------------------
+
+A directory store is plain files. Set up the store of
+`corbie manual a-real-run`, stop `corbie run`, and run these.
+
+  corbie submit title.yaml --input '{"url": "https://example.com"}'
+  find ~/corbie -type f           # the start message is in laptop-controller/inbox/
+  corbie run controller runner &
+  find ~/corbie -type f           # steps/, finished/, receipts/, wakes/ and taken/ have files
+
+Both inboxes are now empty: the controller and the runner delete a message
+after acting on it. `.lock/` holds the two files a directory store locks while
+it replaces or lists files.
+
+Next: `corbie manual limits` states what Corbie does not defend against.

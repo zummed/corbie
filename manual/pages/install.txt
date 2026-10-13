@@ -1,0 +1,59 @@
+Install: download one binary, choose where Corbie runs, and check the setup with one command.
+
+Download
+--------
+
+  curl -Lo corbie https://github.com/zummed/corbie/releases/latest/download/corbie-linux-amd64
+  chmod +x corbie
+  mv corbie ~/.local/bin/
+
+The release has one binary for each system.
+
+  Linux      corbie-linux-amd64, corbie-linux-arm64
+  macOS      corbie-darwin-arm64, corbie-darwin-amd64
+  Windows    corbie-windows-amd64.exe
+
+Corbie is tested on Linux. Two things differ elsewhere.
+
+- On macOS and Windows, a job's `memory:` limit covers the script and not the
+  programs it starts.
+- On Windows, a directory store is safe for one process only, so use
+  `corbie test` or a bucket. A program that a job starts is not stopped when
+  the job ends.
+
+Choose where it runs
+--------------------
+
+- One computer runs everything. See `corbie manual one-computer`.
+  ✓ Three commands set it up.
+  ✗ No run advances while it is off.
+- Other computers use the first one's store. See `corbie manual served-directory`.
+  ✓ One command line adds a computer.
+  ✓ It needs no account with any service and no access key.
+  ✗ Runs wait while the first computer is off.
+  ✗ Its port must not be open to the internet.
+- An S3 bucket is the store. See `corbie manual bucket`.
+  ✓ No computer has to stay on.
+  ✓ The computers need not be on one network.
+  ✗ Each controller, runner and client needs its own access key.
+- Serverless functions run on a bucket. See `corbie manual functions`.
+  ✓ There is no computer to maintain.
+  ✓ The host starts more copies as the load grows.
+  ✗ A job must fit in one function call, and a timer can fire a minute late.
+  ✗ It takes the most setting up.
+
+Check the setup
+---------------
+
+`corbie check` ends every setup. It starts a run with one job and one timer.
+
+  the controller took the start    ok     1.0s
+  a runner took the job            ok     0.2s
+  the controller took the result   ok     0.0s
+  the timer fired                  ok     1.0s
+
+The setup works when all four are `ok`. A step that did not answer is `late`
+or `never`, with the likely cause on the next line.
+
+  corbie check --tag gpu      sends the job to a runner with the tag gpu
+  corbie mcp --allow check    lets an AI assistant run the check

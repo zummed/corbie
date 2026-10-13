@@ -1,0 +1,62 @@
+A real run: the same machine runs on a controller and a runner, and its record stays in a store.
+
+`corbie test` runs everything in one process and keeps nothing. To keep runs,
+start a controller and a runner once and submit runs to them.
+
+Set up
+------
+
+    corbie init --store ~/corbie --ceiling all --name laptop
+      Next: corbie run controller runner
+
+`init` creates a controller, a runner and a client in the config directory, and
+makes the directory `~/corbie` the store. `--name laptop` names them
+`laptop-controller`, `laptop-runner` and `laptop-client`. `--ceiling all` sets
+the most any job on this computer may be allowed, and a job still gets only
+what its own `allow:` list grants.
+
+Start the processes
+-------------------
+
+    corbie run controller runner &
+
+This command keeps running, in its own terminal or in the background as here.
+
+Submit a run
+------------
+
+    corbie submit title.yaml --input '{"url": "https://example.com"}'
+
+`submit` writes the definition, the script and the input to the store, prints
+the run's ID and exits. The controller starts the run. `<id>` below is that
+ID.
+
+    corbie show <id> --wait
+      output: {"title":"Example Domain","url":"https://example.com"}
+      used: net:example.com:443
+
+`--wait` returns when the run has ended.
+
+Read the record
+---------------
+
+    corbie show <id> --record
+      step 1  <- start {"url":"https://example.com"}
+      step 1  -> job get_title: a script, on laptop-runner
+      step 2  <- done from get_title {"title":"Example Domain","url":"https://example.com"}
+      step 2  done
+
+The record holds every step of the run. `<-` is an event the machine received
+and `->` is a job it started. At step 1 the controller received the start
+message and sent the script to the runner, and at step 2 it received the
+result and ended the run.
+
+The store
+---------
+
+The record is files in `~/corbie`, which `corbie show` reads. Stop
+`corbie run` with Ctrl-C and `corbie show <id>` prints the same result. A run
+submitted while no controller is running is shown as `waiting`.
+
+Next: `corbie manual install` covers running Corbie on several computers, on a
+bucket and as serverless functions.

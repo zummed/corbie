@@ -1,0 +1,63 @@
+One computer: the controller, a runner and the client run on one computer, with a directory as the store.
+
+Set up
+------
+
+    corbie init --store ~/corbie --ceiling all
+      Next: corbie run controller runner
+    corbie run controller runner &
+    corbie check
+
+  --ceiling all      the most any job on this computer may be allowed; without it, nothing
+  ~/.config/corbie   the config that init writes: the private keys and the store's address
+  --config <dir>     names another config directory, as CORBIE_CONFIG does, for every command
+
+The config directory is `~/.config/corbie` on Linux,
+`~/Library/Application Support/corbie` on macOS and `%AppData%\corbie` on
+Windows. Run `init` again with another `--ceiling` to change it.
+`corbie manual a-real-run` submits a run to this setup.
+
+Keep it running
+---------------
+
+`corbie run controller runner` must stay running, in a terminal, a container
+or a service. This is the systemd unit.
+
+  # /etc/systemd/system/corbie.service
+  [Unit]
+  Description=Corbie
+  After=network-online.target
+  Wants=network-online.target
+  [Service]
+  User=corbie
+  Environment=CORBIE_CONFIG=/var/lib/corbie/config
+  ExecStart=/usr/local/bin/corbie run controller runner
+  Restart=always
+  [Install]
+  WantedBy=multi-user.target
+
+  systemctl enable --now corbie
+  journalctl -u corbie          what the controller and the runner print
+
+The user in `User=` must own the directory that `CORBIE_CONFIG` names.
+
+  the controller restarts   it continues from the store, with no state kept in memory
+  the runner is stopped     the job of a running script fails with an error
+  the runner is killed      the job of a running script fails with a timeout
+
+A failed job is run again only if it sets `attempts:`.
+
+Do not start the process when a file in the store changes, as a systemd path
+unit does. Messages stay there while work is in progress, so it starts again
+and again.
+
+A gateway is kept running the same way (`corbie manual gateway`).
+
+Back up
+-------
+
+The directory is the whole store. Copy it while no Corbie process is running,
+or copy a filesystem snapshot. After a restore, jobs that ran since the copy
+run again, and a runner or client removed since the copy is trusted again.
+
+Next: `corbie manual served-directory` adds a second computer.

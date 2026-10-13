@@ -1,0 +1,19 @@
+# The parent chart sends an event to its flow child (from a timer, a second
+# in), and has a rule for item on the state that runs it. The flow has a
+# stage that emits values named item and a stage that takes two seconds.
+statechart: parent
+initial: running
+states:
+  running:
+    job: { machine: ./child.yaml }
+    on:
+      item: saw_emit
+    after:
+      1s: { send: { to: running, event: poke, data: { from: parent } } }
+    done: finished
+  saw_emit:
+    final: true
+    output: { parent_saw_emit: true }
+  finished:
+    final: true
+    output: { parent_saw_emit: false, child: "${event.data}" }

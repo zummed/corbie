@@ -1,0 +1,94 @@
+Routes: every request the gateway answers, with its parameters, its answer and its status codes.
+
+The gateway is an HTTP server that starts and reads runs as one Corbie client.
+Every request has the header `Authorization: Bearer <token>`. Every answer is
+JSON, except a file and a stream, and a refusal is `{ "error": "<text>" }`.
+
+Routes
+------
+
+  POST /runs                    starts a run from a form; answers { "id": "<id>" }
+  GET /runs                     lists the gateway's runs in progress, as a JSON list
+  GET /runs/<id>                one run
+  GET /runs/<id>/record         the record so far, child runs included: { "entries": […], "run": {…} }
+  GET /runs/<id>/definition     the definition the run was started from, as JSON
+  GET /runs/<id>/files/<path>   the bytes of the blob at that path, with its type as `Content-Type`
+  POST /runs/<id>/cancel        cancels the run: { "life": "10m" }, or an empty body
+  POST /runs/<id>/events        sends the run an event: { "event": "go", "data": …, "life": "10m" }
+  POST /runs/<id>/keys          answers a key: { "key": "<the key>", "value": …, "life": "10m" }
+
+`<id>` is the whole ID with its slash, as in
+`/runs/laptop-client/20261013T185126.250Z-571d935912`.
+
+Start a run
+-----------
+
+`POST /runs` takes `multipart/form-data` with these parts.
+
+  definition     the definition
+  file:<path>    a file the definition names, at the path it names it by
+  input:<name>   a file that a script reads as the blob `input.<name>`; its file name sets the type
+  start          JSON with the fields below; it may be left out
+
+  input      the run's input
+  labels     { "team": "ops" }
+  allow      ["net:example.com"]: entries that limit every job of the run and its child runs
+  deny       entries that are refused whatever `allow` has
+  deadline   "1h": how long the run may take
+  secrets    { "NAME": "value" }: secrets for this run only
+  life       "10m": how long the start is valid if no controller reads it, default 5m
+
+- A definition can name only the files sent with it.
+- A part can be sent as a form field or as a file.
+- With an `input:<name>` part, `input` is an object or absent, with no value under that name.
+
+Query parameters
+----------------
+
+  GET /runs?all                 includes runs that have ended
+  GET /runs?status=failed       only that status: running, done, failed or cancelled
+  GET /runs?parent=<id>         only the child runs of that run
+  GET /runs?label=team=ops      only runs with that label; `label=team` matches any value; repeatable
+  GET /runs?watch               a stream of the list
+  GET /runs/<id>?wait           answers when the run has ended
+  GET /runs/<id>?wait=30s       answers after 30s at most, with the run as it is then
+  GET /runs/<id>/record?watch   a stream of the record
+
+Answers and status codes
+------------------------
+
+A request to cancel, send an event or answer a key stays open until a
+controller reads the message. `life` is how long the message is valid, default 5m.
+
+  { "taken": true }                           the controller acted on the message
+  { "taken": true, "acted": false }           for an event: whether a rule of the machine matched it
+  { "taken": false, "refused": "<reason>" }   the controller did not act; the status is 200
+
+  400   an unknown parameter, field or part, a part sent twice, an unreadable value or a faulty definition
+  401   the token is missing or wrong
+  404   the ID is not a run, the path is not a file of the run, or there is no such route
+  409   the definition or a file of a run that is still `waiting`
+  500   any other failure, such as a store that cannot be read
+  504   no controller read a cancel, an event or an answer within `life`
+
+A run that was just submitted is answered as `waiting`, never with 404.
+
+Streams
+-------
+
+A stream is `text/event-stream`. Each event has a name and one line of JSON.
+
+  run     { "run": {…} }: each run in the list, then each that starts, changes or ends
+  run     { "listed": true }: sent once, after the runs that already existed
+  entry   one entry of the record: those so far, then each as it is written
+  end     the run, sent once when the run and its child runs have ended
+
+A `run` event has "new": true the first time a run is sent. A record stream
+that closes with no `end` event lost its connection.
+
+Reference
+---------
+
+  corbie manual gateway   starting the gateway, its token and a first run
+  corbie manual runs      the fields of a run and of an entry, a blob's paths, and a blob as another run's input
+  corbie manual run       the gateway's flags

@@ -1,0 +1,11 @@
+# A flow stage whose job is a statechart. The chart's final output is the
+# stage's output, and a later stage reads it.
+flow: parent
+stages:
+  kid:
+    job: { machine: ./kid-chart.yaml, input: { n: 1, from: parent } }
+  after_kid:
+    job: { script: ./echo.js, input: { kid_n: "${stages.kid.output.n}" } }
+output:
+  kid: ${stages.kid.output}
+  after_kid: ${stages.after_kid.output}

@@ -1,0 +1,10 @@
+# The child flow fails in its second stage and nothing handles it. A
+# sibling stage, a chart that sleeps six seconds, is still running.
+flow: parent
+stages:
+  kid:
+    job: { machine: ./kid-flow.yaml, input: { n: 1, fail: true } }
+  slow:
+    job: { machine: ./sleeper.yaml }
+output:
+  kid: ${stages.kid.output}

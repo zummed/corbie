@@ -1,0 +1,15 @@
+# ask-person.yaml: an ask that waits for a person. It hands out the key
+# decision and ends with what the answer says.
+statechart: ask-person
+input: [asking, jobs]
+initial: asking
+states:
+  asking:
+    wait: decision
+    on:
+      decision: decided
+  decided:
+    final: true
+    output:
+      approve: "${event.data.yes ? input.jobs.map(r => r.name) : []}"
+      note: ${event.data.note}

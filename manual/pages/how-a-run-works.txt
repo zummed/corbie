@@ -1,0 +1,54 @@
+How a run works: the controller advances a run one step at a time, and writes each step to the store before acting on it.
+
+One step
+--------
+
+The controller reads the machine's definition, the state the last step wrote
+and the new events. It computes the new state and the jobs to start, writes
+both to the run's record as the next step, then starts the jobs.
+
+An event is a start message, a job's result, a timer that is due, or an event
+from a parent or child run.
+
+This is the machine from `corbie manual first-machine`.
+
+    corbie test title.yaml --input '{"url": "https://example.com"}' --watch
+      step 1  <- start {"url":"https://example.com"}
+      step 1  -> job get_title: a script, on runner
+      step 2  <- done from get_title {"title":"Example Domain","url":"https://example.com"}
+      step 2  done
+
+`<-` is an event and `->` is a job started. Each line's time and run number
+are left out. These are the files behind it.
+
+1. The client writes the start message to the controller's inbox.
+2. The controller writes step 1, then the job to the runner's inbox.
+3. The runner runs the script and writes the result to the controller's inbox.
+4. The controller writes step 2, and the run is done.
+5. The client reads the status and the record.
+
+Stopping and restarting
+-----------------------
+
+The controller writes a step before acting on it, and deletes a message only
+after acting on it. It keeps no state in memory, so a controller that restarts
+continues from the last step written.
+
+A step depends only on its inputs, so computing it twice gives the same step,
+and a step is written only if no file has its number. Several controllers can
+therefore share one store.
+
+A runner is different. A script that was running when its runner stopped is
+not run again, because Corbie cannot know what it had done. The job fails, and
+is retried only if it sets `attempts:`.
+
+What starts them
+----------------
+
+  corbie run controller runner   a process that polls the store every --interval
+                                 (default 2s), or sooner when a timer is due
+  serverless functions           the host calls a function when a file is written
+                                 to its inbox, and the controller once a minute
+  corbie test                    everything in one process, with the store in memory
+
+Next: `corbie manual the-store` lists every file in the store.

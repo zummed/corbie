@@ -1,0 +1,16 @@
+# `bad` fails. The only stage whose when: reads stages.bad.failed also
+# reads the output of `off`, a stage that is skipped (its when: is false),
+# so the handler is skipped too.
+flow: handler-skipped
+stages:
+  bad:
+    job: { script: ./fail.js }
+  off:
+    when: "false"
+    job: { script: ./echo.js, input: { n: 1 } }
+  handler:
+    when: stages.bad.failed
+    job: { script: ./echo.js, input: { error: "${stages.bad.error}", off: "${stages.off.output}" } }
+output:
+  handler: ${stages.handler.output}
+  handler_skipped: ${stages.handler.skipped}

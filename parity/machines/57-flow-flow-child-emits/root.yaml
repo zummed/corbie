@@ -1,0 +1,13 @@
+# The child flow has a stage that emits three values, which the child
+# follows with its own each:. The child names no stage to pass up, so the
+# parent's each: over the child stage gets nothing.
+flow: parent
+stages:
+  kid:
+    job: { machine: ./child.yaml }
+  per_emit:
+    each: kid
+    job: { script: ./read.js, input: { item: "${item}" } }
+output:
+  kid: ${stages.kid.output}
+  per_emit: ${stages.per_emit.output}

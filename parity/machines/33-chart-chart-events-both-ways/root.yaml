@@ -1,0 +1,16 @@
+# The child tells its parent it has started (an entry: send to parent); the
+# parent answers with an event to the child; the child works on it and
+# finishes. The child's event arrives at the state that started it. The
+# child also sends an event the parent has no rule for.
+statechart: parent
+initial: running
+states:
+  running:
+    job: { machine: ./child.yaml }
+    on:
+      started:
+        send: { to: running, event: go, data: { what: "tidy up", you_said: "${event.data}" } }
+    done: finished
+  finished:
+    final: true
+    output: ${event.data}

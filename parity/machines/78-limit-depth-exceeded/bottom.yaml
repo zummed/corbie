@@ -1,0 +1,7 @@
+flow: bottom
+input: [n]
+stages:
+  work:
+    job: { script: ./add.js, input: { n: "${input.n}" } }
+output:
+  n: ${stages.work.output.n}

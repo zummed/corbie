@@ -1,0 +1,39 @@
+{
+  "status": "done",
+  "output": {
+    "note": {
+      "ask_fails": {
+        "<contains>": "the ask failed"
+      },
+      "ask_undecided": {
+        "<contains>": "without a decision"
+      }
+    }
+  },
+  "record": [
+    {
+      "machine": "ask-fails",
+      "status": "failed"
+    },
+    {
+      "machine": "ask-undecided",
+      "status": "failed"
+    },
+    {
+      "machine": "ask-fails",
+      "ask": {
+        "kind": "script",
+        "name": "guarded"
+      },
+      "absent": true
+    },
+    {
+      "machine": "ask-undecided",
+      "ask": {
+        "kind": "script",
+        "name": "guarded"
+      },
+      "absent": true
+    }
+  ]
+}

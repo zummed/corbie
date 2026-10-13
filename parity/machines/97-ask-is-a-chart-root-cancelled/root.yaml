@@ -1,0 +1,11 @@
+# Flow, chart, ask. The child chart's marked state waits on the root's ask,
+# a chart that waits for a client's reply. The client cancels the root
+# instead, then tries to answer the ask.
+flow: asks
+ask:
+  machine: ./ask-person.yaml
+stages:
+  kid:
+    job: { machine: ./guarded-chart.yaml, input: { n: 1 } }
+output:
+  kid: ${stages.kid.output}

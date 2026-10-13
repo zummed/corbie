@@ -1,0 +1,11 @@
+# The ask is a statechart that waits for a client's reply. The flow's marked
+# stage waits; the client says yes; the ask ends with the decision and the
+# stage runs.
+flow: asks
+ask:
+  machine: ./ask-person.yaml
+stages:
+  guarded:
+    job: { script: ./add.js, input: { n: 1 }, approve: true }
+output:
+  guarded: ${stages.guarded.output}

@@ -1,0 +1,12 @@
+# The same flow as 07 with each: given by an expression over source's
+# emitted values: every item's job is asked for after source has finished.
+flow: emits-other-spelling
+stages:
+  source:
+    job: { script: ./emit.js, input: { items: [{ n: 1 }, { n: 2 }, { n: 3 }] } }
+  per_item:
+    each: ${stages.source.emitted}
+    job: { script: ./read.js, input: { item: "${item}" } }
+output:
+  count: ${stages.source.output.count}
+  items: ${stages.per_item.output.map(r => r.output.got)}

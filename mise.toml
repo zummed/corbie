@@ -1,0 +1,46 @@
+[tools]
+go = "1.27.1"
+
+[env]
+CGO_ENABLED = "0"
+
+[tasks.build]
+description = "Build the corbie binary"
+run = "go build -o bin/corbie ./cmd/corbie"
+
+[tasks.dist]
+description = "Build the corbie binary for every platform a release carries, into dist/"
+run = """
+set -e
+for target in linux/amd64 linux/arm64 darwin/amd64 darwin/arm64 windows/amd64; do
+  os=${target%/*} arch=${target#*/} ext=
+  if [ "$os" = windows ]; then ext=.exe; fi
+  GOOS=$os GOARCH=$arch go build -trimpath -ldflags="-s -w" -o "dist/corbie-$os-$arch$ext" ./cmd/corbie
+done
+"""
+
+[tasks.site]
+description = "Write the manual as the binary serves it into site/, as a directory of pages to publish"
+run = """
+set -e
+go build -o bin/corbie ./cmd/corbie
+rm -rf site
+bin/corbie manual --web --listen 127.0.0.1:7404 >/dev/null 2>&1 &
+server=$!
+trap 'kill $server' EXIT
+until wget -q -O /dev/null http://127.0.0.1:7404/; do sleep 0.2; done
+wget -q --recursive --level=inf --no-host-directories --adjust-extension --page-requisites \
+  -e robots=off --directory-prefix=site http://127.0.0.1:7404/
+"""
+
+[tasks.test]
+description = "Run every package's tests, with Go's checks on unsafe pointers switched on"
+run = "go test -gcflags=all=-d=checkptr ./..."
+
+[tasks.vet]
+description = "Vet the module"
+run = "go vet ./..."
+
+[tasks.check]
+description = "Vet and test"
+depends = ["vet", "test"]

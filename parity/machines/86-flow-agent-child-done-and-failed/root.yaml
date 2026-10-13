@@ -1,0 +1,17 @@
+# A flow with two agent children. The first works: its last reply and its
+# count of tokens are read by a later stage. The second's first turn fails:
+# the agent fails, and a stage's when: handles it.
+flow: parent
+stages:
+  good:
+    job: { machine: ./good-agent.yaml, input: { topic: sums } }
+  bad:
+    job: { machine: ./bad-agent.yaml, input: { topic: trouble } }
+  after_good:
+    job: { script: ./echo.js, input: { text: "${stages.good.output.reply}", usage: "${stages.good.output.tokens}" } }
+  after_bad:
+    when: stages.bad.failed
+    job: { script: ./echo.js, input: { error: "${stages.bad.error}" } }
+output:
+  after_good: ${stages.after_good.output}
+  after_bad: ${stages.after_bad.output}

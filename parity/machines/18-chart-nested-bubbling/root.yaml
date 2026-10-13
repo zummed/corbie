@@ -1,0 +1,30 @@
+# Nested states. inner's job fails; inner has no failed:, so the failure
+# goes up to outer's. Then a final state inside second_outer finishes it,
+# and its done: sees that final state's output.
+statechart: nested
+initial: outer
+states:
+  outer:
+    failed: second_outer
+    initial: inner
+    states:
+      inner:
+        job: { script: ./fail.js }
+        done: unreachable
+      unreachable:
+        final: true
+  second_outer:
+    initial: step_one
+    done: finished
+    states:
+      step_one:
+        job: { script: ./echo.js, input: { error_seen: "${event.data.error}" } }
+        done: inner_final
+      inner_final:
+        final: true
+        output: { from_inner_final: "${states.step_one.output.error_seen}" }
+  finished:
+    final: true
+    output:
+      came_by: ${event.name}
+      got: ${event.data}

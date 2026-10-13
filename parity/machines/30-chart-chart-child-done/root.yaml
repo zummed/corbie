@@ -1,0 +1,16 @@
+# A statechart whose state runs a child statechart. The child's final
+# output arrives as the data of done, and is remembered as
+# states.running.output.
+statechart: parent
+input: [n]
+initial: running
+states:
+  running:
+    job: { machine: ./child.yaml, input: { n: "${input.n}", from: parent } }
+    done: finished
+  finished:
+    final: true
+    output:
+      came_by: ${event.name}
+      event_output: ${event.data}
+      remembered: ${states.running.output}

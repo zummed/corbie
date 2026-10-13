@@ -1,0 +1,68 @@
+Corbie: an orchestrator for scripts and AI agents.
+
+What it is
+----------
+
+A machine is a YAML definition. It contains jobs, and it defines the control
+flow between them: which jobs run, in what order and under what conditions. A
+job is a JavaScript script or another machine.
+
+    # title.yaml
+    flow: fetch-title
+    input: [url]
+
+    stages:
+      get_title:
+        job:
+          script: ./fetch-title.js
+          input: { url: "${input.url}" }
+          allow: [net:example.com]
+
+    output: ${stages.get_title.output}
+
+    // fetch-title.js
+    const page = http.get(input.url)
+    const title = html.parse(page.body).find("title").text
+
+    return { url: input.url, title }
+
+    corbie test title.yaml --input '{"url": "https://example.com"}'
+      output: {"title":"Example Domain","url":"https://example.com"}
+
+This machine is a flow named `fetch-title`. It has one stage, `get_title`, and
+the stage has one job, which is a script. Corbie provides `input`, `http` and
+`html` to the script.
+
+There are three types of machine.
+
+  flow         stages that run in dependency order, in parallel, and can
+               stream items from one stage to the next
+  statechart   states, with transitions on events and timers
+  agent        an AI model that calls tools in a loop until it answers
+
+In a flow each stage has a job, in a statechart a state can have one, and in
+an agent each tool is one.
+
+A job can be a machine, so the three types nest. A statechart state can run a
+flow, and an agent's tool can be a flow or another agent.
+
+Why use it
+----------
+
+- Permissions are enforced on every script. A script has no access to files,
+  the network or other programs except what its `allow:` list grants.
+- Flows and statecharts are predictable, agents are dynamic, and each can run
+  the others.
+- It needs no server and no database. It is one binary and a directory, and
+  the same definitions run on several computers or as serverless functions.
+
+How it runs
+-----------
+
+Corbie is one binary that runs as three kinds of process. A controller executes
+machine definitions, runners execute scripts, and a client submits a machine
+and reads its result. They communicate only by writing files to one shared
+store, which is a directory or an S3 bucket. `corbie test` runs all three in
+one process.
+
+Next: `corbie manual first-machine` builds and runs the example above.

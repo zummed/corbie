@@ -1,0 +1,14 @@
+statechart: bottom
+input: [depth]
+initial: ready
+states:
+  ready:
+    entry: { send: { to: parent, event: news, data: { from: bottom, depth: "${input.depth}" } } }
+    on:
+      order: working
+  working:
+    job: { script: ./echo.js, input: { order: "${event.data}" } }
+    done: finished
+  finished:
+    final: true
+    output: ${states.working.output}

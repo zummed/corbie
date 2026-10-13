@@ -1,0 +1,45 @@
+{
+  "status": "done",
+  "output": {
+    "n": 1
+  },
+  "record": [
+    {
+      "machine": "sends-no-parent",
+      "ask": {
+        "kind": "event",
+        "event": {
+          "name": "entered",
+          "data": {
+            "state": "working"
+          }
+        }
+      }
+    },
+    {
+      "machine": "sends-no-parent",
+      "ask": {
+        "kind": "event",
+        "event": {
+          "name": "left",
+          "data": {
+            "state": "working"
+          }
+        }
+      }
+    },
+    {
+      "machine": "sends-no-parent",
+      "ask": {
+        "kind": "event",
+        "event": {
+          "name": "moving",
+          "data": {
+            "n": 1
+          }
+        }
+      }
+    }
+  ],
+  "note": "R-mach-56: what a root sends up is written in its record, so the three sends are there to be seen."
+}

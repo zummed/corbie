@@ -1,0 +1,81 @@
+The gateway: an HTTP server that lets any program start Corbie runs and read their results.
+
+Use it when the program that needs a run is not a Corbie client: a web
+application, a script in another language, a webhook. That program sends HTTP
+requests and needs no Corbie binary, config or keys.
+
+How it works
+------------
+
+1. The gateway is a process that listens for HTTP requests. It is a Corbie
+   client.
+2. A program sends a definition, its files and an input. The gateway submits
+   them as a run.
+3. The program asks for the run by its ID, and gets its status and output as
+   JSON.
+
+Every request carries the gateway's token. Every run is the gateway's own
+client's run, limited by that client's ceiling, which no request can raise.
+
+Start the gateway
+-----------------
+
+`gateway` is an argument of `corbie run`, alone or with `controller` and
+`runner`. Set the computer up as in `corbie manual a-real-run`.
+
+  corbie run controller runner gateway --listen 127.0.0.1:8371
+    gateway token (callers send it as Authorization: Bearer …): 179bd50585d04e741e0d5a254d7f6287cf5432cab12d7f31
+    gateway for the client laptop-client, listening on http://127.0.0.1:8371
+
+The gateway prints a new token each time it starts: `$TOKEN` below. With
+`--token-file <file>` it reads a token from a file and prints none. A request
+without the token gets 401.
+
+Start a run
+-----------
+
+The request is a multipart form with three kinds of part.
+
+  definition     the definition
+  file:<path>    each file the definition names
+  start          JSON with the input
+
+These are the two files from `corbie manual first-machine`.
+
+  curl -H "Authorization: Bearer $TOKEN" http://127.0.0.1:8371/runs \
+       -F definition=@title.yaml -F file:./fetch-title.js=@fetch-title.js \
+       -F 'start={"input": {"url": "https://example.com"}}'
+    {"id":"laptop-client/20261013T185126.250Z-571d935912"}
+
+Read the result
+---------------
+
+`$ID` is the `id` in that answer. `?wait` keeps the request open until the run
+ends.
+
+  curl -H "Authorization: Bearer $TOKEN" "http://127.0.0.1:8371/runs/$ID?wait"
+    {"id":"laptop-client/20261013T185126.250Z-571d935912","machine":"fetch-title",
+     "type":"flow","status":"done",
+     "output":{"title":"Example Domain","url":"https://example.com"}, …}
+
+Other requests
+--------------
+
+  GET /runs                      lists runs
+  GET /runs/<id>/record          the run's record; with ?watch, a stream of it
+  GET /runs/<id>/files/<path>    a file of the run's result
+  POST /runs/<id>/events         sends the run an event
+  POST /runs/<id>/keys           answers a key the run waits on
+  POST /runs/<id>/cancel         cancels the run
+
+The gateway keeps no state: each request reads or writes the store. Its
+process must keep running, so it cannot run as a serverless function.
+
+Reference
+---------
+
+  corbie manual routes         every request in full, with files and streams
+  corbie manual runs           the fields of a run in JSON
+  corbie manual run            the gateway's flags
+  corbie manual permissions    a ceiling, and the other layers that limit a run
+  corbie manual one-computer   keeping the gateway's process running

@@ -1,0 +1,22 @@
+# The child sends its parent five events from one entry:, numbered 1 to 5.
+# The parent then sends the child five events from one transition. The
+# order each side received them in is read from its record.
+statechart: parent
+initial: running
+states:
+  running:
+    job: { machine: ./child.yaml }
+    on:
+      up5:
+        send:
+          - { to: running, event: down1 }
+          - { to: running, event: down2 }
+          - { to: running, event: down3 }
+          - { to: running, event: down4 }
+          - { to: running, event: down5 }
+    after:
+      1s: { send: { to: running, event: finish } }
+    done: finished
+  finished:
+    final: true
+    output: ${event.data}

@@ -1,0 +1,9 @@
+agent: waiter
+model: { name: scripted, service: anthropic }
+turn: ./turn.js
+prompt: Wait a while.
+tools:
+  wait:
+    does: Wait a while
+    args: {}
+    job: { machine: ./sleeper.yaml }

@@ -1,0 +1,32 @@
+{
+  "status": "done",
+  "output": {
+    "child_finished": true,
+    "child": {
+      "heard": "hello",
+      "data": {
+        "from": "entry"
+      }
+    }
+  },
+  "record": [
+    {
+      "machine": "child",
+      "order": [
+        "hello"
+      ]
+    },
+    {
+      "machine": "parent",
+      "ask": {
+        "kind": "event",
+        "name": "never_entered",
+        "undelivered": true,
+        "event": {
+          "name": "hello"
+        }
+      }
+    }
+  ],
+  "note": "R-chart-51: a send made on entering a state to that state's own child is delivered once the child has started, so the child hears hello and finishes on it. R-mach-61: the send to the state with no child running is noted as undelivered."
+}

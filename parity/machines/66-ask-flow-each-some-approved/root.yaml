@@ -1,0 +1,11 @@
+# A per-item stage marked approve: true over four items. The ask is asked
+# once, with all four jobs, and approves two.
+flow: asks
+ask:
+  script: ./odd.js
+stages:
+  guarded:
+    each: [1, 2, 3, 4]
+    job: { script: ./add.js, input: { n: "${item}" }, approve: true }
+output:
+  guarded: ${stages.guarded.output}

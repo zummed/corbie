@@ -1,0 +1,90 @@
+Parties: a controller, its runners and its clients trust each other by exchanging cards.
+
+A controller, a runner and a client each have two private keys, in a file of
+the config that only its owner can read, and a card that holds the two public
+keys. Exchanging cards is the only way two of them trust each other. A runner
+can trust several controllers, and a client one.
+
+How it works
+------------
+
+1. `corbie runner card` prints the runner's card.
+2. `corbie controller enrol <card> --tags gpu` saves the card in the store,
+   and prints the controller's card and the store's address.
+3. `corbie runner trust <card> <address> --ceiling exec` saves both in the
+   runner's config.
+
+A client does the same with `corbie client card`, `enrol --ceiling` and
+`corbie client trust`. With `-` in place of the card, each command reads
+standard input, so the three join in a pipe (`corbie manual served-directory`).
+On one computer `corbie init` does all of it.
+
+A card
+------
+
+  corbie-card:runner:gpu-runner:-PQKFRmtpohO…:xvHYPlHfQUK…:Jtv0CPiSeXG…
+
+A card is one line: the kind, the name, the public key for signatures, the
+public key for encryption, and the owner's signature of these. `card`, `enrol`
+and `trust` print each card's fingerprint on standard error, such as
+`3716-bae3-71ba-ff4d`, for two people to compare.
+
+A name is at most 64 letters, digits, `.`, `-` and `_`, and cannot be changed
+after its keys are created. It stays bound to the keys it was first trusted
+with, also after `remove`, and a card with other keys under it is refused.
+With `--replace` the new card takes the name, with none of the old card's tags
+or ceiling.
+
+Ceilings and tags
+-----------------
+
+  a controller gives a client a ceiling   the most any run that client starts may be allowed
+  a runner gives a controller a ceiling   the most that controller's jobs may be allowed on the runner
+  a controller gives a runner tags        a job with `tags:` goes to a runner that has every tag it names
+
+A ceiling is permission entries with commas between them, such as
+`network,disk`. With an empty ceiling, jobs are allowed no permission.
+
+`enrol <name>` and `trust <name>` set the tags or the ceiling of one already
+trusted or removed. `--ceiling` and `--tags` replace what was set, and
+`--allow` and `--deny` add one entry. A change needs no restart.
+
+Tags and a ceiling stay as they are unless a flag changes them. `--tags none`
+and `--ceiling none` remove them.
+
+    corbie init --store ~/corbie --ceiling all --name laptop
+    corbie controller enrol laptop-client --allow net:api.github.com
+    corbie runner trust laptop-controller --allow exec:git
+    corbie runner trust laptop-controller --deny 'fs.read:/home/**'
+    corbie controller parties
+    corbie controller remove laptop-runner
+
+Other commands
+--------------
+
+  corbie controller card --store <address>   creates the controller's keys if it has none; prints its card
+  corbie controller parties                  lists the runners and clients the controller trusts
+  corbie controller remove <name>            the controller stops trusting a runner or a client
+  corbie runner remove <controller>          the runner stops taking that controller's jobs
+  corbie client remove <controller>          the client stops using that controller
+
+A viewer
+--------
+
+A viewer has no keys. Its `corbie ls` and `corbie show <id>` list every
+client's runs with their status, and cannot read an input, an output or a
+record.
+
+  corbie client trust <card> <address>   on a config with no client keys, sets up a viewer
+  corbie controller policy --viewer      on a bucket, prints the policy for the viewer's access key
+
+A served directory has no viewers, because every connection to it proves a
+private key.
+
+Reference
+---------
+
+  corbie manual one-computer       `corbie init`, and where the config is
+  corbie manual bucket             `corbie controller policy`, for each access key
+  corbie manual permissions        the entries of a ceiling, and the other layers
+  corbie manual the-store          how the keys sign and encrypt files

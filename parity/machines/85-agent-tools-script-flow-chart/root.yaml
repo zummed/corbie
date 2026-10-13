@@ -1,0 +1,20 @@
+# An agent with three tools: a script, a child flow and a child statechart.
+# One turn calls all three at once; the next calls the two machines with
+# input that makes them fail.
+agent: tools
+model: { name: scripted, service: anthropic }
+turn: ./turn.js
+prompt: Use your tools.
+tools:
+  add:
+    does: Add one
+    args: { n: number }
+    job: { script: ./add.js, input: { n: "${args.n}" } }
+  flow_tool:
+    does: Run the child flow
+    args: { n: number, fail: boolean }
+    job: { machine: ./kid-flow.yaml, input: { n: "${args.n}", fail: "${args.fail}" } }
+  chart_tool:
+    does: Run the child chart
+    args: { n: number, fail: boolean }
+    job: { machine: ./kid-chart.yaml, input: { n: "${args.n}", fail: "${args.fail}" } }

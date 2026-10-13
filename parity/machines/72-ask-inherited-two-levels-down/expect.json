@@ -1,0 +1,21 @@
+{
+  "status": "done",
+  "output": {
+    "mid": {
+      "low": [
+        {
+          "item": 1,
+          "output": {
+            "n": 2
+          }
+        },
+        {
+          "error": {
+            "<contains>": "odd numbers only"
+          },
+          "item": 2
+        }
+      ]
+    }
+  }
+}

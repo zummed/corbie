@@ -1,0 +1,39 @@
+{
+  "status": "done",
+  "output": {
+    "reply": "The helper answered.",
+    "conversation": {
+      "turns": [
+        "<blob>",
+        "<blob>"
+      ],
+      "blobs": {}
+    },
+    "tokens": {
+      "input": 2,
+      "output": 2
+    }
+  },
+  "record": [
+    {
+      "machine": "lead",
+      "emit": {
+        "job": "turn#2",
+        "name": "log",
+        "data": {
+          "<contains>": "It is 6."
+        }
+      }
+    },
+    {
+      "machine": "helper",
+      "emit": {
+        "job": "turn",
+        "name": "log",
+        "data": {
+          "<contains>": "Add one to 5."
+        }
+      }
+    }
+  ]
+}

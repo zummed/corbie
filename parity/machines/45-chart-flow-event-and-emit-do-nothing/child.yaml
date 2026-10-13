@@ -1,0 +1,9 @@
+flow: child
+stages:
+  emits:
+    job: { script: ./emit.js, input: { items: [{ n: 1 }, { n: 2 }] } }
+  slow:
+    job: { machine: ./sleeper.yaml }
+output:
+  emitted: ${stages.emits.output.count}
+  slow: ${stages.slow.output}

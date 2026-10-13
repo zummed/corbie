@@ -1,0 +1,78 @@
+{
+  "status": "done",
+  "output": {
+    "guarded": [
+      {
+        "item": 1,
+        "output": {
+          "n": 2
+        }
+      },
+      {
+        "error": {
+          "<contains>": "odd numbers only"
+        },
+        "item": 2
+      },
+      {
+        "item": 3,
+        "output": {
+          "n": 4
+        }
+      },
+      {
+        "error": {
+          "<contains>": "odd numbers only"
+        },
+        "item": 4
+      }
+    ]
+  },
+  "record": [
+    {
+      "machine": "asks",
+      "ask": {
+        "kind": "script",
+        "name": "ask"
+      }
+    },
+    {
+      "machine": "asks",
+      "ask": {
+        "kind": "script",
+        "name": "ask#2"
+      },
+      "absent": true
+    },
+    {
+      "machine": "asks",
+      "ask": {
+        "kind": "script",
+        "name": "guarded.0"
+      }
+    },
+    {
+      "machine": "asks",
+      "ask": {
+        "kind": "script",
+        "name": "guarded.2"
+      }
+    },
+    {
+      "machine": "asks",
+      "ask": {
+        "kind": "script",
+        "name": "guarded.1"
+      },
+      "absent": true
+    },
+    {
+      "machine": "asks",
+      "ask": {
+        "kind": "script",
+        "name": "guarded.3"
+      },
+      "absent": true
+    }
+  ]
+}

@@ -1,0 +1,71 @@
+Approval: a job that has `approve: true` waits until the definition's ask approves it.
+
+How it works
+------------
+
+1. A job that has `approve: true` does not start. The controller holds it.
+2. The controller starts the definition's `ask:`, which is another job, and
+   gives it the held jobs as `input.jobs`.
+3. The ask returns the names of the jobs it approves. Those jobs start, and the
+   others fail with status `denied`.
+
+This is the same for a flow's stage, a statechart's state and an agent's tool.
+
+Example
+-------
+
+The flow starts one refund job for 20 and one for 900. The ask approves a
+refund of 100 or less.
+
+    # refunds.yaml
+    flow: refunds
+    ask: { script: ./ask.js }
+
+    stages:
+      refund:
+        each: [20, 900]
+        job:
+          script: ./refund.js
+          input: { amount: "${item}" }
+          approve: true
+
+    output: ${stages.refund.output}
+
+    // ask.js
+    const small = input.jobs.filter(job => job.input.amount <= 100)
+
+    return { approve: small.map(job => job.name), note: "over 100" }
+
+    // refund.js
+    return "refunded " + input.amount
+
+    corbie test refunds.yaml
+      output: [{"item":20,"output":"refunded 20"},{"error":"the ask did not approve the job: over 100","item":900}]
+
+The refund of 20 ran. The refund of 900 never started, and its error holds the
+ask's note.
+
+The ask
+-------
+
+  input.jobs    the held jobs: [{ name, input, allow, script or machine }]
+  the result    { approve: [names of jobs], note }
+
+An ask is any job.
+
+  a script        applies a rule, as `ask.js` does
+  a statechart    waits for a person, who answers with `corbie reply`
+  an agent        has a model review the jobs
+
+For an agent's tool, each held job also has `asked: { does, args, said }`: what
+the tool does, the arguments the model gave and what the model said. A call
+that is not approved goes back to the model as denied.
+
+A machine with no `ask:` uses the ask of the machine above it.
+
+Reference
+---------
+
+  corbie manual definitions    the ask in full, and `ask_about:`, which holds a job by its permissions
+  corbie manual statechart     a statechart that waits for a person's answer
+  corbie manual agent          an agent's tools

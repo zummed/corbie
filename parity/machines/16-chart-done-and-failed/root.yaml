@@ -1,0 +1,25 @@
+# done: and failed: on a state, with candidates tried in order. The first
+# round's job works and goes round again (a transition to the same state,
+# which starts the job afresh); the third fails and takes failed:.
+statechart: done-and-failed
+initial: working
+states:
+  working:
+    job:
+      script: ./maybe.js
+      input:
+        n: "${states.working.output ? states.working.output.n + 1 : 1}"
+        fail: "${states.working.output ? states.working.output.n >= 2 : false}"
+    done:
+      - { to: finished, when: event.data.n > 5 }
+      - working
+    failed: recovering
+  recovering:
+    job: { script: ./echo.js, input: { error: "${event.data.error}", came_by: "${event.name}" } }
+    done: finished
+  finished:
+    final: true
+    output:
+      last_n: ${states.working.output.n}
+      recovering: ${states.recovering.output}
+      came_by: ${event.name}

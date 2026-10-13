@@ -1,0 +1,8 @@
+{
+  "refused": true,
+  "problem_contains": [
+    "exit",
+    "running"
+  ],
+  "note": "R-chart-52: a send on leaving a state cannot address that state's own child, and a definition that tries is refused. The chart with that send removed is in entry-only."
+}

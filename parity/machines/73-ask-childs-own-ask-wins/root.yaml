@@ -1,0 +1,17 @@
+# The root's ask approves nothing. The child has an ask of its own that
+# approves everything. The child's marked stage runs; the root's own marked
+# stage is refused by the root's ask.
+flow: parent
+ask:
+  script: ./no.js
+stages:
+  kid:
+    job: { machine: ./child.yaml, input: { n: 1 } }
+  own:
+    job: { script: ./add.js, input: { n: 100 }, approve: true }
+  own_refused:
+    when: stages.own.failed
+    job: { script: ./echo.js, input: { error: "${stages.own.error}" } }
+output:
+  kid: ${stages.kid.output}
+  own_refused: ${stages.own_refused.output}

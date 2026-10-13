@@ -1,0 +1,50 @@
+Schedules: a statechart waits for a time with `after:` and then starts the work as a job.
+
+Corbie has no scheduler: recurring work is a statechart with two states.
+
+    # nightly.yaml
+    statechart: nightly
+    initial: idle
+
+    states:
+      idle:
+        after: { "18:00": working }
+      working:
+        job: { script: ./work.js }
+        done: idle
+        failed: idle
+
+    // work.js
+    log("the nightly work")
+
+    corbie init --store ~/corbie --ceiling all
+    corbie run controller runner &
+    corbie submit nightly.yaml
+    corbie show <id>
+
+At 18:00 UTC the statechart moves to `working`, and back to `idle` when the
+job ends. Without `failed: idle`, a job that fails ends the run as failed and
+the schedule stops. `corbie show <id>` prints the run as `running`, with
+`waiting on 1 timer`, until `corbie cancel <id>` ends it.
+
+`after:` takes a duration or a time of day.
+
+  90s, 48h, 7d             a duration, from when the statechart enters the state
+  "18:00"                  a time of day in UTC, due at its next occurrence
+  "mon 09:00"              a time on one day of the week
+  "09:00 Europe/London"    a time of day in a named time zone
+
+No job runs while the statechart waits. A timer that came due while no
+controller was running is delivered when one starts. A running controller
+delivers a timer at most this late.
+
+  started with corbie run     its --interval (default 2s)
+  as a serverless function    one minute
+
+Reference
+---------
+
+  corbie manual statechart     every field of a state, `after:` among them
+  corbie manual definitions    a job's fields, such as input, attempts and timeout
+  corbie manual runs           listing runs, and cancelling one
+  corbie manual functions      running a controller as a serverless function

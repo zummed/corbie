@@ -1,0 +1,10 @@
+# each: starts two chart children at once, each waiting on a key named
+# answer. A client replies to each child's own key with a different answer,
+# the second child first.
+flow: parent
+stages:
+  asks:
+    each: [disk, memory]
+    job: { machine: ./child.yaml, input: { topic: "${item}" } }
+output:
+  answers: ${stages.asks.output}

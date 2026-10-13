@@ -1,0 +1,6 @@
+flow: asking-flow
+input: [asking, jobs]
+stages:
+  think:
+    job: { script: ./yes.js, input: { jobs: "${input.jobs}" }, approve: true }
+output: ${stages.think.output}

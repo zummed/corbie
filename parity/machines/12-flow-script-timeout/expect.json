@@ -1,0 +1,7 @@
+{
+  "status": "failed",
+  "failure": "error",
+  "error_contains": [
+    "spin: "
+  ]
+}

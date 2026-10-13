@@ -1,0 +1,16 @@
+# The child chart's own script emits two values named item. The parent has
+# a rule for item on the state that runs the child, and never takes it.
+statechart: parent
+initial: running
+states:
+  running:
+    job: { machine: ./child.yaml }
+    on:
+      item: saw_emit
+    done: finished
+  saw_emit:
+    final: true
+    output: { parent_saw_emit: true }
+  finished:
+    final: true
+    output: { parent_saw_emit: false, child: "${event.data}" }

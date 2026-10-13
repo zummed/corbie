@@ -1,0 +1,11 @@
+# A statechart state whose job is a flow. The flow's output: arrives as
+# the data of done.
+statechart: parent
+initial: running
+states:
+  running:
+    job: { machine: ./kid-flow.yaml, input: { n: 1, from: parent } }
+    done: finished
+  finished:
+    final: true
+    output: { came_by: "${event.name}", event_output: "${event.data}", remembered: "${states.running.output}" }

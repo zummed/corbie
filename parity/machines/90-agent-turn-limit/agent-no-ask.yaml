@@ -1,0 +1,10 @@
+agent: no-ask
+model: { name: scripted, service: anthropic }
+turn: ./turn.js
+prompt: Keep calling echo.
+turns: 2
+tools:
+  echo:
+    does: Echo
+    args: { n: number }
+    job: { script: ./echo.js, input: { n: "${args.n}" } }

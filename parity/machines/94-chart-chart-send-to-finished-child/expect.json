@@ -1,0 +1,33 @@
+{
+  "status": "done",
+  "output": {
+    "came_by": "timer",
+    "child_output": {
+      "came_by": "done"
+    }
+  },
+  "record": [
+    {
+      "machine": "parent",
+      "ask": {
+        "kind": "event",
+        "name": "running",
+        "undelivered": true,
+        "event": {
+          "name": "hello",
+          "data": {
+            "from": "parent"
+          }
+        }
+      }
+    },
+    {
+      "machine": "child",
+      "event": {
+        "name": "hello"
+      },
+      "absent": true
+    }
+  ],
+  "note": "R-mach-61: an event sent to a child that is not running is noted in the sender's record as undelivered."
+}

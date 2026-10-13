@@ -1,0 +1,90 @@
+First machine: you write a definition and a script, run them, and see a permission refused.
+
+Get Corbie
+----------
+
+Corbie is one binary. Download it and put it on your path.
+
+  curl -Lo corbie https://github.com/zummed/corbie/releases/latest/download/corbie-linux-amd64
+  chmod +x corbie
+  mv corbie ~/.local/bin/
+
+Write and run it
+----------------
+
+Put these two files in a new directory and run the command.
+
+    # title.yaml
+    flow: fetch-title
+    input: [url]
+
+    stages:
+      get_title:
+        job:
+          script: ./fetch-title.js
+          input: { url: "${input.url}" }
+          allow: [net:example.com]
+
+    output: ${stages.get_title.output}
+
+    // fetch-title.js
+    const page = http.get(input.url)
+    const title = html.parse(page.body).find("title").text
+
+    return { url: input.url, title }
+
+    corbie test title.yaml --input '{"url": "https://example.com"}'
+      output: {"title":"Example Domain","url":"https://example.com"}
+      used: net:example.com:443
+
+The definition is a flow with one stage. The stage's job names the script,
+its input and its `allow:` list. `corbie test` runs a machine in one process,
+with nothing set up. `output:` is the flow's output, and `used:` lists each
+permission the script used.
+
+Remove the permission
+---------------------
+
+Delete the `allow:` line and run the same command.
+
+    # title.yaml
+    flow: fetch-title
+    input: [url]
+
+    stages:
+      get_title:
+        job:
+          script: ./fetch-title.js
+          input: { url: "${input.url}" }
+
+    output: ${stages.get_title.output}
+
+    corbie test title.yaml --input '{"url": "https://example.com"}'
+      refused: net:example.com:443
+      by: the job get_title in the definition of fetch-title
+      fix: add the line net:example.com:443 to the allow list of the job get_title in the definition of fetch-title
+
+The script called `http.get`, and Corbie refused the call before a connection
+was made. The run ended as `failed (denied)`. The three lines give the
+permission that was missing, the job that lacked it and the line that grants
+it. Put the `allow:` line back.
+
+With an AI assistant
+--------------------
+
+An assistant can write both files. Connect it to Corbie once. This command is
+for Claude Code, and any assistant that uses MCP servers takes the same
+settings.
+
+  claude mcp add corbie -- corbie mcp --allow test
+
+Then ask. Say "using Corbie", or the assistant writes a program of its own.
+
+  Using Corbie, make me something that fetches https://example.com and tells
+  me the title of the page.
+
+The assistant reads this manual through the connection, writes the two files
+and runs them with `corbie test`. Read the `allow:` lists it wrote before you
+run the machine yourself.
+
+Next: `corbie manual a-list` runs one job for each item of a list.

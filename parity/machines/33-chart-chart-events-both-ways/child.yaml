@@ -1,0 +1,14 @@
+statechart: child
+initial: ready
+states:
+  ready:
+    entry: { send: { to: parent, event: started, data: { by: child } } }
+    on:
+      go: working
+  working:
+    entry: { send: { to: parent, event: nobody_handles_this, data: { n: 1 } } }
+    job: { script: ./echo.js, input: { told: "${event.data}", came_by: "${event.name}" } }
+    done: finished
+  finished:
+    final: true
+    output: ${states.working.output}

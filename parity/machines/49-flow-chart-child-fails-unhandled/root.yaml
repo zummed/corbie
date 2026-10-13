@@ -1,0 +1,8 @@
+# The chart child ends in a failed final state with an output:, and
+# nothing in the flow handles it.
+flow: parent
+stages:
+  kid:
+    job: { machine: ./kid-chart.yaml, input: { n: 1, fail: true } }
+output:
+  kid: ${stages.kid.output}

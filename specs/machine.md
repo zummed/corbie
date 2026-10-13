@@ -1,0 +1,106 @@
+# Machines
+
+A machine is a definition that Corbie runs. There are three types, flow, statechart and agent, and each has its own area. This area is what they all share: how a machine runs, how a definition is written, and what a machine can receive and ask for.
+
+## Steps
+
+A machine runs as a series of steps and never as one long process. A step is given the definition, the state the machine was left in, and the events that have arrived since. It returns the new state and a list of requests. That is all a step does: it decides, and the work it decides on is done by its jobs, which are scripts and other machines. Steps of one instance happen one at a time and in order.
+
+Because a step depends on nothing but what it is given, taking the same step twice gives the same answer, and everything a machine has ever done can be read back from its record.
+
+A machine runs until it reaches an end of its own, is cancelled, or passes its deadline if it has one. One with no deadline may run for ever. Waiting costs nothing: a machine that is waiting is just a record in the store.
+
+## Definitions
+
+A definition is data, written in YAML. Its first line gives its type and its name. It may list the inputs it needs, how long its instances are kept, and its limits.
+
+Definitions are meant to be written by people and by models, so each type offers short forms where they read better. Each short form has one meaning and one place it can be written. When a client sends a definition, every short form is filled out into one full form, and only the full form is stored and run. The same filling-out is how a type offers a convenience over something Corbie already does: where a feature can be expressed as a short form over an existing mechanism it is, and the machine that runs never learns of it.
+
+What a definition may hold is said once. Each mapping in it has a shape: the definition itself, a job, an agent's model, a state. A shape is the mapping's fields, with the kind of value each takes and what each is for.
+
+```
+ a model      name     a word     the model's name, as its service knows it        any name; these are known: …
+              effort   a word     how much effort the model is to take             one of its service's: low, medium, high
+              reply    a number   the most a reply may hold, in tokens
+```
+
+A definition is read by its shapes and by nothing else. A field is read only if its shape names it, as the kind of value its shape gives it, and a field its shape names is always read. A client is given the same shapes, to offer a definition's fields to a person, so what it offers is exactly what will be read. Where a field takes one of a few values the shape gives them, and where the values depend on a field beside it, such as the efforts a model's service takes, it gives them for each.
+
+A mapping may be one of several sorts of thing that hold different fields. Its shape then says which field tells the sorts apart, and which fields each sort holds.
+
+```
+ a model, by its service     anthropic, openai     name  key  service  effort  address  reply
+                             claude-code           name  key  service  effort  own
+```
+
+A field its sort does not hold is not offered to a person, and is refused if it is written.
+
+A definition is checked as a whole, and everything wrong with it is reported together. The client checks it before sending, so mistakes are found at once, and the controller checks it again with the same code, because it does not take a client's word.
+
+An instance never changes its definition. A machine that wants to change how it works changes a child's definition and starts the child again.
+
+## Values
+
+Any value in a definition may be an expression, written `${…}`. A value that is exactly one expression takes the expression's value, whatever its type. Text with expressions inside it is text with the values filled in. Everything else is literal.
+
+Expressions are JavaScript. They read `input`, which is what the machine was started with, and whatever its type adds: a flow's stages, a statechart's states and current event, an agent tool's arguments. Everything that varies from one run of a definition to the next comes in through `input`, and there is no other way to vary it.
+
+Some fields are names, not values, and an expression in them is refused: a thing's name, a type, a permission's kind, a deny entry, a secret's name, a tag, a timer's key. The path of a script or a machine is a name too, with one exception: it may be exactly one expression that gives a stored definition or script.
+
+An expression may run for one second. The time it sees is the time of the step, and random numbers differ from one expression to the next but are the same if the step is taken again.
+
+## Jobs
+
+A machine contains jobs, which do its work. A job is a script, which a runner executes, or a machine, which the controller starts as a child run. Either way it has an input, the permissions it may use, a limit on time, and optionally a number of attempts. A script also has a limit on memory and tags that choose which runners may take it.
+
+A job may be written where it is used or kept in its own file. A script is a file named by its path, with the files it loads listed beside it; a client sends them along with the definition.
+
+Every job has a name that says what asked for it: a stage, a state, a tool, an agent's `turn`, the `ask`. An item of a list adds its position and a later attempt adds its number. The record and every watcher use these names.
+
+## Events
+
+Everything that reaches a machine is an event, and every event has the same shape: a name, where it came from, and its data. A machine is started by a `start` event carrying its input. A job that ends well arrives as `done`, and its data is its output. One that does not arrives as `failed`, and its data is its error together with whatever output it still gave. A timer arrives as `timer`. An answer to a key arrives under the key's name.
+
+A job can also send events up while it is still going. A script does it by emitting a named value, and a child machine by sending an event to its parent. The two are the same thing and arrive the same way, as an event with that name from that job. A parent can send a named event down to a child machine. Machines talk only to their parent and their own children; siblings go through the parent.
+
+The client that started a root stands where a parent would. It can send the root named events, and what the root sends up is written in its record, where the client and any watcher can see it.
+
+Events sent between a parent and a child arrive once each and in the order they were sent. An event sent to a child that is not running is noted in the record as undelivered and fails nothing.
+
+Each type decides what it does with an event, and its own area says which it acts on and which it ignores.
+
+## Children
+
+Larger machines are built from smaller ones. A child is started by a job and its ending is one event to its parent. A child never outlives its parent: when a machine ends or is cancelled, every script job and every machine below it is cancelled too.
+
+A definition can be made while a machine runs, by a script or by an agent, and run as a child. It is filled out, checked and stored exactly as one sent by a client is. Whether its approvals have an ask to go to is checked when it is started, since that depends on what is above it.
+
+A root may have eight levels of machines below it unless it says otherwise, and an ask that is a machine uses a level like any child. A definition may also limit how many jobs an instance starts. A job past either limit fails and is not retried.
+
+## Waiting on the outside
+
+A machine waits for a person or an outside system by waiting on a key. A key, in this sense, is a random value that stands for the right to answer one question. It has nothing to do with the keys that encrypt. The step creates the key, a random value, and the machine hands it to whoever should answer. A client answers by naming the instance and the key and giving a value.
+
+The key is the authority. Any client that holds it may answer, and Corbie does not check who did; what an answer says about who gave it is the answerer's word, and the machine decides whether it is enough. A key is answered once, and the receipt for an answer says whether it was the one taken. Services that carry questions to people, such as a chat program, are clients at the edge and no part of Corbie.
+
+## Approval
+
+A job can be made to wait for a yes before it starts. A job is held if it is marked for approval, or if a permission it asks for is one its machine, or a machine above it, has listed as needing to be asked about. Being approved gives a job nothing it was not already allowed; approval only ever holds. What gives the yes is the machine's ask: a job of its own, a script or a machine, named at the top of the definition. That job is called `ask`, and nothing else in a definition may take the name. A machine with no ask uses the nearest one above it.
+
+The controller does the holding. It gathers the jobs from one step that need approval and starts the ask with them. The ask is told which machine is asking and, for each job, what it is and what input it would get. Its result names the jobs it approves and may add a note. Approved jobs start. A job not approved never starts, and its machine sees it as a failed job with the status denied, which it may handle like any other failure. An ask that fails, or ends without deciding, approves nothing.
+
+Waiting for a person happens inside the ask, typically a statechart that hands out a key and ends with the decision. An ask that decides by itself, such as a model reviewing the jobs, is an ask all the same. An approval has no time limit of its own; the ask's deadline is how long it may take.
+
+An ask's job takes input like any other. The permissions an ask needs are its own, used by the ask's job and by nothing else in a machine that inherits it.
+
+## Failure
+
+A job fails with an error, by running out of time, by being denied, or by being cancelled. A denial says what was refused, which layer refused it and what would fix it, and passes through a machine to its parent unchanged.
+
+Nothing is tried again unless its job asks for attempts, and only errors and timeouts are. The controller makes the attempts, each a little later than the last, and the machine sees only the final outcome; the record shows each attempt.
+
+A machine reacts to a failure as to any event. A failure it has no rule for fails the machine, and its own failure is the event its parent receives. If a step itself fails, the instance fails.
+
+## Machine types
+
+A type is an extension like any other. It supplies the shape of its definitions, the filling-out of its short forms, the check of its definitions, its step, what a watcher is shown of its state, and its page of the manual. Everything in this area is supplied by Corbie, the same for every type, and no type has its own version of any of it.

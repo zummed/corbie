@@ -1,0 +1,16 @@
+statechart: child
+initial: ready
+states:
+  ready:
+    entry:
+      send:
+        - { to: parent, event: up1 }
+        - { to: parent, event: up2 }
+        - { to: parent, event: up3 }
+        - { to: parent, event: up4 }
+        - { to: parent, event: up5 }
+    on:
+      finish: finished
+  finished:
+    final: true
+    output: { finished: true }

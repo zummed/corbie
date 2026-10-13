@@ -1,0 +1,15 @@
+{
+  "status": "done",
+  "output": {
+    "after_gate_skipped": true,
+    "gate_skipped": true,
+    "independent": {
+      "ran": true
+    },
+    "notices_skip": {
+      "saw_skip": true
+    },
+    "reads_gate_skipped": true,
+    "reads_reader_skipped": true
+  }
+}

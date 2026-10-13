@@ -1,0 +1,15 @@
+{
+  "status": "done",
+  "output": {
+    "after_kid": {
+      "kid_n": 6
+    },
+    "kid": {
+      "input_seen": {
+        "from": "parent",
+        "n": 5
+      },
+      "n": 6
+    }
+  }
+}

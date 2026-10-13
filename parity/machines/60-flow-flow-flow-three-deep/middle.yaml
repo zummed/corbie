@@ -1,0 +1,9 @@
+flow: middle
+input: [n, fail]
+stages:
+  bump:
+    job: { script: ./add.js, input: { n: "${input.n}" } }
+  low:
+    job: { machine: ./bottom.yaml, input: { n: "${stages.bump.output.n}", fail: "${input.fail}" } }
+output:
+  from_bottom: ${stages.low.output}

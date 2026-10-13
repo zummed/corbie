@@ -1,0 +1,32 @@
+{
+  "status": "done",
+  "output": {
+    "work": [
+      {
+        "item": {
+          "n": 1
+        },
+        "output": {
+          "n": 1
+        }
+      },
+      {
+        "error": {
+          "<contains>": "told to fail"
+        },
+        "item": {
+          "fail": true,
+          "n": 2
+        }
+      },
+      {
+        "item": {
+          "n": 3
+        },
+        "output": {
+          "n": 3
+        }
+      }
+    ]
+  }
+}

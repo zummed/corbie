@@ -1,0 +1,9 @@
+# The flow child fails and the chart has no failed: for it.
+statechart: parent
+initial: running
+states:
+  running:
+    job: { machine: ./kid-flow.yaml, input: { n: 1, fail: true } }
+    done: finished
+  finished:
+    final: true

@@ -1,0 +1,70 @@
+Tightening permissions: run a new script with `allow: [all]`, read the permissions it used from the result, then restrict it to those.
+
+Allow everything
+----------------
+
+`all` in a job's `allow:` list grants every permission.
+
+    # digest.yaml
+    flow: digest
+
+    stages:
+      read:
+        job:
+          script: ./digest.js
+          allow: [all]
+
+    output: ${stages.read.output}
+
+    // digest.js
+    const report = fs.read("/srv/reports/latest.md")
+    const page = http.get("https://example.com")
+
+    return { heading: report.split("\n")[0], status: page.status }
+
+    corbie test digest.yaml
+      output: {"heading":"# Sales, third quarter","status":200}
+      used: fs.read:/srv/reports/latest.md net:example.com:443
+
+`used:` lists each permission the script used. `corbie show <id>` prints the
+same line for a run on a controller. `corbie test` applies no other limit, so
+the script can do anything your user account can: read it first.
+
+Keep what it used
+-----------------
+
+Replace `all` with the entries of the `used:` line.
+
+    # digest.yaml
+    flow: digest
+
+    stages:
+      read:
+        job:
+          script: ./digest.js
+          allow: [fs.read:/srv/reports/latest.md, net:example.com:443]
+
+    output: ${stages.read.output}
+
+    corbie test digest.yaml
+      output: {"heading":"# Sales, third quarter","status":200}
+
+Corbie refuses any call the list does not allow, and the job ends with the
+status `denied`. `corbie manual first-machine` shows a refusal, which prints
+the entry to add.
+
+Widen an entry
+--------------
+
+A later run that reads another file is refused. Edit an entry to match what
+the script needs, and no more.
+
+  fs.read:/srv/reports/*     any file in that directory
+  fs.read:/srv/reports/**    any file under that directory, at any depth
+  net:*.example.com          any host one name below it, such as www.example.com
+
+Reference
+---------
+
+  corbie manual permissions    every kind of entry, and the layers that limit a job
+  corbie manual limits         what Corbie does not defend against

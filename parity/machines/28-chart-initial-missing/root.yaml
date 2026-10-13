@@ -1,0 +1,9 @@
+# Two states and no initial:.
+statechart: no-initial
+states:
+  a:
+    job: { script: ./echo.js, input: { n: 1 } }
+    done: b
+  b:
+    final: true
+    output: { n: "${states.a.output.n}" }

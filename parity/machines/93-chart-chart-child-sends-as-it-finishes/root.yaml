@@ -1,0 +1,17 @@
+# The child's transition to its final state sends to its parent, so the
+# child sends an event in the step it finishes in. The parent says which
+# reached it first, the event or the child's result.
+statechart: parent
+initial: running
+states:
+  running:
+    job: { machine: ./child.yaml }
+    on:
+      last_words: heard_event_first
+    done: got_result_first
+  heard_event_first:
+    final: true
+    output: { first: event, data: "${event.data}" }
+  got_result_first:
+    final: true
+    output: { first: result, output: "${event.data}" }

@@ -1,0 +1,49 @@
+{
+  "status": "done",
+  "output": {
+    "reply": "They answered.",
+    "conversation": {
+      "turns": [
+        "<blob>",
+        "<blob>"
+      ],
+      "blobs": {}
+    },
+    "tokens": {
+      "input": 2,
+      "output": 2
+    }
+  },
+  "record": [
+    {
+      "machine": "asker",
+      "event": {
+        "name": "hello",
+        "from": "ask_person",
+        "data": {
+          "from": "child"
+        }
+      }
+    },
+    {
+      "machine": "asker",
+      "emit": {
+        "job": "turn#2",
+        "name": "log",
+        "data": {
+          "<contains>": "clear it"
+        }
+      }
+    },
+    {
+      "machine": "asker",
+      "emit": {
+        "job": "turn#2",
+        "name": "log",
+        "data": {
+          "<contains>": "disk"
+        }
+      }
+    }
+  ]
+}

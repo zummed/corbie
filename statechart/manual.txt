@@ -1,0 +1,146 @@
+Statechart: a statechart is in one state at a time, and moves to another state when an event or a timer arrives.
+
+Use it for work that waits, loops, branches or reacts to events.
+
+    # review.yaml
+    statechart: review
+    input: [document]
+    initial: drafting
+
+    states:
+      drafting:
+        job: { script: ./draft.js, input: { document: "${input.document}" } }
+        done: waiting
+        failed: gave_up
+      waiting:
+        wait: verdict
+        entry: { send: { to: parent, event: review_wanted, data: { key: "${keys.verdict}" } } }
+        on:
+          verdict:
+            - { to: approved, when: event.data.ok }
+            - { to: drafting }
+        after: { 48h: gave_up }
+      approved: { final: true, output: "${states.drafting.output}" }
+      gave_up:  { final: true, failed: true }
+
+    // draft.js
+    return "A draft of " + input.document
+
+    # try.yaml
+    statechart: try
+    initial: reviewing
+
+    states:
+      reviewing:
+        job: { machine: ./review.yaml, input: { document: "the plan" } }
+        on:
+          review_wanted: { send: { to: reviewing, event: verdict, data: { ok: true } } }
+        done: ended
+      ended: { final: true, output: "${states.reviewing.output}" }
+
+    corbie test try.yaml
+      output: "A draft of the plan"
+
+`review.yaml` writes a draft, then waits for a verdict. `corbie test` cannot
+answer a key, so `try.yaml` runs `review.yaml` as a child run and sends it the
+verdict.
+
+Fields
+------
+
+  initial    the first state, needed where there is more than one
+  states     the states, by name; a name is used once in a statechart
+
+A state has these fields, and at most one of `job:`, `jobs:` and `states:`.
+
+  job        a script or a machine, started on entry and cancelled on leaving
+  jobs       several named jobs: the state is done when all are, and its
+             output is each job's output by name
+  states     states inside this one, with their own `initial:`
+  wait       the name of a key that the state has while it is active
+  entry      { send: ... }, sent on entering the state
+  exit       { send: ... }, sent on leaving it
+  done       the transition when the state's jobs have finished, or a state
+             inside it has reached a final state
+  failed     the transition when a job fails
+  on         { <event>: transition }, for any other event, by its name
+  after      { <time>: transition }, taken at that time
+  final      true: the state ends the state it is inside, or the statechart
+  output     a final state's result, for the statechart or the state it is inside
+  failed     in a final state, true: the statechart fails
+
+A final state takes only `output:` and `failed:`, so a last send goes on the
+transition into it.
+
+Transitions
+-----------
+
+A transition is a state's name, or these fields, or a list of either. The
+first one whose `when:` is true is taken.
+
+  to      the state to go to; with none, the statechart stays and only sends
+  when    a condition, written without `${ }`: event.data.ok
+  send    one send or a list: { to, event, data }, where `to:` is parent, or
+          the state or named job whose job is a machine
+
+- An event that the active state has no transition for goes to the state it
+  is inside, and so on outward.
+- A job's failure that no state has a transition for fails the statechart.
+- An `entry:` send to the state's own child arrives once the child has
+  started. An `exit:` send cannot go to it.
+- When a client started the run, a send to parent is only written to the
+  record. That client sends an event with `corbie send <id> <event> <data>`.
+
+A time under `after:` is one of these.
+
+  90s, 48h, 7d             a duration, from when the state is entered
+  "18:00"                  a time of day in UTC, at its next occurrence
+  "mon 09:00"              a time on one day of the week
+  "09:00 Europe/London"    a time of day in a named time zone
+
+Waiting for an answer
+---------------------
+
+A state with `wait: verdict` has a key, read as `${keys.verdict}`. Any client
+that has the key answers it once, and the answer arrives as an event named
+`verdict`.
+
+    corbie init --store ~/corbie --ceiling all
+    corbie run controller runner &
+    corbie submit review.yaml --input '{"document": "the plan"}'
+    corbie reply <id> <key> '{"ok": true}'
+      taken
+    corbie show <id> --wait
+      output: "A draft of the plan"
+
+`<id>` is the ID that `corbie submit` printed. `corbie show <id> --keys` prints
+`<key>`.
+
+An event named `verdict` from the parent or the client takes the same
+transition without the key, as in `try.yaml`. To accept only the key's answer,
+write `when: event.from == "waiting"`, the name of the waiting state.
+
+What an expression reads
+------------------------
+
+  input                   the statechart's input
+  states.<name>.output    the state's last output
+  keys.<name>             a key of this state, or of a state it is inside
+  event                   the event that caused the transition:
+                          { name, data, from }
+
+  the event                    event.data                   event.from
+  done                         the job's output             the state
+  failed                       { status, error, output }    the state or named job
+  a key's answer               the answer                   the waiting state
+  a value a job emitted        the value                    the state or named job
+  an event from a child        its data                     the state or named job
+  an event from the parent     its data                     "parent"
+  an event from the client     its data                     "client"
+
+The state that a transition enters reads the same `event` in its job's input,
+its `entry:` and its `output:`. A final state returns a key's answer with
+`output: "${event.data}"`.
+
+A statechart has no variables. To build a value over a loop, pass it through a
+script job.

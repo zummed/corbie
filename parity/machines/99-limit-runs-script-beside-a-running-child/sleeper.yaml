@@ -1,0 +1,9 @@
+# sleeper.yaml: waits a second, then finishes. Stands in for slow work.
+statechart: sleeper
+initial: sleeping
+states:
+  sleeping:
+    after: { 1s: woke }
+  woke:
+    final: true
+    output: { slept: true }

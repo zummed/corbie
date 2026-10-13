@@ -1,0 +1,6 @@
+flow: ask-fails
+ask:
+  script: ./fail.js
+stages:
+  guarded:
+    job: { script: ./add.js, input: { n: 1 }, approve: true }

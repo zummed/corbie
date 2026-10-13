@@ -1,0 +1,16 @@
+{
+  "status": "failed",
+  "failure": "error",
+  "error_contains": [
+    "kids",
+    "item 1",
+    "bad: ",
+    "failed on purpose"
+  ],
+  "record": [
+    {
+      "machine": "sleeper",
+      "status": "cancelled"
+    }
+  ]
+}

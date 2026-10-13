@@ -1,0 +1,8 @@
+# Ten flows, each running the next as a child: the root, then level-1 to
+# level-9 below it. No definition writes a depth limit.
+flow: level-0
+stages:
+  down:
+    job: { machine: ./level-1.yaml }
+output:
+  below: ${stages.down.output}

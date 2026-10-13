@@ -1,0 +1,18 @@
+# each: over a list. bump runs once per item, and its output is the list of
+# { item, output }. A stage that reads that output runs once, with the whole
+# list: bump_again takes the list as its own items, and gather is given
+# bump_again's list.
+flow: each-list
+input: [numbers]
+stages:
+  bump:
+    each: ${input.numbers}
+    job: { script: ./add.js, input: { n: "${item}" } }
+  bump_again:
+    each: ${stages.bump.output}
+    job: { script: ./add.js, input: { n: "${item.output.n}" } }
+  gather:
+    job: { script: ./echo.js, input: { all: "${stages.bump_again.output}" } }
+output:
+  bump: ${stages.bump.output}
+  gathered: ${stages.gather.output.all}

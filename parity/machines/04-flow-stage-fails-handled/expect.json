@@ -1,0 +1,15 @@
+{
+  "status": "done",
+  "output": {
+    "bad_error": {
+      "<contains>": "failed on purpose"
+    },
+    "bad_failed": true,
+    "cleanup": {
+      "error": {
+        "<contains>": "failed on purpose"
+      }
+    },
+    "needs_bad_skipped": true
+  }
+}

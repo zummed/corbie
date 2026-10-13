@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{with .Page}}{{$.Title}} · {{end}}Corbie</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Besley:ital,wght@0,400..800;1,400..800&family=Libre+Franklin:ital,wght@0,400..700;1,400..700&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+<link rel="stylesheet" href="web/site.css">
+<div class="app">
+  <header class="bar">
+    <a class="mark" href="./" aria-label="Corbie: the first page">
+      <svg class="crow" viewBox="-62 -48 142 110" aria-hidden="true">
+        <path d="M-58 6L-26-44L16-34Z" fill-opacity=".95"/><path d="M16-34L76-4L22 8Z" fill-opacity=".8"/><path d="M22 8L76-4L30 20Z" fill-opacity=".55"/>
+        <path d="M-58 6L16-34L22 8Z" fill-opacity=".7"/><path d="M-58 6L22 8L8 44Z" fill-opacity=".5"/><path d="M-58 6L8 44L-44 58Z" fill-opacity=".35"/><circle cx="-4" cy="-16" r="5.5"/>
+      </svg>
+      Corbie
+    </a>
+    <nav aria-label="The parts of the manual">{{range .Parts}}<a href="{{.First}}"{{if eq .Name $.Part}} aria-current="true"{{end}}>{{.Name}}</a>{{end}}</nav>
+  </header>
+{{if .Page}}
+  <div class="shell">
+    <nav class="side{{if or (eq .Part "How it works") (eq .Part "Start")}} walk{{end}}" aria-label="The pages of this part">
+      {{range .Groups}}{{if .Folded}}<details{{if .Open}} open{{end}}><summary>{{.Name}}</summary>{{else}}<h2>{{.Name}}</h2>{{end}}
+      {{range .Pages}}<a href="{{.Name}}"{{if eq .Name $.Page.Name}} aria-current="page"{{end}}>{{title .}}</a>
+      {{end}}{{if .Folded}}</details>{{end}}
+      {{end}}
+    </nav>
+    <main class="page">
+      <p class="kicker">{{.Page.Group}}</p>
+      <h1>{{.Title}}</h1>
+      {{with .Lede}}<p class="lede">{{.}}</p>{{end}}
+      <div class="text">{{.Text}}</div>
+      {{if or .Prev .Next}}<nav class="turn" aria-label="The page before and the page after">
+        {{with .Prev}}<a href="{{.Name}}"><small>‹ Before</small>{{title .}}</a>{{end}}
+        {{with .Next}}<a href="{{.Name}}"><small>Next ›</small>{{title .}}</a>{{end}}
+      </nav>{{end}}
+    </main>
+  </div>
+{{end}}
+</div>
+</html>

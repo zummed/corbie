@@ -1,0 +1,12 @@
+# A flow stage whose job is another flow. The child's output: is the
+# stage's output.
+flow: parent
+input: [n]
+stages:
+  kid:
+    job: { machine: ./kid-flow.yaml, input: { n: "${input.n}", from: parent } }
+  after_kid:
+    job: { script: ./echo.js, input: { kid_n: "${stages.kid.output.n}" } }
+output:
+  kid: ${stages.kid.output}
+  after_kid: ${stages.after_kid.output}

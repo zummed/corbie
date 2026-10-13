@@ -1,0 +1,11 @@
+# Chart, flow, chart. A client cancels the root chart while its flow child
+# is running a chart.
+statechart: top
+initial: running
+states:
+  running:
+    job: { machine: ./middle.yaml }
+    done: finished
+  finished:
+    final: true
+    output: { middle: "${event.data}" }

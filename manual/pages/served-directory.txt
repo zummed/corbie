@@ -1,0 +1,66 @@
+Served directory: one computer serves its store directory to your other computers over an encrypted connection.
+
+Below, `desk` has the store directory and runs the controller. Runners and
+clients on other computers need no access key.
+
+Serve the directory
+-------------------
+
+  desk$  corbie init --store ~/corbie --ceiling all --serve desk:8372
+  desk$  corbie run controller runner store
+
+  --serve desk:8372   the host name and port the other computers connect to
+  store               serves the directory there
+  runner              leave it out if desk runs no scripts
+
+`corbie manual one-computer` has the systemd unit and the backup.
+
+Add a runner on another computer
+--------------------------------
+
+  gpu$   corbie runner card | ssh desk corbie controller enrol - --tags gpu | corbie runner trust - --ceiling exec
+  gpu$   corbie run runner
+  desk$  corbie check --tag gpu
+
+  corbie runner card        prints the runner's card: its name, gpu-runner after its
+                            host, and its public keys
+  corbie controller enrol   on desk, trusts the card, gives the runner the tag gpu, and
+                            prints the controller's card and the store's address
+  corbie runner trust       saves both; --ceiling exec is the most this controller's
+                            jobs may be allowed on gpu
+
+Each command prints the fingerprint of every card it reads, for two people to
+compare. `corbie run runner` must stay running. `desk` notifies it of each new
+job, so it does not poll.
+
+Add a client on another computer
+--------------------------------
+
+  laptop$  corbie client card | ssh desk corbie controller enrol - --ceiling network | corbie client trust -
+
+`--ceiling network` is the most any run this client starts may be allowed.
+`corbie submit` and `corbie show` then work on `laptop`.
+
+What crosses the network
+------------------------
+
+Every connection uses TLS 1.3, and each end proves it has its private key.
+Nothing on the network can read, change, replay or forge a request, so no VPN
+is needed. Requests can be delayed or blocked, and anyone who can connect can
+keep the port busy, so do not open it to the internet.
+
+A runner or client removed with `corbie controller remove` is refused from its
+next request. The computers' clocks must agree within five minutes.
+
+When the first computer is off
+------------------------------
+
+  desk is off                every run waits; no other computer takes over
+  its process is restarted   safe during jobs: the other computers retry for about ten seconds
+  it is off for longer       a finished job cannot write its result, and times out
+
+The store has no second copy. For a store that stays available, copy the
+directory as it is into an S3 bucket (`corbie manual bucket`).
+
+A network share cannot replace a served directory: it does not reliably
+provide the file locks and hard links that a directory store needs.

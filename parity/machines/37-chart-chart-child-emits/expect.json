@@ -1,0 +1,9 @@
+{
+  "status": "done",
+  "output": {
+    "child": {
+      "count": 2
+    },
+    "parent_saw_emit": false
+  }
+}

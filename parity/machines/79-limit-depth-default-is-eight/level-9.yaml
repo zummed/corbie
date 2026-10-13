@@ -1,0 +1,6 @@
+flow: level-9
+stages:
+  work:
+    job: { script: ./echo.js, input: { reached: 9 } }
+output:
+  bottom: ${stages.work.output}

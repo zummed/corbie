@@ -1,0 +1,27 @@
+# A stage whose when: is false is skipped; the skip spreads to what reads it
+# or names it in follows:, but not to a stage whose own when: reads .skipped.
+flow: skip-spreads
+input: [go]
+stages:
+  gate:
+    when: input.go
+    job: { script: ./add.js, input: { n: 1 } }
+  reads_gate:
+    job: { script: ./add.js, input: { n: "${stages.gate.output.n}" } }
+  after_gate:
+    follows: [gate]
+    job: { script: ./echo.js, input: { ran: true } }
+  reads_reader:
+    job: { script: ./add.js, input: { n: "${stages.reads_gate.output.n}" } }
+  notices_skip:
+    when: stages.gate.skipped
+    job: { script: ./echo.js, input: { saw_skip: "${stages.gate.skipped}" } }
+  independent:
+    job: { script: ./echo.js, input: { ran: true } }
+output:
+  gate_skipped: ${stages.gate.skipped}
+  reads_gate_skipped: ${stages.reads_gate.skipped}
+  after_gate_skipped: ${stages.after_gate.skipped}
+  reads_reader_skipped: ${stages.reads_reader.skipped}
+  notices_skip: ${stages.notices_skip.output}
+  independent: ${stages.independent.output}

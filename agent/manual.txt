@@ -1,0 +1,158 @@
+Agent: an agent calls an AI model in a loop, runs the tools the model calls, and ends when the model answers without calling a tool.
+
+Each call to the model is one turn, and each tool is a job. An agent ignores
+events sent to it.
+
+    # librarian.yaml
+    agent: librarian
+    input: [dir, question]
+    model: { name: claude-sonnet-5-5, key: ANTHROPIC_KEY }
+    system: You answer questions about a library of files.
+    prompt: ${input.question}
+
+    tools:
+      shelf:
+        does: Give back every file on one shelf
+        args: { shelf: string }
+        job:
+          script: ./shelf.js
+          input: { dir: "${input.dir}", shelf: "${args.shelf}" }
+          allow: ["fs.read:${input.dir}/**"]
+
+    // shelf.js
+    return fs.list(input.dir + "/" + input.shelf).map((file) => file.name)
+
+    corbie test librarian.yaml --input '{"dir": "/srv/books", "question": "What is on the top shelf?"}' --secret ANTHROPIC_KEY --watch
+      step 1  -> job turn: a script, on runner
+      step 2  -> job shelf: a script, on runner
+      step 3  <- done from shelf ["dune.txt","emma.txt"]
+      step 3  -> job turn#2: a script, on runner
+      step 4  done
+
+Fields
+------
+
+  model           the model, needed even when a `turn:` script calls none
+  system          the system prompt, which may hold `${input...}`
+  prompt          the first message to the model, an expression of the input
+  tools           the tools, by name
+  tools_file      a YAML file of tools shared between agents, or a list of
+                  files; a tool in the definition replaces one of its name
+  turns           the turn limit, default 20
+  output          { name: type }: the reply is data in this shape, not text
+  conversation    the `conversation` of an earlier agent's result: this agent
+                  continues it, and each blob keeps its name
+  turn            a script that makes each turn in place of Corbie's own, as
+                  in `corbie manual agents`; with one that calls no model, and
+                  no `key:`, `corbie test` runs the tools with nothing set up
+
+At the turn limit, an agent with an `ask:` sends it a job named `more`, with
+`asked: { does, turns, more }`, and approval adds as many turns again. With no
+ask, or when the ask refuses, the agent fails with `turn limit reached`.
+
+The model
+---------
+
+  name       the model's name, as its service knows it
+  key        the name of the secret that is the service's API key
+  service    anthropic, openai (the Responses API), openai-chat (the Chat
+             Completions API) or claude-code; by default anthropic for a name
+             that begins claude, and openai for gpt, o1, o3 and o4
+  address    the URL of a service that has the same API somewhere else: a
+             self-hosted model, or one that a cloud offers
+  effort     low, medium or high; claude-code also takes xhigh and max
+  reply      the most tokens a reply may hold
+  own        for claude-code: tools of the program that the model may use
+
+The key is a secret. `--secret ANTHROPIC_KEY` reads it from that environment
+variable for one run, and `corbie controller secret set ANTHROPIC_KEY` sets it
+for every run. Each turn's job gets `net:<host>` for the service and
+`secret:<key>@net:<host>`, and nothing from the definition's `allow:`.
+
+    # elsewhere.yaml
+    agent: elsewhere
+    model: { name: my-model, service: openai-chat, address: https://models.example, key: MODELS_KEY }
+    prompt: Say hello.
+
+    corbie test elsewhere.yaml --secret MODELS_KEY
+      output: {"conversation":{"blobs":{},"turns":[{"$blob":"conversation.turns[0]","size":91,"type":"application/json"}]},"reply":"Hello.","tokens":{"input":10,"output":5}}
+      used: net:models.example:443 secret:MODELS_KEY@net:models.example:443
+
+The result
+----------
+
+  reply           the model's last reply, as text or in the shape of `output:`
+  tokens          { input, output }, counted over the agent's own turns
+  conversation    { turns, blobs }: a blob for each turn, and each blob the
+                  model was shown, by its handle's name
+
+A reply that does not fit `output:` is returned to the model, which takes
+another turn. A failed agent's output has `conversation` and `tokens`.
+
+Tools
+-----
+
+  does    what the tool does: the model chooses a tool by this text
+  args    the shape of its arguments: { name: type }
+  job     a script or a machine, as in `corbie manual definitions`; it reads
+          `input`, the agent's input, and `args`, the model's arguments
+
+A type is string, number, boolean, list, map, blob or any. A `?` after it
+marks a value that may be left out, and between `{ }` YAML needs it in quotes:
+`args: { shelf: string, limit: "number?" }`.
+
+- A tool whose job has `approve: true` waits for the definition's `ask:`,
+  which gets `asked: { does, args, said }`: the tool's `does:`, the model's
+  arguments and the model's text. A call that is not approved is returned to
+  the model as denied, with the ask's note.
+- A tool whose job fails is returned to the model as an error.
+- A tool whose job is an agent is a sub-agent. The model gets the sub-agent's
+  reply, and the sub-agent's conversation stays in its own record.
+- A tool called twice in one turn has jobs named `shelf` and `shelf.1`.
+- No tool is named turn, more, preview, blob_read, blob_search or blob_code.
+
+Blobs
+-----
+
+- The model gets a blob as a handle, `{ blob: "blob1", type, size, items,
+  cost, preview }`, and gives the name `blob1` where a tool's `args:` has the
+  type blob.
+- `items` counts its lines, rows or entries, `cost` estimates the tokens
+  needed to read it, and `preview` is its first items, given once.
+- Every agent has the tools `blob_read`, `blob_search` and `blob_code`, which
+  read part of a blob. A large answer from one is returned as a blob.
+- A tool's result over about 32 KiB is stored as a blob by a job named
+  `preview`, which also reads each new blob before the next turn.
+- A blob with no items, such as a document or an image, needs a tool of the
+  definition's that reads its format.
+- An image or a PDF that the service accepts is also sent to the model whole.
+
+Claude Code
+-----------
+
+`service: claude-code` starts the `claude` program on the runner's computer
+for each turn, in place of a request to a service. It takes no `address:` and
+no `reply:`.
+
+    # searcher.yaml
+    agent: searcher
+    model: { name: sonnet, service: claude-code, own: [WebSearch, WebFetch] }
+    prompt: Say hello.
+
+    corbie test searcher.yaml
+      used: env:HOME exec:claude network
+
+- With no `key:`, the program is signed in as the runner's user, and the
+  turn's job gets `exec:claude` and `env:HOME`. With `key:`, the job gets
+  `exec:claude` and `secret:<key>@exec:claude`.
+- The program starts with none of its own tools, no saved session and none of
+  its user's settings, so the model's tools are the definition's.
+- Corbie does not run a tool named in `own:` and cannot limit it to a scope,
+  so it needs a whole group allowed in every layer of permission, the
+  ceilings included. Each use is written to the record as an emitted value
+  named `own`.
+
+  network    WebSearch and WebFetch
+  disk       Read, Glob, Grep, Edit, Write and NotebookEdit
+  all        Bash, Skill and any other tool; Skill also loads what the
+             runner's user has set up for the program

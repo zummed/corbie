@@ -1,0 +1,56 @@
+Bucket: several computers share an S3 bucket as the store, and no computer has to stay on for the others.
+
+Each controller, runner and client reads and writes the bucket with its own
+access key, and the computers need not be on one network. Below, the
+controller is on `ctl` and a runner on `gpu`.
+
+Create the controller
+---------------------
+
+  ctl$   corbie init --store 's3://my-bucket/main?region=eu-west-2' --ceiling exec --name cloud
+  ctl$   corbie controller policy cloud-controller > controller-policy.json
+
+  the address      the bucket's name, a path in the bucket and the region
+  the access key   read from AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY, or a profile
+                   in ~/.aws/credentials; never from the address
+
+Run `init` with an access key that can write to the bucket.
+
+`corbie controller policy <name>` prints an IAM policy that limits an access
+key to the objects one controller, runner or client reads and writes. For
+each, create an IAM user with its policy and an access key, and start its
+process with the key in the environment. These policies are the only access
+control between the processes on a bucket.
+
+Under systemd, put the key in a file only root can read, named by
+`EnvironmentFile=` in the unit from `corbie manual one-computer`.
+
+  ctl$   corbie run controller
+
+Add a runner or a client on another computer
+--------------------------------------------
+
+  gpu$   corbie runner card | ssh ctl corbie controller enrol - --tags gpu | corbie runner trust - --ceiling exec
+  ctl$   corbie controller policy gpu-runner > runner-policy.json
+  gpu$   corbie run runner
+  ctl$   corbie check --tag gpu
+
+`corbie manual served-directory` explains the first line and has the line for
+a client.
+
+`corbie run` must stay running on each computer. It polls the bucket every
+`--interval` (default 2s), with a few requests each time. The computers'
+clocks must agree within five minutes.
+
+Which services work
+-------------------
+
+  Amazon S3               works, and its policies enforce the limits above
+  S3-compatible service   works if it has conditional writes (If-None-Match, If-Match)
+
+An S3-compatible service's policies enforce the limits only if they support
+the condition key `s3:if-none-match`. Add `&endpoint=https://host` to its
+address.
+
+Next: `corbie manual functions` runs the controller and the runners as
+serverless functions.

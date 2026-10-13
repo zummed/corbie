@@ -1,0 +1,6 @@
+flow: middle
+stages:
+  slow:
+    job: { machine: ./sleeper.yaml }
+output:
+  slow: ${stages.slow.output}

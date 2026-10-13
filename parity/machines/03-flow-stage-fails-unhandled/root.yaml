@@ -1,0 +1,12 @@
+# One stage fails and nothing handles it: the flow fails at once and the
+# stage still running (a child that sleeps six seconds) is cancelled.
+flow: fails-unhandled
+stages:
+  slow:
+    job: { machine: ./sleeper.yaml }
+  bad:
+    job: { script: ./fail.js }
+  never:
+    job: { script: ./echo.js, input: { got: "${stages.bad.output}" } }
+output:
+  slow: ${stages.slow.output}

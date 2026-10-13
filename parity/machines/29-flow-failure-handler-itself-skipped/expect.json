@@ -1,0 +1,9 @@
+{
+  "status": "failed",
+  "failure": "error",
+  "error_contains": [
+    "bad: ",
+    "failed on purpose"
+  ],
+  "note": "R-flow-18: a failure counts as handled only when a stage that reads it actually runs. The one reader is skipped, so the flow fails with the failed stage's error."
+}

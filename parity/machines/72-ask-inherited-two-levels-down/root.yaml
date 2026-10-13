@@ -1,0 +1,11 @@
+# Flow, flow, chart. Only the root has an ask (it approves odd n). The
+# middle flow marks nothing; the two charts at the bottom each mark a state
+# approve: true. One has n 1, the other n 2.
+flow: top
+ask:
+  script: ./odd.js
+stages:
+  mid:
+    job: { machine: ./middle.yaml }
+output:
+  mid: ${stages.mid.output}

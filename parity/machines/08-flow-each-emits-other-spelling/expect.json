@@ -1,0 +1,42 @@
+{
+  "status": "done",
+  "output": {
+    "count": 3,
+    "items": [
+      {
+        "n": 1
+      },
+      {
+        "n": 2
+      },
+      {
+        "n": 3
+      }
+    ]
+  },
+  "record": [
+    {
+      "machine": "emits-other-spelling",
+      "ask": {
+        "kind": "script",
+        "name": "per_item.0"
+      },
+      "not_before": {
+        "name": "done",
+        "from": "source"
+      }
+    },
+    {
+      "machine": "emits-other-spelling",
+      "ask": {
+        "kind": "script",
+        "name": "per_item.2"
+      },
+      "not_before": {
+        "name": "done",
+        "from": "source"
+      }
+    }
+  ],
+  "note": "R-flow-41: each: given by an expression over a stage's emitted items waits for that stage to end. Naming the stage (case 07) follows it as it emits."
+}

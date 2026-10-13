@@ -1,0 +1,14 @@
+[
+  {
+    "wait": {
+      "machine": "ask-person",
+      "key": "decision"
+    },
+    "do": "reply",
+    "value": {
+      "yes": false,
+      "note": "not today"
+    },
+    "taken": true
+  }
+]

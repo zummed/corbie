@@ -1,0 +1,16 @@
+# Stages written in the reverse of the order they must run in.
+flow: stage-order
+input: [n]
+stages:
+  last:
+    follows: [third]
+    job: { script: ./echo.js, input: { note: "ran after third, taking no data from it" } }
+  third:
+    job: { script: ./add.js, input: { n: "${stages.second.output.n}" } }
+  second:
+    job: { script: ./add.js, input: { n: "${stages.first.output.n}" } }
+  first:
+    job: { script: ./add.js, input: { n: "${input.n}" } }
+output:
+  n: ${stages.third.output.n}
+  last: ${stages.last.output.note}

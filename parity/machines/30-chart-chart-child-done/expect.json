@@ -1,0 +1,30 @@
+{
+  "status": "done",
+  "output": {
+    "came_by": "done",
+    "event_output": {
+      "n": 7,
+      "seen_input": {
+        "from": "parent",
+        "n": 7
+      },
+      "start_data": {
+        "from": "parent",
+        "n": 7
+      },
+      "start_event": "start"
+    },
+    "remembered": {
+      "n": 7,
+      "seen_input": {
+        "from": "parent",
+        "n": 7
+      },
+      "start_data": {
+        "from": "parent",
+        "n": 7
+      },
+      "start_event": "start"
+    }
+  }
+}

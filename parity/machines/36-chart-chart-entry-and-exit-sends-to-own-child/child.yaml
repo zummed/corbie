@@ -1,0 +1,10 @@
+statechart: child
+initial: waiting
+states:
+  waiting:
+    on:
+      hello: heard
+      bye: heard
+  heard:
+    final: true
+    output: { heard: "${event.name}", data: "${event.data}" }

@@ -1,0 +1,10 @@
+# The root's ask is a flow that itself marks a stage approve: true and has
+# no ask: of its own.
+flow: parent
+ask:
+  machine: ./asking-flow.yaml
+stages:
+  guarded:
+    job: { script: ./add.js, input: { n: 1 }, approve: true }
+output:
+  guarded: ${stages.guarded.output}

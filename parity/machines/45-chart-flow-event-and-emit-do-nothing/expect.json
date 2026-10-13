@@ -1,0 +1,32 @@
+{
+  "status": "done",
+  "output": {
+    "child": {
+      "emitted": 2,
+      "slow": {
+        "slept": true
+      }
+    },
+    "parent_saw_emit": false
+  },
+  "record": [
+    {
+      "machine": "child",
+      "event": {
+        "name": "poke",
+        "from": "parent",
+        "data": {
+          "from": "parent"
+        }
+      }
+    },
+    {
+      "machine": "parent",
+      "event": {
+        "name": "item"
+      },
+      "absent": true
+    }
+  ],
+  "note": "R-flow-42: the flow names no stage to pass up, so nothing reaches the parent."
+}

@@ -1,0 +1,31 @@
+# A state's script emits values named item. In listening, on: item is a
+# transition with no to: the chart stays for all three and moves on at
+# done:. In leaving_on_emit, on: item leaves for a state that reads the
+# blob (event.data), while the emitting job is still going.
+statechart: on-emit
+initial: listening
+states:
+  listening:
+    job: { script: ./emit.js, input: { items: [{ n: 1 }, { n: 2 }, { n: 3 }] } }
+    on:
+      item:
+        send: { to: parent, event: saw_emit }
+    done: leaving_on_emit
+  leaving_on_emit:
+    job: { script: ./emit.js, input: { items: [{ n: 4 }, { n: 5 }] } }
+    on:
+      item: reading
+    done: not_reached
+  reading:
+    job: { script: ./read.js, input: { item: "${event.data}" } }
+    done: finished
+  not_reached:
+    final: true
+    output: { reached: not_reached }
+  finished:
+    final: true
+    output:
+      came_by: ${event.name}
+      read: ${states.reading.output}
+      listening: ${states.listening.output}
+      leaving_on_emit: ${states.leaving_on_emit.output}

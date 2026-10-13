@@ -1,0 +1,9 @@
+# A flow with a one-second deadline whose only stage is a child that sleeps
+# two seconds.
+flow: deadline
+deadline: 1s
+stages:
+  slow:
+    job: { machine: ./sleeper.yaml }
+output:
+  slow: ${stages.slow.output}

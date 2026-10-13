@@ -1,0 +1,10 @@
+# The ask is a statechart that waits for a client's reply; the job that
+# waits is in a child chart, which inherits the ask. The client says no.
+flow: asks
+ask:
+  machine: ./ask-person.yaml
+stages:
+  kid:
+    job: { machine: ./guarded-chart.yaml, input: { n: 1 } }
+output:
+  kid: ${stages.kid.output}

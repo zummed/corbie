@@ -1,0 +1,41 @@
+What Corbie does not defend against: Corbie makes no check and gives no protection in these cases.
+
+A script uses files, the network, other programs, environment variables and
+secrets only through six kinds of permission, and Corbie checks every use. It
+does not defend against the following.
+
+- A program that a job starts reads files, writes files and opens connections
+  as the runner's user. Permissions are checked when it is started and not
+  after. A runner's owner can run every started program in a sandbox or a
+  container with `corbie run --exec-wrapper`, and Corbie provides none.
+- A job allowed to read the runner's own files can read the runner's private
+  key, and with it decrypt every job sent to that runner.
+- A script allowed to connect to a secret's destination can learn the secret's
+  value from that destination.
+- A tool that a model's own program runs, switched on with `own:`, is not
+  checked by Corbie. It can use everything its permission group allows, and
+  Corbie records only that it was used.
+- A plugin is trusted. One that opens a file, a connection or a program
+  without asking Corbie is not checked, and only review of its code prevents
+  that.
+- Corbie knows whether a connection is encrypted when Corbie does the
+  encryption. Where a service's own protocol does it, Corbie relies on what
+  the plugin reports.
+- Jobs on one runner are not isolated from each other. Send jobs that must be
+  isolated to different runners, which a job selects with `tags:`.
+
+These are true of the store.
+
+- A directory store keeps no process out. Every user of the computer who can
+  read the directory can read and write all of it.
+- Whoever operates the store can read every file path, delete any file and
+  restore the store to an earlier state. They cannot read an encrypted file,
+  and a file they alter is refused by its reader.
+- Someone on the network between a served directory and a computer that uses
+  it can see that the two communicate and how much data they exchange, and can
+  delay or cut the connection. They can do nothing else.
+
+Corbie makes no check where there is no real boundary.
+
+`corbie manual permissions` has what is checked, and
+`corbie manual the-store` has what is signed and encrypted.

@@ -1,0 +1,14 @@
+# Two children, each with an ask of its own and a stage marked approve:
+# true. One ask's script fails; the other returns ok with no decision in
+# it. Each child's failure is handled by a stage that notes its error.
+flow: parent
+stages:
+  ask_fails:
+    job: { machine: ./ask-fails.yaml, input: { child: ask-fails } }
+  ask_undecided:
+    job: { machine: ./ask-undecided.yaml, input: { child: ask-undecided } }
+  note:
+    when: stages.ask_fails.failed && stages.ask_undecided.failed
+    job: { script: ./echo.js, input: { ask_fails: "${stages.ask_fails.error}", ask_undecided: "${stages.ask_undecided.error}" } }
+output:
+  note: ${stages.note.output}

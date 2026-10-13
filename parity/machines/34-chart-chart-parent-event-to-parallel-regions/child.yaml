@@ -1,0 +1,15 @@
+statechart: child
+initial: both
+states:
+  both:
+    entry: { send: { to: parent, event: ready } }
+    jobs:
+      left: { machine: ./idle.yaml }
+      right: { machine: ./idle.yaml }
+    on:
+      poke:
+        send: { to: parent, event: poked }
+      finish: finished
+  finished:
+    final: true
+    output: { finished: true }

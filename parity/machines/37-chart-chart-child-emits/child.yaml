@@ -1,0 +1,9 @@
+statechart: child
+initial: emitting
+states:
+  emitting:
+    job: { script: ./emit.js, input: { items: [{ n: 1 }, { n: 2 }] } }
+    done: finished
+  finished:
+    final: true
+    output: ${event.data}

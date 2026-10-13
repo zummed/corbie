@@ -1,0 +1,4 @@
+# idle.yaml: stands and does nothing until it is cancelled.
+statechart: idle
+states:
+  idle: {}

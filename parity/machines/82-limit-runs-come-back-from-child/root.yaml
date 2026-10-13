@@ -1,0 +1,16 @@
+# The root sets jobs: 9 and runs three children one after another.
+flow: top
+jobs: 9
+stages:
+  a:
+    job: { machine: ./child.yaml, input: { which: a } }
+  b:
+    follows: [a]
+    job: { machine: ./child.yaml, input: { which: b } }
+  c:
+    follows: [b]
+    job: { machine: ./child.yaml, input: { which: c } }
+output:
+  a: ${stages.a.output}
+  b: ${stages.b.output}
+  c: ${stages.c.output}

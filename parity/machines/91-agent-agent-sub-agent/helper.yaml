@@ -1,0 +1,10 @@
+agent: helper
+input: [n]
+model: { name: scripted, service: anthropic }
+turn: ./turn-helper.js
+prompt: "Add one to ${input.n}."
+tools:
+  add:
+    does: Add one
+    args: { n: number }
+    job: { script: ./add.js, input: { n: "${args.n}" } }

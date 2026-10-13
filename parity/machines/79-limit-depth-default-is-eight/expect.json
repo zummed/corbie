@@ -1,0 +1,13 @@
+{
+  "status": "failed",
+  "failure": "error",
+  "error_contains": [
+    "down: down: down: down: down: down: down: down: down: depth limit reached"
+  ],
+  "record": [
+    {
+      "machine": "level-8",
+      "status": "failed"
+    }
+  ]
+}

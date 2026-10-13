@@ -1,0 +1,11 @@
+# The stage marked approve: true is one that starts a child flow. The ask
+# is asked before the child starts. The child, which has no ask of its own,
+# then asks the same ask for its own marked stage.
+flow: parent
+ask:
+  script: ./yes.js
+stages:
+  kid:
+    job: { machine: ./guarded-flow.yaml, input: { n: 1 }, approve: true }
+output:
+  kid: ${stages.kid.output}

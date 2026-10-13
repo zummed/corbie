@@ -1,0 +1,6 @@
+# A flow that lists an input it is not given.
+flow: missing-input
+input: [n, m]
+stages:
+  a:
+    job: { script: ./echo.js, input: { n: "${input.n}" } }

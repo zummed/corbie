@@ -1,0 +1,10 @@
+# each: starts three chart children at once; the second ends in a failed
+# final state. The flow's output: reads the stage's output, so the flow
+# ends well with { item, error } for the second.
+flow: parent
+stages:
+  kids:
+    each: [{ n: 1 }, { n: 2, fail: true }, { n: 3 }]
+    job: { machine: ./kid-chart.yaml, input: "${item}" }
+output:
+  kids: ${stages.kids.output}

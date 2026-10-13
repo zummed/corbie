@@ -1,0 +1,12 @@
+statechart: child
+input: [topic]
+initial: asking
+states:
+  asking:
+    wait: answer
+    job: { script: ./echo.js, input: { topic: "${input.topic}" } }
+    on:
+      answer: answered
+  answered:
+    final: true
+    output: { topic: "${input.topic}", said: "${event.data.said}" }

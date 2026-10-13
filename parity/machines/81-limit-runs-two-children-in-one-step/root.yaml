@@ -1,0 +1,17 @@
+# The root sets jobs: 10 and starts two children in one step.
+flow: top
+jobs: 10
+stages:
+  first_kid:
+    job: { machine: ./child.yaml, input: { which: first } }
+  second_kid:
+    job: { machine: ./child.yaml, input: { which: second } }
+  note:
+    when: stages.first_kid.failed || stages.second_kid.failed
+    job: { script: ./add.js, input: { n: 0 } }
+output:
+  first_kid_failed: ${stages.first_kid.failed}
+  first_kid_error: ${stages.first_kid.error}
+  second_kid_failed: ${stages.second_kid.failed}
+  second_kid_error: ${stages.second_kid.error}
+  kids: [ "${stages.first_kid.output}", "${stages.second_kid.output}" ]

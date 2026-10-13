@@ -1,0 +1,44 @@
+{
+  "status": "done",
+  "output": {
+    "came_by": "done",
+    "last_n": 2,
+    "recovering": {
+      "came_by": "failed",
+      "error": {
+        "<contains>": "told to fail"
+      }
+    }
+  },
+  "record": [
+    {
+      "machine": "done-and-failed",
+      "ask": {
+        "kind": "script",
+        "name": "working"
+      }
+    },
+    {
+      "machine": "done-and-failed",
+      "ask": {
+        "kind": "script",
+        "name": "working#2"
+      }
+    },
+    {
+      "machine": "done-and-failed",
+      "ask": {
+        "kind": "script",
+        "name": "working#3"
+      }
+    },
+    {
+      "machine": "done-and-failed",
+      "ask": {
+        "kind": "script",
+        "name": "working#4"
+      },
+      "absent": true
+    }
+  ]
+}

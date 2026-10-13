@@ -1,0 +1,38 @@
+{
+  "status": "done",
+  "output": {
+    "came_by": "go",
+    "told": {
+      "what": "tidy up",
+      "you_said": {
+        "by": "child"
+      }
+    }
+  },
+  "record": [
+    {
+      "machine": "parent",
+      "event": {
+        "name": "started",
+        "from": "running",
+        "data": {
+          "by": "child"
+        }
+      }
+    },
+    {
+      "machine": "parent",
+      "event": {
+        "name": "nobody_handles_this",
+        "from": "running"
+      }
+    },
+    {
+      "machine": "child",
+      "event": {
+        "name": "go",
+        "from": "parent"
+      }
+    }
+  ]
+}

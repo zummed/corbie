@@ -1,0 +1,123 @@
+Functions: the controller and the runners run as AWS Lambda functions on an S3 bucket, so nothing runs while there is no work.
+
+What calls a function
+---------------------
+
+  a file written to the controller's inbox   the controller's function
+  a file written to a runner's inbox         that runner's function
+  a schedule, once a minute                  the controller's function, for timers
+
+A function handles everything that is waiting, then exits. A timer can fire up
+to a minute late. AWS Lambda with S3 is the only serverless host supported.
+
+Create the controller, the runner and their policies
+----------------------------------------------------
+
+  corbie init --store 's3://my-bucket/main?region=eu-west-2' --ceiling exec --name cloud
+  corbie controller policy cloud-controller > controller-policy.json
+  corbie controller policy cloud-runner     > runner-policy.json
+
+Run these on your own computer, with an access key that can write to the
+bucket (`corbie manual bucket`). Give each function its own IAM role, with the
+policy printed for it.
+
+Build each function's package
+-----------------------------
+
+  package/bootstrap             the start script below
+  package/corbie                the binary, built for the host
+  package/config/controller/…   the controller's config (config/runner/… for a runner)
+
+  #!/bin/sh
+  cd "$LAMBDA_TASK_ROOT" && exec ./corbie run $CORBIE_RUN --config "$LAMBDA_TASK_ROOT/config"
+
+  runtime       provided.al2023
+  handler       bootstrap
+  CORBIE_RUN    controller on one function, "runner --jobs 4" on the other
+  timeout       for a runner, its longest job's timeout plus ten seconds
+
+A function's code can be replaced while runs are in progress.
+
+Have the bucket call each function
+----------------------------------
+
+The inbox prefixes are `main/cloud-controller/inbox/` and
+`main/cloud-runner/inbox/`. Permit the bucket to call the functions.
+
+  aws lambda add-permission --function-name corbie-controller --statement-id bucket \
+      --action lambda:InvokeFunction --principal s3.amazonaws.com \
+      --source-arn arn:aws:s3:::my-bucket --source-account <account>
+  aws lambda add-permission --function-name corbie-runner --statement-id bucket \
+      --action lambda:InvokeFunction --principal s3.amazonaws.com \
+      --source-arn arn:aws:s3:::my-bucket --source-account <account>
+
+The next command replaces the bucket's whole notification configuration, so
+include any that it already has.
+
+  aws s3api put-bucket-notification-configuration --bucket my-bucket \
+      --notification-configuration '{"LambdaFunctionConfigurations": [
+    {"Id": "controller-inbox", "Events": ["s3:ObjectCreated:*"],
+     "LambdaFunctionArn": "arn:aws:lambda:eu-west-2:<account>:function:corbie-controller",
+     "Filter": {"Key": {"FilterRules": [{"Name": "prefix", "Value": "main/cloud-controller/inbox/"}]}}},
+    {"Id": "runner-inbox", "Events": ["s3:ObjectCreated:*"],
+     "LambdaFunctionArn": "arn:aws:lambda:eu-west-2:<account>:function:corbie-runner",
+     "Filter": {"Key": {"FilterRules": [{"Name": "prefix", "Value": "main/cloud-runner/inbox/"}]}}}]}'
+
+Call the controller once a minute
+---------------------------------
+
+  aws events put-rule --name corbie-minute --schedule-expression 'rate(1 minute)'
+  aws lambda add-permission --function-name corbie-controller --statement-id minute \
+      --action lambda:InvokeFunction --principal events.amazonaws.com \
+      --source-arn arn:aws:events:eu-west-2:<account>:rule/corbie-minute
+  aws events put-targets --rule corbie-minute \
+      --targets Id=controller,Arn=arn:aws:lambda:eu-west-2:<account>:function:corbie-controller
+
+Check it
+--------
+
+Run these where you ran `init`.
+
+  corbie check
+  corbie submit hello.js --wait
+
+If a call is missing, the check's `late` or `never` line names it.
+
+  the bucket does not call the controller   every step is up to a minute late
+  the bucket does not call a runner         no job is taken
+  nothing calls once a minute               no timer or timeout is noticed
+
+The bucket refuses a function whose role has the wrong policy. The error is in
+the function's log.
+
+A job must fit in one call
+--------------------------
+
+A runner takes a job only if the job's timeout plus ten seconds fits in the
+function's timeout. A job that can never fit fails at once. The default job
+timeout is five minutes.
+
+Copies of a function
+--------------------
+
+The host starts another copy of a function when work arrives while one is
+busy. Every copy is the same controller or runner, so each job runs once and
+each step is written once. One copy of a runner runs `--jobs` jobs at a time.
+
+Corbie needs no limit on copies. A limit only saves the cost of repeated work
+when many messages arrive together.
+
+  aws lambda put-function-concurrency --function-name corbie-controller \
+      --reserved-concurrent-executions <copies>
+
+A throttled call is not lost: the next call handles everything in the inbox.
+A limit on a runner's function caps the jobs running at once at its copies
+times `--jobs`. A job that waits past its timeout fails as a timeout.
+
+Computers beside functions
+--------------------------
+
+A controller, runner or client can also run on a computer
+(`corbie manual bucket`). Give a runner that is kept for a program, a GPU or a
+private network its own tags, and name them in the `tags:` of the jobs that
+need it.

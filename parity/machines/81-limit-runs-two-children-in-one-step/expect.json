@@ -1,0 +1,20 @@
+{
+  "status": "done",
+  "output": {
+    "first_kid_error": null,
+    "first_kid_failed": false,
+    "second_kid_error": null,
+    "second_kid_failed": false,
+    "kids": [
+      {
+        "n": 3,
+        "which": "first"
+      },
+      {
+        "n": 3,
+        "which": "second"
+      }
+    ]
+  },
+  "note": "R-mach-79: a job limit counts the jobs the instance itself starts, not the tree below it, and nothing is lent to a child. Both children run. The flow's output gives each child's output, to show both ran."
+}

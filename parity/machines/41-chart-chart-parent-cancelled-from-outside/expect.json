@@ -1,0 +1,18 @@
+{
+  "status": "cancelled",
+  "error_contains": "cancelled",
+  "record": [
+    {
+      "machine": "child",
+      "status": "cancelled"
+    },
+    {
+      "machine": "parent",
+      "ask": {
+        "kind": "event"
+      },
+      "absent": true
+    }
+  ],
+  "note": "R-chart-53: the chart's send on leaving is addressed to its parent, and a cancelled chart does not make it."
+}

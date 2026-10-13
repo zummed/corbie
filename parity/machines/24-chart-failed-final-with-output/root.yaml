@@ -1,0 +1,19 @@
+# A final state marked failed: true, nested one level down, with an
+# output:. The chart fails at once, and the output goes with the failure.
+statechart: failed-final
+initial: outer
+states:
+  outer:
+    done: finished
+    initial: working
+    states:
+      working:
+        job: { script: ./fail.js }
+        failed: gave_up
+      gave_up:
+        final: true
+        failed: true
+        output: { why: "${event.data.error}" }
+  finished:
+    final: true
+    output: { reached: finished }

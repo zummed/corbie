@@ -1,0 +1,27 @@
+{
+  "status": "done",
+  "output": {
+    "mid": [
+      {
+        "item": {
+          "fail": false,
+          "n": 1
+        },
+        "output": {
+          "from_bottom": {
+            "n": 3
+          }
+        }
+      },
+      {
+        "error": {
+          "<contains>": "low: work: Error: told to fail"
+        },
+        "item": {
+          "fail": true,
+          "n": 10
+        }
+      }
+    ]
+  }
+}

@@ -1,0 +1,8 @@
+# The root sets depth: 1. Its child tries to start a child of its own.
+flow: top
+depth: 1
+stages:
+  mid:
+    job: { machine: ./middle.yaml }
+output:
+  mid: ${stages.mid.output}

@@ -1,0 +1,16 @@
+{
+  "status": "done",
+  "output": {
+    "left_by": "timer"
+  },
+  "record": [
+    {
+      "machine": "middle",
+      "status": "cancelled"
+    },
+    {
+      "machine": "sleeper",
+      "status": "cancelled"
+    }
+  ]
+}

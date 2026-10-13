@@ -1,0 +1,27 @@
+{
+  "status": "done",
+  "output": {
+    "finished": true
+  },
+  "record": [
+    {
+      "machine": "parent",
+      "order": [
+        "ready",
+        "poked"
+      ]
+    },
+    {
+      "machine": "child",
+      "order": [
+        "poke",
+        "finish"
+      ]
+    },
+    {
+      "machine": "idle",
+      "status": "cancelled"
+    }
+  ],
+  "note": "R-chart-35: an event is taken by one rule at most, so the parent receives poked once. The child's state has two named jobs."
+}

@@ -1,0 +1,20 @@
+{
+  "status": "done",
+  "output": {
+    "came_by": "done",
+    "event_output": {
+      "input_seen": {
+        "from": "parent",
+        "n": 1
+      },
+      "n": 2
+    },
+    "remembered": {
+      "input_seen": {
+        "from": "parent",
+        "n": 1
+      },
+      "n": 2
+    }
+  }
+}

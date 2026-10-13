@@ -1,0 +1,15 @@
+{
+  "status": "failed",
+  "failure": "error",
+  "error_contains": [
+    "kid: ",
+    "two: ",
+    "told to fail"
+  ],
+  "record": [
+    {
+      "machine": "sleeper",
+      "status": "cancelled"
+    }
+  ]
+}

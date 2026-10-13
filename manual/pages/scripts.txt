@@ -1,0 +1,116 @@
+Scripts: a script is a JavaScript file that reads its input, calls plugins and returns the job's output.
+
+A script is the body of a JavaScript function. `input` is the job's input, and
+the value the script returns is the job's output.
+
+    // title.js
+    const page = http.get(input.url)
+    emit("fetched", { url: input.url, size: page.body.length })
+    return { title: html.parse(page.body).find("title").text }
+
+    corbie test title.js --input '{"url": "https://example.com/news"}' --allow net:example.com
+      output: {"title":"News"}
+
+A script uses files, the network, programs and environment variables only by
+calling a plugin, and Corbie checks each call against the job's permissions.
+A call returns its result, so a script needs no callback and no `await`.
+
+What a script has
+-----------------
+
+  input                    the job's input
+  job.name                 the job's name; a retry adds its attempt, as in get_title@2
+  job.attempt              the number of this attempt, from 1
+  job.request              the run's ID and the job's name, the same in every attempt
+  job.instance             the run's ID
+  emit(name, value)        sends the machine a named value while the script runs
+  log(text, ...)           writes a line to the run's record, which `--watch` prints
+  progress(done, total)    writes { done, total } to the run's record; total is optional
+  http, fs, html, ...      every plugin and library is a global name
+  require("http")          the same plugin or library, by name
+  require("./lib.js")      one of the job's `files:`, which assigns to `exports`
+
+    # double.yaml
+    flow: double
+    input: [n]
+    stages:
+      double: { job: { script: ./double.js, files: [./lib.js], input: { n: "${input.n}" } } }
+    output: ${stages.double.output}
+
+    // double.js
+    return require("./lib.js").double(input.n)
+
+    // lib.js
+    exports.double = (n) => n * 2
+
+    corbie test double.yaml --input '{"n": 21}'
+      output: 42
+
+A loaded file has the plugins and `require`, and not `input`, `job`, `emit`,
+`log` or `progress`. A script cannot start a script or a machine: only a
+machine starts jobs.
+
+Plugins
+-------
+
+`corbie manual` lists the plugins, and each has a page, such as
+`corbie manual http`. Every call is `module.call(first, { option: value })`:
+one value, then named options.
+
+- A call refuses an option it does not know.
+- Arguments and results are plain data: text, numbers, lists, maps, bytes (a
+  `Uint8Array`), blobs and handles to secrets.
+- A call that fails throws an error with a `code`.
+
+  not_found        what the call asked for does not exist
+  refused          the other side refused
+  timeout          the call took too long
+  not_permitted    the operating system refused
+  bad_input        the call was written wrong
+  failed           anything else
+
+    allow: [fs.read:maybe.txt]
+
+    try {
+      fs.read("maybe.txt")
+    } catch (e) {
+      if (e.code !== "not_found") throw e
+    }
+
+A call that the job's permissions refuse stops the job with status `denied`.
+The script cannot catch it.
+
+What a script returns
+---------------------
+
+The returned value is the job's output. It is plain data, and so is a value
+sent with `emit`.
+
+  no value                 null
+  bytes                    a blob
+  a Date                   text, such as 2026-10-13T20:00:00Z
+  a function               the job fails with status `error`
+  a handle to a secret     the job fails with status `error`
+  an error not caught      the job fails with status `error`, and the error names the line
+
+A blob is a large value, such as a file, a long text or an image. To a script
+it is an object with `type` and `size`, and the `blobs` plugin reads and makes
+them. A blob that a script returns or emits is stored in the run's record, and
+a later job reads it from its input.
+
+Limits
+------
+
+  time         the job's `timeout:`, default 5m; past it the job fails with status `timeout`
+  memory       the job's `memory:`, default no limit; past it the job fails with status `error`
+  size         16 MiB for a script and for each of its `files:`
+  process      each job runs in its own process
+  directory    each job has its own scratch directory, removed when the job ends;
+               a path with no leading / is in it
+
+Reference
+---------
+
+  corbie manual definitions    every field of a `job:` block
+  corbie manual permissions    how an `allow:` entry is written, and how a refusal reads
+  corbie manual blobs          the calls that read and make a blob

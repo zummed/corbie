@@ -1,0 +1,17 @@
+# A when: that reads stages.bad.failed handles the failure. A stage that
+# needs the failed stage's output is skipped. Reading .error alone is tried
+# too (stage reads_error_only), in a second flow: see 05.
+flow: fails-handled
+stages:
+  bad:
+    job: { script: ./fail.js }
+  cleanup:
+    when: stages.bad.failed
+    job: { script: ./echo.js, input: { error: "${stages.bad.error}" } }
+  needs_bad:
+    job: { script: ./echo.js, input: { got: "${stages.bad.output}" } }
+output:
+  bad_failed: ${stages.bad.failed}
+  bad_error: ${stages.bad.error}
+  cleanup: ${stages.cleanup.output}
+  needs_bad_skipped: ${stages.needs_bad.skipped}

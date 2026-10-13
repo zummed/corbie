@@ -1,0 +1,22 @@
+# Two statechart states marked approve: true. The ask is asked once for
+# each as its state is entered: the first job is approved and runs; the
+# second is refused and the state's failed: is taken.
+statechart: asks
+ask:
+  script: ./odd.js
+initial: first
+states:
+  first:
+    job: { script: ./add.js, input: { n: 1 }, approve: true }
+    done: second
+    failed: refused
+  second:
+    job: { script: ./add.js, input: { n: 2 }, approve: true }
+    done: finished
+    failed: refused
+  refused:
+    job: { script: ./echo.js, input: { name: "${event.name}", error: "${event.data.error}", status: "${event.data.status}" } }
+    done: finished
+  finished:
+    final: true
+    output: { first: "${states.first.output}", second: "${states.second.output}", refused: "${states.refused.output}" }

@@ -1,0 +1,22 @@
+{
+  "status": "done",
+  "output": {
+    "middle": {
+      "bottom": {
+        "order": {
+          "order": {
+            "from": "top",
+            "heard": {
+              "news": {
+                "depth": 2,
+                "from": "bottom"
+              },
+              "via": "middle"
+            }
+          },
+          "via": "middle"
+        }
+      }
+    }
+  }
+}

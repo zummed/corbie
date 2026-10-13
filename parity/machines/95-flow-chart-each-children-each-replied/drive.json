@@ -1,0 +1,40 @@
+[
+  {
+    "wait": {
+      "machine": "child",
+      "input": {
+        "topic": "disk"
+      },
+      "key": "answer"
+    },
+    "do": "nothing"
+  },
+  {
+    "wait": {
+      "machine": "child",
+      "input": {
+        "topic": "memory"
+      },
+      "key": "answer"
+    },
+    "do": "reply",
+    "value": {
+      "said": "for memory"
+    },
+    "taken": true
+  },
+  {
+    "wait": {
+      "machine": "child",
+      "input": {
+        "topic": "disk"
+      },
+      "key": "answer"
+    },
+    "do": "reply",
+    "value": {
+      "said": "for disk"
+    },
+    "taken": true
+  }
+]

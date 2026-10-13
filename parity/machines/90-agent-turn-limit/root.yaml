@@ -1,0 +1,15 @@
+# Two agents allowed two turns each, with a scripted model that wants four.
+# The one with no ask above it fails at its limit. The one with an ask that
+# approves everything asks it for more turns, and finishes.
+flow: parent
+stages:
+  no_ask:
+    job: { machine: ./agent-no-ask.yaml, input: { which: no_ask } }
+  with_ask:
+    job: { machine: ./agent-with-ask.yaml, input: { which: with_ask } }
+  note:
+    when: stages.no_ask.failed || stages.with_ask.failed
+    job: { script: ./echo.js, input: { no_ask: "${stages.no_ask.error}", with_ask_error: "${stages.with_ask.error}" } }
+output:
+  note: ${stages.note.output}
+  with_ask_text: ${stages.with_ask.output.reply}

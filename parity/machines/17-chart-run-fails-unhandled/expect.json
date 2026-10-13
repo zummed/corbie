@@ -1,0 +1,8 @@
+{
+  "status": "failed",
+  "failure": "error",
+  "error_contains": [
+    "working: ",
+    "failed on purpose"
+  ]
+}

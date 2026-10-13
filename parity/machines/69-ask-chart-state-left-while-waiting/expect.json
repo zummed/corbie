@@ -1,0 +1,20 @@
+{
+  "status": "done",
+  "output": {
+    "left_by": "timer"
+  },
+  "record": [
+    {
+      "machine": "ask-person",
+      "status": "cancelled"
+    },
+    {
+      "machine": "asks",
+      "ask": {
+        "kind": "script",
+        "name": "guarded"
+      },
+      "absent": true
+    }
+  ]
+}

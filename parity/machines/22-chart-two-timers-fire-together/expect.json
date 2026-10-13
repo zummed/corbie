@@ -1,0 +1,19 @@
+{
+  "status": "done",
+  "output": {
+    "first": {
+      "state": "first"
+    },
+    "second": null
+  },
+  "record": [
+    {
+      "machine": "two-timers",
+      "order": [
+        "timer",
+        "done"
+      ]
+    }
+  ],
+  "note": "R-ctl-69's check: under corbie test the one-second timer arrives alone about a second after the start, and the two-second timer is never delivered."
+}

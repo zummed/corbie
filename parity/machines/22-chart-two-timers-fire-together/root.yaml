@@ -1,0 +1,16 @@
+# One state with a one-second timer and a two-second timer, each leaving
+# for a different state.
+statechart: two-timers
+initial: waiting
+states:
+  waiting:
+    after: { 1s: first, 2s: second }
+  first:
+    job: { script: ./echo.js, input: { state: first } }
+    done: finished
+  second:
+    job: { script: ./echo.js, input: { state: second } }
+    done: finished
+  finished:
+    final: true
+    output: { first: "${states.first.output}", second: "${states.second.output}" }

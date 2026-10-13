@@ -1,0 +1,26 @@
+{
+  "status": "failed",
+  "failure": "denied",
+  "error_contains": [
+    "kid: ",
+    "guarded: ",
+    "not today"
+  ],
+  "record": [
+    {
+      "machine": "guarded-chart",
+      "ask": {
+        "kind": "child",
+        "name": "ask"
+      }
+    },
+    {
+      "machine": "asks",
+      "ask": {
+        "kind": "child",
+        "name": "ask"
+      },
+      "absent": true
+    }
+  ]
+}

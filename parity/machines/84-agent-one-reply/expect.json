@@ -1,0 +1,54 @@
+{
+  "status": "done",
+  "output": {
+    "reply": "Nothing to do.",
+    "conversation": {
+      "turns": [
+        "<blob>"
+      ],
+      "blobs": {}
+    },
+    "tokens": {
+      "input": 1,
+      "output": 1
+    }
+  },
+  "record": [
+    {
+      "machine": "one-reply",
+      "emit": {
+        "job": "turn",
+        "name": "log",
+        "data": {
+          "<contains>": "Look into the disk."
+        }
+      }
+    },
+    {
+      "machine": "one-reply",
+      "emit": {
+        "job": "turn",
+        "name": "log",
+        "data": {
+          "<contains>": "the system text is: You are scripted."
+        }
+      }
+    },
+    {
+      "machine": "one-reply",
+      "ask": {
+        "kind": "script",
+        "name": "turn"
+      }
+    },
+    {
+      "machine": "one-reply",
+      "ask": {
+        "kind": "script",
+        "name": "turn#2"
+      },
+      "absent": true
+    }
+  ],
+  "note": "The result is { reply, conversation, tokens }, with the conversation as its turns, one blob for each, and the blobs they name."
+}

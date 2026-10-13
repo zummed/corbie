@@ -1,0 +1,28 @@
+# The state running runs a child and has an entry: send addressed to that
+# child (to: running). Another entry: send goes to never_entered, a
+# state whose job is a machine but which is not active. The child finishes
+# when it is told hello or bye, and waits otherwise; the parent would leave
+# running on a timer after a second.
+statechart: parent
+initial: running
+states:
+  running:
+    entry:
+      send:
+        - { to: running, event: hello, data: { from: entry } }
+        - { to: never_entered, event: hello, data: { from: "entry, to a state with no child running" } }
+    job: { machine: ./child.yaml }
+    done: child_finished
+    after: { 1s: later }
+  child_finished:
+    final: true
+    output: { child_finished: true, child: "${event.data}" }
+  later:
+    job: { script: ./echo.js, input: { left_by: "${event.name}" } }
+    done: finished
+  never_entered:
+    job: { machine: ./child.yaml }
+    done: finished
+  finished:
+    final: true
+    output: { child_finished: false, later: "${states.later.output}" }

@@ -1,0 +1,13 @@
+{
+  "status": "done",
+  "output": {
+    "kid": {
+      "n": 2
+    },
+    "own_refused": {
+      "error": {
+        "<contains>": "no to all"
+      }
+    }
+  }
+}

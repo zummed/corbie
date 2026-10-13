@@ -1,0 +1,21 @@
+{
+  "status": "done",
+  "output": {
+    "kid": {
+      "count": 2
+    },
+    "per_emit": [
+      {
+        "item": {
+          "from": "child"
+        },
+        "output": {
+          "got": {
+            "from": "child"
+          }
+        }
+      }
+    ]
+  },
+  "note": "R-flow-39 and R-mach-63: an event a child chart sends up is one of its stage's emitted items, so the per-item stage runs once, for hello; nothing arrives for the values the chart's own script emitted."
+}

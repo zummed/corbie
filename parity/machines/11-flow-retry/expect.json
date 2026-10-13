@@ -1,0 +1,38 @@
+{
+  "status": "done",
+  "output": {
+    "comes_good": {
+      "ok": true
+    },
+    "never_good_error": {
+      "<contains>": "failed on purpose"
+    }
+  },
+  "record": [
+    {
+      "machine": "retry",
+      "ask": {
+        "kind": "script",
+        "name": "comes_good@2",
+        "attempt": 2
+      }
+    },
+    {
+      "machine": "retry",
+      "ask": {
+        "kind": "script",
+        "name": "never_good@2",
+        "attempt": 2
+      }
+    },
+    {
+      "machine": "retry",
+      "ask": {
+        "kind": "script",
+        "name": "never_good@3"
+      },
+      "absent": true
+    }
+  ],
+  "note": "R-ctl-56: the record shows each attempt, under the job's name with the attempt's number added, and the flow is given one result for each stage. The controller spaces the attempts: the second comes a second after the first."
+}

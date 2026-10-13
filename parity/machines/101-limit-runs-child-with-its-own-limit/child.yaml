@@ -1,0 +1,11 @@
+flow: child
+input: [which]
+jobs: 2
+stages:
+  one:
+    job: { script: ./add.js, input: { n: 1 } }
+  two:
+    job: { script: ./add.js, input: { n: "${stages.one.output.n}" } }
+output:
+  n: ${stages.two.output.n}
+  which: ${input.which}

@@ -1,0 +1,30 @@
+{
+  "status": "done",
+  "output": {
+    "finished": true
+  },
+  "record": [
+    {
+      "machine": "parent",
+      "order": [
+        "up1",
+        "up2",
+        "up3",
+        "up4",
+        "up5"
+      ]
+    },
+    {
+      "machine": "child",
+      "order": [
+        "down1",
+        "down2",
+        "down3",
+        "down4",
+        "down5",
+        "finish"
+      ]
+    }
+  ],
+  "note": "R-mach-58: events between a parent and a child arrive in the order they were sent."
+}

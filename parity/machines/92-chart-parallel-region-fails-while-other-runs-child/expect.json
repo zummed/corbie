@@ -1,0 +1,15 @@
+{
+  "status": "failed",
+  "failure": "error",
+  "error_contains": [
+    "failing_side: ",
+    "failed on purpose"
+  ],
+  "record": [
+    {
+      "machine": "sleeper",
+      "status": "cancelled"
+    }
+  ],
+  "note": "R-chart-19 and R-mach-72: the state has two named jobs, the failure nobody takes fails the chart, and the other child is cancelled. The chart that takes the failure and ends in a final state marked failed: true is in failed-final."
+}

@@ -1,0 +1,15 @@
+statechart: middle
+input: [depth]
+initial: running
+states:
+  running:
+    job: { machine: ./bottom.yaml, input: { depth: "${input.depth + 1}" } }
+    on:
+      news:
+        send: { to: parent, event: relayed, data: { via: middle, news: "${event.data}" } }
+      order:
+        send: { to: running, event: order, data: { via: middle, order: "${event.data}" } }
+    done: finished
+  finished:
+    final: true
+    output: { bottom: "${event.data}" }

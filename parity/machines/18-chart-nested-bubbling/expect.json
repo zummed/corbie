@@ -1,0 +1,11 @@
+{
+  "status": "done",
+  "output": {
+    "came_by": "done",
+    "got": {
+      "from_inner_final": {
+        "<contains>": "failed on purpose"
+      }
+    }
+  }
+}

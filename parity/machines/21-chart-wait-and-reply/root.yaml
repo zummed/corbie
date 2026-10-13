@@ -1,0 +1,19 @@
+# A state nested inside another waits on a key; the handler for the reply
+# is on the outer state, so the reply goes up to it. A client replies three
+# times: see drive.md.
+statechart: wait-and-reply
+initial: talking
+states:
+  talking:
+    on:
+      answer: answered
+    initial: asking
+    states:
+      asking:
+        wait: answer
+  answered:
+    job: { script: ./echo.js, input: { said: "${event.data.said}", came_by: "${event.name}" } }
+    done: finished
+  finished:
+    final: true
+    output: ${states.answered.output}

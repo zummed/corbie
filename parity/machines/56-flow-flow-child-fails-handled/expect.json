@@ -1,0 +1,11 @@
+{
+  "status": "done",
+  "output": {
+    "cleanup": {
+      "error": {
+        "<contains>": "two: Error: told to fail"
+      }
+    },
+    "needs_kid_skipped": true
+  }
+}

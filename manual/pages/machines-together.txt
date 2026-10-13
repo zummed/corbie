@@ -1,0 +1,73 @@
+Machines together: a job can be another machine, so a statechart can run a flow and an agent can use a flow as a tool.
+
+Both examples use `title.yaml` from `corbie manual first-machine`. Record
+lines are shown without their time and run number, and `<id>` is the child
+run's ID.
+
+A statechart runs the flow
+--------------------------
+
+    # watch.yaml
+    statechart: watch-title
+    initial: fetching
+
+    states:
+      fetching:
+        job:
+          machine: ./title.yaml
+          input: { url: "https://example.com" }
+        done: finished
+      finished:
+        final: true
+        output: ${states.fetching.output.title}
+
+    corbie test watch.yaml --watch
+      step 1  <- start
+      step 1  -> job fetching: a machine, <id>
+        step 1  <- start {"url":"https://example.com"}
+        step 1  -> job get_title: a script, on runner
+        step 2  <- done from get_title {"title":"Example Domain","url":"https://example.com"}
+        step 2  done
+      step 2  <- done from fetching {"title":"Example Domain","url":"https://example.com"}
+      step 2  done
+      output: "Example Domain"
+
+The job of the state `fetching` is the flow. The controller starts it as a
+child run, whose lines are indented. When the child run ends, the statechart
+receives `done` with the flow's output and moves to `finished`.
+
+An agent uses the flow as a tool
+--------------------------------
+
+    # helper.yaml
+    agent: page-helper
+    input: [question]
+    model: { name: claude-haiku-5-5, key: ANTHROPIC_KEY }
+    prompt: ${input.question}
+
+    tools:
+      title:
+        does: Give the title of a web page
+        args: { url: string }
+        job:
+          machine: ./title.yaml
+          input: { url: "${args.url}" }
+
+    corbie test helper.yaml --input '{"question": "What is the title of the page at https://example.com?"}' --secret ANTHROPIC_KEY --watch
+      step 1  -> job turn: a script, on runner
+      step 2  -> job title: a machine, <id>
+        step 1  -> job get_title: a script, on runner
+        step 2  done
+      step 3  <- done from title {"title":"Example Domain","url":"https://example.com"}
+      step 3  -> job turn#2: a script, on runner
+      step 4  done
+
+`--secret ANTHROPIC_KEY` reads the model's API key from that environment
+variable. Each turn is a job that calls the model. In the first turn the model
+called the tool `title`, whose job is the flow, and in the second it answered.
+
+As a job the flow keeps its own `allow:` list: the script may still connect
+only to `example.com`.
+
+Next: `corbie manual a-real-run` runs `title.yaml` on a controller and a
+runner.

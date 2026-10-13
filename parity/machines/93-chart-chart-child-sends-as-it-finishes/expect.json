@@ -1,0 +1,18 @@
+{
+  "status": "done",
+  "output": {
+    "data": {
+      "from": "child"
+    },
+    "first": "event"
+  },
+  "record": [
+    {
+      "machine": "parent",
+      "order": [
+        "last_words"
+      ]
+    }
+  ],
+  "note": "R-ctl-36: the send sits on the transition into the final state, which is the step the child ends in."
+}

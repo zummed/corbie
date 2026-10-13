@@ -1,0 +1,25 @@
+{
+  "status": "failed",
+  "failure": "error",
+  "error_contains": [
+    "mid: ",
+    "low: ",
+    "depth limit reached"
+  ],
+  "record": [
+    {
+      "machine": "middle",
+      "ask": {
+        "kind": "child"
+      },
+      "absent": true
+    },
+    {
+      "machine": "middle",
+      "ask": {
+        "kind": "fail",
+        "name": "low"
+      }
+    }
+  ]
+}

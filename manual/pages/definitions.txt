@@ -1,0 +1,139 @@
+Definitions: every type of machine shares these fields, expressions, jobs, events and approval.
+
+A definition is a YAML file. Its first line is the machine's type and name:
+`flow: digest`, `statechart: review` or `agent: librarian`. A name is letters,
+digits, `_` and `-`, and starts with a letter.
+
+Fields every type takes
+-----------------------
+
+  input: [urls, depth]         the inputs a run needs; a run started without one fails
+  keep: 7d                     how long a run is kept after it ends; default 7d
+  deadline: 1h                 how long a run may take; default no limit
+  depth: 8                     levels of child runs below a run that a client started;
+                               default 8, 0 for none
+  jobs: 100                    how many jobs a run may start; default no limit
+  allow: [net:example.com]     permissions of every script job in the definition
+  deny: [exec]                 what no script job in the definition may do
+  ask_about: [disk]            permissions that hold a job for approval
+  ask: { script: ./ask.js }    the job that approves held jobs
+
+A length of time is written `30s`, `5m`, `48h` or `7d`. An input that `input:`
+does not list is optional, and reads as `null` when the run starts without it.
+
+Values and expressions
+----------------------
+
+An expression is JavaScript between `${` and `}`. Any value may contain one.
+
+  count: "${input.n}"                  exactly one expression: its value, of any type
+  text: "Look into ${input.topic}."    text with each value filled in
+  n: 3                                 anything else is literal
+  when: input.n > 1                    a condition is an expression with no `${ }`
+
+An expression reads `input`, which is the run's input, and what the type adds:
+a flow's `stages` and `item`, a statechart's `states`, `event` and `keys`, and
+the `args` of an agent's tool. It may run for one second.
+
+- Put a value that contains `${...}` in quotes when it is inside `{ }` or `[ ]`,
+  or when the expression has a colon followed by a space.
+- These take no expression: a name, a type, a permission's kind, a secret's
+  name, a `deny:` or `ask_about:` entry, a tag and a timer's time.
+
+Jobs
+----
+
+A machine contains jobs. A job is a script, which a runner executes, or a
+machine, which the controller starts as a child run.
+
+  script: ./fetch.js           a script file beside the definition; its path starts with ./ or ../
+  machine: ./child.yaml        a definition file beside this one, or a definition written in place
+  input: { url: "${item}" }    the input of the script or of the child run
+  allow: [net:example.com]     for a script, what the job may do, with the definition's `allow:`;
+                               for a machine, a limit on everything the child run does
+  deny: [fs.write:/etc/**]     what the job may not do
+  timeout: 5m                  for a script, how long it may run, default 5m;
+                               for a machine, the child run's deadline
+  attempts: 3                  how many times the job is tried; default 1
+  approve: true                the job waits until the definition's ask approves it
+  files: [./lib.js]            script only: files the script loads with require("./lib.js")
+  memory: 256MB                script only: the most memory it may use, in B, KB, MB or GB
+  tags: [gpu]                  script only: the job goes to a runner that has every tag
+
+  job: ./fetch.js                                         short for job: { script: ./fetch.js }
+  job: { machine: "${stages.make.output.definition}" }    exactly one expression in place of a path
+
+- A child run whose job has no `allow:` has what its own definition allows.
+- A job is retried only after an error or a timeout. It waits 1s before the
+  second attempt, 2s before the third and 4s before the fourth.
+- An expression in place of a path evaluates to a blob that contains a
+  script, or to a definition that a script made with `machines.define`.
+
+Events
+------
+
+The controller sends events to a machine. An event has a name, a source and data.
+
+  start     the run's input
+  done      a job ended well; data is its output
+  failed    a job failed; data is { status, error, output }
+  timer     a timer is due
+  <name>    a key's answer, an event from the parent run, a child run or the
+            client (`corbie send`), or a value a job emitted with emit(name, value)
+
+A failed job's status is `error`, `timeout`, `denied` or `cancelled`, and
+`denied` adds `refused`, `layer` and `fix` to the data. Each type's page lists
+the events it acts on.
+
+Approval
+--------
+
+`corbie manual approval` has the mechanism and an example. The controller
+holds a job in two cases.
+
+- The job has `approve: true`.
+- The job's `allow:` list declares a permission that `ask_about:` lists, in
+  its definition or in one above it. Two entries match when they have the same
+  kind and either scope covers the other, or when one is a group of that kind.
+
+The ask is a job, and the controller adds two fields to its input.
+
+  ask: ./ask.js                   a script
+  ask: { machine: ./ask.yaml }    a machine, which can wait for a person
+
+  input.asking    { machine, instance }: the machine whose jobs are held, and its run's ID
+  input.jobs      [{ name, input, allow, script or machine, asked }]: each held job;
+                  asked is { does, args, said }, only for an agent's tool call
+
+The ask returns `{ approve: [names of jobs], note: "..." }`.
+
+  a job the ask names            starts, with no permission it did not have
+  a job the ask does not name    fails with status `denied`; its error has the note
+
+An ask that fails, or that returns any other value, approves nothing.
+
+- A machine with no `ask:` uses the nearest `ask:` above it.
+- A machine run as an ask uses no `ask:` and no `ask_about:` from above it.
+- `corbie submit` refuses a definition that can hold a job and has no `ask:`
+  in it or above it.
+
+A script ask runs alone under `corbie test`. This one approves a job only if
+its `allow:` list has no `fs.write` entry.
+
+    // ask.js
+    return {
+      approve: input.jobs.filter(r => !r.allow.some(a => a.startsWith("fs.write"))).map(r => r.name),
+      note: "writes are not approved here",
+    }
+
+    corbie test ask.js --input '{"jobs": [{"name": "look", "allow": ["fs.read:/srv/**"]}, {"name": "tidy", "allow": ["fs.write:/srv/**"]}]}'
+      output: {"approve":["look"],"note":"writes are not approved here"}
+
+Reference
+---------
+
+  corbie manual flow           the fields of a flow
+  corbie manual statechart     the fields of a statechart
+  corbie manual agent          the fields of an agent
+  corbie manual scripts        what a script reads, calls and returns
+  corbie manual permissions    how an entry is written, and the layers that limit a job

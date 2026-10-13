@@ -1,0 +1,26 @@
+# The root sets jobs: 10 and needs four: three scripts and one child that
+# starts no jobs itself. Two stages stand ready to note a refusal.
+flow: top
+jobs: 10
+stages:
+  before:
+    job: { script: ./add.js, input: { n: 1 } }
+  slow_kid:
+    job: { machine: ./sleeper.yaml }
+  beside:
+    job: { script: ./add.js, input: { n: 10 } }
+  later:
+    job: { script: ./add.js, input: { n: "${stages.before.output.n}" } }
+  beside_failed:
+    when: stages.beside.failed
+    job: { script: ./echo.js, input: { error: "${stages.beside.error}" } }
+  later_failed:
+    when: stages.later.failed
+    job: { script: ./echo.js, input: { error: "${stages.later.error}" } }
+output:
+  before: ${stages.before.output}
+  slow_kid: ${stages.slow_kid.output}
+  beside: ${stages.beside.output}
+  later: ${stages.later.output}
+  beside_failed: ${stages.beside_failed.output}
+  later_failed: ${stages.later_failed.output}

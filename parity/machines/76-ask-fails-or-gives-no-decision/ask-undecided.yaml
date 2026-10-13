@@ -1,0 +1,6 @@
+flow: ask-undecided
+ask:
+  script: ./echo.js
+stages:
+  guarded:
+    job: { script: ./add.js, input: { n: 1 }, approve: true }

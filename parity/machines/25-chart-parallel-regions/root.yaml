@@ -1,0 +1,13 @@
+# Two named jobs in one state, each a script. The state is done when both
+# are, and the done event's data holds each job's output under its name.
+statechart: parallel
+initial: both
+states:
+  both:
+    jobs:
+      left: { script: ./echo.js, input: { side: left } }
+      right: { script: ./echo.js, input: { side: right } }
+    done: finished
+  finished:
+    final: true
+    output: ${event.data}

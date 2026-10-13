@@ -1,0 +1,32 @@
+{
+  "status": "done",
+  "output": {
+    "first": {
+      "n": 2
+    },
+    "refused": {
+      "error": {
+        "<contains>": "odd numbers only"
+      },
+      "name": "failed",
+      "status": "denied"
+    },
+    "second": null
+  },
+  "record": [
+    {
+      "machine": "asks",
+      "ask": {
+        "kind": "script",
+        "name": "ask"
+      }
+    },
+    {
+      "machine": "asks",
+      "ask": {
+        "kind": "script",
+        "name": "ask#2"
+      }
+    }
+  ]
+}

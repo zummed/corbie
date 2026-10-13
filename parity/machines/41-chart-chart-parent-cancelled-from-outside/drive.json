@@ -1,0 +1,35 @@
+[
+  {
+    "wait": {
+      "machine": "child",
+      "key": "answer"
+    },
+    "do": "reply",
+    "wrong_key": true,
+    "remember": "real",
+    "value": {},
+    "taken": false,
+    "refused_contains": "not waiting on that key"
+  },
+  {
+    "wait": {
+      "machine": "child",
+      "key": "answer"
+    },
+    "do": "cancel",
+    "taken": true
+  },
+  {
+    "wait": {
+      "machine": "child",
+      "status": "cancelled"
+    },
+    "do": "reply",
+    "remembered": "real",
+    "value": {
+      "said": "too late"
+    },
+    "taken": false,
+    "refused_contains": "ended"
+  }
+]

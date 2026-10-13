@@ -1,0 +1,25 @@
+# A state marked approve: true whose ask is a chart that waits for a reply
+# nobody sends. The state's timer leaves it, a second in: the waiting job is
+# dropped without ever starting, and the ask is cancelled.
+statechart: asks
+ask:
+  machine: ./ask-person.yaml
+initial: guarded
+states:
+  guarded:
+    job: { script: ./add.js, input: { n: 1 }, approve: true }
+    done: ran
+    failed: refused
+    after: { 1s: left }
+  ran:
+    final: true
+    output: { ran: true }
+  refused:
+    final: true
+    output: { refused: "${event.data.error}" }
+  left:
+    job: { script: ./echo.js, input: { left_by: "${event.name}" } }
+    done: finished
+  finished:
+    final: true
+    output: ${states.left.output}

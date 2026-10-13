@@ -1,0 +1,8 @@
+# Flow, flow, chart. A client cancels the root while the grandchild (a
+# chart that sleeps six seconds) is running.
+flow: top
+stages:
+  mid:
+    job: { machine: ./middle.yaml }
+output:
+  mid: ${stages.mid.output}

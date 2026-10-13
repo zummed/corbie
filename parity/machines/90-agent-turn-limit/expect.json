@@ -1,0 +1,101 @@
+{
+  "status": "done",
+  "output": {
+    "note": {
+      "no_ask": "<any>",
+      "with_ask_error": null
+    },
+    "with_ask_text": "Done after three calls."
+  },
+  "record": [
+    {
+      "machine": "no-ask",
+      "status": "failed"
+    },
+    {
+      "machine": "parent",
+      "event": {
+        "name": "failed",
+        "from": "no_ask",
+        "data": {
+          "error": {
+            "<contains>": "turn limit reached"
+          }
+        }
+      }
+    },
+    {
+      "machine": "parent",
+      "event": {
+        "name": "failed",
+        "from": "no_ask",
+        "data": {
+          "status": "error",
+          "output": {
+            "tokens": {
+              "input": 2,
+              "output": 2
+            },
+            "conversation": {
+              "turns": [
+                "<any>",
+                "<any>"
+              ],
+              "blobs": "<any>"
+            }
+          }
+        }
+      }
+    },
+    {
+      "machine": "no-ask",
+      "emit": {
+        "job": "turn#2",
+        "name": "log",
+        "data": {
+          "<contains>": "1 turns remain"
+        }
+      }
+    },
+    {
+      "machine": "with-ask",
+      "emit": {
+        "job": "turn#2",
+        "name": "log",
+        "data": {
+          "<contains>": "1 turns remain"
+        }
+      }
+    },
+    {
+      "machine": "no-ask",
+      "ask": {
+        "kind": "script",
+        "name": "turn#3"
+      },
+      "absent": true
+    },
+    {
+      "machine": "with-ask",
+      "ask": {
+        "kind": "hold",
+        "name": "more"
+      }
+    },
+    {
+      "machine": "with-ask",
+      "ask": {
+        "kind": "script",
+        "name": "ask"
+      }
+    },
+    {
+      "machine": "with-ask",
+      "ask": {
+        "kind": "script",
+        "name": "turn#4"
+      }
+    }
+  ],
+  "note": "When its ask gives an agent more turns it is given as many again as it started with (two here), so the ask is asked once."
+}

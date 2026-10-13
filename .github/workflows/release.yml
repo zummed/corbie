@@ -1,0 +1,33 @@
+name: release
+
+# A person starts a release; no push does. It is named after the version the
+# binary prints, so the next release needs that version raised first.
+on:
+  workflow_dispatch:
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # the last step creates the release; no other step is given the token
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - uses: jdx/mise-action@v5
+
+      - run: mise run check
+
+      - run: mise run dist
+
+      - name: Create the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          version=$(dist/corbie-linux-amd64 version | sed -n '1s/^corbie //p')
+          gh release create "v$version" dist/* \
+            --target "$GITHUB_SHA" \
+            --title "$version" \
+            --notes "Built from $GITHUB_SHA."

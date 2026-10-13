@@ -1,0 +1,17 @@
+{
+  "status": "failed",
+  "failure": "error",
+  "error_contains": "reached gave_up",
+  "output": {
+    "why": {
+      "<contains>": "failed on purpose"
+    }
+  },
+  "record": [
+    {
+      "machine": "sleeper",
+      "status": "cancelled"
+    }
+  ],
+  "note": "The state's failed: is taken while the slow job is still going, the slow job is cancelled as the state is left (R-chart-19), and the chart fails at the final state marked failed: true with its output."
+}

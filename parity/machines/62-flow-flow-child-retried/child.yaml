@@ -1,0 +1,7 @@
+flow: child
+input: [ok_after]
+stages:
+  try:
+    job: { script: ./early.js, input: { ok_after: "${input.ok_after}" } }
+output:
+  try: ${stages.try.output}

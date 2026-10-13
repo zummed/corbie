@@ -1,0 +1,69 @@
+A list: a stage starts one job for each item of a list or of a stream.
+
+One job for each item
+---------------------
+
+`each:` gives a stage a list. The stage starts one job for each item, in
+parallel, and the job reads its item as `${item}`. The script is the one from
+`corbie manual first-machine`.
+
+    # titles.yaml
+    flow: fetch-titles
+    input: [urls]
+
+    stages:
+      get_title:
+        each: ${input.urls}
+        job:
+          script: ./fetch-title.js
+          input: { url: "${item}" }
+          allow: [net:example.com, net:www.iana.org]
+
+    output: ${stages.get_title.output}
+
+    corbie test titles.yaml --input '{"urls": ["https://example.com", "https://www.iana.org/help/example-domains"]}'
+      output: [{"item":"https://example.com","output":{"title":"Example Domain","url":"https://example.com"}},{"item":"https://www.iana.org/help/example-domains","output":{"title":"Example Domains","url":"https://www.iana.org/help/example-domains"}}]
+
+The stage's output is a list in the order of the items.
+
+A stream of items
+-----------------
+
+`each:` can also name another stage. That stage's script calls `emit` once
+for each item, and a job starts for each item as it arrives. `--watch` prints
+the run's record as it is written. Its lines are shown here without their time
+and run number.
+
+    # paged.yaml
+    flow: paged-titles
+    input: [pages]
+
+    stages:
+      list_pages:
+        job:
+          script: ./list-pages.js
+          input: { pages: "${input.pages}" }
+      get_title:
+        each: list_pages
+        job:
+          script: ./fetch-title.js
+          input: { url: "${item}" }
+          allow: [net:example.com]
+
+    output: ${stages.get_title.output}
+
+    // list-pages.js
+    for (let n = 1; n <= input.pages; n++) {
+      emit("url", "https://example.com/?page=" + n)
+    }
+
+    corbie test paged.yaml --input '{"pages": 3}' --watch
+      step 1  -> job list_pages: a script, on runner
+      step 2  <- url from list_pages "https://example.com/?page=1"
+      step 2  -> job get_title.0: a script, on runner
+
+The first `get_title` job starts at step 2, while `list_pages` is still
+emitting.
+
+Next: `corbie manual machines-together` runs a flow from a statechart and from
+an agent.

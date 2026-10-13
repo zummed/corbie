@@ -1,0 +1,18 @@
+{
+  "status": "cancelled",
+  "error_contains": "cancelled",
+  "record": [
+    {
+      "machine": "child",
+      "status": "cancelled"
+    },
+    {
+      "machine": "asker",
+      "ask": {
+        "kind": "script",
+        "name": "turn#2"
+      },
+      "absent": true
+    }
+  ]
+}

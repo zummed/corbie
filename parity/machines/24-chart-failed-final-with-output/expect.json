@@ -1,0 +1,10 @@
+{
+  "status": "failed",
+  "failure": "error",
+  "error_contains": "reached gave_up",
+  "output": {
+    "why": {
+      "<contains>": "failed on purpose"
+    }
+  }
+}

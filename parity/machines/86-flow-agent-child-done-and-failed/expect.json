@@ -1,0 +1,17 @@
+{
+  "status": "done",
+  "output": {
+    "after_bad": {
+      "error": {
+        "<contains>": "turn: Error: the model call failed"
+      }
+    },
+    "after_good": {
+      "text": "The answer is 2.",
+      "usage": {
+        "input": 2,
+        "output": 2
+      }
+    }
+  }
+}

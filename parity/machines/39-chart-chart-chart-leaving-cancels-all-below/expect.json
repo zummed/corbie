@@ -1,0 +1,44 @@
+{
+  "status": "done",
+  "output": {
+    "left_by": "timer"
+  },
+  "record": [
+    {
+      "machine": "middle",
+      "status": "cancelled"
+    },
+    {
+      "machine": "bottom",
+      "status": "cancelled"
+    },
+    {
+      "machine": "top",
+      "event": {
+        "name": "middle_leaving"
+      },
+      "absent": true
+    },
+    {
+      "machine": "middle",
+      "event": {
+        "name": "bottom_leaving"
+      },
+      "absent": true
+    },
+    {
+      "machine": "middle",
+      "ask": {
+        "kind": "event"
+      },
+      "absent": true
+    },
+    {
+      "machine": "bottom",
+      "ask": {
+        "kind": "event"
+      },
+      "absent": true
+    }
+  ]
+}

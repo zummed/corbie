@@ -113,13 +113,39 @@ func (f *directory) ReadPart(ctx context.Context, name string, from, length int6
 	return part[:n], nil
 }
 
+// changesAtOnce is how many changes one process makes to directories at
+// once. Each change waits on the disk, and a process waiting on the disk
+// holds a thread of the operating system for each change, so any more wait
+// for a turn, which holds none.
+const changesAtOnce = 16
+
+var changing = make(chan struct{}, changesAtOnce)
+
+// startChange waits for a turn to change a directory, and gives the func
+// that ends it.
+func startChange(ctx context.Context) (func(), error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	select {
+	case changing <- struct{}{}:
+		return func() { <-changing }, nil
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	}
+}
+
 func (f *directory) Write(ctx context.Context, name string, value []byte, how How) (bool, error) {
 	if err := checkName(name); err != nil {
 		return false, err
 	}
+	end, err := startChange(ctx)
+	if err != nil {
+		return false, err
+	}
+	defer end()
 	path := f.path(name)
 	var done bool
-	var err error
 	// The temporary file can go before it is moved: a listing clears old
 	// ones, and a write can wait a long time for the lock.
 	for range 3 {
@@ -146,6 +172,11 @@ func (f *directory) WriteFrom(ctx context.Context, name string, r io.Reader) (bo
 	if err := checkName(name); err != nil {
 		return false, err
 	}
+	end, err := startChange(ctx)
+	if err != nil {
+		return false, err
+	}
+	defer end()
 	path := f.path(name)
 	tmp, err := writeTemp(filepath.Dir(path), func(w io.Writer) error {
 		_, err := io.Copy(w, r)
@@ -239,11 +270,12 @@ func (f *directory) Copy(ctx context.Context, from, to string) (bool, error) {
 	if err := errors.Join(checkName(from), checkName(to)); err != nil {
 		return false, err
 	}
-	if err := ctx.Err(); err != nil {
+	end, err := startChange(ctx)
+	if err != nil {
 		return false, err
 	}
+	defer end()
 	src, dst := f.path(from), f.path(to)
-	var err error
 	for i := range directoryTries {
 		if err = os.MkdirAll(filepath.Dir(dst), 0o700); err == nil {
 			err = os.Link(src, dst)
@@ -272,9 +304,11 @@ func (f *directory) Delete(ctx context.Context, name string, how How) (bool, err
 	if err := checkName(name); err != nil {
 		return false, err
 	}
-	if err := ctx.Err(); err != nil {
+	end, err := startChange(ctx)
+	if err != nil {
 		return false, err
 	}
+	defer end()
 	path := f.path(name)
 	if how.kind == onlyIfUnchanged {
 		unlock, err := f.lock(ctx, true)
@@ -286,7 +320,7 @@ func (f *directory) Delete(ctx context.Context, name string, how How) (bool, err
 			return false, err
 		}
 	}
-	err := os.Remove(path)
+	err = os.Remove(path)
 	if err != nil && !gone(err) {
 		return false, err
 	}

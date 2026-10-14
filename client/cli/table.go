@@ -22,8 +22,8 @@ const starts = `
                            --allow or --deny they may use no other; repeatable
   --deny <entry>           one permission the run's jobs are refused,
                            whatever is allowed; repeatable
-  --deadline <time>        the longest the run may take, such as 1h; it
-                           cannot extend the definition's deadline:
+  --timeout <time>         the longest the run may take, such as 1h; it
+                           cannot extend the definition's timeout
   --secret NAME            a run secret, its value read from the environment
                            variable NAME; repeatable
   --life <time>            how long the start message is valid while no
@@ -34,7 +34,7 @@ const scripts = `
 
 A script file (.js) can be given in place of a definition. Corbie wraps it in
 a flow of one stage, and these flags set that stage's job. With a definition,
---timeout, --memory and --tag are refused.
+--memory and --tag are refused.
 
   --allow, --deny    the job's allow and deny lists
   --timeout <time>   the job's timeout; default 5m
@@ -142,7 +142,7 @@ with status waiting, which no controller has started, is not listed.
                       or ends
 
   corbie manual runs   a run as it is printed, and with --json`},
-		{Name: "show", Usage: "<id> [--record | --watch | --wait | --keys | --step n | --definition | --save <directory>]", Summary: "show one run: its status and its result", run: cmdShow, Help: `
+		{Name: "show", Usage: "<id> [--record | --watch | --wait | --tickets | --step n | --definition | --save <directory>]", Summary: "show one run: its status and its result", run: cmdShow, Help: `
 It prints the run's status, and its output or its error when it has ended. It
 takes one of these flags at most.
 
@@ -151,8 +151,8 @@ takes one of these flags at most.
   --watch              print the same, then each entry as it is written,
                        until the run ends
   --wait               wait until the run ends, then print it
-  --keys               print each key the run waits on, as its name and its
-                       value; corbie reply takes the value
+  --tickets            print each ticket the run waits on, as its name and
+                       its value; corbie reply takes the value
   --step n             print step n of the run's record, as JSON
   --definition         print the definition the run was started from, with
                        every short form written out, as JSON
@@ -174,10 +174,11 @@ refused with the reason. It fails if the event is refused.
 
   --life <time>   how long the event is valid while no controller takes it,
                   and how long the command waits for the answer; default 5m`},
-		{Name: "reply", Usage: "<id> <key> [value] [--life 5m]", Summary: "answer a key that a run waits on", run: cmdReply, Help: `
-The key is the value that corbie show <id> --keys prints, and <id> is the run
-that waits on it. Any client that has the value may answer, and a key is
-answered once. The answer is JSON, or plain text if it does not parse as JSON.
+		{Name: "reply", Usage: "<id> <ticket> [value] [--life 5m]", Summary: "answer a ticket that a run waits on", run: cmdReply, Help: `
+The ticket is the value that corbie show <id> --tickets prints, and <id> is
+the run that waits on it. Any client that has the value may answer, and a
+ticket is answered once. The answer is JSON, or plain text if it does not
+parse as JSON.
 
 The command prints taken, or refused with the reason. It fails if the answer
 is refused.

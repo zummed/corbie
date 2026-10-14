@@ -6,11 +6,11 @@ states:
   running:
     job: { machine: ./child.yaml }
     on:
+      done: finished
       item: saw_emit
-    done: finished
   saw_emit:
-    final: true
+    end: done
     output: { parent_saw_emit: true }
   finished:
-    final: true
+    end: done
     output: { parent_saw_emit: false, child: "${event.data}" }

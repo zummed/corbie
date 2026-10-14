@@ -336,10 +336,11 @@ const everything = `
 	              entry: { send: { to: parent, event: hello, data: 1 } }
 	              on: { ack: second }
 	            second:
-	              after: { 1s: last }
-	            last: { final: true, output: { from: child } }
+	              timers: { pause: 1s }
+	              on: { pause: last }
+	            last: { end: done, output: { from: child } }
 	    on:
+	      done: finished
 	      hello: { send: { to: kid, event: ack } }
-	    done: finished
-	  finished: { final: true, output: "${states.working.output}" }
+	  finished: { end: done, output: "${states.working.output}" }
 `

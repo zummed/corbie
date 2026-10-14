@@ -582,7 +582,7 @@ func (r *Runner) sweep(ctx context.Context) error {
 // ceiling is the runner's own layer for a controller's jobs.
 func (r *Runner) ceiling(s Served) permission.Layer {
 	layer := s.Ceiling
-	layer.Name = "the ceiling of the runner " + r.ID.Name
+	layer.Name = "the ceiling of the runner " + strconv.Quote(r.ID.Name)
 	layer.Fix = fmt.Sprintf("the runner's owner runs, on the runner's computer: corbie runner trust %s --allow %%s", s.Controller.Name)
 	return layer
 }

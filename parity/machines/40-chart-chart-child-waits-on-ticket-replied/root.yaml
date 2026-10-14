@@ -1,0 +1,19 @@
+# The child chart waits on a ticket. A client replies to the child's own
+# instance; the child finishes with the reply and the parent with the
+# child's output. The parent waits on a ticket of the same name, answer,
+# which nobody replies to.
+statechart: parent
+initial: running
+states:
+  running:
+    ticket: answer
+    job: { machine: ./child.yaml }
+    on:
+      done: finished
+      answer: parent_was_answered
+  parent_was_answered:
+    end: done
+    output: { parent_was_answered: "${event.data}" }
+  finished:
+    end: done
+    output: { child: "${event.data}" }

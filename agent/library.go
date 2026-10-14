@@ -8,9 +8,6 @@ const (
 	turnScript = "corbie:turn.js"
 	turnSource = `return require("agents").turn(input)
 `
-	moreScript = "corbie:more.js"
-	moreSource = `return { more: input.more }
-`
 	// The preview of a blob the model is about to be shown for the first
 	// time: how many items it has, and the first few of them. Given a
 	// value too large to show in place of a blob, it makes the blob: a text
@@ -133,12 +130,12 @@ exports.turn = function (input) {
     service: input.model.service,
     model: input.model.name,
     address: input.model.address,
-    key: input.model.key ? secrets.get(input.model.key) : null,
+    key: input.model.secret ? secrets.get(input.model.secret) : null,
     system: input.system || null,
     tools: input.tools || null,
     shape: input.shape || null,
     effort: input.model.effort || null,
-    reply: input.model.reply || null,
+    reply_tokens: input.model.reply_tokens || null,
     own: input.model.own && input.model.own.length ? input.model.own : null,
   })
   const answer = { role: "assistant", content: reply.text, calls: reply.calls }
@@ -205,7 +202,7 @@ This turn calls the library's turn and logs each reply.
 
     # heard.yaml
     agent: heard
-    model: { name: claude-sonnet-5-5, key: ANTHROPIC_KEY }
+    model: { name: claude-sonnet-5-5, secret: ANTHROPIC_KEY }
     prompt: Say hello.
     turn: ./heard.js
 

@@ -7,11 +7,11 @@ states:
   running:
     job: { machine: ./child.yaml }
     on:
+      done: got_result_first
       last_words: heard_event_first
-    done: got_result_first
   heard_event_first:
-    final: true
+    end: done
     output: { first: event, data: "${event.data}" }
   got_result_first:
-    final: true
+    end: done
     output: { first: result, output: "${event.data}" }

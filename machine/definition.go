@@ -18,15 +18,15 @@ import (
 // A Definition is a machine's definition in its one full form, which is
 // what is stored and run. A written definition is filled out into it.
 type Definition struct {
-	Type     string   `json:"type"`
-	Name     string   `json:"name"`
-	Input    []string `json:"input,omitzero"`    // the inputs it needs
-	Keep     Duration `json:"keep,omitzero"`     // how long its instances are kept
-	Deadline Duration `json:"deadline,omitzero"` // how long an instance may run
-	Depth    *int     `json:"depth,omitzero"`    // how many levels of machines may be below it; eight if not said
-	Jobs     int      `json:"jobs,omitzero"`     // how many jobs an instance may start
-	Allow    []string `json:"allow,omitzero"`
-	Deny     []string `json:"deny,omitzero"`
+	Type    string   `json:"type"`
+	Name    string   `json:"name"`
+	Input   []string `json:"input,omitzero"`   // the inputs it needs
+	Keep    Duration `json:"keep,omitzero"`    // how long its instances are kept
+	Timeout Duration `json:"timeout,omitzero"` // how long an instance may run
+	Depth   *int     `json:"depth,omitzero"`   // how many levels of machines may be below it; eight if not said
+	Jobs    int      `json:"jobs,omitzero"`    // how many jobs an instance may start
+	Allow   []string `json:"allow,omitzero"`
+	Deny    []string `json:"deny,omitzero"`
 	// AskAbout lists the permissions that must be asked about.
 	AskAbout []string `json:"ask_about,omitzero"`
 	Ask      *JobSpec `json:"ask,omitzero"`
@@ -154,7 +154,7 @@ func (c *Checker) Name(place, name string) {
 	case !nameForm.MatchString(name):
 		c.Problem(place, "%q is not a name: use letters, digits, '_' and '-', starting with a letter", name)
 	case name == "ask":
-		c.Problem(place, "the name ask is taken by the definition's ask")
+		c.Problem(place, "the name \"ask\" is taken by the definition's ask")
 	}
 }
 

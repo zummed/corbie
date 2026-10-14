@@ -1,6 +1,6 @@
 # The same shape as 81, but the child's definition sets its own jobs: 2.
 flow: top
-jobs: 10
+limits: { jobs: 10 }
 stages:
   first_kid:
     job: { machine: ./child.yaml, input: { which: first } }

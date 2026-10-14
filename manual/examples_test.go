@@ -58,8 +58,8 @@ import (
 //
 // A command must end well, unless the page shows it printing a line that
 // starts "error:" or "refused:", and then it must not. In a command, <id>
-// is the ID of the run the page's last corbie submit started, and <key>
-// the key that run waits on, once it does.
+// is the ID of the run the page's last corbie submit started, and <ticket>
+// the ticket that run waits on, once it does.
 
 // An example is one block of a page, read.
 type example struct {
@@ -646,36 +646,38 @@ func printedAs(line, shown string) bool {
 
 var runID = regexp.MustCompile(`[\w.-]+/\d{8}T\d{6}\.\d{3}Z-[0-9a-f]+`)
 
-// named gives a command with the run and the key it speaks of written in:
-// the run the page's last corbie submit started, and the key that run
-// waits on, which is asked for until the run has come to wait on it.
+// named gives a command with the run and the ticket it speaks of written in:
+// the run the page's last corbie submit started, and the ticket that run
+// waits on, which is asked for until the run has come to wait on it. A
+// command that prints the tickets waits for the same.
 func (s *session) named(command string) (string, error) {
-	if !strings.Contains(command, "<id>") && !strings.Contains(command, "<key>") {
+	ticket := strings.Contains(command, "<ticket>") || strings.Contains(command, "--tickets")
+	if !strings.Contains(command, "<id>") && !ticket {
 		return command, nil
 	}
 	if s.id == "" {
 		return "", fmt.Errorf("the command %q speaks of a run, and the page has started none with corbie submit", command)
 	}
 	command = strings.ReplaceAll(command, "<id>", s.id)
-	if !strings.Contains(command, "<key>") {
+	if !ticket {
 		return command, nil
 	}
-	// The key is there once the run has come to wait on it, which takes a
-	// controller and a runner a moment.
+	// The ticket is there once the run has come to wait on it, which takes
+	// a controller and a runner a moment.
 	var status int
-	var keys string
+	var tickets string
 	for until := time.Now().Add(limit); time.Now().Before(until); time.Sleep(10 * time.Millisecond) {
 		var err error
-		if status, keys, err = do([]string{"show", s.id, "--keys"}); err != nil {
+		if status, tickets, err = do([]string{"show", s.id, "--tickets"}); err != nil {
 			return "", err
 		}
-		if held := strings.Fields(keys); status == 0 && len(held) == 2 {
-			return strings.ReplaceAll(command, "<key>", held[1]), nil
+		if held := strings.Fields(tickets); status == 0 && len(held) == 2 {
+			return strings.ReplaceAll(command, "<ticket>", held[1]), nil
 		}
 	}
 	_, stands, _ := do([]string{"show", s.id})
-	return "", fmt.Errorf("%s speaks of a key, and in %s the run did not come to wait on one key: corbie show %s --keys ended with the status %d, and printed:\n%s\nand corbie show %s printed:\n%s",
-		command, limit, s.id, status, inset(keys), s.id, inset(s.w.seen(stands)))
+	return "", fmt.Errorf("%s speaks of a ticket, and in %s the run did not come to wait on one ticket: corbie show %s --tickets ended with the status %d, and printed:\n%s\nand corbie show %s printed:\n%s",
+		command, limit, s.id, status, inset(tickets), s.id, inset(s.w.seen(stands)))
 }
 
 // calls asks a script what it finds on each plugin and library: the calls

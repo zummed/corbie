@@ -1,10 +1,10 @@
-# The child chart reaches a failed final state with an output:, and the
-# parent has no failed: for it.
+# The child chart reaches a final state with end: failed and an output:,
+# and the parent has no rule for failed.
 statechart: parent
 initial: running
 states:
   running:
     job: { machine: ./child.yaml }
-    done: finished
+    on: { done: finished }
   finished:
-    final: true
+    end: done

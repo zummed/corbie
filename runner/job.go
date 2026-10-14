@@ -104,7 +104,7 @@ func (j *supervised) run() *instance.Result {
 	for path, ref := range job.Files {
 		contents, err := blob.ReadAll(j.ctx, st, ref, scriptLimit)
 		if err != nil {
-			return jobError("the file %s could not be read whole: %v", path, err)
+			return jobError("the file %q could not be read whole: %v", path, err)
 		}
 		files[path] = string(contents)
 	}

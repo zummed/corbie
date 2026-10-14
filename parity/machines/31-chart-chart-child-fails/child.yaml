@@ -4,12 +4,12 @@ initial: choosing
 states:
   choosing:
     job: { script: ./echo.js, input: { how: "${input.how}" } }
-    done:
-      - { to: failing_run, when: event.data.how == "run" }
-      - gave_up
+    on:
+      done:
+        - { go: failing_run, when: '${event.data.how == "run"}' }
+        - gave_up
   failing_run:
     job: { script: ./fail.js }
   gave_up:
-    final: true
-    failed: true
+    end: failed
     output: { why: "the child gave up" }

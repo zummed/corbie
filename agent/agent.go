@@ -27,9 +27,9 @@ type Agent struct {
 	Tools  map[string]*Tool `json:"tools,omitzero"`
 	// Turns is how many turns the agent has; twenty if it says nothing.
 	Turns int `json:"turns,omitzero"`
-	// Output is the shape of the agent's result, where it is data and not
-	// text: each name with the type of its value.
-	Output map[string]any `json:"output,omitzero"`
+	// Reply is the shape of the reply in the agent's result, where it is
+	// data and not text: each name with the type of its value.
+	Reply map[string]any `json:"reply,omitzero"`
 	// Conversation is a conversation so far, to carry on from.
 	Conversation any `json:"conversation,omitzero"`
 	// Turn is the job that makes a turn.
@@ -39,8 +39,8 @@ type Agent struct {
 // Model names the model an agent's turns are sent to.
 type Model struct {
 	Name string `json:"name"`
-	// Key is the name of the secret that is the service's key.
-	Key string `json:"key,omitzero"`
+	// Secret is the name of the secret that is the service's key.
+	Secret string `json:"secret,omitzero"`
 	// Service is which service's way of talking is spoken; it follows from
 	// the model's name where it is not given.
 	Service string `json:"service,omitzero"`
@@ -48,8 +48,8 @@ type Model struct {
 	// place.
 	Address string `json:"address,omitzero"`
 	Effort  string `json:"effort,omitzero"`
-	// Reply is the most a reply may hold, in tokens.
-	Reply int `json:"reply,omitzero"`
+	// ReplyTokens is the most a reply may hold, in tokens.
+	ReplyTokens int `json:"reply_tokens,omitzero"`
 	// Own are the tools of its own that a model run as a program may use:
 	// tools Corbie does not run.
 	Own []string `json:"own,omitzero"`
@@ -72,7 +72,6 @@ const DefaultTurns = 20
 // The jobs an agent itself makes, whose names no tool may take.
 const (
 	turnJob    = "turn"
-	moreJob    = "more"
 	previewJob = "preview"
 )
 
@@ -101,14 +100,14 @@ func (m Model) addressOf() string {
 // program is on the runner's machine, writes what it writes, and has tools
 // of its own. Only a service that takes levels of effort is asked for one.
 func heldBy(service *llm.Service) []string {
-	held := []string{"name", "key", "service"}
+	held := []string{"name", "secret", "service"}
 	if len(service.Efforts) > 0 {
 		held = append(held, "effort")
 	}
 	if service.Program != "" {
 		return append(held, "own")
 	}
-	return append(held, "address", "reply")
+	return append(held, "address", "reply_tokens")
 }
 
 // check says what is wrong with how a model is named.
@@ -118,25 +117,25 @@ func (m Model) check() error {
 	holds := strings.Join(llm.Names(), ", ")
 	switch {
 	case m.Name == "":
-		return fmt.Errorf("an agent names its model, as model: { name: claude-sonnet-5-5, key: ANTHROPIC_KEY }")
+		return fmt.Errorf("an agent names its model, as model: { name: claude-sonnet-5-5, secret: ANTHROPIC_KEY }")
 	case name == "":
 		return fmt.Errorf("it is not clear which service the model %q is of: give service: one of %s", m.Name, holds)
 	case !ok:
 		return fmt.Errorf("%q is not a model service this Corbie holds (it holds: %s)", name, holds)
 	case m.Effort != "" && !slices.Contains(service.Efforts, m.Effort):
-		return fmt.Errorf("the service %s does not take the effort %q (it takes: %s)", name, m.Effort, strings.Join(service.Efforts, ", "))
-	case machine.HasExpr(m.Key) || machine.HasExpr(m.Name):
-		return fmt.Errorf("a model's name and its key's name are written out")
+		return fmt.Errorf("the service %q does not take the effort %q (it takes: %s)", name, m.Effort, strings.Join(service.Efforts, ", "))
+	case machine.HasExpr(m.Secret) || machine.HasExpr(m.Name):
+		return fmt.Errorf("a model's name and its secret's name are written out")
 	}
 	// A model holds what its service's models hold, and nothing else.
 	held := heldBy(service)
 	switch {
 	case m.Address != "" && !slices.Contains(held, "address"):
-		return fmt.Errorf("the service %s is a program on the runner's machine, and has no address", name)
+		return fmt.Errorf("the service %q is a program on the runner's computer, and has no address", name)
 	case len(m.Own) > 0 && !slices.Contains(held, "own"):
-		return fmt.Errorf("own: is for a service that is a program, which may have tools of its own; %s has none", name)
-	case m.Reply != 0 && !slices.Contains(held, "reply"):
-		return fmt.Errorf("the service %s is a program, which writes what it writes: it cannot be held to a size of reply, and takes no reply:", name)
+		return fmt.Errorf("own: is for a service that is a program, which may have tools of its own; the service %q has none", name)
+	case m.ReplyTokens != 0 && !slices.Contains(held, "reply_tokens"):
+		return fmt.Errorf("the service %q is a program, which writes what it writes: it cannot be held to a size of reply, and takes no reply_tokens:", name)
 	}
 	if service.Program != "" {
 		return nil
@@ -162,8 +161,8 @@ func (m Model) check() error {
 func (m Model) permissions() []string {
 	if service, _ := llm.Find(m.serviceOf()); service != nil && service.Program != "" {
 		allow := []string{"exec:" + service.Program, "env:HOME"}
-		if m.Key != "" {
-			allow = []string{"exec:" + service.Program, "secret:" + m.Key + "@exec:" + service.Program}
+		if m.Secret != "" {
+			allow = []string{"exec:" + service.Program, "secret:" + m.Secret + "@exec:" + service.Program}
 		}
 		for _, tool := range m.Own {
 			if group := service.Needs(tool); !slices.Contains(allow, group) {
@@ -186,11 +185,11 @@ func (m Model) permissions() []string {
 	to := "net:" + net.JoinHostPort(u.Hostname(), port)
 	allow := []string{to}
 	switch {
-	case m.Key == "":
+	case m.Secret == "":
 	case u.Scheme == "http":
-		allow = append(allow, "secret:"+m.Key+"@net.unencrypted:"+net.JoinHostPort(u.Hostname(), port))
+		allow = append(allow, "secret:"+m.Secret+"@net.unencrypted:"+net.JoinHostPort(u.Hostname(), port))
 	default:
-		allow = append(allow, "secret:"+m.Key+"@"+to)
+		allow = append(allow, "secret:"+m.Secret+"@"+to)
 	}
 	return allow
 }
@@ -200,6 +199,11 @@ type agentType struct{}
 func init() { machine.Register(agentType{}) }
 
 func (agentType) Name() string { return "agent" }
+
+// Limits adds an agent's turns to the limits every type takes.
+func (agentType) Limits() []machine.Field {
+	return []machine.Field{{Name: "turns", Kind: machine.KindNumber, Like: "20", Does: "how many turns it has; twenty by default"}}
+}
 
 // Shape is what an agent's definition holds of its own. What a model may
 // be named, and what it may be asked for, is what the services this Corbie
@@ -236,13 +240,13 @@ func (agentType) Shape() *machine.Shape {
 	model := &machine.Shape{Name: "model", What: "a model", Sorts: &machine.Sorts{By: "service", Fields: sorts, Which: which}, Fields: []machine.Field{
 		{Name: "name", Kind: machine.KindWord, Like: "claude-sonnet-5-5", Does: "the model's name, as its service knows it",
 			Open: true, By: "service", ValuesBy: names},
-		{Name: "key", Kind: machine.KindWord, Like: "ANTHROPIC_KEY", Does: "the name of the secret that is the service's key"},
+		{Name: "secret", Kind: machine.KindWord, Like: "ANTHROPIC_KEY", Does: "the name of the secret that is the service's key"},
 		{Name: "service", Kind: machine.KindWord, Like: "anthropic", Values: llm.Names(),
 			Does: "which service's way of talking is spoken; it follows from the name for claude-… and gpt-… models"},
 		{Name: "address", Kind: machine.KindWord, Like: "https://models.example",
 			Does: "where the service lives, for a model that is not at its service's usual place: self-hosted, or offered by a cloud"},
 		{Name: "effort", Kind: machine.KindWord, Like: "high", Does: "how much effort the model is to take", By: "service", ValuesBy: efforts},
-		{Name: "reply", Kind: machine.KindNumber, Like: "4000", Does: "the most a reply may hold, in tokens"},
+		{Name: "reply_tokens", Kind: machine.KindNumber, Like: "4000", Does: "the most a reply may hold, in tokens"},
 		{Name: "own", Kind: machine.KindList, Like: "[WebSearch]", Open: true, By: "service", ValuesBy: tools,
 			Does: "for a service that is a program: the tools of its own it may use. Corbie does not run them, so each needs leave for all it could do: network to browse, disk to read or write files, all for a shell or a skill"},
 	}}
@@ -252,13 +256,12 @@ func (agentType) Shape() *machine.Shape {
 		{Name: "job", Kind: machine.KindJob, Like: "{ script: ./shelf.js }", Does: "the job that is started when the model picks it; it reads input and args"},
 	}}
 	return &machine.Shape{Name: "agent", What: "an agent", Fields: []machine.Field{
-		{Name: "model", Kind: machine.KindFields, Of: model, Like: "{ name: claude-sonnet-5-5, key: ANTHROPIC_KEY }", Does: "the model its turns are sent to"},
+		{Name: "model", Kind: machine.KindFields, Of: model, Like: "{ name: claude-sonnet-5-5, secret: ANTHROPIC_KEY }", Does: "the model its turns are sent to"},
 		{Name: "system", Kind: machine.KindText, Like: "You answer questions about a library of files.", Does: "the system text"},
 		{Name: "prompt", Kind: machine.KindValue, Like: "${input.question}", Does: "what the agent is asked; an expression of its input"},
 		{Name: "tools", Kind: machine.KindNamed, Of: tool, Does: "the tools the model may pick, each a named job"},
 		{Name: "tools_file", Kind: machine.KindList, Like: "[./tools.yaml]", Does: "a file of tools shared with other agents, or a list of them"},
-		{Name: "turns", Kind: machine.KindNumber, Like: "20", Does: "how many turns it has; twenty unless it says"},
-		{Name: "output", Kind: machine.KindTypes, Like: "{ outcome: string }", Does: "the shape of its result where it is data: each name with the type of its value"},
+		{Name: "reply", Kind: machine.KindTypes, Like: "{ outcome: string }", Does: "the shape of its reply where it is data: each name with the type of its value"},
 		{Name: "conversation", Kind: machine.KindValue, Like: "${input.conversation}",
 			Does: "a conversation to carry on from: the conversation of an earlier agent's result, given whole"},
 		{Name: "turn", Kind: machine.KindJob, Like: "./turn.js", Does: "a script of its own to make each turn"},
@@ -267,16 +270,16 @@ func (agentType) Shape() *machine.Shape {
 
 // Fill reads an agent as written and gives its full form.
 func (agentType) Fill(p *machine.Parser, f *machine.Fields) any {
-	a := &Agent{System: f.Text("system"), Turns: f.Int("turns")}
+	a := &Agent{System: f.Text("system"), Turns: p.Limits().Int("turns")}
 	// With no model named, the check says an agent names its model.
 	if mf := f.Fields("model"); mf != nil {
-		a.Model = Model{Name: mf.Text("name"), Key: mf.Text("key"), Service: mf.Text("service"),
-			Address: mf.Text("address"), Effort: mf.Text("effort"), Reply: mf.Int("reply"), Own: mf.Strings("own")}
+		a.Model = Model{Name: mf.Text("name"), Secret: mf.Text("secret"), Service: mf.Text("service"),
+			Address: mf.Text("address"), Effort: mf.Text("effort"), ReplyTokens: mf.Int("reply_tokens"), Own: mf.Strings("own")}
 		mf.Done()
 	}
 	a.Prompt, _ = f.Value("prompt")
 	a.Conversation, _ = f.Value("conversation")
-	a.Output, _ = f.Map("output")
+	a.Reply, _ = f.Map("reply")
 	tools, order := f.Map("tools")
 	// Files of tools shared with other agents are filled in here. A tool
 	// of the definition's own stands before one a file gives the same name.
@@ -320,7 +323,7 @@ func (agentType) Fill(p *machine.Parser, f *machine.Fields) any {
 	// The blob tools every agent has are ordinary scripts.
 	for name, tool := range blobTools {
 		if _, own := a.Tools[name]; own {
-			p.Problem("tools."+name, "the name %s is taken by one of the tools every agent has for blobs", name)
+			p.Problem("tools."+name, "the tool %q has the name of one of the tools every agent has for blobs", name)
 			continue
 		}
 		p.Builtin("corbie:"+name+".js", tool.source)
@@ -336,7 +339,6 @@ func (agentType) Fill(p *machine.Parser, f *machine.Fields) any {
 		p.Builtin(turnScript, turnSource)
 		a.Turn = &machine.JobSpec{Script: turnScript}
 	}
-	p.Builtin(moreScript, moreSource)
 	p.Builtin(previewScript, previewSource)
 	a.Turn.Alone = true
 	if a.Model.check() == nil {
@@ -354,8 +356,11 @@ var types = []string{"string", "number", "boolean", "list", "map", "blob", "any"
 func shapeProblem(shape map[string]any) error {
 	for name, t := range shape {
 		text, ok := t.(string)
-		if !ok || !slices.Contains(types, strings.TrimSuffix(text, "?")) {
-			return fmt.Errorf("%s: %v is not a type (the types are %s; add ? for one that may be left out)", name, t, strings.Join(types, ", "))
+		switch {
+		case !ok:
+			return fmt.Errorf("%q: a type is written as a word (the types are %s; add ? for one that may be left out)", name, strings.Join(types, ", "))
+		case !slices.Contains(types, strings.TrimSuffix(text, "?")):
+			return fmt.Errorf("%q: %q is not a type (the types are %s; add ? for one that may be left out)", name, text, strings.Join(types, ", "))
 		}
 	}
 	return nil
@@ -375,10 +380,10 @@ func (agentType) Check(c *machine.Checker, def *machine.Definition) {
 	c.Value("prompt", a.Prompt, "input")
 	c.Value("conversation", a.Conversation, "input")
 	if a.Turns < 0 {
-		c.Problem("turns", "an agent cannot have fewer turns than none")
+		c.Problem("limits.turns", "an agent cannot have fewer turns than none")
 	}
-	if err := shapeProblem(a.Output); err != nil {
-		c.Problem("output", "%v", err)
+	if err := shapeProblem(a.Reply); err != nil {
+		c.Problem("reply", "%v", err)
 	}
 	if a.Turn == nil {
 		c.Problem("turn", "an agent needs the job that makes its turns")
@@ -387,8 +392,8 @@ func (agentType) Check(c *machine.Checker, def *machine.Definition) {
 	for _, name := range sortedNames(a.Tools) {
 		tool, place := a.Tools[name], "tools."+name
 		c.Name(place, name)
-		if name == turnJob || name == moreJob || name == previewJob {
-			c.Problem(place, "the name %s is taken by a job the agent itself makes", name)
+		if name == turnJob || name == previewJob {
+			c.Problem(place, "the tool %q has the name of a job the agent itself makes", name)
 		}
 		if tool == nil || tool.Job == nil {
 			c.Problem(place, "a tool needs a job")
@@ -405,7 +410,7 @@ func (agentType) Check(c *machine.Checker, def *machine.Definition) {
 		// find it missing: the model is never told of it.
 		for _, read := range machine.ReadsIn(tool.Job.Input, "args") {
 			if _, named := tool.Args[read.Name]; !named {
-				c.Problem(place+".job", "it reads args.%s, which the tool's args do not name", read.Name)
+				c.Problem(place+".job", "it reads \"args.%s\", which the tool's args do not name", read.Name)
 			}
 		}
 	}

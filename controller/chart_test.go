@@ -16,19 +16,20 @@ const door = `
 	  closed:
 	    on: { open: opened }
 	  opened:
-	    wait: code
-	    entry: { send: { to: parent, event: want_code, data: { key: "${keys.code}" } } }
+	    ticket: code
+	    entry: { send: { to: parent, event: want_code, data: { ticket: "${tickets.code}" } } }
+	    timers: { too_long: 10s }
 	    on:
 	      code:
-	        - { to: unlocked, when: event.data == 42 }
-	        - { to: closed }
-	    after: { 10s: timed_out }
-	  unlocked: { final: true, output: { opened: true, by: "${event.name}", said: "${input.greeting}" } }
-	  timed_out: { final: true, failed: true, output: late }
+	        - { go: unlocked, when: "${event.data == 42}" }
+	        - { go: closed }
+	      too_long: timed_out
+	  unlocked: { end: done, output: { opened: true, by: "${event.name}", said: "${input.greeting}" } }
+	  timed_out: { end: failed, output: late }
 `
 
 // One run going through the store: started, sent an event, waiting on a
-// key and a timer, answered, ended.
+// ticket and a timer, answered, ended.
 func TestRunThroughTheStore(t *testing.T) {
 	w := newWorld(t)
 	run := w.submit(door, nil, map[string]any{"greeting": "hello"})
@@ -56,18 +57,18 @@ func TestRunThroughTheStore(t *testing.T) {
 		t.Fatalf("the receipt for open is %+v", r)
 	}
 	head = w.head(run)
-	if head.Step != 2 || head.Timers != 1 || !reflect.DeepEqual(head.Keys, []string{"code"}) {
+	if head.Step != 2 || head.Timers != 1 || !reflect.DeepEqual(head.Tickets, []string{"code"}) {
 		t.Fatalf("waiting, the head is %+v", head)
 	}
 	step := w.latest(run)
-	var key string
+	var ticket string
 	for _, ask := range step.Asks {
 		if ask.Kind == instance.AskEvent && ask.Event.Name == "want_code" {
-			key, _ = ask.Event.Data.(map[string]any)["key"].(string)
+			ticket, _ = ask.Event.Data.(map[string]any)["ticket"].(string)
 		}
 	}
-	if key == "" || step.State.Keys["opened"].Value != key {
-		t.Fatalf("the key the chart sent up is %q, its state holds %+v", key, step.State.Keys)
+	if ticket == "" || step.State.Tickets["opened"].Value != ticket {
+		t.Fatalf("the ticket the chart sent up is %q, its state holds %+v", ticket, step.State.Tickets)
 	}
 	if wakes := w.wakes(); len(wakes) != 1 {
 		t.Fatalf("the wakes are %v", wakes)
@@ -80,13 +81,13 @@ func TestRunThroughTheStore(t *testing.T) {
 		t.Fatalf("the receipt for an event with no rule is %+v", r)
 	}
 
-	// A wrong key is refused; the right one is taken, once.
-	wrong, _ := w.client.Reply(ctx, run, "not-the-key", 42, 0)
-	right, _ := w.client.Reply(ctx, run, key, 42, 0)
-	again, _ := w.client.Reply(ctx, run, key, 7, 0)
+	// A wrong ticket is refused; the right one is taken, once.
+	wrong, _ := w.client.Reply(ctx, run, "not-the-ticket", 42, 0)
+	right, _ := w.client.Reply(ctx, run, ticket, 42, 0)
+	again, _ := w.client.Reply(ctx, run, ticket, 7, 0)
 	w.settle()
 	if r := w.receipt(wrong); r == nil || r.Taken {
-		t.Fatalf("the receipt for a wrong key is %+v", r)
+		t.Fatalf("the receipt for a wrong ticket is %+v", r)
 	}
 	if r := w.receipt(right); r == nil || !r.Taken {
 		t.Fatalf("the receipt for the answer is %+v", r)
@@ -96,7 +97,7 @@ func TestRunThroughTheStore(t *testing.T) {
 	}
 
 	head = w.head(run)
-	if head.Status != instance.Done || head.Timers != 0 || len(head.Keys) != 0 || head.Ended.IsZero() {
+	if head.Status != instance.Done || head.Timers != 0 || len(head.Tickets) != 0 || head.Ended.IsZero() {
 		t.Fatalf("at the end the head is %+v", head)
 	}
 	if got := w.list(store.Running("ctl")); len(got) != 0 {

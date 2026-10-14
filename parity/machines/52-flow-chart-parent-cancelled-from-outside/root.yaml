@@ -1,5 +1,5 @@
-# A flow stage runs a chart that waits on a key. A client cancels the root,
-# then replies to the child's key.
+# A flow stage runs a chart that waits on a ticket. A client cancels the root,
+# then replies to the child's ticket.
 flow: parent
 stages:
   question:

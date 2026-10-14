@@ -131,8 +131,8 @@ const reads = `
 	  held: { on: { go: reading } }
 	  reading:
 	    job: { script: ./read.js, input: "${input}" }
-	    done: over
-	  over: { final: true, output: "${states.reading.output}" }
+	    on: { done: over }
+	  over: { end: done, output: "${states.reading.output}" }
 `
 
 // standingAt waits until a run has been taken up.

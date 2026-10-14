@@ -1,6 +1,6 @@
 flow: child
 input: [which]
-jobs: 2
+limits: { jobs: 2 }
 stages:
   one:
     job: { script: ./add.js, input: { n: 1 } }

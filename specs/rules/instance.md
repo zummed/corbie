@@ -10,8 +10,8 @@ The detailed rules behind the [Instances overview](../instance.md).
 **R-inst-02** The head says what the instance is called, what type of machine it is, when it started, which instance is its parent, whether it is running, done, failed or cancelled, and which step it has reached.
 *Accept:* the head of a flow started as a child by a statechart gives the flow's name, says it is a flow, gives a start time, names the statechart's instance as its parent, says `running` and gives the step the controller last wrote; a root's head names no parent. The heads of four ended runs show `done`, `failed` and `cancelled` as each ended.
 
-**R-inst-05** The head says what the instance is waiting for: how many jobs on runners, how many timers, and the names of any keys.
-*Accept:* a statechart in a state with one script job, one `after:` and `wait: verdict` shows one job, one timer and `verdict` among its keys. Once the job's result has been taken it shows no jobs; once the state is left it shows no key.
+**R-inst-05** The head says what the instance is waiting for: how many jobs on runners, how many timers, and the names of any tickets.
+*Accept:* a statechart in a state with one script job, one timer and `ticket: verdict` shows one job, one timer and `verdict` among its tickets. Once the job's result has been taken it shows no jobs; once the state is left it shows no ticket.
 
 **R-inst-07** The head carries the labels its client gave at the start, and a child's head carries its parent's.
 *Accept:* a run started with the labels `team=ops` and `nightly` shows both in every version of its head from the first to the last, and so do a child and a child of that child.
@@ -19,8 +19,8 @@ The detailed rules behind the [Instances overview](../instance.md).
 **R-inst-09** The head is sealed to nobody. Whoever the store lets read it can read all of it and needs no identity of their own.
 *Accept:* with the controller's card, the store's address and read access to heads, and no identity file, a viewer lists the heads and reads every field of each.
 
-**R-inst-10** Apart from its labels, the head holds nothing the instance was given or produced: no input, no output, no error text, no log line, no value of a key.
-*Accept:* run a machine whose input, output, error text, log lines, key value and key answer each hold a marker string of their own, on a memory store that keeps every version of every head. No version of any head holds any of the markers. A label holding a marker does appear.
+**R-inst-10** Apart from its labels, the head holds nothing the instance was given or produced: no input, no output, no error text, no log line, no value of a ticket.
+*Accept:* run a machine whose input, output, error text, log lines, ticket value and ticket answer each hold a marker string of their own, on a memory store that keeps every version of every head. No version of any head holds any of the markers. A label holding a marker does appear.
 
 **R-inst-12** The head may be a moment behind the record, and where the two differ the record is right.
 *Accept:* stop the controller after it has written step 4 and before it has touched the head, which says 3. A client's `show` says the run is at step 4. The next pass brings the head to 4 and takes no new step to do it.
@@ -33,7 +33,7 @@ The detailed rules behind the [Instances overview](../instance.md).
 ## The record
 
 **R-inst-17** Nothing but its head and its record knows anything about an instance.
-*Accept:* stop every Corbie process while an instance waits on a job, a timer and a key. Start a controller that has never run before, with only its key and the store's address: the instance goes on to its end exactly as it would have.
+*Accept:* stop every Corbie process while an instance waits on a job, a timer and a ticket. Start a controller that has never run before, with only its private key and the store's address: the instance goes on to its end exactly as it would have.
 
 **R-inst-20** The controller writes one step entry each time the instance takes a step, and steps are numbered one after another.
 *Accept:* a run that took four steps has the entries `steps/1` to `steps/4` and no others, each written by the controller.
@@ -65,7 +65,7 @@ The detailed rules behind the [Instances overview](../instance.md).
 *Accept:* a child whose definition keeps it a month runs under a parent kept a day. From the parent's end to a day and a housekeeping pass later, there is no moment when the child's record or head exists and the parent's does not.
 
 **R-inst-38** While an instance runs, its step and emit entries older than its definition's keep are removed, its latest step excepted.
-*Accept:* a statechart whose definition keeps a day takes a step every hour for three days. At the end no step or emit entry older than a day (and a housekeeping pass) remains. A statechart that has waited a month on one key still has its latest step, and takes its next step correctly.
+*Accept:* a statechart whose definition keeps a day takes a step every hour for three days. At the end no step or emit entry older than a day (and a housekeeping pass) remains. A statechart that has waited a month on one ticket still has its latest step, and takes its next step correctly.
 
 **R-inst-39** A blob in the record of a running instance stays for as long as the current state of that instance, or of any instance running below it, refers to it.
 *Accept:* a statechart's first state produced a file that its current state reads as `states.<name>.output`; three keeps later the file is still fetched. A parent hands a file down to a child, moves on so that its own state no longer mentions the file, and runs for three keeps while the child keeps running: the child's jobs still read the file, and once the child has ended and a keep has passed, the file is removed.
@@ -105,11 +105,11 @@ The detailed rules behind the [Instances overview](../instance.md).
 
 ## Sending
 
-**R-inst-56** A client acts on an instance by writing a message into the controller's inbox, and there are four: start a run, cancel one, send it an event, answer a key. A client has no inbox of its own.
+**R-inst-56** A client acts on an instance by writing a message into the controller's inbox, and there are four: start a run, cancel one, send it an event, answer a ticket. A client has no inbox of its own.
 *Accept:* `corbie submit`, `cancel`, `send` and `reply` each write exactly one message under `<controller>/inbox/<client>/` and write to no other place in the controller's or a runner's area, the uploads of a start apart. After starts, refusals, cancels, events, answers and finished runs, no name in the store is addressed to a client other than its receipts.
 
-**R-inst-58** For every message a client sends, the controller writes a receipt under the same name, saying that the message was taken or why it was refused. A start that is refused has a receipt saying why and no instance exists for it; an answer to a key for a run the client did not start has a receipt saying whether it was the one taken.
-*Accept:* a start, a cancel, an event and an answer that the controller takes each get a receipt saying taken. A cancel for a run the client did not start gets a receipt saying why it was refused. A start whose definition does not pass its check gets a receipt listing what is wrong, and no head and no record exist under the name the client chose. Client `c2`, which can read nothing of `c1`'s run, answers a key of that run: its receipt says the answer was the one taken, and a second answer to the same key gets a receipt saying it was not.
+**R-inst-58** For every message a client sends, the controller writes a receipt under the same name, saying that the message was taken or why it was refused. A start that is refused has a receipt saying why and no instance exists for it; an answer to a ticket for a run the client did not start has a receipt saying whether it was the one taken.
+*Accept:* a start, a cancel, an event and an answer that the controller takes each get a receipt saying taken. A cancel for a run the client did not start gets a receipt saying why it was refused. A start whose definition does not pass its check gets a receipt listing what is wrong, and no head and no record exist under the name the client chose. Client `c2`, which can read nothing of `c1`'s run, answers a ticket of that run: its receipt says the answer was the one taken, and a second answer to the same ticket gets a receipt saying it was not.
 
 **R-inst-61** The receipt for an event says whether the machine acted on it or had no rule for it.
 *Accept:* send `go` to a statechart in a state with a rule for `go`: the receipt says it was acted on. Send `go` again while the chart is busy in a state with no such rule: the receipt says there was no rule for it.
@@ -118,7 +118,7 @@ The detailed rules behind the [Instances overview](../instance.md).
 *Accept:* a receipt for a refused start, whose text quotes the definition, shows none of that text when read raw from the store, and another client handed the raw value cannot open it. A receipt can be read twenty-three hours after it was written, and is gone after a day and a housekeeping pass.
 
 **R-inst-64** A message sent twice gets the same answer twice.
-*Accept:* a client writes the same answer message again after the first was taken and deleted. The receipt reads as it did, the key is not answered a second time, and no second step is taken on its account. The same holds for a start: no second instance is made.
+*Accept:* a client writes the same answer message again after the first was taken and deleted. The receipt reads as it did, the ticket is not answered a second time, and no second step is taken on its account. The same holds for a start: no second instance is made.
 
 **R-inst-65** A client chooses a run's name before it starts the run, so an application can note the name before anything is sent, and the files it sends along are written into that run's record before the start is sent.
 *Accept:* on a memory store that notes every write, a `submit` with two files writes two blobs under `records/<client>/<the chosen name>/blobs/` and only then the start message, and the run that results has the chosen name. An application using the client package obtains the name, saves it, sends the start and is killed; a new process holding only the saved name reads the run's status and result.

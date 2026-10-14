@@ -396,8 +396,10 @@ func Test_role_minute_call_takes_waiting_messages(t *testing.T) {
 		initial: waiting
 		states:
 		  waiting:
-		    after: { 30s: late }
-		    on: { tick: { send: { to: parent, event: ticked } } }
+		    timers: { too_long: 30s }
+		    on:
+		      too_long: late
+		      tick: { send: { to: parent, event: ticked } }
 		  late:
 		    on: { tick: { send: { to: parent, event: ticked } } }
 	`
@@ -408,7 +410,7 @@ func Test_role_minute_call_takes_waiting_messages(t *testing.T) {
 	}
 	// A start and an event are written, and the bucket's notice of each is
 	// lost: no call comes for them. The timer's time passes too.
-	second := w.submit(strings.Replace(waits, "after: { 30s: late }", "", 1), nil, nil)
+	second := w.submit(strings.Replace(waits, "timers: { too_long: 30s }", "", 1), nil, nil)
 	w.client.Send(ctx, first, "tick", nil, 0)
 	w.h.tick(time.Minute)
 	w.h.call("ctl", w.controller) // the call once a minute
@@ -437,10 +439,11 @@ const oneJob = `
 	states:
 	  working:
 	    job: { script: ./work.js, input: { tally: "${input.dir}/tally" }, timeout: TIMEOUT, allow: ["fs.write:${input.dir}/**"] }
-	    done: finished
-	    failed: broken
-	  finished: { final: true, output: "${states.working.output}" }
-	  broken: { final: true, output: "${event.data.status}" }
+	    on:
+	      done: finished
+	      failed: broken
+	  finished: { end: done, output: "${states.working.output}" }
+	  broken: { end: done, output: "${event.data.status}" }
 `
 
 const tallies = `
@@ -522,8 +525,8 @@ func Test_role_runner_pass_waits_for_its_jobs(t *testing.T) {
 		states:
 		  working:
 		    job: { script: ./work.js }
-		    done: over
-		  over: { final: true, output: "${states.working.output}" }
+		    on: { done: over }
+		  over: { end: done, output: "${states.working.output}" }
 	`, map[string]string{"work.js": `const until = Date.now() + 200; while (Date.now() < until) {}; return "took its time"`}, nil)
 	w.h.call("ctl", w.controller)
 	c := w.h.call("r1", w.runner)

@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 
@@ -332,7 +333,7 @@ func (p *pass) failJob(inst, job, message string, failure *machine.Error) error 
 
 // ownLayer is the layer a job's own permissions make, by name.
 func ownLayer(def *machine.Definition, job *machine.Job) permission.Layer {
-	name := fmt.Sprintf("the job %s in the definition of %s", job.Name, def.Name)
+	name := fmt.Sprintf("the job %q in the definition of %q", job.Name, def.Name)
 	return permission.Layer{Name: name, Allow: job.Allow, Deny: job.Deny,
 		Fix: "add the line %s to the allow list of " + name}
 }
@@ -351,14 +352,14 @@ func (p *pass) job(inst string, step *instance.Step, ask *instance.Ask) (*instan
 		return nil, none, nil, err
 	}
 	if !runner.Trusted() {
-		return nil, none, p.failf("the runner %s is no longer trusted", ask.Runner), nil
+		return nil, none, p.failf("the runner %q is no longer trusted", ask.Runner), nil
 	}
 	client, err := p.trusted(store.InstanceClient(inst))
 	if err != nil {
 		return nil, none, nil, err
 	}
 	if client == nil {
-		return nil, none, p.failf("the client %s is not known to the controller", store.InstanceClient(inst)), nil
+		return nil, none, p.failf("the client %q is not known to the controller", store.InstanceClient(inst)), nil
 	}
 	request, _, _ := strings.Cut(ask.Name, "@")
 	job := &instance.Job{Instance: inst, Name: ask.Name, Attempt: ask.Attempt, Request: inst + "/" + request,
@@ -375,7 +376,7 @@ func (p *pass) job(inst string, step *instance.Step, ask *instance.Ask) (*instan
 		for _, file := range asked.Files {
 			ref, ok := def.Scripts[file]
 			if !ok {
-				return nil, none, p.failf("the file %s is not among those the definition holds", file), nil
+				return nil, none, p.failf("the file %q is not among those the definition holds", file), nil
 			}
 			if job.Files == nil {
 				job.Files = map[string]blob.Ref{}
@@ -387,7 +388,7 @@ func (p *pass) job(inst string, step *instance.Step, ask *instance.Ask) (*instan
 	// definition, the start, each parent's job, and the client's ceiling.
 	job.Layers = append([]permission.Layer{ownLayer(def, asked)}, above...)
 	ceiling := client.Ceiling
-	ceiling.Name = "the ceiling of the client " + client.Card.Name
+	ceiling.Name = "the ceiling of the client " + strconv.Quote(client.Card.Name)
 	ceiling.Fix = fmt.Sprintf("the controller's owner runs: corbie controller enrol %s --allow %%s", client.Card.Name)
 	job.Layers = append(job.Layers, ceiling)
 
@@ -407,7 +408,7 @@ func (p *pass) job(inst string, step *instance.Step, ask *instance.Ask) (*instan
 			}
 			value = kept
 			if !found {
-				return nil, none, p.failf("the secret %s is not set (the controller's owner sets it with: corbie controller secret set %s)", name, name), nil
+				return nil, none, p.failf("the secret %q is not set (the controller's owner sets it with: corbie controller secret set %s)", name, name), nil
 			}
 		}
 		if job.Secrets == nil {
@@ -485,7 +486,7 @@ func (p *pass) child(inst string, step *instance.Step, ask *instance.Ask) (*inst
 	} else if local, ok := def.Machines[job.Machine]; ok {
 		ref = beside.Beside(local)
 	} else {
-		return nil, p.failf("the machine %s is not among those the definition holds", job.Machine), nil
+		return nil, p.failf("the machine %q is not among those the definition holds", job.Machine), nil
 	}
 	layers = slices.Clone(layers)
 	if _, made := blob.AsRef(job.Stored); made || len(job.Allow)+len(job.Deny) > 0 {
@@ -505,7 +506,7 @@ func (p *pass) child(inst string, step *instance.Step, ask *instance.Ask) (*inst
 	}
 	mac := hmac.New(sha256.New, st.Seed)
 	mac.Write([]byte("child\x00" + ask.Name))
-	return &instance.Start{Definition: ref, Input: job.Input, Labels: st.Labels, Deadline: job.Timeout,
+	return &instance.Start{Definition: ref, Input: job.Input, Labels: st.Labels, Timeout: job.Timeout,
 		Seed: mac.Sum(nil), Above: above}, nil, nil
 }
 
@@ -547,12 +548,12 @@ func (p *pass) head(inst string, step *instance.Step) error {
 			head.Jobs++
 		}
 	}
-	for _, key := range st.Keys {
-		if !slices.Contains(head.Keys, key.Name) {
-			head.Keys = append(head.Keys, key.Name)
+	for _, ticket := range st.Tickets {
+		if !slices.Contains(head.Tickets, ticket.Name) {
+			head.Tickets = append(head.Tickets, ticket.Name)
 		}
 	}
-	slices.Sort(head.Keys)
+	slices.Sort(head.Tickets)
 
 	running, finished := store.RunningHead(p.ctl, inst), store.FinishedHead(p.ctl, inst)
 	if st.Status != instance.Running {

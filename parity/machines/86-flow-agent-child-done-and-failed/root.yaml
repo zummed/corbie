@@ -10,7 +10,7 @@ stages:
   after_good:
     job: { script: ./echo.js, input: { text: "${stages.good.output.reply}", usage: "${stages.good.output.tokens}" } }
   after_bad:
-    when: stages.bad.failed
+    when: ${stages.bad.failed}
     job: { script: ./echo.js, input: { error: "${stages.bad.error}" } }
 output:
   after_good: ${stages.after_good.output}

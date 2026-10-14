@@ -131,7 +131,7 @@ func TestSecretGoesOnlyWhereItIsBound(t *testing.T) {
 		`return { t: secrets.get("TOKEN") }`:           "a secret cannot leave a job",
 		`return crypto.hash(secrets.get("TOKEN"))`:     "a secret is not contents",
 		`emit("leak", secrets.get("TOKEN")); return 1`: "a secret cannot leave a job",
-		`return secrets.get("OTHER")`:                  "was not sent a secret named OTHER",
+		`return secrets.get("OTHER")`:                  `was not sent a secret named "OTHER"`,
 	} {
 		r := runWithSecret(t, l, usesSecret, map[string]string{"call.js": script}, map[string]any{"url": server.URL, "host": host})
 		if r.Status != "failed" || !strings.Contains(r.Error, want) {

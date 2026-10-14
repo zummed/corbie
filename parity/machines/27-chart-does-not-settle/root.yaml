@@ -1,10 +1,10 @@
 # A state that finishes the moment it is entered (its only child is a final
-# state) and whose done: goes back to itself.
+# state) and whose rule for done goes back to itself.
 statechart: never-settles
 initial: spinning
 states:
   spinning:
-    done: spinning
+    on: { done: spinning }
     states:
       over:
-        final: true
+        end: done

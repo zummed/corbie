@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"slices"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 	_ "time/tzdata" // time zones are known to the binary itself
@@ -25,21 +26,22 @@ type State struct {
 	States  map[string]*State           `json:"states,omitzero"`
 	Job     *machine.JobSpec            `json:"job,omitzero"`
 	Jobs    map[string]*machine.JobSpec `json:"jobs,omitzero"`
-	Wait    string                      `json:"wait,omitzero"`
+	Ticket  string                      `json:"ticket,omitzero"`
+	Timers  map[string]string           `json:"timers,omitzero"` // the time of each, by its name
 	Entry   []Send                      `json:"entry,omitzero"`
 	Exit    []Send                      `json:"exit,omitzero"`
-	Done    []Transition                `json:"done,omitzero"`
-	Failed  []Transition                `json:"failed,omitzero"`
-	On      map[string][]Transition     `json:"on,omitzero"`
-	After   []After                     `json:"after,omitzero"`
-	Final   bool                        `json:"final,omitzero"`
-	Fails   bool                        `json:"fails,omitzero"` // a final state marked as a failure
-	Output  any                         `json:"output,omitzero"`
+	// On is where to go on each event, by its name: done, failed, a
+	// timer, a ticket's answer, or any other event.
+	On map[string][]Transition `json:"on,omitzero"`
+	// End is done or failed in a final state: how it ends the state that
+	// holds it, or the chart.
+	End    string `json:"end,omitzero"`
+	Output any    `json:"output,omitzero"`
 }
 
 // Transition is one candidate of a rule.
 type Transition struct {
-	To   string `json:"to,omitzero"`
+	Go   string `json:"go,omitzero"`
 	When string `json:"when,omitzero"`
 	Send []Send `json:"send,omitzero"`
 }
@@ -51,15 +53,8 @@ type Send struct {
 	Data  any    `json:"data,omitzero"`
 }
 
-// After is a rule taken at a time: a length of time from entry, or a time
-// of day.
-type After struct {
-	At    string       `json:"at"`
-	Rules []Transition `json:"rules"`
-}
-
 // names are what an expression of a chart reads.
-var names = []string{"event", "input", "keys", "states"}
+var names = []string{"event", "input", "states", "tickets"}
 
 type chartType struct{}
 
@@ -73,14 +68,14 @@ var (
 	sendShape = &machine.Shape{Name: "send", What: "a send", Fields: []machine.Field{
 		{Name: "to", Kind: machine.KindWord, Like: "parent", Does: "who it is sent to: parent, or a state or a named job of the chart"},
 		{Name: "event", Kind: machine.KindWord, Like: "review_wanted", Does: "the event's name"},
-		{Name: "data", Kind: machine.KindValue, Like: `{ key: "${keys.verdict}" }`, Does: "what the event carries"},
+		{Name: "data", Kind: machine.KindValue, Like: `{ ticket: "${tickets.verdict}" }`, Does: "what the event carries"},
 	}}
 	sends = machine.Field{Name: "send", Kind: machine.KindValue, Of: sendShape, Like: "{ to: parent, event: review_wanted }",
 		Does: "an event to send: one, or a list"}
 	actionShape     = &machine.Shape{Name: "action", What: "what a state does on entering or leaving", Fields: []machine.Field{sends}}
 	transitionShape = &machine.Shape{Name: "transition", What: "a transition", Fields: []machine.Field{
-		{Name: "to", Kind: machine.KindWord, Like: "approved", Does: "the state to go to; with none, it stays and only sends"},
-		{Name: "when", Kind: machine.KindWord, Like: "event.data.ok", Does: "a condition: the transition is taken only if it holds"},
+		{Name: "go", Kind: machine.KindWord, Like: "approved", Does: "the state to go to; with none, it stays and only sends"},
+		{Name: "when", Kind: machine.KindWord, Like: "${event.data.ok}", Does: "a condition, one expression: the transition is taken only if it holds"},
 		sends,
 	}}
 	stateShape = &machine.Shape{Name: "state", What: "a state"}
@@ -91,25 +86,20 @@ var (
 )
 
 func init() {
-	rule := func(name, like, does string) machine.Field {
-		return machine.Field{Name: name, Kind: machine.KindValue, Of: transitionShape, Like: like, Does: does + ": a state's name, one transition, or a list"}
-	}
 	stateShape.Fields = []machine.Field{
 		{Name: "initial", Kind: machine.KindWord, Like: "drafting", Does: "of the states it holds, the one it starts in"},
 		{Name: "states", Kind: machine.KindNamed, Of: stateShape, Does: "states of its own"},
 		{Name: "job", Kind: machine.KindJob, Like: "{ script: ./draft.js }", Does: "a script or a machine, started on entry and cancelled on leaving"},
 		{Name: "jobs", Kind: machine.KindNamed, Of: machine.JobShape, Does: "several named jobs; the state is done when all are, and its output is each one's by name"},
-		{Name: "wait", Kind: machine.KindWord, Like: "verdict", Does: "the name of a key the state has while it is active, read as ${keys.name}"},
+		{Name: "ticket", Kind: machine.KindWord, Like: "verdict", Does: "the name of a ticket the state issues while it is active, read as ${tickets.name}; its answer is an event of that name"},
+		{Name: "timers", Kind: machine.KindNamed, Like: "{ too_long: 48h }",
+			Does: "timers started on entry and cancelled on leaving, each a length of time (90s, 48h, 7d) or a time of day; each is an event of its name when it is due"},
 		{Name: "entry", Kind: machine.KindFields, Of: actionShape, Like: "{ send: { to: parent, event: review_wanted } }", Does: "what it does on being entered: it sends"},
 		{Name: "exit", Kind: machine.KindFields, Of: actionShape, Like: "{ send: { to: parent, event: left } }", Does: "what it does on being left: it sends"},
-		{Name: "final", Kind: machine.KindFlag, Like: "true", Does: "true ends the state that holds it, or the chart"},
-		{Name: "failed", Kind: machine.KindValue, Of: transitionShape, Like: "gave_up",
-			Does: "where to go when a job fails: a state's name, one transition, or a list. In a final state, true makes reaching it a failure"},
-		rule("done", "waiting", "where to go when the state's jobs have finished, or a state inside reached a final state"),
-		{Name: "on", Kind: machine.KindNamed, Of: transitionShape, Like: "{ verdict: approved }",
-			Does: "where to go on any other event, by its name: a key's answer, an event from the parent or a child, a value a job emitted"},
-		{Name: "after", Kind: machine.KindNamed, Of: transitionShape, Like: "{ 48h: gave_up }",
-			Does: "where to go after a length of time (90s, 48h, 7d), or at a time of day"},
+		{Name: "on", Kind: machine.KindNamed, Of: transitionShape, Like: "{ done: waiting, failed: gave_up }",
+			Does: "where to go on each event, by its name: a state's name, one transition, or a list. done and failed are the state's jobs ending, and any other is a timer, a ticket's answer, an event from the parent or a child, or a value a job emitted"},
+		{Name: "end", Kind: machine.KindWord, Like: "done", Values: []string{machine.Done, machine.Failed},
+			Does: "makes it a final state, which ends the state that holds it, or the chart, as done or failed"},
 		{Name: "output", Kind: machine.KindValue, Like: "${states.drafting.output}", Does: "of a final state: the result"},
 	}
 }
@@ -153,30 +143,26 @@ func fillState(p *machine.Parser, place string, written any) *State {
 			s.Jobs[name] = p.Job(place+".jobs."+name, jobs[name])
 		}
 	}
-	s.Wait = f.Text("wait")
+	s.Ticket = f.Text("ticket")
+	if timers, order := f.Map("timers"); timers != nil {
+		s.Timers = map[string]string{}
+		for _, name := range order {
+			at, ok := timers[name].(string)
+			if !ok {
+				p.Problem(place+".timers."+name, "a timer's time is a length of time or a time of day, written out")
+			}
+			s.Timers[name] = at
+		}
+	}
 	s.Entry = fillActions(p, f, "entry")
 	s.Exit = fillActions(p, f, "exit")
-	s.Final = f.Bool("final")
-	if s.Final {
-		// In a final state, failed: says whether reaching it is a failure.
-		s.Fails = f.Bool("failed")
-	} else if rule, ok := f.Value("failed"); ok {
-		s.Failed = fillRule(p, place+".failed", rule, f.Of("failed"))
-	}
-	if rule, ok := f.Value("done"); ok {
-		s.Done = fillRule(p, place+".done", rule, f.Of("done"))
-	}
 	if on, order := f.Map("on"); on != nil {
 		s.On = map[string][]Transition{}
 		for _, event := range order {
 			s.On[event] = fillRule(p, place+".on."+event, on[event], f.Of("on"))
 		}
 	}
-	if after, order := f.Map("after"); after != nil {
-		for _, at := range order {
-			s.After = append(s.After, After{At: at, Rules: fillRule(p, place+".after."+at, after[at], f.Of("after"))})
-		}
-	}
+	s.End = f.Text("end")
 	s.Output, _ = f.Value("output")
 	f.Done()
 	return s
@@ -196,14 +182,14 @@ func fillRule(p *machine.Parser, place string, written any, transition *machine.
 			at = fmt.Sprintf("%s[%d]", place, i)
 		}
 		if to, isName := item.(string); isName {
-			rule = append(rule, Transition{To: to})
+			rule = append(rule, Transition{Go: to})
 			continue
 		}
 		f := p.Fields(at, item, transition)
 		if f == nil {
 			continue
 		}
-		t := Transition{To: f.Text("to"), When: f.Text("when")}
+		t := Transition{Go: f.Text("go"), When: f.Cond("when")}
 		t.Send = fillSends(p, at+".send", f, "send")
 		f.Done()
 		rule = append(rule, t)
@@ -336,10 +322,11 @@ func (chartType) Check(c *machine.Checker, def *machine.Definition) {
 	eventParts := func(place string, reads []machine.Read) {
 		for _, r := range reads {
 			if r.Name != "name" && r.Name != "from" && r.Name != "data" {
-				c.Problem(place, "event.%s: an event has name, from and data (a job's output is event.data, and its error event.data.error)", r.Name)
+				c.Problem(place, "\"event.%s\" reads a part an event does not have: an event has name, from and data (a job's output is event.data, and its error event.data.error)", r.Name)
 			}
 		}
 	}
+	issued := map[string]string{} // each ticket's name, by the state that issues it
 	for _, name := range sortedNames(all) {
 		n := all[name]
 		s := n.state
@@ -375,20 +362,44 @@ func (chartType) Check(c *machine.Checker, def *machine.Definition) {
 		case s.Job != nil && s.Jobs != nil:
 			c.Problem(n.place, "a state has one job or several named jobs, not both")
 		}
-		if s.Final && (holds || s.Job != nil || s.Jobs != nil || s.Wait != "" || s.Done != nil || s.Failed != nil ||
-			s.On != nil || s.After != nil || s.Entry != nil || s.Exit != nil) {
-			c.Problem(n.place, "a final state only ends: it may give an output and be marked failed, and nothing else")
-		}
-		if !s.Final && (s.Fails || s.Output != nil) {
-			c.Problem(n.place, "only a final state gives an output or is marked as a failure")
+		switch {
+		case s.End != "" && s.End != machine.Done && s.End != machine.Failed:
+			c.Problem(n.place+".end", "%q: a final state ends as done or as failed", s.End)
+		case s.End != "" && (holds || s.Job != nil || s.Jobs != nil || s.Ticket != "" || s.Timers != nil ||
+			s.On != nil || s.Entry != nil || s.Exit != nil):
+			c.Problem(n.place, "a final state only ends: it has end: and may give an output, and nothing else")
+		case s.End == "" && s.Output != nil:
+			c.Problem(n.place, "only a final state gives an output: give it end: done or end: failed")
 		}
 		c.Job(n.place+".job", s.Job, names...)
 		for _, job := range sortedNames(s.Jobs) {
 			c.Name(n.place+".jobs."+job, job)
 			c.Job(n.place+".jobs."+job, s.Jobs[job], names...)
 		}
-		if s.Wait != "" {
-			c.Name(n.place+".wait", s.Wait)
+		if s.Ticket != "" {
+			c.Name(n.place+".ticket", s.Ticket)
+			if reserved(s.Ticket) {
+				c.Problem(n.place+".ticket", "a ticket cannot be named %q, which is the name of an event of its own", s.Ticket)
+			}
+			if other, dup := issued[s.Ticket]; dup {
+				c.Problem(n.place+".ticket", "the state %q issues a ticket named %q too: a ticket's name is used once in a statechart", other, s.Ticket)
+			}
+			issued[s.Ticket] = name
+		}
+		for _, timer := range sortedNames(s.Timers) {
+			at := n.place + ".timers." + timer
+			c.Name(at, timer)
+			switch {
+			case reserved(timer):
+				c.Problem(at, "a timer cannot be named %q, which is the name of an event of its own", timer)
+			case ticketOf(all, timer) != "":
+				c.Problem(at, "%q is the name of the ticket of the state %q, and a timer cannot take a ticket's name", timer, ticketOf(all, timer))
+			case !handled(all, name, timer):
+				c.Problem(at, "nothing goes anywhere when the timer is due: give it a rule under on:, in this state or one that holds it")
+			}
+			if _, err := parseAt(s.Timers[timer]); err != nil {
+				c.Problem(at, "%v", err)
+			}
 		}
 		c.Value(n.place+".output", s.Output, names...)
 		sends := func(place string, list []Send, leaving bool) {
@@ -414,9 +425,9 @@ func (chartType) Check(c *machine.Checker, def *machine.Definition) {
 		rule := func(place string, list []Transition) {
 			for i, t := range list {
 				at := fmt.Sprintf("%s[%d]", place, i)
-				if t.To != "" {
-					if _, ok := all[t.To]; !ok {
-						c.Problem(at+".to", "there is no state named %q", t.To)
+				if t.Go != "" {
+					if _, ok := all[t.Go]; !ok {
+						c.Problem(at+".go", "there is no state named %q", t.Go)
 					}
 				} else if len(t.Send) == 0 {
 					c.Problem(at, "a transition names a state to go to, or sends, or both")
@@ -427,29 +438,83 @@ func (chartType) Check(c *machine.Checker, def *machine.Definition) {
 				sends(at+".send", t.Send, false)
 			}
 		}
-		rule(n.place+".done", s.Done)
-		rule(n.place+".failed", s.Failed)
 		for _, event := range sortedNames(s.On) {
-			if machine.HasExpr(event) || slices.Contains([]string{machine.Start, machine.Done, machine.Failed, machine.Timer}, event) {
-				c.Problem(n.place+".on."+event, "%q cannot be named under on: it is an event's own name, written out, and done, failed and after have their own rules", event)
+			if machine.HasExpr(event) || event == machine.Start || event == machine.Timer {
+				c.Problem(n.place+".on."+event, "%q cannot be named under on: it is an event's own name, written out, and start is not one a state is given", event)
 			}
 			rule(n.place+".on."+event, s.On[event])
-		}
-		seen := map[string]string{}
-		for _, after := range s.After {
-			at := n.place + ".after." + after.At
-			when, err := parseAt(after.At)
-			if err != nil {
-				c.Problem(at, "%v", err)
-				continue
+			if what, taken, owners := ownersOf(all, event); len(owners) > 0 && !slices.ContainsFunc(owners, func(o string) bool { return within(all, name, o) }) {
+				quoted := make([]string, len(owners))
+				for i, o := range owners {
+					quoted[i] = strconv.Quote(o)
+				}
+				at, of := strings.Join(quoted, " or "), "the state "
+				if len(owners) > 1 {
+					of = "the states "
+				}
+				c.Problem(n.place+".on."+event, "the state %q can never receive %q. %q is %s of %s%s, and only %s arrives under that name, at %s or a state that holds it. "+
+					"Put the rule there, or give the event another name", name, event, event, what, of, at, taken, at)
 			}
-			if other, dup := seen[when.String()]; dup {
-				c.Problem(at, "%q and %q are the same time: a state names a time once", other, after.At)
-			}
-			seen[when.String()] = after.At
-			rule(at, after.Rules)
 		}
 	}
+}
+
+// reserved says whether a name is an event's that a timer or a ticket cannot
+// take.
+func reserved(name string) bool {
+	return slices.Contains([]string{machine.Start, machine.Done, machine.Failed, machine.Timer}, name)
+}
+
+// ownersOf gives, for a name that is a ticket's or a timer's, which it is,
+// what alone arrives under the name, and the states that issue or start it.
+func ownersOf(all map[string]*node, name string) (what, taken string, owners []string) {
+	var tickets, timers []string
+	for _, state := range sortedNames(all) {
+		n := all[state].state
+		if n == nil {
+			continue
+		}
+		if n.Ticket == name {
+			tickets = append(tickets, state)
+		} else if _, ok := n.Timers[name]; ok {
+			timers = append(timers, state)
+		}
+	}
+	if len(tickets) > 0 {
+		return "the ticket", "its answer", tickets
+	}
+	return "a timer", "the timer itself", timers
+}
+
+// ticketOf gives the state that issues a ticket of a name, or nothing.
+func ticketOf(all map[string]*node, name string) string {
+	for _, state := range sortedNames(all) {
+		if n := all[state].state; n != nil && n.Ticket == name {
+			return state
+		}
+	}
+	return ""
+}
+
+// within says whether a state is another, or is held by it at any depth.
+func within(all map[string]*node, holder, name string) bool {
+	for ; name != ""; name = all[name].parent {
+		if name == holder {
+			return true
+		}
+	}
+	return false
+}
+
+// handled says whether a state, or one that holds it, has a rule for an
+// event.
+func handled(all map[string]*node, name, event string) bool {
+	for ; name != ""; name = all[name].parent {
+		if _, ok := all[name].state.On[event]; ok {
+			return true
+		}
+	}
+	return false
 }
 
 func checkInitial(c *machine.Checker, place, initial string, states map[string]*State) {
@@ -484,13 +549,6 @@ type when struct {
 	minute  int
 	weekday int // -1 for any day
 	zone    *time.Location
-}
-
-func (w when) String() string {
-	if !w.clock {
-		return w.length.String()
-	}
-	return fmt.Sprintf("%02d:%02d day %d %s", w.hour, w.minute, w.weekday, w.zone)
 }
 
 var weekdays = map[string]int{"sun": 0, "mon": 1, "tue": 2, "wed": 3, "thu": 4, "fri": 5, "sat": 6,
@@ -588,12 +646,9 @@ func jobsOf(s *State) []*machine.JobSpec {
 
 // rulesOf gives every rule a state has.
 func rulesOf(s *State) [][]Transition {
-	rules := [][]Transition{s.Done, s.Failed}
+	var rules [][]Transition
 	for _, name := range sortedNames(s.On) {
 		rules = append(rules, s.On[name])
-	}
-	for _, after := range s.After {
-		rules = append(rules, after.Rules)
 	}
 	return rules
 }

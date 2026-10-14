@@ -70,8 +70,8 @@ A script reaches only what its machine allows. Anything else is refused, with th
 ```
 client/20261012T210153.624Z-d2729e69f1  failed (denied)  flow fetch-title  step 2
   refused: net:example.com:443
-  by: the job get_title in the definition of fetch-title
-  fix: add the line net:example.com:443 to the allow list of the job get_title in the definition of fetch-title
+  by: the job "get_title" in the definition of "fetch-title"
+  fix: add the line net:example.com:443 to the allow list of the job "get_title" in the definition of "fetch-title"
 ```
 
 <br>

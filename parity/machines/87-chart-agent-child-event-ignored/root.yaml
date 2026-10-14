@@ -5,9 +5,10 @@ initial: running
 states:
   running:
     job: { machine: ./agent.yaml }
-    after:
-      1s: { send: { to: running, event: poke, data: { from: parent } } }
-    done: finished
+    timers: { poke: 1s }
+    on:
+      done: finished
+      poke: { send: { to: running, event: poke, data: { from: parent } } }
   finished:
-    final: true
+    end: done
     output: { text: "${event.data.reply}", usage: "${event.data.tokens}" }

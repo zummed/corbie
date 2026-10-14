@@ -56,7 +56,7 @@ func Get(ctx context.Context, s store.Store, ctl *identity.Identity, name string
 		return "", false, err
 	}
 	if _, err := identity.Read(data, at, ctl.Card, ctl, &value); err != nil {
-		return "", false, fmt.Errorf("the secret %s: %w", name, err)
+		return "", false, fmt.Errorf("the secret %q: %w", name, err)
 	}
 	return value, true, nil
 }

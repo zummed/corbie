@@ -4,11 +4,12 @@ statechart: outer-timer
 initial: outer
 states:
   outer:
-    after: { 1s: finished }
+    timers: { leave: 1s }
+    on: { leave: finished }
     initial: inner
     states:
       inner:
         job: { script: ./echo.js, input: { n: 1 } }
   finished:
-    final: true
+    end: done
     output: { came_by: "${event.name}", inner: "${states.inner.output}" }

@@ -1,0 +1,12 @@
+{
+  "status": "failed",
+  "failure": "timeout",
+  "error_contains": "timeout passed",
+  "record": [
+    {
+      "machine": "sleeper",
+      "status": "cancelled"
+    }
+  ],
+  "note": "R-ctl-71: when a machine's timeout passes everything below it is cancelled, so the child is listed as cancelled."
+}

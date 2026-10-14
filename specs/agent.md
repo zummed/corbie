@@ -7,7 +7,7 @@ Corbie itself knows nothing about models. A turn is an ordinary job and so is a 
 ```yaml
 agent: librarian
 input: [dir, question]
-model: { name: claude-sonnet-5-5, key: ANTHROPIC_KEY }
+model: { name: claude-sonnet-5-5, secret: ANTHROPIC_KEY }
 prompt: ${input.question}
 
 tools:
@@ -22,7 +22,7 @@ tools:
 
 ## The loop
 
-An agent's definition names its model and may give a system text, a prompt, tools, limits and the shape of its output.
+An agent's definition names its model and may give a system text, a prompt, tools, limits and the shape of its reply.
 
 Each turn is one call to the model, made by a job. The model sees the system text, the conversation so far, and for each tool its name, what it does and what arguments it takes. It never sees how a tool is run or what the tool is permitted. The tools it picks in one turn all run at once, and the next turn starts when every one of them has settled. A turn that fails fails the agent.
 
@@ -42,7 +42,7 @@ A tool that needs approval goes to the agent's ask like any job. The calls from 
 
 ## Limits
 
-An agent has a number of turns, twenty unless it says otherwise, and the model is told when few remain. At the limit the agent asks its ask for more, as it would ask about a tool. If more are not given, the agent fails.
+An agent has a number of turns, twenty by default, and the model is told when few remain. At the limit the agent fails. Its error carries the conversation, so an agent started with that conversation carries on from where it stopped.
 
 ## The conversation
 

@@ -5,7 +5,7 @@ initial: guarded
 states:
   guarded:
     job: { script: ./add.js, input: { n: "${input.n}" }, approve: true }
-    done: finished
+    on: { done: finished }
   finished:
-    final: true
+    end: done
     output: { n: "${states.guarded.output.n}" }

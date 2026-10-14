@@ -142,16 +142,16 @@ func (s *Service) Takes(typ string, size int64) error {
 			continue
 		}
 		if size > a.Most {
-			return plugin.Errorf(plugin.BadInput, "content of type %s may be %d bytes for the service %s, and this is %d", typ, a.Most, s.Name, size)
+			return plugin.Errorf(plugin.BadInput, "content of type %q may be %d bytes for the service %q, and this is %d", typ, a.Most, s.Name, size)
 		}
 		return nil
 	}
-	return plugin.Errorf(plugin.BadInput, "the service %s does not take content of type %s", s.Name, typ)
+	return plugin.Errorf(plugin.BadInput, "the service %q does not take content of type %q", s.Name, typ)
 }
 
 func init() {
 	plugin.Register(&plugin.Module{Name: "llm", Page: page, Calls: map[string]*plugin.Call{
-		"chat": {Options: []string{"service", "model", "address", "key", "system", "tools", "shape", "effort", "reply", "timeout", "own"}, Do: chat},
+		"chat": {Options: []string{"service", "model", "address", "key", "system", "tools", "shape", "effort", "reply_tokens", "timeout", "own"}, Do: chat},
 		"takes": {Options: []string{"service"}, Do: func(job *plugin.Job, first any, opt plugin.Options) (any, error) {
 			b, ok := first.(*plugin.Blob)
 			name, err := opt.Text("service", "anthropic")
@@ -203,7 +203,7 @@ func chat(job *plugin.Job, first any, opt plugin.Options) (any, error) {
 	if c.Effort, err = opt.Text("effort", ""); err != nil {
 		return nil, err
 	}
-	if c.Room, err = opt.Int("reply", 0); err != nil {
+	if c.Room, err = opt.Int("reply_tokens", 0); err != nil {
 		return nil, err
 	}
 	if c.Address, err = opt.Text("address", svc.Address); err != nil {

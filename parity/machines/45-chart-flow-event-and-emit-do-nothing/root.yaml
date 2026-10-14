@@ -6,14 +6,14 @@ initial: running
 states:
   running:
     job: { machine: ./child.yaml }
+    timers: { poke: 1s }
     on:
+      done: finished
       item: saw_emit
-    after:
-      1s: { send: { to: running, event: poke, data: { from: parent } } }
-    done: finished
+      poke: { send: { to: running, event: poke, data: { from: parent } } }
   saw_emit:
-    final: true
+    end: done
     output: { parent_saw_emit: true }
   finished:
-    final: true
+    end: done
     output: { parent_saw_emit: false, child: "${event.data}" }

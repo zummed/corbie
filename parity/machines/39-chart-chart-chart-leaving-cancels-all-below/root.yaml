@@ -5,7 +5,8 @@ initial: running
 states:
   running:
     job: { machine: ./middle.yaml }
-    after: { 1s: finished }
+    timers: { leave: 1s }
+    on: { leave: finished }
   finished:
-    final: true
+    end: done
     output: { left_by: "${event.name}" }

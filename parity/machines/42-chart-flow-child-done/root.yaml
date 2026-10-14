@@ -5,7 +5,7 @@ initial: running
 states:
   running:
     job: { machine: ./kid-flow.yaml, input: { n: 1, from: parent } }
-    done: finished
+    on: { done: finished }
   finished:
-    final: true
+    end: done
     output: { came_by: "${event.name}", event_output: "${event.data}", remembered: "${states.running.output}" }

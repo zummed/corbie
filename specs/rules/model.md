@@ -69,7 +69,7 @@ The detailed rules behind the [Models overview](../model.md). Requirements are `
 ## Keys
 
 **R-model-14** A model service's key is an ordinary secret, named in the agent's definition.
-*Accept:* an agent's definition gives its key as `ANTHROPIC_KEY`. With that set as a controller secret, the stand-in server receives the value with each turn. With it sent as a run secret instead, the same.
+*Accept:* an agent's definition gives its `secret:` as `ANTHROPIC_KEY`. With that set as a controller secret, the stand-in server receives the value with each turn. With it sent as a run secret instead, the same.
 
 **R-model-15** When an agent's definition is sent, the client writes into each turn's permissions exactly what the turn needs, the connection to the service and the key bound to that connection, and a turn gets nothing else from the definition's permissions.
 *Accept:* the stored definition of that agent, shown by the client, gives its turn `net:` for the service's host and `secret:ANTHROPIC_KEY@net:` for the same host, and nothing else. The agent's definition allows `fs.read:/srv/**` for the whole definition: a turn script of the agent's own that reads `/srv/a` ends denied, and a tool of the same agent reads it.

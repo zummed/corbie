@@ -102,8 +102,8 @@ const sum = `
 	states:
 	  adding:
 	    job: { script: ./add.js, files: [./lib.js], input: { a: "${input.a}", b: 2 } }
-	    done: finished
-	  finished: { final: true, output: "${states.adding.output}" }
+	    on: { done: finished }
+	  finished: { end: done, output: "${states.adding.output}" }
 `
 
 func TestScriptRuns(t *testing.T) {
@@ -153,9 +153,9 @@ func wait(t *testing.T, l *client.Local, id string) *client.Run {
 	return r
 }
 
-// waitForKey waits until a run below the one named waits on a key, and
-// gives that instance and the key's value, read from its record.
-func waitForKey(t *testing.T, l *client.Local, root string) (string, string) {
+// waitForTicket waits until a run below the one named waits on a ticket, and
+// gives that instance and the ticket's value, read from its record.
+func waitForTicket(t *testing.T, l *client.Local, root string) (string, string) {
 	t.Helper()
 	deadline := time.Now().Add(20 * time.Second)
 	for time.Now().Before(deadline) {
@@ -164,20 +164,20 @@ func waitForKey(t *testing.T, l *client.Local, root string) (string, string) {
 			t.Fatal(err)
 		}
 		for _, r := range runs {
-			if len(r.Keys) == 0 {
+			if len(r.Tickets) == 0 {
 				continue
 			}
-			keys, err := l.Keys(ctx, r.ID)
+			tickets, err := l.Tickets(ctx, r.ID)
 			if err != nil {
 				t.Fatal(err)
 			}
-			for _, value := range keys {
+			for _, value := range tickets {
 				return r.ID, value
 			}
 		}
 		time.Sleep(20 * time.Millisecond)
 	}
-	t.Fatalf("no run below %s came to wait on a key", root)
+	t.Fatalf("no run below %s came to wait on a ticket", root)
 	return "", ""
 }
 

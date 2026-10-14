@@ -8,13 +8,13 @@ It brings nothing with it but its private key. Its lists of trusted parties and 
 
 Everything that makes a machine move arrives as a message in the controller's inbox or as a wake coming due.
 
-A message comes from a client starting a run, cancelling one, sending it an event or answering a key; from a runner returning a job's result or passing on an emit the machine wants; or from the controller itself, which is how a child's start, a child's ending and events between a parent and a child travel. A wake is anything owed to time: a machine's timer, a deadline, a job's result falling due, the next attempt at a job.
+A message comes from a client starting a run, cancelling one, sending it an event or answering a ticket; from a runner returning a job's result or passing on an emit the machine wants; or from the controller itself, which is how a child's start, a child's ending and events between a parent and a child travel. A wake is anything owed to time: a machine's timer, a machine's timeout, a job's result falling due, the next attempt at a job.
 
-The controller accepts a message only from a party it trusts, signed by that party and sealed to itself. A client may cancel or send events only to runs it started, and may answer any key it holds. A result or an emit is accepted only for a job the instance is still waiting on, from the runner the job was sent to.
+The controller accepts a message only from a party it trusts, signed by that party and sealed to itself. A client may cancel or send events only to runs it started, and may answer any ticket it holds. A result or an emit is accepted only for a job the instance is still waiting on, from the runner the job was sent to.
 
 A sender's messages are named so that they sort in the order they were sent, and the controller takes them in that order.
 
-Messages may arrive more than once and nothing is harmed. Each kind is checked against the instance's state: a result the instance is not waiting for is dropped, a start for an instance that exists is dropped, an answer to a key already answered changes nothing.
+Messages may arrive more than once and nothing is harmed. Each kind is checked against the instance's state: a result the instance is not waiting for is dropped, a start for an instance that exists is dropped, an answer to a ticket already answered changes nothing.
 
 ## Taking a step
 
@@ -30,7 +30,7 @@ A controller stopped at any point leaves the same messages and wakes waiting. Th
 
 A step may ask for more than one pass can carry out, such as a thousand jobs on a host that gives a pass a few seconds. The controller notes in the record how far it has got, a batch at a time, and the next pass goes on from there.
 
-Some steps are the controller's own and the machine is not consulted: an attempt failed and another is due, a job is being held for approval, a result did not come in time, the run was cancelled or its deadline passed. They are written in the record like any step, so the record shows them and nothing about an instance is remembered anywhere else.
+Some steps are the controller's own and the machine is not consulted: an attempt failed and another is due, a job is being held for approval, a result did not come in time, the run was cancelled or its timeout passed. They are written in the record like any step, so the record shows them and nothing about an instance is remembered anywhere else.
 
 When a machine's last step both sends events and ends the machine, the events are sent first, so a parent sees a child's last words before its result.
 
@@ -48,8 +48,8 @@ Some things are the same whatever the machine's type, and the controller does th
 
 - **Attempts.** It makes the attempts a job asks for and gives the machine only the final outcome. Values a failed attempt emitted stand, and the same values from a later attempt are not delivered twice.
 - **Children.** It starts child machines, passes events between parent and child in order, copies what a child hands up into the parent's record, and cancels everything below a machine that ends or is cancelled. A script job is cancelled by a message to its runner.
-- **Time.** It keeps timers and delivers them, and ends a machine whose deadline has passed. That machine fails as out of time and everything below it is cancelled.
-- **Keys.** It makes keys and takes their answers.
+- **Time.** It keeps timers and delivers them, and ends a machine whose timeout has passed. That machine fails as out of time and everything below it is cancelled.
+- **Tickets.** It makes tickets and takes their answers.
 - **Limits.** It counts depth and jobs against their limits.
 - **Approval.** It holds the jobs that need approval, starts the ask, and releases or refuses them when the ask has decided.
 

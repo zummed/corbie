@@ -9,8 +9,7 @@ states:
         - { to: parent, event: up3 }
         - { to: parent, event: up4 }
         - { to: parent, event: up5 }
-    on:
-      finish: finished
+    on: { finish: finished }
   finished:
-    final: true
+    end: done
     output: { finished: true }

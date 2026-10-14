@@ -13,7 +13,7 @@ stages:
       script: ./fail.js
       attempts: 2
   report:
-    when: stages.never_good.failed
+    when: ${stages.never_good.failed}
     job: { script: ./early.js, input: { ok_after: 0 } }
 output:
   comes_good: ${stages.comes_good.output}

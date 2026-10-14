@@ -61,7 +61,7 @@ func Test_ctl_events_on_one_link_arrive_in_order_sent(t *testing.T) {
 	}
 }
 
-func Test_ctl_cancel_or_deadline_beats_events_in_one_step(t *testing.T) {
+func Test_ctl_cancel_or_timeout_beats_events_in_one_step(t *testing.T) {
 	w := newWorld(t)
 	run := w.submit(kept, nil, nil)
 	w.settle()
@@ -348,7 +348,7 @@ func Test_mach_undelivered_event_is_named_in_record(t *testing.T) {
 		  a:
 		    on: { poke: { send: { to: b, event: hello } } }
 		  b:
-		    job: { machine: { statechart: kid, states: { k: { final: true } } } }
+		    job: { machine: { statechart: kid, states: { k: { end: done } } } }
 	`, nil, nil)
 	w.settle()
 	w.client.Send(ctx, run, "poke", nil, 0)
@@ -364,33 +364,33 @@ func Test_mach_undelivered_event_is_named_in_record(t *testing.T) {
 	}
 }
 
-func Test_mach_key_not_derivable_from_public_names(t *testing.T) {
+func Test_mach_ticket_not_derivable_from_public_names(t *testing.T) {
 	w := newWorld(t)
 	run := w.submit(door, nil, map[string]any{"greeting": "x"})
 	w.settle()
 	w.client.Send(ctx, run, "open", nil, 0)
 	w.settle()
-	var key string
-	for _, k := range w.latest(run).State.Keys {
-		key = k.Value
+	var ticket string
+	for _, k := range w.latest(run).State.Tickets {
+		ticket = k.Value
 	}
-	if len(key) < 20 {
-		t.Fatalf("the key is %q", key)
+	if len(ticket) < 20 {
+		t.Fatalf("the ticket is %q", ticket)
 	}
 	for _, name := range w.list("") {
 		raw, _, _ := w.owner.Read(ctx, name)
-		if strings.Contains(name, key) || strings.Contains(string(raw), key) {
-			t.Fatalf("the key shows in %s, which whoever runs the store can read", name)
+		if strings.Contains(name, ticket) || strings.Contains(string(raw), ticket) {
+			t.Fatalf("the ticket shows in %s, which whoever runs the store can read", name)
 		}
 	}
-	// Two runs of one chart get different keys.
+	// Two runs of one chart get different tickets.
 	other := w.submit(door, nil, map[string]any{"greeting": "x"})
 	w.settle()
 	w.client.Send(ctx, other, "open", nil, 0)
 	w.settle()
-	for _, k := range w.latest(other).State.Keys {
-		if k.Value == key {
-			t.Fatal("two runs of one chart got the same key")
+	for _, k := range w.latest(other).State.Tickets {
+		if k.Value == ticket {
+			t.Fatal("two runs of one chart got the same ticket")
 		}
 	}
 }
@@ -439,12 +439,12 @@ func TestJobThatCannotBeBuiltFails(t *testing.T) {
 		states:
 		  s:
 		    job: JOB
-		    done: end
-		  end: { final: true }
+		    on: { done: end }
+		  end: { end: done }
 	`
 	for job, want := range map[string]string{
-		`{ script: ./work.js, allow: ["secret:NONE@net:api.example"] }`:                                    "the secret NONE is not set",
-		`{ machine: { statechart: kid, states: { k: { final: true } } }, input: "${'x'.repeat(300000)}" }`: "pass large values as blobs",
+		`{ script: ./work.js, allow: ["secret:NONE@net:api.example"] }`:                                  `the secret "NONE" is not set`,
+		`{ machine: { statechart: kid, states: { k: { end: done } } }, input: "${'x'.repeat(300000)}" }`: "pass large values as blobs",
 	} {
 		id := w.submit(strings.Replace(chart, "JOB", job, 1), map[string]string{"work.js": "return 1"}, nil)
 		w.settle()
@@ -475,10 +475,10 @@ func Test_perm_layers_travel_apart(t *testing.T) {
 		        states:
 		          k:
 		            job: { script: ./work.js, allow: ["fs.read:/srv/**"], deny: ["fs.read:/srv/private/**"] }
-		            done: end
-		          end: { final: true }
-		    done: end
-		  end: { final: true }
+		            on: { done: end }
+		          end: { end: done }
+		    on: { done: end }
+		  end: { end: done }
 	`, map[string]string{"work.js": "return 1"}), client.Start{Allow: &permission.Layer{Allow: []string{"disk"}}})
 	if err != nil {
 		t.Fatal(err)
@@ -504,10 +504,10 @@ func Test_perm_layers_travel_apart(t *testing.T) {
 		got = append(got, fmt.Sprintf("%s: allow %v deny %v", layer.Name, layer.Allow, layer.Deny))
 	}
 	want := []string{
-		"the job k in the definition of kid: allow [fs.read:/srv/**] deny [fs.read:/srv/private/**]",
+		"the job \"k\" in the definition of \"kid\": allow [fs.read:/srv/**] deny [fs.read:/srv/private/**]",
 		"the list the run was started with: allow [disk] deny []",
-		"the job s in the definition of parent: allow [fs.read:/srv/reports/**] deny []",
-		"the ceiling of the client c1: allow [all] deny []",
+		"the job \"s\" in the definition of \"parent\": allow [fs.read:/srv/reports/**] deny []",
+		"the ceiling of the client \"c1\": allow [all] deny []",
 	}
 	if strings.Join(got, "\n") != strings.Join(want, "\n") {
 		t.Fatalf("the job carries\n  %s\nwant\n  %s", strings.Join(got, "\n  "), strings.Join(want, "\n  "))
@@ -528,8 +528,8 @@ func TestControllerSecret(t *testing.T) {
 			states:
 			  s:
 			    job: { script: ./work.js, allow: ["secret:K@net:api.example"], attempts: 3 }
-			    done: end
-			  end: { final: true }
+			    on: { done: end }
+			  end: { end: done }
 		`, map[string]string{"work.js": "return 1"}, nil)
 		w.settle()
 		if e := w.latest(run).State.Error; e != nil {
@@ -546,7 +546,7 @@ func TestControllerSecret(t *testing.T) {
 		}
 		return failure, sent
 	}
-	if failure, sent := uses(); !strings.Contains(failure, "the secret K is not set") || len(sent) != 0 {
+	if failure, sent := uses(); !strings.Contains(failure, `the secret "K" is not set`) || len(sent) != 0 {
 		t.Fatalf("with the secret not set: %q, %d jobs sent", failure, len(sent))
 	}
 	for _, value := range []string{"the first value", "the second"} {
@@ -565,7 +565,7 @@ func TestControllerSecret(t *testing.T) {
 	if err := secret.Remove(ctx, w.ctrl.Store, w.ctl, "K"); err != nil {
 		t.Fatal(err)
 	}
-	if failure, sent := uses(); !strings.Contains(failure, "the secret K is not set") || len(sent) != 0 {
+	if failure, sent := uses(); !strings.Contains(failure, `the secret "K" is not set`) || len(sent) != 0 {
 		t.Fatalf("with the secret removed: %q, %d jobs sent", failure, len(sent))
 	}
 }
@@ -575,17 +575,19 @@ func Test_ctl_wake_time_fixed_by_entry(t *testing.T) {
 	run := w.submit(`
 		statechart: timed
 		keep: 1d
-		deadline: 2h
+		limits: { timeout: 2h }
 		initial: waiting
 		states:
 		  waiting:
-		    after: { 1h: over }
-		    on: { tick: { send: { to: parent, event: ticked } } }
-		  over: { final: true }
+		    timers: { an_hour: 1h }
+		    on:
+		      an_hour: over
+		      tick: { send: { to: parent, event: ticked } }
+		  over: { end: done }
 	`, nil, nil)
 	w.settle()
 	first := w.list(store.Wakes("ctl"))
-	// The first step asked for three wakes: its timer, its deadline, and
+	// The first step asked for three wakes: its timer, its timeout, and
 	// the one for its history.
 	asked := 0
 	for _, ask := range w.latest(run).Asks {
@@ -739,10 +741,11 @@ func TestSecretALayerDoesNotAllowIsNotSentAndItsJobIsDenied(t *testing.T) {
 		states:
 		  s:
 		    job: { script: ./work.js, allow: ["net:api.example", "SECRET"]DENY }
-		    done: end
-		    failed: refused
-		  end: { final: true }
-		  refused: { final: true }
+		    on:
+		      done: end
+		      failed: refused
+		  end: { end: done }
+		  refused: { end: done }
 	`
 	const below = `
 		statechart: parent
@@ -757,10 +760,11 @@ func TestSecretALayerDoesNotAllowIsNotSentAndItsJobIsDenied(t *testing.T) {
 		        states:
 		          s:
 		            job: { script: ./work.js, allow: ["net:api.example", "SECRET"] }
-		            done: end
-		            failed: refused
-		          end: { final: true }
-		          refused: { final: true }
+		            on:
+		              done: end
+		              failed: refused
+		          end: { end: done }
+		          refused: { end: done }
 	`
 	all := []string{"all"}
 	groups := []string{"network", "disk", "exec", "env"}
@@ -777,22 +781,22 @@ func TestSecretALayerDoesNotAllowIsNotSentAndItsJobIsDenied(t *testing.T) {
 		{name: "a layer covers it by a pattern", chart: alone, entry: "secret:K@net:api.example", ceiling: []string{"network", "secret:*@net:*.example"}},
 		{name: "a layer denies it to one place only", chart: alone, entry: "secret:K@*", ceiling: all, denied: []string{"secret:K@net:other.example"}},
 		{name: "the ceiling has no entry for it", chart: alone, entry: "secret:K@net:api.example", ceiling: []string{"network"},
-			layer: "the ceiling of the client c1", fix: "the controller's owner runs: corbie controller enrol c1 --allow secret:K@net:api.example"},
+			layer: "the ceiling of the client \"c1\"", fix: "the controller's owner runs: corbie controller enrol c1 --allow secret:K@net:api.example"},
 		{name: "a ceiling of the four groups", chart: alone, entry: "secret:K@*", ceiling: groups,
-			layer: "the ceiling of the client c1", fix: "the controller's owner runs: corbie controller enrol c1 --allow secret:K@*"},
+			layer: "the ceiling of the client \"c1\"", fix: "the controller's owner runs: corbie controller enrol c1 --allow secret:K@*"},
 		{name: "the start's list has no entry for it", chart: alone, entry: "secret:K@net:api.example", ceiling: all, start: []string{"network"},
 			layer: "the list the run was started with", fix: "start the run with secret:K@net:api.example in its list as well (corbie submit --allow)"},
 		{name: "a parent's job has no entry for it", chart: below, entry: "secret:K@net:api.example", ceiling: all,
-			layer: "the job s in the definition of parent", fix: "add the line secret:K@net:api.example to the allow list of the job s in the definition of parent"},
+			layer: "the job \"s\" in the definition of \"parent\"", fix: "add the line secret:K@net:api.example to the allow list of the job \"s\" in the definition of \"parent\""},
 		{name: "the ceiling denies it everywhere", chart: alone, entry: "secret:K@net:api.example", ceiling: all, denied: []string{"secret:K@*"},
-			layer: "the ceiling of the client c1", fix: "take the deny entry secret:K@* out of the ceiling of the client c1"},
+			layer: "the ceiling of the client \"c1\"", fix: "take the deny entry secret:K@* out of the ceiling of the client \"c1\""},
 		{name: "the ceiling denies everything", chart: alone, entry: "secret:K@net:api.example", ceiling: all, denied: all,
-			layer: "the ceiling of the client c1", fix: "take the deny entry all out of the ceiling of the client c1"},
+			layer: "the ceiling of the client \"c1\"", fix: "take the deny entry all out of the ceiling of the client \"c1\""},
 		{name: "the job's own deny list stops it everywhere", chart: alone, entry: "secret:K@net:api.example", deny: `, deny: ["secret:*@*"]`, ceiling: all,
-			layer: "the job s in the definition of uses", fix: "take the deny entry secret:*@* out of the job s in the definition of uses"},
+			layer: "the job \"s\" in the definition of \"uses\"", fix: "take the deny entry secret:*@* out of the job \"s\" in the definition of \"uses\""},
 		{name: "two layers refuse", chart: alone, entry: "secret:K@net:api.example", ceiling: []string{"network"}, start: []string{"all"}, deny: `, deny: ["all"]`,
-			layer: "the job s in the definition of uses and by the ceiling of the client c1",
-			fix:   "take the deny entry all out of the job s in the definition of uses; and the controller's owner runs: corbie controller enrol c1 --allow secret:K@net:api.example"},
+			layer: "the job \"s\" in the definition of \"uses\" and by the ceiling of the client \"c1\"",
+			fix:   "take the deny entry all out of the job \"s\" in the definition of \"uses\"; and the controller's owner runs: corbie controller enrol c1 --allow secret:K@net:api.example"},
 	} {
 		w := newWorld(t)
 		r1 := w.party("r1", identity.Runner)

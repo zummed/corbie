@@ -3,9 +3,10 @@ initial: working
 states:
   working:
     job: { script: ./echo.js, input: { n: 1 } }
-    done:
-      to: finished
-      send: { to: parent, event: last_words, data: { from: child } }
+    on:
+      done:
+        go: finished
+        send: { to: parent, event: last_words, data: { from: child } }
   finished:
-    final: true
+    end: done
     output: { n: "${states.working.output.n}" }

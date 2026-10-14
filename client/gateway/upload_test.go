@@ -158,7 +158,7 @@ func TestStartThatIsNoUploadFormIsRefused(t *testing.T) {
 		"a part it does not know":        {[]part{definition, {name: "inputs:image", filename: "a.png", contents: "x"}}, `inputs:image`},
 		"a start that is not JSON":       {[]part{definition, {name: "start", contents: `labels: {a: b}`}}, "start"},
 		"a start with nothing in it":     {[]part{definition, {name: "start"}}, "start"},
-		"a deadline that is no time":     {[]part{definition, {name: "start", contents: `{"deadline": "soon"}`}}, "soon"},
+		"a timeout that is no time":      {[]part{definition, {name: "start", contents: `{"timeout": "soon"}`}}, "soon"},
 		"a file and an input no map":     {[]part{definition, {name: "start", contents: `{"input": [1]}`}, {name: "input:image", filename: "a.png", contents: "x"}}, "not a map"},
 		"a file and a value, one name":   {[]part{definition, {name: "start", contents: `{"input": {"image": 1}}`}, {name: "input:image", filename: "a.png", contents: "x"}}, "image"},
 	} {
@@ -255,9 +255,9 @@ func TestCancelEventAndAnswerTakeALife(t *testing.T) {
 		t.Fatalf("a start with a life of 90s left %v in the inbox (%v)", sent, err)
 	}
 	for path, body := range map[string]string{
-		"/cancel": `{"life": "200ms"}`,
-		"/events": `{"event": "open", "life": "200ms"}`,
-		"/keys":   `{"key": "the-key", "value": true, "life": "200ms"}`,
+		"/cancel":  `{"life": "200ms"}`,
+		"/events":  `{"event": "open", "life": "200ms"}`,
+		"/tickets": `{"ticket": "the-ticket", "value": true, "life": "200ms"}`,
 	} {
 		before, err := owner.List(ctx, store.Inbox("controller"))
 		if err != nil {
@@ -329,7 +329,7 @@ output: ${stages.read.output}
 }
 
 // One start carries a definition, its script, an input, a label, a run
-// secret, a narrowing list and a deadline, and each is in effect for the
+// secret, a narrowing list and a timeout, and each is in effect for the
 // run it starts.
 func TestStartCarriesEverythingAStartMay(t *testing.T) {
 	local, err := client.NewLocal(context.Background(), permission.Layer{Allow: []string{"all"}}, nil)
@@ -357,7 +357,7 @@ stages:
       timeout: 30s
 output: ${stages.call.output}
 `
-	started := func(n int, deadline string) (map[string]any, string) {
+	started := func(n int, timeout string) (map[string]any, string) {
 		t.Helper()
 		id := c.start(map[string]any{"definition": carries, "files": map[string]string{"./call.js": `
 			const status = http.get(input.url, { headers: { Authorization: secrets.get("TOKEN") } }).status
@@ -368,7 +368,7 @@ output: ${stages.call.output}
 			"input":  map[string]any{"url": server.URL, "host": host, "n": n},
 			"labels": map[string]string{"team": "docs"}, "secrets": map[string]string{"TOKEN": "the-start's-own-token"},
 			"allow": []string{"net:" + host, "secret:TOKEN@*", "fs.read:/srv/reports/**"},
-			"deny":  []string{"fs.read:/srv/reports/kept/**"}, "deadline": deadline})
+			"deny":  []string{"fs.read:/srv/reports/kept/**"}, "timeout": timeout})
 		_, run, text := c.do("GET", "/runs/"+id+"?wait", "")
 		return run, text
 	}
@@ -389,6 +389,6 @@ output: ${stages.call.output}
 		t.Fatalf("the run that read what its start denied ended %s", text)
 	}
 	if run, text := started(3, "300ms"); run["status"] != "failed" || run["failure"] != "timeout" {
-		t.Fatalf("the run that passed its deadline ended %s", text)
+		t.Fatalf("the run that passed its timeout ended %s", text)
 	}
 }

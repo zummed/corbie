@@ -66,7 +66,7 @@ func cmdRun(e *env, args []string) error {
 	var roles []role.Role
 	for _, name := range names {
 		if slices.ContainsFunc(roles, func(r role.Role) bool { return r.Name == name }) {
-			return mistake("%s is named twice", name)
+			return mistake("the role %q is named twice", name)
 		}
 		switch name {
 		case "controller":
@@ -100,7 +100,7 @@ func cmdRun(e *env, args []string) error {
 					s, opened := stores[t.Store]
 					if !opened {
 						if s, err = e.open(t.Store, id, t.Card); err != nil {
-							return nil, fmt.Errorf("the store of the controller %s: %w", t.Card.Name, err)
+							return nil, fmt.Errorf("the store of the controller %q: %w", t.Card.Name, err)
 						}
 						stores[t.Store] = s
 						notice, _ := s.Notice(store.Inbox(id.Name))

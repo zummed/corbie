@@ -3,7 +3,8 @@ statechart: sleeper
 initial: sleeping
 states:
   sleeping:
-    after: { 2s: woke }
+    timers: { alarm: 2s }
+    on: { alarm: woke }
   woke:
-    final: true
+    end: done
     output: { slept: true }

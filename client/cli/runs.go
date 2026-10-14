@@ -25,7 +25,7 @@ func (l *list) Set(v string) error { *l = append(*l, v); return nil }
 
 // starting is everything a start may be given on the command line.
 type starting struct {
-	input, deadline, life, timeout, memory    string
+	input, life, timeout, memory              string
 	labels, allow, deny, secrets, tags, files list
 	wait, watch                               bool
 	// opened are the files given as input, open until the start is sent.
@@ -46,7 +46,6 @@ func (s *starting) flags(e *env) {
 	e.flags.Var(&s.allow, "allow", "")
 	e.flags.Var(&s.deny, "deny", "")
 	e.flags.Var(&s.secrets, "secret", "")
-	e.flags.StringVar(&s.deadline, "deadline", "", "")
 	e.flags.StringVar(&s.life, "life", "", "")
 	e.flags.StringVar(&s.timeout, "timeout", "", "")
 	e.flags.StringVar(&s.memory, "memory", "", "")
@@ -101,7 +100,7 @@ func (s *starting) prepare(e *env, file string) (*machine.Draft, client.Start, e
 		}
 	} else {
 		// A flag that has no effect on what was given is a mistake.
-		for name, given := range map[string]bool{"--timeout": s.timeout != "", "--memory": s.memory != "", "--tag": len(s.tags) > 0} {
+		for name, given := range map[string]bool{"--memory": s.memory != "", "--tag": len(s.tags) > 0} {
 			if given {
 				return nil, start, mistake("%s applies only to a script file; a definition gives its jobs their own", name)
 			}
@@ -139,7 +138,7 @@ func (s *starting) prepare(e *env, file string) (*machine.Draft, client.Start, e
 			return nil, start, mistake("--input-file takes name=path: the name the file has in the input, and where the file is")
 		}
 		if _, twice := start.Files[name]; twice {
-			return nil, start, mistake("--input-file gives two files under the name %s", name)
+			return nil, start, mistake("--input-file gives two files under the name %q", name)
 		}
 		file, err := os.Open(at)
 		if err != nil {
@@ -166,14 +165,14 @@ func (s *starting) prepare(e *env, file string) (*machine.Draft, client.Start, e
 		}
 		value, ok := os.LookupEnv(name)
 		if !ok {
-			return nil, start, mistake("--secret %s: the variable %s is not set in the environment, which is where a run secret's value is read from", name, name)
+			return nil, start, mistake("--secret %s: the environment variable %q is not set, and it is where a run secret's value is read from", name, name)
 		}
 		if start.Secrets == nil {
 			start.Secrets = map[string]string{}
 		}
 		start.Secrets[name] = value
 	}
-	for flagName, text := range map[string]string{"--deadline": s.deadline, "--life": s.life} {
+	for flagName, text := range map[string]string{"--timeout": s.timeout, "--life": s.life} {
 		if text == "" {
 			continue
 		}
@@ -181,8 +180,11 @@ func (s *starting) prepare(e *env, file string) (*machine.Draft, client.Start, e
 		if err != nil {
 			return nil, start, mistake("%s: %v", flagName, err)
 		}
-		if flagName == "--deadline" {
-			start.Deadline = time.Duration(d)
+		if flagName == "--timeout" {
+			// A script's timeout is its job's, given above.
+			if !script {
+				start.Timeout = time.Duration(d)
+			}
 		} else {
 			start.Life = time.Duration(d)
 		}
@@ -360,7 +362,7 @@ func runText(run *client.Run, script bool) string {
 
 // wrapped is how a refusal names the layer of a script file's own list,
 // which is that of the one stage it is wrapped in.
-const wrapped = "the job script in the definition of "
+const wrapped = `the job "script" in the definition of `
 
 // labelsOf prints a run's labels: each name with its value, or alone if it
 // has none.
@@ -380,8 +382,8 @@ func waitingOn(run *client.Run) string {
 	if run.Timers > 0 {
 		parts = append(parts, plural(run.Timers, "timer"))
 	}
-	if len(run.Keys) > 0 {
-		parts = append(parts, "key "+strings.Join(run.Keys, ", "))
+	if len(run.Tickets) > 0 {
+		parts = append(parts, "ticket "+strings.Join(run.Tickets, ", "))
 	}
 	return strings.Join(parts, ", ")
 }
@@ -541,14 +543,14 @@ func cmdLs(e *env, args []string) error {
 }
 
 func cmdShow(e *env, args []string) error {
-	var record, watch, wait, definition, keys bool
+	var record, watch, wait, definition, tickets bool
 	var step int
 	var save string
 	e.flags.BoolVar(&record, "record", false, "")
 	e.flags.BoolVar(&watch, "watch", false, "")
 	e.flags.BoolVar(&wait, "wait", false, "")
 	e.flags.BoolVar(&definition, "definition", false, "")
-	e.flags.BoolVar(&keys, "keys", false, "")
+	e.flags.BoolVar(&tickets, "tickets", false, "")
 	e.flags.IntVar(&step, "step", 0, "")
 	e.flags.StringVar(&save, "save", "", "")
 	rest, err := e.parse(args)
@@ -561,7 +563,7 @@ func cmdShow(e *env, args []string) error {
 	// Each of these asks for something else to be printed: only one of
 	// them would have its way.
 	var asked []string
-	for _, name := range []string{"record", "watch", "wait", "definition", "keys", "step", "save"} {
+	for _, name := range []string{"record", "watch", "wait", "definition", "tickets", "step", "save"} {
 		if e.given(name) {
 			asked = append(asked, "--"+name)
 		}
@@ -586,10 +588,10 @@ func cmdShow(e *env, args []string) error {
 		}
 		_, err = fmt.Fprintln(e.out, string(data))
 		return err
-	case keys:
-		// A key's value is the whole right to answer. It is in the record,
-		// which only the client that started the run can read.
-		held, err := c.Keys(e.ctx, id)
+	case tickets:
+		// A ticket's value is the whole right to answer. It is in the
+		// record, which only the client that started the run can read.
+		held, err := c.Tickets(e.ctx, id)
 		if err != nil {
 			return err
 		}
@@ -650,7 +652,7 @@ func (e *env) save(c *client.Client, id, dir string) error {
 			return fmt.Errorf("the result names a file %q, which cannot be saved under that name", name)
 		}
 		if other, taken := names[name]; taken {
-			return fmt.Errorf("two files of the result, at %s and %s, would be saved under the one name %s", other, p, name)
+			return fmt.Errorf("two files of the result, at %q and %q, would be saved under the one name %q", other, p, name)
 		}
 		names[name] = p
 	}
@@ -764,7 +766,7 @@ func cmdSend(e *env, args []string) error {
 }
 
 func cmdReply(e *env, args []string) error {
-	return e.answered(args, "name a run, the key, and optionally the answer", func(n int) bool { return n == 2 || n == 3 },
+	return e.answered(args, "name a run, the ticket, and optionally the answer", func(n int) bool { return n == 2 || n == 3 },
 		func(c *client.Client, rest []string, life time.Duration) (string, error) {
 			return c.Reply(e.ctx, rest[0], rest[1], value(rest, 2), life)
 		})

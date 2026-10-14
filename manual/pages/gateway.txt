@@ -65,7 +65,7 @@ Other requests
   GET /runs/<id>/record          the run's record; with ?watch, a stream of it
   GET /runs/<id>/files/<path>    a file of the run's result
   POST /runs/<id>/events         sends the run an event
-  POST /runs/<id>/keys           answers a key the run waits on
+  POST /runs/<id>/tickets        answers a ticket the run waits on
   POST /runs/<id>/cancel         cancels the run
 
 The gateway keeps no state: each request reads or writes the store. Its

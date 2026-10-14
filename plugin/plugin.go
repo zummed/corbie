@@ -55,10 +55,10 @@ var own = []string{"input", "job", "emit", "log", "progress", "require"}
 // Register adds a module. It refuses a name a script's own things have.
 func Register(m *Module) {
 	if slices.Contains(own, m.Name) {
-		panic(fmt.Sprintf("plugin: a module cannot be named %s, which is one of a script's own things", m.Name))
+		panic(fmt.Sprintf("plugin: a module cannot be named %q, which is one of a script's own things", m.Name))
 	}
 	if _, dup := modules[m.Name]; dup {
-		panic(fmt.Sprintf("plugin: two modules are named %s", m.Name))
+		panic(fmt.Sprintf("plugin: two modules are named %q", m.Name))
 	}
 	modules[m.Name] = m
 }

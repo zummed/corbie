@@ -2,19 +2,19 @@
   {
     "wait": {
       "machine": "child",
-      "key": "answer"
+      "ticket": "answer"
     },
     "do": "reply",
-    "wrong_key": true,
+    "wrong_ticket": true,
     "remember": "real",
     "value": {},
     "taken": false,
-    "refused_contains": "not waiting on that key"
+    "refused_contains": "not waiting on that ticket"
   },
   {
     "wait": {
       "machine": "child",
-      "key": "answer"
+      "ticket": "answer"
     },
     "do": "cancel",
     "taken": true

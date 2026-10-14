@@ -1,0 +1,11 @@
+# The same failure, but the only stage that looks at it reads
+# stages.bad.error in its input, and has no when:. Only a when: handles a
+# failure, so the flow fails.
+flow: reads-error-only
+stages:
+  bad:
+    job: { script: ./fail.js }
+  reads_error_only:
+    job: { script: ./echo.js, input: { error: "${stages.bad.error}" } }
+output:
+  seen: ${stages.reads_error_only.output}

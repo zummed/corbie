@@ -16,9 +16,9 @@ A statechart runs the flow
         job:
           machine: ./title.yaml
           input: { url: "https://example.com" }
-        done: finished
+        on: { done: finished }
       finished:
-        final: true
+        end: done
         output: ${states.fetching.output.title}
 
     corbie test watch.yaml --watch
@@ -42,7 +42,7 @@ An agent uses the flow as a tool
     # helper.yaml
     agent: page-helper
     input: [question]
-    model: { name: claude-haiku-5-5, key: ANTHROPIC_KEY }
+    model: { name: claude-haiku-5-5, secret: ANTHROPIC_KEY }
     prompt: ${input.question}
 
     tools:

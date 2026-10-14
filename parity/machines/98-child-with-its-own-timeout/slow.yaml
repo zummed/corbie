@@ -1,0 +1,9 @@
+statechart: slow
+limits: { timeout: 1s }
+initial: waiting
+states:
+  waiting:
+    ticket: never
+    on: { never: finished }
+  finished:
+    end: done

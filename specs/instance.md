@@ -4,9 +4,9 @@ An instance is one run of a machine. It is two things in the store: a head, whic
 
 ## The head
 
-The head is a small signed summary that the controller rewrites as the instance moves. It says what the instance is called and what type of machine it is, whether it is running, done, failed or cancelled, which step it has reached, when it started, which instance is its parent, and what it is waiting for: how many jobs on runners, how many timers, and the names of any keys. It also carries the labels its client gave it at the start.
+The head is a small signed summary that the controller rewrites as the instance moves. It says what the instance is called and what type of machine it is, whether it is running, done, failed or cancelled, which step it has reached, when it started, which instance is its parent, and what it is waiting for: how many jobs on runners, how many timers, and the names of any tickets. It also carries the labels its client gave it at the start.
 
-The head is sealed to nobody. Anyone the store lets read it can read it and can check the controller's signature. For that reason it holds nothing the instance was given or produced: no input, no output, no error text, no log line, no value of a key. Labels are the one exception. They are the client's own words about the run, chosen knowing they are public, and a child carries its parent's.
+The head is sealed to nobody. Anyone the store lets read it can read it and can check the controller's signature. For that reason it holds nothing the instance was given or produced: no input, no output, no error text, no log line, no value of a ticket. Labels are the one exception. They are the client's own words about the run, chosen knowing they are public, and a child carries its parent's.
 
 The head is a summary and may be a moment behind. The record is the truth, and the controller brings the head up to date after each step.
 
@@ -44,9 +44,9 @@ Watching holds no state anywhere and asks nothing of the controller. In a direct
 
 ## Sending
 
-A client acts on an instance by writing a message into the controller's inbox: start a run, cancel one, send it an event, answer a key. A client has no inbox of its own.
+A client acts on an instance by writing a message into the controller's inbox: start a run, cancel one, send it an event, answer a ticket. A client has no inbox of its own.
 
-For every message a client sends, the controller writes a receipt under the same name, saying that the message was taken or why it was refused. This is how a client learns that a start was refused before any instance existed, and how a client that answers a key for a run it did not start learns that its answer was taken. The receipt for an event also says whether the machine acted on it or had no rule for it. A receipt is sealed to the client that sent the message and is kept for a day. A message sent twice gets the same answer twice. Everything else a client learns, it learns from heads and records.
+For every message a client sends, the controller writes a receipt under the same name, saying that the message was taken or why it was refused. This is how a client learns that a start was refused before any instance existed, and how a client that answers a ticket for a run it did not start learns that its answer was taken. The receipt for an event also says whether the machine acted on it or had no rule for it. A receipt is sealed to the client that sent the message and is kept for a day. A message sent twice gets the same answer twice. Everything else a client learns, it learns from heads and records.
 
 A client chooses a run's name before starting it, because files it sends along go into the run's record first. An application that must survive its own restart notes the name before it sends.
 

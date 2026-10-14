@@ -2,9 +2,8 @@ statechart: bottom
 initial: waiting
 states:
   waiting:
-    wait: answer
+    ticket: answer
     exit: { send: { to: parent, event: bottom_leaving } }
-    on:
-      answer: finished
+    on: { answer: finished }
   finished:
-    final: true
+    end: done

@@ -118,7 +118,7 @@ func agentDef(address, extra string) string {
 	return strings.ReplaceAll(strings.ReplaceAll(`
 		agent: sums
 		input: [question]
-		model: { name: test-model, service: anthropic, address: ADDRESS, key: TEST_KEY }
+		model: { name: test-model, service: anthropic, address: ADDRESS, secret: TEST_KEY }
 		system: You add numbers.
 		prompt: ${input.question}
 		EXTRA
@@ -226,7 +226,7 @@ func TestAgentToolErrorsGoBackToTheModel(t *testing.T) {
 func TestAgentOutOfTurnsFails(t *testing.T) {
 	m := newModel(t, calls("c1", "add", `{"n": 1}`), calls("c2", "add", `{"n": 2}`), says("too late"))
 	l := local(t, "all")
-	r := runAgent(t, l, agentDef(m.URL, "turns: 2"), scripts)
+	r := runAgent(t, l, agentDef(m.URL, "limits: { turns: 2 }"), scripts)
 	if r.Status != "failed" || !strings.Contains(r.Error, "used its 2 turns") {
 		t.Fatalf("the agent ended %s: %s", r.Status, r.Error)
 	}
@@ -239,7 +239,7 @@ func TestAgentOutOfTurnsFails(t *testing.T) {
 func TestAgentShapedReply(t *testing.T) {
 	m := newModel(t, says("The answer is 42."), says("```json\n{\"answer\": 42}\n```"))
 	l := local(t, "all")
-	r := runAgent(t, l, agentDef(m.URL, "output: { answer: number }"), scripts)
+	r := runAgent(t, l, agentDef(m.URL, "reply: { answer: number }"), scripts)
 	if r.Status != "done" {
 		t.Fatalf("the agent ended %s: %s", r.Status, r.Error)
 	}
@@ -271,7 +271,7 @@ func agentRefused(t *testing.T, def, want string) string {
 func Test_agent_bad_model_is_reported_once(t *testing.T) {
 	got := agentRefused(t, `
 		agent: nomodel
-		model: { name: mystery-model, key: KEY }
+		model: { name: mystery-model, secret: KEY }
 		prompt: hi
 	`, "which service")
 	if strings.Count(got, "\n") != 0 {
@@ -280,14 +280,24 @@ func Test_agent_bad_model_is_reported_once(t *testing.T) {
 	agentRefused(t, strings.Replace(agentDef("https://user:pass@models.example", ""), "ADDRESS", "", 1), "may not hold a user name or a password")
 }
 
+// A type in a shape is a word; anything else is refused, saying so.
+func TestShapeTypeIsAWord(t *testing.T) {
+	agentRefused(t, agentDef("http://127.0.0.1:1", "reply: { answer: 1 }"), `"answer": a type is written as a word`)
+	agentRefused(t, agentDef("http://127.0.0.1:1", "reply: { answer: text }"), `"answer": "text" is not a type`)
+}
+
 func Test_agent_tool_reading_unnamed_argument_is_refused(t *testing.T) {
 	agentRefused(t, strings.Replace(agentDef("http://127.0.0.1:1", ""), `input: { n: "${args.n}" }`, `input: { n: "${args.other}" }`, 1),
-		"reads args.other, which the tool's args do not name")
+		`reads "args.other", which the tool's args do not name`)
 }
 
 func Test_agent_tool_cannot_take_an_agents_own_job_name(t *testing.T) {
-	for _, name := range []string{"turn", "blob_read", "ask"} {
-		agentRefused(t, strings.Replace(agentDef("http://127.0.0.1:1", ""), "  add:\n", "  "+name+":\n", 1), "taken by")
+	for name, want := range map[string]string{
+		"turn":      `the tool "turn" has the name of a job the agent itself makes`,
+		"blob_read": `the tool "blob_read" has the name of one of the tools every agent has for blobs`,
+		"ask":       `the name "ask" is taken by the definition's ask`,
+	} {
+		agentRefused(t, strings.Replace(agentDef("http://127.0.0.1:1", ""), "  add:\n", "  "+name+":\n", 1), want)
 	}
 }
 
@@ -317,7 +327,7 @@ func Test_agent_failure_always_has_a_conversation(t *testing.T) {
 func Test_agent_limit_reached_says_what_was_wrong_with_last_reply(t *testing.T) {
 	m := newModel(t, says("not json"), says("still not json"))
 	l := local(t, "all")
-	r := runAgent(t, l, agentDef(m.URL, "turns: 2\n\t\toutput: { answer: number }"), scripts)
+	r := runAgent(t, l, agentDef(m.URL, "limits: { turns: 2 }\n\t\treply: { answer: number }"), scripts)
 	if r.Status != "failed" || !strings.Contains(r.Error, "used its 2 turns") || !strings.Contains(r.Error, "its last reply did not fit") {
 		t.Fatalf("the agent ended %s: %s", r.Status, r.Error)
 	}
@@ -326,7 +336,7 @@ func Test_agent_limit_reached_says_what_was_wrong_with_last_reply(t *testing.T) 
 func Test_agent_shaped_reply_accepts_one_fence_and_refuses_trailing_text(t *testing.T) {
 	m := newModel(t, says("```json\n{\"answer\": 1}\n```\nI hope that helps!"), says("```\n{\"answer\": 2}\n```"))
 	l := local(t, "all")
-	r := runAgent(t, l, agentDef(m.URL, "output: { answer: number }"), scripts)
+	r := runAgent(t, l, agentDef(m.URL, "reply: { answer: number }"), scripts)
 	if r.Status != "done" {
 		t.Fatalf("the agent ended %s: %s", r.Status, r.Error)
 	}
@@ -668,7 +678,7 @@ func TestAgentAsATool(t *testing.T) {
 	r := runAgent(t, l, def, map[string]string{"add.js": scripts["add.js"], "sparks.yaml": strings.ReplaceAll(`
 		agent: sparks
 		input: [question]
-		model: { name: test-model, service: anthropic, address: ADDRESS, key: TEST_KEY }
+		model: { name: test-model, service: anthropic, address: ADDRESS, secret: TEST_KEY }
 		prompt: ${input.question}
 	`, "ADDRESS", helper.URL)})
 	if r.Status != "done" {

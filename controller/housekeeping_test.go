@@ -26,7 +26,7 @@ const kept = `
 	states:
 	  waiting:
 	    on: { stop: stopped, tick: waiting }
-	  stopped: { final: true }
+	  stopped: { end: done }
 `
 
 // An instance is kept for as long as its definition says after it ends,
@@ -340,13 +340,15 @@ const threeDeep = `
 	                initial: waiting
 	                states:
 	                  waiting: { on: { end: over } }
-	                  over: { final: true }
-	            on: { end: { send: { to: working, event: end } } }
-	            done: over
-	          over: { final: true }
-	    on: { end: { send: { to: working, event: end } } }
-	    done: over
-	  over: { final: true }
+	                  over: { end: done }
+	            on:
+	              done: over
+	              end: { send: { to: working, event: end } }
+	          over: { end: done }
+	    on:
+	      done: over
+	      end: { send: { to: working, event: end } }
+	  over: { end: done }
 `
 
 func Test_inst_removal_takes_children_first(t *testing.T) {
@@ -439,12 +441,12 @@ func Test_inst_removal_takes_children_first(t *testing.T) {
 			        initial: waiting
 			        states:
 			          waiting: { on: { end: over } }
-			          over: { final: true }
+			          over: { end: done }
 			    on:
+			      done: over
 			      tick: { send: { to: parent, event: ticked } }
 			      end: { send: { to: working, event: end } }
-			    done: over
-			  over: { final: true }
+			  over: { end: done }
 		`, nil, nil)
 		w.settle()
 		kid := w.below(top)
@@ -558,12 +560,12 @@ func Test_inst_trim_keeps_blob_a_grandchild_uses(t *testing.T) {
 		                  busy:
 		                    job: { script: ./work.js, input: "${event.data}", timeout: 30d }
 		                    on: { end: over }
-		                  over: { final: true }
+		                  over: { end: done }
 		            on:
+		              done: over
 		              file: { send: { to: working, event: file, data: "${event.data}" } }
 		              end: { send: { to: working, event: end } }
-		            done: over
-		          over: { final: true }
+		          over: { end: done }
 		    on:
 		      file: { send: { to: working, event: file, data: "${event.data}" } }
 		      end: { send: { to: working, event: end } }
@@ -651,10 +653,10 @@ func TestEmitEntriesAreTrimmedEachByItsOwnAge(t *testing.T) {
 			states:
 			  working:
 			    job: { script: ./work.js, timeout: 10d }
-			    done: waiting
+			    on: { done: waiting }
 			  waiting:
 			    on: { stop: stopped }
-			  stopped: { final: true }
+			  stopped: { end: done }
 		`, map[string]string{"work.js": "return 1"}, nil)
 		w.settle()
 		jobs := w.list(store.Inbox("r1"))
@@ -745,8 +747,9 @@ func TestDueTimerDoesNotWaitBehindHousekeeping(t *testing.T) {
 		initial: waiting
 		states:
 		  waiting:
-		    after: { 1h: over }
-		  over: { final: true }
+		    timers: { an_hour: 1h }
+		    on: { an_hour: over }
+		  over: { end: done }
 	`, nil, nil)
 	w.settle()
 	// More wakes for housekeeping than a pass reads at once, all due half an

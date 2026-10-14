@@ -5,11 +5,13 @@ initial: running
 states:
   running:
     job: { machine: ./agent.yaml }
-    done: too_late
-    after: { 1s: finished }
+    timers: { leave: 1s }
+    on:
+      done: too_late
+      leave: finished
   too_late:
-    final: true
+    end: done
     output: { agent_finished: true }
   finished:
-    final: true
+    end: done
     output: { left_by: "${event.name}" }

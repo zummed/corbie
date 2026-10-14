@@ -1,0 +1,11 @@
+statechart: child
+input: [topic]
+initial: asking
+states:
+  asking:
+    entry: { send: { to: parent, event: hello, data: { from: child } } }
+    ticket: answer
+    on: { answer: answered }
+  answered:
+    end: done
+    output: { topic: "${input.topic}", said: "${event.data.said}" }

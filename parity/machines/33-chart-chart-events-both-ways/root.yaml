@@ -8,9 +8,9 @@ states:
   running:
     job: { machine: ./child.yaml }
     on:
+      done: finished
       started:
-        send: { to: running, event: go, data: { what: "tidy up", you_said: "${event.data}" } }
-    done: finished
+        send: { to: running, event: begin, data: { what: "tidy up", you_said: "${event.data}" } }
   finished:
-    final: true
+    end: done
     output: ${event.data}

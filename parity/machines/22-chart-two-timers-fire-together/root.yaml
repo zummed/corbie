@@ -4,13 +4,16 @@ statechart: two-timers
 initial: waiting
 states:
   waiting:
-    after: { 1s: first, 2s: second }
+    timers: { tick: 1s, tock: 2s }
+    on:
+      tick: first
+      tock: second
   first:
     job: { script: ./echo.js, input: { state: first } }
-    done: finished
+    on: { done: finished }
   second:
     job: { script: ./echo.js, input: { state: second } }
-    done: finished
+    on: { done: finished }
   finished:
-    final: true
+    end: done
     output: { first: "${states.first.output}", second: "${states.second.output}" }

@@ -1,7 +1,7 @@
 {
   "status": "done",
   "output": {
-    "came_by": "go",
+    "came_by": "begin",
     "told": {
       "what": "tidy up",
       "you_said": {
@@ -30,7 +30,7 @@
     {
       "machine": "child",
       "event": {
-        "name": "go",
+        "name": "begin",
         "from": "parent"
       }
     }

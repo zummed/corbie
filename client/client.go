@@ -65,8 +65,8 @@ type Start struct {
 	Labels map[string]string
 	// Allow narrows what the run, and everything below it, may do.
 	Allow *permission.Layer
-	// Deadline is how long the run may take.
-	Deadline time.Duration
+	// Timeout is how long the run may take.
+	Timeout time.Duration
 	// Secrets are the run's own secrets.
 	Secrets map[string]string
 	// Life is how long the start is good for; a few minutes if it says
@@ -138,7 +138,7 @@ func (c *Client) Start(ctx context.Context, draft *machine.Draft, start Start) (
 	rand.Read(seed)
 	msg := &instance.Message{Kind: instance.KindStart, Instance: run, Start: &instance.Start{
 		Definition: ref, Input: input, Labels: start.Labels, Allow: start.Allow,
-		Deadline: machine.Duration(start.Deadline), Secrets: start.Secrets, Seed: seed}}
+		Timeout: machine.Duration(start.Timeout), Secrets: start.Secrets, Seed: seed}}
 	return run, c.send(ctx, startMessage(run), start.Life, msg)
 }
 
@@ -176,7 +176,7 @@ func (c *Client) resolve(ctx context.Context, v any) (any, error) {
 		if run, path, ok := shownFor(v); ok {
 			ref, err := c.find(ctx, run, path)
 			if err != nil {
-				return nil, fmt.Errorf("the blob at %q of the run %s: %w", path, run, err)
+				return nil, fmt.Errorf("the blob at %q of the run %q: %w", path, run, err)
 			}
 			return ref.Value(), nil
 		}
@@ -251,11 +251,11 @@ func (c *Client) Send(ctx context.Context, run, event string, data any, life tim
 		Event: &machine.Event{Name: event, Data: data}})
 }
 
-// Reply answers a key of a run. The key is the authority: any client that
-// holds it may answer.
-func (c *Client) Reply(ctx context.Context, run, key string, value any, life time.Duration) (string, error) {
+// Reply answers a ticket of a run. The ticket is the authority: any client
+// that holds it may answer.
+func (c *Client) Reply(ctx context.Context, run, ticket string, value any, life time.Duration) (string, error) {
 	return c.sendNext(ctx, life, &instance.Message{Kind: instance.KindAnswer, Instance: run,
-		Answer: &instance.Answer{Key: key, Value: value}})
+		Answer: &instance.Answer{Ticket: ticket, Value: value}})
 }
 
 func (c *Client) sendNext(ctx context.Context, life time.Duration, msg *instance.Message) (string, error) {

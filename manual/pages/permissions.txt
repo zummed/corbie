@@ -70,14 +70,14 @@ run.
 
     corbie test status.js
       refused: net:example.com:443
-      by: the job script in the definition of status
-      fix: add the line net:example.com:443 to the allow list of the job script in the definition of status
+      by: the job "script" in the definition of "status"
+      fix: add the line net:example.com:443 to the allow list of the job "script" in the definition of "status"
 
 For a ceiling, `fix:` names who can change it. For a deny list, it names the
 entry to remove.
 
   fix: the controller's owner runs: corbie controller enrol laptop-client --allow net:example.com:443
-  fix: take the deny entry net:example.com out of the job script in the definition of status
+  fix: take the deny entry net:example.com out of the job "script" in the definition of "status"
 
 A run's result lists the permissions its jobs used, on the line `used:`.
 

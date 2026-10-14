@@ -7,9 +7,10 @@ states:
     entry: { send: { to: parent, event: entered, data: { state: working } } }
     exit: { send: { to: parent, event: left, data: { state: working } } }
     job: { script: ./echo.js, input: { n: 1 } }
-    done:
-      to: finished
-      send: { to: parent, event: moving, data: { n: "${event.data.n}" } }
+    on:
+      done:
+        go: finished
+        send: { to: parent, event: moving, data: { n: "${event.data.n}" } }
   finished:
-    final: true
+    end: done
     output: { n: "${states.working.output.n}" }

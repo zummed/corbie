@@ -1,0 +1,9 @@
+# A flow with a one-second timeout whose only stage is a child that sleeps
+# two seconds.
+flow: timeout
+limits: { timeout: 1s }
+stages:
+  slow:
+    job: { machine: ./sleeper.yaml }
+output:
+  slow: ${stages.slow.output}

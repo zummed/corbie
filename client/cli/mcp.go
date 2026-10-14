@@ -134,7 +134,7 @@ func (e *env) tools(allow []string) []any {
 		line := fmt.Sprintf("corbie %s — %s", strings.TrimSpace(c.Name+" "+c.Usage), c.Summary)
 		if c.Stays {
 			// What a model is told about a command that stays says so.
-			line += " (this call stays until the run ends, or until it is stopped: a run waiting on a key cannot be answered from inside the same call)"
+			line += " (this call stays until the run ends, or until it is stopped: a run waiting on a ticket cannot be answered from inside the same call)"
 		}
 		commands = append(commands, line)
 	}

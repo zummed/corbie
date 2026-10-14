@@ -3,9 +3,9 @@ initial: working
 states:
   working:
     job: { script: ./echo.js, input: { n: 1 } }
-    done: finished
     on:
+      done: finished
       hello: finished
   finished:
-    final: true
+    end: done
     output: { came_by: "${event.name}" }

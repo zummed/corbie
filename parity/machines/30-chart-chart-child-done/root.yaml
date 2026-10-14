@@ -7,9 +7,9 @@ initial: running
 states:
   running:
     job: { machine: ./child.yaml, input: { n: "${input.n}", from: parent } }
-    done: finished
+    on: { done: finished }
   finished:
-    final: true
+    end: done
     output:
       came_by: ${event.name}
       event_output: ${event.data}

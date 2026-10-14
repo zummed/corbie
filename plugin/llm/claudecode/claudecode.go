@@ -128,7 +128,7 @@ func chat(job *plugin.Job, c *llm.Call) (*llm.Reply, error) {
 	cmd.Stderr = &plugin.Draining{To: errs}
 	cmd.WaitDelay = 2 * time.Second
 	if err := cmd.Start(); err != nil {
-		return nil, plugin.Errorf(plugin.NotFound, "the program %s could not be started: %v", Program, err)
+		return nil, plugin.Errorf(plugin.NotFound, "the program %q could not be started: %v", Program, err)
 	}
 	go func() {
 		stdin.Write(said)

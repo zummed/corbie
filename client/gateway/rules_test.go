@@ -276,7 +276,7 @@ func Test_client_gateway_null_input_is_no_input(t *testing.T) {
 statechart: sees
 initial: over
 states:
-  over: { final: true, output: { given: "${input === undefined ? 'nothing' : JSON.stringify(input)}" } }
+  over: { end: done, output: { given: "${input === undefined ? 'nothing' : JSON.stringify(input)}" } }
 `
 	var outputs, starts []string
 	for _, parts := range [][]part{

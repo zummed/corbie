@@ -43,12 +43,12 @@
 //
 // drive.json is a list of steps, taken in order. Each waits and then acts:
 //
-//	{ "wait": { "machine": "child", "key": "answer", "input": { … }, "status": "done" },
+//	{ "wait": { "machine": "child", "ticket": "answer", "input": { … }, "status": "done" },
 //	  "do": "reply|send|cancel|nothing",
 //	  "value": …,                      a reply's value
-//	  "wrong_key": true,               reply with a key the run is not waiting on
-//	  "remember": "k",                 keep the instance and key found, under a name
-//	  "remembered": "k",               reply to the instance and key kept under a name
+//	  "wrong_ticket": true,            reply with a ticket the run is not waiting on
+//	  "remember": "k",                 keep the instance and ticket found, under a name
+//	  "remembered": "k",               reply to the instance and ticket kept under a name
 //	  "event": "go", "data": …,        an event to send, to the machine waited for
 //	  "taken": false,                  what the receipt should say
 //	  "acted": false,
@@ -144,13 +144,13 @@ type look struct {
 type drive struct {
 	Wait struct {
 		Machine string `json:"machine"`
-		Key     string `json:"key"`
+		Ticket  string `json:"ticket"`
 		Input   any    `json:"input"`
 		Status  string `json:"status"`
 	} `json:"wait"`
 	Do              string `json:"do"`
 	Value           any    `json:"value"`
-	WrongKey        bool   `json:"wrong_key"`
+	WrongTicket     bool   `json:"wrong_ticket"`
 	Remember        string `json:"remember"`
 	Remembered      string `json:"remembered"`
 	Event           string `json:"event"`
@@ -448,14 +448,14 @@ type driver struct {
 	l    *client.Local
 	root string
 	ctx  context.Context
-	kept map[string][2]string // an instance and a key, by the name they were kept under
+	kept map[string][2]string // an instance and a ticket, by the name they were kept under
 }
 
 // find waits for an instance that is as a step says, and gives it with the
-// value of the key waited for, if one was.
-func (d *driver) find(step drive) (id, key string, problem string) {
+// value of the ticket waited for, if one was.
+func (d *driver) find(step drive) (id, ticket string, problem string) {
 	w := step.Wait
-	if w.Machine == "" && w.Key == "" && w.Status == "" {
+	if w.Machine == "" && w.Ticket == "" && w.Status == "" {
 		return d.root, "", ""
 	}
 	for {
@@ -480,14 +480,14 @@ func (d *driver) find(step drive) (id, key string, problem string) {
 					continue
 				}
 			}
-			if w.Key == "" {
+			if w.Ticket == "" {
 				return r.ID, "", ""
 			}
-			keys, err := d.l.Keys(d.ctx, r.ID)
+			tickets, err := d.l.Tickets(d.ctx, r.ID)
 			if err != nil {
 				continue
 			}
-			if value, ok := keys[w.Key]; ok {
+			if value, ok := tickets[w.Ticket]; ok {
 				return r.ID, value, ""
 			}
 		}
@@ -506,28 +506,28 @@ func plain(v any) any {
 }
 
 func (d *driver) take(step drive) string {
-	id, key, problem := d.find(step)
+	id, ticket, problem := d.find(step)
 	if problem != "" {
 		return problem
 	}
 	if step.Remember != "" {
-		d.kept[step.Remember] = [2]string{id, key}
+		d.kept[step.Remember] = [2]string{id, ticket}
 	}
 	if step.Remembered != "" {
 		kept, ok := d.kept[step.Remembered]
 		if !ok {
 			return "nothing was kept as " + step.Remembered
 		}
-		id, key = kept[0], kept[1]
+		id, ticket = kept[0], kept[1]
 	}
 	var message string
 	var err error
 	switch step.Do {
 	case "reply":
-		if step.WrongKey {
-			key = "not-a-key-the-run-waits-on"
+		if step.WrongTicket {
+			ticket = "not-a-ticket-the-run-waits-on"
 		}
-		message, err = d.l.Reply(d.ctx, id, key, step.Value, 0)
+		message, err = d.l.Reply(d.ctx, id, ticket, step.Value, 0)
 	case "send":
 		message, err = d.l.Send(d.ctx, id, step.Event, step.Data, 0)
 	case "cancel":

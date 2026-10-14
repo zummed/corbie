@@ -40,10 +40,10 @@ type dropped struct {
 
 // The names of what a wake is for.
 const (
-	wakeDeadline = "deadline"
-	wakeTimer    = "timer."
-	wakeDue      = "due."
-	wakeAgain    = "again."
+	wakeTimeout = "timeout"
+	wakeTimer   = "timer."
+	wakeDue     = "due."
+	wakeAgain   = "again."
 )
 
 // build is one step being worked out from the state before and what
@@ -67,7 +67,7 @@ type build struct {
 }
 
 // take gives what is waiting for an instance to its next step. A start is
-// taken by itself; a cancel or a passed deadline is acted on first and
+// taken by itself; a cancel or a passed timeout is acted on first and
 // nothing after it is given to the machine.
 func (p *pass) take(inst string, latest *instance.Step, waiting []*arrival) (*taken, error) {
 	// Messages are taken before wakes, whatever order they were found in: a
@@ -184,11 +184,11 @@ func (a *arrival) label() string {
 type endText struct{ status, text string }
 
 // ending says whether an arrival ends the instance: a cancel from one who
-// may cancel it, or its deadline having passed.
+// may cancel it, or its timeout having passed.
 func (b *build) ending(a *arrival) (string, endText) {
 	switch {
-	case a.wake && a.what == wakeDeadline && sameTime(b.st.Deadline, a.at):
-		return instance.Failed, endText{machine.StatusTimeout, "the deadline passed"}
+	case a.wake && a.what == wakeTimeout && sameTime(b.st.TimeoutAt, a.at):
+		return instance.Failed, endText{machine.StatusTimeout, "the timeout passed"}
 	case !a.wake && a.msg.Kind == instance.KindCancel && a.good(b.p.now) && b.mayCancel(a):
 		return instance.Cancelled, endText{machine.StatusCancelled, "cancelled"}
 	}
@@ -312,37 +312,37 @@ func (b *build) eventFrom(a *arrival) {
 	b.give(machine.Event{Name: msg.Event.Name, From: from, Data: msg.Event.Data}, a)
 }
 
-// answer takes an answer to a key. The key is the authority: any client
-// that holds it may answer, and a key is answered once.
+// answer takes an answer to a ticket. The ticket is the authority: any
+// client that holds it may answer, and a ticket is answered once.
 func (b *build) answer(a *arrival) {
 	if a.kind != identity.Client || a.msg.Answer == nil {
 		b.drop(a)
 		return
 	}
-	for _, id := range sortedKeys(b.st.Keys) {
-		key := b.st.Keys[id]
-		if !hmac.Equal([]byte(key.Value), []byte(a.msg.Answer.Key)) {
+	for _, id := range sortedKeys(b.st.Tickets) {
+		ticket := b.st.Tickets[id]
+		if !hmac.Equal([]byte(ticket.Value), []byte(a.msg.Answer.Ticket)) {
 			continue
 		}
-		delete(b.st.Keys, id)
-		b.st.Answered = append(b.st.Answered, mark(key.Value))
+		delete(b.st.Tickets, id)
+		b.st.Answered = append(b.st.Answered, mark(ticket.Value))
 		if len(b.st.Answered) > 16 {
 			b.st.Answered = b.st.Answered[len(b.st.Answered)-16:]
 		}
-		b.give(machine.Event{Name: key.Name, From: id, Data: a.msg.Answer.Value}, a)
+		b.give(machine.Event{Name: ticket.Name, From: id, Data: a.msg.Answer.Value, Answer: true}, a)
 		return
 	}
-	if slices.Contains(b.st.Answered, mark(a.msg.Answer.Key)) {
-		b.refuse(a, "the key was already answered")
+	if slices.Contains(b.st.Answered, mark(a.msg.Answer.Ticket)) {
+		b.refuse(a, "the ticket was already answered")
 		return
 	}
-	b.refuse(a, "the run is not waiting on that key")
+	b.refuse(a, "the run is not waiting on that ticket")
 }
 
-// mark is a short mark of a key's value, by which an answered key is
+// mark is a short mark of a ticket's value, by which an answered ticket is
 // remembered without being kept.
-func mark(key string) string {
-	sum := sha1.Sum([]byte(key))
+func mark(ticket string) string {
+	sum := sha1.Sum([]byte(ticket))
 	return hex.EncodeToString(sum[:8])
 }
 
@@ -539,7 +539,7 @@ func (b *build) machine() error {
 		return nil
 	}
 	out, err := t.Step(&machine.StepIn{Definition: b.def, State: b.st.Inner, Events: b.events, Input: b.st.Input,
-		Time: b.time, Seed: b.seed("step", fmt.Sprint(b.step.Number)), HasAsk: b.def.Ask != nil || b.st.Above.Ask != nil})
+		Time: b.time, Seed: b.seed("step", fmt.Sprint(b.step.Number))})
 	if err != nil {
 		b.end(instance.Failed, nil, b.p.failf("%v", err))
 		return nil
@@ -639,13 +639,13 @@ func (b *build) apply(requests []machine.Request) error {
 				b.unwake(old.At, old.Wake)
 			}
 			delete(b.st.Timers, r.Clear)
-		case r.Key != nil:
-			if b.st.Keys == nil {
-				b.st.Keys = map[string]instance.Key{}
+		case r.Ticket != nil:
+			if b.st.Tickets == nil {
+				b.st.Tickets = map[string]instance.Ticket{}
 			}
-			b.st.Keys[r.Key.ID] = instance.Key{Name: r.Key.Name, Value: r.Key.Value}
+			b.st.Tickets[r.Ticket.ID] = instance.Ticket{Name: r.Ticket.Name, Value: r.Ticket.Value}
 		case r.Drop != "":
-			delete(b.st.Keys, r.Drop)
+			delete(b.st.Tickets, r.Drop)
 		case r.Note != "":
 			b.ask(instance.Ask{Kind: instance.AskNote, Text: r.Note})
 		case r.End != nil:
@@ -842,8 +842,8 @@ func (b *build) end(status string, output any, e *machine.Error) {
 	for _, name := range sortedKeys(st.Timers) {
 		b.unwake(st.Timers[name].At, st.Timers[name].Wake)
 	}
-	b.unwake(st.Deadline, wakeDeadline)
-	st.Jobs, st.Timers, st.Keys, st.Emitted = nil, nil, nil, nil
+	b.unwake(st.TimeoutAt, wakeTimeout)
+	st.Jobs, st.Timers, st.Tickets, st.Emitted = nil, nil, nil, nil
 	// When its keep has passed, the instance is due to be removed: a moment
 	// sooner for each machine above it, so that what is below is due first.
 	gone := b.time.Add(b.p.keepFor(b.def, &b.st.Above) - time.Duration(st.Above.Depth)*time.Millisecond)
@@ -971,13 +971,13 @@ func (p *pass) begin(inst string, waiting []*arrival) (*taken, error) {
 	}
 	// Its older history is trimmed as it runs, a keep at a time.
 	b.ask(instance.Ask{Kind: instance.AskWake, At: b.time.Add(p.keepFor(def, &st.Above)), What: wakeTrim})
-	limit := def.Deadline
-	if s.Deadline > 0 && (limit == 0 || s.Deadline < limit) {
-		limit = s.Deadline
+	limit := def.Timeout
+	if s.Timeout > 0 && (limit == 0 || s.Timeout < limit) {
+		limit = s.Timeout
 	}
 	if limit > 0 {
-		st.Deadline = b.time.Add(time.Duration(limit))
-		b.ask(instance.Ask{Kind: instance.AskWake, At: st.Deadline, What: wakeDeadline})
+		st.TimeoutAt = b.time.Add(time.Duration(limit))
+		b.ask(instance.Ask{Kind: instance.AskWake, At: st.TimeoutAt, What: wakeTimeout})
 	}
 	b.events = []machine.Event{{Name: machine.Start, Data: s.Input}}
 	b.sources = []*arrival{{wake: true}}

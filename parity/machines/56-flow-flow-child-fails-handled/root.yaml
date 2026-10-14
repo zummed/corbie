@@ -4,7 +4,7 @@ stages:
   kid:
     job: { machine: ./kid-flow.yaml, input: { n: 1, fail: true } }
   cleanup:
-    when: stages.kid.failed
+    when: ${stages.kid.failed}
     job: { script: ./echo.js, input: { error: "${stages.kid.error}" } }
   needs_kid:
     job: { script: ./echo.js, input: { n: "${stages.kid.output.n}" } }

@@ -1,0 +1,10 @@
+# A flow whose stage runs a chart, which runs a chart that never finishes
+# and has a timeout of its own (limits: { timeout: 1s }). The middle chart's
+# rule for failed takes the timeout and notes what it was given. The flow has no
+# timeout.
+flow: top
+stages:
+  mid:
+    job: { machine: ./middle.yaml }
+output:
+  mid: ${stages.mid.output}

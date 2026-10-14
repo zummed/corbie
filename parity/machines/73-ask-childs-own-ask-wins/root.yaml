@@ -10,7 +10,7 @@ stages:
   own:
     job: { script: ./add.js, input: { n: 100 }, approve: true }
   own_refused:
-    when: stages.own.failed
+    when: ${stages.own.failed}
     job: { script: ./echo.js, input: { error: "${stages.own.error}" } }
 output:
   kid: ${stages.kid.output}

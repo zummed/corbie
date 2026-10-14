@@ -17,8 +17,8 @@ A model's part of a definition holds what its service's models hold, and nothing
 There are two kinds. A service **on the web** speaks one service's way of talking, and is reached with two things: an address and a key. Corbie comes with three ways of talking, Anthropic's and OpenAI's two, and each knows where its service usually lives, so a definition that names a `claude-…` or `gpt-…` model need say nothing more. A model anywhere else that speaks one of these ways, self-hosted or offered by a cloud, is named by the way it speaks and its own address.
 
 ```
-model: { name: claude-sonnet-5-5, key: ANTHROPIC_KEY }
-model: { name: my-model, service: openai-chat, address: https://models.example, key: MODELS_KEY }
+model: { name: claude-sonnet-5-5, secret: ANTHROPIC_KEY }
+model: { name: my-model, service: openai-chat, address: https://models.example, secret: MODELS_KEY }
 model: { name: sonnet, service: claude-code }
 ```
 

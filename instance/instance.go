@@ -43,7 +43,7 @@ type Head struct {
 	Parent  string            `json:"parent,omitzero"`
 	Jobs    int               `json:"jobs,omitzero"`
 	Timers  int               `json:"timers,omitzero"`
-	Keys    []string          `json:"keys,omitzero"`
+	Tickets []string          `json:"tickets,omitzero"`
 	Labels  map[string]string `json:"labels,omitzero"`
 	// Keep is how long the instance is kept after it ends.
 	Keep machine.Duration `json:"keep,omitzero"`
@@ -97,7 +97,8 @@ type State struct {
 	// Above is what the instance was started under.
 	Above Above `json:"above"`
 
-	Deadline time.Time `json:"deadline,omitzero"`
+	// TimeoutAt is when the instance passes its timeout, if it has one.
+	TimeoutAt time.Time `json:"timeout_at,omitzero"`
 	// Inner is the machine type's own state.
 	Inner jsontext.Value `json:"inner,omitzero"`
 
@@ -105,8 +106,8 @@ type State struct {
 	Jobs map[string]*Going `json:"jobs,omitzero"`
 	// Timers are the timers set, by name.
 	Timers map[string]Timer `json:"timers,omitzero"`
-	// Keys are the keys waited on, by the id the machine gave each.
-	Keys map[string]Key `json:"keys,omitzero"`
+	// Tickets are the tickets waited on, by the id the machine gave each.
+	Tickets map[string]Ticket `json:"tickets,omitzero"`
 	// Asked counts how many times each name has asked for a job.
 	Asked map[string]int `json:"asked,omitzero"`
 	// JobsStarted counts the jobs the instance has started.
@@ -124,7 +125,7 @@ type State struct {
 	// Used lists the permissions used by every job in the instance and
 	// below it.
 	Used []string `json:"used,omitzero"`
-	// Answered remembers, by a short mark, the last few keys answered, so a
+	// Answered remembers, by a short mark, the last few tickets answered, so a
 	// second answer can be told it came second.
 	Answered []string `json:"answered,omitzero"`
 }
@@ -211,9 +212,9 @@ type Timer struct {
 	Wake string    `json:"wake"`
 }
 
-// A Key is a key waited on: its name and its value. The value is the whole
-// right to answer.
-type Key struct {
+// A Ticket is a ticket waited on: its name and its value. The value is the
+// whole right to answer.
+type Ticket struct {
 	Name  string `json:"name"`
 	Value string `json:"value"`
 }

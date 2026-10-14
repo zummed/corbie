@@ -9,9 +9,9 @@ states:
   running:
     job: { machine: ./middle.yaml, input: { depth: 1 } }
     on:
+      done: finished
       relayed:
         send: { to: running, event: order, data: { from: top, heard: "${event.data}" } }
-    done: finished
   finished:
-    final: true
+    end: done
     output: { middle: "${event.data}" }

@@ -8,18 +8,20 @@ initial: guarded
 states:
   guarded:
     job: { script: ./add.js, input: { n: 1 }, approve: true }
-    done: ran
-    failed: refused
-    after: { 1s: left }
+    timers: { give_up: 1s }
+    on:
+      done: ran
+      failed: refused
+      give_up: left
   ran:
-    final: true
+    end: done
     output: { ran: true }
   refused:
-    final: true
+    end: done
     output: { refused: "${event.data.error}" }
   left:
     job: { script: ./echo.js, input: { left_by: "${event.name}" } }
-    done: finished
+    on: { done: finished }
   finished:
-    final: true
+    end: done
     output: ${states.left.output}

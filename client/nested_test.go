@@ -59,7 +59,7 @@ func TestParentNarrowsOnlyWithAList(t *testing.T) {
 	r = run(t, l, with("", list), files, map[string]any{"dir": dir, "year": "2026"})
 	check(t, r.Status, r.Output, "done", `"2026"`)
 	r = run(t, l, with("", list), files, map[string]any{"dir": dir, "year": "2025"})
-	if r.Failure != "denied" || r.Refused != "fs.read:"+dir+"/2025/a" || !strings.Contains(r.Layer, "the job kid in the definition of parent") {
+	if r.Failure != "denied" || r.Refused != "fs.read:"+dir+"/2025/a" || !strings.Contains(r.Layer, "the job \"kid\" in the definition of \"parent\"") {
 		t.Fatalf("outside the job's list: %s/%s refused %s by %s", r.Status, r.Failure, r.Refused, r.Layer)
 	}
 }
@@ -89,7 +89,7 @@ func Test_perm_made_machine_gets_only_its_jobs_list(t *testing.T) {
 		output: ${stages.go.output}
 	`
 	r := run(t, l, strings.Replace(made, "LIST", "", 1), files, map[string]any{"dir": dir})
-	if r.Failure != "denied" || r.Refused != "fs.read:"+dir+"/2026/a" || !strings.Contains(r.Layer, "the job go in the definition of maker") {
+	if r.Failure != "denied" || r.Refused != "fs.read:"+dir+"/2026/a" || !strings.Contains(r.Layer, "the job \"go\" in the definition of \"maker\"") {
 		t.Fatalf("a made machine with no list: %s/%s refused %s by %s: %s", r.Status, r.Failure, r.Refused, r.Layer, r.Error)
 	}
 	r = run(t, l, strings.Replace(made, "LIST", `allow: ["fs.read:${input.dir}/**"]`, 1), files, map[string]any{"dir": dir})

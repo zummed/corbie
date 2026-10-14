@@ -155,7 +155,7 @@ func setUp(t *testing.T, address string) (config string) {
 		t.Fatalf("corbie init: %s", said)
 	}
 	definition := filepath.Join(t.TempDir(), "waits.yaml")
-	os.WriteFile(definition, []byte("statechart: waits\ninitial: waiting\nstates:\n  waiting: { wait: word }\n"), 0o600)
+	os.WriteFile(definition, []byte("statechart: waits\ninitial: waiting\nstates:\n  waiting: { ticket: word }\n"), 0o600)
 	if status, said := corbie(ctx, "submit", definition, "--config", config); status != 0 {
 		t.Fatalf("corbie submit: %s", said)
 	}

@@ -19,10 +19,11 @@ initial: working
 states:
   working:
     job: { script: ./check.js, timeout: 5s, tags: %s }
-    done: timing
+    on: { done: timing }
   timing:
-    after: { 1s: checked }
-  checked: { final: true }
+    timers: { waited: 1s }
+    on: { waited: checked }
+  checked: { end: done }
 `
 
 const checkScript = `emit("taken", true)

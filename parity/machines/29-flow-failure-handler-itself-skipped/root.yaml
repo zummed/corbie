@@ -6,10 +6,10 @@ stages:
   bad:
     job: { script: ./fail.js }
   off:
-    when: "false"
+    when: ${false}
     job: { script: ./echo.js, input: { n: 1 } }
   handler:
-    when: stages.bad.failed
+    when: ${stages.bad.failed}
     job: { script: ./echo.js, input: { error: "${stages.bad.error}", off: "${stages.off.output}" } }
 output:
   handler: ${stages.handler.output}

@@ -149,13 +149,17 @@ func (s *Shape) field(name string) *Field {
 var shared = []Field{
 	{Name: "input", Kind: KindList, Like: "[urls, depth]", Does: "the inputs it needs; a start without one fails"},
 	{Name: "keep", Kind: KindDuration, Like: "7d", Does: "how long its instances are kept after they end (a week)"},
-	{Name: "deadline", Kind: KindDuration, Like: "1h", Does: "how long an instance may run (for ever, if not given)"},
-	{Name: "depth", Kind: KindNumber, Like: "8", Does: "how many levels of machines may be below a root (0: none)"},
-	{Name: "jobs", Kind: KindNumber, Like: "100", Does: "how many jobs an instance may start"},
 	{Name: "allow", Kind: KindList, Like: "[net:example.com]", Does: "permissions for every script the definition runs"},
 	{Name: "deny", Kind: KindList, Like: "[exec]", Does: "what no script the definition runs may do"},
 	{Name: "ask_about", Kind: KindList, Like: "[exec]", Does: "permissions that must be asked about before a job starts"},
 	{Name: "ask", Kind: KindJob, Like: "{ machine: ./ask.yaml }", Does: "the job that approves when a job needs approval"},
+}
+
+// The limits every type of machine takes. A type may add its own.
+var limits = []Field{
+	{Name: "timeout", Kind: KindDuration, Like: "1h", Does: "how long an instance may run (for ever, if not given)"},
+	{Name: "depth", Kind: KindNumber, Like: "8", Does: "how many levels of machines may be below a root (0: none)"},
+	{Name: "jobs", Kind: KindNumber, Like: "100", Does: "how many jobs an instance may start"},
 }
 
 // JobShape is the shape of a job, wherever one is written.
@@ -166,7 +170,7 @@ var JobShape = &Shape{Name: "job", What: "a job", Fields: []Field{
 	{Name: "input", Kind: KindValue, Like: `{ url: "${item}" }`, Does: "what the script or the machine is given"},
 	{Name: "allow", Kind: KindList, Like: "[net:example.com]", Does: "what the job may do, with the definition's allow; for a machine, it narrows everything the child does"},
 	{Name: "deny", Kind: KindList, Like: "[exec]", Does: "what the job may not do"},
-	{Name: "timeout", Kind: KindDuration, Like: "5m", Does: "how long it may take: five minutes unless it says; for a machine, the child's deadline"},
+	{Name: "timeout", Kind: KindDuration, Like: "5m", Does: "how long it may take, five minutes by default; for a machine, the child's timeout"},
 	{Name: "attempts", Kind: KindNumber, Like: "3", Does: "how many times it is tried on an error or a timeout"},
 	{Name: "memory", Kind: KindSize, Like: "256MB", Does: "the most memory the job may use"},
 	{Name: "tags", Kind: KindList, Like: "[gpu]", Does: "chooses runners: one that has every tag"},
@@ -177,7 +181,15 @@ var JobShape = &Shape{Name: "job", What: "a job", Fields: []Field{
 // fields: its first line, and what every type takes.
 func definitionShape(t Type) *Shape {
 	first := Field{Name: t.Name(), Kind: KindWord, Like: "digest", Does: "its name: the first line gives the type and the name"}
-	return &Shape{Name: "definition", What: "a definition", Fields: append([]Field{first}, shared...)}
+	own := slices.Clone(limits)
+	if l, ok := t.(Limiter); ok {
+		own = append(own, l.Limits()...)
+	}
+	limit := Field{Name: "limits", Kind: KindFields, Like: "{ timeout: 1h, jobs: 100 }", Does: "how much an instance may use",
+		Of: &Shape{Name: "limits", What: "a definition's limits", Fields: own}}
+	fields := append([]Field{first}, shared[:2]...)
+	fields = append(fields, limit)
+	return &Shape{Name: "definition", What: "a definition", Fields: append(fields, shared[2:]...)}
 }
 
 // A Description is everything a definition of one type may hold: each

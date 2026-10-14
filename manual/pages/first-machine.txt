@@ -61,8 +61,8 @@ Delete the `allow:` line and run the same command.
 
     corbie test title.yaml --input '{"url": "https://example.com"}'
       refused: net:example.com:443
-      by: the job get_title in the definition of fetch-title
-      fix: add the line net:example.com:443 to the allow list of the job get_title in the definition of fetch-title
+      by: the job "get_title" in the definition of "fetch-title"
+      fix: add the line net:example.com:443 to the allow list of the job "get_title" in the definition of "fetch-title"
 
 The script called `http.get`, and Corbie refused the call before a connection
 was made. The run ended as `failed (denied)`. The three lines give the

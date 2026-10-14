@@ -23,6 +23,7 @@ type Parser struct {
 	chain    []string // the machine files being read, outermost first
 	draft    *Draft
 	inline   int
+	limits   *Fields // the definition's limits, for a type to read its own
 }
 
 // Parse reads a written definition, fills it out, and checks it. load gives
@@ -92,12 +93,13 @@ func (p *Parser) fill(written map[string]any, first, place string) (draft *Draft
 	def.Name = f.Text(t.Name())
 	def.Input = f.Strings("input")
 	def.Keep = f.Duration("keep")
-	def.Deadline = f.Duration("deadline")
-	if f.Has("depth") {
-		depth := f.Int("depth")
+	limits := f.Fields("limits")
+	def.Timeout = limits.Duration("timeout")
+	if limits.Has("depth") {
+		depth := limits.Int("depth")
 		def.Depth = &depth
 	}
-	def.Jobs = f.Int("jobs")
+	def.Jobs = limits.Int("jobs")
 	def.Allow = f.Strings("allow")
 	def.Deny = f.Strings("deny")
 	def.AskAbout = f.Strings("ask_about")
@@ -107,9 +109,13 @@ func (p *Parser) fill(written map[string]any, first, place string) (draft *Draft
 	// What is left is the type's own, read by the type's own shape. A
 	// field neither names is one that does not belong.
 	f.read()
+	outerLimits := p.limits
+	p.limits = limits
 	own := p.Fields("", f.Rest(), t.Shape())
 	body := t.Fill(p, own)
 	own.Done()
+	limits.Done()
+	p.limits = outerLimits
 	var err error
 	def.Body, err = json.Marshal(body, json.Deterministic(true))
 	if err != nil {
@@ -135,6 +141,9 @@ func (p *Parser) fill(written map[string]any, first, place string) (draft *Draft
 	p.draft.needsAsk = approves && def.Ask == nil
 	return p.draft, p.draft.needsAsk
 }
+
+// Limits gives the definition's limits, for a type to read those it adds.
+func (p *Parser) Limits() *Fields { return p.limits }
 
 // Job reads a job as it is written: a mapping, or just the path of a
 // script. It loads the script and its files, or the machine.
@@ -416,6 +425,20 @@ func (f *Fields) text(name string, as ...Kind) string {
 	}
 	f.p.Problem(f.at(name), "this should be text, and is %s", describe(v))
 	return ""
+}
+
+// Cond takes a field that is a condition: exactly one expression, written
+// ${…}. It gives the expression's source.
+func (f *Fields) Cond(name string) string {
+	text := f.text(name, KindWord)
+	if text == "" {
+		return ""
+	}
+	src, ok := OneExpr(text)
+	if !ok {
+		f.p.Problem(f.at(name), "%q: a condition is one expression, written ${…}", text)
+	}
+	return src
 }
 
 // Int takes a field that is a whole number.

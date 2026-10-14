@@ -18,9 +18,9 @@ func TestPermissionScopeFilledFromAnythingButTheInputIsRefused(t *testing.T) {
 		statechart: c
 		initial: a
 		states:
-		  a: { job: ./add.js, done: b }
-		  b: { job: { script: ./add.js, allow: ["ENTRY"] }, done: c }
-		  c: { final: true }
+		  a: { job: ./add.js, on: { done: b } }
+		  b: { job: { script: ./add.js, allow: ["ENTRY"] }, on: { done: c } }
+		  c: { end: done }
 	`
 	for _, c := range []struct{ def, entry, place string }{
 		{`
@@ -68,7 +68,7 @@ func TestAgentToolScopeIsFilledFromTheAgentsInput(t *testing.T) {
 	id, err := l.Start(ctx, draft(t, `
 		agent: reader
 		input: [dir]
-		model: { name: test-model, service: anthropic, address: `+m.URL+`, key: TEST_KEY }
+		model: { name: test-model, service: anthropic, address: `+m.URL+`, secret: TEST_KEY }
 		prompt: Read the note.
 		tools:
 		  look:
@@ -191,7 +191,7 @@ func TestFlowItemsStartAsTheyAreEmitted(t *testing.T) {
 		  source:
 		    job: { script: ./emit.js, input: { dir: "${input.dir}", items: [1, 2, 3] } }
 		  per_item:
-		    each: source
+		    each: { emitted: source }
 		    job: { script: ./mark.js, input: { dir: "${input.dir}", n: "${item}" } }
 		output:
 		  count: ${stages.source.output.count}
@@ -203,7 +203,7 @@ func TestFlowItemsStartAsTheyAreEmitted(t *testing.T) {
 	check(t, r.Status, r.Output, "done", `{"count": 3, "items": [2, 3, 4]}`)
 }
 
-// A flow that names a stage with pass: sends that stage's emitted items up
+// A flow that names a stage with emit: sends that stage's emitted items up
 // to its parent as they arrive: the parent's stage that follows the child
 // starts on the first before the child has ended, and runs once for each.
 func TestFlowPassesANamedStagesItemsUpAsTheyArrive(t *testing.T) {
@@ -220,13 +220,13 @@ func TestFlowPassesANamedStagesItemsUpAsTheyArrive(t *testing.T) {
 		        flow: kid
 		        input: [dir]
 		        allow: ["fs.read:${input.dir}/**"]
-		        pass: source
+		        emit: source
 		        stages:
 		          source:
 		            job: { script: ./emit.js, input: { dir: "${input.dir}", items: [1, 2, 3] } }
 		        output: ${stages.source.output.count}
 		  per_item:
-		    each: kid
+		    each: { emitted: kid }
 		    job: { script: ./mark.js, input: { dir: "${input.dir}", n: "${item}" } }
 		output:
 		  count: ${stages.kid.output}

@@ -3,7 +3,7 @@ initial: emitting
 states:
   emitting:
     job: { script: ./emit.js, input: { items: [{ n: 1 }, { n: 2 }] } }
-    done: finished
+    on: { done: finished }
   finished:
-    final: true
+    end: done
     output: ${event.data}

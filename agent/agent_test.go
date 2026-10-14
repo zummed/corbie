@@ -73,10 +73,10 @@ func TestWhatAModelIsOfferedIsWhatItIsCheckedAgainst(t *testing.T) {
 			good.Address = "https://models.example"
 		}
 		for field, with := range map[string]func(*Model){
-			"address": func(m *Model) { m.Address = "https://models.example" },
-			"reply":   func(m *Model) { m.Reply = 4000 },
-			"own":     func(m *Model) { m.Own = []string{"WebSearch"} },
-			"effort":  func(m *Model) { m.Effort = s.Efforts[0] },
+			"address":      func(m *Model) { m.Address = "https://models.example" },
+			"reply_tokens": func(m *Model) { m.ReplyTokens = 4000 },
+			"own":          func(m *Model) { m.Own = []string{"WebSearch"} },
+			"effort":       func(m *Model) { m.Effort = s.Efforts[0] },
 		} {
 			m := good
 			if field != "address" {
@@ -101,7 +101,7 @@ func TestWhatAModelIsOfferedIsWhatItIsCheckedAgainst(t *testing.T) {
 	}
 	// A client is given the sorts with the rest.
 	sent, err := json.Marshal(d, json.Deterministic(true))
-	if err != nil || !strings.Contains(string(sent), `"sorts":{"by":"service","fields":{"a-program":["name","key","service","effort","own"],"anthropic":["name","key","service","effort","address","reply"]`) {
+	if err != nil || !strings.Contains(string(sent), `"sorts":{"by":"service","fields":{"a-program":["name","secret","service","effort","own"],"anthropic":["name","secret","service","effort","address","reply_tokens"]`) {
 		t.Errorf("a client is not given what a model of each service holds: %v\n%s", err, sent)
 	}
 

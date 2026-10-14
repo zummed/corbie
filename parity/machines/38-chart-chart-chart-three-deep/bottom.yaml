@@ -4,11 +4,10 @@ initial: ready
 states:
   ready:
     entry: { send: { to: parent, event: news, data: { from: bottom, depth: "${input.depth}" } } }
-    on:
-      order: working
+    on: { order: working }
   working:
     job: { script: ./echo.js, input: { order: "${event.data}" } }
-    done: finished
+    on: { done: finished }
   finished:
-    final: true
+    end: done
     output: ${states.working.output}

@@ -20,8 +20,7 @@ type state struct {
 	// Turn is how many turns have been taken, and Limit how many may be.
 	Turn  int `json:"turn"`
 	Limit int `json:"limit"`
-	// Waiting says what the agent waits for: a turn, its tools, or more
-	// turns from its ask.
+	// Waiting says what the agent waits for: a turn or its tools.
 	Waiting string `json:"waiting,omitzero"`
 	// Calls are the calls of the current turn, in the order the model made
 	// them.
@@ -123,19 +122,6 @@ func (s *stepper) arrive(event machine.Event) (bool, error) {
 		}
 		if event.Name == machine.Done {
 			return true, s.replied(event.Data)
-		}
-	case event.From == moreJob && s.st.Waiting == moreJob:
-		if event.Name == machine.Done {
-			s.st.Limit += s.turns()
-			return true, s.turn()
-		}
-		if event.Name == machine.Failed {
-			text := fmt.Sprintf("turn limit reached: the agent used its %d turns and was given no more", s.st.Limit)
-			if s.st.Wrong != "" {
-				text += "; its last reply did not fit: " + s.st.Wrong
-			}
-			s.end(&machine.Error{Status: machine.StatusError, Error: text})
-			return true, nil
 		}
 	case s.st.Waiting == "tools" && (event.Name == machine.Done || event.Name == machine.Failed):
 		for _, c := range s.st.Calls {
@@ -368,21 +354,15 @@ func (s *stepper) begin() error {
 }
 
 // turn asks for the next turn: one call to the model, made by a job. At
-// the limit the agent asks its ask for more, as it would ask about a tool.
+// the limit the agent fails; its error carries the conversation, which
+// another agent can carry on.
 func (s *stepper) turn() error {
 	if s.st.Turn >= s.st.Limit {
-		if !s.in.HasAsk {
-			text := fmt.Sprintf("turn limit reached: the agent used its %d turns", s.st.Limit)
-			if s.st.Wrong != "" {
-				text += "; its last reply did not fit: " + s.st.Wrong
-			}
-			s.end(&machine.Error{Status: machine.StatusError, Error: text})
-			return nil
+		text := fmt.Sprintf("turn limit reached: the agent used its %d turns", s.st.Limit)
+		if s.st.Wrong != "" {
+			text += "; its last reply did not fit: " + s.st.Wrong
 		}
-		s.st.Waiting = moreJob
-		s.request(machine.Request{Job: &machine.Job{Name: moreJob, Script: moreScript, Approve: true, Alone: true,
-			Input: map[string]any{"turns": float64(s.st.Limit), "more": float64(s.turns())},
-			Shown: map[string]any{"does": "Give the agent more turns: it has used all it had", "turns": float64(s.st.Limit), "more": float64(s.turns())}}})
+		s.end(&machine.Error{Status: machine.StatusError, Error: text})
 		return nil
 	}
 	scope := machine.Scope{"input": s.in.Input}
@@ -410,8 +390,8 @@ func (s *stepper) turn() error {
 		add = append(add, map[string]any{"role": "user", "content": fmt.Sprintf("(%d turns remain: finish with what you have)", left)})
 	}
 	given := map[string]any{
-		"model":  map[string]any{"name": s.a.Model.Name, "service": s.a.Model.serviceOf(), "address": s.a.Model.addressOf(), "key": s.a.Model.Key, "effort": s.a.Model.Effort, "reply": float64(s.a.Model.Reply), "own": own},
-		"system": system, "tools": tools, "turns": s.st.Turns, "add": add, "shape": s.a.Output,
+		"model":  map[string]any{"name": s.a.Model.Name, "service": s.a.Model.serviceOf(), "address": s.a.Model.addressOf(), "secret": s.a.Model.Secret, "effort": s.a.Model.Effort, "reply_tokens": float64(s.a.Model.ReplyTokens), "own": own},
+		"system": system, "tools": tools, "turns": s.st.Turns, "add": add, "shape": s.a.Reply,
 		// The blobs the model has been shown, by name: those its service
 		// takes as content are sent to it as they are.
 		"blobs": s.st.Handles,
@@ -517,15 +497,15 @@ func (s *stepper) settled() error {
 // the model, which takes another turn.
 func (s *stepper) finish(text string) error {
 	var reply any = text
-	if s.a.Output != nil {
+	if s.a.Reply != nil {
 		data, err := shaped(text)
 		if err == nil {
-			_, err = s.fit(s.a.Output, data)
+			_, err = s.fit(s.a.Reply, data)
 		}
 		if err != nil {
 			s.st.Wrong = err.Error()
 			s.st.Next = []any{map[string]any{"role": "user", "content": fmt.Sprintf(
-				"(your reply does not fit what is wanted: %v. Reply with JSON only, with these names: %s)", err, shapeText(s.a.Output))}}
+				"(your reply does not fit what is wanted: %v. Reply with JSON only, with these names: %s)", err, shapeText(s.a.Reply))}}
 			return s.turn()
 		}
 		reply = data

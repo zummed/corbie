@@ -3,7 +3,7 @@ statechart: no-initial
 states:
   a:
     job: { script: ./echo.js, input: { n: 1 } }
-    done: b
+    on: { done: b }
   b:
-    final: true
+    end: done
     output: { n: "${states.a.output.n}" }

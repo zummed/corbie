@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"slices"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/zummed/corbie/blob"
@@ -19,9 +20,9 @@ import (
 type Flow struct {
 	Stages map[string]*Stage `json:"stages"`
 	Output any               `json:"output,omitzero"`
-	// Pass names the stage whose emitted items the flow passes up to its
-	// own parent as they arrive.
-	Pass string `json:"pass,omitzero"`
+	// Emit names the stage whose emitted items the flow emits to its own
+	// parent as they arrive.
+	Emit string `json:"emit,omitzero"`
 }
 
 // Stage is one stage in full form.
@@ -35,11 +36,14 @@ type Stage struct {
 	// Emits names another stage, whose emitted items are this stage's
 	// items, each started as it arrives.
 	Emits string `json:"emits,omitzero"`
-	// OneAtATime has the items go one at a time, in order.
-	OneAtATime bool `json:"one_at_a_time,omitzero"`
+	// Blob is a blob whose items are this stage's: a job of the stage's own
+	// name reads it and emits them, and each starts as it arrives.
+	Blob any `json:"blob,omitzero"`
+	// Serial has the items go one at a time, in order.
+	Serial bool `json:"serial,omitzero"`
 }
 
-func (s *Stage) perItem() bool { return s.Each != nil || s.Emits != "" }
+func (s *Stage) perItem() bool { return s.Each != nil || s.Emits != "" || s.Blob != nil }
 
 type flowType struct{}
 
@@ -47,8 +51,8 @@ func init() { machine.Register(flowType{}) }
 
 func (flowType) Name() string { return "flow" }
 
-// itemsScript is the script of the stage that the short form for a blob
-// adds: it reads the blob and emits its items.
+// itemsScript is the script of the job that reads a stage's blob and emits
+// its items.
 const (
 	itemsScript = "corbie:items.js"
 	itemsSource = `let n = 0
@@ -64,18 +68,20 @@ return { count: n }
 var shape = &machine.Shape{Name: "flow", What: "a flow", Fields: []machine.Field{
 	{Name: "stages", Kind: machine.KindNamed, Does: "its stages, each run once, in the order that follows from what they read of each other",
 		Of: &machine.Shape{Name: "stage", What: "a stage", Fields: []machine.Field{
-			{Name: "when", Kind: machine.KindWord, Like: "stages.summarise.failed", Does: "a condition: the stage runs only if it holds"},
+			{Name: "when", Kind: machine.KindWord, Like: "${stages.summarise.failed}", Does: "a condition, one expression: the stage runs only if it holds"},
 			{Name: "follows", Kind: machine.KindList, Like: "[fetch]", Does: "stages it runs after, though it reads nothing of them"},
-			{Name: "one_at_a_time", Kind: machine.KindFlag, Like: "true", Does: "with each: the items go one after another"},
 			{Name: "job", Kind: machine.KindJob, Like: "{ script: ./fetch.js }", Does: "what the stage does: a script, or a machine"},
 			{Name: "each", Kind: machine.KindValue, Like: "${input.urls}",
-				Does: "runs the stage once for every item, read as ${item}: a list, an expression that gives one, the name of a stage whose emitted items to follow, or { blob: … }",
-				Of: &machine.Shape{Name: "each", What: "the items of a blob", Fields: []machine.Field{
+				Does: "runs the stage once for every item, read as ${item}: { items: … }, { emitted: … } or { blob: … }, or a list or an expression that gives one",
+				Of: &machine.Shape{Name: "each", What: "where a stage's items come from", Fields: []machine.Field{
+					{Name: "items", Kind: machine.KindValue, Like: "${input.urls}", Does: "a list, or an expression that gives one"},
+					{Name: "emitted", Kind: machine.KindWord, Like: "fetch", Does: "a stage whose emitted items the stage follows, each as it arrives"},
 					{Name: "blob", Kind: machine.KindValue, Like: "${input.file}", Does: "the blob whose items the stage follows: lines, rows, entries"},
+					{Name: "serial", Kind: machine.KindFlag, Like: "true", Does: "the items go one after another, in order"},
 				}}},
 		}}},
 	{Name: "output", Kind: machine.KindValue, Like: "${stages.summarise.output}", Does: "the flow's result"},
-	{Name: "pass", Kind: machine.KindWord, Like: "fetch", Does: "a stage whose emitted items are sent up to the flow's own parent as they arrive"},
+	{Name: "emit", Kind: machine.KindWord, Like: "fetch", Does: "a stage whose emitted items the flow emits to its own parent as they arrive"},
 }}
 
 func (flowType) Shape() *machine.Shape { return shape }
@@ -93,40 +99,57 @@ func (flowType) Fill(p *machine.Parser, f *machine.Fields) any {
 			flow.Stages[name] = &Stage{}
 			continue
 		}
-		stage := &Stage{When: sf.Text("when"), Follows: sf.Strings("follows"), OneAtATime: sf.Bool("one_at_a_time")}
+		stage := &Stage{When: sf.Cond("when"), Follows: sf.Strings("follows")}
 		if job, ok := sf.Value("job"); ok {
 			stage.Job = p.Job(place+".job", job)
 		}
 		if each, ok := sf.Value("each"); ok {
 			switch v := each.(type) {
 			case string:
+				// Short for { items: … }.
 				if machine.HasExpr(v) {
 					stage.Each = v
 				} else {
-					stage.Emits = v // another stage, by its name
+					p.Problem(place+".each", "%q is not a list: if %q is a stage whose emitted values this stage follows, write \"each: { emitted: %s }\"", v, v, v)
 				}
 			case []any:
 				stage.Each = v
 			case map[string]any:
-				// The short form for a blob: a stage that reads the blob and
-				// emits its items, and this stage following those.
 				bf := p.Fields(place+".each", v, sf.Of("each"))
-				from, _ := bf.Value("blob")
+				items, isItems := bf.Value("items")
+				emitted := bf.Text("emitted")
+				from, isBlob := bf.Value("blob")
+				stage.Serial = bf.Bool("serial")
 				bf.Done()
-				reader := name + "_items"
-				p.Builtin(itemsScript, itemsSource)
-				flow.Stages[reader] = &Stage{Follows: stage.Follows, When: stage.When,
-					Job: &machine.JobSpec{Script: itemsScript, Input: map[string]any{"blob": from}}}
-				stage.Emits, stage.When = reader, ""
+				sources := 0
+				for _, given := range []bool{isItems, emitted != "", isBlob} {
+					if given {
+						sources++
+					}
+				}
+				switch {
+				case sources != 1:
+					p.Problem(place+".each", "each: { … } holds one of items:, emitted: and blob:")
+				case isItems:
+					if text, ok := items.(string); ok && !machine.HasExpr(text) {
+						p.Problem(place+".each.items", "%q is not a list: if %q is a stage whose emitted values this stage follows, write \"each: { emitted: %s }\"", text, text, text)
+					}
+					stage.Each = items
+				case emitted != "":
+					stage.Emits = emitted
+				default:
+					p.Builtin(itemsScript, itemsSource)
+					stage.Blob = from
+				}
 			default:
-				p.Problem(place+".each", "each takes a list, an expression that gives one, the name of a stage whose emitted items to follow, or { blob: … }")
+				p.Problem(place+".each", "each takes { items: … }, { emitted: … } or { blob: … }, or a list or an expression that gives one")
 			}
 		}
 		sf.Done()
 		flow.Stages[name] = stage
 	}
 	flow.Output, _ = f.Value("output")
-	flow.Pass = f.Text("pass")
+	flow.Emit = f.Text("emit")
 	return flow
 }
 
@@ -138,7 +161,8 @@ type needs struct {
 	// after are the stages it runs after: those it reads, those it follows
 	// and the one whose emits it follows.
 	after []string
-	// failure are the stages whose failure it reads.
+	// failure are the stages whose failure its condition reads: the
+	// failures it handles.
 	failure []string
 	// skipped are the stages its own condition asks about being skipped.
 	skipped []string
@@ -154,6 +178,7 @@ func (s *Stage) reads() (all []machine.Read, when []machine.Read) {
 		all = append(all, machine.Reads(s.Job.Script, "stages")...)
 	}
 	all = append(all, machine.ReadsIn(s.Each, "stages")...)
+	all = append(all, machine.ReadsIn(s.Blob, "stages")...)
 	if s.When != "" {
 		when = machine.ReadsOf(s.When, "stages")
 		all = append(all, when...)
@@ -172,15 +197,16 @@ func (s *Stage) needs() needs {
 	for _, r := range all {
 		add(&n.after, r.Name)
 		switch r.Part {
-		case "failed", "error":
-			add(&n.failure, r.Name)
-		case "skipped":
+		case "failed", "error", "skipped":
 		default:
 			add(&n.output, r.Name)
 		}
 	}
 	for _, r := range when {
-		if r.Part == "skipped" {
+		switch r.Part {
+		case "failed", "error":
+			add(&n.failure, r.Name)
+		case "skipped":
 			add(&n.skipped, r.Name)
 		}
 	}
@@ -235,14 +261,12 @@ func (flowType) Check(c *machine.Checker, def *machine.Definition) {
 			c.Problem(place+".each", "a stage's items are a list or what another stage emits, not both")
 		}
 		c.Value(place+".each", stage.Each, "input", "stages")
+		c.Value(place+".each.blob", stage.Blob, "input", "stages")
 		if stage.Emits != "" {
 			known(place+".each", stage.Emits)
 			if stage.Emits == name {
 				c.Problem(place+".each", "a stage cannot follow its own emits")
 			}
-		}
-		if stage.OneAtATime && !stage.perItem() {
-			c.Problem(place+".one_at_a_time", "only a stage with each: has items to take one at a time")
 		}
 		for i, other := range stage.Follows {
 			known(fmt.Sprintf("%s.follows[%d]", place, i), other)
@@ -251,7 +275,7 @@ func (flowType) Check(c *machine.Checker, def *machine.Definition) {
 		for _, r := range all {
 			known(place, r.Name)
 			if r.Part != "" && !slices.Contains(parts, r.Part) {
-				c.Problem(place, "stages.%s.%s: a stage has output, failed, error, skipped and emitted", r.Name, r.Part)
+				c.Problem(place, "\"stages.%s.%s\" reads a part a stage does not have: a stage has output, failed, error, skipped and emitted", r.Name, r.Part)
 			}
 		}
 		after[name] = stage.needs().after
@@ -260,8 +284,8 @@ func (flowType) Check(c *machine.Checker, def *machine.Definition) {
 	for _, r := range machine.ReadsIn(flow.Output, "stages") {
 		known("output", r.Name)
 	}
-	if flow.Pass != "" {
-		known("pass", flow.Pass)
+	if flow.Emit != "" {
+		known("emit", flow.Emit)
 	}
 	// A flow with a cycle is refused.
 	state := map[string]int{}
@@ -271,7 +295,11 @@ func (flowType) Check(c *machine.Checker, def *machine.Definition) {
 		switch state[name] {
 		case 1:
 			at := slices.Index(trail, name)
-			c.Problem("stages", "the stages wait on each other in a circle: %s -> %s", strings.Join(trail[at:], " -> "), name)
+			circle := []string{}
+			for _, stage := range append(slices.Clone(trail[at:]), name) {
+				circle = append(circle, strconv.Quote(stage))
+			}
+			c.Problem("stages", "the stages wait on each other in a circle: %s", strings.Join(circle, " -> "))
 			return true
 		case 2:
 			return false
@@ -329,6 +357,8 @@ type stageState struct {
 	Items []*itemState `json:"items,omitzero"`
 	// Listed says the stage's list of items has been worked out.
 	Listed bool `json:"listed,omitzero"`
+	// Reading is where the job that reads a stage's blob stands.
+	Reading string `json:"reading,omitzero"`
 }
 
 type itemState struct {
@@ -396,6 +426,9 @@ func (s *stepper) arrive(event machine.Event) bool {
 	if !ok || event.From == machine.Parent || event.From == "client" {
 		return false
 	}
+	if !isItem && s.flow.Stages[name].Blob != nil {
+		return s.read(name, stage, event)
+	}
 	var item *itemState
 	if isItem {
 		var i int
@@ -429,9 +462,35 @@ func (s *stepper) arrive(event machine.Event) bool {
 	default:
 		// A value the job sent up: one of the stage's emitted items.
 		stage.Emitted = append(stage.Emitted, event.Data)
-		if s.flow.Pass == name {
+		if s.flow.Emit == name {
 			s.request(machine.Request{Send: &machine.Send{To: machine.Parent, Event: event.Name, Data: event.Data}})
 		}
+	}
+	return true
+}
+
+// read takes an event of the job that reads a stage's blob: each item it
+// emits is one of the stage's, its end says no more will come, and its
+// failure fails the stage.
+func (s *stepper) read(name string, st *stageState, event machine.Event) bool {
+	switch event.Name {
+	case machine.Done:
+		st.Reading = done
+	case machine.Failed:
+		data, _ := event.Data.(map[string]any)
+		st.Reading, st.Status, st.Error = failed, failed, data["error"]
+		if data["status"] == machine.StatusDenied {
+			st.Denial = data
+		}
+		for i, item := range st.Items {
+			if item.Status == running {
+				s.request(machine.Request{Cancel: fmt.Sprintf("%s.%d", name, i)})
+			}
+		}
+	case machine.Timer:
+		return false
+	default:
+		st.Items = append(st.Items, &itemState{Item: event.Data})
 	}
 	return true
 }
@@ -451,9 +510,9 @@ func (s *stepper) advance() error {
 			changed = changed || moved
 		}
 	}
-	// A failure counts as handled only when a stage that reads it actually
-	// runs. If none reads it, the flow fails the moment it arrives; if one
-	// does and is then skipped, the flow fails then.
+	// A failure counts as handled only when a stage whose condition reads
+	// it actually runs. If none reads it, the flow fails the moment it
+	// arrives; if one does and is then skipped, the flow fails then.
 	for _, name := range names {
 		st := s.st.Stages[name]
 		if st.Status != failed && !s.itemFailed(name) {
@@ -529,6 +588,9 @@ func (s *stepper) fail(name string, st *stageState) {
 	}
 	e := machine.Unhandled(name, denial)
 	e.Error = fmt.Sprintf("%s: %v", name, text)
+	// A job asked for in the step that fails the flow would only be
+	// cancelled: none is started.
+	s.out.Requests = slices.DeleteFunc(s.out.Requests, func(r machine.Request) bool { return r.Job != nil })
 	s.request(machine.Request{End: &machine.Ending{Error: e}})
 }
 
@@ -586,6 +648,16 @@ func (s *stepper) move(name string) (bool, error) {
 		}
 	}
 	st.Status = running
+	if stage.Blob != nil {
+		reader := &machine.JobSpec{Script: itemsScript, Input: map[string]any{"blob": stage.Blob}}
+		job, err := reader.Fill(s.eval, s.scope(nil), place+".each.blob", name)
+		if err != nil {
+			return false, err
+		}
+		job.Wants = []string{"*"}
+		st.Reading = running
+		s.request(machine.Request{Job: job})
+	}
 	if stage.perItem() {
 		_, err := s.items(name, stage, st)
 		return true, err
@@ -600,10 +672,10 @@ func (s *stepper) move(name string) (bool, error) {
 }
 
 // wants says which emitted values of a stage's job the flow acts on: all
-// of them, if a stage follows them or reads them, or the flow passes them
-// up.
+// of them, if a stage follows them or reads them, or the flow emits them
+// to its parent.
 func (s *stepper) wants(name string) []string {
-	if s.flow.Pass == name {
+	if s.flow.Emit == name {
 		return []string{"*"}
 	}
 	for _, stage := range s.flow.Stages {
@@ -639,6 +711,8 @@ func (s *stepper) items(name string, stage *Stage, st *stageState) (bool, error)
 			changed = true
 		}
 		finished = source.settled()
+	case stage.Blob != nil:
+		finished = st.Reading == done
 	case !st.Listed:
 		value, err := s.eval.Fill(stage.Each, s.scope(nil), place+".each")
 		if err != nil {
@@ -664,7 +738,7 @@ func (s *stepper) items(name string, stage *Stage, st *stageState) (bool, error)
 		}
 	}
 	for i, item := range st.Items {
-		if item.Status != pending || (stage.OneAtATime && going > 0) {
+		if item.Status != pending || (stage.Serial && going > 0) {
 			continue
 		}
 		scope := s.scope(item.Item)

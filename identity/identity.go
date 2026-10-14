@@ -196,14 +196,14 @@ func Load(path string) (*Identity, error) {
 		return nil, err
 	}
 	if info.Mode().Perm()&0o077 != 0 {
-		return nil, fmt.Errorf("the identity file %s can be read by others (mode %o); its key is no longer its owner's alone. If that is not so, run: chmod 600 %s",
+		return nil, fmt.Errorf("the identity file %q can be read by others (mode %o); its key is no longer its owner's alone. If that is not so, run: chmod 600 %s",
 			path, info.Mode().Perm(), path)
 	}
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil, err
 	}
-	damaged := fmt.Errorf("the identity file %s is damaged", path)
+	damaged := fmt.Errorf("the identity file %q is damaged", path)
 	var f identityFile
 	if json.Unmarshal(data, &f, json.RejectUnknownMembers(true)) != nil || CheckName(f.Name) != nil || !f.Kind.valid() {
 		return nil, damaged

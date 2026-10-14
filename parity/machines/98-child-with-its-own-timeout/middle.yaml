@@ -1,0 +1,17 @@
+statechart: middle
+initial: running
+states:
+  running:
+    job: { machine: ./slow.yaml }
+    on:
+      done: unexpected
+      failed: noting
+  noting:
+    job: { script: ./echo.js, input: { name: "${event.name}", error: "${event.data.error}", status: "${event.data.status}" } }
+    on: { done: finished }
+  unexpected:
+    end: done
+    output: { unexpected: true }
+  finished:
+    end: done
+    output: ${states.noting.output}

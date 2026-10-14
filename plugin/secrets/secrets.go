@@ -11,7 +11,7 @@ func init() {
 				return nil, err
 			}
 			if !job.Sent(name) {
-				return nil, plugin.Errorf(plugin.NotFound, "the job was not sent a secret named %s: a job names each secret it uses in its allow list, as secret:%s@net:host", name, name)
+				return nil, plugin.Errorf(plugin.NotFound, "the job was not sent a secret named %q: a job names each secret it uses in its allow list, as secret:%s@net:host", name, name)
 			}
 			return plugin.NewSecret(name), nil
 		}},

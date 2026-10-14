@@ -254,7 +254,7 @@ func (e *env) open(recorded string, as *identity.Identity, ctl identity.Card) (s
 	case as == nil:
 		return nil, fmt.Errorf("a directory another computer serves is read only by a party with an identity: corbie client card makes one, to be enrolled")
 	case as.Kind == identity.Controller:
-		return nil, fmt.Errorf("a controller uses its directory directly, on the computer that serves it: its store is the directory, not %s", address)
+		return nil, fmt.Errorf("a controller uses its directory directly, on the computer that serves it: its store is the directory, not %q", address)
 	default:
 		var proof tls.Certificate
 		if proof, err = as.Proof(); err == nil {

@@ -14,7 +14,7 @@ const (
 	KindStart  = "start"  // start a run
 	KindCancel = "cancel" // cancel a run; to a runner, cancel a job
 	KindEvent  = "event"  // send a run an event
-	KindAnswer = "answer" // answer a key
+	KindAnswer = "answer" // answer a ticket
 	KindResult = "result" // a job's outcome: a script's from its runner, a child's from the controller
 	KindEmit   = "emit"   // a value a job sent up that the machine wants
 	KindJob    = "job"    // a job for a runner
@@ -52,21 +52,21 @@ type Start struct {
 	// Allow is the start's own list, which narrows the root and everything
 	// below it.
 	Allow *permission.Layer `json:"allow,omitzero"`
-	// Deadline is how long the run may take, if the start says.
-	Deadline machine.Duration `json:"deadline,omitzero"`
+	// Timeout is how long the run may take, if the start says.
+	Timeout machine.Duration `json:"timeout,omitzero"`
 	// Secrets are the run's own secrets, for it and everything below it.
 	Secrets map[string]string `json:"secrets,omitzero"`
-	// Seed is the secret the instance's keys and random numbers follow
+	// Seed is the secret the instance's tickets and random numbers follow
 	// from.
 	Seed []byte `json:"seed"`
 	// Above is set by the controller when it starts a child.
 	Above *Above `json:"above,omitzero"`
 }
 
-// An Answer answers a key: the key's value and the answer.
+// An Answer answers a ticket: the ticket's value and the answer.
 type Answer struct {
-	Key   string `json:"key"`
-	Value any    `json:"value,omitzero"`
+	Ticket string `json:"ticket"`
+	Value  any    `json:"value,omitzero"`
 }
 
 // A Result is how a job ended.

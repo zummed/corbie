@@ -143,7 +143,7 @@ func Test_client_waiting_status_only_before_taken_up(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if run, err := a.Show(ctx, sent); err != nil || run.Status != instance.Waiting || run.Step != 0 || run.Jobs+run.Timers+len(run.Keys) != 0 {
+	if run, err := a.Show(ctx, sent); err != nil || run.Status != instance.Waiting || run.Step != 0 || run.Jobs+run.Timers+len(run.Tickets) != 0 {
 		t.Fatalf("a run sent and not taken up is shown as %+v, %v", run, err)
 	}
 
@@ -169,17 +169,19 @@ func Test_client_waiting_status_only_before_taken_up(t *testing.T) {
 		initial: asking
 		states:
 		  asking:
-		    wait: verdict
-		    after: { 1h: over }
-		    on: { verdict: over }
-		  over: { final: true }
+		    ticket: verdict
+		    timers: { an_hour: 1h }
+		    on:
+		      an_hour: over
+		      verdict: over
+		  over: { end: done }
 	`, nil), client.Start{})
 	if err != nil {
 		t.Fatal(err)
 	}
-	run := shown(held, func(r *client.Run) bool { return len(r.Keys) > 0 })
-	if run.Status != instance.Running || !slices.Equal(run.Keys, []string{"verdict"}) || run.Timers != 1 {
-		t.Fatalf("a run waiting on a key and a timer is shown as %+v", run)
+	run := shown(held, func(r *client.Run) bool { return len(r.Tickets) > 0 })
+	if run.Status != instance.Running || !slices.Equal(run.Tickets, []string{"verdict"}) || run.Timers != 1 {
+		t.Fatalf("a run waiting on a ticket and a timer is shown as %+v", run)
 	}
 	// Waiting on a job.
 	busy, err := l.Start(ctx, draft(t, `

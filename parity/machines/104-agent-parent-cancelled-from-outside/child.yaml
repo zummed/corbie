@@ -4,9 +4,8 @@ initial: asking
 states:
   asking:
     entry: { send: { to: parent, event: hello, data: { from: child } } }
-    wait: answer
-    on:
-      answer: answered
+    ticket: answer
+    on: { answer: answered }
   answered:
-    final: true
+    end: done
     output: { topic: "${input.topic}", said: "${event.data.said}" }

@@ -4,7 +4,7 @@ flow: skip-spreads
 input: [go]
 stages:
   gate:
-    when: input.go
+    when: ${input.go}
     job: { script: ./add.js, input: { n: 1 } }
   reads_gate:
     job: { script: ./add.js, input: { n: "${stages.gate.output.n}" } }
@@ -14,7 +14,7 @@ stages:
   reads_reader:
     job: { script: ./add.js, input: { n: "${stages.reads_gate.output.n}" } }
   notices_skip:
-    when: stages.gate.skipped
+    when: ${stages.gate.skipped}
     job: { script: ./echo.js, input: { saw_skip: "${stages.gate.skipped}" } }
   independent:
     job: { script: ./echo.js, input: { ran: true } }

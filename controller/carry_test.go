@@ -52,10 +52,10 @@ func Test_ctl_names_of_what_a_step_asks_for_fixed_by_entry(t *testing.T) {
 	r1 := w.party("r1", identity.Runner)
 	w.enrol(r1, permission.Layer{}, nil)
 	// One step asks for a script, a child, an event to the child, a timer, a
-	// deadline and a receipt.
+	// timeout and a receipt.
 	run := w.submit(`
 		statechart: asks
-		deadline: 2h
+		limits: { timeout: 2h }
 		initial: s
 		states:
 		  s:
@@ -68,8 +68,9 @@ func Test_ctl_names_of_what_a_step_asks_for_fixed_by_entry(t *testing.T) {
 		          states:
 		            k: { on: { hello: k } }
 		    entry: { send: { to: kid, event: hello } }
-		    after: { 1h: late }
-		  late: { final: true }
+		    timers: { an_hour: 1h }
+		    on: { an_hour: late }
+		  late: { end: done }
 	`, map[string]string{"work.js": "return 1"}, nil)
 	w.noted()
 	w.pass() // the first step, carried out; the child has not taken its start
@@ -217,10 +218,10 @@ func Test_ctl_blob_copied_up_before_parent_is_told(t *testing.T) {
 		        states:
 		          working:
 		            job: { script: ./work.js }
-		            done: over
-		          over: { final: true, output: { file: "${states.working.output}" } }
-		    done: over
-		  over: { final: true, output: "${states.working.output}" }
+		            on: { done: over }
+		          over: { end: done, output: { file: "${states.working.output}" } }
+		    on: { done: over }
+		  over: { end: done, output: "${states.working.output}" }
 	`
 	// begin takes a run to where the child's job has returned a file that
 	// lies in the child's record.
@@ -338,16 +339,16 @@ func Test_ctl_stopped_between_last_events_and_ending_parent_sees_events_first(t 
 			        initial: waiting
 			        states:
 			          waiting:
-			            on: { go: { to: over, send: { to: parent, event: bye, data: last words } } }
-			          over: { final: true, output: ended }
+			            on: { finish: { go: over, send: { to: parent, event: bye, data: last words } } }
+			          over: { end: done, output: ended }
 			    on:
-			      go: { send: { to: working, event: go } }
+			      done: over
+			      finish: { send: { to: working, event: finish } }
 			      bye: { send: { to: parent, event: heard } }
-			    done: over
-			  over: { final: true }
+			  over: { end: done }
 		`, nil, nil)
 		w.settle()
-		w.client.Send(ctx, parent, "go", nil, 0)
+		w.client.Send(ctx, parent, "finish", nil, 0)
 		return w
 	}
 	// What the parent was given, step by step.
@@ -360,7 +361,7 @@ func Test_ctl_stopped_between_last_events_and_ending_parent_sees_events_first(t 
 	}
 	w := begin()
 	w.settle()
-	if got := given(w); got != "start | go | bye done" || w.head(parent).Status != instance.Done {
+	if got := given(w); got != "start | finish | bye done" || w.head(parent).Status != instance.Done {
 		t.Fatalf("never stopped, the parent was given %q", got)
 	}
 	between := 0
@@ -384,7 +385,7 @@ func Test_ctl_stopped_between_last_events_and_ending_parent_sees_events_first(t 
 		}
 		// The parent was given the event before the ending: in one step, or
 		// in a step of its own when it was found waiting alone.
-		if got := given(w); got != "start | go | bye done" && got != "start | go | bye | done" {
+		if got := given(w); got != "start | finish | bye done" && got != "start | finish | bye | done" {
 			t.Fatalf("stopped after %d writes, the parent was given %q", k, got)
 		}
 		if w.head(parent).Status != instance.Done {
@@ -435,7 +436,7 @@ func Test_ctl_job_that_cannot_be_sent_fails_though_controller_stops(t *testing.T
 		// Decided when the step is taken: no runner has the tag.
 		`{ script: ./work.js, tags: [gpu] }`: "no runner has the tags the job names: gpu",
 		// Found when the entry is carried out: the secret is not set.
-		`{ script: ./work.js, allow: ["secret:NONE@net:api.example"] }`: "the secret NONE is not set",
+		`{ script: ./work.js, allow: ["secret:NONE@net:api.example"] }`: `the secret "NONE" is not set`,
 	} {
 		var id string
 		begin := func() *world {
@@ -447,8 +448,8 @@ func Test_ctl_job_that_cannot_be_sent_fails_though_controller_stops(t *testing.T
 				states:
 				  s:
 				    job: %s
-				    failed: told
-				  told: { final: true, output: "${event.data.error}" }
+				    on: { failed: told }
+				  told: { end: done, output: "${event.data.error}" }
 			`, job), map[string]string{"work.js": "return 1"}, nil)
 			return w
 		}

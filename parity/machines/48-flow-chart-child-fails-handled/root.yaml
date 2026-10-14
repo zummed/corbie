@@ -5,7 +5,7 @@ stages:
   kid:
     job: { machine: ./kid-chart.yaml, input: { n: 1, fail: true } }
   cleanup:
-    when: stages.kid.failed
+    when: ${stages.kid.failed}
     job: { script: ./echo.js, input: { error: "${stages.kid.error}", output: "${stages.kid.output}" } }
 output:
   cleanup: ${stages.cleanup.output}

@@ -38,7 +38,7 @@ func TestCeilingIsGivenADenyList(t *testing.T) {
 		t.Fatalf("init with a deny entry printed:\n%s", out)
 	}
 	m.staying("run", "controller", "runner", "--interval", "20ms")
-	const client, runner = "the ceiling of the client box-client", "the ceiling of the runner box-runner"
+	const client, runner = "the ceiling of the client \"box-client\"", "the ceiling of the runner \"box-runner\""
 	// reads runs the script on a file with everything allowed on the
 	// command line, and gives which layers refused the file, if any did.
 	reads := func(file string) string {
@@ -117,7 +117,7 @@ func TestStartIsGivenADenyList(t *testing.T) {
 	definition := filepath.Join(filepath.Dir(script), "reads.yaml")
 	os.WriteFile(definition, []byte("flow: reads\nallow: [disk]\ninput: [path]\nstages:\n  it: { job: { script: ./reads.js, input: { path: \"${input.path}\" } } }\noutput: ${stages.it.output}\n"), 0o644)
 	m := machine{t, t.TempDir()}
-	for file, layer := range map[string]string{definition: "the list the run was started with", script: "the job script in the definition of reads"} {
+	for file, layer := range map[string]string{definition: "the list the run was started with", script: "the job \"script\" in the definition of \"reads\""} {
 		if out := m.ok("", "test", file, "--input", input, "--allow", "disk", "--json"); !strings.Contains(out, `"output":"the note"`) {
 			t.Fatalf("corbie test %s --allow disk printed %s", file, out)
 		}

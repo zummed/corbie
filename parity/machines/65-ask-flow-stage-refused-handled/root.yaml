@@ -6,7 +6,7 @@ stages:
   guarded:
     job: { script: ./add.js, input: { n: 1 }, approve: true }
   cleanup:
-    when: stages.guarded.failed
+    when: ${stages.guarded.failed}
     job: { script: ./echo.js, input: { error: "${stages.guarded.error}" } }
 output:
   cleanup: ${stages.cleanup.output}

@@ -23,7 +23,7 @@ var layout = []*regexp.Regexp{
 	regexp.MustCompile(`^ctl/secrets/[^/]+$`),
 }
 
-// A whole run, with children, events, a key, a timer and receipts, keeps
+// A whole run, with children, events, a ticket, a timer and receipts, keeps
 // to what the store's overview promises of every run.
 func TestWhatEveryRunKeepsTo(t *testing.T) {
 	w := newWorld(t)
@@ -33,11 +33,11 @@ func TestWhatEveryRunKeepsTo(t *testing.T) {
 	w.settle()
 	w.client.Send(ctx, door, "open", map[string]any{"said": marker}, 0)
 	w.settle()
-	var key string
-	for _, k := range w.latest(door).State.Keys {
-		key = k.Value
+	var ticket string
+	for _, k := range w.latest(door).State.Tickets {
+		ticket = k.Value
 	}
-	w.client.Reply(ctx, door, key, 42, 0)
+	w.client.Reply(ctx, door, ticket, 42, 0)
 	for range 6 {
 		w.settle()
 		w.tick(500 * time.Millisecond)
@@ -78,14 +78,14 @@ func TestWhatEveryRunKeepsTo(t *testing.T) {
 		if isHead && op.Act != store.ActDelete {
 			heads[op.Name] = true
 			// The head holds nothing the instance was given or produced, and
-			// no key's value.
-			if strings.Contains(string(op.Value), marker) || strings.Contains(string(op.Value), key) {
+			// no ticket's value.
+			if strings.Contains(string(op.Value), marker) || strings.Contains(string(op.Value), ticket) {
 				t.Errorf("a version of the head %s holds a value of the run's", op.Name)
 			}
 		}
 		// What is sealed cannot be read by whoever runs the store.
 		sealed := strings.HasPrefix(op.Name, "ctl/inbox/") || strings.HasPrefix(op.Name, "ctl/receipts/") || strings.HasPrefix(op.Name, "ctl/records/")
-		if sealed && op.Value != nil && (strings.Contains(string(op.Value), marker) || strings.Contains(string(op.Value), key)) {
+		if sealed && op.Value != nil && (strings.Contains(string(op.Value), marker) || strings.Contains(string(op.Value), ticket)) {
 			t.Errorf("%s shows a value of the run's to whoever reads the store", op.Name)
 		}
 	}

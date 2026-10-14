@@ -2,8 +2,8 @@ flow: child
 input: [fail]
 stages:
   bad:
-    when: input.fail
+    when: ${input.fail}
     job: { script: ./fail.js }
   slow:
-    when: "!input.fail"
+    when: ${!input.fail}
     job: { machine: ./sleeper.yaml }

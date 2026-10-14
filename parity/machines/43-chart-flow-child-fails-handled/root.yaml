@@ -1,14 +1,15 @@
-# The flow child fails in its second stage; the state's failed: takes it.
+# The flow child fails in its second stage; the state's rule for failed takes it.
 statechart: parent
 initial: running
 states:
   running:
     job: { machine: ./kid-flow.yaml, input: { n: 1, fail: true } }
-    done: finished
-    failed: noting
+    on:
+      done: finished
+      failed: noting
   noting:
     job: { script: ./echo.js, input: { name: "${event.name}", error: "${event.data.error}", output: "${event.data.output}" } }
-    done: finished
+    on: { done: finished }
   finished:
-    final: true
+    end: done
     output: { noted: "${states.noting.output}", remembered: "${states.running.output}" }

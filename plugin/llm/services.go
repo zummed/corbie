@@ -489,7 +489,7 @@ var openaiResponses = &web{
 
 const page = `llm: this plugin calls a model and returns its reply.
 
-  llm.chat(conversation, { service, model, address, key, system, tools, shape, effort, reply, timeout, own })
+  llm.chat(conversation, { service, model, address, key, system, tools, shape, effort, reply_tokens, timeout, own })
       gives { text, calls, stop, usage, kept }
   llm.takes(blob, { service })    returns true when the service accepts the blob in files
 
@@ -504,22 +504,23 @@ a PDF (up to 32 MiB). The plugin sends each to the model after a line that
 gives its name. Any other blob fails the call before anything is sent.
 
 Options:
-  service   anthropic, openai (the Responses API), openai-chat (the Chat
-            Completions API) or claude-code (the claude program on the
-            runner's computer); default anthropic
-  model     the model's name; required
-  address   the service's URL, when it is not https://api.anthropic.com or
-            https://api.openai.com
-  key       a handle to the secret that holds the service's key
-  system    the system prompt
-  tools     the tools the model may call: [{ name, does, args }], with args
-            as { name: type }
-  shape     the fields of a reply that is data, as { name: type }; text is
-            then JSON
-  effort    low, medium or high; claude-code also takes xhigh and max
-  reply     the most tokens a reply may hold
-  timeout   seconds, or text such as "5m"; default 3m
-  own       for claude-code: the program's own tools that it may use, by name
+  service         anthropic, openai (the Responses API), openai-chat (the
+                  Chat Completions API) or claude-code (the claude program
+                  on the runner's computer); default anthropic
+  model           the model's name; required
+  address         the service's URL, when it is not https://api.anthropic.com
+                  or https://api.openai.com
+  key             a handle to the secret that holds the service's key
+  system          the system prompt
+  tools           the tools the model may call: [{ name, does, args }], with
+                  args as { name: type }
+  shape           the fields of a reply that is data, as { name: type }; text
+                  is then JSON
+  effort          low, medium or high; claude-code also takes xhigh and max
+  reply_tokens    the most tokens a reply may hold
+  timeout         seconds, or text such as "5m"; default 3m
+  own             for claude-code: the program's own tools that it may use,
+                  by name
 
 Returns:
   text    the model's reply; also emitted as "text" while it arrives, for a

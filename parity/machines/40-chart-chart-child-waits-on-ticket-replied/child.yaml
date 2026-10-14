@@ -1,0 +1,9 @@
+statechart: child
+initial: asking
+states:
+  asking:
+    ticket: answer
+    on: { answer: answered }
+  answered:
+    end: done
+    output: { said: "${event.data.said}", came_by: "${event.name}" }

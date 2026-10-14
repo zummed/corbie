@@ -6,7 +6,9 @@ initial: running
 states:
   running:
     job: { machine: ./child.yaml }
+    timers: { wrap_up: 1s }
     on:
+      done: finished
       up5:
         send:
           - { to: running, event: down1 }
@@ -14,9 +16,7 @@ states:
           - { to: running, event: down3 }
           - { to: running, event: down4 }
           - { to: running, event: down5 }
-    after:
-      1s: { send: { to: running, event: finish } }
-    done: finished
+      wrap_up: { send: { to: running, event: finish } }
   finished:
-    final: true
+    end: done
     output: ${event.data}

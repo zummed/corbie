@@ -13,17 +13,19 @@ states:
         - { to: never_entered, event: hello, data: { from: "entry, to a state with no child running" } }
     exit: { send: { to: running, event: bye, data: { from: exit } } }
     job: { machine: ./child.yaml }
-    done: child_finished
-    after: { 1s: later }
+    timers: { leave: 1s }
+    on:
+      done: child_finished
+      leave: later
   child_finished:
-    final: true
+    end: done
     output: { child_finished: true, child: "${event.data}" }
   later:
     job: { script: ./echo.js, input: { left_by: "${event.name}" } }
-    done: finished
+    on: { done: finished }
   never_entered:
     job: { machine: ./child.yaml }
-    done: finished
+    on: { done: finished }
   finished:
-    final: true
+    end: done
     output: { child_finished: false, later: "${states.later.output}" }

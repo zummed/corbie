@@ -8,6 +8,7 @@ import (
 	"encoding/json/v2"
 	"fmt"
 	"slices"
+	"strings"
 	"time"
 
 	"github.com/zummed/corbie/machine"
@@ -19,8 +20,8 @@ type state struct {
 	// Active is the active states, outermost first.
 	Active  []string             `json:"active"`
 	Outputs map[string]any       `json:"outputs,omitzero"`
-	Keys    map[string]string    `json:"keys,omitzero"`   // by waiting state
-	Timers  map[string]time.Time `json:"timers,omitzero"` // by timer name
+	Tickets map[string]string    `json:"tickets,omitzero"` // by the state that issued each
+	Timers  map[string]time.Time `json:"timers,omitzero"`  // by timer name
 	// Partial holds, for a state with several named jobs, the outputs of
 	// those that are done.
 	Partial map[string]map[string]any `json:"partial,omitzero"`
@@ -41,11 +42,11 @@ type stepper struct {
 	eval  *machine.Evaluator
 	event machine.Event
 	// fresh names what this step made: an event that arrived for an earlier
-	// job, timer or key of the same name is not for these.
+	// job, timer or ticket of the same name is not for these.
 	fresh    map[string]bool
 	finished []string // final states entered and not yet acted on
 	moves    int
-	keys     int
+	tickets  int
 	ended    bool
 }
 
@@ -121,7 +122,7 @@ func (s *stepper) handle(i int, event machine.Event) error {
 			s.event = event
 		}
 		s.setOutput(name, event.Data)
-		_, err := s.offer(name, func(st *State) []Transition { return st.Done })
+		_, err := s.offer(name, func(st *State) []Transition { return st.On[machine.Done] })
 		return err
 	case machine.Timer:
 		at, ok := s.st.Timers[event.From]
@@ -129,32 +130,33 @@ func (s *stepper) handle(i int, event machine.Event) error {
 		if !ok || s.fresh["timer "+event.From] || at.UTC().Format(time.RFC3339Nano) != due {
 			return nil // its state was left
 		}
-		var name string
-		var index int
-		if _, err := fmt.Sscanf(event.From, "%d.", &index); err != nil {
-			return nil
-		}
-		name = event.From[len(fmt.Sprintf("%d.", index)):]
-		n, ok := s.all[name]
-		if !ok || index >= len(n.state.After) {
-			return nil
-		}
 		delete(s.st.Timers, event.From)
-		_, err := s.take(name, n.place+".after."+n.state.After[index].At, n.state.After[index].Rules)
+		// A timer is due as an event of its own name, from the state that
+		// started it.
+		timer, name, _ := strings.Cut(event.From, ".")
+		if s.all[name] == nil {
+			return nil
+		}
+		s.event = machine.Event{Name: timer, From: name}
+		_, err := s.offer(name, func(st *State) []Transition { return st.On[timer] })
 		return err
 	}
-	// Any other event: an answer to a key goes to the state whose key it
-	// carries, and anything else to the innermost active state; from there
-	// it is offered outward.
+	// Any other event: an answer to a ticket goes to the state that issued
+	// it, and anything else to the innermost active state; from there it is
+	// offered outward. An event with a ticket's or a timer's name is taken
+	// only as that ticket's answer or that timer's being due.
 	from := ""
 	if len(s.st.Active) > 0 {
 		from = s.st.Active[len(s.st.Active)-1]
 	}
-	if _, isKey := s.st.Keys[event.From]; isKey && s.all[event.From] != nil && s.all[event.From].state.Wait == event.Name {
-		if s.fresh["key "+event.From] {
+	if _, issued := s.st.Tickets[event.From]; event.Answer && issued && s.all[event.From] != nil && s.all[event.From].state.Ticket == event.Name {
+		if s.fresh["ticket "+event.From] {
 			return nil
 		}
 		from = event.From
+	} else if s.taken(event.Name) {
+		s.out.Ignored = append(s.out.Ignored, i)
+		return nil
 	}
 	taken, err := s.offer(from, func(st *State) []Transition { return st.On[event.Name] })
 	if err == nil && !taken {
@@ -167,7 +169,7 @@ func (s *stepper) handle(i int, event machine.Event) error {
 // takes fails the chart, whose error names the job and then gives the
 // job's error.
 func (s *stepper) failed(name string, event machine.Event) error {
-	taken, err := s.offer(name, func(st *State) []Transition { return st.Failed })
+	taken, err := s.offer(name, func(st *State) []Transition { return st.On[machine.Failed] })
 	if err != nil || taken {
 		return err
 	}
@@ -216,15 +218,15 @@ func (s *stepper) move(holder, place string, t Transition) error {
 			Error: fmt.Sprintf("the chart does not come to rest: one event set off more than %d transitions", maxMoves)}})
 		return nil
 	}
-	if t.To == "" {
+	if t.Go == "" {
 		return s.send(holder, place+".send", t.Send)
 	}
 	// The state that stays: the holder for a move inward, else the nearest
 	// state that holds both the holder and the target.
 	stays := holder
-	if !s.inside(t.To, holder) {
+	if !s.inside(t.Go, holder) {
 		stays = s.all[holder].parent
-		for stays != "" && !s.inside(t.To, stays) {
+		for stays != "" && !s.inside(t.Go, stays) {
 			stays = s.all[stays].parent
 		}
 	}
@@ -243,7 +245,7 @@ func (s *stepper) move(holder, place string, t Transition) error {
 	}
 	// Enter from just below what stays, down to the target.
 	var path []string
-	for name := t.To; name != stays; name = s.all[name].parent {
+	for name := t.Go; name != stays; name = s.all[name].parent {
 		path = append(path, name)
 	}
 	slices.Reverse(path)
@@ -252,7 +254,7 @@ func (s *stepper) move(holder, place string, t Transition) error {
 			return err
 		}
 	}
-	return s.enter(t.To)
+	return s.enter(t.Go)
 }
 
 // inside says whether a state is held, at any depth, by another.
@@ -278,34 +280,34 @@ func (s *stepper) enter(name string) error {
 	return nil
 }
 
-// enterOne enters one state: its key exists first, then its entry sends
+// enterOne enters one state: its ticket exists first, then its entry sends
 // are made, its timers start and its jobs are asked for.
 func (s *stepper) enterOne(name string) error {
 	n := s.all[name]
 	st := n.state
 	s.st.Active = append(s.st.Active, name)
-	if st.Wait != "" {
-		s.keys++
+	if st.Ticket != "" {
+		s.tickets++
 		mac := hmac.New(sha256.New, s.in.Seed)
-		fmt.Fprintf(mac, "key\x00%s\x00%d", name, s.keys)
+		fmt.Fprintf(mac, "ticket\x00%s\x00%d", name, s.tickets)
 		// In hex: a value a person can write as it is after a command.
 		value := hex.EncodeToString(mac.Sum(nil)[:18])
-		if s.st.Keys == nil {
-			s.st.Keys = map[string]string{}
+		if s.st.Tickets == nil {
+			s.st.Tickets = map[string]string{}
 		}
-		s.st.Keys[name] = value
-		s.fresh["key "+name] = true
-		s.request(machine.Request{Key: &machine.KeyNamed{ID: name, Name: st.Wait, Value: value}})
+		s.st.Tickets[name] = value
+		s.fresh["ticket "+name] = true
+		s.request(machine.Request{Ticket: &machine.TicketNamed{ID: name, Name: st.Ticket, Value: value}})
 	}
 	if err := s.send(name, n.place+".entry.send", st.Entry); err != nil {
 		return err
 	}
-	for i, after := range st.After {
-		w, err := parseAt(after.At)
+	for _, timerName := range sortedNames(st.Timers) {
+		w, err := parseAt(st.Timers[timerName])
 		if err != nil {
 			return err
 		}
-		timer := fmt.Sprintf("%d.%s", i, name)
+		timer := timerName + "." + name
 		at := w.next(s.in.Time)
 		if s.st.Timers == nil {
 			s.st.Timers = map[string]time.Time{}
@@ -324,7 +326,7 @@ func (s *stepper) enterOne(name string) error {
 			return err
 		}
 	}
-	if st.Final {
+	if st.End != "" {
 		s.finished = append(s.finished, name)
 	}
 	return nil
@@ -341,20 +343,23 @@ func (s *stepper) job(holder, place, name string, spec *machine.JobSpec) error {
 	return nil
 }
 
-// wants names every event the chart has a rule for under on:, which are
-// the emitted values it acts on.
+// wants names every event the chart has a rule for under on:, other than
+// its jobs ending and its tickets' and timers' names, which are the
+// emitted values it acts on.
 func (s *stepper) wants() []string {
 	seen := map[string]bool{}
 	for _, n := range s.all {
 		for event := range n.state.On {
-			seen[event] = true
+			if event != machine.Done && event != machine.Failed && !s.taken(event) {
+				seen[event] = true
+			}
 		}
 	}
 	return sortedNames(seen)
 }
 
 // leave leaves one state: its leaving sends are made, its jobs and timers
-// are cancelled and its key ends.
+// are cancelled and its ticket ends.
 func (s *stepper) leave(name string) error {
 	n := s.all[name]
 	st := n.state
@@ -367,15 +372,15 @@ func (s *stepper) leave(name string) error {
 	for _, job := range sortedNames(st.Jobs) {
 		s.request(machine.Request{Cancel: job})
 	}
-	for i := range st.After {
-		timer := fmt.Sprintf("%d.%s", i, name)
+	for _, timerName := range sortedNames(st.Timers) {
+		timer := timerName + "." + name
 		if _, ok := s.st.Timers[timer]; ok {
 			delete(s.st.Timers, timer)
 			s.request(machine.Request{Clear: timer})
 		}
 	}
-	if _, ok := s.st.Keys[name]; ok {
-		delete(s.st.Keys, name)
+	if _, ok := s.st.Tickets[name]; ok {
+		delete(s.st.Tickets, name)
 		s.request(machine.Request{Drop: name})
 	}
 	delete(s.st.Partial, name)
@@ -410,15 +415,15 @@ func (s *stepper) settle() error {
 			return err
 		}
 		switch {
-		case n.state.Fails:
+		case n.state.End == machine.Failed:
 			s.end(&machine.Ending{Error: &machine.Error{Status: machine.StatusError,
-				Error: fmt.Sprintf("the chart reached %s, a final state marked as a failure", name), Output: output}})
+				Error: fmt.Sprintf("the chart reached %s, a final state with end: failed", name), Output: output}})
 		case n.parent == "":
 			s.end(&machine.Ending{Output: output})
 		default:
 			s.setOutput(n.parent, output)
 			s.event = machine.Event{Name: machine.Done, From: n.parent, Data: output}
-			if _, err := s.offer(n.parent, func(st *State) []Transition { return st.Done }); err != nil {
+			if _, err := s.offer(n.parent, func(st *State) []Transition { return st.On[machine.Done] }); err != nil {
 				return err
 			}
 		}
@@ -444,7 +449,7 @@ func (s *stepper) setOutput(name string, output any) {
 
 // scope is what an expression in a state reads: the chart's input, each
 // state's latest output, the event that caused the current move, and the
-// keys of the state and of those that hold it, its own first.
+// tickets of the state and of those that hold it.
 func (s *stepper) scope(holder string) machine.Scope {
 	states := make(map[string]any, len(s.all))
 	for name := range s.all {
@@ -454,20 +459,29 @@ func (s *stepper) scope(holder string) machine.Scope {
 		}
 		states[name] = entry
 	}
-	keys := map[string]any{}
+	tickets := map[string]any{}
 	for name := holder; name != ""; name = s.all[name].parent {
-		if value, ok := s.st.Keys[name]; ok {
-			if _, nearer := keys[s.all[name].state.Wait]; !nearer {
-				keys[s.all[name].state.Wait] = value
-			}
+		if value, ok := s.st.Tickets[name]; ok {
+			tickets[s.all[name].state.Ticket] = value
 		}
 	}
 	event := map[string]any{"name": s.event.Name, "from": s.event.From, "data": s.event.Data}
-	return machine.Scope{"input": s.in.Input, "states": states, "event": event, "keys": keys}
+	return machine.Scope{"input": s.in.Input, "states": states, "event": event, "tickets": tickets}
+}
+
+// taken says whether a name is a ticket's or a timer's of a state of the
+// chart, which no other event may take.
+func (s *stepper) taken(name string) bool {
+	for _, n := range s.all {
+		if _, timer := n.state.Timers[name]; timer || n.state.Ticket == name {
+			return true
+		}
+	}
+	return false
 }
 
 // Show gives what a watcher is shown of a chart's state: the states it is
-// in and the names of the keys it waits on.
+// in.
 func (chartType) Show(def *machine.Definition, raw jsontext.Value) any {
 	var st state
 	if raw == nil || json.Unmarshal(raw, &st) != nil {

@@ -2,19 +2,19 @@
   {
     "wait": {
       "machine": "ask-person",
-      "key": "decision"
+      "ticket": "decision"
     },
     "do": "reply",
-    "wrong_key": true,
+    "wrong_ticket": true,
     "remember": "real",
     "value": {},
     "taken": false,
-    "refused_contains": "not waiting on that key"
+    "refused_contains": "not waiting on that ticket"
   },
   {
     "wait": {
       "machine": "ask-person",
-      "key": "decision"
+      "ticket": "decision"
     },
     "do": "cancel"
   },

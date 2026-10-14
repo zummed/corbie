@@ -4,7 +4,7 @@ The detailed rules behind the [Agent overview](../agent.md). Area code: `agent`.
 
 ## The loop
 
-**R-agent-01** An agent's definition names its model, and may give a system text, a prompt, tools, limits and the shape of its output.
+**R-agent-01** An agent's definition names its model, and may give a system text, a prompt, tools, limits and the shape of its reply.
 *Accept:* an agent written without a model is refused when checked. An agent written with only a model and a prompt is accepted and runs; parity case 84 shows a system text and a prompt reaching the first turn.
 
 **R-agent-03** Each turn is one call to the model, made by a job, and the loop repeats until the model answers without asking for a tool.
@@ -65,15 +65,12 @@ The detailed rules behind the [Agent overview](../agent.md). Area code: `agent`.
 
 **C-agent-06** A tool's job that reads an argument the tool's shape does not name is refused when the definition is checked. The model is never told of that argument, so the value would always be missing. *Test:* `agent_tool_reading_unnamed_argument_is_refused`
 
-**C-agent-07** A tool may not take the name of a job the agent itself makes: `turn`, `more`, `preview` or one of the blob tools. The record names a job by what asked for it, and two askers under one name cannot be told apart. *Test:* `agent_tool_cannot_take_an_agents_own_job_name`
+**C-agent-07** A tool may not take the name of a job the agent itself makes: `turn`, `preview` or one of the blob tools. The record names a job by what asked for it, and two askers under one name cannot be told apart. *Test:* `agent_tool_cannot_take_an_agents_own_job_name`
 
 ## Limits
 
-**R-agent-35** An agent has a number of turns, twenty unless its definition says otherwise, and the model is told when few remain.
-*Accept:* an agent with no ask above it and no number of its own, whose scripted model asks for a tool every time, fails after its twentieth turn with `turn limit reached`, and is shown nothing about turns left at its first turn. Parity case 90: both agents are stopped at two, and each of the last turns is shown how many turns are left.
-
-**R-agent-38** At the limit the agent asks its ask for more turns, as it would ask about a tool, and if more are not given the agent fails.
-*Accept:* parity case 90: the agent with an ask goes to it at the limit, is given more, and carries on to its end, and the agent with no ask above it fails with `turn limit reached`. An agent whose ask refuses fails the same way.
+**R-agent-35** An agent has a number of turns, twenty by default, the model is told when few remain, and at the limit the agent fails.
+*Accept:* an agent with no number of its own, whose scripted model asks for a tool every time, fails after its twentieth turn with `turn limit reached`, and is shown nothing about turns left at its first turn; an ask above it is not asked anything. Parity case 90: the agent is stopped at two with `turn limit reached`, its last turn is shown how many turns are left, and a second run started with its conversation carries on to the end.
 
 ## The conversation
 

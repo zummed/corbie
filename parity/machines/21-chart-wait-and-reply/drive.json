@@ -2,20 +2,20 @@
   {
     "wait": {
       "machine": "wait-and-reply",
-      "key": "answer"
+      "ticket": "answer"
     },
     "do": "reply",
-    "wrong_key": true,
+    "wrong_ticket": true,
     "value": {
-      "said": "wrong key"
+      "said": "wrong ticket"
     },
     "taken": false,
-    "refused_contains": "not waiting on that key"
+    "refused_contains": "not waiting on that ticket"
   },
   {
     "wait": {
       "machine": "wait-and-reply",
-      "key": "answer"
+      "ticket": "answer"
     },
     "do": "reply",
     "remember": "k",

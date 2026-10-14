@@ -66,8 +66,8 @@ func (c *chart) give(events ...machine.Event) []string {
 			told = append(told, "timer "+r.Timer.Name)
 		case r.Clear != "":
 			told = append(told, "clear "+r.Clear)
-		case r.Key != nil:
-			told = append(told, "key "+r.Key.ID)
+		case r.Ticket != nil:
+			told = append(told, "ticket "+r.Ticket.ID)
 		case r.Drop != "":
 			told = append(told, "drop "+r.Drop)
 		case r.End != nil && r.End.Error != nil:
@@ -112,35 +112,39 @@ initial: outer
 states:
 	outer:
 		initial: inner
-		failed: recovering
-		after: { 10m: gave_up }
+		timers: { too_long: 10m }
+		on:
+		  done: finished
+		  failed: recovering
+		  too_long: gave_up
 		states:
 			inner:
 				job: ./work.js
-				done: inner_final
-				on: { deeper: second }
+				on:
+				  done: inner_final
+				  deeper: second
 			second:
 				job: ./work.js
-			inner_final: { final: true, output: "${states.inner.output}" }
-		done: finished
+			inner_final: { end: done, output: "${states.inner.output}" }
 	recovering:
 		job: ./work.js
-		done: finished
-	finished: { final: true, output: { from: "${event.from}", was: "${event.data}" } }
-	gave_up: { final: true, failed: true, output: late }
+		on: { done: finished }
+	finished: { end: done, output: { from: "${event.from}", was: "${event.data}" } }
+	gave_up: { end: failed, output: late }
 `
 
 func Test_chart_finishes_innermost_first_and_once(t *testing.T) {
 	c := newChart(t, nested)
-	c.want(c.give(start()), "timer 0.outer", "job inner")
+	c.want(c.give(start()), "timer too_long.outer", "job inner")
 	// The job's finish enters the final state inside, which finishes the
 	// holder, whose done: ends the chart: each once, innermost first.
-	c.want(c.give(done("inner", 7.0)), "cancel inner", "clear 0.outer", "end map[from:outer was:7]")
+	c.want(c.give(done("inner", 7.0)), "cancel inner", "clear too_long.outer", "end map[from:outer was:7]")
 }
 
 func Test_chart_move_inward_keeps_holder(t *testing.T) {
-	c := newChart(t, strings.Replace(nested, "on: { deeper: second }", "", 1)+"")
-	def, err := parse(t, strings.Replace(nested, "failed: recovering", "failed: recovering\n\t\ton: { deeper: second }", 1))
+	moved := strings.Replace(nested, "\n\t\t\t\t  deeper: second", "", 1)
+	c := newChart(t, moved)
+	def, err := parse(t, strings.Replace(moved, "failed: recovering", "failed: recovering\n\t\t  deeper: second", 1))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -158,7 +162,7 @@ func TestFailureOfferedOutward(t *testing.T) {
 	c := newChart(t, nested)
 	c.give(start())
 	// inner has no failed: rule; the state that holds it does.
-	c.want(c.give(failed("inner")), "cancel inner", "clear 0.outer", "job recovering")
+	c.want(c.give(failed("inner")), "cancel inner", "clear too_long.outer", "job recovering")
 	// A failure nobody takes fails the chart.
 	c.want(c.give(failed("recovering")), "fail")
 }
@@ -170,17 +174,17 @@ initial: a
 states:
 	a:
 		initial: b
-		done: fine
+		on: { done: fine }
 		states:
 			b:
 				initial: c
 				states:
-					c: { on: { go: bad } }
-					bad: { final: true, failed: true, output: { why: deep } }
-	fine: { final: true }
+					c: { on: { next: bad } }
+					bad: { end: failed, output: { why: deep } }
+	fine: { end: done }
 `)
 	c.give(start())
-	c.want(c.give(machine.Event{Name: "go"}), "fail")
+	c.want(c.give(machine.Event{Name: "next"}), "fail")
 }
 
 func Test_chart_sends_in_one_move_go_in_fixed_order(t *testing.T) {
@@ -194,7 +198,7 @@ states:
 		states:
 			a1:
 				exit: { send: [{ to: parent, event: leave_a1 }, { to: parent, event: leave_a1_again }] }
-				on: { go: { to: b1, send: { to: parent, event: moving } } }
+				on: { next: { go: b1, send: { to: parent, event: moving } } }
 	b:
 		initial: b1
 		entry: { send: { to: parent, event: enter_b } }
@@ -203,28 +207,28 @@ states:
 				entry: { send: { to: parent, event: enter_b1 } }
 `)
 	c.give(start())
-	c.want(c.give(machine.Event{Name: "go"}),
+	c.want(c.give(machine.Event{Name: "next"}),
 		"send leave_a1 to parent", "send leave_a1_again to parent", "send leave_a to parent",
 		"send moving to parent", "send enter_b to parent", "send enter_b1 to parent")
 }
 
-func Test_chart_entry_send_reads_own_key(t *testing.T) {
+func Test_chart_entry_send_reads_own_ticket(t *testing.T) {
 	c := newChart(t, `
-statechart: keys
+statechart: tickets
 initial: outer
 states:
 	outer:
-		wait: answer
+		ticket: withdraw
 		initial: inner
-		entry: { send: { to: parent, event: outer_key, data: "${keys.answer}" } }
-		on: { answer: outer_done }
+		entry: { send: { to: parent, event: outer_ticket, data: "${tickets.withdraw}" } }
+		on: { withdraw: outer_done }
 		states:
 			inner:
-				wait: answer
-				entry: { send: { to: parent, event: inner_key, data: "${keys.answer}" } }
+				ticket: answer
+				entry: { send: { to: parent, event: inner_ticket, data: "${tickets.answer}" } }
 				on: { answer: inner_done }
-			inner_done: { final: true }
-	outer_done: { final: true, output: outer }
+			inner_done: { end: done }
+	outer_done: { end: done, output: outer }
 `)
 	c.step++
 	out, err := chartType{}.Step(&machine.StepIn{Definition: c.def, Events: []machine.Event{start()}, Time: entered, Seed: []byte("s")})
@@ -232,25 +236,49 @@ states:
 		t.Fatal(err)
 	}
 	c.state, _ = json.Marshal(out.State)
-	keys := map[string]string{}
+	tickets := map[string]string{}
 	sent := map[string]string{}
 	for _, r := range out.Requests {
-		if r.Key != nil {
-			keys[r.Key.ID] = r.Key.Value
+		if r.Ticket != nil {
+			tickets[r.Ticket.ID] = r.Ticket.Value
 		}
 		if r.Send != nil {
 			sent[r.Send.Event], _ = r.Send.Data.(string)
 		}
 	}
-	// Two states wait under one name; each has its own key, and an
-	// expression that reads the key gets its own state's.
-	if keys["outer"] == "" || keys["inner"] == "" || keys["outer"] == keys["inner"] ||
-		sent["outer_key"] != keys["outer"] || sent["inner_key"] != keys["inner"] {
-		t.Fatalf("keys %v, sent %v", keys, sent)
+	// Each state has its own ticket, which exists before its entry send
+	// reads it.
+	if tickets["outer"] == "" || tickets["inner"] == "" || tickets["outer"] == tickets["inner"] ||
+		sent["outer_ticket"] != tickets["outer"] || sent["inner_ticket"] != tickets["inner"] {
+		t.Fatalf("tickets %v, sent %v", tickets, sent)
 	}
-	// An answer carrying the outer state's key is offered to the outer
-	// state, and the inner state's rule is not taken.
-	c.want(c.give(machine.Event{Name: "answer", From: "outer", Data: true}), "drop inner", "drop outer", "end outer")
+	// The outer state's answer is offered to the outer state.
+	c.want(c.give(machine.Event{Name: "withdraw", From: "outer", Data: true, Answer: true}), "drop inner", "drop outer", "end outer")
+}
+
+// An event with a ticket's name is taken only as that ticket's answer, and
+// one with a timer's name only as the timer being due: the same name from
+// the client, the parent, or the state's own job, which has the state's
+// name, finds no rule.
+func TestEventWithATicketsOrATimersNameIsOnlyItsOwn(t *testing.T) {
+	c := newChart(t, `
+statechart: one_way
+initial: waiting
+states:
+	waiting:
+		ticket: verdict
+		timers: { too_long: 1h }
+		job: ./work.js
+		on: { verdict: decided, too_long: decided }
+	decided: { end: done }
+`)
+	c.give(start())
+	for _, from := range []string{"client", "parent", "waiting"} {
+		c.want(c.give(machine.Event{Name: "verdict", From: from, Data: true}), "ignored verdict")
+		c.want(c.give(machine.Event{Name: "too_long", From: from, Data: true}), "ignored too_long")
+	}
+	c.want(c.give(machine.Event{Name: "verdict", From: "waiting", Data: true, Answer: true}),
+		"cancel waiting", "clear too_long.waiting", "drop waiting", "end <nil>")
 }
 
 func TestSeveralNamedJobs(t *testing.T) {
@@ -262,10 +290,11 @@ states:
 		jobs:
 			left: ./work.js
 			right: ./work.js
-		done: finished
-		failed: broken
-	finished: { final: true, output: "${states.working.output}" }
-	broken: { final: true, output: "${event.from}" }
+		on:
+		  done: finished
+		  failed: broken
+	finished: { end: done, output: "${states.working.output}" }
+	broken: { end: done, output: "${event.from}" }
 `)
 	c.want(c.give(start()), "job left", "job right")
 	// Done when all of them are done; the output is each one's by name.
@@ -282,8 +311,8 @@ states:
 		jobs:
 			left: ./work.js
 			right: ./work.js
-		failed: broken
-	broken: { final: true, output: "${event.from}" }
+		on: { failed: broken }
+	broken: { end: done, output: "${event.from}" }
 `, "", "", 0))
 	c.give(start())
 	c.want(c.give(failed("left")), "cancel left", "cancel right", "end left")
@@ -296,10 +325,11 @@ initial: working
 states:
 	working:
 		job: ./work.js
-		done:
-			- { to: finished, when: event.data >= 3 }
-			- working
-	finished: { final: true, output: "${states.working.output}" }
+		on:
+		  done:
+		    - { go: finished, when: "${event.data >= 3}" }
+		    - working
+	finished: { end: done, output: "${states.working.output}" }
 `)
 	c.want(c.give(start()), "job working")
 	// Two results arrive in one step: the first leaves the state and
@@ -315,9 +345,9 @@ statechart: spinning
 initial: a
 states:
 	a:
-		done: a
+		on: { done: a }
 		states:
-			only: { final: true }
+			only: { end: done }
 `)
 	c.want(c.give(start()), "fail")
 }
@@ -338,24 +368,33 @@ func refused(t *testing.T, src, want string) {
 
 func TestChartsRefused(t *testing.T) {
 	head := "statechart: bad\n"
-	refused(t, head+"states:\n\ta: { final: true }\n\tb: { final: true }\n", "initial has to name")
-	refused(t, head+"initial: a\nstates:\n\ta: { states: { x: { final: true } }, done: b }\n\tb: { states: { x: { final: true } } }\n", "two states named")
-	refused(t, head+"initial: a\nstates:\n\ta: { job: ./w.js, states: { x: { final: true } } }\n", "has no job of its own")
+	refused(t, head+"states:\n\ta: { end: done }\n\tb: { end: done }\n", "initial has to name")
+	refused(t, head+"initial: a\nstates:\n\ta: { states: { x: { end: done } }, on: { done: b } }\n\tb: { states: { x: { end: done } } }\n", "two states named")
+	refused(t, head+"initial: a\nstates:\n\ta: { job: ./w.js, states: { x: { end: done } } }\n", "has no job of its own")
 	refused(t, head+"initial: a\nstates:\n\ta: { job: ./w.js, jobs: { p: ./w.js } }\n", "not both")
-	refused(t, head+"initial: a\nstates:\n\ta: { on: { go: nowhere } }\n", "no state named")
+	refused(t, head+"initial: a\nstates:\n\ta: { on: { next: nowhere } }\n", "no state named")
 	refused(t, head+"initial: a\nstates:\n\ta: { set: { x: 1 } }\n", "not a field that belongs here")
 	refused(t, head+"initial: a\nstates:\n\ta: { entry: { send: { to: sibling, event: x } } }\n", "is not the parent or a child")
 	refused(t, head+"initial: a\nstates:\n\ta: { job: ./w.js, entry: { send: { to: a, event: x } } }\n", "runs a script")
-	refused(t, head+"initial: a\nstates:\n\ta: { job: { machine: { statechart: kid, states: { k: { final: true } } } }, exit: { send: { to: a, event: bye } } }\n", "on leaving a state cannot go to that state's own child")
-	refused(t, head+"initial: ask\nstates:\n\task: { final: true }\n", "taken by the definition's ask")
-	refused(t, head+"initial: a\nstates:\n\ta: { on: { go: { to: a, when: nothing.here } } }\n", `reads "nothing"`)
+	refused(t, head+"initial: a\nstates:\n\ta: { job: { machine: { statechart: kid, states: { k: { end: done } } } }, exit: { send: { to: a, event: bye } } }\n", "on leaving a state cannot go to that state's own child")
+	refused(t, head+"initial: ask\nstates:\n\task: { end: done }\n", "taken by the definition's ask")
+	refused(t, head+"initial: a\nstates:\n\ta: { on: { next: { go: a, when: '${nothing.here}' } } }\n", `reads "nothing"`)
+	refused(t, head+"initial: a\nstates:\n\ta: { end: finished }\n", "ends as done or as failed")
+	refused(t, head+"initial: a\nstates:\n\ta: { end: done, on: { x: a } }\n", "a final state only ends")
+	refused(t, head+"initial: a\nstates:\n\ta: { output: 1 }\n", "only a final state gives an output")
+	refused(t, head+"initial: a\nstates:\n\ta: { on: { timer: a } }\n", "cannot be named under on")
+	refused(t, head+"initial: a\nstates:\n\ta: { ticket: x, on: { x: b } }\n\tb: { ticket: x, on: { x: a } }\n", "a ticket's name is used once")
+	refused(t, head+"initial: a\nstates:\n\ta: { on: { x: b } }\n\tb: { ticket: x, on: { x: a } }\n", `the state "a" can never receive "x". "x" is the ticket of the state "b"`)
+	refused(t, head+"initial: a\nstates:\n\ta: { on: { t: b } }\n\tb: { timers: { t: 1h }, on: { t: a } }\n", `the state "a" can never receive "t". "t" is a timer of the state "b"`)
 }
 
-func Test_chart_same_time_written_twice_is_refused(t *testing.T) {
-	head := "statechart: bad\ninitial: a\nstates:\n\tb: { final: true }\n\ta:\n\t\tafter:\n"
-	refused(t, head+"\t\t\t1h: b\n\t\t\t60m: b\n", "are the same time")
-	refused(t, head+"\t\t\t\"18:00\": b\n\t\t\t\"18:00 UTC\": b\n", "are the same time")
-	refused(t, head+"\t\t\t\"25:00\": b\n", "not a length of time or a time of day")
+func Test_chart_timers_refused(t *testing.T) {
+	head := "statechart: bad\ninitial: a\nstates:\n\tb: { end: done }\n\ta:\n"
+	refused(t, head+"\t\ttimers: { late: \"25:00\" }\n\t\ton: { late: b }\n", "not a length of time or a time of day")
+	refused(t, head+"\t\ttimers: { late: 1h }\n", "nothing goes anywhere when the timer is due")
+	refused(t, head+"\t\ttimers: { done: 1h }\n\t\ton: { done: b }\n", `cannot be named "done"`)
+	refused(t, head+"\t\tticket: late\n\t\ttimers: { late: 1h }\n\t\ton: { late: b }\n", `"late" is the name of the ticket of the state "a", and a timer cannot take a ticket's name`)
+	refused(t, head+"\t\ttimers: { late: 1h }\n\t\ton: { late: b }\n\tc: { ticket: late, on: { late: a } }\n", `"late" is the name of the ticket of the state "c", and a timer cannot take a ticket's name`)
 }
 
 func Test_chart_zone_known_without_host_zone_files(t *testing.T) {
@@ -424,21 +463,23 @@ statechart: patient
 initial: waiting
 states:
 	waiting:
-		after: { 48h: gave_up }
-		on: { out: away }
+		timers: { too_long: 48h }
+		on:
+		  too_long: gave_up
+		  out: away
 	away:
 		on: { back: waiting }
-	gave_up: { final: true, output: late }
+	gave_up: { end: done, output: late }
 `)
-	c.want(c.give(start()), "timer 0.waiting")
-	first, old := c.timer("0.waiting")
+	c.want(c.give(start()), "timer too_long.waiting")
+	first, old := c.timer("too_long.waiting")
 	if !first.Equal(entered.Add(48 * time.Hour)) {
 		t.Fatalf("entered at %v, the timer is due %v", entered, first)
 	}
 	c.at = entered.Add(time.Hour)
-	c.want(c.give(machine.Event{Name: "out", From: "client"}), "clear 0.waiting")
-	c.want(c.give(machine.Event{Name: "back", From: "client"}), "timer 0.waiting")
-	second, again := c.timer("0.waiting")
+	c.want(c.give(machine.Event{Name: "out", From: "client"}), "clear too_long.waiting")
+	c.want(c.give(machine.Event{Name: "back", From: "client"}), "timer too_long.waiting")
+	second, again := c.timer("too_long.waiting")
 	if !second.Equal(entered.Add(49 * time.Hour)) {
 		t.Fatalf("entered again an hour later, the timer is due %v, want 48 hours after the second entry", second)
 	}
@@ -449,7 +490,7 @@ states:
 	c.want(c.give(again), "end late")
 }
 
-// A recurring job is a chart that waits with after: and starts its work as
+// A recurring job is a chart that waits on a timer and starts its work as
 // a child. Over three days it starts three, each at nine.
 func TestRecurringJobStartsItsWorkAtItsTimeEachDay(t *testing.T) {
 	c := newChart(t, `
@@ -457,21 +498,22 @@ statechart: nightly
 initial: waiting
 states:
 	waiting:
-		after: { "09:00": working }
+		timers: { morning: "09:00" }
+		on: { morning: working }
 	working:
-		job: { machine: { statechart: report, states: { written: { final: true } } } }
-		done: waiting
+		job: { machine: { statechart: report, states: { written: { end: done } } } }
+		on: { done: waiting }
 `)
-	c.want(c.give(start()), "timer 0.waiting")
+	c.want(c.give(start()), "timer morning.waiting")
 	for day := 14; day <= 16; day++ {
-		at, fires := c.timer("0.waiting")
+		at, fires := c.timer("morning.waiting")
 		if want := time.Date(2026, 10, day, 9, 0, 0, 0, time.UTC); !at.Equal(want) {
 			t.Fatalf("the job is next due %v, want %v", at, want)
 		}
 		c.at = at
 		c.want(c.give(fires), "job working")
 		c.at = at.Add(20 * time.Minute)
-		c.want(c.give(done("working", nil)), "cancel working", "timer 0.waiting")
+		c.want(c.give(done("working", nil)), "cancel working", "timer morning.waiting")
 	}
 }
 
@@ -497,16 +539,17 @@ statechart: standing
 initial: ready
 states:
 	ready:
-		on: { go: working }
+		on: { work: working }
 	working:
 		job: ./work.js
-		done: ready
-		failed: ready
+		on:
+		  done: ready
+		  failed: ready
 `)
 	c.give(start())
 	size := 0
 	for i := range 1000 {
-		c.give(machine.Event{Name: "go", From: "client", Data: map[string]any{"n": float64(i)}})
+		c.give(machine.Event{Name: "work", From: "client", Data: map[string]any{"n": float64(i)}})
 		c.give(done("working", "the same size of output"))
 		if i == 0 {
 			size = len(c.state)
@@ -518,10 +561,10 @@ states:
 }
 
 func TestShortFormsGiveOneFullForm(t *testing.T) {
-	forms := []string{"done: waiting", "done: { to: waiting }", "done: [{ to: waiting }]"}
+	forms := []string{"on: { done: waiting }", "on: { done: { go: waiting } }", "on: { done: [{ go: waiting }] }"}
 	var stored []string
 	for _, form := range forms {
-		def, err := parse(t, "statechart: forms\ninitial: a\nstates:\n\ta:\n\t\tjob: ./w.js\n\t\t"+form+"\n\twaiting: { final: true }\n")
+		def, err := parse(t, "statechart: forms\ninitial: a\nstates:\n\ta:\n\t\tjob: ./w.js\n\t\t"+form+"\n\twaiting: { end: done }\n")
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -532,11 +575,11 @@ func TestShortFormsGiveOneFullForm(t *testing.T) {
 	}
 }
 
-// A key's value is handed to a person, who writes it as it is after a
+// A ticket's value is handed to a person, who writes it as it is after a
 // command or into an address: it holds letters and digits and nothing a
 // command line or an address reads as something else, whatever the seed.
-func TestKeyValueIsLettersAndDigits(t *testing.T) {
-	def, err := parse(t, "statechart: asks\ninitial: waiting\nstates:\n\twaiting:\n\t\twait: answer\n\t\ton: { answer: answered }\n\tanswered: { final: true }\n")
+func TestTicketValueIsLettersAndDigits(t *testing.T) {
+	def, err := parse(t, "statechart: asks\ninitial: waiting\nstates:\n\twaiting:\n\t\tticket: answer\n\t\ton: { answer: answered }\n\tanswered: { end: done }\n")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -547,10 +590,10 @@ func TestKeyValueIsLettersAndDigits(t *testing.T) {
 			t.Fatal(err)
 		}
 		for _, r := range out.Requests {
-			if r.Key == nil {
+			if r.Ticket == nil {
 				continue
 			}
-			value := r.Key.Value
+			value := r.Ticket.Value
 			plain := strings.IndexFunc(value, func(r rune) bool {
 				return (r < '0' || r > '9') && (r < 'a' || r > 'z') && (r < 'A' || r > 'Z')
 			}) < 0

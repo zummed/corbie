@@ -41,13 +41,13 @@ type Gateway struct {
 // start is what the part named start of a request to start a run holds,
 // as JSON. A field the gateway does not know is refused.
 type start struct {
-	Input    any               `json:"input,omitzero"`
-	Labels   map[string]string `json:"labels,omitzero"`
-	Allow    []string          `json:"allow,omitzero"`
-	Deny     []string          `json:"deny,omitzero"`
-	Deadline machine.Duration  `json:"deadline,omitzero"`
-	Secrets  map[string]string `json:"secrets,omitzero"`
-	Life     machine.Duration  `json:"life,omitzero"`
+	Input   any               `json:"input,omitzero"`
+	Labels  map[string]string `json:"labels,omitzero"`
+	Allow   []string          `json:"allow,omitzero"`
+	Deny    []string          `json:"deny,omitzero"`
+	Timeout machine.Duration  `json:"timeout,omitzero"`
+	Secrets map[string]string `json:"secrets,omitzero"`
+	Life    machine.Duration  `json:"life,omitzero"`
 }
 
 // held is how much of an upload is held in memory. The rest waits in
@@ -67,9 +67,9 @@ type event struct {
 }
 
 type answer struct {
-	Key   string           `json:"key"`
-	Value any              `json:"value,omitzero"`
-	Life  machine.Duration `json:"life,omitzero"`
+	Ticket string           `json:"ticket"`
+	Value  any              `json:"value,omitzero"`
+	Life   machine.Duration `json:"life,omitzero"`
 }
 
 func (g *Gateway) interval() time.Duration {
@@ -289,7 +289,7 @@ func (g *Gateway) start(w http.ResponseWriter, r *http.Request) {
 	}
 	// An input of null is no input.
 	st.Input, st.Labels, st.Secrets = s.Input, s.Labels, s.Secrets
-	st.Deadline, st.Life = time.Duration(s.Deadline), time.Duration(s.Life)
+	st.Timeout, st.Life = time.Duration(s.Timeout), time.Duration(s.Life)
 	// The start's own list, which narrows the run and everything below.
 	if len(s.Allow)+len(s.Deny) > 0 {
 		if err := permission.CheckList(slices.Concat(s.Allow, s.Deny)); err != nil {
@@ -379,10 +379,10 @@ func (g *Gateway) run(w http.ResponseWriter, r *http.Request, id string, rest []
 		if read(w, r, &e) {
 			g.receipt(w, r, e.Life, func(life time.Duration) (string, error) { return g.Client.Send(ctx, id, e.Event, e.Data, life) })
 		}
-	case what == "keys" && r.Method == http.MethodPost:
+	case what == "tickets" && r.Method == http.MethodPost:
 		var a answer
 		if read(w, r, &a) {
-			g.receipt(w, r, a.Life, func(life time.Duration) (string, error) { return g.Client.Reply(ctx, id, a.Key, a.Value, life) })
+			g.receipt(w, r, a.Life, func(life time.Duration) (string, error) { return g.Client.Reply(ctx, id, a.Ticket, a.Value, life) })
 		}
 	default:
 		fail(w, http.StatusNotFound, fmt.Errorf("there is no such route for a run"))

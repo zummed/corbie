@@ -65,7 +65,7 @@ func Check(ctx context.Context, s Store) error {
 		// cannot be reached is.
 		if f, ok := s.(*directory); ok {
 			if _, err := os.Stat(f.root); gone(err) {
-				return fmt.Errorf("store: the directory %s is not there (corbie init sets a store up)", f.root)
+				return fmt.Errorf("store: the directory %q is not there (corbie init sets a store up)", f.root)
 			}
 		}
 		return fmt.Errorf("store: this is not a Corbie store: it has no %s (corbie init sets one up)", VersionName)

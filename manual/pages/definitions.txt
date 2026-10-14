@@ -9,14 +9,18 @@ Fields every type takes
 
   input: [urls, depth]         the inputs a run needs; a run started without one fails
   keep: 7d                     how long a run is kept after it ends; default 7d
-  deadline: 1h                 how long a run may take; default no limit
-  depth: 8                     levels of child runs below a run that a client started;
-                               default 8, 0 for none
-  jobs: 100                    how many jobs a run may start; default no limit
+  limits: { timeout: 1h }      how much a run may use, as below
   allow: [net:example.com]     permissions of every script job in the definition
   deny: [exec]                 what no script job in the definition may do
   ask_about: [disk]            permissions that hold a job for approval
   ask: { script: ./ask.js }    the job that approves held jobs
+
+`limits:` takes these.
+
+  timeout: 1h    how long a run may take; default no limit
+  depth: 8       levels of child runs below a run that a client started; default 8, 0 for none
+  jobs: 100      how many jobs a run may start; default no limit
+  turns: 20      an agent's turns, as in `corbie manual agent`
 
 A length of time is written `30s`, `5m`, `48h` or `7d`. An input that `input:`
 does not list is optional, and reads as `null` when the run starts without it.
@@ -24,21 +28,38 @@ does not list is optional, and reads as `null` when the run starts without it.
 Values and expressions
 ----------------------
 
-An expression is JavaScript between `${` and `}`. Any value may contain one.
+An expression is one JavaScript expression between `${` and `}`. Any value may
+contain one.
 
   count: "${input.n}"                  exactly one expression: its value, of any type
   text: "Look into ${input.topic}."    text with each value filled in
   n: 3                                 anything else is literal
-  when: input.n > 1                    a condition is an expression with no `${ }`
+  when: ${input.n > 1}                 a condition: exactly one expression
 
-An expression reads `input`, which is the run's input, and what the type adds:
-a flow's `stages` and `item`, a statechart's `states`, `event` and `keys`, and
-the `args` of an agent's tool. It may run for one second.
+An expression reads these names.
 
+  input                     the run's input, in every type
+  stages, item              in a flow
+  states, event, tickets    in a statechart
+  args                      in an agent's tool
+
+It may use JavaScript's operators, `? :`, arrow functions, methods such as
+`map` and `filter`, and objects such as `Math`, `JSON`, `Date`, `Object`,
+`Array`, `String`, `Number`, `RegExp`, `Map` and `Set`.
+
+- A name that is not one of these is refused when the definition is checked.
+- An expression cannot change what it reads. It has no `eval`, `Function`,
+  `Promise`, `require` or plugins, so it reads no file and makes no
+  network connection.
+- `Date` gives the time of the step, and `Math.random` gives the same numbers
+  each time the step is taken.
+- An expression may run for one second.
+- In a permission's scope an expression reads `input` and nothing else.
 - Put a value that contains `${...}` in quotes when it is inside `{ }` or `[ ]`,
   or when the expression has a colon followed by a space.
 - These take no expression: a name, a type, a permission's kind, a secret's
-  name, a `deny:` or `ask_about:` entry, a tag and a timer's time.
+  name, a `deny:` or `ask_about:` entry, a tag, a timer's time and a ticket's
+  name.
 
 Jobs
 ----
@@ -53,7 +74,7 @@ machine, which the controller starts as a child run.
                                for a machine, a limit on everything the child run does
   deny: [fs.write:/etc/**]     what the job may not do
   timeout: 5m                  for a script, how long it may run, default 5m;
-                               for a machine, the child run's deadline
+                               for a machine, the child run's timeout
   attempts: 3                  how many times the job is tried; default 1
   approve: true                the job waits until the definition's ask approves it
   files: [./lib.js]            script only: files the script loads with require("./lib.js")
@@ -77,9 +98,9 @@ The controller sends events to a machine. An event has a name, a source and data
   start     the run's input
   done      a job ended well; data is its output
   failed    a job failed; data is { status, error, output }
-  timer     a timer is due
-  <name>    a key's answer, an event from the parent run, a child run or the
-            client (`corbie send`), or a value a job emitted with emit(name, value)
+  <name>    a timer that is due, a ticket's answer, an event from the parent run,
+            a child run or the client (`corbie send`), or a value a job emitted
+            with emit(name, value)
 
 A failed job's status is `error`, `timeout`, `denied` or `cancelled`, and
 `denied` adds `refused`, `layer` and `fix` to the data. Each type's page lists

@@ -42,7 +42,7 @@ type Run struct {
 	Parent  string            `json:"parent,omitzero"`
 	Jobs    int               `json:"jobs,omitzero"`
 	Timers  int               `json:"timers,omitzero"`
-	Keys    []string          `json:"keys,omitzero"`
+	Tickets []string          `json:"tickets,omitzero"`
 	Labels  map[string]string `json:"labels,omitzero"`
 }
 
@@ -64,7 +64,7 @@ var ErrNoRecord = errors.New("the run has no record to read")
 func runOf(head *instance.Head) *Run {
 	return &Run{ID: head.Name, Machine: head.Machine, Type: head.Type, Status: head.Status, Failure: head.Failure,
 		Step: head.Step, Started: head.Started, Ended: head.Ended, Parent: head.Parent, Jobs: head.Jobs,
-		Timers: head.Timers, Keys: head.Keys, Labels: head.Labels}
+		Timers: head.Timers, Tickets: head.Tickets, Labels: head.Labels}
 }
 
 // mine says whether the client may read what is inside a run.
@@ -121,18 +121,18 @@ func (c *Client) Show(ctx context.Context, id string) (*Run, error) {
 	// A blob in the output is shown as its type, its size and the path to
 	// ask for it by: its key is left out here, where the one shape is made.
 	run.Status, run.Step, run.Output, run.Used, run.Ended = st.Status, latest.Number, blob.Show(st.Output), st.Used, st.Ended
-	run.Jobs, run.Timers, run.Keys = 0, len(st.Timers), nil
+	run.Jobs, run.Timers, run.Tickets = 0, len(st.Timers), nil
 	for _, r := range st.Jobs {
 		if r.Runner != "" {
 			run.Jobs++
 		}
 	}
-	for _, key := range st.Keys {
-		if !slices.Contains(run.Keys, key.Name) {
-			run.Keys = append(run.Keys, key.Name)
+	for _, ticket := range st.Tickets {
+		if !slices.Contains(run.Tickets, ticket.Name) {
+			run.Tickets = append(run.Tickets, ticket.Name)
 		}
 	}
-	slices.Sort(run.Keys)
+	slices.Sort(run.Tickets)
 	if st.Error != nil {
 		run.Error, run.Refused, run.Layer, run.Fix = st.Error.Error, st.Error.Refused, st.Error.Layer, st.Error.Fix
 		if st.Status == instance.Failed {
@@ -227,7 +227,7 @@ func (c *Client) current(ctx context.Context, id string) (*instance.Step, error)
 		return nil, err
 	}
 	if !c.mine(id) {
-		return nil, fmt.Errorf("the run %s was started by another client, and only the client that started a run can read its record", id)
+		return nil, fmt.Errorf("the run %q was started by another client, and only the client that started a run can read its record", id)
 	}
 	latest, err := instance.Current(ctx, c.Store, c.Controller, c.ID, id)
 	if err != nil || latest != nil {
@@ -240,17 +240,17 @@ func (c *Client) current(ctx context.Context, id string) (*instance.Step, error)
 	return nil, fmt.Errorf("%w: it is %s", ErrNoRecord, run.Status)
 }
 
-// Keys gives the keys a run is waiting on, each name with its value. The
-// value is the whole right to answer; it is in the record, which only the
-// client that started the run can read.
-func (c *Client) Keys(ctx context.Context, id string) (map[string]string, error) {
+// Tickets gives the tickets a run is waiting on, each name with its value.
+// The value is the whole right to answer; it is in the record, which only
+// the client that started the run can read.
+func (c *Client) Tickets(ctx context.Context, id string) (map[string]string, error) {
 	latest, err := c.current(ctx, id)
 	if err != nil {
 		return nil, err
 	}
-	keys := map[string]string{}
-	for _, key := range latest.State.Keys {
-		keys[key.Name] = key.Value
+	tickets := map[string]string{}
+	for _, ticket := range latest.State.Tickets {
+		tickets[ticket.Name] = ticket.Value
 	}
-	return keys, nil
+	return tickets, nil
 }

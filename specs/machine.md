@@ -8,7 +8,7 @@ A machine runs as a series of steps and never as one long process. A step is giv
 
 Because a step depends on nothing but what it is given, taking the same step twice gives the same answer, and everything a machine has ever done can be read back from its record.
 
-A machine runs until it reaches an end of its own, is cancelled, or passes its deadline if it has one. One with no deadline may run for ever. Waiting costs nothing: a machine that is waiting is just a record in the store.
+A machine runs until it reaches an end of its own, is cancelled, or passes its timeout if it has one. One with no timeout may run for ever. Waiting costs nothing: a machine that is waiting is just a record in the store.
 
 ## Definitions
 
@@ -29,8 +29,8 @@ A definition is read by its shapes and by nothing else. A field is read only if 
 A mapping may be one of several sorts of thing that hold different fields. Its shape then says which field tells the sorts apart, and which fields each sort holds.
 
 ```
- a model, by its service     anthropic, openai     name  key  service  effort  address  reply
-                             claude-code           name  key  service  effort  own
+ a model, by its service     anthropic, openai     name  secret  service  effort  address  reply_tokens
+                             claude-code           name  secret  service  effort  own
 ```
 
 A field its sort does not hold is not offered to a person, and is refused if it is written.
@@ -43,9 +43,11 @@ An instance never changes its definition. A machine that wants to change how it 
 
 Any value in a definition may be an expression, written `${…}`. A value that is exactly one expression takes the expression's value, whatever its type. Text with expressions inside it is text with the values filled in. Everything else is literal.
 
+A condition, such as `when:`, is exactly one expression. It holds unless its value is false, null, zero or empty text.
+
 Expressions are JavaScript. They read `input`, which is what the machine was started with, and whatever its type adds: a flow's stages, a statechart's states and current event, an agent tool's arguments. Everything that varies from one run of a definition to the next comes in through `input`, and there is no other way to vary it.
 
-Some fields are names, not values, and an expression in them is refused: a thing's name, a type, a permission's kind, a deny entry, a secret's name, a tag, a timer's key. The path of a script or a machine is a name too, with one exception: it may be exactly one expression that gives a stored definition or script.
+Some fields are names, not values, and an expression in them is refused: a thing's name, a type, a permission's kind, a deny entry, a secret's name, a tag, a timer's time, a ticket's name. The path of a script or a machine is a name too, with one exception: it may be exactly one expression that gives a stored definition or script.
 
 An expression may run for one second. The time it sees is the time of the step, and random numbers differ from one expression to the next but are the same if the step is taken again.
 
@@ -59,7 +61,7 @@ Every job has a name that says what asked for it: a stage, a state, a tool, an a
 
 ## Events
 
-Everything that reaches a machine is an event, and every event has the same shape: a name, where it came from, and its data. A machine is started by a `start` event carrying its input. A job that ends well arrives as `done`, and its data is its output. One that does not arrives as `failed`, and its data is its error together with whatever output it still gave. A timer arrives as `timer`. An answer to a key arrives under the key's name.
+Everything that reaches a machine is an event, and every event has the same shape: a name, where it came from, and its data. A machine is started by a `start` event carrying its input. A job that ends well arrives as `done`, and its data is its output. One that does not arrives as `failed`, and its data is its error together with whatever output it still gave. A timer arrives under the timer's name. An answer to a ticket arrives under the ticket's name, and is marked as an answer, which no other event can be.
 
 A job can also send events up while it is still going. A script does it by emitting a named value, and a child machine by sending an event to its parent. The two are the same thing and arrive the same way, as an event with that name from that job. A parent can send a named event down to a child machine. Machines talk only to their parent and their own children; siblings go through the parent.
 
@@ -79,9 +81,16 @@ A root may have eight levels of machines below it unless it says otherwise, and 
 
 ## Waiting on the outside
 
-A machine waits for a person or an outside system by waiting on a key. A key, in this sense, is a random value that stands for the right to answer one question. It has nothing to do with the keys that encrypt. The step creates the key, a random value, and the machine hands it to whoever should answer. A client answers by naming the instance and the key and giving a value.
+A machine waits for a person or an outside system with a ticket: a random value that gives the right to answer one question, once.
 
-The key is the authority. Any client that holds it may answer, and Corbie does not check who did; what an answer says about who gave it is the answerer's word, and the machine decides whether it is enough. A key is answered once, and the receipt for an answer says whether it was the one taken. Services that carry questions to people, such as a chat program, are clients at the edge and no part of Corbie.
+1. A state issues the ticket, and the step makes its value.
+2. The machine, or the client that started the run, hands the value to whoever should answer.
+3. That person or system answers with any client, naming the instance and the ticket and giving a value.
+4. The answer arrives as an event with the ticket's name. No other event is taken under that name.
+
+The ticket is the authority: any client that holds it may answer, and Corbie does not check who did. What an answer says about who gave it is the answerer's word, and the machine decides whether it is enough. The receipt for an answer says whether it was the one taken.
+
+Services that carry questions to people, such as a chat program, are clients at the edge and no part of Corbie.
 
 ## Approval
 
@@ -89,7 +98,7 @@ A job can be made to wait for a yes before it starts. A job is held if it is mar
 
 The controller does the holding. It gathers the jobs from one step that need approval and starts the ask with them. The ask is told which machine is asking and, for each job, what it is and what input it would get. Its result names the jobs it approves and may add a note. Approved jobs start. A job not approved never starts, and its machine sees it as a failed job with the status denied, which it may handle like any other failure. An ask that fails, or ends without deciding, approves nothing.
 
-Waiting for a person happens inside the ask, typically a statechart that hands out a key and ends with the decision. An ask that decides by itself, such as a model reviewing the jobs, is an ask all the same. An approval has no time limit of its own; the ask's deadline is how long it may take.
+Waiting for a person happens inside the ask, typically a statechart that issues a ticket and ends with the decision. An ask that decides by itself, such as a model reviewing the jobs, is an ask all the same. An approval has no time limit of its own; the ask's timeout is how long it may take.
 
 An ask's job takes input like any other. The permissions an ask needs are its own, used by the ask's job and by nothing else in a machine that inherits it.
 

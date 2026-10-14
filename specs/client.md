@@ -8,7 +8,7 @@ The client is a public Go package in the Corbie repository. An application writt
 
 It does two kinds of thing.
 
-It **sends**: start a run, cancel one, send an event to one, answer a key. To start a run it takes a definition and the files beside it, fills out the short forms, checks the whole and reports everything wrong at once, uploads the files, and sends the start. A start may carry input, files as input, labels, run secrets, a list that narrows what the run may do, and a deadline.
+It **sends**: start a run, cancel one, send an event to one, answer a ticket. To start a run it takes a definition and the files beside it, fills out the short forms, checks the whole and reports everything wrong at once, uploads the files, and sends the start. A start may carry input, files as input, labels, run secrets, a list that narrows what the run may do, and a timeout.
 
 It **reads**: list runs and follow the list as it changes; show one run, where it stands and how it ended; read a run's record so far, children included, and follow it as it grows; fetch a file from a result; show the definition a run was started from.
 
@@ -20,7 +20,7 @@ To a client a run is an instance: a root it started, or one below it.
 
 Wherever a run is shown, it has the same shape and the same words.
 
-A run is `waiting` to start, `running`, `done`, `failed` or `cancelled`. A failed run says why: an `error`, a `timeout`, or `denied` with the refusal. A finished run has its output, and a list of the permissions it used, which for a machine are those of every job in it and below it. A run waiting on a key shows the key's name. The key's value is in the record, which only the client that started the run can read.
+A run is `waiting` to start, `running`, `done`, `failed` or `cancelled`. A failed run says why: an `error`, a `timeout`, or `denied` with the refusal. A finished run has its output, and a list of the permissions it used, which for a machine are those of every job in it and below it. A run waiting on a ticket shows the ticket's name. The ticket's value is in the record, which only the client that started the run can read.
 
 A blob in any value is shown as its type, its size and the path to ask for it by. Its key is never shown, at the command line, over HTTP or to a model.
 
@@ -36,7 +36,7 @@ corbie ls                           list runs
 corbie show <id>                    show one run: its status and its result
 corbie cancel <id>                  cancel a run that this client started
 corbie send <id> <event> [data]     send an event to a run that this client started
-corbie reply <id> <key> [value]     answer a key that a run waits on
+corbie reply <id> <ticket> [value]  answer a ticket that a run waits on
 corbie check                        start one small run, and report which part of a setup did not respond
 
 corbie controller …                 enrol and remove runners and clients, set ceilings and tags, manage secrets, cancel any run
@@ -53,12 +53,12 @@ corbie version                      print the version, the machine types and the
 ```
 $ corbie show <id>
 <id>  running  statechart door  step 1
-  waiting on key knock
+  waiting on ticket knock
 
 $ corbie show <id> --record
 15:56:21 4efcf50f63  step 1  <- start
 <id>  running  statechart door  step 1
-  waiting on key knock
+  waiting on ticket knock
 ```
 
 Following from a terminal is one flag, `--watch`. It prints what the command prints without it, and keeps going:

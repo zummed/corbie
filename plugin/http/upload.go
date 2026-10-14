@@ -36,14 +36,14 @@ func upload(job *plugin.Job, fields map[string]any, reveal func(any) (string, er
 		if m, ok := value.(map[string]any); ok {
 			for key := range m {
 				if key != "data" && key != "name" && key != "type" {
-					return nil, 0, "", plugin.Errorf(plugin.BadInput, "upload: the file %s has %q, and a file is { data, name, type }", name, key)
+					return nil, 0, "", plugin.Errorf(plugin.BadInput, "upload: the file %q has the field %q, and a file is { data, name, type }", name, key)
 				}
 			}
 			value = m["data"]
 			file, _ = m["name"].(string)
 			typ, _ = m["type"].(string)
 			if file == "" {
-				return nil, 0, "", plugin.Errorf(plugin.BadInput, "upload: the file %s has no name", name)
+				return nil, 0, "", plugin.Errorf(plugin.BadInput, "upload: the file %q has no name", name)
 			}
 		}
 		var data io.Reader
@@ -83,7 +83,7 @@ func upload(job *plugin.Job, fields map[string]any, reveal func(any) (string, er
 		}
 		// A line break in a part's type would start a header of its own.
 		if strings.ContainsAny(typ, "\r\n\x00") {
-			return nil, 0, "", plugin.Errorf(plugin.BadInput, "upload: the type of the file %s holds a line break or a zero byte", name)
+			return nil, 0, "", plugin.Errorf(plugin.BadInput, "upload: the type of the file %q holds a line break or a zero byte", name)
 		}
 		add(head+"; filename=\""+quoted(file)+"\"\r\nContent-Type: "+typ+"\r\n\r\n", data, length)
 	}

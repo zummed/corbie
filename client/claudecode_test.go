@@ -231,7 +231,7 @@ func TestProgramAnswersInTheShapeWanted(t *testing.T) {
 	dir := standInProgram(t, strings.Join([]string{`{"type":"system","subtype":"init"}`,
 		`{"type":"result","subtype":"success","is_error":false,"result":"","structured_output":` + answer + `,"usage":{"input_tokens":10,"output_tokens":5}}`}, "\n")+"\n")
 	l := local(t, "all")
-	def := strings.Replace(strings.Replace(programAgent, "MORE", "", 1), "prompt:", "output: { sum: number, note: string }\n\tprompt:", 1)
+	def := strings.Replace(strings.Replace(programAgent, "MORE", "", 1), "prompt:", "reply: { sum: number, note: string }\n\tprompt:", 1)
 	r := runAgent(t, l, def, scripts)
 	if r.Status != "done" {
 		t.Fatalf("the agent ended %s: %s", r.Status, r.Error)

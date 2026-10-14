@@ -117,8 +117,8 @@ func Test_role_fresh_process_every_pass_same_store(t *testing.T) {
 		states:
 		  working:
 		    job: { script: ./work.js }
-		    done: over
-		  over: { final: true, output: "${states.working.output}" }
+		    on: { done: over }
+		  over: { end: done, output: "${states.working.output}" }
 	`
 	// work does the same things to a new store, with every pass of a role
 	// made by a process of its own or with all of a role's passes made in

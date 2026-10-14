@@ -236,7 +236,7 @@ func Test_model_usage_counts_cached_input(t *testing.T) {
 func Test_model_reply_size_always_sent_where_needed(t *testing.T) {
 	s := newStandIn(t, arriving3["anthropic"]...)
 	s.must(t, "anthropic", nil)
-	s.must(t, "anthropic", plugin.Options{"reply": 500.0})
+	s.must(t, "anthropic", plugin.Options{"reply_tokens": 500.0})
 	if s.sent[0]["max_tokens"] != float64(defaultRoom) || s.sent[1]["max_tokens"] != 500.0 {
 		t.Fatalf("the most a reply may hold was sent as %v, then %v", s.sent[0]["max_tokens"], s.sent[1]["max_tokens"])
 	}
@@ -381,7 +381,7 @@ func TestContentBesideText(t *testing.T) {
 	}
 	s := newStandIn(t, arriving3["anthropic"]...)
 	_, err = s.send("anthropic", shows(plugin.NewBlob("video/mp4", []byte("film")), document))
-	if err == nil || !strings.Contains(err.Error(), "does not take content of type video/mp4") || len(s.sent) != 0 {
+	if err == nil || !strings.Contains(err.Error(), `does not take content of type "video/mp4"`) || len(s.sent) != 0 {
 		t.Fatalf("a film gave %v, and %d calls were sent", err, len(s.sent))
 	}
 }
@@ -405,7 +405,7 @@ func Test_model_too_large_content_refused_before_sending(t *testing.T) {
 	s := newStandIn(t, arriving3["anthropic"]...)
 	large := plugin.StoredBlob(blob.Ref{Type: "image/png", Size: 6 << 20})
 	_, err := s.send("anthropic", shows(large, plugin.NewBlob("application/pdf", []byte("%PDF"))))
-	if err == nil || !strings.Contains(err.Error(), "content of type image/png may be 5242880 bytes") || len(s.sent) != 0 {
+	if err == nil || !strings.Contains(err.Error(), `content of type "image/png" may be 5242880 bytes`) || len(s.sent) != 0 {
 		t.Fatalf("a picture of six megabytes gave %v, and %d calls were sent", err, len(s.sent))
 	}
 }

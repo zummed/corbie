@@ -1,7 +1,7 @@
 {
   "status": "done",
   "output": {
-    "came_by": "timer",
+    "came_by": "leave",
     "inner": {
       "n": 1
     }

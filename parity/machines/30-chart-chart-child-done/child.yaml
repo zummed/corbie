@@ -4,7 +4,7 @@ initial: working
 states:
   working:
     job: { script: ./echo.js, input: { n: "${input.n}", seen_input: "${input}", start_event: "${event.name}", start_data: "${event.data}" } }
-    done: finished
+    on: { done: finished }
   finished:
-    final: true
+    end: done
     output: ${states.working.output}

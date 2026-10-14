@@ -2,9 +2,8 @@ statechart: child
 initial: asking
 states:
   asking:
-    wait: answer
-    on:
-      answer: answered
+    ticket: answer
+    on: { answer: answered }
   answered:
-    final: true
+    end: done
     output: { said: "${event.data.said}" }

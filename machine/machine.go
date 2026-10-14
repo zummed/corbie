@@ -17,6 +17,9 @@ type Event struct {
 	Name string `json:"name"`
 	From string `json:"from,omitzero"`
 	Data any    `json:"data,omitzero"`
+	// Answer says the event is the answer to a ticket. Only the controller
+	// sets it, when it takes an answer.
+	Answer bool `json:"answer,omitzero"`
 }
 
 // The names of the events Corbie itself sends a machine.
@@ -123,15 +126,15 @@ const Parent = "parent"
 
 // A Request is one thing a step asks for. Exactly one field is set.
 type Request struct {
-	Job    *Job      `json:"job,omitzero"`
-	Cancel string    `json:"cancel,omitzero"` // cancel the job of this name
-	Send   *Send     `json:"send,omitzero"`
-	Timer  *TimerAt  `json:"timer,omitzero"`
-	Clear  string    `json:"clear,omitzero"` // cancel the timer of this name
-	Key    *KeyNamed `json:"key,omitzero"`
-	Drop   string    `json:"drop,omitzero"` // the key of this id is no longer waited on
-	End    *Ending   `json:"end,omitzero"`
-	Note   string    `json:"note,omitzero"`
+	Job    *Job         `json:"job,omitzero"`
+	Cancel string       `json:"cancel,omitzero"` // cancel the job of this name
+	Send   *Send        `json:"send,omitzero"`
+	Timer  *TimerAt     `json:"timer,omitzero"`
+	Clear  string       `json:"clear,omitzero"` // cancel the timer of this name
+	Ticket *TicketNamed `json:"ticket,omitzero"`
+	Drop   string       `json:"drop,omitzero"` // the ticket of this id is no longer waited on
+	End    *Ending      `json:"end,omitzero"`
+	Note   string       `json:"note,omitzero"`
 }
 
 // TimerAt asks for a timer event at a time.
@@ -140,10 +143,10 @@ type TimerAt struct {
 	At   time.Time `json:"at"`
 }
 
-// KeyNamed asks for a key to be waited on. ID tells apart keys that wait
-// under one name; the answer arrives as an event with the key's name, from
-// the id.
-type KeyNamed struct {
+// TicketNamed asks for a ticket to be waited on. ID is the state that
+// issued it; the answer arrives as an event with the ticket's name, from the
+// id.
+type TicketNamed struct {
 	ID    string `json:"id"`
 	Name  string `json:"name"`
 	Value string `json:"value"`
@@ -162,9 +165,7 @@ type StepIn struct {
 	Events     []Event
 	Input      any       // what the machine was started with
 	Time       time.Time // the time of the step
-	Seed       []byte    // the step's own secret, for keys and random numbers
-	// HasAsk says an ask applies to the machine: its own, or one above it.
-	HasAsk bool
+	Seed       []byte    // the step's own secret, for tickets and random numbers
 }
 
 // StepOut is what a step gives back: the new state and what it asks for.
@@ -194,6 +195,12 @@ type Type interface {
 	// Show gives what a watcher is shown of a state.
 	Show(def *Definition, state jsontext.Value) any
 	Manual() string
+}
+
+// A Limiter is a type that adds limits of its own to those every type
+// takes. It reads them with Parser.Limits.
+type Limiter interface {
+	Limits() []Field
 }
 
 var types = map[string]Type{}

@@ -1,5 +1,5 @@
-# The child chart waits on a key. A client cancels the root. Then it
-# replies to the child's key. The root's send on leaving is addressed to
+# The child chart waits on a ticket. A client cancels the root. Then it
+# replies to the child's ticket. The root's send on leaving is addressed to
 # its parent, since one to the state's own child is refused.
 statechart: parent
 initial: running
@@ -7,7 +7,7 @@ states:
   running:
     exit: { send: { to: parent, event: parent_leaving } }
     job: { machine: ./child.yaml }
-    done: finished
+    on: { done: finished }
   finished:
-    final: true
+    end: done
     output: { child: "${event.data}" }

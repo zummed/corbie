@@ -44,7 +44,7 @@ and run number.
           script: ./list-pages.js
           input: { pages: "${input.pages}" }
       get_title:
-        each: list_pages
+        each: { emitted: list_pages }
         job:
           script: ./fetch-title.js
           input: { url: "${item}" }

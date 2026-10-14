@@ -4,6 +4,6 @@ states:
   running:
     exit: { send: { to: parent, event: middle_leaving } }
     job: { machine: ./bottom.yaml }
-    done: finished
+    on: { done: finished }
   finished:
-    final: true
+    end: done

@@ -4,7 +4,7 @@ states:
   emitting:
     entry: { send: { to: parent, event: hello, data: { from: child } } }
     job: { script: ./emit.js, input: { items: [{ n: 1 }, { n: 2 }] } }
-    done: finished
+    on: { done: finished }
   finished:
-    final: true
+    end: done
     output: ${event.data}

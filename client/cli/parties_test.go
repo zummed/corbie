@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -48,7 +49,7 @@ func TestInitRefusesANameAnotherControllerHasOnTheStore(t *testing.T) {
 	parties, held := first.ok("", "controller", "parties"), stored(t, storeDir)
 
 	status, out, said := second.run("", "init", "--store", storeDir, "--name", "box", "--ceiling", "all")
-	if status != 1 || out != "" || !strings.Contains(said, "the name box-controller is taken on that store") {
+	if status != 1 || out != "" || !strings.Contains(said, `the name "box-controller" is taken on that store`) {
 		t.Fatalf("init under a name taken on the store ended %d: %s%s", status, out, said)
 	}
 	if after := first.ok("", "controller", "parties"); after != parties || !slices.Equal(stored(t, storeDir), held) {
@@ -99,7 +100,7 @@ func TestDirectoryStoreThatIsNotThereIsSaidToBe(t *testing.T) {
 	if err := os.RemoveAll(storeDir); err != nil {
 		t.Fatal(err)
 	}
-	if status, _, said := m.run("", "ls"); status != 1 || !strings.Contains(said, "the directory "+storeDir+" is not there") {
+	if status, _, said := m.run("", "ls"); status != 1 || !strings.Contains(said, "the directory "+strconv.Quote(storeDir)+" is not there") {
 		t.Fatalf("with its store's directory gone, ls ended %d: %s", status, said)
 	}
 	if err := os.Mkdir(storeDir, 0o755); err != nil {

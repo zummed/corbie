@@ -63,7 +63,7 @@ func TestFlowSkipSpreads(t *testing.T) {
 		input: [go]
 		stages:
 		  gate:
-		    when: input.go
+		    when: ${input.go}
 		    job: { script: ./add.js, input: { n: 1 } }
 		  reads_gate:
 		    job: { script: ./add.js, input: { n: "${stages.gate.output.n}" } }
@@ -73,7 +73,7 @@ func TestFlowSkipSpreads(t *testing.T) {
 		  reads_reader:
 		    job: { script: ./add.js, input: { n: "${stages.reads_gate.output.n}" } }
 		  notices_skip:
-		    when: stages.gate.skipped
+		    when: ${stages.gate.skipped}
 		    job: { script: ./echo.js, input: { saw_skip: "${stages.gate.skipped}" } }
 		  independent:
 		    job: { script: ./echo.js, input: { ran: true } }
@@ -97,7 +97,7 @@ func TestFlowFailureHandledByAStageThatReadsIt(t *testing.T) {
 		  bad:
 		    job: { script: ./fail.js }
 		  cleanup:
-		    when: stages.bad.failed
+		    when: ${stages.bad.failed}
 		    job: { script: ./echo.js, input: { error: "${stages.bad.error}" } }
 		  needs_bad:
 		    job: { script: ./echo.js, input: { got: "${stages.bad.output}" } }
@@ -106,6 +106,20 @@ func TestFlowFailureHandledByAStageThatReadsIt(t *testing.T) {
 		  needs_bad_skipped: ${stages.needs_bad.skipped}
 	`, scripts, nil)
 	check(t, r.Status, r.Output, "done", `{"cleanup":{"error":"Error: told to fail at line 1, column 7"},"needs_bad_skipped":true}`)
+}
+
+// The flow's output: that reads a failure handles it, as a stage's when:
+// does.
+func TestFlowFailureHandledByTheOutput(t *testing.T) {
+	l := local(t)
+	r := run(t, l, `
+		flow: output_handles
+		stages:
+		  bad:
+		    job: { script: ./fail.js }
+		output: { error: "${stages.bad.error}" }
+	`, scripts, nil)
+	check(t, r.Status, r.Output, "done", `{"error":"Error: told to fail at line 1, column 7"}`)
 }
 
 func TestFlowFailureNobodyReadsFailsTheFlow(t *testing.T) {
@@ -153,8 +167,7 @@ func TestFlowEachFollowsEmits(t *testing.T) {
 		  source:
 		    job: { script: ./emit.js, input: { items: [{ n: 1 }, { n: 2 }, { n: 3 }] } }
 		  per_item:
-		    each: source
-		    one_at_a_time: true
+		    each: { emitted: source, serial: true }
 		    job: { script: ./add.js, input: { n: "${item.n}" } }
 		output:
 		  count: ${stages.source.output.count}
@@ -179,6 +192,24 @@ func TestFlowEachOverABlob(t *testing.T) {
 		"upper.js": `return input.line.toUpperCase()`,
 	}, nil)
 	check(t, r.Status, r.Output, "done", `["ONE","TWO","THREE"]`)
+	// The blob is read by a job of the stage's own name, so a stage of any
+	// other name is the flow's own.
+	r = run(t, l, `
+		flow: lines
+		stages:
+		  make:
+		    job: { script: ./make.js }
+		  shout:
+		    each: { blob: "${stages.make.output.text}" }
+		    job: { script: ./upper.js, input: { line: "${item}" } }
+		  shout_items:
+		    job: { script: ./upper.js, input: { line: "mine" } }
+		output: { lines: "${stages.shout.output.map(r => r.output)}", mine: "${stages.shout_items.output}" }
+	`, map[string]string{
+		"make.js":  `return { text: blobs.make("one\ntwo\n") }`,
+		"upper.js": `return input.line.toUpperCase()`,
+	}, nil)
+	check(t, r.Status, r.Output, "done", `{"lines":["ONE","TWO"],"mine":"MINE"}`)
 }
 
 func TestFlowRunsAChildWrittenInPlace(t *testing.T) {
@@ -237,7 +268,7 @@ func TestFilesAndPermissions(t *testing.T) {
 	// the scratch directory has no entry and is refused by the definition.
 	l = local(t, "disk")
 	r = run(t, l, def, files, map[string]any{"dir": dir})
-	if r.Failure != "denied" || !strings.HasPrefix(r.Refused, "fs.write:") || !strings.Contains(r.Layer, "the job copy in the definition of files") {
+	if r.Failure != "denied" || !strings.HasPrefix(r.Refused, "fs.write:") || !strings.Contains(r.Layer, "the job \"copy\" in the definition of \"files\"") {
 		t.Fatalf("the scratch write: %s/%s refused %s by %s", r.Status, r.Failure, r.Refused, r.Layer)
 	}
 	if got, _ := os.ReadFile(filepath.Join(dir, "out", "copy.txt")); string(got) != "HELLO\n" {
@@ -251,6 +282,47 @@ func flowRefused(t *testing.T, src string, files map[string]string, want string)
 	if err == nil || !strings.Contains(err.Error(), want) {
 		t.Fatalf("want a refusal holding %q, got: %v", want, err)
 	}
+}
+
+// The items another stage emits are written as { emitted: … }; a bare word
+// is not taken for a stage's name.
+func TestEachOverEmittedItemsIsWrittenOut(t *testing.T) {
+	flowRefused(t, `
+		flow: bad
+		stages:
+		  source: { job: ./add.js }
+		  per_item: { each: source, job: ./add.js }
+	`, scripts, `write "each: { emitted: source }"`)
+	flowRefused(t, `
+		flow: bad
+		stages:
+		  source: { job: ./add.js }
+		  per_item: { each: { items: source }, job: ./add.js }
+	`, scripts, `write "each: { emitted: source }"`)
+	flowRefused(t, `
+		flow: bad
+		stages:
+		  per_item: { each: { emitted: source, blob: x }, job: ./add.js }
+	`, scripts, "holds one of items:, emitted: and blob:")
+}
+
+// A condition is exactly one expression, written ${…}, in a flow and in a
+// statechart.
+func TestConditionIsOneExpression(t *testing.T) {
+	flowRefused(t, `
+		flow: bad
+		input: [n]
+		stages:
+		  a: { when: input.n > 1, job: ./add.js }
+	`, scripts, "a condition is one expression")
+	flowRefused(t, `
+		statechart: bad
+		input: [n]
+		states:
+		  a: { on: { go_on: { go: b, when: "x ${input.n}" } } }
+		  b: { end: done }
+		initial: a
+	`, scripts, "a condition is one expression")
 }
 
 func Test_flow_reference_to_missing_stage_is_refused(t *testing.T) {
@@ -271,11 +343,11 @@ func Test_flow_reference_to_missing_stage_is_refused(t *testing.T) {
 		stages:
 		  a: { job: { script: ./add.js, input: { n: "${stages.b.output.n}" } } }
 		  b: { follows: [a], job: { script: ./add.js, input: { n: 1 } } }
-	`, scripts, "a -> b -> a")
+	`, scripts, `"a" -> "b" -> "a"`)
 	flowRefused(t, `
 		flow: norun
 		stages:
-		  a: { when: input.x }
+		  a: { when: "${input.x}" }
 	`, scripts, "a stage needs a job")
 }
 
@@ -325,7 +397,7 @@ func Test_flow_following_stage_waits_for_other_inputs(t *testing.T) {
 		  slow:
 		    job: { script: ./slow.js }
 		  per_item:
-		    each: source
+		    each: { emitted: source }
 		    job: { script: ./echo.js, input: { item: "${item}", ready: "${stages.slow.output}" } }
 		output: ${stages.per_item.output.map(r => r.output.ready)}
 	`, map[string]string{"emit.js": scripts["emit.js"], "echo.js": scripts["echo.js"],

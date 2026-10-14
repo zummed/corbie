@@ -68,10 +68,10 @@ func Test_mach_a_type_is_described_by_what_its_reader_reads(t *testing.T) {
 			names = append(names, f.Name)
 		}
 	}
-	if got := strings.Join(names, " "); got != "probe input keep deadline depth jobs allow deny ask_about ask work value" {
+	if got := strings.Join(names, " "); got != "probe input keep limits allow deny ask_about ask work value" {
 		t.Errorf("a probe's definition holds: %s", got)
 	}
-	if d.Shapes["job"] != JobShape || len(d.Shapes) != 3 {
+	if d.Shapes["job"] != JobShape || d.Shapes["limits"] == nil || len(d.Shapes) != 4 {
 		t.Errorf("its shapes are %v", d.Shapes)
 	}
 	sent, err := json.Marshal(d)

@@ -8,7 +8,7 @@ stages:
   ask_undecided:
     job: { machine: ./ask-undecided.yaml, input: { child: ask-undecided } }
   note:
-    when: stages.ask_fails.failed && stages.ask_undecided.failed
+    when: ${stages.ask_fails.failed && stages.ask_undecided.failed}
     job: { script: ./echo.js, input: { ask_fails: "${stages.ask_fails.error}", ask_undecided: "${stages.ask_undecided.error}" } }
 output:
   note: ${stages.note.output}

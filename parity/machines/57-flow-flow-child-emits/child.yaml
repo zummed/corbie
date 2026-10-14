@@ -3,7 +3,7 @@ stages:
   source:
     job: { script: ./emit.js, input: { items: [{ n: 1 }, { n: 2 }, { n: 3 }] } }
   per_item:
-    each: source
+    each: { emitted: source }
     job: { script: ./read.js, input: { item: "${item}" } }
 output:
   count: ${stages.source.output.count}

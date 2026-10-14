@@ -117,7 +117,7 @@ func (j *Job) Dial(ctx context.Context, address string, with ...*Secret) (net.Co
 	}
 	addrs, err := lookup(ctx, host)
 	if err != nil {
-		return nil, Errorf(NotFound, "the name %s could not be looked up: %v", host, err)
+		return nil, Errorf(NotFound, "the host name %q could not be looked up: %v", host, err)
 	}
 	var refusal *permission.Refusal
 	var last error
@@ -324,7 +324,7 @@ func (j *Job) Program(ctx context.Context, name string, opt ProgramOptions) (*ex
 	}
 	if !strings.ContainsRune(name, filepath.Separator) {
 		if path = j.find(name); path == "" {
-			return nil, Errorf(NotFound, "the program %s was not found", name)
+			return nil, Errorf(NotFound, "the program %q was not found", name)
 		}
 	}
 	for _, variable := range opt.Env {
@@ -341,7 +341,7 @@ func (j *Job) Program(ctx context.Context, name string, opt ProgramOptions) (*ex
 		wrapper := j.Wrapper[0]
 		if !strings.ContainsRune(wrapper, filepath.Separator) {
 			if wrapper = j.find(wrapper); wrapper == "" {
-				return nil, Errorf(NotFound, "the runner's exec wrapper %s was not found", j.Wrapper[0])
+				return nil, Errorf(NotFound, "the runner's exec wrapper %q was not found", j.Wrapper[0])
 			}
 		}
 		if len(opt.Env) > 0 {

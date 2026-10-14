@@ -18,7 +18,7 @@ func Test_agent_next_turn_waits_for_open_approval(t *testing.T) {
 	l := local(t, "all")
 	id, err := l.Start(ctx, draft(t, strings.ReplaceAll(`
 		agent: careful
-		model: { name: test-model, service: anthropic, address: ADDRESS, key: TEST_KEY }
+		model: { name: test-model, service: anthropic, address: ADDRESS, secret: TEST_KEY }
 		prompt: Add, and put it out.
 		ask:
 		  machine:
@@ -26,9 +26,9 @@ func Test_agent_next_turn_waits_for_open_approval(t *testing.T) {
 		    initial: asking
 		    states:
 		      asking:
-		        wait: verdict
+		        ticket: verdict
 		        on: { verdict: decided }
-		      decided: { final: true, output: { approve: "${input.jobs.map(r => r.name)}" } }
+		      decided: { end: done, output: { approve: "${input.jobs.map(r => r.name)}" } }
 		tools:
 		  add:
 		    does: Add one to a number
@@ -57,7 +57,7 @@ func Test_agent_next_turn_waits_for_open_approval(t *testing.T) {
 	}()
 	// The ask is open, and the tool that needed no yes has settled: the
 	// step that took its result asks for no turn.
-	child, key := waitForKey(t, l, id)
+	child, ticket := waitForTicket(t, l, id)
 	var settled *client.Entry
 	for deadline := time.Now().Add(20 * time.Second); settled == nil; time.Sleep(10 * time.Millisecond) {
 		if time.Now().After(deadline) {
@@ -80,7 +80,7 @@ func Test_agent_next_turn_waits_for_open_approval(t *testing.T) {
 	}
 	// Once the ask has said yes and the held tool has run, the next turn
 	// shows the model both results.
-	if _, err := l.Reply(ctx, child, key, nil, 0); err != nil {
+	if _, err := l.Reply(ctx, child, ticket, nil, 0); err != nil {
 		t.Fatal(err)
 	}
 	select {

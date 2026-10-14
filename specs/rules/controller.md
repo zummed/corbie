@@ -1,14 +1,14 @@
 # Controller
 
-The detailed rules behind the [Controller overview](../controller.md). What the controller does for every machine is stated once: attempts, timers and deadlines are here; what a machine sees of children, keys, limits and approval is under Machines, and what a machine may be held for is under Permissions.
+The detailed rules behind the [Controller overview](../controller.md). What the controller does for every machine is stated once: attempts, timers and timeouts are here; what a machine sees of children, tickets, limits and approval is under Machines, and what a machine may be held for is under Permissions.
 
 ## What arrives
 
 **R-ctl-04** What the controller tells itself, a child's start, a child's ending or an event between a parent and a child, is a message in its own inbox in the store.
 *Accept:* stop the controller straight after a parent's step that starts a child: the child's start is in the controller's inbox in the store, and a controller started afresh takes it.
 
-**R-ctl-07** A client may cancel or send events only to runs it started, and may answer any key it holds; the controller's owner can cancel any run with the controller's own key.
-*Accept:* client B sends a cancel and an event for a run client A started: the run goes on, the machine receives nothing, and B's receipts say each was refused and why. B answers a key of that run, naming the instance and the key: the machine receives the answer, and B's receipt says it was taken. A run whose client has been removed, and a root with no deadline, are each cancelled with the `corbie controller` command that cancels a run: each, and everything below it, ends cancelled.
+**R-ctl-07** A client may cancel or send events only to runs it started, and may answer any ticket it holds; the controller's owner can cancel any run with the controller's own key.
+*Accept:* client B sends a cancel and an event for a run client A started: the run goes on, the machine receives nothing, and B's receipts say each was refused and why. B answers a ticket of that run, naming the instance and the ticket: the machine receives the answer, and B's receipt says it was taken. A run whose client has been removed, and a root with no timeout, are each cancelled with the `corbie controller` command that cancels a run: each, and everything below it, ends cancelled.
 
 **R-ctl-11** A result or an emit is accepted only for a job the instance is still waiting on, from the runner the job was sent to.
 *Accept:* a result and an emit arrive for a job whose instance has moved on without it: both are dropped, and no step entry is written. A trusted runner that was not sent the job writes a well-formed result for it: dropped, and the instance still waits for the job.
@@ -16,17 +16,17 @@ The detailed rules behind the [Controller overview](../controller.md). What the 
 **R-ctl-13** The controller takes one sender's messages in the order they were sent.
 *Accept:* a client sends the events `a`, `b`, `c` to a waiting statechart before any pass: the step entry holds them in the order `a`, `b`, `c`.
 
-**R-ctl-14** A message that arrives more than once harms nothing, because each kind is checked against the instance's state: a result the instance is not waiting for is dropped, a start for an instance that exists is dropped, and an answer to a key already answered changes nothing.
-*Accept:* the same result is left twice: the machine receives one `done`, and the second is gone from the inbox with no step written for it. The same start is delivered twice: there is one instance with one first step, and the receipt reads the same after the second delivery as after the first. Two different answers are sent for one key: the machine receives the first only, and the second's receipt says it was not the one taken.
+**R-ctl-14** A message that arrives more than once harms nothing, because each kind is checked against the instance's state: a result the instance is not waiting for is dropped, a start for an instance that exists is dropped, and an answer to a ticket already answered changes nothing.
+*Accept:* the same result is left twice: the machine receives one `done`, and the second is gone from the inbox with no step written for it. The same start is delivered twice: there is one instance with one first step, and the receipt reads the same after the second delivery as after the first. Two different answers are sent for one ticket: the machine receives the first only, and the second's receipt says it was not the one taken.
 
 **R-ctl-19** A message for an instance that has ended is refused and changes nothing.
-*Accept:* parity case 41: an answer to a key, sent after the run was cancelled, is refused as for an instance that has finished.
+*Accept:* parity case 41: an answer to a ticket, sent after the run was cancelled, is refused as for an instance that has finished.
 
 **C-ctl-01** A message the controller sends itself stays good for as long as the instance it is for is kept. A controller can be away for longer than a few minutes, and a child's ending that has stopped being good by then leaves its parent waiting for something that will never come. *Test:* `ctl_message_to_self_outlives_absent_controller`
 
 **C-ctl-02** A start is given to a step by itself, and any other message for that instance waits for the step after. Inbox order is the order of names, so a message can sort ahead of the start it depends on. *Test:* `ctl_start_taken_alone_before_other_messages`
 
-**C-ctl-03** Within the events of one step, a cancel or a passed deadline is acted on first, and no event after it is given to the machine. An instance that is to end must not first start work on the strength of an event that happened to sort ahead. *Test:* `ctl_cancel_or_deadline_beats_events_in_one_step`
+**C-ctl-03** Within the events of one step, a cancel or a passed timeout is acted on first, and no event after it is given to the machine. An instance that is to end must not first start work on the strength of an event that happened to sort ahead. *Test:* `ctl_cancel_or_timeout_beats_events_in_one_step`
 
 **C-ctl-06** The receipt for a refused message is written before the message is deleted. Stopped between the two the other way round, the controller leaves a client with no answer and nothing waiting that would ever produce one. *Test:* `ctl_refusal_receipt_written_before_message_deleted`
 
@@ -50,8 +50,8 @@ The detailed rules behind the [Controller overview](../controller.md). What the 
 **R-ctl-31** A controller stopped at any point leaves the same messages and wakes waiting, and the next pass, starting again from finding the latest step, repeats only what is harmless.
 *Accept:* for a run with a script job, a child, a timer and a second attempt, stop the controller after each single write to the store in turn and let a fresh controller carry on: every such run ends as a run never stopped does, each machine given the same events and asking for the same things, each script job is sent once and run once, and nothing is left in the inbox or among the wakes.
 
-**R-ctl-32** Some steps are the controller's own and the machine is not consulted: an attempt failed and another is due, a job is being held for approval, a result did not come in time, the run was cancelled or its deadline passed. They are written in the record like any step.
-*Accept:* a job with two attempts fails its first: the record gains a step entry that shows attempt one's failure and asks for the wake for attempt two, with the machine's state unchanged. A step asks for a job marked for approval: a step entry shows the job held and the ask started for it, and when the ask approves, a further entry shows it released. A job goes to a runner that never answers: when its due time passes the record gains an entry that shows the job timed out. A cancel and a passed deadline are each written as the instance's last step.
+**R-ctl-32** Some steps are the controller's own and the machine is not consulted: an attempt failed and another is due, a job is being held for approval, a result did not come in time, the run was cancelled or its timeout passed. They are written in the record like any step.
+*Accept:* a job with two attempts fails its first: the record gains a step entry that shows attempt one's failure and asks for the wake for attempt two, with the machine's state unchanged. A step asks for a job marked for approval: a step entry shows the job held and the ask started for it, and when the ask approves, a further entry shows it released. A job goes to a runner that never answers: when its due time passes the record gains an entry that shows the job timed out. A cancel and a passed timeout are each written as the instance's last step.
 
 **R-ctl-36** When a machine's last step both sends events and ends the machine, the events are sent before the ending, so a parent sees a child's last words before its result.
 *Accept:* parity case 93: the parent receives the child's event before the child's result, in every run.
@@ -121,8 +121,8 @@ The detailed rules behind the [Controller overview](../controller.md). What the 
 **R-ctl-69** A timer a machine asks for is delivered to it as a `timer` event in the first pass at or after its time; one the machine has cancelled is not delivered.
 *Accept:* parity case 19: the eight-second timer never arrives. A state with a one-second and a two-second timer, each leaving for a different state, under `corbie test`: the one-second timer arrives alone about a second after the start and the other is never delivered; parity case 22's two timers arrive in one step only when the controller first looks after both are due, and the chart then does as R-chart-64 says.
 
-**R-ctl-71** A machine whose deadline has passed is ended by the controller, fails as out of time, and everything below it is cancelled.
-*Accept:* parity case 98: the bottom chart ends with the status timeout and an error saying its deadline passed. Parity case 13's flow is run: the flow ends as out of time, and its child is listed as `cancelled`.
+**R-ctl-71** A machine whose timeout has passed is ended by the controller, fails as out of time, and everything below it is cancelled.
+*Accept:* parity case 98: the bottom chart ends with the status timeout and an error saying its timeout passed. Parity case 13's flow is run: the flow ends as out of time, and its child is listed as `cancelled`.
 
 **C-ctl-35** The n-th value of a name that a later attempt emits is taken to be the n-th an earlier attempt emitted, and is passed to the machine only if no attempt has delivered an n-th before. A script that is run again emits its values again from the first, and a machine that starts work for each one would do every item's work twice. *Test:* `ctl_later_attempt_emits_not_delivered_twice`
 
@@ -161,7 +161,7 @@ Uses:
 - **Role**: is run as passes, and is told how long a pass may take.
 - **Identity**: asks whether a sender is trusted, reads a client's ceiling and a runner's tags, opens messages sealed to it, signs heads, and seals jobs, cancels and receipts; a message it does not accept is deleted without a receipt (R-id-47).
 - **Instance**: writes heads, step entries and receipts in the form that area gives, moves a head from running to finished, and removes what is past keeping by that area's rules.
-- **Machine**: gives a type's step the definition, the state before and the events, and takes back the new state and the requests; checks a definition with the same code as the client (R-mach-17); starts children, counts depth and jobs, makes keys and takes their answers, and holds jobs for the ask, as the Machines rules state (R-mach-65 to R-mach-115).
+- **Machine**: gives a type's step the definition, the state before and the events, and takes back the new state and the requests; checks a definition with the same code as the client (R-mach-17); starts children, counts depth and jobs, makes tickets and takes their answers, and holds jobs for the ask, as the Machines rules state (R-mach-65 to R-mach-115).
 - **Blob**: copies what a child hands up into the parent's record, once and for every type (R-blob-23), and reads the small blobs a step needs.
 - **Permission**: puts each layer that applies into a job by name, and reads the permissions a job declares against the lists of those to be asked about (R-perm-42).
 - **Secret**: puts into a job the values of the secrets it names and every layer allows (R-sec-14); fails a job that names a secret that is not set (R-sec-20), and denies one that names a secret a layer does not allow.
@@ -170,5 +170,5 @@ Used by:
 
 - **Client**: leaves starts, cancels, events and answers in the controller's inbox, and reads the receipts, heads and records the controller writes.
 - **Runner**: is sent jobs and cancels; returns results and the emits a machine wants.
-- **Flow, Statechart, Agent**: each supplies the step the controller runs, and relies on the controller for attempts, children, timers, keys, limits and approval.
+- **Flow, Statechart, Agent**: each supplies the step the controller runs, and relies on the controller for attempts, children, timers, tickets, limits and approval.
 - **Role**: a controller's pass is the unit that area starts and bounds.

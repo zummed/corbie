@@ -16,7 +16,7 @@ Layout
         emits/<job>/<number>      what a script logged or emitted, written by its runner
         blobs/<name>              the definition, the scripts, and each file or large value
         carried                   how much of a large step the controller has acted on
-    wakes/<time>/<run>/<name>     an empty file per timer, job timeout, retry, deadline and deletion
+    wakes/<time>/<run>/<name>     an empty file per timer, job timeout, run timeout, retry and deletion
     trust/<name>                  the card of each runner and client it trusts, with tags or ceiling
     secrets/<name>                its secrets
   <runner>/

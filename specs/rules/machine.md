@@ -1,6 +1,6 @@
 # Machines
 
-The detailed rules behind the [Machines overview](../machine.md). Area code: `mach`. What is shared by every machine type is stated here once and is not repeated under Flow, Statechart or Agent. Attempts, timers and deadlines are the controller's and are under Controller; what a job may be held for is under Permissions.
+The detailed rules behind the [Machines overview](../machine.md). Area code: `mach`. What is shared by every machine type is stated here once and is not repeated under Flow, Statechart or Agent. Attempts, timers and timeouts are the controller's and are under Controller; what a job may be held for is under Permissions.
 
 ## Steps
 
@@ -11,13 +11,13 @@ The detailed rules behind the [Machines overview](../machine.md). Area code: `ma
 *Accept:* three results for one flow arrive together while two copies of the controller are running; the record's steps are numbered with no gap and no repeat, and each step's state follows from the step before it.
 
 **R-mach-04** Taking the same step twice gives the same answer.
-*Accept:* a step is taken twice from the same definition, state, events and step time; the two results are identical, including the names of the jobs, timers and keys asked for.
+*Accept:* a step is taken twice from the same definition, state, events and step time; the two results are identical, including the names of the jobs, timers and tickets asked for.
 
 **R-mach-05** Everything a machine has done can be read back from its record.
 *Accept:* for a finished run, giving each step's recorded events to the machine in order, starting from nothing, reproduces every recorded state and every recorded request.
 
-**R-mach-06** A machine runs until it reaches an end of its own, is cancelled, or passes its deadline; one that is cancelled ends as cancelled and takes no further step, and one that is waiting costs nothing.
-*Accept:* parity case 41: the root ends `cancelled` and its record holds no step after the cancel. A chart with no deadline waits on a key over a long stretch of simulated time with nothing arriving: no step is written for it and no job exists for it, and an answer at the end is taken as usual.
+**R-mach-06** A machine runs until it reaches an end of its own, is cancelled, or passes its timeout; one that is cancelled ends as cancelled and takes no further step, and one that is waiting costs nothing.
+*Accept:* parity case 41: the root ends `cancelled` and its record holds no step after the cancel. A chart with no timeout waits on a ticket over a long stretch of simulated time with nothing arriving: no step is written for it and no job exists for it, and an answer at the end is taken as usual.
 
 ## Definitions
 
@@ -44,7 +44,7 @@ The detailed rules behind the [Machines overview](../machine.md). Area code: `ma
 
 **C-mach-23** A reader that reads a field its shape does not name, reads one as another kind of value than its shape gives it, or leaves a field its shape names unread, is refused as a fault of Corbie's whenever a definition is read. A shape its reader could stray from would offer a person a field that is then refused, or leave one that is read unsaid. *Test:* `mach_reader_reads_exactly_what_its_shape_names`
 
-**C-mach-04** A field its type does not know, a repeated key or a name in the wrong case is refused, in a written definition and in a stored one alike. A field quietly ignored is a mistake nobody is told about, and the controller does not take a client's word for what it stores. *Test:* `mach_unknown_or_repeated_field_is_refused`
+**C-mach-04** A field its type does not know, a field written twice or a name in the wrong case is refused, in a written definition and in a stored one alike. A field quietly ignored is a mistake nobody is told about, and the controller does not take a client's word for what it stores. *Test:* `mach_unknown_or_repeated_field_is_refused`
 
 **C-mach-06** YAML aliases may not grow a definition far beyond what was written, nor contain themselves. A few lines of YAML can otherwise fill memory. *Test:* `mach_alias_growth_is_refused`
 
@@ -62,8 +62,11 @@ The detailed rules behind the [Machines overview](../machine.md). Area code: `ma
 **R-mach-24** Expressions are JavaScript, and an expression reads `input` and what its machine's type adds, and nothing else.
 *Accept:* `${input.urls.filter(u => u.startsWith("https")).length}` gives the number of matching items. A flow's expression that reads `states`, and an expression that names something outside the language itself such as `require` or `process`, are each refused when the definition is checked.
 
-**R-mach-27** An expression in a field that is a name is refused: a thing's name, a type, a permission's kind, a deny entry, a secret's name, a tag, a timer's key. The path of a script or a machine is a name too, except that it may be exactly one expression that gives a stored definition or script.
+**R-mach-27** An expression in a field that is a name is refused: a thing's name, a type, a permission's kind, a deny entry, a secret's name, a tag, a timer's time, a ticket's name. The path of a script or a machine is a name too, except that it may be exactly one expression that gives a stored definition or script.
 *Accept:* seven definitions, each with `${input.x}` in one of these fields, are each refused when checked, and each refusal names the field. `machine: "${input.definition}"`, given a stored definition, runs it as a child; `script: "./${input.name}.js"` is refused when checked.
+
+**R-mach-133** A condition, such as `when:`, is exactly one expression, written `${…}`; a condition written any other way is refused when the definition is checked. It holds unless its value is false, null, zero or empty text.
+*Accept:* a flow stage with `when: ${input.n > 1}` runs for `{"n": 2}` and is skipped for `{"n": 1}`. A stage with `when: input.n > 1`, and a statechart transition with `when: "x ${input.n}"`, are each refused when checked.
 
 **R-mach-29** An expression may run for one second.
 *Accept:* a stage's input holds an expression that loops for ever; the instance fails after about a second with an error that names the expression's place.
@@ -99,15 +102,15 @@ The detailed rules behind the [Machines overview](../machine.md). Area code: `ma
 ## Events
 
 **R-mach-44** Every event has the same shape: a name, where it came from, and its data.
-*Accept:* a chart receives a start, a job's `done`, a job's `failed`, a timer, an answer to a key, an emitted value and an event from its parent; each is written in the record with those three parts and nothing else.
+*Accept:* a chart receives a start, a job's `done`, a job's `failed`, a timer, an answer to a ticket, an emitted value and an event from its parent; each is written in the record with those three parts, and the answer is also marked `answer: true`.
 
 **R-mach-45** A machine is started by a `start` event carrying its input; a job that ends well arrives as `done` with its output, and one that does not arrives as `failed` with its error.
 *Accept:* parity cases 30, 42 and 43.
 
 **R-mach-48** A `failed` event also carries whatever output the job still gave.
-*Accept:* a child chart ends in a final state marked as a failure that has an output; its parent's `failed` event carries the error and that output, whether the parent is a chart or a flow.
+*Accept:* a child chart ends in a final state with `end: failed` and an output; its parent's `failed` event carries the error and that output, whether the parent is a chart or a flow.
 
-**R-mach-49** A timer arrives as `timer`, and an answer to a key arrives as an event under the key's name.
+**R-mach-49** A timer arrives as an event under the timer's name, and an answer to a ticket under the ticket's name.
 *Accept:* parity cases 20 and 21.
 
 **R-mach-51** A script sends an event up while it runs by emitting a named value, and a child machine by sending to its parent; the two arrive the same way, as an event with that name from that job.
@@ -129,7 +132,7 @@ The detailed rules behind the [Machines overview](../machine.md). Area code: `ma
 *Accept:* parity case 94: the parent's record notes the event `hello` as undelivered, and the parent carries on.
 
 **R-mach-63** An event sent up reaches the parent whatever the two types are, and the parent's type decides what is done with it.
-*Accept:* a chart under a chart: parity case 33. A chart under a flow: parity case 50, where the event is one of that stage's emitted items. A chart under an agent: parity case 103, received and ignored. A flow that names a stage to pass up, under a flow, under a chart and under an agent: the parent receives each item as the stage emits it. An agent child sends nothing up under any parent.
+*Accept:* a chart under a chart: parity case 33. A chart under a flow: parity case 50, where the event is one of that stage's emitted items. A chart under an agent: parity case 103, received and ignored. A flow whose `emit:` names a stage, under a flow, under a chart and under an agent: the parent receives each item as the stage emits it. An agent child sends nothing up under any parent.
 
 **R-mach-64** An event sent down reaches the child whatever its type, and the child's type decides what is done with it.
 *Accept:* chart to chart: parity case 33. Chart to flow: parity case 45. Chart to agent: parity case 87. A flow and an agent have nothing to send with, so there are no other pairings.
@@ -144,7 +147,7 @@ The detailed rules behind the [Machines overview](../machine.md). Area code: `ma
 *Accept:* a flow under a flow: parity case 54. A chart under a flow: parity case 47. An agent under a flow: parity case 86. A flow under a chart: parity case 42. A chart under a chart: parity case 30. An agent under a chart: parity case 87. A flow and a chart under an agent: parity case 85. An agent under an agent: parity case 91.
 
 **R-mach-66** A child's failure is one `failed` event to its parent, which the parent may handle, whatever the two types are.
-*Accept:* a flow under a flow: parity case 56. A chart under a flow: parity case 48, with the child's output readable as well. An agent under a flow: parity case 86. A flow under a chart: parity case 43. A chart under a chart: parity case 31, with the child's output in the event as well. A flow and a chart under an agent: parity case 85, where the model is told. An agent under a chart: a state whose agent child fails at its first turn takes its `failed:` rule with the agent's error. An agent under an agent: the lead's model is shown the helper's error and takes another turn.
+*Accept:* a flow under a flow: parity case 56. A chart under a flow: parity case 48, with the child's output readable as well. An agent under a flow: parity case 86. A flow under a chart: parity case 43. A chart under a chart: parity case 31, with the child's output in the event as well. A flow and a chart under an agent: parity case 85, where the model is told. An agent under a chart: a state whose agent child fails at its first turn takes its rule for `failed` with the agent's error. An agent under an agent: the lead's model is shown the helper's error and takes another turn.
 
 **R-mach-67** A child's failure that its parent has no rule for fails the parent, whose error names the job and then gives the child's error.
 *Accept:* a flow under a flow: parity case 55. A chart under a flow: parity case 49. A flow under a chart: parity case 44. A chart under a chart: parity case 32. An agent under a flow and an agent under a chart: the parent fails with an error that names the stage or the state and then gives the agent's error. An agent parent has no such case, because every tool's failure goes to its model.
@@ -175,19 +178,19 @@ The detailed rules behind the [Machines overview](../machine.md). Area code: `ma
 
 ## Waiting on the outside
 
-**R-mach-82** A machine waits for a person or an outside system by waiting on a key, which its step creates as a random value and hands to whoever should answer.
-*Accept:* the review chart enters `waiting`; its head gives the key's name and not its value, the value is in its record, two runs of the chart get different values, and the parent receives in `review_wanted` the value the chart's record holds.
+**R-mach-82** A machine waits for a person or an outside system by waiting on a ticket, which its step creates as a random value and hands to whoever should answer.
+*Accept:* the review chart enters `waiting`; its head gives the ticket's name and not its value, the value is in its record, two runs of the chart get different values, and run as a child with a send that reads `${tickets.verdict}`, it gives its parent the value its record holds.
 
-**R-mach-84** A client answers by naming the instance and the key and giving a value; the value arrives as the event's data, any client that holds the key may answer, and what the answer says about who gave it reaches the machine as given, unchecked.
-*Accept:* parity case 21. A second client, enrolled with the controller but not the one that started the run, answers with the key `{ by: "anyone", ok: true }`: the answer is taken, the machine receives an event with exactly that data, and that client's receipt says it was taken.
+**R-mach-84** A client answers by naming the instance and the ticket and giving a value; the value arrives as the event's data, any client that holds the ticket may answer, and what the answer says about who gave it reaches the machine as given, unchecked.
+*Accept:* parity case 21. A second client, enrolled with the controller but not the one that started the run, answers with the ticket `{ by: "anyone", ok: true }`: the answer is taken, the machine receives an event with exactly that data, and that client's receipt says it was taken.
 
-**R-mach-87** A key is answered once, and the receipt for an answer says whether it was the one taken.
-*Accept:* two answers are sent for one key; the machine receives one event, with the first one's value; the first sender's receipt says taken and the second's says the key was already answered. In parity case 21 the answer with a key the instance is not waiting on, and the answer sent after the chart has finished, each get a receipt saying so.
+**R-mach-87** A ticket is answered once, and the receipt for an answer says whether it was the one taken.
+*Accept:* two answers are sent for one ticket; the machine receives one event, with the first one's value; the first sender's receipt says taken and the second's says the ticket was already answered. In parity case 21 the answer with a ticket the instance is not waiting on, and the answer sent after the chart has finished, each get a receipt saying so.
 
-**R-mach-89** A key belongs to the instance that made it, and a child's key is answered by naming the child.
+**R-mach-89** A ticket belongs to the instance that made it, and a child's ticket is answered by naming the child.
 *Accept:* a chart under a flow: parity cases 51 and 95. A chart under a chart: parity case 40. A chart under an agent: parity case 103.
 
-**C-mach-20** A key cannot be worked out from anything outside the instance's record: not from the head, which names what is being waited on, and not from the names of the jobs, wakes or blobs the same step made, which whoever runs the store can list. The key is the whole right to answer. *Test:* `mach_key_not_derivable_from_public_names`
+**C-mach-20** A ticket cannot be worked out from anything outside the instance's record: not from the head, which names what is being waited on, and not from the names of the jobs, wakes or blobs the same step made, which whoever runs the store can list. The ticket is the whole right to answer. *Test:* `mach_ticket_not_derivable_from_public_names`
 
 ## Approval
 
@@ -212,8 +215,8 @@ The detailed rules behind the [Machines overview](../machine.md). Area code: `ma
 **R-mach-106** An ask that fails, or ends without deciding, approves nothing.
 *Accept:* parity case 76: the first child's ask fails, the second's gives no decision, and neither held job starts.
 
-**R-mach-109** An approval has no time limit of its own; the ask's deadline is how long it may take.
-*Accept:* an ask that is a chart with a deadline of one second waits on a key nobody answers; it fails as out of time and the held job is denied. The same ask with no deadline holds the job for as long as the test waits.
+**R-mach-109** An approval has no time limit of its own; the ask's timeout is how long it may take.
+*Accept:* an ask that is a chart with a timeout of one second waits on a ticket nobody answers; it fails as out of time and the held job is denied. The same ask with no timeout holds the job for as long as the test waits.
 
 **R-mach-112** A held job that is no longer wanted is dropped without starting, and an ask left with nothing to decide is cancelled.
 *Accept:* parity case 69.
@@ -245,13 +248,13 @@ The detailed rules behind the [Machines overview](../machine.md). Area code: `ma
 ## Machine types
 
 **R-mach-131** A type is an extension that supplies six things, the shape of its definitions, the filling-out of its short forms, the check of its definitions, its step, what a watcher is shown of its state, and its page of the manual; everything in this area is supplied by Corbie, the same for every type.
-*Accept:* a binary is built with a test extension that adds a fourth type; a definition of that type is submitted, checked, run to its end and watched, and `corbie manual` lists and prints its page. The checks of this area for values, jobs, events, keys, approval and limits pass unchanged with a flow, a statechart, an agent and the test extension's type as the machine.
+*Accept:* a binary is built with a test extension that adds a fourth type; a definition of that type is submitted, checked, run to its end and watched, and `corbie manual` lists and prints its page. The checks of this area for values, jobs, events, tickets, approval and limits pass unchanged with a flow, a statechart, an agent and the test extension's type as the machine.
 
 ## Interfaces
 
 Uses:
 
-- **Controller.** Takes every step and carries out what it asks for. It gives a machine its definition, its state and its events, and takes back the new state and the requests. It makes attempts and gives the machine only the final outcome (R-ctl-53 to R-ctl-58), keeps timers and ends a machine at its deadline (R-ctl-69 to R-ctl-71), and carries out what this area states about children, keys, limits and approval.
+- **Controller.** Takes every step and carries out what it asks for. It gives a machine its definition, its state and its events, and takes back the new state and the requests. It makes attempts and gives the machine only the final outcome (R-ctl-53 to R-ctl-58), keeps timers and ends a machine at its timeout (R-ctl-69 to R-ctl-71), and carries out what this area states about children, tickets, limits and approval.
 - **Instances.** A step is written as a step entry in the instance's record; the head says what the instance waits for; a client's message is answered by a receipt.
 - **Runner.** A job that is a script is sent to a runner; what the script emits comes back as events, and its result as `done` or `failed`.
 - **Permissions.** A job names the permissions it may use, and a definition names those to be asked about; which jobs that holds is R-perm-42 to R-perm-47; a refusal comes back as a denial with its three parts, and passes up unchanged (R-perm-37 to R-perm-41).
@@ -261,7 +264,7 @@ Uses:
 
 Used by:
 
-- **Flow, Statechart, Agent.** Each supplies the six things a type supplies, and takes from this area values and expressions, jobs and their names, events, children, keys, approval, failure and limits.
-- **Client.** Fills out and checks a definition with this area's code before sending it; sends events and answers to keys.
+- **Flow, Statechart, Agent.** Each supplies the six things a type supplies, and takes from this area values and expressions, jobs and their names, events, children, tickets, approval, failure and limits.
+- **Client.** Fills out and checks a definition with this area's code before sending it; sends events and answers to tickets.
 - **Controller.** Checks a definition with this area's code before starting it, and calls a type's step.
 - **Manual.** Prints each type's page.

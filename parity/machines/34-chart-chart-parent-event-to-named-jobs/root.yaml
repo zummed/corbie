@@ -1,0 +1,17 @@
+# The parent sends its child one event, poke. The child is in a state with
+# two named jobs, and the rule for poke on that state stays and sends poked
+# back. The parent has no rule for poked: how many arrive is read from its
+# record. After a second the parent tells the child to finish.
+statechart: parent
+initial: running
+states:
+  running:
+    job: { machine: ./child.yaml }
+    timers: { wrap_up: 1s }
+    on:
+      done: finished
+      ready: { send: { to: running, event: poke } }
+      wrap_up: { send: { to: running, event: finish } }
+  finished:
+    end: done
+    output: ${event.data}

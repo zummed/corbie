@@ -105,11 +105,11 @@ func run(job *plugin.Job, first any, opt plugin.Options) (any, error) {
 	var exit *osexec.ExitError
 	switch {
 	case ctx.Err() == context.DeadlineExceeded:
-		return nil, plugin.Errorf(plugin.TimedOut, "the program %s ran past the %s its call gave it", name, limit)
+		return nil, plugin.Errorf(plugin.TimedOut, "the program %q ran past the %s its call gave it", name, limit)
 	case errors.As(err, &exit):
 		// One that ran and ended badly is an answer, with its status.
 	case err != nil:
-		return nil, plugin.Errorf(plugin.NotFound, "the program %s could not be started: %v", name, err)
+		return nil, plugin.Errorf(plugin.NotFound, "the program %q could not be started: %v", name, err)
 	}
 	if printed != nil {
 		return nil, printed

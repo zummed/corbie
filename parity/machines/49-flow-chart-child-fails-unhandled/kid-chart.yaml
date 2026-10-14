@@ -6,13 +6,13 @@ initial: working
 states:
   working:
     job: { script: ./add.js, input: { n: "${input.n}" } }
-    done:
-      - { to: gave_up, when: input.fail }
-      - finished
+    on:
+      done:
+        - { go: gave_up, when: "${input.fail}" }
+        - finished
   finished:
-    final: true
+    end: done
     output: { n: "${states.working.output.n}", input_seen: "${input}" }
   gave_up:
-    final: true
-    failed: true
+    end: failed
     output: { gave_up_at: "${states.working.output.n}" }

@@ -22,7 +22,7 @@ func TestAttempts(t *testing.T) {
 		  never:
 		    job: { script: ./never.js, attempts: 2 }
 		  note:
-		    when: stages.never.failed
+		    when: ${stages.never.failed}
 		    job: { script: ./echo.js, input: { why: "${stages.never.error}" } }
 		output: { flaky: "${stages.flaky.output}", never: "${stages.note.output.why}" }
 	`, map[string]string{
@@ -56,7 +56,7 @@ func Test_ctl_later_attempt_emits_not_delivered_twice(t *testing.T) {
 		  source:
 		    job: { script: ./source.js, attempts: 2 }
 		  each_one:
-		    each: source
+		    each: { emitted: source }
 		    job: { script: ./echo.js, input: { item: "${item}" } }
 		output: ${stages.each_one.output.map(r => r.output.item)}
 	`, map[string]string{
@@ -76,7 +76,7 @@ func TestLimits(t *testing.T) {
 	// A definition may limit how many jobs its instance starts.
 	r := run(t, l, `
 		flow: limited
-		jobs: 3
+		limits: { jobs: 3 }
 		stages:
 		  a: { job: { script: ./add.js, input: { n: 0 } } }
 		  b: { job: { script: ./add.js, input: { n: "${stages.a.output.n}" } } }
@@ -89,7 +89,7 @@ func TestLimits(t *testing.T) {
 	// A root may have only so many levels of machines below it.
 	nested := `
 		flow: top
-		depth: 1
+		limits: { depth: 1 }
 		stages:
 		  one:
 		    job:
@@ -178,17 +178,17 @@ func TestCancelReachesEverythingBelow(t *testing.T) {
 	}
 }
 
-// A machine whose deadline has passed fails as out of time, and
+// A machine whose timeout has passed fails as out of time, and
 // everything below it is cancelled.
-func TestDeadline(t *testing.T) {
+func TestTimeout(t *testing.T) {
 	l := local(t, "all")
-	id, err := l.Start(ctx, draft(t, strings.Replace(slowFamily, "DEADLINE", "deadline: 1s", 1),
+	id, err := l.Start(ctx, draft(t, strings.Replace(slowFamily, "DEADLINE", "limits: { timeout: 1s }", 1),
 		map[string]string{"slow.js": `exec.run("sleep", { args: ["30"], timeout: 60 }); return "finished"`}), client.Start{})
 	if err != nil {
 		t.Fatal(err)
 	}
 	r := wait(t, l, id)
-	if r.Status != "failed" || r.Failure != "timeout" || !strings.Contains(r.Error, "deadline passed") {
+	if r.Status != "failed" || r.Failure != "timeout" || !strings.Contains(r.Error, "timeout passed") {
 		t.Fatalf("the root ended %s/%s: %s", r.Status, r.Failure, r.Error)
 	}
 	child := waitFor(t, l, func(runs []*client.Run) string {
@@ -242,12 +242,31 @@ func Test_mach_event_sent_before_child_starts_is_kept(t *testing.T) {
 		        states:
 		          first: { on: { one: second, two: wrong } }
 		          second: { on: { two: third } }
-		          third: { final: true, output: in order }
-		          wrong: { final: true, output: out of order }
-		    done: finished
+		          third: { end: done, output: in order }
+		          wrong: { end: done, output: out of order }
+		    on: { done: finished }
 		  nobody_home:
-		    job: { machine: { statechart: unused, states: { only: { final: true } } } }
-		  finished: { final: true, output: "${states.talking.output}" }
+		    job: { machine: { statechart: unused, states: { only: { end: done } } } }
+		  finished: { end: done, output: "${states.talking.output}" }
 	`, nil, nil)
 	check(t, r.Status, r.Output, "done", `"in order"`)
+}
+
+// A state's own job that emits a value under the state's ticket's name does
+// not answer the ticket: only an answer given with the ticket does.
+func TestJobCannotAnswerItsStatesTicket(t *testing.T) {
+	l := local(t)
+	r := run(t, l, `
+		statechart: own_job
+		initial: waiting
+		states:
+		  waiting:
+		    ticket: verdict
+		    job: ./say.js
+		    on: { verdict: answered, done: not_answered }
+		  answered: { end: done, output: answered }
+		  not_answered: { end: done, output: not answered }
+	`, map[string]string{"say.js": `emit("verdict", "the job answered")
+return 1`}, nil)
+	check(t, r.Status, r.Output, "done", `"not answered"`)
 }

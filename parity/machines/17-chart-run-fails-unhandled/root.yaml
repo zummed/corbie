@@ -1,9 +1,9 @@
-# A state's job fails and no failed: takes it, on the state or around it.
+# A state's job fails and no rule for failed takes it, on the state or around it.
 statechart: fails-unhandled
 initial: working
 states:
   working:
     job: { script: ./fail.js }
-    done: finished
+    on: { done: finished }
   finished:
-    final: true
+    end: done

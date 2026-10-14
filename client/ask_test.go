@@ -59,7 +59,7 @@ func TestAskThatFailsOrDoesNotDecideApprovesNothing(t *testing.T) {
 			  one:
 			    job: { script: ./add.js, input: { n: 1 }, approve: true }
 			  note:
-			    when: stages.one.failed
+			    when: ${stages.one.failed}
 			    job: { script: ./echo.js, input: { why: "${stages.one.error}" } }
 			output: ${stages.note.output.why}
 		`, map[string]string{"add.js": scripts["add.js"], "echo.js": scripts["echo.js"], "ask.js": ask}, nil)
@@ -97,13 +97,13 @@ func TestAskThatIsAMachineWaitsForAPerson(t *testing.T) {
 		    initial: asking
 		    states:
 		      asking:
-		        wait: verdict
+		        ticket: verdict
 		        on:
 		          verdict:
-		            - { to: yes, when: event.data.ok }
-		            - { to: no }
-		      yes: { final: true, output: { approve: "${input.jobs.map(r => r.name)}" } }
-		      no: { final: true, output: { approve: [], note: "${event.data.why}" } }
+		            - { go: yes, when: "${event.data.ok}" }
+		            - { go: no }
+		      yes: { end: done, output: { approve: "${input.jobs.map(r => r.name)}" } }
+		      no: { end: done, output: { approve: [], note: "${event.data.why}" } }
 		stages:
 		  deploy:
 		    job: { script: ./add.js, input: { n: 41 }, approve: true }
@@ -112,9 +112,9 @@ func TestAskThatIsAMachineWaitsForAPerson(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// The ask is a child, and its key is answered by naming the child.
-	child, key := waitForKey(t, l, id)
-	if _, err := l.Reply(ctx, child, key, map[string]any{"ok": true}, 0); err != nil {
+	// The ask is a child, and its ticket is answered by naming the child.
+	child, ticket := waitForTicket(t, l, id)
+	if _, err := l.Reply(ctx, child, ticket, map[string]any{"ok": true}, 0); err != nil {
 		t.Fatal(err)
 	}
 	r := wait(t, l, id)

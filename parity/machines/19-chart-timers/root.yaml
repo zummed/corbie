@@ -1,0 +1,21 @@
+# Timers. waiting has two timers; the shorter fires and leaves the
+# state, which clears the longer one and cancels the state's job (a child
+# that sleeps six seconds).
+statechart: timers
+initial: waiting
+states:
+  waiting:
+    job: { machine: ./sleeper.yaml }
+    timers: { soon: 1s, late: 8s }
+    on:
+      done: too_late
+      soon: moved_on
+      late: too_late
+  moved_on:
+    job: { script: ./echo.js, input: { came_by: "${event.name}" } }
+    on: { done: finished }
+  too_late:
+    end: failed
+  finished:
+    end: done
+    output: ${states.moved_on.output}

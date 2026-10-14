@@ -136,7 +136,7 @@ func (s *Secret) reveal(values map[string]string, told func(form, names string))
 		case p.name != "":
 			value, ok := values[p.name]
 			if !ok {
-				return "", Errorf(NotFound, "the job was not sent a secret named %s: a job names each secret it uses in its allow list", p.name)
+				return "", Errorf(NotFound, "the job was not sent a secret named %q: a job names each secret it uses in its allow list", p.name)
 			}
 			text += value
 		default:

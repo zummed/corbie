@@ -154,11 +154,11 @@ states:
     on: { work: working, tick: idle }
   working:
     job: { script: ./work.js, files: [./lib.js] }
-    done: helping
+    on: { done: helping }
   helping:
     job: { machine: ./child.yaml }
-    done: stopped
-  stopped: { final: true }
+    on: { done: stopped }
+  stopped: { end: done }
 `
 
 var waitingFiles = map[string]string{

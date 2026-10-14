@@ -24,9 +24,10 @@ const standing = `
 	    on: { go: working, stop: stopped }
 	  working:
 	    job: { script: ./work.js, input: "${event.data}" }
-	    done: ready
-	    failed: ready
-	  stopped: { final: true, output: "${states.working.output}" }
+	    on:
+	      done: ready
+	      failed: ready
+	  stopped: { end: done, output: "${states.working.output}" }
 `
 
 // A chart that is started once and used many times, found by its label.
@@ -159,7 +160,7 @@ func Test_client_start_receipt_found_from_run_name(t *testing.T) {
 	good := draft(t, standing, map[string]string{"work.js": "return 1"})
 	// The definition is spoilt after the client's own check, as a client
 	// that does not check would send it.
-	good.Definition.Body = []byte(strings.Replace(string(good.Definition.Body), `"to":"stopped"`, `"to":"nowhere"`, 1))
+	good.Definition.Body = []byte(strings.Replace(string(good.Definition.Body), `"go":"stopped"`, `"go":"nowhere"`, 1))
 	id, err := l.Start(ctx, good, client.Start{})
 	if err != nil {
 		t.Fatal(err)
@@ -259,7 +260,7 @@ func Test_client_blob_in_package_value_has_no_key(t *testing.T) {
 			statechart: kid
 			initial: over
 			states:
-			  over: { final: true, failed: true, output: { report: "${input.report}" } }`,
+			  over: { end: failed, output: { report: "${input.report}" } }`,
 	}), client.Start{})
 	if err != nil {
 		t.Fatal(err)
@@ -303,7 +304,7 @@ func Test_client_blob_in_package_value_has_no_key(t *testing.T) {
 	// The blob was in each of them: in an emit, in a child's failure, in
 	// the result.
 	together := strings.Join(all, "\n")
-	for _, want := range []string{`"name":"made"`, `a final state marked as a failure`, `"type":"text/markdown"`, `"scripts":{`} {
+	for _, want := range []string{`"name":"made"`, `a final state with end: failed`, `"type":"text/markdown"`, `"scripts":{`} {
 		if !strings.Contains(together, want) {
 			t.Errorf("nothing shown holds %s", want)
 		}

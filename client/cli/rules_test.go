@@ -156,10 +156,8 @@ func Test_client_flag_without_effect_refused(t *testing.T) {
 	before := stored(t, storeDir)
 	for flag, mistaken := range map[string][]string{
 		// For a script file only: a definition gives its jobs their own.
-		"--timeout applies only to a script file": {"submit", definition, "--timeout", "5s"},
-		"--memory applies only to a script file":  {"submit", definition, "--memory", "64MB"},
-		"--tag applies only to a script file":     {"submit", definition, "--tag", "gpu"},
-		"--timeout applies only to a script":      {"test", definition, "--timeout", "5s"},
+		"--memory applies only to a script file": {"submit", definition, "--memory", "64MB"},
+		"--tag applies only to a script file":    {"submit", definition, "--tag", "gpu"},
 		// test always stays until the run ends.
 		"-wait": {"test", definition, "--wait"},
 		// For a role that is not named.
@@ -169,11 +167,11 @@ func Test_client_flag_without_effect_refused(t *testing.T) {
 		"--token-file applies only to a gateway":   {"run", "runner", "--token-file", filepath.Join(dir, "token")},
 		"--interval is how long a controller or a": {"run", "gateway", "--interval", "5s"},
 		// show prints one thing.
-		"--watch and --wait each ask":      {"show", id, "--wait", "--watch"},
-		"--definition and --keys each ask": {"show", id, "--definition", "--keys"},
-		"--step and --save each ask":       {"show", id, "--step", "1", "--save", filepath.Join(dir, "saved")},
-		"--watch and --definition each":    {"show", id, "--watch", "--definition"},
-		"--record and --watch each ask":    {"show", id, "--record", "--watch"},
+		"--watch and --wait each ask":         {"show", id, "--wait", "--watch"},
+		"--definition and --tickets each ask": {"show", id, "--definition", "--tickets"},
+		"--step and --save each ask":          {"show", id, "--step", "1", "--save", filepath.Join(dir, "saved")},
+		"--watch and --definition each":       {"show", id, "--watch", "--definition"},
+		"--record and --watch each ask":       {"show", id, "--record", "--watch"},
 		// The two ways of staying.
 		"--wait and --watch are two ways": {"submit", definition, "--wait", "--watch"},
 	} {
@@ -266,7 +264,7 @@ func Test_client_submit_prints_only_the_id(t *testing.T) {
 	shape := regexp.MustCompile(`^box-client/\d{8}T\d{6}\.\d{3}Z-[0-9a-f]{10}\n$`)
 	for _, command := range [][]string{
 		{"submit", filepath.Join(dir, "hello.yaml"), "--input", `{"name": "x"}`},
-		{"submit", filepath.Join(dir, "hello.yaml"), "--input", `{"name": "x"}`, "--label", "team=ops", "--deadline", "1h", "--life", "10m", "--allow", "network"},
+		{"submit", filepath.Join(dir, "hello.yaml"), "--input", `{"name": "x"}`, "--label", "team=ops", "--timeout", "1h", "--life", "10m", "--allow", "network"},
 		{"submit", filepath.Join(dir, "double.js"), "--input", `{"n": 2}`, "--timeout", "5s", "--allow", "network"},
 	} {
 		status, out, errOut := m.run("", command...)
@@ -412,7 +410,7 @@ func Test_client_run_secret_only_from_environment(t *testing.T) {
 	os.Unsetenv("CORBIE_TEST_TOKEN")
 	for _, command := range []string{"submit", "test"} {
 		status, out, errOut := m.run("", command, definition, "--secret", "CORBIE_TEST_TOKEN")
-		if status != 2 || out != "" || !strings.Contains(errOut, "the variable CORBIE_TEST_TOKEN is not set") {
+		if status != 2 || out != "" || !strings.Contains(errOut, `the environment variable "CORBIE_TEST_TOKEN" is not set`) {
 			t.Errorf("corbie %s with a secret whose variable is not set ended %d: %s%s", command, status, out, errOut)
 		}
 		// A value written on the command line is not taken, and not repeated.
@@ -669,8 +667,8 @@ initial: working
 states:
   working:
     job: { script: ./greet.js, input: { name: "${input.said}" } }
-    done: over
-  over: { final: true, output: "${states.working.output}" }
+    on: { done: over }
+  over: { end: done, output: "${states.working.output}" }
 `,
 		"greet.js": `log("greeting", input.name); emit("made", { file: blobs.make("for " + input.name) }); return { text: "hello " + input.name }`,
 		"reads.js": `return fs.read("/etc/hostname")`,
@@ -933,9 +931,9 @@ const door = `statechart: door
 initial: closed
 states:
   closed:
-    wait: knock
+    ticket: knock
     on: { knock: opened }
-  opened: { final: true }
+  opened: { end: done }
 `
 
 // A call that stays keeps no other call from being answered, and ends when
@@ -995,17 +993,17 @@ func TestShowRecordIsWatchWithoutStaying(t *testing.T) {
 	m, _ := working(t, "all")
 	dir := files(t, map[string]string{"door.yaml": door})
 	id := strings.TrimSpace(m.ok("", "submit", filepath.Join(dir, "door.yaml")))
-	until(t, "the run's first step", func() bool { return strings.Contains(m.ok("", "show", id), "waiting on key knock") })
+	until(t, "the run's first step", func() bool { return strings.Contains(m.ok("", "show", id), "waiting on ticket knock") })
 	// For a run in progress it returns, where --watch would stay.
 	out := m.ok("", "show", id, "--record")
 	if !strings.Contains(out, "step 1  <- start") || !strings.HasSuffix(out, m.ok("", "show", id)) {
 		t.Fatalf("show --record of a run in progress printed:\n%s", out)
 	}
-	var keys map[string]string
-	if err := json.Unmarshal([]byte(m.ok("", "show", id, "--keys", "--json")), &keys); err != nil || keys["knock"] == "" {
-		t.Fatalf("the run's keys were %v (%v)", keys, err)
+	var tickets map[string]string
+	if err := json.Unmarshal([]byte(m.ok("", "show", id, "--tickets", "--json")), &tickets); err != nil || tickets["knock"] == "" {
+		t.Fatalf("the run's tickets were %v (%v)", tickets, err)
 	}
-	m.ok("", "reply", id, keys["knock"], "yes")
+	m.ok("", "reply", id, tickets["knock"], "yes")
 	m.ok("", "show", id, "--wait")
 	// For one that has ended the two print the same, as text and as JSON.
 	for _, as := range [][]string{nil, {"--json"}} {
@@ -1062,7 +1060,7 @@ func Test_client_model_told_which_commands_stay(t *testing.T) {
 		}
 	}
 	for _, want := range []string{"show and submit also stay until the run ends when given --wait or --watch", "ls --watch stays until it is stopped",
-		"a run waiting on a key cannot be answered from inside the same call"} {
+		"a run waiting on a ticket cannot be answered from inside the same call"} {
 		if !strings.Contains(told, want) {
 			t.Errorf("a model is not told: %s\nIt is told:\n%s", want, told)
 		}

@@ -1,30 +1,30 @@
-# The child chart fails three ways, and each time the parent's failed:
-# takes it and a script notes what the parent was given (the error and the
+# The child chart fails three ways, and each time the parent's rule for
+# failed takes it and a script notes what the parent was given (the error and the
 # output in the failed event's data): a job nothing handles, a final state
-# marked failed: true with an output:, and a missing input.
+# with end: failed and an output:, and a missing input.
 statechart: parent
 initial: first
 states:
   first:
     job: { machine: ./child.yaml, input: { how: run } }
-    failed: note_first
+    on: { failed: note_first }
   note_first:
     job: { script: ./echo.js, input: { name: "${event.name}", error: "${event.data.error}", output: "${event.data.output}" } }
-    done: second
+    on: { done: second }
   second:
     job: { machine: ./child.yaml, input: { how: final } }
-    failed: note_second
+    on: { failed: note_second }
   note_second:
     job: { script: ./echo.js, input: { name: "${event.name}", error: "${event.data.error}", output: "${event.data.output}" } }
-    done: third
+    on: { done: third }
   third:
     job: { machine: ./child.yaml }
-    failed: note_third
+    on: { failed: note_third }
   note_third:
     job: { script: ./echo.js, input: { name: "${event.name}", error: "${event.data.error}", output: "${event.data.output}" } }
-    done: finished
+    on: { done: finished }
   finished:
-    final: true
+    end: done
     output:
       first: ${states.note_first.output}
       second: ${states.note_second.output}

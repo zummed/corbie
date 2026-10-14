@@ -2,7 +2,7 @@
   {
     "wait": {
       "machine": "ask-person",
-      "key": "decision"
+      "ticket": "decision"
     },
     "do": "reply",
     "value": {

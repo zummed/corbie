@@ -6,7 +6,7 @@ stages:
   bad:
     job: { script: ./fail.js }
   cleanup:
-    when: stages.bad.failed
+    when: ${stages.bad.failed}
     job: { script: ./echo.js, input: { error: "${stages.bad.error}" } }
   needs_bad:
     job: { script: ./echo.js, input: { got: "${stages.bad.output}" } }

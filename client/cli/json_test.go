@@ -72,9 +72,9 @@ func TestEveryCommandAskedForJSONPrintsOnlyJSON(t *testing.T) {
 initial: closed
 states:
   closed:
-    wait: knock
+    ticket: knock
     on: { open: opened, knock: opened }
-  opened: { final: true }
+  opened: { end: done }
 `})
 	asked(m, "", true, "test", filepath.Join(dir, "make.js"))
 	asked(m, "", true, "test", filepath.Join(dir, "make.js"), "--watch")
@@ -85,7 +85,7 @@ states:
 	asked(m, "", true, "show", id)
 	asked(m, "", true, "show", id, "--record")
 	asked(m, "", true, "show", id, "--watch")
-	asked(m, "", true, "show", id, "--keys")
+	asked(m, "", true, "show", id, "--tickets")
 	asked(m, "", true, "show", id, "--step", "1")
 	asked(m, "", true, "show", id, "--definition")
 	into := filepath.Join(t.TempDir(), "saved")

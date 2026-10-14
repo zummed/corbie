@@ -36,16 +36,16 @@ The detailed rules behind the [Flow overview](../flow.md). Area code: `flow`. Wh
 
 ## Failure
 
-**R-flow-16** A stage handles another's failure by reading it: its condition or its input mentions whether that stage failed, or its error.
-*Accept:* parity case 04. Parity case 05's flow is run; the stage that reads the error runs with the error's text, and the flow ends well.
+**R-flow-16** A stage handles another's failure when its `when:` reads whether that stage failed, or its error, and so does the flow's `output:` when it reads them; reading them elsewhere, such as in a stage's input, handles nothing.
+*Accept:* parity case 04. Parity case 05's flow is run; the only stage that reads the error reads it in its input, and the flow fails with `bad`'s error. A flow whose only reader of `bad`'s failure is its `output:`, which reads `stages.bad.error`, ends well with the error in its output.
 
-**R-flow-18** A failure counts as handled only when a stage that reads it actually runs: if no stage reads it, the flow fails the moment it arrives, and if one does but is then skipped, the flow fails then.
+**R-flow-18** A failure counts as handled only when a stage whose `when:` reads it actually runs, or when the flow's `output:` reads it: if neither reads it, the flow fails the moment it arrives, and if only a stage does and it is then skipped, the flow fails then.
 *Accept:* parity case 03: the flow fails at once with an error that names the stage, and the child still running is cancelled. Parity case 29's flow is run and fails, with the failed stage's error. `bad` fails while `slow` is still running, and the only reader of the failure also needs the output of a stage that is skipped once `slow` has ended: the flow is still running until that skip is decided and fails then, with `bad`'s error.
 
-**R-flow-21** A stage that depends on a failed stage for its output, and does not read the failure, is skipped.
+**R-flow-21** A stage that depends on a failed stage for its output, and whose `when:` does not read the failure, is skipped.
 *Accept:* parity cases 04 and 56.
 
-**R-flow-22** A stage that reads a failure can read the failed stage's error and whatever output it still gave.
+**R-flow-22** A stage that handles a failure can read the failed stage's error and whatever output it still gave.
 *Accept:* parity case 48's flow is run; the handling stage reads `reached gave_up` as the error and the failed final state's output as the output.
 
 ## Once per item
@@ -56,20 +56,20 @@ The detailed rules behind the [Flow overview](../flow.md). Area code: `flow`. Wh
 **R-flow-26** A stage that reads a per-item stage's output runs once and is given the whole list; nothing in a flow has a second meaning for the per-item case.
 *Accept:* `each:` over three numbers, and a second stage whose input is the first stage's output; the second stage runs once and its input is the list of three entries.
 
-**R-flow-28** Items run at the same time unless the stage says they go one at a time.
-*Accept:* `each:` over three items asks for three jobs in one step; the same stage told to go one at a time asks for the second job only after the first has settled, in item order.
+**R-flow-28** Items run at the same time unless the stage's `each:` says `serial: true`.
+*Accept:* `each:` over three items asks for three jobs in one step; the same stage with `serial: true` asks for the second job only after the first has settled, in item order.
 
 **R-flow-29** An item that fails does not fail the flow by itself; the flow fails only if nothing reads the stage's output.
 *Accept:* read: parity case 09, and with a child per item parity cases 53 and 58. Not read: parity cases 10 and 59.
 
-**R-flow-33** The items may be what another stage emits, said by naming that stage: each item starts as soon as it is emitted, without waiting for the emitting stage to finish, and the output is in the order the items were emitted.
+**R-flow-33** The items may be what another stage emits, written as `{ emitted: <stage> }`: each item starts as soon as it is emitted, without waiting for the emitting stage to finish, and the output is in the order the items were emitted.
 *Accept:* parity case 07, which names the stage: the first item's job is asked for before `source`'s result arrives, and the gathered outputs are in emitted order.
 
 **R-flow-35** If the emitting stage fails, no more items start and those already started finish.
-*Accept:* `source` emits two items and then fails, and another stage reads the failure; the two items' jobs finish and appear in the output, and no third job is asked for.
+*Accept:* `source` emits two items and then fails, and another stage's `when:` reads the failure; the two items' jobs finish and appear in the output, and no third job is asked for.
 
-**R-flow-36** The items may come from a blob, and what an item is depends on the blob's type: a line of text, a row of a table, an entry of a list. This is a short form: the flow runs a job that reads the blob and emits its items, and follows that job's emits.
-*Accept:* `each:` over a text of three lines, a table of three rows and a list of three entries each asks for three jobs, whose items are the lines, the rows and the entries. `each:` over a blob of a type that has no items, such as a document or an image, fails the reading job, which says what has items. The stored definition holds the reading stage and the stage that follows it; the record shows the reading job, and for a large blob the first item's job is asked for before the reading job has finished.
+**R-flow-36** The items may come from a blob, and what an item is depends on the blob's type: a line of text, a row of a table, an entry of a list. A job of the stage's own name reads the blob and emits its items, each item starts as it arrives, and if the reading job fails the stage fails.
+*Accept:* `each:` over a text of three lines, a table of three rows and a list of three entries each asks for three jobs, whose items are the lines, the rows and the entries. `each:` over a blob of a type that has no items, such as a document or an image, fails the stage with the reading job's error, which says what has items. The stored definition holds no stage but those written; the record shows the reading job under the stage's name, and for a large blob the first item's job is asked for before the reading job has finished. A flow with a stage `read` that reads a blob and a stage of its own named `read_items` runs both.
 
 **R-flow-38** A flow keeps every item's result in its state, and `each:` works over lists of hundreds.
 *Accept:* `each:` over five hundred items ends well, with five hundred entries in item order.
@@ -88,11 +88,11 @@ The detailed rules behind the [Flow overview](../flow.md). Area code: `flow`. Wh
 **R-flow-41** A stage that reads another stage's emitted items in an expression runs after that stage has settled, and is given them all in the order emitted.
 *Accept:* parity case 08: its `each:` is given by an expression over `source`'s emitted items, and every item's job is asked for only after `source` has finished.
 
-**R-flow-42** A flow can name one stage whose emitted items it passes up to its own parent as they arrive, which is how a flow gives partial results; a flow that names no such stage passes nothing up.
-*Accept:* a child flow names its emitting stage, which emits three values; the parent flow's per-item stage that follows the child's stage starts its first item before the child has finished, and runs three items in all. A root flow names a stage that emits three values a second apart; a client following the record sees each value as an event sent up, before the flow has ended. Parity cases 57 and 45, where nothing is named and nothing is passed up.
+**R-flow-42** A flow's `emit:` can name one stage whose emitted items it emits to its own parent as they arrive, which is how a flow gives partial results; a flow that names no such stage emits nothing.
+*Accept:* a child flow names its emitting stage, which emits three values; the parent flow's per-item stage that follows the child's stage starts its first item before the child has finished, and runs three items in all. A root flow names a stage that emits three values a second apart; a client following the record sees each value as an event sent up, before the flow has ended. Parity cases 57 and 45, where nothing is named and nothing is emitted.
 
-**R-flow-45** A flow does not wait on keys or timers, and ignores events sent down to it.
-*Accept:* a flow written with a `wait:` or an `after:` is refused when checked; a running flow's head never names a key or counts a timer. Parity case 45: the flow receives the event, carries on and finishes. For a root flow, the receipt of the client that sent the event says the flow had no rule for it.
+**R-flow-45** A flow does not wait on tickets or timers, and ignores events sent down to it.
+*Accept:* a flow written with a `ticket:` or a `timers:` is refused when checked; a running flow's head never names a ticket or counts a timer. Parity case 45: the flow receives the event, carries on and finishes. For a root flow, the receipt of the client that sent the event says the flow had no rule for it.
 
 ## Interfaces
 

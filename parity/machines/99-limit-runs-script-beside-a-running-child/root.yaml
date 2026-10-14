@@ -1,7 +1,7 @@
 # The root sets jobs: 10 and needs four: three scripts and one child that
 # starts no jobs itself. Two stages stand ready to note a refusal.
 flow: top
-jobs: 10
+limits: { jobs: 10 }
 stages:
   before:
     job: { script: ./add.js, input: { n: 1 } }
@@ -12,10 +12,10 @@ stages:
   later:
     job: { script: ./add.js, input: { n: "${stages.before.output.n}" } }
   beside_failed:
-    when: stages.beside.failed
+    when: ${stages.beside.failed}
     job: { script: ./echo.js, input: { error: "${stages.beside.error}" } }
   later_failed:
-    when: stages.later.failed
+    when: ${stages.later.failed}
     job: { script: ./echo.js, input: { error: "${stages.later.error}" } }
 output:
   before: ${stages.before.output}

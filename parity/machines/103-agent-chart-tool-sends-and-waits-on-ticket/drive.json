@@ -1,0 +1,13 @@
+[
+  {
+    "wait": {
+      "machine": "child",
+      "ticket": "answer"
+    },
+    "do": "reply",
+    "value": {
+      "said": "clear it"
+    },
+    "taken": true
+  }
+]

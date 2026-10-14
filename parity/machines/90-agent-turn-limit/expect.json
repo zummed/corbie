@@ -1,34 +1,17 @@
 {
   "status": "done",
   "output": {
-    "note": {
-      "no_ask": "<any>",
-      "with_ask_error": null
+    "first_error": {
+      "<contains>": "turn limit reached"
     },
-    "with_ask_text": "Done after three calls."
+    "reply": "Done after three calls."
   },
   "record": [
     {
-      "machine": "no-ask",
-      "status": "failed"
-    },
-    {
       "machine": "parent",
       "event": {
         "name": "failed",
-        "from": "no_ask",
-        "data": {
-          "error": {
-            "<contains>": "turn limit reached"
-          }
-        }
-      }
-    },
-    {
-      "machine": "parent",
-      "event": {
-        "name": "failed",
-        "from": "no_ask",
+        "from": "first",
         "data": {
           "status": "error",
           "output": {
@@ -48,54 +31,15 @@
       }
     },
     {
-      "machine": "no-ask",
+      "machine": "limited",
       "emit": {
         "job": "turn#2",
         "name": "log",
         "data": {
           "<contains>": "1 turns remain"
         }
-      }
-    },
-    {
-      "machine": "with-ask",
-      "emit": {
-        "job": "turn#2",
-        "name": "log",
-        "data": {
-          "<contains>": "1 turns remain"
-        }
-      }
-    },
-    {
-      "machine": "no-ask",
-      "ask": {
-        "kind": "script",
-        "name": "turn#3"
-      },
-      "absent": true
-    },
-    {
-      "machine": "with-ask",
-      "ask": {
-        "kind": "hold",
-        "name": "more"
-      }
-    },
-    {
-      "machine": "with-ask",
-      "ask": {
-        "kind": "script",
-        "name": "ask"
-      }
-    },
-    {
-      "machine": "with-ask",
-      "ask": {
-        "kind": "script",
-        "name": "turn#4"
       }
     }
   ],
-  "note": "When its ask gives an agent more turns it is given as many again as it started with (two here), so the ask is asked once."
+  "note": "R-agent-35: at its limit an agent fails with its conversation; R-agent-19: another agent started with that conversation carries on."
 }

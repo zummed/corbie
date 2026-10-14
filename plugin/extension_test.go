@@ -2,6 +2,7 @@ package plugin_test
 
 import (
 	"archive/zip"
+	"errors"
 	"io"
 	"io/fs"
 	"os"
@@ -47,29 +48,20 @@ func Test_plug_extension_builds_from_its_own_repository(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// A version holds what is committed, as Go fetches it from a
+	// repository: the files git tracks, and nothing else in the directory.
+	list := exec.Command("git", "ls-files", "-z")
+	list.Dir = root
+	tracked, err := list.Output()
+	if err != nil {
+		t.Fatalf("git cannot list the files of the repository: %v", err)
+	}
 	source := zip.NewWriter(packed)
-	err = filepath.WalkDir(root, func(path string, entry fs.DirEntry, err error) error {
-		rel, _ := filepath.Rel(root, path)
-		switch {
-		case err != nil:
-			return err
-		case entry.IsDir() && (entry.Name() == ".git" || rel == "bin"):
-			return filepath.SkipDir
-		case !entry.Type().IsRegular():
-			return nil
+	for _, rel := range strings.Split(strings.TrimRight(string(tracked), "\x00"), "\x00") {
+		if err = pack(source, corbie+"@"+version+"/"+rel, filepath.Join(root, filepath.FromSlash(rel))); err != nil {
+			break
 		}
-		into, err := source.Create(corbie + "@" + version + "/" + filepath.ToSlash(rel))
-		if err != nil {
-			return err
-		}
-		from, err := os.Open(path)
-		if err != nil {
-			return err
-		}
-		defer from.Close()
-		_, err = io.Copy(into, from)
-		return err
-	})
+	}
 	if err == nil {
 		err = source.Close()
 	}
@@ -117,4 +109,23 @@ func init() {
 	if after, _ := os.ReadFile(filepath.Join(ext, "go.mod")); strings.Contains(string(after), "replace") || !strings.Contains(string(after), corbie+" "+version) {
 		t.Fatalf("the extension's go.mod is now:\n%s", after)
 	}
+}
+
+// pack adds a file to a zip under a name. A tracked file that has been
+// removed and not yet committed is left out.
+func pack(z *zip.Writer, name, path string) error {
+	from, err := os.Open(path)
+	if errors.Is(err, fs.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	defer from.Close()
+	into, err := z.Create(name)
+	if err != nil {
+		return err
+	}
+	_, err = io.Copy(into, from)
+	return err
 }

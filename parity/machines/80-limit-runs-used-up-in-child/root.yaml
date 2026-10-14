@@ -1,7 +1,7 @@
 # The root sets jobs: 3. Its own stage is one job and the child another;
 # the child's own two jobs are the child's.
 flow: top
-jobs: 3
+limits: { jobs: 3 }
 stages:
   own:
     job: { script: ./add.js, input: { n: 1 } }

@@ -1,0 +1,9 @@
+{
+  "status": "failed",
+  "failure": "error",
+  "error_contains": [
+    "bad: ",
+    "failed on purpose"
+  ],
+  "note": "R-flow-16: only a stage whose when: reads the failure handles it; reads_error_only reads the error in its input, so the failure is unhandled and the flow fails."
+}

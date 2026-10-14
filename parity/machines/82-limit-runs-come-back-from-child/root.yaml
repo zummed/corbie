@@ -1,6 +1,6 @@
-# The root sets jobs: 9 and runs three children one after another.
+# The root sets limits: { jobs: 9 } and runs three children one after another.
 flow: top
-jobs: 9
+limits: { jobs: 9 }
 stages:
   a:
     job: { machine: ./child.yaml, input: { which: a } }

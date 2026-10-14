@@ -26,7 +26,7 @@ initial: closed
 states:
   closed:
     on: { open: opened }
-  opened: { final: true, output: { by: "${event.data.who}" } }
+  opened: { end: done, output: { by: "${event.data.who}" } }
 `
 
 type caller struct {

@@ -197,7 +197,7 @@ func read(job *plugin.Job, first any, opt plugin.Options) (any, error) {
 		return nil, err
 	}
 	if !found {
-		return nil, plugin.Errorf(plugin.NotFound, "the archive has no file named %s", entry)
+		return nil, plugin.Errorf(plugin.NotFound, "the archive has no file named %q", entry)
 	}
 	return contents, nil
 }

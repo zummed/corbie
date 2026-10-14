@@ -8,14 +8,15 @@ initial: first
 states:
   first:
     job: { machine: ./guarded-flow.yaml, input: { n: 1 } }
-    done: unexpected
-    failed: noting
+    on:
+      done: unexpected
+      failed: noting
   noting:
     job: { script: ./echo.js, input: { name: "${event.name}", error: "${event.data.error}" } }
-    done: second
+    on: { done: second }
   second:
     job: { machine: ./guarded-flow.yaml, input: { n: 2 } }
-    done: unexpected
+    on: { done: unexpected }
   unexpected:
-    final: true
+    end: done
     output: { unexpected: true }

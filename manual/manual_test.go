@@ -666,8 +666,8 @@ func Test_man_everything_held_has_a_page(t *testing.T) {
 }
 
 // Every field a definition may hold is on a page: a type's own on the
-// type's page, and what every type takes, and a job, on the page of
-// definitions. What a definition is read by is the one account of its
+// type's page, and what every type takes, its limits, and a job, on the
+// page of definitions. What a definition is read by is the one account of its
 // fields, so a field added there and written on no page is found here.
 func Test_man_every_field_is_on_its_page(t *testing.T) {
 	shared, _ := manual.Find("definitions")
@@ -677,7 +677,7 @@ func Test_man_every_field_is_on_its_page(t *testing.T) {
 		d, _ := machine.Describe(kind)
 		for name, shape := range d.Shapes {
 			on := page
-			if name == "definition" || name == "job" {
+			if name == "definition" || name == "limits" || name == "job" {
 				on = shared
 			}
 			for _, f := range shape.Fields {

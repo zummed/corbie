@@ -8,15 +8,17 @@ initial: first
 states:
   first:
     job: { script: ./add.js, input: { n: 1 }, approve: true }
-    done: second
-    failed: refused
+    on:
+      done: second
+      failed: refused
   second:
     job: { script: ./add.js, input: { n: 2 }, approve: true }
-    done: finished
-    failed: refused
+    on:
+      done: finished
+      failed: refused
   refused:
     job: { script: ./echo.js, input: { name: "${event.name}", error: "${event.data.error}", status: "${event.data.status}" } }
-    done: finished
+    on: { done: finished }
   finished:
-    final: true
+    end: done
     output: { first: "${states.first.output}", second: "${states.second.output}", refused: "${states.refused.output}" }

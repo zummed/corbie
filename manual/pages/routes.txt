@@ -15,7 +15,7 @@ Routes
   GET /runs/<id>/files/<path>   the bytes of the blob at that path, with its type as `Content-Type`
   POST /runs/<id>/cancel        cancels the run: { "life": "10m" }, or an empty body
   POST /runs/<id>/events        sends the run an event: { "event": "go", "data": …, "life": "10m" }
-  POST /runs/<id>/keys          answers a key: { "key": "<the key>", "value": …, "life": "10m" }
+  POST /runs/<id>/tickets       answers a ticket: { "ticket": "<the ticket>", "value": …, "life": "10m" }
 
 `<id>` is the whole ID with its slash, as in
 `/runs/laptop-client/20261013T185126.250Z-571d935912`.
@@ -34,7 +34,7 @@ Start a run
   labels     { "team": "ops" }
   allow      ["net:example.com"]: entries that limit every job of the run and its child runs
   deny       entries that are refused whatever `allow` has
-  deadline   "1h": how long the run may take
+  timeout    "1h": how long the run may take
   secrets    { "NAME": "value" }: secrets for this run only
   life       "10m": how long the start is valid if no controller reads it, default 5m
 
@@ -57,7 +57,7 @@ Query parameters
 Answers and status codes
 ------------------------
 
-A request to cancel, send an event or answer a key stays open until a
+A request to cancel, send an event or answer a ticket stays open until a
 controller reads the message. `life` is how long the message is valid, default 5m.
 
   { "taken": true }                           the controller acted on the message

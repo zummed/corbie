@@ -72,7 +72,7 @@ func hostName() string {
 // reach a served directory by: a controller uses its directory as it is.
 func ownStore(address string) error {
 	if store.IsServed(address) {
-		return mistake("a controller's store is its own directory, or a bucket: %s is how other computers reach a directory that a controller's computer serves", address)
+		return mistake("a controller's store is its own directory, or a bucket: %q is how other computers reach a directory that a controller's computer serves", address)
 	}
 	return nil
 }
@@ -150,7 +150,7 @@ func cmdInit(e *env, args []string) error {
 			return err
 		}
 		if len(held) > 0 {
-			return fmt.Errorf("the name %s-controller is taken on that store: another controller holds trust there under it. Give this computer's parties another name with --name", name)
+			return fmt.Errorf("the name %q is taken on that store: another controller holds trust there under it. Give this computer's parties another name with --name", name+"-controller")
 		}
 	}
 	ctl, err := cfg.Make(identity.Controller, name+"-controller")
@@ -365,7 +365,7 @@ func cmdEnrol(e *env, args []string) error {
 			return err
 		}
 		if old == nil {
-			return fmt.Errorf("no runner or client named %s is enrolled, and that is not a card", given[0])
+			return fmt.Errorf("no runner or client named %q is enrolled, and that is not a card", given[0])
 		}
 		card = old.Card
 	}
@@ -459,7 +459,7 @@ func cmdTrust(kind identity.Kind) func(e *env, args []string) error {
 			}
 		} else {
 			if old, err = cfg.Trust(kind, given[0]); err != nil || old == nil {
-				return fmt.Errorf("no controller named %s is trusted here, and that is not a card", given[0])
+				return fmt.Errorf("no controller named %q is trusted here, and that is not a card", given[0])
 			}
 			card = old.Card
 		}
@@ -475,7 +475,7 @@ func cmdTrust(kind identity.Kind) func(e *env, args []string) error {
 			}
 			for _, other := range all {
 				if other.Trusted() && other.Card.Name != card.Name {
-					return fmt.Errorf("this client already has a controller, %s; remove it first (corbie client remove %s)", other.Card.Name, other.Card.Name)
+					return fmt.Errorf("this client already has the controller %q; remove it first (corbie client remove %s)", other.Card.Name, other.Card.Name)
 				}
 			}
 		}
@@ -517,7 +517,7 @@ func cmdUntrust(kind identity.Kind) func(e *env, args []string) error {
 			return err
 		}
 		if trust == nil {
-			return fmt.Errorf("no controller named %s is trusted here", rest[0])
+			return fmt.Errorf("no controller named %q is trusted here", rest[0])
 		}
 		trust.Removed = true
 		return cfg.SetTrust(kind, *trust)
@@ -541,7 +541,7 @@ func cmdRemove(e *env, args []string) error {
 		return err
 	}
 	if trust == nil {
-		return fmt.Errorf("no runner or client named %s is enrolled", rest[0])
+		return fmt.Errorf("no runner or client named %q is enrolled", rest[0])
 	}
 	// Its name stays on record with its key, marked as removed.
 	trust.Removed = true
@@ -613,7 +613,7 @@ func cmdSecretSet(e *env, args []string) error {
 		value = strings.TrimRight(string(data), "\r\n")
 	}
 	if value == "" {
-		return mistake("the secret has no value: set the variable %s, or give the value on standard input", rest[0])
+		return mistake("the secret has no value: set the environment variable %q, or give the value on standard input", rest[0])
 	}
 	ctl, s, err := e.controller()
 	if err != nil {
@@ -739,7 +739,7 @@ func cmdPolicy(e *env, args []string) error {
 			return err
 		}
 		if trust == nil {
-			return fmt.Errorf("no runner or client named %s is enrolled", rest[0])
+			return fmt.Errorf("no runner or client named %q is enrolled", rest[0])
 		}
 		party.Name, party.Kind = trust.Card.Name, store.Client
 		if trust.Card.Kind == identity.Runner {

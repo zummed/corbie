@@ -17,7 +17,7 @@ stages that do not depend on each other run in parallel.
       summarise:
         job: { script: ./summarise.js, input: { pages: "${stages.fetch.output}" } }
       tell_someone:
-        when: stages.summarise.failed
+        when: ${stages.summarise.failed}
         job: { script: ./notify.js, input: { why: "${stages.summarise.error}" } }
 
     output: ${stages.summarise.output}
@@ -41,17 +41,16 @@ Fields
 
   stages    the stages, by name
   output    the flow's result
-  pass      a stage's name: each value its job emits is sent to the flow's
+  emit      a stage's name: each value its job emits, the flow emits to its
             parent as it arrives
 
 A stage has these fields.
 
   job              a script or a machine: see `corbie manual definitions`
-  when             a condition, written without `${ }`: if it is false, the
-                   stage is skipped
+  when             a condition, one expression: ${stages.fetch.failed}; if it
+                   is false, the stage is skipped
   follows          stages it runs after without reading them: [fetch]
   each             starts the job once for each item, read as `${item}`
-  one_at_a_time    true: with `each:`, one item at a time, in order
 
 An expression reads `input` and these.
 
@@ -61,23 +60,62 @@ An expression reads `input` and these.
   stages.<name>.skipped    true if the stage was skipped
   stages.<name>.emitted    the values its job has emitted so far
 
-Skipping and failing
---------------------
+Handling a failure
+------------------
 
+A failed stage fails the flow, unless a stage handles it: a stage whose
+`when:` reads the failed stage's `failed` or `error`, and which runs.
+
+    # report.yaml
+    flow: report
+    input: [fail]
+    stages:
+      summarise:
+        job: { script: ./summary.js, input: { fail: "${input.fail}" } }
+      tell_someone:
+        when: ${stages.summarise.failed}
+        job: { script: ./tell.js, input: { why: "${stages.summarise.error}" } }
+    output: ${stages.summarise.output}
+
+    // summary.js
+    if (input.fail) throw new Error("no pages")
+    return "the summary"
+
+    // tell.js
+    return "told: " + input.why
+
+    corbie test report.yaml --input '{"fail": false}' --watch
+      step 2  <- done from summarise "the summary"
+      step 2  done
+      output: "the summary"
+    corbie test report.yaml --input '{"fail": true}' --watch
+      step 2  <- failed from summarise {"error":"Error: no pages at line 2, column 23","status":"error"}
+      step 2  -> job tell_someone: a script, on runner
+      step 3  <- done from tell_someone "told: Error: no pages at line 2, column 23"
+      step 3  done
+
+- When `summarise` works, `tell_someone` is skipped and the run is done.
+- When `summarise` fails, `tell_someone` runs and the run is done, with no
+  output.
+- Without the `when:`, nothing handles the failure and the run fails: reading
+  `stages.summarise.error` in a stage's input handles nothing.
+- A stage that reads the output of a failed stage, or follows it, is skipped,
+  unless its `when:` reads that stage's `failed` or `error`.
 - A stage that reads or follows a skipped stage is skipped, unless its own
   `when:` reads that stage's `skipped`.
-- A stage that reads the output of a failed stage, or follows it, is skipped,
-  unless it reads that stage's `failed` or `error`.
-- A failed stage fails the flow, unless a stage that reads its `failed` or
-  `error` runs, or `output:` reads them.
+- `output:` that reads a stage's `failed` or `error` handles its failure too.
 
 Once for each item
 ------------------
 
-  each: [1, 2, 3]                    a list
-  each: ${input.urls}                an expression that gives a list
-  each: fetch                        each value the stage fetch emits, as it arrives
-  each: { blob: "${input.file}" }    the items of a blob: lines, rows or entries
+  each: { items: "${input.urls}" }    a list, or an expression that gives one
+  each: { emitted: fetch }            each value the stage fetch emits, as it arrives
+  each: { blob: "${input.file}" }     the items of a blob: lines, rows or entries,
+                                      read by a job of the stage's name
+  each: ${input.urls}                 short for { items: ${input.urls} }
+
+`serial: true` beside the source runs the items one after another, in order:
+`each: { emitted: fetch, serial: true }`.
 
 - Between `{ }`, YAML needs quotes round a value that holds `${...}`.
 - The stage's output is a list in the order of the items. Each entry is
@@ -85,9 +123,53 @@ Once for each item
 - A failed item does not fail its stage, and `stages.<name>.failed` stays
   false. The script that reads the list must check each entry for `error`, as
   `summarise.js` does. If nothing reads the list, a failed item fails the flow.
-- Where `each:` names a stage, an item is the emitted value without its name.
+- With `{ emitted: fetch }`, an item is the emitted value without its name.
   An event that a child machine sends to its parent is an item too.
 - The record names an item's job `fetch.0`, `fetch.1` and so on.
 - To run several jobs for each item, make the stage's job a machine.
 
-A flow has no keys and no timers, and ignores events sent to it.
+Following what a stage emits
+----------------------------
+
+A script returns one value when it ends. `emit(name, value)` sends a value
+out while it is still running, and a stage with `each: { emitted: … }` starts
+an item for each value as it arrives.
+
+    # pages.yaml
+    flow: pages
+    stages:
+      list_pages:
+        job: ./list.js
+      fetch:
+        each: { emitted: list_pages }
+        job: { script: ./fetch_page.js, input: { page: "${item}" } }
+    output: ${stages.fetch.output}
+
+    // list.js
+    for (const page of ["a", "b", "c"]) {
+      emit("page", page)
+      const until = Date.now() + 500
+      while (Date.now() < until) {}
+    }
+    return "listed 3"
+
+    // fetch_page.js
+    return "fetched " + input.page
+
+    corbie test pages.yaml --watch
+      step 2  <- page from list_pages "a"
+      step 2  -> job fetch.0: a script, on runner
+      step 3  <- done from fetch.0 "fetched a"
+      step 4  <- page from list_pages "b"
+      step 4  -> job fetch.1: a script, on runner
+      step 5  <- done from fetch.1 "fetched b"
+      step 6  <- page from list_pages "c"
+      step 6  -> job fetch.2: a script, on runner
+      step 7  <- done from fetch.2 "fetched c"
+      step 8  <- done from list_pages "listed 3"
+      output: [{"item":"a","output":"fetched a"},{"item":"b","output":"fetched b"},{"item":"c","output":"fetched c"}]
+
+`fetch` starts on `a` while `list_pages` is still running. With
+`each: ${stages.list_pages.output}` it would wait for a whole list.
+
+A flow has no tickets and no timers, and ignores events sent to it.

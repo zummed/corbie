@@ -7,13 +7,13 @@ A run is one execution of a machine. `<id>` below is the ID that
 Commands
 --------
 
-  corbie submit <definition>        starts a run and prints its ID
-  corbie ls                         lists this client's runs in progress, with child runs
-  corbie show <id>                  prints one run's status and output
-  corbie cancel <id>                cancels a run this client started
-  corbie send <id> <event> [data]   sends an event to a run this client started
-  corbie reply <id> <key> [value]   answers a key the run waits on
-  corbie controller cancel <id>     cancels any run, with the controller's config
+  corbie submit <definition>          starts a run and prints its ID
+  corbie ls                           lists this client's runs in progress, with child runs
+  corbie show <id>                    prints one run's status and output
+  corbie cancel <id>                  cancels a run this client started
+  corbie send <id> <event> [data]     sends an event to a run this client started
+  corbie reply <id> <ticket> [value]  answers a ticket the run waits on
+  corbie controller cancel <id>       cancels any run, with the controller's config
 
 A run as JSON
 -------------
@@ -37,11 +37,11 @@ A run as JSON
   started, ended        times in UTC
   parent                for a child run, the ID of the run that started it
   jobs, timers          how many of its script jobs are on a runner, and how many timers it waits for
-  keys                  the names of the keys it waits on
+  tickets               the names of the tickets it waits on
   labels                the labels it was started with
 
   denied    a job was refused a permission, or the ask did not approve a job
-  timeout   the run's deadline passed; a job that timed out fails its run with `error`
+  timeout   the run's timeout passed; a job that timed out fails its run with `error`
   error     anything else, such as a failed job the machine has no rule for, or a start the controller refused
 
 A field with no value is left out. A run in a list has no `output`, `error`,
@@ -71,18 +71,18 @@ The record
 `corbie show <id> --record --json` prints each entry as one line, child runs' entries included.
 
   id, time          the run the entry belongs to, and when it was written
-  step, events      a step's number, and the events it received: `name`, `from` and `data`
+  step, events      a step's number, and the events it received: `name`, `from`, `data`,
+                    and `answer: true` on the answer to a ticket
   asks              what the controller did next; kind `script` or `child` is a job it started
   status, state     the run's status and the machine's state after the step
   job, name, data   an emitted value: its job, its name (`log` for a log line) and the value
 
-Events and keys
----------------
+Events and tickets
+------------------
 
-A statechart state with `wait: <name>` has a key, and `corbie reply` answers
-it (`corbie manual statechart`). Only the client that started the run can
-print the key, with `corbie show <id> --keys`. That client can send an event
-with the key's name without the key.
+A statechart state with `ticket: <name>` issues a ticket, and `corbie reply`
+answers it (`corbie manual statechart`). Only the client that started the run
+can print the ticket, with `corbie show <id> --tickets`.
 
 A statechart with no final state keeps running. Start it once with a label,
 send it an event each time there is work, and find it later with
@@ -97,8 +97,9 @@ send it an event each time there is work, and find it later with
         on: { work: working }
       working:
         job: { script: ./work.js, input: { item: "${event.data}" } }
-        done: idle
-        failed: idle
+        on:
+          done: idle
+          failed: idle
 
     // work.js
     return "did " + input.item
@@ -123,6 +124,6 @@ that arrives while the job runs.
 Reference
 ---------
 
-  corbie manual statechart   `on:`, `wait:` and `event.from`
+  corbie manual statechart   `on:`, `ticket:` and `event.from`
   corbie manual routes       the same requests over HTTP, and their answers as JSON
   corbie manual the-store    who can read a run's files

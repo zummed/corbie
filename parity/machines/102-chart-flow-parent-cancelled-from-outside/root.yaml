@@ -5,7 +5,7 @@ initial: running
 states:
   running:
     job: { machine: ./middle.yaml }
-    done: finished
+    on: { done: finished }
   finished:
-    final: true
+    end: done
     output: { middle: "${event.data}" }

@@ -6,7 +6,7 @@ stages:
   kid:
     job: { machine: ./child.yaml }
   per_emit:
-    each: kid
+    each: { emitted: kid }
     job: { script: ./read.js, input: { item: "${item}" } }
 output:
   kid: ${stages.kid.output}

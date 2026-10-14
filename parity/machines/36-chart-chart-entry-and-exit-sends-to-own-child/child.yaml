@@ -6,5 +6,5 @@ states:
       hello: heard
       bye: heard
   heard:
-    final: true
+    end: done
     output: { heard: "${event.name}", data: "${event.data}" }

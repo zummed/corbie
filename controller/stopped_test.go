@@ -105,13 +105,14 @@ const family = `
 	            entry: { send: { to: parent, event: hello, data: 1 } }
 	            on: { ack: second }
 	          second:
-	            after: { 1s: last }
+	            timers: { pause: 1s }
+	            on: { pause: last }
 	            entry: { send: { to: parent, event: waiting } }
-	          last: { final: true, output: { from: child } }
+	          last: { end: done, output: { from: child } }
 	    on:
+	      done: finished
 	      hello: { send: { to: working, event: ack } }
-	    done: finished
-	  finished: { final: true, output: "${states.working.output}" }
+	  finished: { end: done, output: "${states.working.output}" }
 `
 
 // story is what happened in a store, told so that two runs of one
@@ -312,7 +313,7 @@ func Test_ctl_carry_out_larger_than_a_pass_finishes(t *testing.T) {
 		        statechart: kid
 		        initial: over
 		        states:
-		          over: { final: true, output: "${input}" }
+		          over: { end: done, output: "${input}" }
 		      input: "${item}"
 		output: "${stages.kids.output}"
 	`, nil, manyItems())

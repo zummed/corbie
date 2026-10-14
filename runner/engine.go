@@ -266,7 +266,7 @@ func sortedCalls(calls map[string]*plugin.Call) []string {
 func (e *engine) load(name, source string, exports *goja.Object) error {
 	fn, err := e.vm.RunScript(name, "(function(exports,require){\"use strict\";"+source+"\n})")
 	if err != nil {
-		return fmt.Errorf("%s cannot be read: %s", name, oneLine(err.Error()))
+		return fmt.Errorf("the file %q cannot be read: %s", name, oneLine(err.Error()))
 	}
 	call, _ := goja.AssertFunction(fn)
 	_, err = call(goja.Undefined(), exports, e.vm.ToValue(e.require))
@@ -290,7 +290,7 @@ func (e *engine) require(call goja.FunctionCall) goja.Value {
 	}
 	source, ok := e.b.Files[name]
 	if !ok {
-		e.throw(plugin.Errorf(plugin.NotFound, "%s is not among the files the job lists beside its script", name))
+		e.throw(plugin.Errorf(plugin.NotFound, "the file %q is not among the files the job lists beside its script", name))
 	}
 	exports := e.vm.NewObject()
 	e.modules[name] = exports

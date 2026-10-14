@@ -31,10 +31,11 @@ const oneJob = `
 	states:
 	  working:
 	    job: { script: ./work.js, timeout: 1m }
-	    done: finished
-	    failed: broken
-	  finished: { final: true, output: "${states.working.output}" }
-	  broken: { final: true, output: "${event.data.status}" }
+	    on:
+	      done: finished
+	      failed: broken
+	  finished: { end: done, output: "${states.working.output}" }
+	  broken: { end: done, output: "${event.data.status}" }
 `
 
 // A message that does not carry the part its kind says it does is no
@@ -116,9 +117,11 @@ func Test_ctl_wake_set_again_survives_delete_of_used_one(t *testing.T) {
 		initial: waiting
 		states:
 		  waiting:
-		    after: { "18:00": working }
-		    on: { again: waiting }
-		  working: { final: true, output: fired }
+		    timers: { evening: "18:00" }
+		    on:
+		      evening: working
+		      again: waiting
+		  working: { end: done, output: fired }
 	`, nil, nil)
 	w.settle()
 	// Leave the state and enter it again before its time: the timer is
@@ -147,15 +150,15 @@ func Test_ctl_loser_of_step_carries_out_winners_entry(t *testing.T) {
 	w.settle()
 	w.client.Send(ctx, run, "open", nil, 0)
 	w.settle()
-	var key string
-	for _, k := range w.latest(run).State.Keys {
-		key = k.Value
+	var ticket string
+	for _, k := range w.latest(run).State.Tickets {
+		ticket = k.Value
 	}
 	c2 := w.party("c2", identity.Client)
 	w.enrol(c2, permission.Layer{}, nil)
 	other := w.clientOf(c2)
-	first, _ := w.client.Reply(ctx, run, key, 42, 0)
-	second, _ := other.Reply(ctx, run, key, 42, 0)
+	first, _ := w.client.Reply(ctx, run, ticket, 42, 0)
+	second, _ := other.Reply(ctx, run, ticket, 42, 0)
 	w.mu.Lock()
 	w.ops = nil
 	w.mu.Unlock()

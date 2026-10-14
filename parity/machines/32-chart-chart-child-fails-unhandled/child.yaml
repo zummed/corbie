@@ -3,8 +3,7 @@ initial: working
 states:
   working:
     job: { script: ./fail.js }
-    failed: gave_up
+    on: { failed: gave_up }
   gave_up:
-    final: true
-    failed: true
+    end: failed
     output: { why: "${event.data.error}" }

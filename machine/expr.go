@@ -83,8 +83,17 @@ func exprEnd(src string) (int, error) {
 
 // IsOneExpr says whether a text is exactly one expression.
 func IsOneExpr(text string) bool {
+	_, ok := OneExpr(text)
+	return ok
+}
+
+// OneExpr gives the source of a text that is exactly one expression.
+func OneExpr(text string) (string, bool) {
 	parts, err := split(text)
-	return err == nil && len(parts) == 1 && parts[0].expr
+	if err != nil || len(parts) != 1 || !parts[0].expr {
+		return "", false
+	}
+	return parts[0].text, true
 }
 
 // HasExpr says whether a text holds an expression.

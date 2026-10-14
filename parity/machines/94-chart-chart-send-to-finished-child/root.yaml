@@ -1,4 +1,4 @@
-# A state with no done: stays active after its child has finished. A timer
+# A state with no rule for done stays active after its child has finished. A timer
 # then sends the finished child an event, a second in; a second timer
 # leaves the state a second later.
 statechart: parent
@@ -6,9 +6,10 @@ initial: running
 states:
   running:
     job: { machine: ./child.yaml }
-    after:
-      1s: { send: { to: running, event: hello, data: { from: parent } } }
-      2s: finished
+    timers: { say_hello: 1s, leave: 2s }
+    on:
+      say_hello: { send: { to: running, event: hello, data: { from: parent } } }
+      leave: finished
   finished:
-    final: true
+    end: done
     output: { came_by: "${event.name}", child_output: "${states.running.output}" }

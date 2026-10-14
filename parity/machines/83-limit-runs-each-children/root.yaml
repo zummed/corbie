@@ -1,6 +1,6 @@
 # The root sets jobs: 10 and starts three children at once with each:.
 flow: top
-jobs: 10
+limits: { jobs: 10 }
 stages:
   kids:
     each: [first, second, third]

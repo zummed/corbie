@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 // found is what corbie check --json prints.
@@ -81,9 +82,16 @@ func Test_client_check_is_an_ordinary_run(t *testing.T) {
 	if status, f := m.check(); status != 0 {
 		t.Fatalf("the check found %+v", f)
 	}
+	// A listing reads heads, and a head may be a moment behind the record
+	// the check followed.
 	var runs []struct{ Machine, Type, Status string }
-	if err := json.Unmarshal([]byte(m.ok("", "ls", "--all", "--json")), &runs); err != nil {
-		t.Fatal(err)
+	for end := time.Now().Add(5 * time.Second); ; time.Sleep(20 * time.Millisecond) {
+		if err := json.Unmarshal([]byte(m.ok("", "ls", "--all", "--json")), &runs); err != nil {
+			t.Fatal(err)
+		}
+		if len(runs) == 1 && runs[0].Status == "done" || time.Now().After(end) {
+			break
+		}
 	}
 	if len(runs) != 1 || runs[0].Machine != "check" || runs[0].Type != "statechart" || runs[0].Status != "done" {
 		t.Fatalf("after a check the runs listed were %+v", runs)

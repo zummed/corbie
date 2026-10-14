@@ -37,7 +37,7 @@ type Command struct {
 }
 
 // Version is which Corbie this is.
-var Version = "0.1.0"
+var Version = "0.2.0"
 
 // env is what a command is run with.
 type env struct {

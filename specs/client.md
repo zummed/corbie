@@ -66,7 +66,17 @@ Following from a terminal is one flag, `--watch`. It prints what the command pri
 - `ls --watch` prints the listing, then each run that appears or changes.
 - `show --watch` prints the record, then each entry as it is written, until the run ends.
 
-`show` can also print one step, one job's input and output, or the definition, can save a result's files to a directory, and with `--wait` stays until the run ends and prints its result. `submit` sends a start; `submit --wait` waits for the run it started and `submit --watch` follows it. `submit` and `test` take run secrets by name from the environment.
+`show` can also print one step, one job's input and output, or the definition, can save a result's files to a directory, and with `--wait` stays until the run ends and prints its result. `submit` sends a start; `submit --wait` waits for the run it started and `submit --watch` follows it.
+
+A secret's value is never on the command line. It is read only from the source the command names, and a value not found there is a mistake that sends nothing:
+
+```
+--secret NAME                         typed at the terminal, not shown
+--secret-env NAME                     the environment variable NAME
+controller secret set NAME            typed at the terminal, not shown
+controller secret set NAME --env      the environment variable NAME
+controller secret set NAME -          standard input, to the end
+```
 
 A script file can be submitted as it is. It is wrapped in a flow of one stage, and the permissions it may use and its limits are given on the command line.
 

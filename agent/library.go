@@ -211,5 +211,5 @@ This turn calls the library's turn and logs each reply.
     log("the model said", reply.text)
     return reply
 
-    corbie test heard.yaml --secret ANTHROPIC_KEY
+    corbie test heard.yaml --secret-env ANTHROPIC_KEY
 `

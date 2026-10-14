@@ -115,7 +115,7 @@ func (cmd *Command) do(ctx context.Context, rest []string, in io.Reader, out, er
 	case errors.Is(err, flag.ErrHelp):
 		fmt.Fprint(out, helpOf(cmd))
 		return 0
-	case errors.Is(err, errRunFailed):
+	case errors.Is(err, errRunFailed), errors.Is(err, context.Canceled):
 		return 1
 	case errors.As(err, &u):
 		fmt.Fprintf(errOut, "corbie %s: %s\n\nusage: corbie %s %s\n", cmd.Name, u.text, cmd.Name, cmd.Usage)

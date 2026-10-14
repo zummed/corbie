@@ -154,6 +154,6 @@ The detailed rules behind the [Permissions overview](../permission.md). Requirem
 - **Identity** is where a ceiling is given with trust and changed: a client's by the controller's owner, a controller's by the runner's owner; a party with no ceiling may do nothing outside the job (R-id-24).
 - **Runner** adds its own ceiling to the layers a job carries, gives the job its scratch directory, writes the refusal or the list of what was used into the job's result, keeps nothing from a job on any ground but these layers, and stops what a job started when it ends (R-run-19).
 - **Plugins** reach outside only through the ways out, and each way out is where a check is made and a use is noted (R-plug-02); what a script leaves open is closed at the job's end (C-plug-07).
-- **Secrets** use the `secret` kind: its destination, which values a job is sent (R-sec-14), that being allowed a secret is not being sent it, and the check that every secret in a handle may go where it is going.
+- **Secrets** use the `secret` kind and its rule for a secret's name: its destination, which values a job is sent (R-sec-14), that being allowed a secret is not being sent it, and the check that every secret in a handle may go where it is going.
 - **Client** carries a start's narrowing list, and shows a run's `denied` with its refusal and the permissions a finished run used.
 - **Manual** carries the statements of what is not defended, and each plugin's page says which kinds its calls need.

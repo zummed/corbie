@@ -103,6 +103,5 @@ A page of the manual:
 
 ## Commits
 
-- Straight to `main`.
 - The message starts with the area, and names the rule when one applies: `store: listing reads to the end (C-store-02)`.
 - Refactors and tooling need only the area.

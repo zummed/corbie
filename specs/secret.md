@@ -32,7 +32,7 @@ allow:
   - secret:TG_BOT@*                              # anywhere the job may go
 ```
 
-The destination is written as another permission, and the secret's entry opens nothing by itself. It lets the value travel there, and the connection, the program or the file needs its own entry. A secret's name is always written out. Its destination is a scope like any other and may be filled from the machine's input.
+The destination is written as another permission, and the secret's entry opens nothing by itself. It lets the value travel there, and the connection, the program or the file needs its own entry. A secret's name is always written out. It holds no `@`, `:`, `=`, `*`, `$`, `{`, `}`, slash, backslash or blank, and does not start with `-` or `.`; in an entry, a `*` stands for any part of a name. Its destination is a scope like any other and may be filled from the machine's input.
 
 A secret bound to a host goes only over an encrypted connection. Many things on an owner's own network speak no other way than plain, and for one of those the entry says so: `net.unencrypted` in place of `net` lets the secret go to that host over a connection that is not encrypted as well, and to no other host. Anybody on the way there can read it. A secret bound to anywhere goes over either. The host is the one the script names: a secret bound to a name does not go to a connection asked for by address, nor the other way.
 

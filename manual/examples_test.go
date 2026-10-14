@@ -548,7 +548,7 @@ func tested(file string, allow []string) string {
 	for _, entry := range allow {
 		line += " --allow '" + entry + "'"
 		if name, isSecret := secretOf(entry); isSecret {
-			line += " --secret " + name
+			line += " --secret-env " + name
 		}
 	}
 	return line

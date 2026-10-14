@@ -25,9 +25,10 @@ func (l *list) Set(v string) error { *l = append(*l, v); return nil }
 
 // starting is everything a start may be given on the command line.
 type starting struct {
-	input, life, timeout, memory              string
-	labels, allow, deny, secrets, tags, files list
-	wait, watch                               bool
+	input, life, timeout, memory     string
+	labels, allow, deny, tags, files list
+	secrets, secretsFromEnv          list
+	wait, watch                      bool
 	// opened are the files given as input, open until the start is sent.
 	opened []*os.File
 }
@@ -46,11 +47,25 @@ func (s *starting) flags(e *env) {
 	e.flags.Var(&s.allow, "allow", "")
 	e.flags.Var(&s.deny, "deny", "")
 	e.flags.Var(&s.secrets, "secret", "")
+	e.flags.Var(&s.secretsFromEnv, "secret-env", "")
 	e.flags.StringVar(&s.life, "life", "", "")
 	e.flags.StringVar(&s.timeout, "timeout", "", "")
 	e.flags.StringVar(&s.memory, "memory", "", "")
 	e.flags.Var(&s.tags, "tag", "")
 	e.flags.BoolVar(&s.watch, "watch", false, "")
+}
+
+// addSecret puts a run secret into a start, its value read by read.
+func addSecret(start *client.Start, name string, read func(string) (string, error)) error {
+	value, err := read(name)
+	if err != nil {
+		return err
+	}
+	if start.Secrets == nil {
+		start.Secrets = map[string]string{}
+	}
+	start.Secrets[name] = value
+	return nil
 }
 
 // prepare reads the definition or the script a command names, with the
@@ -157,21 +172,6 @@ func (s *starting) prepare(e *env, file string) (*machine.Draft, client.Start, e
 		}
 		start.Labels[name] = value
 	}
-	// A run secret's value is never given on the command line: it is read
-	// from the environment variable of its name.
-	for _, name := range s.secrets {
-		if strings.Contains(name, "=") {
-			return nil, start, mistake("--secret takes a name, and reads the value from the environment variable of that name: a value is never given on the command line")
-		}
-		value, ok := os.LookupEnv(name)
-		if !ok {
-			return nil, start, mistake("--secret %s: the environment variable %q is not set, and it is where a run secret's value is read from", name, name)
-		}
-		if start.Secrets == nil {
-			start.Secrets = map[string]string{}
-		}
-		start.Secrets[name] = value
-	}
 	for flagName, text := range map[string]string{"--timeout": s.timeout, "--life": s.life} {
 		if text == "" {
 			continue
@@ -187,6 +187,31 @@ func (s *starting) prepare(e *env, file string) (*machine.Draft, client.Start, e
 			}
 		} else {
 			start.Life = time.Duration(d)
+		}
+	}
+	// The secrets come last, and the variables before anything is typed, so
+	// that every other mistake is found before a person types a value.
+	given := map[string]bool{}
+	for _, name := range slices.Concat(s.secretsFromEnv, s.secrets) {
+		if err := checkSecretName(name); err != nil {
+			return nil, start, err
+		}
+		if given[name] {
+			return nil, start, mistake("the secret %q is given twice: give it once", name)
+		}
+		given[name] = true
+	}
+	for _, name := range s.secretsFromEnv {
+		if err := addSecret(&start, name, secretFromEnv); err != nil {
+			return nil, start, err
+		}
+	}
+	typed := func(name string) (string, error) {
+		return secretTyped(e, name, "--secret-env reads it from the environment variable")
+	}
+	for _, name := range s.secrets {
+		if err := addSecret(&start, name, typed); err != nil {
+			return nil, start, err
 		}
 	}
 	return draft, start, nil
@@ -260,11 +285,13 @@ func cmdSubmit(e *env, args []string) error {
 		return mistake("--wait and --watch are two ways of staying; give one")
 	}
 	defer s.close()
-	draft, start, err := s.prepare(e, files[0])
+	// The client comes first, so that nobody types a secret's value for a
+	// start that cannot be sent.
+	c, err := e.client()
 	if err != nil {
 		return err
 	}
-	c, err := e.client()
+	draft, start, err := s.prepare(e, files[0])
 	if err != nil {
 		return err
 	}

@@ -397,10 +397,10 @@ func Test_client_run_name_is_one_field_everywhere(t *testing.T) {
 	}
 }
 
-// A run secret's value is read from the environment variable of its name
-// and never from the command line; a variable that is not set is a mistake
-// that says which, and sends nothing.
-func Test_client_run_secret_only_from_environment(t *testing.T) {
+// A secret's value is never taken from the command line, and is read only
+// from the source the command names. A value that is not found there is a
+// mistake that says where it was looked for, and sends nothing.
+func Test_client_secret_value_never_on_command_line(t *testing.T) {
 	m := machine{t, filepath.Join(t.TempDir(), "config")}
 	storeDir := filepath.Join(t.TempDir(), "store")
 	m.ok("", "init", "--store", storeDir, "--name", "box")
@@ -408,31 +408,49 @@ func Test_client_run_secret_only_from_environment(t *testing.T) {
 	definition := filepath.Join(dir, "hello.yaml")
 	before := stored(t, storeDir)
 	os.Unsetenv("CORBIE_TEST_TOKEN")
+	refused := func(stdin, says string, args ...string) {
+		t.Helper()
+		status, out, errOut := m.run(stdin, args...)
+		if status != 2 || out != "" || strings.Contains(errOut, "hunter2") || !strings.Contains(errOut, says) {
+			t.Errorf("corbie %s ended %d: %s%s", strings.Join(args, " "), status, out, errOut)
+		}
+	}
 	for _, command := range []string{"submit", "test"} {
-		status, out, errOut := m.run("", command, definition, "--secret", "CORBIE_TEST_TOKEN")
-		if status != 2 || out != "" || !strings.Contains(errOut, `the environment variable "CORBIE_TEST_TOKEN" is not set`) {
-			t.Errorf("corbie %s with a secret whose variable is not set ended %d: %s%s", command, status, out, errOut)
-		}
-		// A value written on the command line is not taken, and not repeated.
-		status, out, errOut = m.run("", command, definition, "--secret", "CORBIE_TEST_TOKEN=hunter2-on-the-line")
-		if status != 2 || strings.Contains(out+errOut, "hunter2") || !strings.Contains(errOut, "never given on the command line") {
-			t.Errorf("corbie %s with a secret's value on the command line ended %d: %s%s", command, status, out, errOut)
+		refused("", `the environment variable "CORBIE_TEST_TOKEN" is not set`, command, definition, "--secret-env", "CORBIE_TEST_TOKEN")
+		refused("hunter2-on-standard-input\n", `the secret "CORBIE_TEST_TOKEN" is typed at a terminal, and there is none`, command, definition, "--secret", "CORBIE_TEST_TOKEN")
+		for _, flag := range []string{"--secret", "--secret-env"} {
+			refused("", "never given on the command line", command, definition, flag, "CORBIE_TEST_TOKEN=hunter2-on-the-line")
 		}
 	}
-	if after := stored(t, storeDir); !slices.Equal(before, after) {
-		t.Fatalf("a start with a secret that could not be read was sent all the same: %v", after)
-	}
-	// With the variable set, the start is sent, sealed.
+	set := []string{"controller", "secret", "set"}
+	refused("", `the environment variable "CORBIE_TEST_TOKEN" is not set`, append(set, "CORBIE_TEST_TOKEN", "--env")...)
+	refused("hunter2-on-standard-input\n", `the secret "CORBIE_TEST_TOKEN" is typed at a terminal, and there is none`, append(set, "CORBIE_TEST_TOKEN")...)
+	refused("", `standard input gave no value for the secret "CORBIE_TEST_TOKEN"`, append(set, "CORBIE_TEST_TOKEN", "-")...)
+	refused("hunter2-on-standard-input\n", "give one", append(set, "CORBIE_TEST_TOKEN", "-", "--env")...)
+	refused("", "never given on the command line", append(set, "CORBIE_TEST_TOKEN=hunter2-on-the-line")...)
+	refused("", "never given on the command line", append(set, "CORBIE_TEST_TOKEN", "hunter2-on-the-line")...)
+	t.Setenv("CORBIE_TEST_TOKEN", "")
+	refused("", `the environment variable "CORBIE_TEST_TOKEN" is empty`, "submit", definition, "--secret-env", "CORBIE_TEST_TOKEN")
+	refused("", `the environment variable "CORBIE_TEST_TOKEN" is empty`, append(set, "CORBIE_TEST_TOKEN", "--env")...)
+	// A variable of the secret's name is read only when the command names
+	// the environment, and one secret is read from one source.
 	t.Setenv("CORBIE_TEST_TOKEN", "hunter2-in-the-environment")
-	status, out, errOut := m.run("", "submit", definition, "--input", `{"name": "x"}`, "--secret", "CORBIE_TEST_TOKEN")
-	if status != 0 || strings.Contains(out+errOut, "hunter2") {
-		t.Fatalf("with the variable set, submit ended %d: %s%s", status, out, errOut)
+	refused("", "is typed at a terminal, and there is none", "submit", definition, "--secret", "CORBIE_TEST_TOKEN")
+	refused("", "is typed at a terminal, and there is none", append(set, "CORBIE_TEST_TOKEN")...)
+	refused("", `standard input gave no value for the secret "CORBIE_TEST_TOKEN"`, append(set, "CORBIE_TEST_TOKEN", "-")...)
+	refused("", `the secret "CORBIE_TEST_TOKEN" is given twice: give it once`, "submit", definition, "--secret-env", "CORBIE_TEST_TOKEN", "--secret", "CORBIE_TEST_TOKEN")
+	refused("", `the secret "CORBIE_TEST_TOKEN" is given twice: give it once`, "submit", definition, "--secret-env", "CORBIE_TEST_TOKEN", "--secret-env", "CORBIE_TEST_TOKEN")
+	if after := stored(t, storeDir); !slices.Equal(before, after) {
+		t.Fatalf("a secret that could not be read was sent all the same: %v", after)
 	}
-	after := stored(t, storeDir)
-	if len(after) <= len(before) {
-		t.Fatal("with the variable set, nothing was sent")
+	// From the source named, each is sent, sealed.
+	m.ok("", "submit", definition, "--input", `{"name": "x"}`, "--secret-env", "CORBIE_TEST_TOKEN")
+	m.ok("", append(set, "CORBIE_TEST_TOKEN", "--env")...)
+	m.ok("hunter2-on-standard-input\n", append(set, "CORBIE_TEST_OTHER", "-")...)
+	if listed := m.ok("", "controller", "secret", "list"); listed != "CORBIE_TEST_OTHER\nCORBIE_TEST_TOKEN\n" {
+		t.Errorf("the controller's secrets are listed as %q", listed)
 	}
-	for _, name := range after {
+	for _, name := range stored(t, storeDir) {
 		if value, _ := os.ReadFile(name); strings.Contains(string(value), "hunter2") {
 			t.Fatalf("%s holds the secret's value in the clear", name)
 		}

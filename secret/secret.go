@@ -8,32 +8,19 @@ import (
 	"slices"
 	"strings"
 	"time"
-	"unicode"
 
 	"github.com/zummed/corbie/identity"
+	"github.com/zummed/corbie/permission"
 	"github.com/zummed/corbie/store"
 )
 
 // A controller secret is kept in the store as its value, sealed so that
 // only the controller can read it.
 
-// CheckName says whether a secret may have the name. A name is written out,
-// and holds no @, no : and no blank, so that NAME@destination can be read
-// in one way only.
-func CheckName(name string) error {
-	if err := store.CheckPart(name); err != nil || strings.ContainsAny(name, "@:*${}") || strings.ContainsFunc(name, blank) {
-		return fmt.Errorf("%q is not a name a secret can have: a name holds no @, no : and no blank", name)
-	}
-	return nil
-}
-
-// blank says whether a character is a blank, or one that is not shown.
-func blank(r rune) bool { return unicode.IsSpace(r) || unicode.IsControl(r) }
-
 // Set keeps a controller secret, in place of any kept before under the
 // name.
 func Set(ctx context.Context, s store.Store, ctl *identity.Identity, name, value string) error {
-	if err := CheckName(name); err != nil {
+	if err := permission.CheckSecretName(name); err != nil {
 		return err
 	}
 	at := store.Secret(ctl.Name, name)
@@ -47,7 +34,7 @@ func Set(ctx context.Context, s store.Store, ctl *identity.Identity, name, value
 
 // Get reads a controller secret, and says whether one is set.
 func Get(ctx context.Context, s store.Store, ctl *identity.Identity, name string) (value string, set bool, err error) {
-	if CheckName(name) != nil {
+	if permission.CheckSecretName(name) != nil {
 		return "", false, nil
 	}
 	at := store.Secret(ctl.Name, name)
@@ -63,7 +50,7 @@ func Get(ctx context.Context, s store.Store, ctl *identity.Identity, name string
 
 // Remove removes a controller secret.
 func Remove(ctx context.Context, s store.Store, ctl *identity.Identity, name string) error {
-	if err := CheckName(name); err != nil {
+	if err := permission.CheckSecretName(name); err != nil {
 		return err
 	}
 	_, err := s.Delete(ctx, store.Secret(ctl.Name, name), store.Overwrite)

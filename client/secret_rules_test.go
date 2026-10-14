@@ -252,17 +252,18 @@ func Test_sec_name_splits_one_way(t *testing.T) {
 	`
 	files := map[string]string{"it.js": "return 1"}
 	for _, name := range []string{"GITHUB_TOKEN", "deploy-key.2", "k"} {
-		if err := secret.CheckName(name); err != nil {
+		if err := permission.CheckSecretName(name); err != nil {
 			t.Errorf("the name %q: %v", name, err)
 		}
 		if _, err := machineParse(fmt.Sprintf(def, fmt.Sprintf("%q", "secret:"+name+"@net:api.example")), files); err != nil {
 			t.Errorf("an entry for the name %q: %v", name, err)
 		}
 	}
-	// A name is not empty and holds no @, no : and no blank, wherever one
-	// is written: for a controller secret, in an entry, with a start.
-	for _, name := range []string{"", "A@B", "A:B", "A B", " A", "A ", "A\tB", "A\nB", "A\rB", "A\u00a0B", "A\x00B"} {
-		if err := secret.CheckName(name); err == nil {
+	// A name is not empty, holds no @, no :, no slash and no blank, and
+	// does not start with - or ., by one rule wherever one is written: for
+	// a controller secret, in an entry, with a start.
+	for _, name := range []string{"", "A@B", "A:B", "A B", " A", "A ", "A\tB", "A\nB", "A\rB", "A\u00a0B", "A\x00B", "-", "-A", "--env", "A=B", ".A", "A/B", "A\\B"} {
+		if err := permission.CheckSecretName(name); err == nil {
 			t.Errorf("%q was taken as a secret's name", name)
 		}
 		if err := secret.Set(ctx, l.Memory.As(ownerOf()), l.Controller.ID, name, "value"); err == nil {

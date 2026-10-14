@@ -138,7 +138,7 @@ The detailed rules behind [the Client overview](../client.md).
 
 **C-client-28** A flag that has no effect on what was given is refused as a mistake: one that applies only to a script file is refused with a definition. A flag taken and ignored leaves a person believing a limit is in force. *Test:* `client_flag_without_effect_refused`
 
-**C-client-31** A run secret's value is never given on the command line, and a secret named whose variable is not set is a mistake that says which variable is missing and sends nothing. A command line can be read by every user and many jobs on the computer. *Test:* `client_run_secret_only_from_environment`
+**C-client-31** A secret's value, for a start or for `controller secret set`, is never given on the command line, and is read only from the source the command names: the terminal, the environment variable of its name, or standard input. A value not found there is a mistake that sends nothing. A command line can be read by every user and many jobs on the computer, and a value picked up from an unnamed source is not the one meant. *Test:* `client_secret_value_never_on_command_line`
 
 **C-client-32** Saving a result's files checks every name before writing any file: a name that is `.` or `..`, holds a slash, or is shared by two blobs is refused. Names come from a run's output, and a run must not choose where on the caller's disk a file lands. *Test:* `client_saved_file_names_checked_first`
 

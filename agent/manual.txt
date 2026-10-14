@@ -22,7 +22,7 @@ events sent to it.
     // shelf.js
     return fs.list(input.dir + "/" + input.shelf).map((file) => file.name)
 
-    corbie test librarian.yaml --input '{"dir": "/srv/books", "question": "What is on the top shelf?"}' --secret ANTHROPIC_KEY --watch
+    corbie test librarian.yaml --input '{"dir": "/srv/books", "question": "What is on the top shelf?"}' --secret-env ANTHROPIC_KEY --watch
       step 1  -> job turn: a script, on runner
       step 2  -> job shelf: a script, on runner
       step 3  <- done from shelf ["dune.txt","emma.txt"]
@@ -64,17 +64,18 @@ The model
   reply_tokens    the most tokens a reply may hold
   own             for claude-code: tools of the program that the model may use
 
-The key is a secret. `--secret ANTHROPIC_KEY` reads it from that environment
-variable for one run, and `corbie controller secret set ANTHROPIC_KEY` sets it
-for every run. Each turn's job gets `net:<host>` for the service and
-`secret:<secret>@net:<host>`, and nothing from the definition's `allow:`.
+The key is a secret. `--secret-env ANTHROPIC_KEY` reads it from that
+environment variable for one run, and `corbie controller secret set
+ANTHROPIC_KEY` sets it for every run. Each turn's job gets `net:<host>` for the
+service and `secret:<secret>@net:<host>`, and nothing from the definition's
+`allow:`.
 
     # elsewhere.yaml
     agent: elsewhere
     model: { name: my-model, service: openai-chat, address: https://models.example, secret: MODELS_KEY }
     prompt: Say hello.
 
-    corbie test elsewhere.yaml --secret MODELS_KEY
+    corbie test elsewhere.yaml --secret-env MODELS_KEY
       output: {"conversation":{"blobs":{},"turns":[{"$blob":"conversation.turns[0]","size":91,"type":"application/json"}]},"reply":"Hello.","tokens":{"input":10,"output":5}}
       used: net:models.example:443 secret:MODELS_KEY@net:models.example:443
 

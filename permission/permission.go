@@ -79,11 +79,8 @@ func CheckWritten(entry string) error {
 	if strings.Contains(name, "${") {
 		return fmt.Errorf("%q: a secret's name is written out", entry)
 	}
-	// The entry is read as the name up to the first @ and the destination
-	// after it, and a name that could hold : or a blank would leave more
-	// than one way to read it.
-	if strings.Contains(name, ":") || strings.ContainsFunc(name, func(r rune) bool { return unicode.IsSpace(r) || unicode.IsControl(r) }) {
-		return fmt.Errorf("%q: a secret's name holds no @, no : and no blank", entry)
+	if !secretName(name, true) {
+		return fmt.Errorf("%q: a secret's name holds no @, :, =, $, {, }, slash, backslash or blank, and does not start with - or .; a * stands for any part of a name", entry)
 	}
 	if destination == "*" {
 		return nil
@@ -95,6 +92,29 @@ func CheckWritten(entry string) error {
 		return CheckWritten(Net + ":" + rest)
 	}
 	return fmt.Errorf("%q: a secret may go to net:host, net.unencrypted:host, exec:program, fs.write:path or *", entry)
+}
+
+// CheckSecretName says whether a secret may have the name. An entry is read
+// as the name up to the first @ and the destination after it, so a name that
+// could hold : or a blank would leave more than one way to read it. The name
+// is a part of a name in the store, and a command line reads a word starting
+// with - as a flag or as standard input.
+func CheckSecretName(name string) error {
+	if !secretName(name, false) {
+		return fmt.Errorf("%q is not a name a secret can have: a name holds no @, :, =, *, $, {, }, slash, backslash or blank, and does not start with - or .", name)
+	}
+	return nil
+}
+
+// secretName says whether name can be a secret's name or, with pattern, a
+// pattern in which * stands for any part of a name.
+func secretName(name string, pattern bool) bool {
+	refused := "@:=*${}/\\"
+	if pattern {
+		refused = "@:=${}/\\"
+	}
+	blank := func(r rune) bool { return unicode.IsSpace(r) || unicode.IsControl(r) }
+	return name != "" && name[0] != '-' && name[0] != '.' && !strings.ContainsAny(name, refused) && !strings.ContainsFunc(name, blank)
 }
 
 // CheckList says what is wrong with a list of entries written out in full,

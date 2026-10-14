@@ -53,7 +53,7 @@ The detailed rules behind the [Secrets overview](../secret.md). Requirements are
 **R-sec-29** A secret bound to a host goes only over an encrypted connection. `secret:NAME@net.unencrypted:host` lets it go to that host over a connection that is not encrypted as well, and to no other host; one bound to anywhere goes over either.
 *Accept:* a job allowed `net:api.example` and `secret:K@net:api.example` sends `K` in a request to `https://api.example/`. The same request to `http://api.example/` is refused, and the refusal says the connection is not encrypted and gives `secret:K@net.unencrypted:api.example:80` as the line that would let it go. With `secret:K@net.unencrypted:api.example` instead, the requests to `http://api.example/` and to `https://api.example/` are both sent, and the server receives `K`; a request with `K` to `http://other.example/`, which the job may also reach, is refused. With `secret:K@*`, the request to `http://api.example/` is sent.
 
-**C-sec-04** A secret's name is not empty and holds no `@`, no `:` and no blank. `NAME@destination` must split in exactly one place. *Test:* `sec_name_splits_one_way`
+**C-sec-04** A secret's name is not empty, holds no `@`, `:`, `=`, `*`, `$`, `{`, `}`, slash, backslash or blank, and does not start with `-` or `.`, by one rule wherever a name is written. `NAME@destination` must split in exactly one place, `NAME=value` on a command line is a value and never a name, a name is a part of a name in the store, and a command line must not read a name as a flag or as standard input. *Test:* `sec_name_splits_one_way`
 
 **C-sec-05** Whether a connection is encrypted is judged at the moment a value goes into it, not when it was opened. A connection that starts plain and is turned encrypted partway carries a host-bound secret only afterwards. *Test:* `sec_encrypted_judged_when_the_value_goes`
 
@@ -126,7 +126,7 @@ The detailed rules behind the [Secrets overview](../secret.md). Requirements are
 - **Identity** supplies the sealing: a controller secret to the controller alone, a job to its runner.
 - **Controller** chooses the values when it builds a job, and fails a job that names a secret that is not set.
 - **Instances** keep a root's run secrets in its record for as long as the root runs, through any trimming of its history.
-- **Permissions** supply the `secret` kind and how its scope is matched (R-perm-09), the layers a value must pass, the check at the moment of acting, and the refusal.
+- **Permissions** supply the `secret` kind and how its scope is matched (R-perm-09), the rule for a secret's name (C-sec-04), the layers a value must pass, the check at the moment of acting, and the refusal.
 - **Plugins** get a value only with a way out. The `secrets` plugin makes handles, and masking is done at the line every plugin's results cross.
 - **Runner** holds a job's values for the life of the job, applies its own ceiling when the script acts, and has what its job's process prints masked before it is kept.
 - **Client** sends run secrets with a start, and the controller's commands set, set again and remove controller secrets.

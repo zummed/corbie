@@ -107,7 +107,7 @@ states:
 	asked(m, "", true, "cancel", door())
 	asked(m, "", false, "controller", "cancel", door())
 	asked(m, "", true, "controller", "parties")
-	asked(m, "the value\n", false, "controller", "secret", "set", "A_SECRET_OF_THIS_TEST")
+	asked(m, "the value\n", false, "controller", "secret", "set", "A_SECRET_OF_THIS_TEST", "-")
 	asked(m, "", true, "controller", "secret", "list")
 	asked(m, "", false, "controller", "secret", "remove", "A_SECRET_OF_THIS_TEST")
 	asked(m, "", true, "controller", "policy", "--viewer", "--store", "s3://bucket/prefix?region=eu-west-2")

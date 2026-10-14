@@ -17,7 +17,6 @@ import (
 	"github.com/zummed/corbie/instance"
 	"github.com/zummed/corbie/machine"
 	"github.com/zummed/corbie/permission"
-	"github.com/zummed/corbie/secret"
 	"github.com/zummed/corbie/store"
 )
 
@@ -108,7 +107,7 @@ func (c *Client) Start(ctx context.Context, draft *machine.Draft, start Start) (
 		return "", fmt.Errorf("%w: %q is not a name this client can give a run", ErrStart, run)
 	}
 	for name := range start.Secrets {
-		if err := secret.CheckName(name); err != nil {
+		if err := permission.CheckSecretName(name); err != nil {
 			return "", fmt.Errorf("%w: %w", ErrStart, err)
 		}
 	}

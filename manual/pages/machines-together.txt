@@ -53,7 +53,7 @@ An agent uses the flow as a tool
           machine: ./title.yaml
           input: { url: "${args.url}" }
 
-    corbie test helper.yaml --input '{"question": "What is the title of the page at https://example.com?"}' --secret ANTHROPIC_KEY --watch
+    corbie test helper.yaml --input '{"question": "What is the title of the page at https://example.com?"}' --secret-env ANTHROPIC_KEY --watch
       step 1  -> job turn: a script, on runner
       step 2  -> job title: a machine, <id>
         step 1  -> job get_title: a script, on runner
@@ -62,7 +62,7 @@ An agent uses the flow as a tool
       step 3  -> job turn#2: a script, on runner
       step 4  done
 
-`--secret ANTHROPIC_KEY` reads the model's API key from that environment
+`--secret-env ANTHROPIC_KEY` reads the model's API key from that environment
 variable. Each turn is a job that calls the model. In the first turn the model
 called the tool `title`, whose job is the flow, and in the second it answered.
 

@@ -24,7 +24,9 @@ const starts = `
                            whatever is allowed; repeatable
   --timeout <time>         the longest the run may take, such as 1h; it
                            cannot extend the definition's timeout
-  --secret NAME            a run secret, its value read from the environment
+  --secret NAME            a run secret, its value typed at the terminal and
+                           not shown; repeatable
+  --secret-env NAME        a run secret, its value read from the environment
                            variable NAME; repeatable
   --life <time>            how long the start message is valid while no
                            controller takes it; default 5m`
@@ -260,9 +262,12 @@ removed.`},
 		{Name: "controller parties", Usage: "", Summary: "list the runners and clients the controller trusts", run: cmdParties, Help: `
 Each line gives a runner's or a client's kind, name and card fingerprint, then
 its ceiling, deny list and tags if set, then removed if it was removed.`},
-		{Name: "controller secret set", Usage: "<NAME>", Summary: "set a controller secret", run: cmdSecretSet, Help: `
-The value is read from the environment variable NAME or, if that is not set,
-from standard input. It is never given on the command line.
+		{Name: "controller secret set", Usage: "<NAME> [-]", Summary: "set a controller secret", run: cmdSecretSet, Help: `
+The value is typed at the terminal and not shown. It is never given on the
+command line.
+
+  -       the value is read from standard input, to the end
+  --env   the value is read from the environment variable NAME
 
   corbie manual using-secrets   how a job uses a secret`},
 		{Name: "controller secret remove", Usage: "<NAME>", Summary: "remove a controller secret", run: cmdSecretRemove},

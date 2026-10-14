@@ -17,6 +17,7 @@ import (
 	"github.com/zummed/corbie/permission"
 	"github.com/zummed/corbie/secret"
 	"github.com/zummed/corbie/store"
+	"golang.org/x/term"
 )
 
 // ceiling reads a ceiling as it is given on a command line. --ceiling sets
@@ -596,30 +597,115 @@ func cmdParties(e *env, args []string) error {
 }
 
 func cmdSecretSet(e *env, args []string) error {
+	var fromEnv bool
+	e.flags.BoolVar(&fromEnv, "env", false, "")
 	rest, err := e.parse(args)
 	if err != nil {
 		return err
 	}
-	if len(rest) != 1 {
-		return mistake("name the secret; its value is read from the environment variable of that name, or from standard input")
+	if len(rest) == 0 {
+		return mistake("name the secret")
 	}
-	// The value is never given on the command line.
-	value, ok := os.LookupEnv(rest[0])
-	if !ok {
-		data, err := io.ReadAll(e.in)
-		if err != nil {
-			return err
-		}
-		value = strings.TrimRight(string(data), "\r\n")
+	name := rest[0]
+	if err := checkSecretName(name); err != nil {
+		return err
 	}
-	if value == "" {
-		return mistake("the secret has no value: set the environment variable %q, or give the value on standard input", rest[0])
+	fromStdin := len(rest) == 2 && rest[1] == "-"
+	if len(rest) != 1 && !fromStdin {
+		return mistake("name the secret, and nothing else: a secret's value is never given on the command line")
+	}
+	if fromEnv && fromStdin {
+		return mistake("--env and - each give the value: give one")
 	}
 	ctl, s, err := e.controller()
 	if err != nil {
 		return err
 	}
-	return secret.Set(e.ctx, s, ctl, rest[0], value)
+	var value string
+	switch {
+	case fromEnv:
+		value, err = secretFromEnv(name)
+	case fromStdin:
+		var data []byte
+		data, err = io.ReadAll(e.in)
+		value = strings.TrimRight(string(data), "\r\n")
+		if err == nil && value == "" {
+			err = mistake("standard input gave no value for the secret %q", name)
+		}
+	default:
+		value, err = secretTyped(e, name, "--env reads it from the environment variable, and - from standard input")
+	}
+	if err != nil {
+		return err
+	}
+	return secret.Set(e.ctx, s, ctl, name, value)
+}
+
+// checkSecretName refuses a name a secret cannot have, and a value written
+// in place of a name. A value is never given on the command line, where
+// every user of the computer can read it, and is never repeated.
+func checkSecretName(name string) error {
+	if strings.Contains(name, "=") {
+		return mistake("a secret's value is never given on the command line: give the secret's name alone")
+	}
+	if err := permission.CheckSecretName(name); err != nil {
+		return mistake("%v", err)
+	}
+	return nil
+}
+
+// secretFromEnv reads a secret's value from the environment variable of its
+// name.
+func secretFromEnv(name string) (string, error) {
+	value, ok := os.LookupEnv(name)
+	switch {
+	case !ok:
+		return "", mistake("the environment variable %q is not set", name)
+	case value == "":
+		return "", mistake("the environment variable %q is empty", name)
+	}
+	return value, nil
+}
+
+// secretTyped asks for a secret's value at the terminal, and does not show
+// what is typed. Without a terminal it is a mistake, which says what reads
+// the value otherwise.
+func secretTyped(e *env, name, otherwise string) (string, error) {
+	in, ok := e.in.(*os.File)
+	if !ok || !term.IsTerminal(int(in.Fd())) {
+		return "", mistake("the secret %q is typed at a terminal, and there is none: %s", name, otherwise)
+	}
+	fd := int(in.Fd())
+	state, err := term.GetState(fd)
+	if err != nil {
+		return "", err
+	}
+	type line struct {
+		typed []byte
+		err   error
+	}
+	read := make(chan line, 1)
+	fmt.Fprintf(e.errOut, "%s: ", name)
+	go func() {
+		typed, err := term.ReadPassword(fd)
+		read <- line{typed, err}
+	}()
+	// An interrupt ends the command at once, with the terminal as it was.
+	var got line
+	select {
+	case got = <-read:
+	case <-e.ctx.Done():
+		got.err = e.ctx.Err()
+		term.Restore(fd, state)
+	}
+	fmt.Fprintln(e.errOut)
+	switch {
+	case got.err != nil:
+		return "", got.err
+	case len(got.typed) == 0:
+		return "", mistake("nothing was typed for the secret %q", name)
+	}
+	return string(got.typed), nil
 }
 
 func cmdSecretRemove(e *env, args []string) error {

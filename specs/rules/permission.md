@@ -31,6 +31,8 @@ The detailed rules behind the [Permissions overview](../permission.md). Requirem
 
 **C-perm-03** The characters `*` and the like in a directory's real name are taken as they are when a scope is resolved. A directory called `x*` would otherwise widen the scope it is part of. *Test:* `perm_resolved_name_is_not_a_pattern`
 
+**C-perm-25** A link to a place that does not exist is followed to that place. Writing the link makes the file there, so the check is made there. *Test:* `perm_dangling_link_followed`
+
 **C-perm-05** A host is matched in one spelling: lower case, no trailing dot, an IPv4 address written inside an IPv6 one taken as the IPv4 address, and an address's zone dropped. Another spelling of a denied host otherwise slips past the deny. *Test:* `perm_host_one_spelling_before_match`
 
 **C-perm-06** A host name with characters other than letters, digits, `.`, `-` and `_` is refused before anything is looked up. What is not a host name must not be handed to a resolver. *Test:* `perm_odd_host_name_refused_before_lookup`
@@ -94,6 +96,8 @@ The detailed rules behind the [Permissions overview](../permission.md). Requirem
 **C-perm-16** A name that passes only because one of its addresses is allowed is connected to at that address and no other. Allowing one address must not open every address the name has. *Test:* `perm_address_allow_reaches_only_that_address`
 
 **C-perm-17** Every address a name resolves to is checked, and the name is not looked up a second time between the check and the connection. A name can resolve differently the second time. *Test:* `perm_connects_only_to_what_was_checked`
+
+**C-perm-24** A host scope written as an address, whole or with `*` for parts of it, matches an address and never a name. `10.x.example.com` has the parts of `10.*.*.*`, and a name that passes is connected to at whatever it resolves to. *Test:* `perm_address_scope_matches_only_an_address`
 
 ## Refusals
 

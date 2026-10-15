@@ -11,6 +11,7 @@ import (
 	"io"
 	"strings"
 	"sync"
+	"unicode"
 )
 
 // A Store holds named values. Every call concerns one name and nothing is
@@ -112,7 +113,7 @@ var (
 // CheckPart says whether part can be one part of a name: not empty, not
 // starting with a dot, and holding no slash.
 func CheckPart(part string) error {
-	if part == "" || part[0] == '.' || strings.ContainsAny(part, "/\\\x00") {
+	if part == "" || part[0] == '.' || strings.ContainsAny(part, "/\\") || strings.ContainsFunc(part, unicode.IsControl) {
 		return fmt.Errorf("%w: part %q", ErrName, part)
 	}
 	return nil

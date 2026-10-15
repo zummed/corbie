@@ -357,6 +357,9 @@ func cmdEnrol(e *env, args []string) error {
 		if card.Kind == identity.Controller {
 			return fmt.Errorf("this is the card of a controller, and a runner's or a client's is needed")
 		}
+		if card.Name == ctl.Card.Name {
+			return fmt.Errorf("%q is the controller's own name", card.Name)
+		}
 		if old, err = identity.ReadTrust(e.ctx, s, ctl.Card, card.Name); err != nil {
 			return err
 		}

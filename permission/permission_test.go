@@ -198,6 +198,38 @@ func Test_perm_resolved_name_is_not_a_pattern(t *testing.T) {
 	}
 }
 
+func Test_perm_address_scope_matches_only_an_address(t *testing.T) {
+	s := set(allow("net:10.*.*.*", "secret:K@net:10.*.*.*"))
+	if r := s.Check(Net, "10.0.3.7:443"); r != nil {
+		t.Fatalf("an address pattern refused an address: %v", r)
+	}
+	// A name with the parts of the pattern is a name all the same, and
+	// where it resolves to is anyone's choice.
+	for _, value := range []string{"10.x.example.com:443", "10.0.3.example:443"} {
+		if s.Check(Net, value) == nil {
+			t.Fatalf("an address pattern passed the name %s", value)
+		}
+		if s.Check(Secret, "K@net:"+value) == nil {
+			t.Fatalf("a secret bound to an address pattern was sent to the name %s", value)
+		}
+	}
+}
+
+func Test_perm_dangling_link_followed(t *testing.T) {
+	dir, _ := filepath.EvalSymlinks(t.TempDir())
+	os.MkdirAll(filepath.Join(dir, "out"), 0o755)
+	os.Symlink(filepath.Join(dir, "elsewhere", "target"), filepath.Join(dir, "out", "report"))
+	// A link to a place that does not exist yet points there all the
+	// same, and writing the link makes the file there.
+	if got, err := RealPath(filepath.Join(dir, "out", "report")); err != nil || got != filepath.Join(dir, "elsewhere", "target") {
+		t.Fatalf("a dangling link resolves to %s (%v)", got, err)
+	}
+	os.Symlink("../elsewhere", filepath.Join(dir, "out", "rel"))
+	if got, err := RealPath(filepath.Join(dir, "out", "rel", "sub", "a")); err != nil || got != filepath.Join(dir, "elsewhere", "sub", "a") {
+		t.Fatalf("a relative dangling link resolves to %s (%v)", got, err)
+	}
+}
+
 func Test_perm_link_ring_refused(t *testing.T) {
 	dir := t.TempDir()
 	os.Symlink(filepath.Join(dir, "b"), filepath.Join(dir, "a"))

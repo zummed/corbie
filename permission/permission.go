@@ -8,6 +8,7 @@ import (
 	"io/fs"
 	"net"
 	"net/netip"
+	"os"
 	"path"
 	"path/filepath"
 	"slices"
@@ -378,9 +379,9 @@ func (ps pathScope) matches(value string) bool {
 }
 
 // RealPath gives where a path really points, following the links in as
-// much of it as exists. It is the one way a path is resolved, for every
-// kind that names one. A path that runs through a ring of links has no real
-// location, and is an error.
+// much of it as exists, and a link to a place that does not exist yet. It
+// is the one way a path is resolved, for every kind that names one. A path
+// that runs through a ring of links has no real location, and is an error.
 func RealPath(p string) (string, error) {
 	rest := ""
 	for at := filepath.Clean(p); ; {
@@ -390,6 +391,14 @@ func RealPath(p string) (string, error) {
 		}
 		if !errors.Is(err, fs.ErrNotExist) {
 			return "", fmt.Errorf("%s has no real location: %w", p, err)
+		}
+		if target, err := os.Readlink(at); err == nil {
+			// A dangling link: what is written to it lands at its target.
+			if !filepath.IsAbs(target) {
+				target = filepath.Join(filepath.Dir(at), target)
+			}
+			at = filepath.Clean(target)
+			continue
 		}
 		parent := filepath.Dir(at)
 		if parent == at {
@@ -473,9 +482,10 @@ func matchHost(scope, value string) bool {
 		return false
 	}
 	host, gotHost = NormalHost(host), NormalHost(gotHost)
-	if strings.Contains(host, ":") || net.ParseIP(gotHost) != nil {
-		// An address is one part.
-		return matchPart(host, gotHost)
+	if addressScope(host) || net.ParseIP(gotHost) != nil {
+		// An address is one part, and a scope written as an address
+		// matches no name: 10.x.example.com has the parts of 10.*.*.*.
+		return net.ParseIP(gotHost) != nil && matchPart(host, gotHost)
 	}
 	a, b := strings.Split(host, "."), strings.Split(gotHost, ".")
 	if len(a) != len(b) {
@@ -602,13 +612,19 @@ func (s *Set) AllowsAnAddress() bool {
 		for _, entry := range layer.Allow {
 			if scope, ok := strings.CutPrefix(entry, Net+":"); ok {
 				host, _ := splitHost(scope)
-				if net.ParseIP(host) != nil || strings.ContainsAny(host, ":") || strings.Trim(host, "0123456789.*") == "" {
+				if addressScope(host) {
 					return true
 				}
 			}
 		}
 	}
 	return false
+}
+
+// addressScope says whether a host scope is written as an address, whole
+// or with * for parts of it, and not as a name.
+func addressScope(host string) bool {
+	return net.ParseIP(host) != nil || strings.Contains(host, ":") || strings.Trim(host, "0123456789.*") == ""
 }
 
 // NormalHost gives a host in the one spelling it is matched in: lower

@@ -17,7 +17,7 @@ There are six kinds.
 | `env` | reading a variable of the runner's | a name |
 | `secret` | sending a secret somewhere | a secret's name and a destination |
 
-A scope is one of three things, matched the same way wherever it appears: a path, a host, or a name. Any of them may use `*` for a part. A host with no port means every port. A path is checked where it really points, after links are followed.
+A scope is one of three things, matched the same way wherever it appears: a path, a host, or a name. Any of them may use `*` for a part. A host with no port means every port, and a host written as an address, `10.0.0.*`, matches no name. A path is checked where it really points, after links are followed.
 
 Kinds are gathered into groups: `network`, `disk`, `exec` and `env`. A group allows every scope of its kinds. `all` allows everything, secrets included, and means the same in every layer. Being allowed a secret is not the same as being sent it: a job is sent only the secrets its definition names (see Secrets).
 

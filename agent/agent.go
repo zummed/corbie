@@ -320,7 +320,9 @@ func (agentType) Fill(p *machine.Parser, f *machine.Fields) any {
 		tf.Done()
 		a.Tools[name] = tool
 	}
-	// The blob tools every agent has are ordinary scripts.
+	// The blob tools every agent has are ordinary scripts. They need no
+	// permission, and the code tool runs what the model wrote, so they get
+	// nothing from the definition's lists.
 	for name, tool := range blobTools {
 		if _, own := a.Tools[name]; own {
 			p.Problem("tools."+name, "the tool %q has the name of one of the tools every agent has for blobs", name)
@@ -328,7 +330,7 @@ func (agentType) Fill(p *machine.Parser, f *machine.Fields) any {
 		}
 		p.Builtin("corbie:"+name+".js", tool.source)
 		a.Tools[name] = &Tool{Does: tool.does, Args: tool.args,
-			Job: &machine.JobSpec{Script: "corbie:" + name + ".js", Input: tool.input}}
+			Job: &machine.JobSpec{Script: "corbie:" + name + ".js", Input: tool.input, Alone: true}}
 	}
 	// The job that makes a turn: Corbie's own script, or one the
 	// definition puts in its place. It is written exactly what it needs and

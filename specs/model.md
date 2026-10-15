@@ -1,12 +1,39 @@
 # Models
 
-An agent's turns are calls to a model, made through the `llm` plugin. This area is that plugin and the model services behind it.
+An agent's turns are calls to a model, made through the `llm` plugin. This area is that plugin and the model services behind it. The plugin has two calls: `chat` holds a conversation with a model, and `choose` puts questions with fixed answers to a System One model.
 
-## One call
+## Chat
 
 A script calls a model with one call: it gives the conversation so far, the tools on offer and what shape of answer is wanted, and gets back what the model said, the tools it asked for, why it stopped, and how many tokens were used. A service that has a way of its own to hold an answer to a shape is given the shape that way, and any other is told it in the system text. The model's text is emitted as it arrives, a few pieces at a time, so a watcher sees a reply being written.
 
 Why the model stopped is always passed on. A reply that ended because it ran out of room is told apart from one that was finished.
+
+## Choose
+
+A System One model writes no text. It is given the text or data the questions are about, sent as `state`, and named questions, and answers every question at once with probabilities. A question has a type, its instructions, and for two of the types its criteria.
+
+```
+  noul     whether a statement is true: the probability that it is
+  choice   one of the options in its criteria, with a probability for each
+  score    a level of the ordered scale in its criteria, with a probability for each level
+```
+
+The questions are written in the System One format, which TypeSafe's Jev set. The answers come back as the service wrote them, with the model that answered and the tokens used. Corbie does not read the questions or the answers: what the service's documentation says they hold is what a script writes and reads.
+
+```
+const r = llm.choose("Checkout has been failing for every customer for the last hour.", {
+  model: "jev-latest", key: secrets.get("TYPESAFE_KEY"),
+  questions: { urgent: { type: "noul", instructions: "The customer cannot use the product." } },
+})
+r.answers.urgent.noul      0.99
+r.model                    jev-1.13.0
+```
+
+An answer's `confidence` is how concentrated its probabilities are, not how likely it is right, so a condition reads a probability. The model that answered is a version, since `jev-latest` names a different version after each release.
+
+The `systemone` service is at `https://api.typesafe.ai`, and a `jev-…` model is of it by default. `address:` sends the call to another host, such as a model served on the runner's computer, and a call with no `key:` sends no key.
+
+An agent's model is of a service that has `chat`. A definition that names a model of `systemone` is refused when it is checked.
 
 ## Services
 
@@ -14,7 +41,9 @@ Each model service is an extension, kept apart from the rest and from each other
 
 A model's part of a definition holds what its service's models hold, and nothing else. One of a service on the web has an address and may be held to a size of reply; one of a program has neither, and has tools of its own. A field its service's models do not hold is refused when the definition is checked.
 
-There are two kinds. A service **on the web** speaks one service's way of talking, and is reached with two things: an address and a key. Corbie comes with three ways of talking, Anthropic's and OpenAI's two, and each knows where its service usually lives, so a definition that names a `claude-…` or `gpt-…` model need say nothing more. A model anywhere else that speaks one of these ways, self-hosted or offered by a cloud, is named by the way it speaks and its own address.
+There are two kinds. A service **on the web** speaks one service's way of talking, and is reached with two things: an address and a key.
+
+Corbie comes with four ways of talking: Anthropic's, OpenAI's two, and the System One format. Each knows where its service usually lives, so a definition that names a `claude-…` or `gpt-…` model need say nothing more. A model anywhere else that speaks one of these ways, self-hosted or offered by a cloud, is named by the way it speaks and its own address.
 
 ```
 model: { name: claude-sonnet-5-5, secret: ANTHROPIC_KEY }

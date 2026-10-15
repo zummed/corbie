@@ -1,7 +1,8 @@
-// Package llm is the plugin that calls a model: one call that gives the
+// Package llm is the plugin that calls a model. Its chat gives the
 // conversation so far, the tools on offer and what is wanted, and gets back
 // what the model said, the tools it asked for, why it stopped and how many
-// tokens were used.
+// tokens were used. Its choose gives a System One model text or data and
+// named questions about it, and gets back the answers.
 package llm
 
 import (
@@ -50,8 +51,10 @@ type Service struct {
 	// Shapes says the service has a way of its own to be given the shape
 	// of answer wanted. One that has none is told it in the system text.
 	Shapes bool
-	// Chat makes one call.
-	Chat func(job *plugin.Job, c *Call) (*Reply, error)
+	// Chat holds a conversation: one call. Choose puts questions with fixed
+	// answers to a System One model. A service has one or both.
+	Chat   func(job *plugin.Job, c *Call) (*Reply, error)
+	Choose func(job *plugin.Job, q *Questions) (*Answers, error)
 }
 
 // Accept is one type of content a service takes beside text, and the
@@ -89,6 +92,25 @@ type Reply struct {
 	Kept  any // parts the service wants back unchanged
 }
 
+// Questions is one call to a System One model: the text or data the
+// questions are about, and the questions under their names.
+type Questions struct {
+	Model     string
+	State     any
+	Questions map[string]any
+	Address   string
+	Key       any
+	Limit     time.Duration
+}
+
+// Answers is what a System One model gave back: an answer under each
+// question's name, as the service wrote it.
+type Answers struct {
+	Model   string
+	Answers map[string]any
+	Usage   map[string]any
+}
+
 // Why a model stopped.
 const (
 	StopEnd    = "end"    // it finished
@@ -118,6 +140,18 @@ func Names() []string {
 		names = append(names, name)
 	}
 	sort.Strings(names)
+	return names
+}
+
+// Having gives the services that make a call: those with Chat, or those
+// with Choose.
+func Having(call func(*Service) bool) []string {
+	var names []string
+	for _, name := range Names() {
+		if call(services[name]) {
+			names = append(names, name)
+		}
+	}
 	return names
 }
 
@@ -151,7 +185,8 @@ func (s *Service) Takes(typ string, size int64) error {
 
 func init() {
 	plugin.Register(&plugin.Module{Name: "llm", Page: page, Calls: map[string]*plugin.Call{
-		"chat": {Options: []string{"service", "model", "address", "key", "system", "tools", "shape", "effort", "reply_tokens", "timeout", "own"}, Do: chat},
+		"chat":   {Options: []string{"service", "model", "address", "key", "system", "tools", "shape", "effort", "reply_tokens", "timeout", "own"}, Do: chat},
+		"choose": {Options: []string{"service", "model", "address", "key", "questions", "timeout"}, Do: choose},
 		"takes": {Options: []string{"service"}, Do: func(job *plugin.Job, first any, opt plugin.Options) (any, error) {
 			b, ok := first.(*plugin.Blob)
 			name, err := opt.Text("service", "anthropic")
@@ -174,8 +209,8 @@ func chat(job *plugin.Job, first any, opt plugin.Options) (any, error) {
 		return nil, err
 	}
 	svc, ok := services[name]
-	if !ok {
-		return nil, plugin.Errorf(plugin.BadInput, "service: is one of %s, not %q", strings.Join(Names(), ", "), name)
+	if !ok || svc.Chat == nil {
+		return nil, plugin.Errorf(plugin.BadInput, "service: is one of %s, not %q", strings.Join(Having(func(s *Service) bool { return s.Chat != nil }), ", "), name)
 	}
 	c := &Call{Said: ownKept(said, name), Key: opt["key"]}
 	if c.Model, err = opt.Text("model", ""); err != nil || c.Model == "" {
@@ -253,6 +288,41 @@ func chat(job *plugin.Job, first any, opt plugin.Options) (any, error) {
 		out["kept"] = map[string]any{"service": name, "parts": r.Kept}
 	}
 	return out, nil
+}
+
+func choose(job *plugin.Job, first any, opt plugin.Options) (any, error) {
+	if first == nil {
+		return nil, plugin.Errorf(plugin.BadInput, "llm.choose takes the state first: the text or data the questions are about")
+	}
+	name, err := opt.Text("service", "systemone")
+	if err != nil {
+		return nil, err
+	}
+	svc, ok := services[name]
+	if !ok || svc.Choose == nil {
+		return nil, plugin.Errorf(plugin.BadInput, "service: is one of %s, not %q", strings.Join(Having(func(s *Service) bool { return s.Choose != nil }), ", "), name)
+	}
+	q := &Questions{State: first, Key: opt["key"]}
+	if q.Model, err = opt.Text("model", ""); err != nil || q.Model == "" {
+		return nil, plugin.Errorf(plugin.BadInput, "llm.choose needs model:, the model's name")
+	}
+	if q.Questions, err = opt.Map("questions"); err != nil {
+		return nil, err
+	}
+	if len(q.Questions) == 0 {
+		return nil, plugin.Errorf(plugin.BadInput, "llm.choose needs questions:, each under its name with its type, instructions and criteria")
+	}
+	if q.Address, err = opt.Text("address", svc.Address); err != nil {
+		return nil, err
+	}
+	if q.Limit, err = opt.Duration("timeout", 3*time.Minute); err != nil {
+		return nil, err
+	}
+	a, err := svc.Choose(job, q)
+	if err != nil {
+		return nil, err
+	}
+	return map[string]any{"answers": a.Answers, "model": a.Model, "usage": a.Usage}, nil
 }
 
 // wanted says what shape of answer is wanted, as the model is told it: each
@@ -348,10 +418,12 @@ type web struct {
 	gather func(whole, event map[string]any) (text string, complete bool, err error)
 }
 
-// chat makes one call to a service on the web.
-func (svc *web) chat(job *plugin.Job, c *Call) (*Reply, error) {
-	limit := c.Limit
-	target, err := url.Parse(strings.TrimSuffix(c.Address, "/") + svc.path)
+// send makes one request to a service on the web, and gives its answer to
+// be read. The key is an ordinary secret, and goes only where it is bound
+// to: a key bound to a host never goes over a plain connection. A call with
+// no key sends none.
+func (svc *web) send(ctx context.Context, job *plugin.Job, address string, key any, limit time.Duration, asked map[string]any) (io.ReadCloser, error) {
+	target, err := url.Parse(strings.TrimSuffix(address, "/") + svc.path)
 	if err != nil || target.Host == "" || (target.Scheme != "http" && target.Scheme != "https") {
 		return nil, plugin.Errorf(plugin.BadInput, "the model's address is not a web address")
 	}
@@ -365,24 +437,14 @@ func (svc *web) chat(job *plugin.Job, c *Call) (*Reply, error) {
 			port = "80"
 		}
 	}
-	// The key is an ordinary secret, and goes only where it is bound to. A
-	// key bound to a host never goes over a plain connection.
-	key, err := job.RevealOver(c.Key, net.JoinHostPort(target.Hostname(), port), target.Scheme == "https")
+	revealed, err := job.RevealOver(key, net.JoinHostPort(target.Hostname(), port), target.Scheme == "https")
 	if err != nil {
 		return nil, err
 	}
-	// Every answer is asked for as it is written, and read that way.
-	asked, err := svc.request(job, c)
-	if err != nil {
-		return nil, err
-	}
-	asked["stream"] = true
 	body, err := json.Marshal(asked, json.Deterministic(true))
 	if err != nil {
-		return nil, plugin.Errorf(plugin.BadInput, "the conversation cannot be sent: %v", err)
+		return nil, plugin.Errorf(plugin.BadInput, "the request cannot be sent: %v", err)
 	}
-	ctx, cancel := context.WithTimeout(job.Context, limit)
-	defer cancel()
 	client := &nethttp.Client{
 		Transport: &nethttp.Transport{Proxy: nil, DisableKeepAlives: true,
 			DialContext: func(ctx context.Context, network, address string) (net.Conn, error) { return job.Dial(ctx, address) }},
@@ -395,8 +457,10 @@ func (svc *web) chat(job *plugin.Job, c *Call) (*Reply, error) {
 		return nil, plugin.Errorf(plugin.BadInput, "the request cannot be made")
 	}
 	req.Header.Set("Content-Type", "application/json")
-	for name, value := range svc.headers(key) {
-		req.Header.Set(name, value)
+	if revealed != "" {
+		for name, value := range svc.headers(revealed) {
+			req.Header.Set(name, value)
+		}
 	}
 	resp, err := client.Do(req)
 	if err != nil {
@@ -408,19 +472,67 @@ func (svc *web) chat(job *plugin.Job, c *Call) (*Reply, error) {
 		}
 		return nil, plugin.Errorf(plugin.Refused, "the model service could not be reached: %v", errors.Unwrap(err))
 	}
-	defer resp.Body.Close()
 	if resp.StatusCode != 200 {
+		defer resp.Body.Close()
 		data, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
 		return nil, plugin.Errorf(plugin.Refused, "the model service answered %d: %s", resp.StatusCode, clip(job.Mask(string(data))))
 	}
-	answer, err := arriving(job, svc, resp.Body)
+	return resp.Body, nil
+}
+
+// chat makes one call to a service on the web.
+func (svc *web) chat(job *plugin.Job, c *Call) (*Reply, error) {
+	// Every answer is asked for as it is written, and read that way.
+	asked, err := svc.request(job, c)
+	if err != nil {
+		return nil, err
+	}
+	asked["stream"] = true
+	ctx, cancel := context.WithTimeout(job.Context, c.Limit)
+	defer cancel()
+	body, err := svc.send(ctx, job, c.Address, c.Key, c.Limit, asked)
+	if err != nil {
+		return nil, err
+	}
+	defer body.Close()
+	answer, err := arriving(job, svc, body)
 	if errors.Is(err, context.DeadlineExceeded) {
-		return nil, plugin.Errorf(plugin.TimedOut, "the model did not finish its answer within %s", limit)
+		return nil, plugin.Errorf(plugin.TimedOut, "the model did not finish its answer within %s", c.Limit)
 	}
 	if err != nil {
 		return nil, err
 	}
 	return svc.reply(answer)
+}
+
+// choose puts questions to a System One model on the web. Its answer comes
+// whole, as one JSON value, and the answers in it go back as they came.
+func (svc *web) choose(job *plugin.Job, q *Questions) (*Answers, error) {
+	ctx, cancel := context.WithTimeout(job.Context, q.Limit)
+	defer cancel()
+	body, err := svc.send(ctx, job, q.Address, q.Key, q.Limit, map[string]any{"model": q.Model, "state": q.State, "questions": q.Questions})
+	if err != nil {
+		return nil, err
+	}
+	defer body.Close()
+	data, err := io.ReadAll(io.LimitReader(body, 64<<20))
+	if errors.Is(err, context.DeadlineExceeded) {
+		return nil, plugin.Errorf(plugin.TimedOut, "the model did not finish its answer within %s", q.Limit)
+	}
+	if err != nil {
+		return nil, plugin.Errorf(plugin.Refused, "the model's answer could not be read: %v", err)
+	}
+	var answer map[string]any
+	if err := json.Unmarshal(data, &answer); err != nil {
+		return nil, plugin.Errorf(plugin.Refused, "the model service's answer is not JSON")
+	}
+	answers := fields(answer["answers"])
+	if answers == nil {
+		return nil, plugin.Errorf(plugin.Refused, "the model service's answer holds no answers")
+	}
+	usage := answer["usage"]
+	return &Answers{Model: text(answer["model"]), Answers: answers,
+		Usage: map[string]any{"input": number(field(usage, "input_tokens")), "output": number(field(usage, "output_tokens"))}}, nil
 }
 
 // arriving reads a service's answer as it arrives, a stream of events, and

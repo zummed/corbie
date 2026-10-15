@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/zummed/corbie/machine"
+	"github.com/zummed/corbie/plugin"
 	"github.com/zummed/corbie/plugin/llm"
 )
 
@@ -14,7 +15,24 @@ import (
 // runner's machine, and has tools of its own.
 func init() {
 	llm.Register(&llm.Service{Name: "a-program", Program: "a-program", Efforts: []string{"low", "most"},
-		Known: []string{"its-model"}, Tools: []string{"Search", "Shell"}, Needs: func(string) string { return "all" }})
+		Known: []string{"its-model"}, Tools: []string{"Search", "Shell"}, Needs: func(string) string { return "all" },
+		Chat: func(*plugin.Job, *llm.Call) (*llm.Reply, error) { return nil, nil }})
+}
+
+// An agent's model is of a service that has chat. The System One service is
+// neither offered for one nor taken.
+func Test_model_agent_model_has_chat(t *testing.T) {
+	for _, m := range []Model{{Name: "jev-latest"}, {Name: "some-model", Service: "systemone", Address: "https://models.example"}} {
+		if err := m.check(); err == nil || !strings.Contains(err.Error(), "has no chat") {
+			t.Errorf("an agent whose model is %+v passed its check: %v", m, err)
+		}
+	}
+	d, _ := machine.Describe("agent")
+	for _, f := range d.Shapes["model"].Fields {
+		if f.Name == "service" && slices.Contains(f.Values, "systemone") {
+			t.Errorf("the System One service is offered for an agent's model: %v", f.Values)
+		}
+	}
 }
 
 // What a person is offered for a model is what the model is checked
@@ -31,8 +49,8 @@ func TestWhatAModelIsOfferedIsWhatItIsCheckedAgainst(t *testing.T) {
 		return model.Fields[i]
 	}
 	services := field("service").Values
-	if !slices.Equal(services, llm.Names()) || len(services) == 0 {
-		t.Fatalf("the services offered are %v, and Corbie holds %v", services, llm.Names())
+	if !slices.Equal(services, chats()) || len(services) == 0 {
+		t.Fatalf("the services offered are %v, and Corbie holds %v that have chat", services, chats())
 	}
 	names, efforts := field("name"), field("effort")
 	if !names.Open || names.By != "service" || efforts.Open || efforts.By != "service" {

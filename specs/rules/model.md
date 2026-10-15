@@ -2,10 +2,10 @@
 
 The detailed rules behind the [Models overview](../model.md). Requirements are `R-model-nn`, constraints `C-model-nn`. A "stand-in service" is a model service built for the tests, answering as it is told to.
 
-## One call
+## Chat
 
-**R-model-01** A script calls a model with one call of the `llm` plugin, giving the conversation so far, the tools on offer and what shape of answer is wanted.
-*Accept:* a script makes the call with a conversation of two messages, one tool and a shape. The stand-in service receives all three. The `llm` page of the manual lists one call that reaches a model, and the standard turn of an agent uses it.
+**R-model-01** A script holds a conversation with a model with the `llm` plugin's `chat`, giving the conversation so far, the tools on offer and what shape of answer is wanted.
+*Accept:* a script makes the call with a conversation of two messages, one tool and a shape. The stand-in service receives all three. The `llm` page of the manual lists the call, and the standard turn of an agent uses it.
 
 **R-model-02** The call gives back what the model said, the tools it asked for, why it stopped, and how many tokens were used.
 *Accept:* the stand-in answers with a sentence and a request for one tool. The script's result holds the sentence, the tool's name and arguments, the reason the model stopped, and the tokens in and out.
@@ -25,6 +25,16 @@ The detailed rules behind the [Models overview](../model.md). Requirements are `
 **C-model-04** The tokens counted as input include what the service read from and wrote to its own cache. Left out, the count is far too small. *Test:* `model_usage_counts_cached_input`
 
 **C-model-05** Parts of a reply that a service wants back unchanged, such as its own reasoning, are kept as they came and sent back with the next call, and are dropped when the conversation is sent to another service. A service turns away, or loses its place in, a conversation whose parts were altered, and another model cannot read them. *Test:* `model_kept_parts_sent_back_unchanged`
+
+## Choose
+
+**R-model-21** A script puts questions to a System One model with the `llm` plugin's `choose`, giving `state`, the text or data the questions are about, and named questions in the System One format, and gets back the answers as the service wrote them, the model that answered and how many tokens were used.
+*Accept:* a script makes the call with a state and three questions, one of each type. The stand-in receives them at `/v1/systemone` as they were written, with the key as a bearer token. The script's result holds each answer as the stand-in sent it, a field the plugin does not know included, the model's version and the tokens in and out.
+
+**R-model-22** Corbie comes with the `systemone` service, at `https://api.typesafe.ai`, which `jev-…` models are of by default. `address:` sends the call to another host, and a call with no `key:` sends no `Authorization` header.
+*Accept:* a call that names `jev-latest` and no service is of `systemone`, whose address is `https://api.typesafe.ai`. A call that gives a plain address on the runner's computer and no key goes there, and the request carries no `Authorization` header.
+
+**C-model-19** An agent's model is of a service that has `chat`, and a definition whose model is of `systemone` is refused when it is checked, by the client and by the controller. A System One model writes no text and picks no tool, so no turn could be made. *Test:* `model_agent_model_has_chat`
 
 ## Services
 
@@ -83,7 +93,7 @@ The detailed rules behind the [Models overview](../model.md). Requirements are `
 
 ## Interfaces
 
-- **Plugins** hold `llm` as a plugin of the one shape, and a model service is an extension like any other.
+- **Plugins** hold `llm` as a plugin of the one shape, with its two calls, and a model service is an extension like any other.
 - **Agent** makes each turn as a job that calls the model through the standard turn, and acts on why the model stopped.
 - **Client** writes each turn's permissions when it fills out an agent's definition, and checks the definition against what the service says it takes.
 - **Machines** have the controller check the definition again, with the same code.

@@ -219,9 +219,9 @@ func cmdVersion(e *env, args []string) error {
 	if _, err := e.parse(args); err != nil {
 		return err
 	}
-	holds := map[string]any{"version": Version, "machines": machine.Types(), "plugins": plugin.Names()}
+	holds := map[string]any{"version": version(), "machines": machine.Types(), "plugins": plugin.Names()}
 	return e.print(holds, func() string {
-		return fmt.Sprintf("corbie %s\nmachine types: %s\nplugins and libraries: %s\n", Version,
+		return fmt.Sprintf("corbie %s\nmachine types: %s\nplugins and libraries: %s\n", version(),
 			strings.Join(machine.Types(), ", "), strings.Join(plugin.Names(), ", "))
 	})
 }

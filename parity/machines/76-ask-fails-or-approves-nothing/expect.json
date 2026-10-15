@@ -5,8 +5,8 @@
       "ask_fails": {
         "<contains>": "the ask failed"
       },
-      "ask_undecided": {
-        "<contains>": "without a decision"
+      "ask_approves_none": {
+        "<contains>": "no approve list"
       }
     }
   },
@@ -16,7 +16,7 @@
       "status": "failed"
     },
     {
-      "machine": "ask-undecided",
+      "machine": "ask-approves-none",
       "status": "failed"
     },
     {
@@ -28,7 +28,7 @@
       "absent": true
     },
     {
-      "machine": "ask-undecided",
+      "machine": "ask-approves-none",
       "ask": {
         "kind": "script",
         "name": "guarded"

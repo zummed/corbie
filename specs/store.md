@@ -89,4 +89,4 @@ Whoever runs the store can delete anything and can see every name. They cannot r
 
 A store that has gone back in time, as a directory restored from a backup has, is still whole and signed, and simply older. Runs that moved since move again and their jobs run again, what was started since is gone, a party enrolled since is unknown, and a party removed since is trusted again. A backup is for a lost disk, not for undoing. A directory is copied with nothing running on it, or from a snapshot, so that the copy is one moment and not several.
 
-Parties' clocks are trusted to agree within five minutes. Anything decided by time allows for that much.
+Parties' clocks are trusted to agree within five minutes. Anything that depends on time allows for that much.

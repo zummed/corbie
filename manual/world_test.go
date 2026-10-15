@@ -78,6 +78,7 @@ func newWorld() (*world, error) {
 		"FEED_TOKEN":    "feed-stand1n-t0ken",
 		"ANTHROPIC_KEY": "sk-ant-stand1n-key",
 		"MODELS_KEY":    "sk-models-stand1n-key",
+		"TYPESAFE_KEY":  "ts-stand1n-key",
 		"SIGNING":       "a-stand1n-signing-key",
 		"DEPLOY_TOKEN":  "deploy-stand1n-t0ken",
 		"QUEUE_TOKEN":   "queue-stand1n-t0ken",
@@ -142,6 +143,7 @@ func newWorld() (*world, error) {
 		"feed.example.com":  w.feed,
 		"api.anthropic.com": w.anthropic,
 		"models.example":    w.chatModel,
+		"api.typesafe.ai":   w.systemOneModel,
 	}
 	names := []string{"queue.example.com", "mail.example.com"}
 	for name := range web {
@@ -549,6 +551,50 @@ func (w *world) anthropic(rw http.ResponseWriter, r *http.Request) {
 	}
 	event(`{"type":"message_delta","delta":{"stop_reason":%q},"usage":{"output_tokens":5}}`, stop)
 	event(`{"type":"message_stop"}`)
+}
+
+// systemOneModel is a model that speaks the System One format. It says a
+// statement is true, and picks the option named technical where there is
+// one and the first otherwise.
+func (w *world) systemOneModel(rw http.ResponseWriter, r *http.Request) {
+	if r.URL.Path != "/v1/systemone" || r.Header.Get("Authorization") != "Bearer "+w.secrets["TYPESAFE_KEY"] {
+		http.Error(rw, `{"error":{"message":"invalid api key"}}`, 401)
+		return
+	}
+	var sent struct {
+		Questions map[string]struct {
+			Type     string         `json:"type"`
+			Criteria map[string]any `json:"criteria"`
+		} `json:"questions"`
+	}
+	body, _ := io.ReadAll(r.Body)
+	json.Unmarshal(body, &sent)
+	answers := map[string]any{}
+	for name, q := range sent.Questions {
+		switch q.Type {
+		case "noul":
+			answers[name] = map[string]any{"type": "noul", "noul": 0.99}
+		case "choice":
+			options := make([]string, 0, len(q.Criteria))
+			for option := range q.Criteria {
+				options = append(options, option)
+			}
+			sort.Strings(options)
+			picked := options[0]
+			if slices.Contains(options, "technical") {
+				picked = "technical"
+			}
+			probabilities := map[string]any{}
+			for _, option := range options {
+				probabilities[option] = 0.0
+			}
+			probabilities[picked] = 1.0
+			answers[name] = map[string]any{"type": "choice", "choice": picked, "probabilities": probabilities, "confidence": 1.0}
+		}
+	}
+	rw.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(rw).Encode(map[string]any{"model": "jev-1.13.0", "answers": answers,
+		"usage": map[string]any{"input_tokens": 174, "output_tokens": 2}})
 }
 
 // chatModel is a model that speaks OpenAI's Chat Completions way, and

@@ -59,7 +59,7 @@ the script asks for      git status
 the runner starts        bwrap --ro-bind /usr /usr … -- /usr/bin/git status
 ```
 
-The wrapper can be a sandbox tool or a container, and so the owner decides what a started program can reach. Corbie passes it the job's scratch directory and permissions, in case it wants them, and claims nothing about what it does. A program finds its files in the scratch directory, so a wrapper must show that directory, and the programs, at the paths they have outside.
+The wrapper can be a sandbox tool or a container, and so the owner sets what a started program can reach. Corbie passes it the job's scratch directory and permissions, in case it wants them, and claims nothing about what it does. A program finds its files in the scratch directory, so a wrapper must show that directory, and the programs, at the paths they have outside.
 
 Nothing a script chooses reaches the wrapper itself. It is started with the scratch directory, the permissions and the runner's own search path, and no other variable. The variables a script gives a program are handed to the program inside, by the standard `env` tool, which the wrapper must be able to find; they then show in the computer's list of processes, as a program's arguments do.
 

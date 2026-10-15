@@ -179,7 +179,7 @@ Each rule here is checked on the memory store opened as the party named, and on 
 **R-store-58** A value that matters cannot be altered without it showing: it is signed by its writer, or named in something that is.
 *Accept:* change one byte of, in turn, a message in an inbox, a head, a step entry, an emit entry, a blob, a receipt, a trust entry and a secret. Each time, the party that next reads it refuses it as altered and does nothing it says.
 
-**R-store-59** Anything a party decides by setting its own clock against a time another party wrote allows five minutes; the allowance is for treating another party's time as passed, never for delaying a timer.
+**R-store-59** Anything a party does by setting its own clock against a time another party wrote allows five minutes; the allowance is for treating another party's time as passed, never for delaying a timer.
 *Accept:* a receiver whose clock is five minutes ahead of the sender's takes a message sent a moment ago with the usual life, and does not drop it as past its time. A runner whose clock is five minutes ahead does not remove a mark until five minutes after the job's due time by its own clock. A timer set for a time is delivered at that time by the controller's clock, not five minutes later.
 
 **C-store-35** A signed value says which name it belongs under, and a reader refuses one found under any other name. Whoever runs the store can otherwise put a true value in a false place: one instance's head under another's name, or an earlier step in place of a later one. *Test:* `store_value_moved_to_another_name_refused`

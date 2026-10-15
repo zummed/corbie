@@ -13,6 +13,7 @@ import (
 	"io"
 	"os"
 	"os/signal"
+	"runtime/debug"
 	"sort"
 	"strings"
 	"syscall"
@@ -36,8 +37,19 @@ type Command struct {
 	run   func(e *env, args []string) error
 }
 
-// Version is which Corbie this is.
-var Version = "0.2.1"
+// Version is which Corbie this is. A release build is given it; any other
+// build reads it from the module's build information.
+var Version string
+
+func version() string {
+	if Version != "" {
+		return Version
+	}
+	if info, ok := debug.ReadBuildInfo(); ok && info.Main.Version != "" && info.Main.Version != "(devel)" {
+		return strings.TrimPrefix(info.Main.Version, "v")
+	}
+	return "dev"
+}
 
 // env is what a command is run with.
 type env struct {

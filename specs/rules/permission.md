@@ -121,7 +121,7 @@ The detailed rules behind the [Permissions overview](../permission.md). Requirem
 **R-perm-44** The list applies to every job in the machine that writes it and in every machine below it, and a job held this way is held exactly as a job marked for approval is (see Machines, R-mach-91).
 *Accept:* a root lists `exec:deploy`. A job two machines down that allows `exec:deploy` is held, and it goes to the nearest ask above it, together with a job marked for approval from the same step.
 
-**R-perm-46** The decision to hold is made from what the job declares, before anything is sent for it.
+**R-perm-46** Whether a job is held depends on what it declares alone, before anything is sent for it.
 *Accept:* a job that allows `network` is held although its script never connects, and while it is held no runner's inbox holds it. A job that declares nothing listed is not held, and when its script tries the listed thing it is refused at the act like anything else it did not declare.
 
 **R-perm-47** Asking only ever holds: an approved job gets exactly what its layers already allowed, nothing a layer refuses can be had by asking, and a job never stops halfway to wait for a person.

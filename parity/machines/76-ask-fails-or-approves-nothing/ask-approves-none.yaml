@@ -1,4 +1,4 @@
-flow: ask-undecided
+flow: ask-approves-none
 ask:
   script: ./echo.js
 stages:

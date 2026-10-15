@@ -50,7 +50,7 @@ func TestAskThatFailsOrDoesNotDecideApprovesNothing(t *testing.T) {
 	l := local(t)
 	for ask, want := range map[string]string{
 		`throw new Error("no")`: "the ask failed, which approves nothing",
-		`return "maybe"`:        "the ask ended without a decision",
+		`return "maybe"`:        "the ask's result has no approve list",
 	} {
 		r := run(t, l, `
 			flow: undecided
@@ -126,7 +126,7 @@ func Test_mach_denial_says_why_the_ask_gave_no_yes(t *testing.T) {
 	for ask, want := range map[string]string{
 		`return { approve: [], note: "not today" }`: "the ask did not approve the job: not today",
 		`throw new Error("no")`:                     "the ask failed, which approves nothing",
-		`return "maybe"`:                            "the ask ended without a decision",
+		`return "maybe"`:                            "the ask's result has no approve list",
 	} {
 		r := run(t, l, `
 			flow: why

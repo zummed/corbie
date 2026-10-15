@@ -23,7 +23,7 @@ Kinds are gathered into groups: `network`, `disk`, `exec` and `env`. A group all
 
 ## Layers
 
-What a job may do is decided by several layers, each written by a different hand.
+What a job may do is set by several layers, each written by a different hand.
 
 ```
 the job in its definition    allow: [network, fs.read:/srv/**, exec:git]
@@ -68,7 +68,7 @@ A refused call stops the job with the status denied. Every refusal says three th
 
 ## Asking
 
-A definition may list permissions that must be asked about. Before any job in that machine, or in a machine below it, starts, the permissions it declares are read against the list. A job that declares one of them, or a group that contains one, is held for the ask, exactly as a job marked for approval is (see Machines). The decision is made from what the job declares, before anything is sent for it.
+A definition may list permissions that must be asked about. Before any job in that machine, or in a machine below it, starts, the permissions it declares are read against the list. A job that declares one of them, or a group that contains one, is held for the ask, exactly as a job marked for approval is (see Machines). Whether a job is held depends on what it declares alone, before anything is sent for it.
 
 Asking only ever holds. An approved job gets exactly what its layers already allowed, and nothing can be had by asking that a layer refuses. A job never stops halfway to wait for a person.
 

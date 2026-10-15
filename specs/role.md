@@ -6,7 +6,7 @@ A Corbie process runs as a controller, as a runner, or as both. This area is abo
 
 A controller or runner works in passes. A pass looks at the store, does everything that is owed, and stops. A controller's pass handles every message in its inbox and every wake that has come due. A runner's pass takes every job in its inbox that it can finish and runs it. A pass ends by saying when the next thing is due, if it knows.
 
-Nothing is carried in memory from one pass to the next. Whatever a pass needs it reads from the store, and whatever it decides it writes there before acting on it.
+Nothing is carried in memory from one pass to the next. Whatever a pass needs it reads from the store, and its result it writes there before acting on it.
 
 ## Hosts
 

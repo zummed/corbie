@@ -413,7 +413,7 @@ func (b *build) settle(job *instance.Going, event machine.Event, a *arrival) {
 	b.unwakeJob(job)
 	b.forget(job)
 	if job.Name == instance.AskName {
-		b.decided(job, event, a)
+		b.askEnded(job, event, a)
 		return
 	}
 	b.give(event, a)
@@ -989,8 +989,8 @@ func (p *pass) begin(inst string, waiting []*arrival) (*taken, error) {
 
 // holds says whether a job waits for a yes before it starts: it is marked
 // for approval, or it declares a permission that its machine, or a machine
-// above it, lists as one to be asked about. The decision is made from what
-// the job declares, before anything is sent.
+// above it, lists as one to be asked about. Whether it is held depends on
+// what it declares alone, before anything is sent.
 func (b *build) holds(job *instance.Going) bool {
 	return job.Approve || permission.Declares(job.Allow, b.st.Above.AskAbout)
 }
@@ -1082,11 +1082,12 @@ func toList(texts []string) []any {
 	return list
 }
 
-// decided acts on how the ask ended. Approved jobs start. A job not
+// askEnded acts on how the ask ended. Approved jobs start. A job not
 // approved never starts: its machine sees it as a failed job with the
 // status denied, and every one of them is given and written in the record.
-// An ask that fails, or ends without deciding, approves nothing.
-func (b *build) decided(ask *instance.Going, outcome machine.Event, a *arrival) {
+// An ask that fails, or whose result does not list the jobs it approves,
+// approves nothing.
+func (b *build) askEnded(ask *instance.Going, outcome machine.Event, a *arrival) {
 	b.use(a)
 	b.record(machine.Event{Name: outcome.Name, From: ask.Full(), Data: outcome.Data}, a, true)
 	approved := map[string]bool{}
@@ -1096,7 +1097,7 @@ func (b *build) decided(ask *instance.Going, outcome machine.Event, a *arrival) 
 	case outcome.Name == machine.Failed:
 		reason = fmt.Sprintf("the ask failed, which approves nothing: %v", result["error"])
 	case !isList:
-		reason = "the ask ended without a decision, which approves nothing: its result should be { approve: [names of jobs], note }"
+		reason = "the ask's result has no approve list, so nothing is approved: its result should be { approve: [names of jobs], note }"
 	default:
 		for _, name := range list {
 			if text, ok := name.(string); ok {
@@ -1125,8 +1126,8 @@ func (b *build) decided(ask *instance.Going, outcome machine.Event, a *arrival) 
 	}
 }
 
-// unhold drops a held job that is no longer wanted. An ask left with
-// nothing to decide is cancelled.
+// unhold drops a held job that is no longer wanted. An ask left with no
+// held job is cancelled.
 func (b *build) unhold(job *instance.Going) {
 	for _, key := range sortedKeys(b.st.Jobs) {
 		ask := b.st.Jobs[key]

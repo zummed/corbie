@@ -16,7 +16,7 @@ When an instance ends, its head moves from the running heads to the finished one
 
 The record is the instance's history, kept as entries that are each written once and never changed. The record stays where it is for as long as it exists.
 
-A **step** entry is written by the controller each time the instance takes a step. It holds the events that arrived and which messages and wakes they came from, the state the machine was left in, and what the step asked for. Steps are numbered. The first copy of the controller to write a given number has decided that step; any other copy finds the number taken, reads what was decided and carries on from there. The latest step is the instance's whole state, and its last step holds its result.
+A **step** entry is written by the controller each time the instance takes a step. It holds the events that arrived and which messages and wakes they came from, the state the machine was left in, and what the step asked for. Steps are numbered. The first copy of the controller to write a given number has taken that step; any other copy finds the number taken, reads that entry and carries on from there. The latest step is the instance's whole state, and its last step holds its result.
 
 An **emit** entry is written by a job while it runs: a log line, a note of progress, a piece of a model's reply, a named value. The job's runner writes it straight into the record, in order, and a watcher sees it as soon as it is there. If the machine has said it wants to act on values of that name, the runner also tells the controller, which costs one more message; otherwise the controller plays no part.
 

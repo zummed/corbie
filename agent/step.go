@@ -261,7 +261,7 @@ func (s *stepper) ready() error {
 }
 
 // handles gives a value with each handle in it saying what the model
-// needs to decide how to read the blob: how many items it has, roughly
+// needs to know how to read the blob: how many items it has, roughly
 // what reading it would cost, and, the first time, its preview.
 func (s *stepper) handles(v any, first map[string]any) any {
 	switch v := v.(type) {

@@ -1,4 +1,4 @@
-// Package agent is the machine whose decisions are made by a model: the
+// Package agent is the machine whose tools a model picks: the
 // model is asked what to do, the tools it picks are run, the results go
 // back to it, and this repeats until it answers without asking for a tool.
 package agent
@@ -110,18 +110,24 @@ func heldBy(service *llm.Service) []string {
 	return append(held, "address", "reply_tokens")
 }
 
+// chats gives the services that have chat: those an agent's model may be
+// of. A System One model answers questions, and could take no turn.
+func chats() []string { return llm.Having(func(s *llm.Service) bool { return s.Chat != nil }) }
+
 // check says what is wrong with how a model is named.
 func (m Model) check() error {
 	name := m.serviceOf()
 	service, ok := llm.Find(name)
-	holds := strings.Join(llm.Names(), ", ")
+	holds := strings.Join(chats(), ", ")
 	switch {
 	case m.Name == "":
 		return fmt.Errorf("an agent names its model, as model: { name: claude-sonnet-5-5, secret: ANTHROPIC_KEY }")
 	case name == "":
 		return fmt.Errorf("it is not clear which service the model %q is of: give service: one of %s", m.Name, holds)
 	case !ok:
-		return fmt.Errorf("%q is not a model service this Corbie holds (it holds: %s)", name, holds)
+		return fmt.Errorf("%q is not a model service an agent's model can be of (one of: %s)", name, holds)
+	case service.Chat == nil:
+		return fmt.Errorf("the service %q has no chat: an agent's model is of one of %s", name, holds)
 	case m.Effort != "" && !slices.Contains(service.Efforts, m.Effort):
 		return fmt.Errorf("the service %q does not take the effort %q (it takes: %s)", name, m.Effort, strings.Join(service.Efforts, ", "))
 	case machine.HasExpr(m.Secret) || machine.HasExpr(m.Name):
@@ -215,7 +221,7 @@ func (agentType) Shape() *machine.Shape {
 	// of those the model's own service takes is for the check to say:
 	// nothing one of them would take is kept from a person.
 	names, efforts, tools, sorts := map[string][]string{}, map[string][]string{}, map[string][]string{}, map[string][]string{}
-	for _, name := range llm.Names() {
+	for _, name := range chats() {
 		service, _ := llm.Find(name)
 		names[name], efforts[name], sorts[name] = service.Known, service.Efforts, heldBy(service)
 		if len(service.Tools) > 0 {
@@ -241,7 +247,7 @@ func (agentType) Shape() *machine.Shape {
 		{Name: "name", Kind: machine.KindWord, Like: "claude-sonnet-5-5", Does: "the model's name, as its service knows it",
 			Open: true, By: "service", ValuesBy: names},
 		{Name: "secret", Kind: machine.KindWord, Like: "ANTHROPIC_KEY", Does: "the name of the secret that is the service's key"},
-		{Name: "service", Kind: machine.KindWord, Like: "anthropic", Values: llm.Names(),
+		{Name: "service", Kind: machine.KindWord, Like: "anthropic", Values: chats(),
 			Does: "which service's way of talking is spoken; it follows from the name for claude-… and gpt-… models"},
 		{Name: "address", Kind: machine.KindWord, Like: "https://models.example",
 			Does: "where the service lives, for a model that is not at its service's usual place: self-hosted, or offered by a cloud"},

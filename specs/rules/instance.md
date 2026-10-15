@@ -136,7 +136,7 @@ Uses:
 
 Used by:
 
-- **Controller**: writes step entries, heads and receipts; brings the head up to date after each step (R-ctl-27) and moves it when an instance ends; decides which of a client's messages are accepted; trims and removes what is past keeping, a little at a time (R-ctl-98).
+- **Controller**: writes step entries, heads and receipts; brings the head up to date after each step (R-ctl-27) and moves it when an instance ends; accepts or refuses each of a client's messages; trims and removes what is past keeping, a little at a time (R-ctl-98).
 - **Runner**: writes a job's emit entries and blobs into the instance's record, in batches (C-run-33), every one before the job's result (C-run-23), and a message to the controller for each emitted value the machine wants.
 - **Client**: writes the four messages and a start's uploads; lists, shows and follows runs by the one way of watching; owns what a viewer is told at the awkward moments: a receipt before a head, a start never taken (R-client-36 to R-client-40), and C-inst-02.
 - **Machines** and each machine type: the state a step entry holds, and what a watcher is shown of it.

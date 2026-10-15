@@ -59,7 +59,7 @@ func cmdMCP(e *env, args []string) error {
 		switch req.Method {
 		case "initialize":
 			result = map[string]any{"protocolVersion": "2025-06-18", "capabilities": map[string]any{"tools": map[string]any{}},
-				"serverInfo": map[string]any{"name": "corbie", "version": Version}, "instructions": briefing}
+				"serverInfo": map[string]any{"name": "corbie", "version": version()}, "instructions": briefing}
 		case "tools/list":
 			result = map[string]any{"tools": e.tools(allow)}
 		case "tools/call":

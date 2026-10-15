@@ -157,7 +157,7 @@ The detailed rules behind the [Runner overview](../runner.md).
 
 **C-run-49** The exec wrapper goes in front of every program started for a job, whichever plugin starts it, and one named with no path is found where the runner looks for programs. Programs are started in one place, and a box with one way round it is no box. *Test:* `run_exec_wrapper_fronts_programs_a_plugin_starts`
 
-**C-run-50** Nothing in a job, a definition or a call can change the exec wrapper or leave it out: it is started with the scratch directory, the permissions and the runner's search path and no other variable, and the variables a call gives go to the program inside. It is the owner's decision about the owner's computer, and a variable can make any program load code of the script's choosing. *Test:* `run_job_cannot_change_or_skip_exec_wrapper`
+**C-run-50** Nothing in a job, a definition or a call can change the exec wrapper or leave it out: it is started with the scratch directory, the permissions and the runner's search path and no other variable, and the variables a call gives go to the program inside. The wrapper is the owner's, for the owner's computer, and a variable can make any program load code of the script's choosing. *Test:* `run_job_cannot_change_or_skip_exec_wrapper`
 
 **C-run-51** The permission check is made on the program the script named, before the exec wrapper is added, and that program is what the result lists as used. Checked after, every job needs leave to start the wrapper and none needs leave for what it really runs. *Test:* `run_exec_checked_against_program_the_script_named`
 

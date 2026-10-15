@@ -320,11 +320,17 @@ func Test_model_openai_tools_not_strict(t *testing.T) {
 
 func Test_model_address_with_login_refused(t *testing.T) {
 	job := &plugin.Job{Context: context.Background(), Perms: &permission.Set{Layers: []permission.Layer{{Name: "test", Allow: []string{"network"}}}}}
-	_, err := chat(job, []any{}, plugin.Options{"model": "m", "address": "https://user:hunter2@models.example"})
-	if err == nil || !strings.Contains(err.Error(), "may not hold a user name or a password") || strings.Contains(err.Error(), "hunter2") || strings.Contains(err.Error(), "models.example") {
-		t.Fatalf("an address with a login gave %v", err)
+	for call, err := range map[string]error{
+		"chat":   second(chat(job, []any{}, plugin.Options{"model": "m", "address": "https://user:hunter2@models.example"})),
+		"decide": second(decide(job, "a state", plugin.Options{"model": "m", "address": "https://user:hunter2@models.example", "questions": urgent})),
+	} {
+		if err == nil || !strings.Contains(err.Error(), "may not hold a user name or a password") || strings.Contains(err.Error(), "hunter2") || strings.Contains(err.Error(), "models.example") {
+			t.Fatalf("%s: an address with a login gave %v", call, err)
+		}
 	}
 }
+
+func second(_ any, err error) error { return err }
 
 func Test_model_no_redirect_followed(t *testing.T) {
 	reached := false
@@ -332,13 +338,150 @@ func Test_model_no_redirect_followed(t *testing.T) {
 	defer other.Close()
 	s := &standIn{watch: &watcher{seen: make(chan struct{})}}
 	s.Server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		http.Redirect(w, r, other.URL+"/v1/messages", http.StatusTemporaryRedirect)
+		http.Redirect(w, r, other.URL+r.URL.Path, http.StatusTemporaryRedirect)
 	}))
 	defer s.Close()
 	s.job = &plugin.Job{Context: context.Background(), Channel: s.watch,
 		Perms: &permission.Set{Layers: []permission.Layer{{Name: "test", Allow: []string{"network"}}}}}
 	if _, err := s.ask(t, "anthropic", nil); err == nil || !strings.Contains(err.Error(), "answered 307") || reached {
 		t.Fatalf("a redirect gave %v, and the other place was reached: %v", err, reached)
+	}
+	_, err := decide(s.job, "a state", plugin.Options{"model": "jev-latest", "address": s.URL, "questions": urgent})
+	if err == nil || !strings.Contains(err.Error(), "answered 307") || reached {
+		t.Fatalf("decide: a redirect gave %v, and the other place was reached: %v", err, reached)
+	}
+}
+
+// decisions is a System One model built for the tests. It answers every
+// call with the one answer it is given, after any delay it is given, and
+// keeps what it was sent.
+type decisions struct {
+	*httptest.Server
+	delay   time.Duration
+	sent    []map[string]any
+	paths   []string
+	headers []http.Header
+	job     *plugin.Job
+}
+
+func newDecisions(t *testing.T, answer string) *decisions {
+	d := &decisions{}
+	d.Server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var sent map[string]any
+		body, _ := io.ReadAll(r.Body)
+		json.Unmarshal(body, &sent)
+		d.sent = append(d.sent, sent)
+		d.paths = append(d.paths, r.URL.Path)
+		d.headers = append(d.headers, r.Header)
+		time.Sleep(d.delay)
+		w.Header().Set("Content-Type", "application/json")
+		io.WriteString(w, answer)
+	}))
+	t.Cleanup(d.Close)
+	d.job = &plugin.Job{Context: context.Background(),
+		Perms: &permission.Set{Layers: []permission.Layer{{Name: "test", Allow: []string{"network"}}}}}
+	t.Cleanup(d.job.End)
+	return d
+}
+
+// ask puts the question urgent, and any more, to the stand-in.
+func (d *decisions) ask(more plugin.Options) (map[string]any, error) {
+	opt := plugin.Options{"model": "jev-latest", "address": d.URL, "key": "ts-test", "questions": urgent}
+	for name, value := range more {
+		opt[name] = value
+	}
+	out, err := decide(d.job, "Checkout has been failing for every customer for the last hour.", opt)
+	if err != nil {
+		return nil, err
+	}
+	return out.(map[string]any), nil
+}
+
+// Three questions, one of each type, as the System One format has them.
+var (
+	urgent = map[string]any{"urgent": map[string]any{"type": "noul", "instructions": "The customer cannot use the product."}}
+	three  = map[string]any{
+		"urgent": urgent["urgent"],
+		"team": map[string]any{"type": "choice", "instructions": "Which team should handle this?",
+			"criteria": map[string]any{"billing": "Payments and refunds", "technical": "Outages and errors"}},
+		"severity": map[string]any{"type": "score", "instructions": "How severe is the impact?",
+			"criteria": []any{"No impact", "Minor", "Major", "Critical"}},
+	}
+	// The answers as TypeSafe's service writes them, with a field the plugin
+	// does not know.
+	answered = `{"model":"jev-1.13.0","answers":{` +
+		`"urgent":{"type":"noul","noul":0.99},` +
+		`"team":{"type":"choice","choice":"technical","confidence":1.0,"probabilities":{"technical":1.0,"billing":0.0}},` +
+		`"severity":{"type":"score","score":2.67,"confidence":0.5,"legend":{"0":"No impact","1":"Minor","2":"Major","3":"Critical"},"probabilities":{"0":0.0,"1":0.0,"2":0.33,"3":0.67},"latency_ms":41}},` +
+		`"usage":{"input_tokens":428,"output_tokens":73}}`
+)
+
+// The state and the questions reach the service as they were written, at
+// its path and with the key as a bearer token, and the answers come back as
+// the service wrote them, with the model that answered and the tokens used.
+func TestQuestionsReachTheModelAndAnswersComeBackAsWritten(t *testing.T) {
+	d := newDecisions(t, answered)
+	out, err := d.ask(plugin.Options{"questions": three})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := `{"model":"jev-latest","questions":` + text(three) + `,"state":"Checkout has been failing for every customer for the last hour."}`
+	if got := text(d.sent[0]); got != want || d.paths[0] != "/v1/systemone" || d.headers[0].Get("Authorization") != "Bearer ts-test" {
+		t.Fatalf("the service was sent %s\n at %s with %q", got, d.paths[0], d.headers[0].Get("Authorization"))
+	}
+	var sent map[string]any
+	json.Unmarshal([]byte(answered), &sent)
+	if text(out["answers"]) != text(sent["answers"]) || out["model"] != "jev-1.13.0" || text(out["usage"]) != `{"input":428,"output":73}` {
+		t.Fatalf("the call gave %s", text(out))
+	}
+}
+
+// A jev model is of the systemone service, at TypeSafe's address; address
+// sends the call to another host, and a call with no key sends none.
+func TestAJevModelIsOfSystemOne(t *testing.T) {
+	if of := Of("jev-latest"); of != "systemone" || services[of].Address != "https://api.typesafe.ai" {
+		t.Fatalf("jev-latest is of %q, at %q", of, services[of].Address)
+	}
+	d := newDecisions(t, answered)
+	if _, err := d.ask(plugin.Options{"key": nil, "model": "nimble"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, sent := d.headers[0]["Authorization"]; sent || !strings.HasPrefix(d.URL, "http://") {
+		t.Fatalf("a call with no key, to %s, was sent the header Authorization: %q", d.URL, d.headers[0].Get("Authorization"))
+	}
+}
+
+// Each call needs a service that makes it, and decide needs its questions.
+func TestEachCallNeedsAServiceThatMakesIt(t *testing.T) {
+	d := newDecisions(t, answered)
+	for what, err := range map[string]error{
+		"chat with systemone":   second(chat(d.job, []any{}, plugin.Options{"service": "systemone", "model": "jev-latest", "address": d.URL})),
+		"decide with anthropic": second(d.ask(plugin.Options{"service": "anthropic"})),
+	} {
+		if err == nil || !strings.Contains(err.Error(), "service: is one of") || len(d.sent) != 0 {
+			t.Errorf("%s gave %v, and %d calls were sent", what, err, len(d.sent))
+		}
+	}
+	if _, err := d.ask(plugin.Options{"questions": nil}); err == nil || !strings.Contains(err.Error(), "needs questions:") {
+		t.Errorf("decide with no questions gave %v", err)
+	}
+	if _, err := decide(d.job, nil, plugin.Options{"model": "jev-latest", "address": d.URL, "questions": urgent}); err == nil || !strings.Contains(err.Error(), "takes the state first") {
+		t.Errorf("decide with no state gave %v", err)
+	}
+}
+
+// An answer that is not JSON, or holds no answers, is no answer; and the
+// call has a time limit like any other wait.
+func TestASystemOneAnswerIsReadWhole(t *testing.T) {
+	for answer, want := range map[string]string{"<html>": "is not JSON", `{"model":"jev-1.13.0"}`: "holds no answers"} {
+		if _, err := newDecisions(t, answer).ask(nil); err == nil || !strings.Contains(err.Error(), want) {
+			t.Errorf("the answer %s gave %v", answer, err)
+		}
+	}
+	d := newDecisions(t, answered)
+	d.delay = 300 * time.Millisecond
+	if _, err := d.ask(plugin.Options{"timeout": 0.05}); err == nil || !strings.Contains(err.Error(), "within 50ms") {
+		t.Errorf("a slow answer gave %v", err)
 	}
 }
 

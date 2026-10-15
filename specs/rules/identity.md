@@ -111,7 +111,7 @@ The detailed rules behind the [Identity overview](../identity.md).
 **R-id-48** A message says when it stops being good, and a receiver drops one that is past that time, allowing five minutes for clocks that differ.
 *Accept:* a start good for one minute is first looked at by its controller an hour later: it is not acted on, and it is gone from the inbox. A receiver whose clock is four minutes ahead of the sender's reads a message good for one minute as soon as it is sent: accepted. A message six minutes past its time by the receiver's clock: dropped.
 
-**R-id-50** What a receiver does with an accepted message is decided by its kind and by who sent it; a runner acts only on jobs, and on cancels of jobs, from a controller it trusts.
+**R-id-50** What a receiver does with an accepted message depends on its kind and on who sent it; a runner acts only on jobs, and on cancels of jobs, from a controller it trusts.
 *Accept:* a controller that a runner trusts leaves a message of another kind, a start, in the runner's inbox: the runner runs nothing.
 
 **C-id-16** A message is checked in this order: signed by a card the receiver trusts, sealed to this receiver, still good. Nothing it carries is read before the first two hold, and nothing is acted on before all three do, because until then its contents are whatever the writer chose. *Test:* `id_message_checked_before_contents_read`

@@ -51,7 +51,7 @@ Some things are the same whatever the machine's type, and the controller does th
 - **Time.** It keeps timers and delivers them, and ends a machine whose timeout has passed. That machine fails as out of time and everything below it is cancelled.
 - **Tickets.** It makes tickets and takes their answers.
 - **Limits.** It counts depth and jobs against their limits.
-- **Approval.** It holds the jobs that need approval, starts the ask, and releases or refuses them when the ask has decided.
+- **Approval.** It holds the jobs that need approval, starts the ask, and releases or refuses them when the ask has ended.
 
 ## Housekeeping
 

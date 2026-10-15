@@ -599,6 +599,23 @@ func Test_agent_code_tool_hides_reference_from_model_code(t *testing.T) {
 	}
 }
 
+func Test_agent_blob_tools_get_none_of_the_definitions_permissions(t *testing.T) {
+	t.Setenv("HOME", "/home/someone")
+	// The definition allows every job it runs the variable, and the model
+	// writes code for the code tool that reads it.
+	args, _ := json.Marshal(map[string]any{"blob": "blob1", "code": `return env.get("HOME")`})
+	m := newModel(t, calls("c1", "make", `{"text": "inner text"}`), calls("c2", "blob_code", string(args)), says("done"))
+	l := local(t, "all")
+	def := strings.Replace(inside(m), "tools:\n", "allow: [env:HOME]\n\t\ttools:\n", 1)
+	if r := runAgent(t, l, def, insideFiles); r.Status != "done" {
+		t.Fatalf("the agent ended %s: %s", r.Status, r.Error)
+	}
+	shown := jsonOf(m.sent[2])
+	if !strings.Contains(shown, "denied") || !strings.Contains(shown, "env:HOME") || strings.Contains(shown, "/home/someone") {
+		t.Fatalf("the model's code ran with the definition's permissions: %s", shown)
+	}
+}
+
 // A blob of a type the model's service takes as content, an image or a
 // document, is sent to the model as it is, beside its handle and under
 // its name, in every call from the turn it is first shown. A blob of any

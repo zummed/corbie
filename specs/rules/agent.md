@@ -93,7 +93,7 @@ The detailed rules behind the [Agent overview](../agent.md). Area code: `agent`.
 **R-agent-47** A blob's key never reaches a model by any path, including inside the contents of another blob.
 *Accept:* an agent works with several blobs through its prompt, its tools' results, previews and its blob tools; the text of no blob's key appears in anything any turn's job was given. Blob A's contents hold a reference to blob B; the model reads A with the range tool, and again with the code tool returning A's contents as text; each time B is shown as a handle and its key is absent.
 
-**R-agent-49** Every agent has tools for working with blobs without reading them whole: one to read a range of items, one to search, and one to run a few lines of code over a blob and get back only the answer; they are ordinary scripts.
+**R-agent-49** Every agent has tools for working with blobs without reading them whole: one to read a range of items, one to search, and one to run a few lines of code over a blob and get back only the answer; they are ordinary scripts, allowed nothing from the definition's lists.
 *Accept:* an agent written with no tools; the first turn's job is offered those three tools. A call to the range tool is asked for as a job named for the tool and executed by a runner, like any other tool's.
 
 **R-agent-51** A tool result too large to show is stored as a blob, by the job that makes its preview, and the model is given its handle.
@@ -107,6 +107,8 @@ The detailed rules behind the [Agent overview](../agent.md). Area code: `agent`.
 **C-agent-11** A name is turned into a reference only where a tool's shape asks for a blob. Ordinary text from a model may happen to contain a handle's name. *Test:* `agent_name_becomes_reference_only_where_shape_asks`
 
 **C-agent-12** The code the model writes for the code tool cannot reach the blob's reference or the agent's input. Either holds a key, and whatever the code returns goes to the model. *Test:* `agent_code_tool_hides_reference_from_model_code`
+
+**C-agent-14** The blob tools get none of the lists written for the whole definition. The code tool runs what the model wrote, and the definition's list could let it read a file, connect, or send a secret, past what its own tools are allowed. *Test:* `agent_blob_tools_get_none_of_the_definitions_permissions`
 
 **C-agent-13** A preview is searched for references like any other value shown to the model. A preview is made from a blob's contents, which may hold another blob's reference. *Test:* `agent_preview_shows_no_key`
 

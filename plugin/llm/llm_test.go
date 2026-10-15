@@ -322,7 +322,7 @@ func Test_model_address_with_login_refused(t *testing.T) {
 	job := &plugin.Job{Context: context.Background(), Perms: &permission.Set{Layers: []permission.Layer{{Name: "test", Allow: []string{"network"}}}}}
 	for call, err := range map[string]error{
 		"chat":   second(chat(job, []any{}, plugin.Options{"model": "m", "address": "https://user:hunter2@models.example"})),
-		"choose": second(choose(job, "a state", plugin.Options{"model": "m", "address": "https://user:hunter2@models.example", "questions": urgent})),
+		"decide": second(decide(job, "a state", plugin.Options{"model": "m", "address": "https://user:hunter2@models.example", "questions": urgent})),
 	} {
 		if err == nil || !strings.Contains(err.Error(), "may not hold a user name or a password") || strings.Contains(err.Error(), "hunter2") || strings.Contains(err.Error(), "models.example") {
 			t.Fatalf("%s: an address with a login gave %v", call, err)
@@ -346,9 +346,9 @@ func Test_model_no_redirect_followed(t *testing.T) {
 	if _, err := s.ask(t, "anthropic", nil); err == nil || !strings.Contains(err.Error(), "answered 307") || reached {
 		t.Fatalf("a redirect gave %v, and the other place was reached: %v", err, reached)
 	}
-	_, err := choose(s.job, "a state", plugin.Options{"model": "jev-latest", "address": s.URL, "questions": urgent})
+	_, err := decide(s.job, "a state", plugin.Options{"model": "jev-latest", "address": s.URL, "questions": urgent})
 	if err == nil || !strings.Contains(err.Error(), "answered 307") || reached {
-		t.Fatalf("choose: a redirect gave %v, and the other place was reached: %v", err, reached)
+		t.Fatalf("decide: a redirect gave %v, and the other place was reached: %v", err, reached)
 	}
 }
 
@@ -390,7 +390,7 @@ func (d *decisions) ask(more plugin.Options) (map[string]any, error) {
 	for name, value := range more {
 		opt[name] = value
 	}
-	out, err := choose(d.job, "Checkout has been failing for every customer for the last hour.", opt)
+	out, err := decide(d.job, "Checkout has been failing for every customer for the last hour.", opt)
 	if err != nil {
 		return nil, err
 	}
@@ -451,22 +451,22 @@ func TestAJevModelIsOfSystemOne(t *testing.T) {
 	}
 }
 
-// Each call needs a service that makes it, and choose needs its questions.
+// Each call needs a service that makes it, and decide needs its questions.
 func TestEachCallNeedsAServiceThatMakesIt(t *testing.T) {
 	d := newDecisions(t, answered)
 	for what, err := range map[string]error{
 		"chat with systemone":   second(chat(d.job, []any{}, plugin.Options{"service": "systemone", "model": "jev-latest", "address": d.URL})),
-		"choose with anthropic": second(d.ask(plugin.Options{"service": "anthropic"})),
+		"decide with anthropic": second(d.ask(plugin.Options{"service": "anthropic"})),
 	} {
 		if err == nil || !strings.Contains(err.Error(), "service: is one of") || len(d.sent) != 0 {
 			t.Errorf("%s gave %v, and %d calls were sent", what, err, len(d.sent))
 		}
 	}
 	if _, err := d.ask(plugin.Options{"questions": nil}); err == nil || !strings.Contains(err.Error(), "needs questions:") {
-		t.Errorf("choose with no questions gave %v", err)
+		t.Errorf("decide with no questions gave %v", err)
 	}
-	if _, err := choose(d.job, nil, plugin.Options{"model": "jev-latest", "address": d.URL, "questions": urgent}); err == nil || !strings.Contains(err.Error(), "takes the state first") {
-		t.Errorf("choose with no state gave %v", err)
+	if _, err := decide(d.job, nil, plugin.Options{"model": "jev-latest", "address": d.URL, "questions": urgent}); err == nil || !strings.Contains(err.Error(), "takes the state first") {
+		t.Errorf("decide with no state gave %v", err)
 	}
 }
 

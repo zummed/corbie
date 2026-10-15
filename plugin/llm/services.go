@@ -69,7 +69,7 @@ func init() {
 	Register(&Service{Name: "openai-chat", Address: "https://api.openai.com",
 		Efforts: efforts, Accepts: takes, Chat: openaiChat.chat})
 	Register(&Service{Name: "systemone", Address: "https://api.typesafe.ai", Models: []string{"jev"},
-		Known: []string{"jev-latest"}, Choose: systemone.choose})
+		Known: []string{"jev-latest"}, Decide: systemone.decide})
 }
 
 // systemone is the System One format, which TypeSafe's Jev set.
@@ -499,11 +499,11 @@ const page = `llm: this plugin holds a conversation with a model, or puts questi
 
   llm.chat(conversation, { service, model, address, key, system, tools, shape, effort, reply_tokens, timeout, own })
       gives { text, calls, stop, usage, kept }
-  llm.choose(state, { service, model, address, key, questions, timeout })
+  llm.decide(state, { service, model, address, key, questions, timeout })
       gives { answers, model, usage }
   llm.takes(blob, { service })    returns true when the service accepts the blob in files
 
-chat holds a conversation with a model. choose puts questions with fixed
+chat holds a conversation with a model. decide puts questions with fixed
 answers to a System One model, which answers them all at once with
 probabilities and writes no text.
 
@@ -546,7 +546,7 @@ Returns:
   kept    what the service needs back unchanged, or null; put it in the
           assistant part
 
-For choose, state is the text or data the questions are about, and questions
+For decide, state is the text or data the questions are about, and questions
 is written in the System One format, which TypeSafe's Jev set: each question
 under its name, with these fields.
 
@@ -555,7 +555,7 @@ under its name, with these fields.
   criteria        for choice, { option: description }; for score, the levels
                   from lowest to highest; noul has none
 
-Options for choose:
+Options for decide:
   service         systemone; default systemone
   model           the model's name; required
   address         the service's URL, when it is not https://api.typesafe.ai:
@@ -565,7 +565,7 @@ Options for choose:
   questions       the questions, as above; required
   timeout         as for chat
 
-Returns, for choose:
+Returns, for decide:
   answers   each answer under its question's name, as the service wrote it:
             { type, noul } for noul, the probability that the statement holds;
             { type, choice, probabilities, confidence } for choice; and
@@ -629,7 +629,7 @@ This script puts two questions to a System One model.
 
     allow: [net:api.typesafe.ai, "secret:TYPESAFE_KEY@net:api.typesafe.ai"]
 
-    const r = llm.choose("Checkout has been failing for every customer for the last hour.", {
+    const r = llm.decide("Checkout has been failing for every customer for the last hour.", {
       model: "jev-latest", key: secrets.get("TYPESAFE_KEY"),
       questions: {
         team: { type: "choice", instructions: "Which team should handle this?",

@@ -1,7 +1,7 @@
 // Package llm is the plugin that calls a model. Its chat gives the
 // conversation so far, the tools on offer and what is wanted, and gets back
 // what the model said, the tools it asked for, why it stopped and how many
-// tokens were used. Its choose gives a System One model text or data and
+// tokens were used. Its decide gives a System One model text or data and
 // named questions about it, and gets back the answers.
 package llm
 
@@ -51,10 +51,10 @@ type Service struct {
 	// Shapes says the service has a way of its own to be given the shape
 	// of answer wanted. One that has none is told it in the system text.
 	Shapes bool
-	// Chat holds a conversation: one call. Choose puts questions with fixed
+	// Chat holds a conversation: one call. Decide puts questions with fixed
 	// answers to a System One model. A service has one or both.
 	Chat   func(job *plugin.Job, c *Call) (*Reply, error)
-	Choose func(job *plugin.Job, q *Questions) (*Answers, error)
+	Decide func(job *plugin.Job, q *Questions) (*Answers, error)
 }
 
 // Accept is one type of content a service takes beside text, and the
@@ -144,7 +144,7 @@ func Names() []string {
 }
 
 // Having gives the services that make a call: those with Chat, or those
-// with Choose.
+// with Decide.
 func Having(call func(*Service) bool) []string {
 	var names []string
 	for _, name := range Names() {
@@ -186,7 +186,7 @@ func (s *Service) Takes(typ string, size int64) error {
 func init() {
 	plugin.Register(&plugin.Module{Name: "llm", Page: page, Calls: map[string]*plugin.Call{
 		"chat":   {Options: []string{"service", "model", "address", "key", "system", "tools", "shape", "effort", "reply_tokens", "timeout", "own"}, Do: chat},
-		"choose": {Options: []string{"service", "model", "address", "key", "questions", "timeout"}, Do: choose},
+		"decide": {Options: []string{"service", "model", "address", "key", "questions", "timeout"}, Do: decide},
 		"takes": {Options: []string{"service"}, Do: func(job *plugin.Job, first any, opt plugin.Options) (any, error) {
 			b, ok := first.(*plugin.Blob)
 			name, err := opt.Text("service", "anthropic")
@@ -290,27 +290,27 @@ func chat(job *plugin.Job, first any, opt plugin.Options) (any, error) {
 	return out, nil
 }
 
-func choose(job *plugin.Job, first any, opt plugin.Options) (any, error) {
+func decide(job *plugin.Job, first any, opt plugin.Options) (any, error) {
 	if first == nil {
-		return nil, plugin.Errorf(plugin.BadInput, "llm.choose takes the state first: the text or data the questions are about")
+		return nil, plugin.Errorf(plugin.BadInput, "llm.decide takes the state first: the text or data the questions are about")
 	}
 	name, err := opt.Text("service", "systemone")
 	if err != nil {
 		return nil, err
 	}
 	svc, ok := services[name]
-	if !ok || svc.Choose == nil {
-		return nil, plugin.Errorf(plugin.BadInput, "service: is one of %s, not %q", strings.Join(Having(func(s *Service) bool { return s.Choose != nil }), ", "), name)
+	if !ok || svc.Decide == nil {
+		return nil, plugin.Errorf(plugin.BadInput, "service: is one of %s, not %q", strings.Join(Having(func(s *Service) bool { return s.Decide != nil }), ", "), name)
 	}
 	q := &Questions{State: first, Key: opt["key"]}
 	if q.Model, err = opt.Text("model", ""); err != nil || q.Model == "" {
-		return nil, plugin.Errorf(plugin.BadInput, "llm.choose needs model:, the model's name")
+		return nil, plugin.Errorf(plugin.BadInput, "llm.decide needs model:, the model's name")
 	}
 	if q.Questions, err = opt.Map("questions"); err != nil {
 		return nil, err
 	}
 	if len(q.Questions) == 0 {
-		return nil, plugin.Errorf(plugin.BadInput, "llm.choose needs questions:, each under its name with its type, instructions and criteria")
+		return nil, plugin.Errorf(plugin.BadInput, "llm.decide needs questions:, each under its name with its type, instructions and criteria")
 	}
 	if q.Address, err = opt.Text("address", svc.Address); err != nil {
 		return nil, err
@@ -318,7 +318,7 @@ func choose(job *plugin.Job, first any, opt plugin.Options) (any, error) {
 	if q.Limit, err = opt.Duration("timeout", 3*time.Minute); err != nil {
 		return nil, err
 	}
-	a, err := svc.Choose(job, q)
+	a, err := svc.Decide(job, q)
 	if err != nil {
 		return nil, err
 	}
@@ -505,9 +505,9 @@ func (svc *web) chat(job *plugin.Job, c *Call) (*Reply, error) {
 	return svc.reply(answer)
 }
 
-// choose puts questions to a System One model on the web. Its answer comes
+// decide puts questions to a System One model on the web. Its answer comes
 // whole, as one JSON value, and the answers in it go back as they came.
-func (svc *web) choose(job *plugin.Job, q *Questions) (*Answers, error) {
+func (svc *web) decide(job *plugin.Job, q *Questions) (*Answers, error) {
 	ctx, cancel := context.WithTimeout(job.Context, q.Limit)
 	defer cancel()
 	body, err := svc.send(ctx, job, q.Address, q.Key, q.Limit, map[string]any{"model": q.Model, "state": q.State, "questions": q.Questions})

@@ -26,9 +26,9 @@ The detailed rules behind the [Models overview](../model.md). Requirements are `
 
 **C-model-05** Parts of a reply that a service wants back unchanged, such as its own reasoning, are kept as they came and sent back with the next call, and are dropped when the conversation is sent to another service. A service turns away, or loses its place in, a conversation whose parts were altered, and another model cannot read them. *Test:* `model_kept_parts_sent_back_unchanged`
 
-## Choose
+## Decide
 
-**R-model-21** A script puts questions to a System One model with the `llm` plugin's `choose`, giving `state`, the text or data the questions are about, and named questions in the System One format, and gets back the answers as the service wrote them, the model that answered and how many tokens were used.
+**R-model-21** A script puts questions to a System One model with the `llm` plugin's `decide`, giving `state`, the text or data the questions are about, and named questions in the System One format, and gets back the answers as the service wrote them, the model that answered and how many tokens were used.
 *Accept:* a script makes the call with a state and three questions, one of each type. The stand-in receives them at `/v1/systemone` as they were written, with the key as a bearer token. The script's result holds each answer as the stand-in sent it, a field the plugin does not know included, the model's version and the tokens in and out.
 
 **R-model-22** Corbie comes with the `systemone` service, at `https://api.typesafe.ai`, which `jev-…` models are of by default. `address:` sends the call to another host, and a call with no `key:` sends no `Authorization` header.

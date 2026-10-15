@@ -1,6 +1,6 @@
 # Models
 
-An agent's turns are calls to a model, made through the `llm` plugin. This area is that plugin and the model services behind it. The plugin has two calls: `chat` holds a conversation with a model, and `choose` puts questions with fixed answers to a System One model.
+An agent's turns are calls to a model, made through the `llm` plugin. This area is that plugin and the model services behind it. The plugin has two calls: `chat` holds a conversation with a model, and `decide` puts questions with fixed answers to a System One model.
 
 ## Chat
 
@@ -8,7 +8,7 @@ A script calls a model with one call: it gives the conversation so far, the tool
 
 Why the model stopped is always passed on. A reply that ended because it ran out of room is told apart from one that was finished.
 
-## Choose
+## Decide
 
 A System One model writes no text. It is given the text or data the questions are about, sent as `state`, and named questions, and answers every question at once with probabilities. A question has a type, its instructions, and for two of the types its criteria.
 
@@ -21,7 +21,7 @@ A System One model writes no text. It is given the text or data the questions ar
 The questions are written in the System One format, which TypeSafe's Jev set. The answers come back as the service wrote them, with the model that answered and the tokens used. Corbie does not read the questions or the answers: what the service's documentation says they hold is what a script writes and reads.
 
 ```
-const r = llm.choose("Checkout has been failing for every customer for the last hour.", {
+const r = llm.decide("Checkout has been failing for every customer for the last hour.", {
   model: "jev-latest", key: secrets.get("TYPESAFE_KEY"),
   questions: { urgent: { type: "noul", instructions: "The customer cannot use the product." } },
 })

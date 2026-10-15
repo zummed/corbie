@@ -65,7 +65,7 @@ The detailed rules behind the [Store overview](../store.md).
 
 **C-store-07** No name the layout draws is also the path above another name. In a directory a name cannot be both a file and a directory. *Test:* `store_no_name_is_a_path_above_another`
 
-**C-store-08** Each part of a name that another party supplied, such as a sender's name, a blob's name or a job's name, is checked before it is used: not empty, not starting with a dot, and holding no slash. Such a part could otherwise step out of its place in the layout, and in a directory out of the directory. *Test:* `store_name_part_cannot_leave_its_place`
+**C-store-08** Each part of a name that another party supplied, such as a sender's name, a blob's name or a job's name, is checked before it is used: not empty, not starting with a dot, and holding no slash and no control character. Such a part could otherwise step out of its place in the layout, and in a directory out of the directory; a listing is one name per line, and a newline in a name is read as two. *Test:* `store_name_part_cannot_leave_its_place`
 
 ## Who may touch what
 

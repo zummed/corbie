@@ -262,7 +262,7 @@ func TestOnlyIfUnchangedRace(t *testing.T) {
 func Test_store_name_part_cannot_leave_its_place(t *testing.T) {
 	for kind, s := range kinds(t) {
 		t.Run(kind, func(t *testing.T) {
-			for _, name := range []string{"", "a//b", "a/../b", "../x", "a/.", "/a", "a/", "a/.hidden"} {
+			for _, name := range []string{"", "a//b", "a/../b", "../x", "a/.", "/a", "a/", "a/.hidden", "a/b\nc"} {
 				if _, err := s.Write(ctx, name, []byte("x"), Overwrite); !errors.Is(err, ErrName) {
 					t.Errorf("write %q: %v", name, err)
 				}
@@ -278,7 +278,7 @@ func Test_store_name_part_cannot_leave_its_place(t *testing.T) {
 			}
 		})
 	}
-	for _, part := range []string{"", ".", "..", "a/b", ".x"} {
+	for _, part := range []string{"", ".", "..", "a/b", ".x", "a\nb", "a\tb", "a\x00b"} {
 		if CheckPart(part) == nil {
 			t.Errorf("part %q passed", part)
 		}

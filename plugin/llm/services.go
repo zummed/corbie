@@ -495,7 +495,7 @@ var openaiResponses = &web{
 	},
 }
 
-const page = `llm: this plugin calls a model and returns its reply.
+const page = `llm: this plugin holds a conversation with a model, or puts questions with fixed answers to a System One model.
 
   llm.chat(conversation, { service, model, address, key, system, tools, shape, effort, reply_tokens, timeout, own })
       gives { text, calls, stop, usage, kept }

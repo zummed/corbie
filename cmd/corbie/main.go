@@ -1,4 +1,4 @@
-// Command corbie is the one binary: what a process does is decided by the
+// Command corbie is the one binary: what a process does is set by the
 // roles it is started with.
 package main
 

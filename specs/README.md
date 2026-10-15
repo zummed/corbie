@@ -1,12 +1,12 @@
 # Corbie
 
-Corbie runs machines. A machine is a flow, a statechart or an agent, written as a definition in YAML, and it contains jobs, which do its work: a job is a script, which a runner executes, or another machine. One binary does everything. What a process does is decided by the roles it is started with and by nothing else.
+Corbie runs machines. A machine is a flow, a statechart or an agent, written as a definition in YAML, and it contains jobs, which do its work: a job is a script, which a runner executes, or another machine. One binary does everything. What a process does is set by the roles it is started with and by nothing else.
 
 ## How it holds together
 
 Everything Corbie knows is in the store, which is a directory or a bucket. Every party reads and writes the store directly and no party talks to another in any other way: a message is a value written into the receiver's inbox. No process holds anything that matters in memory, so any of them can stop at any moment and any number of copies can run side by side.
 
-There are three kinds of party. A **controller** advances machines. It takes each message addressed to it, works out which instance the message is for, runs one step of that instance and writes down the result. A step only decides; the work it asks for is done elsewhere. A **runner** does the work: it takes jobs from its inbox, runs each script with the permissions the job was given, and writes the result back. A **client** starts runs and reads what happened to them. The command line, the gateway and an application using Corbie as a library are all clients.
+There are three kinds of party. A **controller** advances machines. It takes each message addressed to it, works out which instance the message is for, runs one step of that instance and writes down the result. A step only asks for work; the work is done elsewhere. A **runner** does the work: it takes jobs from its inbox, runs each script with the permissions the job was given, and writes the result back. A **client** starts runs and reads what happened to them. The command line, the gateway and an application using Corbie as a library are all clients.
 
 Each instance of a machine has a head and a record. The head is a small public card saying where the instance stands. The record is everything that happened to it, in order, readable only by the controller and by the client that started it. Watching a run, listing runs, reading a result and streaming a run's progress are all the same act: reading heads and records from the store.
 

@@ -5,10 +5,10 @@ flow: parent
 stages:
   ask_fails:
     job: { machine: ./ask-fails.yaml, input: { child: ask-fails } }
-  ask_undecided:
-    job: { machine: ./ask-undecided.yaml, input: { child: ask-undecided } }
+  ask_approves_none:
+    job: { machine: ./ask-approves-none.yaml, input: { child: ask-approves-none } }
   note:
-    when: ${stages.ask_fails.failed && stages.ask_undecided.failed}
-    job: { script: ./echo.js, input: { ask_fails: "${stages.ask_fails.error}", ask_undecided: "${stages.ask_undecided.error}" } }
+    when: ${stages.ask_fails.failed && stages.ask_approves_none.failed}
+    job: { script: ./echo.js, input: { ask_fails: "${stages.ask_fails.error}", ask_approves_none: "${stages.ask_approves_none.error}" } }
 output:
   note: ${stages.note.output}

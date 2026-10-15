@@ -1,4 +1,4 @@
-// Package agent is the machine whose decisions are made by a model: the
+// Package agent is the machine whose tools a model picks: the
 // model is asked what to do, the tools it picks are run, the results go
 // back to it, and this repeats until it answers without asking for a tool.
 package agent

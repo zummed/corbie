@@ -58,4 +58,4 @@ A name stays tied to the key it was enrolled with, and the controller's name to 
 
 Parties write to each other by leaving messages in each other's inboxes. A message is signed by its sender and sealed to its receiver, so only the receiver can read it and it cannot be altered or passed off as another's. A message says when it stops being good, and a receiver drops one that is past that time. A controller answers a client's late message with a receipt saying so.
 
-A receiver accepts a message only from a card it trusts. What it then does with the message is decided by what kind of message it is and who sent it: a runner acts only on jobs from a controller it trusts, and a controller's rules are in its own area.
+A receiver accepts a message only from a card it trusts. What it then does with the message depends on its kind and on who sent it: a runner acts only on jobs from a controller it trusts, and a controller's rules are in its own area.

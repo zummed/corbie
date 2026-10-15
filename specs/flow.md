@@ -27,7 +27,7 @@ A flow's `output:` is its result, filled in once every stage has settled. It rea
 
 ## Skipping
 
-`when:` makes a stage optional: it runs only if its condition holds. A skip spreads along the arrows, `follows:` included. A stage that needs something from a skipped stage is skipped as well, unless its own condition asks whether that stage was skipped, in which case it decides for itself.
+`when:` makes a stage optional: it runs only if its condition holds. A skip spreads along the arrows, `follows:` included. A stage that needs something from a skipped stage is skipped as well, unless its own condition asks whether that stage was skipped, in which case it runs if its condition holds.
 
 ## Failure
 

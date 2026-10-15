@@ -4,7 +4,7 @@ The detailed rules behind the [Roles overview](../role.md).
 
 ## Passes
 
-**R-role-01** A Corbie process runs as a controller, as a runner, or as both, and what it does is decided by the roles it is started with and by nothing else.
+**R-role-01** A Corbie process runs as a controller, as a runner, or as both, and what it does is set by the roles it is started with and by nothing else.
 *Accept:* one binary with one config is started as `corbie run controller`, as `corbie run runner` and as `corbie run controller runner`. The first takes steps and runs no job, the second runs jobs and takes no step, the third does both.
 
 **R-role-02** A pass looks at the store, does everything that is owed, and stops: a controller's pass handles every message in its inbox and every wake that has come due, and no wake that has not; a runner's pass takes every job in its inbox that it can finish, and runs it.

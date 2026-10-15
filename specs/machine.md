@@ -4,7 +4,7 @@ A machine is a definition that Corbie runs. There are three types, flow, statech
 
 ## Steps
 
-A machine runs as a series of steps and never as one long process. A step is given the definition, the state the machine was left in, and the events that have arrived since. It returns the new state and a list of requests. That is all a step does: it decides, and the work it decides on is done by its jobs, which are scripts and other machines. Steps of one instance happen one at a time and in order.
+A machine runs as a series of steps and never as one long process. A step is given the definition, the state the machine was left in, and the events that have arrived since. It returns the new state and a list of requests. That is all a step does. The work it asks for is done by its jobs, which are scripts and other machines. Steps of one instance happen one at a time and in order.
 
 Because a step depends on nothing but what it is given, taking the same step twice gives the same answer, and everything a machine has ever done can be read back from its record.
 
@@ -69,7 +69,7 @@ The client that started a root stands where a parent would. It can send the root
 
 Events sent between a parent and a child arrive once each and in the order they were sent. An event sent to a child that is not running is noted in the record as undelivered and fails nothing.
 
-Each type decides what it does with an event, and its own area says which it acts on and which it ignores.
+Each type handles an event in its own way, and its own area says which it acts on and which it ignores.
 
 ## Children
 
@@ -88,7 +88,7 @@ A machine waits for a person or an outside system with a ticket: a random value 
 3. That person or system answers with any client, naming the instance and the ticket and giving a value.
 4. The answer arrives as an event with the ticket's name. No other event is taken under that name.
 
-The ticket is the authority: any client that holds it may answer, and Corbie does not check who did. What an answer says about who gave it is the answerer's word, and the machine decides whether it is enough. The receipt for an answer says whether it was the one taken.
+The ticket is the authority: any client that holds it may answer, and Corbie does not check who did. What an answer says about who gave it is the answerer's word, which the machine's definition checks or does not. The receipt for an answer says whether it was the one taken.
 
 Services that carry questions to people, such as a chat program, are clients at the edge and no part of Corbie.
 
@@ -96,9 +96,9 @@ Services that carry questions to people, such as a chat program, are clients at 
 
 A job can be made to wait for a yes before it starts. A job is held if it is marked for approval, or if a permission it asks for is one its machine, or a machine above it, has listed as needing to be asked about. Being approved gives a job nothing it was not already allowed; approval only ever holds. What gives the yes is the machine's ask: a job of its own, a script or a machine, named at the top of the definition. That job is called `ask`, and nothing else in a definition may take the name. A machine with no ask uses the nearest one above it.
 
-The controller does the holding. It gathers the jobs from one step that need approval and starts the ask with them. The ask is told which machine is asking and, for each job, what it is and what input it would get. Its result names the jobs it approves and may add a note. Approved jobs start. A job not approved never starts, and its machine sees it as a failed job with the status denied, which it may handle like any other failure. An ask that fails, or ends without deciding, approves nothing.
+The controller does the holding. It gathers the jobs from one step that need approval and starts the ask with them. The ask is told which machine is asking and, for each job, what it is and what input it would get. Its result names the jobs it approves and may add a note. Approved jobs start. A job not approved never starts, and its machine sees it as a failed job with the status denied, which it may handle like any other failure. An ask that fails, or whose result does not list the jobs it approves, approves nothing.
 
-Waiting for a person happens inside the ask, typically a statechart that issues a ticket and ends with the decision. An ask that decides by itself, such as a model reviewing the jobs, is an ask all the same. An approval has no time limit of its own; the ask's timeout is how long it may take.
+Waiting for a person happens inside the ask, typically a statechart that issues a ticket and ends with the jobs it approves. An ask that waits for nobody, such as a model reviewing the jobs, is an ask all the same. An approval has no time limit of its own; the ask's timeout is how long it may take.
 
 An ask's job takes input like any other. The permissions an ask needs are its own, used by the ask's job and by nothing else in a machine that inherits it.
 

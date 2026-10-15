@@ -56,7 +56,7 @@ The detailed rules behind the [Controller overview](../controller.md). What the 
 **R-ctl-36** When a machine's last step both sends events and ends the machine, the events are sent before the ending, so a parent sees a child's last words before its result.
 *Accept:* parity case 93: the parent receives the child's event before the child's result, in every run.
 
-**C-ctl-09** For a message whose instance has no head, the controller looks for a first step entry before it decides the instance does not exist. A controller stopped after writing the first step and before writing the head leaves exactly that, and the start must then finish the step, not be refused or begin another. *Test:* `ctl_first_step_without_head_is_finished`
+**C-ctl-09** For a message whose instance has no head, the controller looks for a first step entry before it treats the instance as one that does not exist. A controller stopped after writing the first step and before writing the head leaves exactly that, and the start must then finish the step, not be refused or begin another. *Test:* `ctl_first_step_without_head_is_finished`
 
 **C-ctl-11** Before it writes another step, the controller finishes the latest one: while any message or wake the latest entry names is still there, that entry's carry-out, head and deleting come first, and those messages are never given to a step again. Given to a step again they would make the machine act twice on one event, and a new step written over an unfinished one leaves jobs that were asked for and never sent. *Test:* `ctl_unfinished_step_finished_before_next_is_written`
 
@@ -151,7 +151,7 @@ The detailed rules behind the [Controller overview](../controller.md). What the 
 
 **C-ctl-47** A step that could not finish because the store was out of reach, or because its pass was ending, is not a step that failed: nothing is written for it, and it is taken again in the next pass. The two look alike from where the step is called and must be told apart there. *Test:* `ctl_step_that_cannot_reach_store_is_not_a_failed_step`
 
-**C-ctl-48** A job that fails before anything is sent reaches its machine as a result does: as a message in the controller's own inbox, written during the carry-out under a name the entry gives. A failure decided during a carry-out and held in memory is lost when the controller stops, and the machine waits for ever. *Test:* `ctl_job_that_cannot_be_sent_fails_though_controller_stops`
+**C-ctl-48** A job that fails before anything is sent reaches its machine as a result does: as a message in the controller's own inbox, written during the carry-out under a name the entry gives. A failure found during a carry-out and held in memory is lost when the controller stops, and the machine waits for ever. *Test:* `ctl_job_that_cannot_be_sent_fails_though_controller_stops`
 
 ## Interfaces
 

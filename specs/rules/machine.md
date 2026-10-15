@@ -131,10 +131,10 @@ The detailed rules behind the [Machines overview](../machine.md). Area code: `ma
 **R-mach-61** An event sent to a child the sender knows is not running is noted in the sender's record as undelivered and fails nothing; one sent to a child that has ended before the sender has heard so is dropped by the child.
 *Accept:* parity case 94: the parent's record notes the event `hello` as undelivered, and the parent carries on.
 
-**R-mach-63** An event sent up reaches the parent whatever the two types are, and the parent's type decides what is done with it.
+**R-mach-63** An event sent up reaches the parent whatever the two types are, and the parent's type handles it in its own way.
 *Accept:* a chart under a chart: parity case 33. A chart under a flow: parity case 50, where the event is one of that stage's emitted items. A chart under an agent: parity case 103, received and ignored. A flow whose `emit:` names a stage, under a flow, under a chart and under an agent: the parent receives each item as the stage emits it. An agent child sends nothing up under any parent.
 
-**R-mach-64** An event sent down reaches the child whatever its type, and the child's type decides what is done with it.
+**R-mach-64** An event sent down reaches the child whatever its type, and the child's type handles it in its own way.
 *Accept:* chart to chart: parity case 33. Chart to flow: parity case 45. Chart to agent: parity case 87. A flow and an agent have nothing to send with, so there are no other pairings.
 
 **C-mach-17** An event sent down before the child has taken its first step waits for the child; it is not counted as undelivered. A parent may send in the very step that starts the child, and the start and the event travel separately. *Test:* `mach_event_sent_before_child_starts_is_kept`
@@ -212,13 +212,13 @@ The detailed rules behind the [Machines overview](../machine.md). Area code: `ma
 **R-mach-102** The ask's result names the jobs it approves and may add a note. Approved jobs start; a job not approved never starts, and its machine sees it as a failed job with the status denied and the note.
 *Accept:* parity case 66: the two approved items run, the other two appear with an error, and nothing was ever sent to a runner for them. Parity case 65: the note is in the error.
 
-**R-mach-106** An ask that fails, or ends without deciding, approves nothing.
-*Accept:* parity case 76: the first child's ask fails, the second's gives no decision, and neither held job starts.
+**R-mach-106** An ask that fails, or whose result does not list the jobs it approves, approves nothing.
+*Accept:* parity case 76: the first child's ask fails, the second's result lists no jobs, and neither held job starts.
 
 **R-mach-109** An approval has no time limit of its own; the ask's timeout is how long it may take.
 *Accept:* an ask that is a chart with a timeout of one second waits on a ticket nobody answers; it fails as out of time and the held job is denied. The same ask with no timeout holds the job for as long as the test waits.
 
-**R-mach-112** A held job that is no longer wanted is dropped without starting, and an ask left with nothing to decide is cancelled.
+**R-mach-112** A held job that is no longer wanted is dropped without starting, and an ask left with no held job is cancelled.
 *Accept:* parity case 69.
 
 **R-mach-113** A job that starts a child is held like any other, before the child exists.
@@ -232,7 +232,7 @@ The detailed rules behind the [Machines overview](../machine.md). Area code: `ma
 
 **C-mach-21** An ask's input and permissions are filled from the input of the machine that declares the ask, never from the input of a machine that inherits it, and the permissions and secrets of an inherited ask go into the ask's own job and into no other job of that machine. A child's input could otherwise widen what the ask may reach, and any job in a child could name the secrets its parent gave the ask. *Test:* `mach_inherited_ask_filled_from_declaring_machine`
 
-**C-mach-22** When an ask, started once, refuses several jobs, every one of them is given to its machine as denied and written in the record, including those that arrive after the first has failed the machine. Telling only the first leaves the rest held for a decision that has already been made, and whoever reads the record must see every job that was turned down. *Test:* `mach_every_refusal_is_recorded`
+**C-mach-22** When an ask, started once, refuses several jobs, every one of them is given to its machine as denied and written in the record, including those that arrive after the first has failed the machine. Telling only the first leaves the rest held for an ask that has already ended, and whoever reads the record must see every job that was turned down. *Test:* `mach_every_refusal_is_recorded`
 
 ## Failure
 

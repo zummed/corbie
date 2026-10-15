@@ -1,6 +1,6 @@
 # Agent
 
-An agent is a machine whose decisions are made by a model. The model is asked what to do, the tools it picks are run, the results go back to it, and this repeats until it answers without asking for a tool.
+An agent is a machine whose tools a model picks. The model is asked what to do, the tools it picks are run, the results go back to it, and this repeats until it answers without asking for a tool.
 
 Corbie itself knows nothing about models. A turn is an ordinary job and so is a tool, and an agent is held to its permissions and its ask like any machine.
 

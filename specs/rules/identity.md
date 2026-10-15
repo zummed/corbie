@@ -86,6 +86,8 @@ The detailed rules behind the [Identity overview](../identity.md).
 **R-id-36** A name stays tied to the key it was enrolled with, also after the party has been removed: a card with a different key under a name already used is refused, and the same key under its own name is taken again without being called a replacement.
 *Accept:* enrol a runner named `laptop`; make another identity named `laptop` elsewhere and enrol its card: refused, saying the name is already used with another key, and the first runner's trust is unchanged. Remove `laptop`, then enrol the different key: refused the same way; enrol the same card again: accepted.
 
+**C-id-20** `enrol` refuses a runner's or a client's card that bears the controller's own name. The name is the controller's area in the store, and a party under it would be given the controller's row of access to a served directory. *Test:* `id_enrol_refuses_the_controllers_own_name`
+
 **R-id-39** A different key is taken under a used name when the person enrolling says it replaces the old one, and from then on nothing signed with the old key is accepted; the tie holds in a runner's and a client's config as it does at a controller.
 *Accept:* enrol a new key named `laptop`, saying it replaces: accepted. A message signed with the old key is not accepted afterwards; one signed with the new key is. A runner trusts controller `ctl`; `corbie runner trust` is given a card named `ctl` with other keys: refused. Said to replace: accepted, and a job signed with the old key is not run.
 

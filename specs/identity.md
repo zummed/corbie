@@ -52,7 +52,7 @@ Someone who only wants to see where runs stand needs no identity at all: the con
 
 The same commands change what was given: a ceiling or tags can be set again at any time. A command that names neither leaves both as they are, and `none` in place of a ceiling or of tags takes them away. Either side can remove the other's card, and from then on nothing from that party is accepted.
 
-A name stays tied to the key it was enrolled with. A different key under a name already used is refused unless the person enrolling says it replaces the old one, and this holds after the party has been removed too. A replacement takes over the old key's runs: it can cancel them and send them events, though it cannot read what was sealed to the old key.
+A name stays tied to the key it was enrolled with, and the controller's name to its own. A different key under a name already used is refused unless the person enrolling says it replaces the old one, and this holds after the party has been removed too. A replacement takes over the old key's runs: it can cancel them and send them events, though it cannot read what was sealed to the old key.
 
 ## Messages
 

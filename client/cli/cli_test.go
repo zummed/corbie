@@ -338,6 +338,22 @@ func Test_id_enrol_prints_nothing_when_trust_not_written(t *testing.T) {
 	}
 }
 
+func Test_id_enrol_refuses_the_controllers_own_name(t *testing.T) {
+	ctl, storeDir := controllerOn(t)
+	other := machine{t, filepath.Join(t.TempDir(), "other")}
+	_, card, _ := other.run("", "runner", "card", "--name", "ctl")
+	status, out, said := ctl.run(card, "controller", "enrol", "-")
+	if status == 0 || out != "" || !strings.Contains(said, "controller's own name") {
+		t.Fatalf("enrol of the controller's own name ended %d, printed %q and said %q", status, out, said)
+	}
+	filepath.WalkDir(storeDir, func(path string, _ os.DirEntry, _ error) error {
+		if strings.Contains(path, "/trust/") {
+			t.Fatalf("trust was written: %s", path)
+		}
+		return nil
+	})
+}
+
 func Test_id_enrol_prints_address_without_credentials(t *testing.T) {
 	ctl, storeDir := controllerOn(t)
 	laptop := machine{t, filepath.Join(t.TempDir(), "laptop")}

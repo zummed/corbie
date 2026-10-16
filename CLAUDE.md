@@ -100,6 +100,7 @@ A page of the manual:
 - Each constraint names its test. Write the test under that name.
 - No references to the specs in code comments. The link between a rule and the code is the commit message.
 - Match what is there: the same words the specs use for the same things.
+- Until version 1, nothing is kept backwards compatible: a schema or a file's shape is changed in place, with no migration and no reading of older files. A store made by an older Corbie is made again.
 
 ## Commits
 

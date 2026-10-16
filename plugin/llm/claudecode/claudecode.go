@@ -13,6 +13,8 @@ import (
 	"encoding/json/v2"
 	"fmt"
 	"io"
+	"os"
+	"path/filepath"
 	"regexp"
 	"slices"
 	"strings"
@@ -72,9 +74,19 @@ func chat(job *plugin.Job, c *llm.Call) (*llm.Reply, error) {
 			return nil, err
 		}
 	}
+	// The system text, which grows with every tool, is given in a file:
+	// a command line has a limit, and anyone on the machine can read it.
+	given, err := job.Directory("claude-system-*")
+	if err != nil {
+		return nil, err
+	}
+	prompt := filepath.Join(given, "system.md")
+	if err := os.WriteFile(prompt, []byte(system(c)), 0o600); err != nil {
+		return nil, err
+	}
 	schema, _ := json.Marshal(shape(c), json.Deterministic(true))
 	args := []string{"-p", "--input-format", "stream-json", "--output-format", "stream-json", "--verbose",
-		"--include-partial-messages", "--system-prompt", system(c), "--json-schema", string(schema),
+		"--include-partial-messages", "--system-prompt-file", prompt, "--json-schema", string(schema),
 		"--strict-mcp-config", "--no-session-persistence", "--model", c.Model,
 		"--tools", strings.Join(c.Own, ",")}
 	if len(c.Own) > 0 {

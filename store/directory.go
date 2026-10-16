@@ -77,7 +77,7 @@ func (f *directory) Read(ctx context.Context, name string) ([]byte, Mark, error)
 	if err := ctx.Err(); err != nil {
 		return nil, None, err
 	}
-	value, err := os.ReadFile(f.path(name))
+	value, err := readFile(f.path(name))
 	switch {
 	case err == nil:
 		return value, markOf(value), nil
@@ -94,9 +94,9 @@ func (f *directory) ReadPart(ctx context.Context, name string, from, length int6
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	file, err := os.Open(f.path(name))
+	file, err := openFile(f.path(name))
 	if err != nil {
-		if gone(err) || errors.Is(err, fs.ErrPermission) {
+		if gone(err) || errors.Is(err, fs.ErrPermission) || errors.Is(err, syscall.EISDIR) {
 			return nil, nil
 		}
 		return nil, err
@@ -226,7 +226,7 @@ func (f *directory) replace(ctx context.Context, tmp, path string, how How) (boo
 			return false, err
 		}
 	}
-	err = os.Rename(tmp, path)
+	err = rename(tmp, path)
 	return err == nil, err
 }
 
@@ -259,7 +259,7 @@ func (f *directory) onDisk(dir string) error {
 // unchanged says whether the file at path still has the mark. The directory's
 // lock is held.
 func (f *directory) unchanged(path string, mark Mark) (bool, error) {
-	value, err := os.ReadFile(path)
+	value, err := readFile(path)
 	if gone(err) {
 		return false, nil
 	}
@@ -320,7 +320,7 @@ func (f *directory) Delete(ctx context.Context, name string, how How) (bool, err
 			return false, err
 		}
 	}
-	err = os.Remove(path)
+	err = remove(path)
 	if err != nil && !gone(err) {
 		return false, err
 	}

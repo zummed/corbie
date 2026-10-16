@@ -26,8 +26,14 @@ const JobArg = "run-one-job"
 // channel from its runner, runs the script, and says how it ended.
 func JobMain() {
 	// The channel is the job's own: no program the job starts is handed it.
-	closeOnExec(3, 4)
-	w := &wire{r: os.NewFile(3, "from the runner"), w: os.NewFile(4, "to the runner")}
+	from, to := takeChannel()
+	w := &wire{r: from, w: to}
+	// Everything the job starts is in its group, and goes when the group
+	// is ended.
+	if err := startGroup(); err != nil {
+		fmt.Fprintln(os.Stderr, "the job's process could not make a group of its own:", err)
+		os.Exit(2)
+	}
 	first, err := w.receive()
 	if err != nil || first.Op != opBegin || first.Begin == nil {
 		os.Exit(2)

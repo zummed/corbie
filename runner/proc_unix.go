@@ -63,10 +63,20 @@ func (j *supervised) watchMemory(pid int, done <-chan struct{}) {
 	}
 }
 
-// closeOnExec keeps files of the job's process from every program it
-// starts.
-func closeOnExec(fds ...int) {
-	for _, fd := range fds {
-		syscall.CloseOnExec(fd)
-	}
+// giveChannel hands the job's process its two ends of the channel, as its
+// files 3 and 4.
+func giveChannel(cmd *exec.Cmd, toJob, fromJob *os.File) {
+	cmd.ExtraFiles = []*os.File{toJob, fromJob}
 }
+
+// takeChannel gives the job's process its ends of the channel, kept from
+// every program it starts.
+func takeChannel() (fromRunner, toRunner *os.File) {
+	syscall.CloseOnExec(3)
+	syscall.CloseOnExec(4)
+	return os.NewFile(3, "from the runner"), os.NewFile(4, "to the runner")
+}
+
+// startGroup does nothing: the runner started the job's process in a group
+// of its own.
+func startGroup() error { return nil }

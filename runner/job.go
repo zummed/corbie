@@ -129,7 +129,7 @@ func (j *supervised) run() *instance.Result {
 	cmd := exec.Command(j.r.Command[0], j.r.Command[1:]...)
 	cmd.Env = []string{} // nothing of the runner's
 	cmd.Dir = scratch
-	cmd.ExtraFiles = []*os.File{toJob, fromJob}
+	giveChannel(cmd, toJob, fromJob)
 	j.masks = &plugin.Job{Secrets: job.Secrets}
 	said := &tail{limit: 8 << 10, mask: j.masks.Mask}
 	cmd.Stdout, cmd.Stderr = said, said

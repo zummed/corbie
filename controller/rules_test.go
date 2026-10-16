@@ -785,7 +785,7 @@ func TestSecretALayerDoesNotAllowIsNotSentAndItsJobIsDenied(t *testing.T) {
 		{name: "a ceiling of the four groups", chart: alone, entry: "secret:K@*", ceiling: groups,
 			layer: "the ceiling of the client \"c1\"", fix: "the controller's owner runs: corbie controller enrol c1 --allow secret:K@*"},
 		{name: "the start's list has no entry for it", chart: alone, entry: "secret:K@net:api.example", ceiling: all, start: []string{"network"},
-			layer: "the list the run was started with", fix: "start the run with secret:K@net:api.example in its list as well (corbie submit --allow)"},
+			layer: "the list the run was started with", fix: "start the run with secret:K@net:api.example in its list as well (corbie run submit --allow)"},
 		{name: "a parent's job has no entry for it", chart: below, entry: "secret:K@net:api.example", ceiling: all,
 			layer: "the job \"s\" in the definition of \"parent\"", fix: "add the line secret:K@net:api.example to the allow list of the job \"s\" in the definition of \"parent\""},
 		{name: "the ceiling denies it everywhere", chart: alone, entry: "secret:K@net:api.example", ceiling: all, denied: []string{"secret:K@*"},

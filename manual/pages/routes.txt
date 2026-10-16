@@ -91,4 +91,4 @@ Reference
 
   corbie manual gateway   starting the gateway, its token and a first run
   corbie manual runs      the fields of a run and of an entry, a blob's paths, and a blob as another run's input
-  corbie manual run       the gateway's flags
+  corbie manual start     the gateway's flags

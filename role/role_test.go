@@ -35,7 +35,7 @@ func TestLoopSleepsUntilTheNextThingIsDue(t *testing.T) {
 		time.Sleep(120 * time.Millisecond)
 		notice <- struct{}{} // another role in the process wrote something
 	}()
-	Run(ctx, time.Hour, time.Now, nil, Role{Name: "r", Pass: pass, Notice: notice})
+	Run(ctx, time.Now, nil, Role{Name: "r", Pass: pass, Interval: time.Hour, Notice: notice})
 	if len(passes) != 3 {
 		t.Fatalf("%d passes were made", len(passes))
 	}

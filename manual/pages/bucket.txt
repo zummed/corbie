@@ -25,20 +25,20 @@ control between the processes on a bucket.
 Under systemd, put the key in a file only root can read, named by
 `EnvironmentFile=` in the unit from `corbie manual one-computer`.
 
-  ctl$   corbie run controller
+  ctl$   corbie start controller
 
 Add a runner or a client on another computer
 --------------------------------------------
 
   gpu$   corbie runner card | ssh ctl corbie controller enrol - --tags gpu | corbie runner trust - --ceiling exec
   ctl$   corbie controller policy gpu-runner > runner-policy.json
-  gpu$   corbie run runner
+  gpu$   corbie start runner
   ctl$   corbie check --tag gpu
 
 `corbie manual served-directory` explains the first line and has the line for
 a client.
 
-`corbie run` must stay running on each computer. It polls the bucket every
+`corbie start` must stay running on each computer. It polls the bucket every
 `--interval` (default 2s), with a few requests each time. The computers'
 clocks must agree within five minutes.
 

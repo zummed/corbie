@@ -40,19 +40,19 @@ func (s *starting) close() {
 	}
 }
 
-func (s *starting) flags(e *env) {
-	e.flags.StringVar(&s.input, "input", "", "")
-	e.flags.Var(&s.files, "input-file", "")
-	e.flags.Var(&s.labels, "label", "")
-	e.flags.Var(&s.allow, "allow", "")
-	e.flags.Var(&s.deny, "deny", "")
-	e.flags.Var(&s.secrets, "secret", "")
-	e.flags.Var(&s.secretsFromEnv, "secret-env", "")
-	e.flags.StringVar(&s.life, "life", "", "")
-	e.flags.StringVar(&s.timeout, "timeout", "", "")
-	e.flags.StringVar(&s.memory, "memory", "", "")
-	e.flags.Var(&s.tags, "tag", "")
-	e.flags.BoolVar(&s.watch, "watch", false, "")
+func (s *starting) flags(e *Env) {
+	e.Flags.StringVar(&s.input, "input", "", "")
+	e.Flags.Var(&s.files, "input-file", "")
+	e.Flags.Var(&s.labels, "label", "")
+	e.Flags.Var(&s.allow, "allow", "")
+	e.Flags.Var(&s.deny, "deny", "")
+	e.Flags.Var(&s.secrets, "secret", "")
+	e.Flags.Var(&s.secretsFromEnv, "secret-env", "")
+	e.Flags.StringVar(&s.life, "life", "", "")
+	e.Flags.StringVar(&s.timeout, "timeout", "", "")
+	e.Flags.StringVar(&s.memory, "memory", "", "")
+	e.Flags.Var(&s.tags, "tag", "")
+	e.Flags.BoolVar(&s.watch, "watch", false, "")
 }
 
 // addSecret puts a run secret into a start, its value read by read.
@@ -71,7 +71,7 @@ func addSecret(start *client.Start, name string, read func(string) (string, erro
 // prepare reads the definition or the script a command names, with the
 // files beside it, fills it out and checks it, and gathers what the start
 // carries. Nothing is uploaded and nothing is sent if anything is wrong.
-func (s *starting) prepare(e *env, file string) (*machine.Draft, client.Start, error) {
+func (s *starting) prepare(e *Env, file string) (*machine.Draft, client.Start, error) {
 	var start client.Start
 	src, err := os.ReadFile(file)
 	if err != nil {
@@ -117,16 +117,16 @@ func (s *starting) prepare(e *env, file string) (*machine.Draft, client.Start, e
 		// A flag that has no effect on what was given is a mistake.
 		for name, given := range map[string]bool{"--memory": s.memory != "", "--tag": len(s.tags) > 0} {
 			if given {
-				return nil, start, mistake("%s applies only to a script file; a definition gives its jobs their own", name)
+				return nil, start, Mistake("%s applies only to a script file; a definition gives its jobs their own", name)
 			}
 		}
 		// The start's own list, which narrows the run and everything below.
 		if len(s.allow)+len(s.deny) > 0 {
 			if err := permission.CheckList(s.allow); err != nil {
-				return nil, start, mistake("--allow: %v", err)
+				return nil, start, Mistake("--allow: %v", err)
 			}
 			if err := permission.CheckList(s.deny); err != nil {
-				return nil, start, mistake("--deny: %v", err)
+				return nil, start, Mistake("--deny: %v", err)
 			}
 			start.Allow = &permission.Layer{Allow: s.allow, Deny: s.deny}
 		}
@@ -143,17 +143,17 @@ func (s *starting) prepare(e *env, file string) (*machine.Draft, client.Start, e
 			}
 		}
 		if err := json.Unmarshal(text, &start.Input); err != nil {
-			return nil, start, mistake("--input is JSON, or @file naming a file of JSON: %v", err)
+			return nil, start, Mistake("--input is JSON, or @file naming a file of JSON: %v", err)
 		}
 	}
 	// A file is given as input under a name: --input-file report=report.pdf.
 	for _, given := range s.files {
 		name, at, ok := strings.Cut(given, "=")
 		if !ok || name == "" || at == "" {
-			return nil, start, mistake("--input-file takes name=path: the name the file has in the input, and where the file is")
+			return nil, start, Mistake("--input-file takes name=path: the name the file has in the input, and where the file is")
 		}
 		if _, twice := start.Files[name]; twice {
-			return nil, start, mistake("--input-file gives two files under the name %q", name)
+			return nil, start, Mistake("--input-file gives two files under the name %q", name)
 		}
 		file, err := os.Open(at)
 		if err != nil {
@@ -178,7 +178,7 @@ func (s *starting) prepare(e *env, file string) (*machine.Draft, client.Start, e
 		}
 		d, err := machine.ParseDuration(text)
 		if err != nil {
-			return nil, start, mistake("%s: %v", flagName, err)
+			return nil, start, Mistake("%s: %v", flagName, err)
 		}
 		if flagName == "--timeout" {
 			// A script's timeout is its job's, given above.
@@ -197,7 +197,7 @@ func (s *starting) prepare(e *env, file string) (*machine.Draft, client.Start, e
 			return nil, start, err
 		}
 		if given[name] {
-			return nil, start, mistake("the secret %q is given twice: give it once", name)
+			return nil, start, Mistake("the secret %q is given twice: give it once", name)
 		}
 		given[name] = true
 	}
@@ -237,15 +237,15 @@ func sanitize(name string) string {
 // cannot tell it when something was written.
 const interval = time.Second
 
-func cmdTest(e *env, args []string) error {
+func cmdTest(e *Env, args []string) error {
 	var s starting
 	s.flags(e)
-	files, err := e.parse(args)
+	files, err := e.Parse(args)
 	if err != nil {
 		return err
 	}
 	if len(files) != 1 {
-		return mistake("name one definition, or one script file")
+		return Mistake("name one definition, or one script file")
 	}
 	defer s.close()
 	draft, start, err := s.prepare(e, files[0])
@@ -256,7 +256,7 @@ func cmdTest(e *env, args []string) error {
 	// ceilings allow everything, and the definition's own permissions
 	// still apply.
 	local, err := client.NewLocal(e.ctx, permission.Layer{Allow: []string{"all"}}, func(role string, err error) {
-		e.say("%s: %v", role, err)
+		e.Say("%s: %v", role, err)
 	})
 	if err != nil {
 		return err
@@ -270,24 +270,24 @@ func cmdTest(e *env, args []string) error {
 	return e.await(local.Client, id, s.watch, strings.HasSuffix(files[0], ".js"))
 }
 
-func cmdSubmit(e *env, args []string) error {
+func cmdSubmit(e *Env, args []string) error {
 	var s starting
 	s.flags(e)
-	e.flags.BoolVar(&s.wait, "wait", false, "")
-	files, err := e.parse(args)
+	e.Flags.BoolVar(&s.wait, "wait", false, "")
+	files, err := e.Parse(args)
 	if err != nil {
 		return err
 	}
 	if len(files) != 1 {
-		return mistake("name one definition, or one script file")
+		return Mistake("name one definition, or one script file")
 	}
 	if s.wait && s.watch {
-		return mistake("--wait and --watch are two ways of staying; give one")
+		return Mistake("--wait and --watch are two ways of staying; give one")
 	}
 	defer s.close()
 	// The client comes first, so that nobody types a secret's value for a
 	// start that cannot be sent.
-	c, err := e.client()
+	c, err := e.Client()
 	if err != nil {
 		return err
 	}
@@ -301,16 +301,16 @@ func cmdSubmit(e *env, args []string) error {
 	}
 	if !s.wait && !s.watch {
 		// The ID and nothing else: other commands take it.
-		return e.print(map[string]string{"id": id}, func() string { return id + "\n" })
+		return e.Print(map[string]string{"id": id}, func() string { return id + "\n" })
 	}
-	e.say("%s", id)
+	e.Say("%s", id)
 	return e.await(c, id, s.watch, strings.HasSuffix(files[0], ".js"))
 }
 
 // await stays until a run ends and prints it, following its record on the
 // way if asked to. A command that waits for a run fails on a run that
 // ended badly.
-func (e *env) await(c *client.Client, id string, watch, script bool) error {
+func (e *Env) await(c *client.Client, id string, watch, script bool) error {
 	var run *client.Run
 	var err error
 	if watch {
@@ -333,8 +333,8 @@ func (e *env) await(c *client.Client, id string, watch, script bool) error {
 }
 
 // printRun prints a run in the one shape.
-func (e *env) printRun(run *client.Run, script bool) error {
-	return e.print(run, func() string { return runText(run, script) })
+func (e *Env) printRun(run *client.Run, script bool) error {
+	return e.Print(run, func() string { return runText(run, script) })
 }
 
 // runText is a run in the one shape, as text.
@@ -424,10 +424,10 @@ func plural(n int, what string) string {
 
 // entry prints one entry of a record as it is followed: the entries are
 // what was asked for, and go where a result goes.
-func (e *env) entry(entry client.Entry) {
+func (e *Env) entry(entry client.Entry) {
 	if e.json {
 		data, _ := json.Marshal(entry, json.Deterministic(true))
-		fmt.Fprintln(e.out, string(data))
+		fmt.Fprintln(e.Out, string(data))
 		return
 	}
 	at := entry.Time.Local().Format("15:04:05")
@@ -438,7 +438,7 @@ func (e *env) entry(entry client.Entry) {
 		if s, ok := entry.Data.(string); ok {
 			text = s
 		}
-		fmt.Fprintf(e.out, "%s %s  %s %s: %s\n", at, short, entry.Job, entry.Name, text)
+		fmt.Fprintf(e.Out, "%s %s  %s %s: %s\n", at, short, entry.Job, entry.Name, text)
 		return
 	}
 	for _, event := range entry.Events {
@@ -454,7 +454,7 @@ func (e *env) entry(entry client.Entry) {
 			data, _ := json.Marshal(event.Data, json.Deterministic(true))
 			line += " " + clip(string(data))
 		}
-		fmt.Fprintf(e.out, "%s %s  step %d  <- %s\n", at, short, entry.Step, line)
+		fmt.Fprintf(e.Out, "%s %s  step %d  <- %s\n", at, short, entry.Step, line)
 	}
 	for _, ask := range entry.Asks {
 		line := ""
@@ -486,10 +486,10 @@ func (e *env) entry(entry client.Entry) {
 		default:
 			continue
 		}
-		fmt.Fprintf(e.out, "%s %s  step %d  -> %s\n", at, short, entry.Step, line)
+		fmt.Fprintf(e.Out, "%s %s  step %d  -> %s\n", at, short, entry.Step, line)
 	}
 	if entry.Status != instance.Running {
-		fmt.Fprintf(e.out, "%s %s  step %d  %s\n", at, short, entry.Step, entry.Status)
+		fmt.Fprintf(e.Out, "%s %s  step %d  %s\n", at, short, entry.Step, entry.Status)
 	}
 }
 
@@ -500,21 +500,21 @@ func clip(text string) string {
 	return text
 }
 
-func cmdLs(e *env, args []string) error {
+func cmdLs(e *Env, args []string) error {
 	var labels list
 	var filter client.Filter
 	var watch bool
-	e.flags.Var(&labels, "label", "")
-	e.flags.StringVar(&filter.Status, "status", "", "")
-	e.flags.StringVar(&filter.Parent, "parent", "", "")
-	e.flags.BoolVar(&filter.Finished, "all", false, "")
-	e.flags.BoolVar(&watch, "watch", false, "")
-	rest, err := e.parse(args)
+	e.Flags.Var(&labels, "label", "")
+	e.Flags.StringVar(&filter.Status, "status", "", "")
+	e.Flags.StringVar(&filter.Parent, "parent", "", "")
+	e.Flags.BoolVar(&filter.Finished, "all", false, "")
+	e.Flags.BoolVar(&watch, "watch", false, "")
+	rest, err := e.Parse(args)
 	if err != nil {
 		return err
 	}
 	if len(rest) > 0 {
-		return mistake("ls takes no run: corbie show <id> shows one")
+		return Mistake("run ls takes no run; corbie run show <id> shows one")
 	}
 	for _, label := range labels {
 		name, value, _ := strings.Cut(label, "=")
@@ -524,9 +524,9 @@ func cmdLs(e *env, args []string) error {
 		filter.Labels[name] = value
 	}
 	if filter.Status != "" && !slices.Contains(client.Statuses, filter.Status) {
-		return mistake("--status is %s", strings.Join(client.Statuses, ", "))
+		return Mistake("--status is %s", strings.Join(client.Statuses, ", "))
 	}
-	c, err := e.client()
+	c, err := e.Client()
 	if err != nil {
 		return err
 	}
@@ -545,7 +545,7 @@ func cmdLs(e *env, args []string) error {
 	}
 	if watch {
 		return c.Watch(e.ctx, filter, interval, func(u client.Update) {
-			e.print(u, func() string {
+			e.Print(u, func() string {
 				if u.Listed {
 					return "-- everything that already existed is above --\n"
 				}
@@ -560,7 +560,7 @@ func cmdLs(e *env, args []string) error {
 	if runs == nil {
 		runs = []*client.Run{}
 	}
-	return e.print(runs, func() string {
+	return e.Print(runs, func() string {
 		var b strings.Builder
 		for _, run := range runs {
 			b.WriteString(row(run))
@@ -569,37 +569,37 @@ func cmdLs(e *env, args []string) error {
 	})
 }
 
-func cmdShow(e *env, args []string) error {
+func cmdShow(e *Env, args []string) error {
 	var record, watch, wait, definition, tickets bool
 	var step int
 	var save string
-	e.flags.BoolVar(&record, "record", false, "")
-	e.flags.BoolVar(&watch, "watch", false, "")
-	e.flags.BoolVar(&wait, "wait", false, "")
-	e.flags.BoolVar(&definition, "definition", false, "")
-	e.flags.BoolVar(&tickets, "tickets", false, "")
-	e.flags.IntVar(&step, "step", 0, "")
-	e.flags.StringVar(&save, "save", "", "")
-	rest, err := e.parse(args)
+	e.Flags.BoolVar(&record, "record", false, "")
+	e.Flags.BoolVar(&watch, "watch", false, "")
+	e.Flags.BoolVar(&wait, "wait", false, "")
+	e.Flags.BoolVar(&definition, "definition", false, "")
+	e.Flags.BoolVar(&tickets, "tickets", false, "")
+	e.Flags.IntVar(&step, "step", 0, "")
+	e.Flags.StringVar(&save, "save", "", "")
+	rest, err := e.Parse(args)
 	if err != nil {
 		return err
 	}
 	if len(rest) != 1 {
-		return mistake("name one run by its ID")
+		return Mistake("name one run by its ID")
 	}
 	// Each of these asks for something else to be printed: only one of
 	// them would have its way.
 	var asked []string
 	for _, name := range []string{"record", "watch", "wait", "definition", "tickets", "step", "save"} {
-		if e.given(name) {
+		if e.Given(name) {
 			asked = append(asked, "--"+name)
 		}
 	}
 	if len(asked) > 1 {
-		return mistake("%s each ask for something else: give one", strings.Join(asked, " and "))
+		return Mistake("%s each ask for something else: give one", strings.Join(asked, " and "))
 	}
 	id := rest[0]
-	c, err := e.client()
+	c, err := e.Client()
 	if err != nil {
 		return err
 	}
@@ -613,7 +613,7 @@ func cmdShow(e *env, args []string) error {
 		if err != nil {
 			return err
 		}
-		_, err = fmt.Fprintln(e.out, string(data))
+		_, err = fmt.Fprintln(e.Out, string(data))
 		return err
 	case tickets:
 		// A ticket's value is the whole right to answer. It is in the
@@ -625,7 +625,7 @@ func cmdShow(e *env, args []string) error {
 		if held == nil {
 			held = map[string]string{}
 		}
-		return e.print(held, func() string {
+		return e.Print(held, func() string {
 			var b strings.Builder
 			for _, name := range sortedKeys(held) {
 				fmt.Fprintf(&b, "%s  %s\n", name, held[name])
@@ -641,7 +641,7 @@ func cmdShow(e *env, args []string) error {
 		if err != nil {
 			return err
 		}
-		_, err = fmt.Fprintln(e.out, string(data))
+		_, err = fmt.Fprintln(e.Out, string(data))
 		return err
 	case save != "":
 		return e.save(c, id, save)
@@ -666,7 +666,7 @@ func cmdShow(e *env, args []string) error {
 // save writes the files of a run's result into a directory. Every name is
 // checked before any file is written: names come from a run's output, and a
 // run must not choose where on the disk a file lands.
-func (e *env) save(c *client.Client, id, dir string) error {
+func (e *Env) save(c *client.Client, id, dir string) error {
 	files, err := c.Files(e.ctx, id)
 	if err != nil {
 		return err
@@ -706,7 +706,7 @@ func (e *env) save(c *client.Client, id, dir string) error {
 		saved = append(saved, filepath.Join(dir, name))
 	}
 	// Where each file was saved.
-	return e.print(saved, func() string {
+	return e.Print(saved, func() string {
 		if len(saved) == 0 {
 			return ""
 		}
@@ -729,25 +729,25 @@ func value(args []string, at int) any {
 // answered sends a message and prints what became of it: the receipt. The
 // message is good for the life given with --life, and the command waits no
 // longer than that for its receipt.
-func (e *env) answered(args []string, usage string, takes func(n int) bool, send func(c *client.Client, rest []string, life time.Duration) (string, error)) error {
+func (e *Env) answered(args []string, usage string, takes func(n int) bool, send func(c *client.Client, rest []string, life time.Duration) (string, error)) error {
 	var lifeText string
-	e.flags.StringVar(&lifeText, "life", "", "")
-	rest, err := e.parse(args)
+	e.Flags.StringVar(&lifeText, "life", "", "")
+	rest, err := e.Parse(args)
 	if err != nil {
 		return err
 	}
 	if !takes(len(rest)) {
-		return mistake("%s", usage)
+		return Mistake("%s", usage)
 	}
 	var life time.Duration
 	if lifeText != "" {
 		d, err := machine.ParseDuration(lifeText)
 		if err != nil {
-			return mistake("--life: %v", err)
+			return Mistake("--life: %v", err)
 		}
 		life = time.Duration(d)
 	}
-	c, err := e.client()
+	c, err := e.Client()
 	if err != nil {
 		return err
 	}
@@ -759,7 +759,7 @@ func (e *env) answered(args []string, usage string, takes func(n int) bool, send
 	if err != nil {
 		return err
 	}
-	if err := e.print(receipt, func() string {
+	if err := e.Print(receipt, func() string {
 		switch {
 		case !receipt.Taken:
 			return "refused: " + receipt.Refused + "\n"
@@ -778,21 +778,21 @@ func (e *env) answered(args []string, usage string, takes func(n int) bool, send
 	return nil
 }
 
-func cmdCancel(e *env, args []string) error {
+func cmdCancel(e *Env, args []string) error {
 	return e.answered(args, "name one run by its ID", func(n int) bool { return n == 1 },
 		func(c *client.Client, rest []string, life time.Duration) (string, error) {
 			return c.Cancel(e.ctx, rest[0], life)
 		})
 }
 
-func cmdSend(e *env, args []string) error {
+func cmdSend(e *Env, args []string) error {
 	return e.answered(args, "name a run, an event, and optionally its data", func(n int) bool { return n == 2 || n == 3 },
 		func(c *client.Client, rest []string, life time.Duration) (string, error) {
 			return c.Send(e.ctx, rest[0], rest[1], value(rest, 2), life)
 		})
 }
 
-func cmdReply(e *env, args []string) error {
+func cmdReply(e *Env, args []string) error {
 	return e.answered(args, "name a run, the ticket, and optionally the answer", func(n int) bool { return n == 2 || n == 3 },
 		func(c *client.Client, rest []string, life time.Duration) (string, error) {
 			return c.Reply(e.ctx, rest[0], rest[1], value(rest, 2), life)

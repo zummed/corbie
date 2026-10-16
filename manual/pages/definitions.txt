@@ -99,8 +99,8 @@ The controller sends events to a machine. An event has a name, a source and data
   done      a job ended well; data is its output
   failed    a job failed; data is { status, error, output }
   <name>    a timer that is due, a ticket's answer, an event from the parent run,
-            a child run or the client (`corbie send`), or a value a job emitted
-            with emit(name, value)
+            a child run or the client (`corbie run send`), or a value a job
+            emitted with emit(name, value)
 
 A failed job's status is `error`, `timeout`, `denied` or `cancelled`, and
 `denied` adds `refused`, `layer` and `fix` to the data. Each type's page lists
@@ -135,8 +135,8 @@ An ask that fails, or that returns any other value, approves nothing.
 
 - A machine with no `ask:` uses the nearest `ask:` above it.
 - A machine run as an ask uses no `ask:` and no `ask_about:` from above it.
-- `corbie submit` refuses a definition that can hold a job and has no `ask:`
-  in it or above it.
+- `corbie run submit` refuses a definition that can hold a job and has no
+  `ask:` in it or above it.
 
 A script ask runs alone under `corbie test`. This one approves a job only if
 its `allow:` list has no `fs.write` entry.

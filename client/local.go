@@ -63,9 +63,9 @@ func NewLocal(ctx context.Context, ceiling permission.Layer, report func(role st
 		defer close(l.done)
 		defer stopInbox()
 		defer stopJobs()
-		role.Run(ctx, LocalInterval, time.Now, report,
-			role.Role{Name: "controller", Pass: l.Controller.Pass, Notice: inbox},
-			role.Role{Name: "runner", Pass: l.Runner.Pass, Notice: jobs})
+		role.Run(ctx, time.Now, report,
+			role.Role{Name: "controller", Pass: l.Controller.Pass, Interval: LocalInterval, Notice: inbox},
+			role.Role{Name: "runner", Pass: l.Runner.Pass, Interval: LocalInterval, Notice: jobs})
 	}()
 	return l, nil
 }

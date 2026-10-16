@@ -27,18 +27,18 @@ Use it for work that waits, loops, branches or reacts to events.
     // draft.js
     return "A draft of " + input.document
 
-    corbie init --store ~/corbie --ceiling all
-    corbie run controller runner &
-    corbie submit review.yaml --input '{"document": "the plan"}'
-    corbie show <id> --tickets
-    corbie reply <id> <ticket> '{"ok": true}'
+    corbie init --ceiling all
+    corbie start &
+    corbie run submit review.yaml --input '{"document": "the plan"}'
+    corbie run show <id> --tickets
+    corbie run reply <id> <ticket> '{"ok": true}'
       taken
-    corbie show <id> --wait
+    corbie run show <id> --wait
       output: "A draft of the plan"
 
 `review.yaml` writes a draft, then waits up to 48 hours for a verdict from
-outside the run. `<id>` is the ID that `corbie submit` printed, and `<ticket>`
-the value that `corbie show <id> --tickets` printed.
+outside the run. `<id>` is the ID that `corbie run submit` printed, and
+`<ticket>` the value that `corbie run show <id> --tickets` printed.
 
 Waiting for an answer
 ---------------------
@@ -46,8 +46,8 @@ Waiting for an answer
 A ticket is a random value that lets whoever holds it answer once.
 
 1. On entering `waiting`, the statechart issues a ticket named `verdict`.
-2. `corbie show <id> --tickets` prints `verdict` and the ticket's value.
-3. Whoever has the value answers with `corbie reply`, from any client.
+2. `corbie run show <id> --tickets` prints `verdict` and the ticket's value.
+3. Whoever has the value answers with `corbie run reply`, from any client.
 4. The answer arrives as the event `verdict`, with the answer as its data.
 
 - Only the client that started the run can print the ticket. It hands the
@@ -110,7 +110,7 @@ first one whose `when:` is true is taken.
 - An `entry:` send to the state's own child arrives once the child has
   started. An `exit:` send cannot go to it.
 - When a client started the run, a send to parent is only written to the
-  record. That client sends an event with `corbie send <id> <event> <data>`.
+  record. That client sends an event with `corbie run send <id> <event> <data>`.
 - A ticket's name is used once in a statechart.
 
 A timer's time is one of these.

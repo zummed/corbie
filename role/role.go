@@ -13,23 +13,25 @@ import (
 // in memory from one pass to the next.
 type Pass func(ctx context.Context) (next time.Time, err error)
 
-// A Role is one role of a process: its pass, and the notice its store
-// gives when something it reads is written by this same process.
+// A Role is one role of a process: its pass, how long it sleeps when
+// nothing is due, and the notice its store gives when something it reads
+// is written by this same process.
 type Role struct {
-	Name   string
-	Pass   Pass
-	Notice <-chan struct{}
+	Name     string
+	Pass     Pass
+	Interval time.Duration
+	Notice   <-chan struct{}
 }
 
 // Run runs each role's passes in a loop until the context ends: a pass,
-// then a sleep until the next thing is due or for the interval, whichever
-// is sooner. A role is woken at once when another role in the process
+// then a sleep until the next thing is due or for the role's interval,
+// whichever is sooner. A role is woken at once when another role in the process
 // writes something it reads; that changes when a pass happens and never
 // what a pass does.
 //
 // report is told of each pass that failed. Such a pass has failed nothing:
 // what was waiting is still waiting for the next one.
-func Run(ctx context.Context, interval time.Duration, now func() time.Time, report func(role string, err error), roles ...Role) {
+func Run(ctx context.Context, now func() time.Time, report func(role string, err error), roles ...Role) {
 	var wg sync.WaitGroup
 	for _, r := range roles {
 		wg.Go(func() {
@@ -38,7 +40,7 @@ func Run(ctx context.Context, interval time.Duration, now func() time.Time, repo
 				if err != nil && ctx.Err() == nil && report != nil {
 					report(r.Name, err)
 				}
-				wait := interval
+				wait := r.Interval
 				if !next.IsZero() {
 					if until := next.Sub(now()); until < wait {
 						wait = max(until, 0)

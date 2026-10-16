@@ -6,12 +6,14 @@ clients on other computers need no access key.
 Serve the directory
 -------------------
 
-  desk$  corbie init --store ~/corbie --ceiling all --serve desk:8372
-  desk$  corbie run controller runner store
+  desk$  corbie init --store ~/corbie --ceiling all
+  desk$  corbie init store
+  desk$  corbie start
 
-  --serve desk:8372   the host name and port the other computers connect to
-  store               serves the directory there
-  runner              leave it out if desk runs no scripts
+  store           sets up the store's server: other computers connect to
+                  corbie://desk:8372, with desk this computer's host name
+  --listen addr   after store, where it listens: 192.168.1.10:8372, and other
+                  computers are given that address
 
 `corbie manual one-computer` has the systemd unit and the backup.
 
@@ -19,7 +21,7 @@ Add a runner on another computer
 --------------------------------
 
   gpu$   corbie runner card | ssh desk corbie controller enrol - --tags gpu | corbie runner trust - --ceiling exec
-  gpu$   corbie run runner
+  gpu$   corbie start runner
   desk$  corbie check --tag gpu
 
   corbie runner card        prints the runner's card: its name, gpu-runner after its
@@ -30,7 +32,7 @@ Add a runner on another computer
                             jobs may be allowed on gpu
 
 Each command prints the fingerprint of every card it reads, for two people to
-compare. `corbie run runner` must stay running. `desk` notifies it of each new
+compare. `corbie start runner` must stay running. `desk` notifies it of each new
 job, so it does not poll.
 
 Add a client on another computer
@@ -39,7 +41,7 @@ Add a client on another computer
   laptop$  corbie client card | ssh desk corbie controller enrol - --ceiling network | corbie client trust -
 
 `--ceiling network` is the most any run this client starts may be allowed.
-`corbie submit` and `corbie show` then work on `laptop`.
+`corbie run submit` and `corbie run show` then work on `laptop`.
 
 What crosses the network
 ------------------------

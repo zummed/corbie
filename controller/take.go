@@ -952,7 +952,7 @@ func (p *pass) begin(inst string, waiting []*arrival) (*taken, error) {
 		if s.Allow != nil {
 			layer := *s.Allow
 			layer.Name = "the list the run was started with"
-			layer.Fix = "start the run with %s in its list as well (corbie submit --allow)"
+			layer.Fix = "start the run with %s in its list as well (corbie run submit --allow)"
 			st.Above.Layers = []permission.Layer{layer}
 		}
 		st.Above.Secrets = s.Secrets

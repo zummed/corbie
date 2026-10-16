@@ -36,7 +36,7 @@ Layers
 Several layers limit a job. A call is allowed only if every layer allows it.
 
   the job in its definition    allow: [network, fs.read:/srv/**, exec:git]
-  the start message            corbie submit --allow network --allow 'fs.read:/srv/reports/**'
+  the start message            corbie run submit --allow network --allow 'fs.read:/srv/reports/**'
   each parent's job            the `allow:` of a job that started a child run, if it has one
   the client's ceiling         corbie controller enrol <client> --ceiling network,disk
   the runner's ceiling         corbie runner trust <controller> --ceiling disk,exec

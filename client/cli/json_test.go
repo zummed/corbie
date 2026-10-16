@@ -64,8 +64,8 @@ func TestEveryCommandAskedForJSONPrintsOnlyJSON(t *testing.T) {
 	if set["store"] != storeDir || set["config"] != m.config || len(set["parties"].([]any)) != 3 || len(set["ceiling"].([]any)) != 1 {
 		t.Errorf("corbie init --json printed %v", set)
 	}
-	tried["run"] = true
-	roles, _ := m.staying("run", "controller", "runner", "--interval", "20ms", "--json")
+	tried["start"] = true
+	roles, _ := m.staying("start", "controller", "--interval", "20ms", "runner", "--interval", "20ms", "--json")
 	dir := files(t, map[string]string{
 		"make.js": `emit("note", 1); return { report: blobs.make("the report") }`,
 		"door.yaml": `statechart: door
@@ -78,33 +78,33 @@ states:
 `})
 	asked(m, "", true, "test", filepath.Join(dir, "make.js"))
 	asked(m, "", true, "test", filepath.Join(dir, "make.js"), "--watch")
-	id, _ := object(asked(m, "", true, "submit", filepath.Join(dir, "make.js")))["id"].(string)
-	asked(m, "", true, "submit", filepath.Join(dir, "make.js"), "--wait")
-	asked(m, "", true, "submit", filepath.Join(dir, "make.js"), "--watch")
-	asked(m, "", true, "show", id, "--wait")
-	asked(m, "", true, "show", id)
-	asked(m, "", true, "show", id, "--record")
-	asked(m, "", true, "show", id, "--watch")
-	asked(m, "", true, "show", id, "--tickets")
-	asked(m, "", true, "show", id, "--step", "1")
-	asked(m, "", true, "show", id, "--definition")
+	id, _ := object(asked(m, "", true, "run", "submit", filepath.Join(dir, "make.js")))["id"].(string)
+	asked(m, "", true, "run", "submit", filepath.Join(dir, "make.js"), "--wait")
+	asked(m, "", true, "run", "submit", filepath.Join(dir, "make.js"), "--watch")
+	asked(m, "", true, "run", "show", id, "--wait")
+	asked(m, "", true, "run", "show", id)
+	asked(m, "", true, "run", "show", id, "--record")
+	asked(m, "", true, "run", "show", id, "--watch")
+	asked(m, "", true, "run", "show", id, "--tickets")
+	asked(m, "", true, "run", "show", id, "--step", "1")
+	asked(m, "", true, "run", "show", id, "--definition")
 	into := filepath.Join(t.TempDir(), "saved")
 	var saved []string
-	if err := json.Unmarshal([]byte(asked(m, "", true, "show", id, "--save", into)), &saved); err != nil || len(saved) != 1 || saved[0] != filepath.Join(into, "report") {
-		t.Errorf("corbie show --save --json printed %v (%v)", saved, err)
+	if err := json.Unmarshal([]byte(asked(m, "", true, "run", "show", id, "--save", into)), &saved); err != nil || len(saved) != 1 || saved[0] != filepath.Join(into, "report") {
+		t.Errorf("corbie run show --save --json printed %v (%v)", saved, err)
 	}
-	asked(m, "", true, "ls")
-	asked(m, "", true, "ls", "--all")
+	asked(m, "", true, "run", "ls")
+	asked(m, "", true, "run", "ls", "--all")
 	if found := object(asked(m, "", true, "check")); found["ok"] != true || len(found["legs"].([]any)) != 4 {
 		t.Errorf("corbie check --json printed %v", found)
 	}
 	door := func() string {
-		id, _ := object(asked(m, "", true, "submit", filepath.Join(dir, "door.yaml")))["id"].(string)
+		id, _ := object(asked(m, "", true, "run", "submit", filepath.Join(dir, "door.yaml")))["id"].(string)
 		return id
 	}
-	asked(m, "", true, "send", door(), "open")
-	asked(m, "", true, "reply", door(), "not-the-key", "yes")
-	asked(m, "", true, "cancel", door())
+	asked(m, "", true, "run", "send", door(), "open")
+	asked(m, "", true, "run", "reply", door(), "not-the-key", "yes")
+	asked(m, "", true, "run", "cancel", door())
 	asked(m, "", false, "controller", "cancel", door())
 	asked(m, "", true, "controller", "parties")
 	asked(m, "the value\n", false, "controller", "secret", "set", "A_SECRET_OF_THIS_TEST", "-")
@@ -136,8 +136,13 @@ states:
 	}
 	asked(ctl, "", false, "controller", "remove", "laptop-runner")
 
-	if out := roles.String(); out != "" {
-		t.Errorf("corbie run --json printed:\n%s", out)
+	tried["manual web"] = true
+	web, saying := m.staying("manual", "web", "--listen", "127.0.0.1:0", "--json")
+	until(t, "the manual served", func() bool { return strings.Contains(saying.String(), "the manual is at") })
+	for name, out := range map[string]string{"start": roles.String(), "manual web": web.String()} {
+		if out != "" {
+			t.Errorf("corbie %s --json printed:\n%s", name, out)
+		}
 	}
 	for _, c := range cli.Commands {
 		if !tried[c.Name] {

@@ -25,7 +25,7 @@ Choose where it runs
 --------------------
 
 - One computer runs everything. See `corbie manual one-computer`.
-  ✓ Three commands set it up.
+  ✓ Two commands set it up.
   ✗ No run advances while it is off.
 - Other computers use the first one's store. See `corbie manual served-directory`.
   ✓ One command line adds a computer.
@@ -55,5 +55,5 @@ Check the setup
 The setup works when all four are `ok`. A step that did not answer is `late`
 or `never`, with the likely cause on the next line.
 
-  corbie check --tag gpu      sends the job to a runner with the tag gpu
-  corbie mcp --allow check    lets an AI assistant run the check
+  corbie check --tag gpu             sends the job to a runner with the tag gpu
+  corbie mcp --allow check           lets an AI assistant run the check

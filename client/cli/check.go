@@ -160,9 +160,9 @@ func why(leg, status, controller, runner string) string {
 	ctlInbox, runInbox := controller+"/inbox/", runner+"/inbox/"
 	switch {
 	case leg == legStart && status == legNever:
-		return "On a computer, corbie run controller is not running on this store. On a serverless host, nothing calls the controller's function: neither a write under " + ctlInbox + " nor the once-a-minute call."
+		return "On a computer, corbie start controller is not running on this store. On a serverless host, nothing calls the controller's function: neither a write under " + ctlInbox + " nor the once-a-minute call."
 	case leg == legJob && status == legNever:
-		return "The job went to " + runner + ". On a computer, corbie run runner is not running there, or that runner does not trust this controller. On a serverless host, the bucket does not call the runner's function when something is written under " + runInbox + ", or the function's key may not read it (corbie controller policy " + runner + " prints what it needs)."
+		return "The job went to " + runner + ". On a computer, corbie start runner is not running there, or that runner does not trust this controller. On a serverless host, the bucket does not call the runner's function when something is written under " + runInbox + ", or the function's key may not read it (corbie controller policy " + runner + " prints what it needs)."
 	case leg == legJob:
 		return "The job went to " + runner + ". On a computer, that runner is busy or its --interval is long. On a serverless host, the bucket does not call the runner's function when something is written under " + runInbox + ", and another call found the job."
 	case leg == legResult && status == legNever:
@@ -173,23 +173,23 @@ func why(leg, status, controller, runner string) string {
 	return "On a computer, the controller is busy or its --interval is long. On a serverless host, the bucket does not call the controller's function when something is written under " + ctlInbox + ", and the once-a-minute call did the work."
 }
 
-func cmdCheck(e *env, args []string) error {
+func cmdCheck(e *Env, args []string) error {
 	var tags list
 	wait := "90s"
-	e.flags.Var(&tags, "tag", "")
-	e.flags.StringVar(&wait, "wait", wait, "")
-	rest, err := e.parse(args)
+	e.Flags.Var(&tags, "tag", "")
+	e.Flags.StringVar(&wait, "wait", wait, "")
+	rest, err := e.Parse(args)
 	if err != nil {
 		return err
 	}
 	if len(rest) > 0 {
-		return mistake("check takes only flags: --tag and --wait")
+		return Mistake("check takes only flags: --tag and --wait")
 	}
 	patience, err := machine.ParseDuration(wait)
 	if err != nil {
-		return mistake("--wait: %v", err)
+		return Mistake("--wait: %v", err)
 	}
-	c, err := e.client()
+	c, err := e.Client()
 	if err != nil {
 		return err
 	}
@@ -206,10 +206,10 @@ func cmdCheck(e *env, args []string) error {
 	if err != nil {
 		return err
 	}
-	e.say("%s", id)
+	e.Say("%s", id)
 	// What is being waited for is said as the wait begins, so a setup with
 	// nothing running does not look like a command that has hung.
-	waiting := func(leg string) { e.say("waiting up to %s %s", wait, legWaits[leg]) }
+	waiting := func(leg string) { e.Say("waiting up to %s %s", wait, legWaits[leg]) }
 	waiting(legs[0])
 	// Each leg is waited for this long from the one before it. The run is
 	// followed as any run is, and what the check reports is what turned up
@@ -242,7 +242,7 @@ func cmdCheck(e *env, args []string) error {
 		return err
 	}
 	checked := judge(sent, seen, time.Now(), run, c.Controller.Name, runner)
-	err = e.print(checked, func() string {
+	err = e.Print(checked, func() string {
 		var b strings.Builder
 		for _, leg := range checked.Legs {
 			took := fmt.Sprintf("%.1fs", leg.Seconds)

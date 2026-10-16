@@ -3,14 +3,15 @@ One computer: the controller, a runner and the client run on one computer, with 
 Set up
 ------
 
-    corbie init --store ~/corbie --ceiling all
-      Next: corbie run controller runner
-    corbie run controller runner &
+    corbie init --ceiling all
+      Next: corbie start
+    corbie start &
     corbie check
 
-  --ceiling all      the most any job on this computer may be allowed; without it, nothing
-  ~/.config/corbie   the config that init writes: the private keys and the store's address
-  --config <dir>     names another config directory, as CORBIE_CONFIG does, for every command
+  --ceiling all       the most any job on this computer may be allowed; without it, nothing
+  ~/.config/corbie    the config that init writes: the private keys and, by default, the store
+  --store <address>   another directory, or an S3 bucket, as the store
+  --config <dir>      names another config directory, as CORBIE_CONFIG does, for every command
 
 The config directory is `~/.config/corbie` on Linux,
 `~/Library/Application Support/corbie` on macOS and `%AppData%\corbie` on
@@ -20,8 +21,7 @@ Windows. Run `init` again with another `--ceiling` to change it.
 Keep it running
 ---------------
 
-`corbie run controller runner` must stay running, in a terminal, a container
-or a service. This is the systemd unit.
+`corbie start` must stay running, in a terminal, a container or a service. This is the systemd unit.
 
   # /etc/systemd/system/corbie.service
   [Unit]
@@ -31,7 +31,7 @@ or a service. This is the systemd unit.
   [Service]
   User=corbie
   Environment=CORBIE_CONFIG=/var/lib/corbie/config
-  ExecStart=/usr/local/bin/corbie run controller runner
+  ExecStart=/usr/local/bin/corbie start
   Restart=always
   [Install]
   WantedBy=multi-user.target
@@ -53,11 +53,27 @@ and again.
 
 A gateway is kept running the same way (`corbie manual gateway`).
 
+Programs
+--------
+
+`corbie start controller runner ui` starts the program `corbie-ui` beside the
+controller and the runner, and the same for any `corbie-<name>` on PATH. The
+words after a name are its own, up to the next name:
+`corbie start controller runner ui --listen 127.0.0.1:8383`. When a program
+stops, everything stops. The systemd unit's `ExecStart` may name programs
+too.
+
+`corbie ui --help` prints a program's help. A program keeps Corbie's command
+line: it takes `--config` and `--store`, a mistake in how it was written ends
+with status 2, and a failure with 1.
+
 Back up
 -------
 
-The directory is the whole store. Copy it while no Corbie process is running,
-or copy a filesystem snapshot. After a restore, jobs that ran since the copy
-run again, and a runner or client removed since the copy is trusted again.
+The config directory holds the private keys and, by default, the store: copy
+it while no Corbie process is running, or copy a filesystem snapshot. Copy a
+directory named with `--store` as well. After a restore, jobs that ran since
+the copy run again, and a runner or client removed since the copy is trusted
+again.
 
 Next: `corbie manual served-directory` adds a second computer.

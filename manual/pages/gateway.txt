@@ -20,10 +20,10 @@ client's run, limited by that client's ceiling, which no request can raise.
 Start the gateway
 -----------------
 
-`gateway` is an argument of `corbie run`, alone or with `controller` and
+`gateway` is an argument of `corbie start`, alone or with `controller` and
 `runner`. Set the computer up as in `corbie manual a-real-run`.
 
-  corbie run controller runner gateway --listen 127.0.0.1:8371
+  corbie start controller runner gateway --listen 127.0.0.1:8371
     gateway token (callers send it as Authorization: Bearer …): 179bd50585d04e741e0d5a254d7f6287cf5432cab12d7f31
     gateway for the client laptop-client, listening on http://127.0.0.1:8371
 
@@ -76,6 +76,6 @@ Reference
 
   corbie manual routes         every request in full, with files and streams
   corbie manual runs           the fields of a run in JSON
-  corbie manual run            the gateway's flags
+  corbie manual start          the gateway's flags
   corbie manual permissions    a ceiling, and the other layers that limit a run
   corbie manual one-computer   keeping the gateway's process running

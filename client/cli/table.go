@@ -9,8 +9,8 @@ var Commands []Command
 // command takes, which the overview describes.
 const everywhere = "Every command takes --json, --config and --store: see corbie --help."
 
-// starts is the help for what a start may be given, at corbie submit and at
-// corbie test.
+// starts is the help for what a start may be given, at corbie run submit and
+// at corbie test.
 const starts = `
   --input <json>           the run's input; --input @file reads the JSON from
                            a file
@@ -50,13 +50,14 @@ a flow of one stage, and these flags set that stage's job. With a definition,
 
 func init() {
 	Commands = []Command{
-		{Name: "init", Usage: "--store <address> [--ceiling <list>] [--deny <entry>] [--name <name>] [--serve host:port]", Summary: "create a controller, a runner and a client on this computer", run: cmdInit, Help: `
+		{Name: "init", Usage: "[--store <address>] [--ceiling <list>] [--deny <entry>] [--name <name>] | store [--listen host:port]", Summary: "create a controller, a runner and a client on this computer", Run: cmdInit, Help: `
 It creates the three in the config directory, makes each trust the others,
 sets up the store and prints what it did. Running it again replaces the
-ceiling and --serve with those then given.
+ceiling with the one then given.
 
   --store <address>   the store: a directory, or an S3 bucket as s3://…;
-                      required unless CORBIE_STORE is set
+                      default the one the config records, or CORBIE_STORE,
+                      or on a new config the directory store in it
   --ceiling <list>    the most any job on this computer may be allowed, as
                       entries separated by commas: all, or network,disk, or
                       net:api.github.com,fs.read:/srv/**; default nothing
@@ -64,35 +65,54 @@ ceiling and --serve with those then given.
                       repeatable
   --name <name>       names the three <name>-controller, <name>-runner and
                       <name>-client; default this computer's host name
-  --serve host:port   the host name and port where other computers connect
-                      to this computer's store directory; default not served
+
+corbie init store sets up only the store's server, which gives other
+computers this computer's store directory, on a config that holds the
+controller; corbie start then runs it.
+
+  store --listen host:port   where it listens; default :8372, every network
+                             interface, with this computer's host name given
+                             to other computers
+  store --listen ""          serves the directory to no other computer
 
 A name that another controller has on the store is refused.
 
   corbie manual one-computer       this setup, and keeping it running
-  corbie manual served-directory   --serve, and adding other computers
+  corbie manual served-directory   store, and adding other computers
   corbie manual permissions        the entries of a ceiling`},
-		{Name: "run", Usage: "<controller | runner | gateway | store>… [--interval 2s] [--jobs 4]", Summary: "run the controller, a runner, the gateway or the store's server, until stopped", Stays: true, run: cmdRun, Help: `
-It runs what its arguments name, in one process.
+		{Name: "start", Usage: "[<name> [<its flags or words>]…]…", Summary: "run the controller, a runner, the gateway, the store's server or a program, until stopped", Stays: true, Run: cmdStart, Help: `
+It runs what its arguments name, in one process. With nothing named, it runs
+the controller, the runner and the store's server that the config holds:
+what corbie init set up.
 
   controller   this config's controller
   runner       this config's runner, for every controller it trusts
   gateway      an HTTP server that starts and reads runs as this config's
                client
   store        a server that gives other computers this computer's store
-               directory, at the address given to corbie init --serve
+               directory, set up by corbie init store
+  <name>       the program corbie-<name> on PATH, started with CORBIE_CONFIG
+               and CORBIE_STORE in its environment as this command was given
+               them; when it stops, everything stops
 
-A flag is refused unless the one it applies to is named.
+The words after a name, up to the next name, are its own: a role's flags, or
+a program's arguments. A program's word that is itself a name begins the
+next name, so a program that needs such a word is run on its own, as
+corbie <name> ….
 
-  --interval <time>          how often a controller or a runner polls the
-                             store; default 2s
-  --jobs <n>                 how many jobs the runner runs at once; default 4
-  --listen host:port         where the gateway listens; default 127.0.0.1:8371
-  --token-file <file>        a file with the token every request to the
-                             gateway must carry; by default the gateway
-                             makes a token and prints it
-  --exec-wrapper <command>   a command put before every program a job
-                             starts, such as a sandbox or a container
+  corbie start controller --interval 1s runner --jobs 8 ui --listen 127.0.0.1:8383
+
+  controller --interval <time>     how often it polls the store; default 2s
+  runner --interval <time>         how often it polls the store; default 2s
+  runner --jobs <n>                how many jobs it runs at once; default 4
+  runner --exec-wrapper <command>  a command put before every program a job
+                                   starts, such as a sandbox or a container
+  gateway --listen host:port       where it listens; default 127.0.0.1:8371
+  gateway --token-file <file>      a file with the token every request must
+                                   carry; by default it makes one and prints
+                                   it
+  store --listen host:port         where it listens this time; default where
+                                   corbie init store --listen said
 
 A controller and a runner in one process notify each other, and do not wait
 for the interval.
@@ -110,84 +130,7 @@ program env, which the wrapper must be able to start.
   corbie manual functions          the controller and runners as AWS Lambda
                                    functions
   corbie manual limits             what a started program can do`},
-		{Name: "test", Usage: "<definition or script> [--input <json>] [--watch]", Summary: "run a definition or a script in this process, with no setup", Stays: true, run: cmdTest, Help: `
-It runs a controller, a runner and a client in this process with the store in
-memory, waits until the run ends and prints it. It reads no config and keeps
-nothing. It fails unless the run ends with status done.
-
-The ceilings allow everything. Each job's own allow: list still applies.
-` + starts + `
-  --watch                  print each entry of the run's record as it is
-                           written` + scripts},
-		{Name: "submit", Usage: "<definition or script> [--input <json>] [--wait | --watch]", Summary: "start a run and print its ID", run: cmdSubmit, Help: `
-It reads the definition and the files it names, reports every fault in them
-together, uploads the files and sends the start message. It prints the run's
-ID and exits, unless --wait or --watch is given.
-` + starts + `
-  --wait                   wait until the run ends, then print it
-  --watch                  print each entry of the run's record as it is
-                           written, until the run ends
-
-With --wait or --watch the command fails unless the run ends with status done.` + scripts},
-		{Name: "ls", Usage: "[--watch] [--all] [--label k=v] [--status <status>] [--parent <id>]", Summary: "list runs", run: cmdLs, Help: `
-It lists this client's runs that are in progress, child runs included. A run
-with status waiting, which no controller has started, is not listed.
-
-  --all               include runs that have ended and are still in the store
-  --label k=v         only runs with this label; --label k takes any value;
-                      repeatable
-  --status <status>   only runs with this status: running, done, failed or
-                      cancelled; the last three need --all
-  --parent <id>       only the child runs that this run started
-  --watch             keep running: print the runs that exist, then a line
-                      that ends them, then each run as it appears, changes
-                      or ends
-
-  corbie manual runs   a run as it is printed, and with --json`},
-		{Name: "show", Usage: "<id> [--record | --watch | --wait | --tickets | --step n | --definition | --save <directory>]", Summary: "show one run: its status and its result", run: cmdShow, Help: `
-It prints the run's status, and its output or its error when it has ended. It
-takes one of these flags at most.
-
-  --record             print each entry of the run's record so far, child
-                       runs' included, then the run
-  --watch              print the same, then each entry as it is written,
-                       until the run ends
-  --wait               wait until the run ends, then print it
-  --tickets            print each ticket the run waits on, as its name and
-                       its value; corbie reply takes the value
-  --step n             print step n of the run's record, as JSON
-  --definition         print the definition the run was started from, with
-                       every short form written out, as JSON
-  --save <directory>   save the files of the run's result into a directory
-
-With --watch or --wait the command fails unless the run ends with status done.
-
-  corbie manual runs   the statuses, a failure, and a blob in a result`},
-		{Name: "cancel", Usage: "<id> [--life 5m]", Summary: "cancel a run that this client started", run: cmdCancel, Help: `
-It sends the cancel to the controller and prints the answer: taken, or refused
-with the reason. It fails if the cancel is refused.
-
-  --life <time>   how long the cancel is valid while no controller takes it,
-                  and how long the command waits for the answer; default 5m`},
-		{Name: "send", Usage: "<id> <event> [data] [--life 5m]", Summary: "send an event to a run that this client started", run: cmdSend, Help: `
-The data is JSON, or plain text if it does not parse as JSON. The command
-prints whether the machine acted on the event or had no rule for it, or
-refused with the reason. It fails if the event is refused.
-
-  --life <time>   how long the event is valid while no controller takes it,
-                  and how long the command waits for the answer; default 5m`},
-		{Name: "reply", Usage: "<id> <ticket> [value] [--life 5m]", Summary: "answer a ticket that a run waits on", run: cmdReply, Help: `
-The ticket is the value that corbie show <id> --tickets prints, and <id> is
-the run that waits on it. Any client that has the value may answer, and a
-ticket is answered once. The answer is JSON, or plain text if it does not
-parse as JSON.
-
-The command prints taken, or refused with the reason. It fails if the answer
-is refused.
-
-  --life <time>   how long the answer is valid while no controller takes it,
-                  and how long the command waits for the answer; default 5m`},
-		{Name: "check", Usage: "[--tag <tag>]… [--wait 90s]", Summary: "start one small run, and report which part of a setup did not respond", Stays: true, run: cmdCheck, Help: `
+		{Name: "check", Usage: "[--tag <tag>]… [--wait 90s]", Summary: "start one small run, and report which part of a setup did not respond", Stays: true, Run: cmdCheck, Help: `
 Run it last when you set anything up. It starts a run with one script job and
 one timer, and prints four lines, each with a status and the time it took. It
 fails unless every line is ok.
@@ -214,20 +157,95 @@ The check reads only the store, so it is the same wherever Corbie runs.
                   default 90s
 
   corbie manual functions   the calls a serverless host must make`},
+		{Name: "test", Usage: "<definition or script> [--input <json>] [--watch]", Summary: "run a definition or a script in this process, with no setup", Stays: true, Run: cmdTest, Help: `
+It runs a controller, a runner and a client in this process with the store in
+memory, waits until the run ends and prints it. It reads no config and keeps
+nothing. It fails unless the run ends with status done.
 
-		{Name: "controller card", Usage: "--store <address> [--name <name>] [--serve host:port]", Summary: "create this computer's controller and print its card", run: cmdCard(identity.Controller), Help: `
+The ceilings allow everything. Each job's own allow: list still applies.
+` + starts + `
+  --watch                  print each entry of the run's record as it is
+                           written` + scripts},
+		{Name: "run submit", Usage: "<definition or script> [--input <json>] [--wait | --watch]", Summary: "start a run and print its ID", Run: cmdSubmit, Help: `
+It reads the definition and the files it names, reports every fault in them
+together, uploads the files and sends the start message. It prints the run's
+ID and exits, unless --wait or --watch is given.
+` + starts + `
+  --wait                   wait until the run ends, then print it
+  --watch                  print each entry of the run's record as it is
+                           written, until the run ends
+
+With --wait or --watch the command fails unless the run ends with status done.` + scripts},
+		{Name: "run ls", Usage: "[--watch] [--all] [--label k=v] [--status <status>] [--parent <id>]", Summary: "list runs", Run: cmdLs, Help: `
+It lists this client's runs that are in progress, child runs included. A run
+with status waiting, which no controller has started, is not listed.
+
+  --all               include runs that have ended and are still in the store
+  --label k=v         only runs with this label; --label k takes any value;
+                      repeatable
+  --status <status>   only runs with this status: running, done, failed or
+                      cancelled; the last three need --all
+  --parent <id>       only the child runs that this run started
+  --watch             keep running: print the runs that exist, then a line
+                      that ends them, then each run as it appears, changes
+                      or ends
+
+  corbie manual runs   a run as it is printed, and with --json`},
+		{Name: "run show", Usage: "<id> [--record | --watch | --wait | --tickets | --step n | --definition | --save <directory>]", Summary: "show one run: its status and its result", Run: cmdShow, Help: `
+It prints the run's status, and its output or its error when it has ended. It
+takes one of these flags at most.
+
+  --record             print each entry of the run's record so far, child
+                       runs' included, then the run
+  --watch              print the same, then each entry as it is written,
+                       until the run ends
+  --wait               wait until the run ends, then print it
+  --tickets            print each ticket the run waits on, as its name and
+                       its value; corbie run reply takes the value
+  --step n             print step n of the run's record, as JSON
+  --definition         print the definition the run was started from, with
+                       every short form written out, as JSON
+  --save <directory>   save the files of the run's result into a directory
+
+With --watch or --wait the command fails unless the run ends with status done.
+
+  corbie manual runs   the statuses, a failure, and a blob in a result`},
+		{Name: "run cancel", Usage: "<id> [--life 5m]", Summary: "cancel a run that this client started", Run: cmdCancel, Help: `
+It sends the cancel to the controller and prints the answer: taken, or refused
+with the reason. It fails if the cancel is refused.
+
+  --life <time>   how long the cancel is valid while no controller takes it,
+                  and how long the command waits for the answer; default 5m`},
+		{Name: "run send", Usage: "<id> <event> [data] [--life 5m]", Summary: "send an event to a run that this client started", Run: cmdSend, Help: `
+The data is JSON, or plain text if it does not parse as JSON. The command
+prints whether the machine acted on the event or had no rule for it, or
+refused with the reason. It fails if the event is refused.
+
+  --life <time>   how long the event is valid while no controller takes it,
+                  and how long the command waits for the answer; default 5m`},
+		{Name: "run reply", Usage: "<id> <ticket> [value] [--life 5m]", Summary: "answer a ticket that a run waits on", Run: cmdReply, Help: `
+The ticket is the value that corbie run show <id> --tickets prints, and <id>
+is the run that waits on it. Any client that has the value may answer, and a
+ticket is answered once. The answer is JSON, or plain text if it does not
+parse as JSON.
+
+The command prints taken, or refused with the reason. It fails if the answer
+is refused.
+
+  --life <time>   how long the answer is valid while no controller takes it,
+                  and how long the command waits for the answer; default 5m`},
+
+		{Name: "controller card", Usage: "--store <address> [--name <name>]", Summary: "create this computer's controller and print its card", Run: cmdCard(identity.Controller), Help: `
 It creates the controller's identity if the config has none, sets up the
 store and prints the controller's card.
 
   --store <address>   the controller's store: a directory, or an S3 bucket as
                       s3://…; required the first time
   --name <name>       the controller's name; default <host name>-controller
-  --serve host:port   the host name and port where other computers connect
-                      to this computer's store directory
 
   corbie manual parties            cards and trust
   corbie manual served-directory   serving the store directory`},
-		{Name: "controller enrol", Usage: "<card | - | name> [--ceiling <list>] [--allow <entry>] [--deny <entry>] [--tags <list>] [--replace]", Summary: "trust a runner or a client, and print what it needs to trust this controller", run: cmdEnrol, Help: `
+		{Name: "controller enrol", Usage: "<card | - | name> [--ceiling <list>] [--allow <entry>] [--deny <entry>] [--tags <list>] [--replace]", Summary: "trust a runner or a client, and print what it needs to trust this controller", Run: cmdEnrol, Help: `
 It takes a runner's or a client's card, writes to the store that the
 controller trusts it, and prints the controller's card and the store's
 address. corbie runner trust and corbie client trust take those two lines.
@@ -255,14 +273,14 @@ ceiling with corbie runner trust.
 
   corbie manual served-directory   the three commands as one pipe
   corbie manual permissions   the entries of a ceiling`},
-		{Name: "controller remove", Usage: "<name>", Summary: "stop trusting a runner or a client", run: cmdRemove, Help: `
+		{Name: "controller remove", Usage: "<name>", Summary: "stop trusting a runner or a client", Run: cmdRemove, Help: `
 The controller keeps the name with its key, so a card with another key under
 that name is refused without --replace. corbie controller parties lists it as
 removed.`},
-		{Name: "controller parties", Usage: "", Summary: "list the runners and clients the controller trusts", run: cmdParties, Help: `
+		{Name: "controller parties", Usage: "", Summary: "list the runners and clients the controller trusts", Run: cmdParties, Help: `
 Each line gives a runner's or a client's kind, name and card fingerprint, then
 its ceiling, deny list and tags if set, then removed if it was removed.`},
-		{Name: "controller secret set", Usage: "<NAME> [-]", Summary: "set a controller secret", run: cmdSecretSet, Help: `
+		{Name: "controller secret set", Usage: "<NAME> [-]", Summary: "set a controller secret", Run: cmdSecretSet, Help: `
 The value is typed at the terminal and not shown. It is never given on the
 command line.
 
@@ -270,9 +288,9 @@ command line.
   --env   the value is read from the environment variable NAME
 
   corbie manual using-secrets   how a job uses a secret`},
-		{Name: "controller secret remove", Usage: "<NAME>", Summary: "remove a controller secret", run: cmdSecretRemove},
-		{Name: "controller secret list", Usage: "", Summary: "list the names of the controller's secrets", run: cmdSecretList},
-		{Name: "controller policy", Usage: "<name> | --viewer", Summary: "print the bucket policy for one controller, runner or client", run: cmdPolicy, Help: `
+		{Name: "controller secret remove", Usage: "<NAME>", Summary: "remove a controller secret", Run: cmdSecretRemove},
+		{Name: "controller secret list", Usage: "", Summary: "list the names of the controller's secrets", Run: cmdSecretList},
+		{Name: "controller policy", Usage: "<name> | --viewer", Summary: "print the bucket policy for one controller, runner or client", Run: cmdPolicy, Help: `
 On an S3 bucket each controller, runner and client has its own access key.
 The command prints the IAM policy that limits one key to the objects its
 process reads and writes.
@@ -281,16 +299,16 @@ process reads and writes.
   --viewer   a key that can only list runs and read their status
 
   corbie manual bucket   creating the keys`},
-		{Name: "controller cancel", Usage: "<id>", Summary: "cancel any run, whichever client started it", run: cmdControllerCancel, Help: `
+		{Name: "controller cancel", Usage: "<id>", Summary: "cancel any run, whichever client started it", Run: cmdControllerCancel, Help: `
 It writes the cancel to the controller's inbox and does not wait. The
 controller cancels the run the next time it polls.`},
 
-		{Name: "runner card", Usage: "[--name <name>]", Summary: "create this computer's runner and print its card", run: cmdCard(identity.Runner), Help: `
+		{Name: "runner card", Usage: "[--name <name>]", Summary: "create this computer's runner and print its card", Run: cmdCard(identity.Runner), Help: `
 It creates the runner's identity if the config has none, and prints its card,
 which corbie controller enrol takes.
 
   --name <name>   the runner's name; default <host name>-runner`},
-		{Name: "runner trust", Usage: "<what enrol printed | - | name> [--ceiling <list>] [--allow <entry>] [--deny <entry>] [--replace]", Summary: "trust a controller, up to a ceiling", run: cmdTrust(identity.Runner), Help: `
+		{Name: "runner trust", Usage: "<what enrol printed | - | name> [--ceiling <list>] [--allow <entry>] [--deny <entry>] [--replace]", Summary: "trust a controller, up to a ceiling", Run: cmdTrust(identity.Runner), Help: `
 It takes what corbie controller enrol printed, which is the controller's card
 and the store's address, and saves both in the config.
 
@@ -309,16 +327,16 @@ and the store's address, and saves both in the config.
 
   corbie manual served-directory   the three commands as one pipe
   corbie manual permissions   the entries of a ceiling`},
-		{Name: "runner remove", Usage: "<controller>", Summary: "stop trusting a controller, and running its jobs", run: cmdUntrust(identity.Runner), Help: `
+		{Name: "runner remove", Usage: "<controller>", Summary: "stop trusting a controller, and running its jobs", Run: cmdUntrust(identity.Runner), Help: `
 The config keeps the controller's name with its key, so a card with another
 key under that name is refused without --replace.`},
 
-		{Name: "client card", Usage: "[--name <name>]", Summary: "create this computer's client and print its card", run: cmdCard(identity.Client), Help: `
+		{Name: "client card", Usage: "[--name <name>]", Summary: "create this computer's client and print its card", Run: cmdCard(identity.Client), Help: `
 It creates the client's identity if the config has none, and prints its card,
 which corbie controller enrol takes.
 
   --name <name>   the client's name; default <host name>-client`},
-		{Name: "client trust", Usage: "<what enrol printed | -> [--replace]", Summary: "trust a controller", run: cmdTrust(identity.Client), Help: `
+		{Name: "client trust", Usage: "<what enrol printed | -> [--replace]", Summary: "trust a controller", Run: cmdTrust(identity.Client), Help: `
 It takes what corbie controller enrol printed, which is the controller's card
 and the store's address, and saves both in the config. A client trusts one
 controller: remove the other first with corbie client remove.
@@ -330,28 +348,28 @@ controller: remove the other first with corbie client remove.
               by default it is refused
 
   corbie manual served-directory   the three commands as one pipe`},
-		{Name: "client remove", Usage: "<controller>", Summary: "stop trusting a controller", run: cmdUntrust(identity.Client), Help: `
+		{Name: "client remove", Usage: "<controller>", Summary: "stop trusting a controller", Run: cmdUntrust(identity.Client), Help: `
 The config keeps the controller's name with its key, so a card with another
 key under that name is refused without --replace.`},
 
-		{Name: "manual", Usage: "[page | --web]", Summary: "print a page of the manual, or list the pages", run: cmdManual, Help: `
-With no page it lists the pages. It reads no config and no store.
+		{Name: "manual", Usage: "[page]", Summary: "print a page of the manual, or list the pages", Run: cmdManual, Help: `
+With no page it lists the pages. It reads no config and no store.`},
+		{Name: "manual web", Usage: "[--listen host:port]", Summary: "serve the pages to a browser on this computer, until stopped", Stays: true, Run: cmdManualWeb, Help: `
+It reads no config and no store.
 
-  --web                serve the pages to a browser on this computer,
-                       until stopped
-  --listen host:port   where --web listens; default 127.0.0.1:7403`},
-		{Name: "mcp", Usage: "[--allow <command>]…", Summary: "serve the manual and the commands to a model, as an MCP server", Stays: true, run: cmdMCP, Help: `
-It is an MCP server on standard input and output, with two tools: manual
-prints a page, and corbie runs a command. Commands run with this server's
-config and store, and the model can name no other. The server needs no
-controller or runner running, and keeps no state.
+  --listen host:port   where it listens; default 127.0.0.1:7403`},
+		{Name: "mcp", Usage: "[--allow <command>]…", Summary: "serve the manual and the commands to a model, as an MCP server", Stays: true, Run: cmdMCP, Help: `
+It is an MCP server on standard input and output, with two tools: manual,
+which prints a page, and corbie, which runs a command. Commands run with this
+server's config and store, and the model can name no other. The server needs
+no controller or runner running, and keeps no state.
 
-  --allow <command>   a command the model may run, such as test or
-                      "controller parties"; repeatable; default none
+  --allow <command>   a command the model may run, by its whole name, such as
+                      test or "run submit"; repeatable; default none
 
-  corbie mcp --allow ls --allow show --allow test --allow submit
+  corbie mcp --allow test --allow "run submit" --allow "run show"
 
   corbie manual first-machine   adding the server to an assistant`},
-		{Name: "version", Usage: "", Summary: "print the version, the machine types and the plugins", run: cmdVersion},
+		{Name: "version", Usage: "", Summary: "print the version, the machine types and the plugins", Run: cmdVersion},
 	}
 }

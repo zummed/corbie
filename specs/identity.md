@@ -17,10 +17,10 @@ Two parties trust each other by swapping cards, and there is no other way.
 On one computer it is one command:
 
 ```
-corbie init --store ~/corbie --ceiling all
+corbie init --ceiling all
 ```
 
-This makes a controller, a runner and a client in the config, has each trust the others, and prints what it did. `--ceiling` says what jobs on this computer may do. Without it they may do nothing outside themselves, and the first refusal names the command that changes that.
+This makes a controller, a runner and a client in the config, has each trust the others, and prints what it did. The store is the one `--store` names, a directory or a bucket, or else the one the config records; a new config has the directory `store` in it. `--ceiling` says what jobs on this computer may do: without it they may do nothing outside themselves, and the first refusal names the command that changes that.
 
 Across computers it is three steps, which join into one line because each reads the last one's output:
 

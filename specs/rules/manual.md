@@ -31,8 +31,8 @@ The detailed rules behind [the Manual overview](../manual.md).
 **R-man-21** `corbie mcp` gives a model the same two things: the list of pages, and one page as the same text a person reads.
 *Accept:* the model server's manual tool, asked for the list, gives the same names `corbie manual` prints; for every page, what the tool gives and what `corbie manual <page>` prints are the same text.
 
-**R-man-24** `corbie manual --web` serves the same pages to a browser on this computer until it is stopped, each as the text that is printed, with a page that another names shown as a link by its title. It reads no config and no store.
-*Accept:* with nothing set up and nothing running, `corbie manual --web` says where the manual is; the list at that address leads to every page `corbie manual` lists, each page's text there is the text `corbie manual <page>` prints, but for the pages it names, each shown by its title and leading to that page; and every file a page asks for is served from the same address. It listens on this computer alone unless `--listen` names another address. Stopped, it ends with success and has written nothing. The model server's manual tool does not start it.
+**R-man-24** `corbie manual web` serves the same pages to a browser on this computer until it is stopped, each as the text that is printed, with a page that another names shown as a link by its title. It reads no config and no store.
+*Accept:* with nothing set up and nothing running, `corbie manual web` says where the manual is; the list at that address leads to every page `corbie manual` lists, each page's text there is the text `corbie manual <page>` prints, but for the pages it names, each shown by its title and leading to that page; and every file a page asks for is served from the same address. It listens on this computer alone unless `--listen` names another address. Stopped, it ends with success and has written nothing. The model server's manual tool does not start it.
 
 ## Interfaces
 
@@ -46,6 +46,6 @@ Uses:
 
 Used by:
 
-- **Client.** `corbie manual` and `corbie mcp` list and print the pages, and `corbie manual --web` serves them to a browser.
+- **Client.** `corbie manual` and `corbie mcp` list and print the pages, and `corbie manual web` serves them to a browser.
 - **Plugins.** A plugin's page is its specification, and the tests of its examples are the plugin's own tests.
 - **Store, Permissions, Secrets.** Each carries a statement the manual must make: the bucket services tested and that a directory keeps no party out (R-store-50); what is not defended against (R-perm-60); where a secret's protection ends, as the Secrets overview says it.

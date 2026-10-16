@@ -25,7 +25,7 @@ run = """
 set -e
 go build -o bin/corbie ./cmd/corbie
 rm -rf site
-bin/corbie manual --web --listen 127.0.0.1:7404 >/dev/null 2>&1 &
+bin/corbie manual web --listen 127.0.0.1:7404 >/dev/null 2>&1 &
 server=$!
 trap 'kill $server' EXIT
 until wget -q -O /dev/null http://127.0.0.1:7404/; do sleep 0.2; done

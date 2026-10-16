@@ -14,7 +14,7 @@ The detailed rules behind the [Blobs overview](../blob.md).
 *Accept:* run machines that pass blobs through inputs, outputs, emits, events and children, then read the whole store raw. No blob's key appears in the clear in any value or any name, and no head holds a reference.
 
 **R-blob-06** Wherever a value is displayed to a person or handed to a model, a blob in it appears as its type, its size and a name to ask for it by, and its key is never shown.
-*Accept:* a result holding a file is shown by `corbie show` as text and as JSON, by the gateway's route and its streams, and by `corbie mcp`, and the same result is handed to an agent's model. Each shows the file's type, its size and the path to ask for it by, and the blob's key appears nowhere, in any encoding.
+*Accept:* a result holding a file is shown by `corbie run show` as text and as JSON, by the gateway's route and its streams, and by `corbie mcp`, and the same result is handed to an agent's model. Each shows the file's type, its size and the path to ask for it by, and the blob's key appears nowhere, in any encoding.
 
 **C-blob-01** A reference written into a log line or an error shows no key. Logs and errors are read by people and passed on by tools that were never given the right to read the blob. *Test:* `blob_reference_in_log_or_error_hides_key`
 
@@ -48,7 +48,7 @@ The detailed rules behind the [Blobs overview](../blob.md).
 *Accept:* after flows, statecharts and agents have run with uploads, job results and children, every blob in the store is under the `blobs/` of some instance's record. After an instance is removed as past keeping, none of its blobs is in the store, and a reference to one of them kept by an application outside Corbie opens nothing. No value in the store records how many references a blob has, or a time to keep it until.
 
 **R-blob-19** A blob made by a job is written into the record of the instance the job is for, and a blob a client supplies with a start into the new instance's record.
-*Accept:* a job of a child instance returns a file: the blob is under the child's record, not its parent's and not the root's. `corbie submit` with a file as input leaves the blob under `records/<client>/<the new run's name>/blobs/`.
+*Accept:* a job of a child instance returns a file: the blob is under the child's record, not its parent's and not the root's. `corbie run submit` with a file as input leaves the blob under `records/<client>/<the new run's name>/blobs/`.
 
 **R-blob-21** A value handed down to a child is read where it is, and a parent keeps what its running children still use.
 *Accept:* a parent passes a file from its own record as input to a child machine, which passes it on to a job: no blob is written for either hand-down, the child's record holds no copy, and the job reads the bytes from the parent's record. A parent that has run for longer than its keep, and whose own state no longer mentions the file, still holds it while the child is running, and the child's next job reads it (R-inst-39).

@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/json/v2"
 	"fmt"
+	"io"
 	"slices"
 	"strings"
 	"sync"
@@ -15,19 +16,19 @@ import (
 // manual, and the command line. The model may run only the commands the
 // server was started with permission for, with the config the server was
 // started on. The server needs nothing running and keeps nothing.
-func cmdMCP(e *env, args []string) error {
+func cmdMCP(e *Env, args []string) error {
 	var allow list
-	e.flags.Var(&allow, "allow", "")
-	rest, err := e.parse(args)
+	e.Flags.Var(&allow, "allow", "")
+	rest, err := e.Parse(args)
 	if err != nil {
 		return err
 	}
 	if len(rest) > 0 {
-		return mistake("mcp takes only flags: --allow <command>, as many times as there are commands to allow")
+		return Mistake("mcp takes only flags: --allow <command>, as many times as there are commands to allow")
 	}
 	for _, name := range allow {
 		if !slices.ContainsFunc(Commands, func(c Command) bool { return c.Name == name }) {
-			return mistake("--allow %q: that is not a command (corbie help lists them)", name)
+			return Mistake("--allow %q: that is not a command (corbie --help lists them)", name)
 		}
 	}
 	type request struct {
@@ -48,7 +49,7 @@ func cmdMCP(e *env, args []string) error {
 		defer mu.Unlock()
 		e.respond(map[string]any{"jsonrpc": "2.0", "id": id, field: v})
 	}
-	lines := bufio.NewScanner(e.in)
+	lines := bufio.NewScanner(e.In)
 	lines.Buffer(make([]byte, 1<<20), 64<<20)
 	for lines.Scan() {
 		var req request
@@ -119,13 +120,13 @@ const briefing = `Corbie runs machines. A machine is a YAML definition of type f
 4. Run Corbie's commands with the corbie tool, not in a shell.
 5. Tell the person what the run printed.`
 
-func (e *env) respond(v any) {
+func (e *Env) respond(v any) {
 	data, _ := json.Marshal(v, json.Deterministic(true))
-	fmt.Fprintln(e.out, string(data))
+	fmt.Fprintln(e.Out, string(data))
 }
 
 // tools describes the two tools to the model.
-func (e *env) tools(allow []string) []any {
+func (e *Env) tools(allow []string) []any {
 	var commands []string
 	for _, c := range Commands {
 		if !slices.Contains(allow, c.Name) {
@@ -141,7 +142,7 @@ func (e *env) tools(allow []string) []any {
 	allowed := "No commands are allowed to you."
 	if len(commands) > 0 {
 		allowed = "The commands allowed to you:\n" + strings.Join(commands, "\n") +
-			"\nshow and submit also stay until the run ends when given --wait or --watch, and ls --watch stays until it is stopped, as manual --web does."
+			"\nrun show and run submit also stay until the run ends when given --wait or --watch, and run ls --watch stays until it is stopped."
 	}
 	return []any{
 		map[string]any{"name": "manual",
@@ -155,17 +156,19 @@ func (e *env) tools(allow []string) []any {
 }
 
 // call runs one tool for the model.
-func (e *env) call(ctx context.Context, name string, arguments map[string]any, allow []string) (string, bool) {
+func (e *Env) call(ctx context.Context, name string, arguments map[string]any, allow []string) (string, bool) {
 	switch name {
 	case "manual":
 		page, _ := arguments["page"].(string)
-		// The tool reads: a flag in a page's place would start the web
-		// server from inside the call.
+		// The tool reads a page and starts nothing: it runs corbie manual
+		// itself, never a command whose name begins with manual, and
+		// takes no flag.
 		if strings.HasPrefix(strings.TrimSpace(page), "-") || strings.Contains(page, " -") {
 			return "the page is a page's name, as the list gives it", true
 		}
+		cmd, _ := own().find([]string{"manual"})
 		var out, errOut bytes.Buffer
-		status := Run(ctx, append([]string{"manual"}, strings.Fields(page)...), strings.NewReader(""), &out, &errOut)
+		status := own().do(ctx, cmd, strings.Fields(page), strings.NewReader(""), &out, &errOut)
 		return out.String() + errOut.String(), status != 0
 	case "corbie":
 		given, _ := arguments["args"].([]any)
@@ -180,12 +183,23 @@ func (e *env) call(ctx context.Context, name string, arguments map[string]any, a
 		// The name a command is allowed by and the command that then runs
 		// are found by one reading of the command line, and a command that
 		// is refused is refused before any part of it runs.
-		cmd, rest := find(args)
+		cmd, rest := own().find(args)
 		if cmd == nil {
 			return fmt.Sprintf("%q is not a command", strings.Join(args, " ")), true
 		}
 		if !slices.Contains(allow, cmd.Name) {
 			return fmt.Sprintf("the command %q is not one this server was started with permission for", cmd.Name), true
+		}
+		// A program on PATH is never run for a model, and corbie start's
+		// line names programs beside roles: it is read as corbie start
+		// reads it, and a program in it is refused.
+		if cmd.Name == "start" {
+			_, named, _ := items(cmd.env(ctx, nil, io.Discard, io.Discard), rest)
+			for _, it := range named {
+				if !slices.Contains(roles, it.name) {
+					return fmt.Sprintf("%q is a program on PATH, and a program is never run for a model", it.name), true
+				}
+			}
 		}
 		for _, arg := range rest {
 			flag := strings.TrimLeft(strings.SplitN(arg, "=", 2)[0], "-")
@@ -201,7 +215,7 @@ func (e *env) call(ctx context.Context, name string, arguments map[string]any, a
 			full = append(full, "--store", e.store)
 		}
 		var out, errOut bytes.Buffer
-		status := cmd.do(ctx, append(full, rest...), strings.NewReader(""), &out, &errOut)
+		status := own().do(ctx, cmd, append(full, rest...), strings.NewReader(""), &out, &errOut)
 		answer, _ := json.Marshal(map[string]any{"ended": status, "result": out.String(), "said": errOut.String()}, json.Deterministic(true))
 		return string(answer), status != 0
 	}

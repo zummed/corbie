@@ -5,7 +5,7 @@ The detailed rules behind the [Roles overview](../role.md).
 ## Passes
 
 **R-role-01** A Corbie process runs as a controller, as a runner, or as both, and what it does is set by the roles it is started with and by nothing else.
-*Accept:* one binary with one config is started as `corbie run controller`, as `corbie run runner` and as `corbie run controller runner`. The first takes steps and runs no job, the second runs jobs and takes no step, the third does both.
+*Accept:* one binary with one config is started as `corbie start controller`, as `corbie start runner` and as `corbie start controller runner`. The first takes steps and runs no job, the second runs jobs and takes no step, the third does both.
 
 **R-role-02** A pass looks at the store, does everything that is owed, and stops: a controller's pass handles every message in its inbox and every wake that has come due, and no wake that has not; a runner's pass takes every job in its inbox that it can finish, and runs it.
 *Accept:* messages from two clients and two runners, for five instances, are waiting, with one wake due a minute ago and another due in an hour. After one controller's pass each message has led to its step or been refused with a receipt, none is left in the inbox, the first wake has been delivered and is gone, the second is untouched, and the pass returned of its own accord. Four short jobs wait for a runner set to run two at once: one pass runs all four, two at a time, writes four results and leaves the inbox empty.
@@ -18,7 +18,7 @@ The detailed rules behind the [Roles overview](../role.md).
 ## Hosts
 
 **R-role-10** How passes are started depends on the host and on nothing else, and a pass does the same on every host.
-*Accept:* the same store contents are given to a pass under the stand-in for a serverless host and to a pass of `corbie run`. The two make the same writes.
+*Accept:* the same store contents are given to a pass under the stand-in for a serverless host and to a pass of `corbie start`. The two make the same writes.
 
 **R-role-11** On a serverless host, the host calls for a pass when something is written to the role's inbox, and calls the controller once a minute so that wakes are noticed.
 *Accept:* under the stand-in host, write a start into the controller's inbox: a controller's pass is called and takes it, and the job that pass writes into a runner's inbox calls a runner's pass, which runs it. A statechart waiting on a timer with no message arriving is moved by the call that falls in the minute after the timer's time.
@@ -29,14 +29,14 @@ The detailed rules behind the [Roles overview](../role.md).
 **R-role-14** A pass knows how long the host will let it run and finishes before that; whatever it has not reached waits for the next pass.
 *Accept:* under a stand-in host that kills a copy at thirty seconds, a controller's pass is given more messages than fit. The pass returns before thirty seconds, the host kills nothing, the messages not reached are in the inbox untouched, the passes that follow take them, and every run ends as it would have with one long pass.
 
-**R-role-17** On a computer `corbie run` runs passes in a loop, sleeping until the next thing is due or for a short interval, whichever is sooner.
+**R-role-17** On a computer `corbie start` runs passes in a loop, sleeping until the next thing is due or for a short interval, whichever is sooner.
 *Accept:* with the interval set to two seconds, a message written by another process is taken within about two seconds, and a wake due in a fifth of a second is delivered then and not at two seconds.
 
 **R-role-18** When one role in a process writes something that another role in the same process reads, the second is woken at once; that shortcut changes when a pass happens and never what a pass does, and it is the only thing a computer adds.
-*Accept:* `corbie run controller runner` with the interval set to a minute: once the controller has taken a start, the job it sends is run and its result is taken without any wait for the interval. Run one workload with both roles in one process and again with each role in a process of its own: everything written is the same, and only the times differ.
+*Accept:* `corbie start controller runner` with the interval set to a minute: once the controller has taken a start, the job it sends is run and its result is taken without any wait for the interval. Run one workload with both roles in one process and again with each role in a process of its own: everything written is the same, and only the times differ.
 
 **R-role-20** `corbie test` is the same loop, with every role in one process and the store in memory.
-*Accept:* a definition run by `corbie test`, and the same definition submitted with the same input to `corbie run controller runner` on a directory store, go through the same steps to the same result. `corbie test` needs nothing set up beforehand.
+*Accept:* a definition run by `corbie test`, and the same definition submitted with the same input to `corbie start controller runner` on a directory store, go through the same steps to the same result. `corbie test` needs nothing set up beforehand.
 
 **C-role-08** Nothing of a pass goes on after it has answered its host: no delete, no write, no look for the next wake. A host freezes a copy once it has answered, and work in flight is cut off or carried out minutes later when the copy thaws. *Test:* `role_nothing_runs_after_the_pass_answers`
 
@@ -72,7 +72,7 @@ The detailed rules behind the [Roles overview](../role.md).
 *Accept:* send a job to a runner none of whose copies is running: nothing sends it anywhere else and nothing fails early, and at the job's due time the machine receives a timeout. Two runners have the tag a job names, and the one its first attempt goes to is stopped: with two attempts, the second goes to the other runner and the job ends well; with one attempt, the job fails with a timeout. Nothing in the store records whether a runner is up, and a first attempt is sent to a stopped runner as readily as to a running one.
 
 **R-role-37** On a serverless host a timer fires within a minute of its time; on a computer within the loop's interval of its time; and never before it.
-*Accept:* under a stand-in host that calls the controller once a minute, timers set for times spread across a minute are each delivered no later than a minute after their time, and none before it. Two copies of `corbie run controller` share a store, with the interval set to two seconds: a timer set by a step one copy took is delivered, by whichever copy, no later than about two seconds after its time, and not before it.
+*Accept:* under a stand-in host that calls the controller once a minute, timers set for times spread across a minute are each delivered no later than a minute after their time, and none before it. Two copies of `corbie start controller` share a store, with the interval set to two seconds: a timer set by a step one copy took is delivered, by whichever copy, no later than about two seconds after its time, and not before it.
 
 ## Interfaces
 
@@ -87,6 +87,6 @@ Uses:
 
 Used by:
 
-- **Client**: `corbie run` starts the loop for the roles named, and `corbie test` starts it with every role in one process on a store in memory.
+- **Client**: `corbie start` starts the loop for the roles named, and `corbie test` starts it with every role in one process on a store in memory.
 - **Controller** and **Runner**: each does its work only inside a pass, and relies on the three rules for what happens when a pass is killed or doubled.
 - **Machines**: a step is taken once however many copies take it (R-mach-04), and a timer is as punctual as its host allows (R-role-37).

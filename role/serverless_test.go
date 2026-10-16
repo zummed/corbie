@@ -156,8 +156,8 @@ func setUp(t *testing.T, address string) (config string) {
 	}
 	definition := filepath.Join(t.TempDir(), "waits.yaml")
 	os.WriteFile(definition, []byte("statechart: waits\ninitial: waiting\nstates:\n  waiting: { ticket: word }\n"), 0o600)
-	if status, said := corbie(ctx, "submit", definition, "--config", config); status != 0 {
-		t.Fatalf("corbie submit: %s", said)
+	if status, said := corbie(ctx, "run", "submit", definition, "--config", config); status != 0 {
+		t.Fatalf("corbie run submit: %s", said)
 	}
 	return config
 }
@@ -176,8 +176,8 @@ func Test_role_serverless_host_refuses_directory_and_memory(t *testing.T) {
 		}
 		stop()
 	}()
-	if status, said := corbie(loop, "run", "controller", "--config", config, "--interval", "5ms"); status != 0 || !strings.Contains(said, "controller host-controller") {
-		t.Fatalf("on a computer, corbie run with a directory ended %d: %s", status, said)
+	if status, said := corbie(loop, "start", "controller", "--config", config, "--interval", "5ms"); status != 0 || !strings.Contains(said, "controller host-controller") {
+		t.Fatalf("on a computer, corbie start with a directory ended %d: %s", status, said)
 	}
 
 	// On a serverless host it refuses, for a directory and for memory, and
@@ -187,16 +187,16 @@ func Test_role_serverless_host_refuses_directory_and_memory(t *testing.T) {
 	t.Setenv("AWS_LAMBDA_RUNTIME_API", strings.TrimPrefix(host.URL, "http://"))
 	for address, want := range map[string]string{directory: "a store that is a directory", "file://" + directory: "a store that is a directory", "memory:": "a store in memory"} {
 		limited, cancel := context.WithTimeout(ctx, 10*time.Second)
-		status, said := corbie(limited, "run", "controller", "--config", config, "--store", address)
+		status, said := corbie(limited, "start", "controller", "--config", config, "--store", address)
 		cancel()
 		if status != 1 || !strings.Contains(said, want) || !strings.Contains(said, "serverless host") || !strings.Contains(said, "bucket") {
-			t.Fatalf("on a serverless host, corbie run with the store %s ended %d: %s", address, status, said)
+			t.Fatalf("on a serverless host, corbie start with the store %s ended %d: %s", address, status, said)
 		}
 	}
 	// The runner's store is the one its controller's card came with.
 	limited, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
-	if status, said := corbie(limited, "run", "runner", "--config", config); status != 1 || !strings.Contains(said, "a store that is a directory") {
+	if status, said := corbie(limited, "start", "runner", "--config", config); status != 1 || !strings.Contains(said, "a store that is a directory") {
 		t.Fatalf("on a serverless host, a runner whose controller's store is a directory ended %d: %s", status, said)
 	}
 	if asked != 0 {
@@ -238,8 +238,8 @@ func Test_role_host_package_readable_by_all_still_starts(t *testing.T) {
 	// Used where it is, as on a computer, it is not accepted.
 	limited, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
-	if status, said := corbie(limited, "run", "controller", "--config", config); status != 1 || !strings.Contains(said, "can be read by others") {
-		t.Fatalf("with an identity that others can read, corbie run ended %d: %s", status, said)
+	if status, said := corbie(limited, "start", "controller", "--config", config); status != 1 || !strings.Contains(said, "can be read by others") {
+		t.Fatalf("with an identity that others can read, corbie start ended %d: %s", status, said)
 	}
 	if held.has("/running/") {
 		t.Fatal("a controller whose identity others can read took a start")
@@ -258,8 +258,8 @@ func Test_role_host_package_readable_by_all_still_starts(t *testing.T) {
 	})
 	t.Setenv("AWS_LAMBDA_RUNTIME_API", strings.TrimPrefix(host.URL, "http://"))
 	defer time.AfterFunc(20*time.Second, stop).Stop()
-	if status, said := corbie(serving, "run", "controller", "--config", config); status != 0 {
-		t.Fatalf("on a serverless host, with its config readable by everyone, corbie run ended %d: %s", status, said)
+	if status, said := corbie(serving, "start", "controller", "--config", config); status != 0 {
+		t.Fatalf("on a serverless host, with its config readable by everyone, corbie start ended %d: %s", status, said)
 	}
 	if len(answers) != 1 || !strings.Contains(answers[0], `"controller":"done"`) || !held.has("/running/") {
 		t.Fatalf("the controller answered the host's call with %v, and took the start: %v", answers, held.has("/running/"))

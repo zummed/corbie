@@ -26,7 +26,17 @@ func TestMain(m *testing.M) {
 		runner.JobMain()
 		return
 	}
-	os.Exit(m.Run())
+	// No test reads or runs the config of the person running the tests.
+	home, err := os.MkdirTemp("", "corbie-config-home")
+	if err != nil {
+		panic(err)
+	}
+	os.Setenv("XDG_CONFIG_HOME", home)
+	os.Unsetenv("CORBIE_CONFIG")
+	os.Unsetenv("CORBIE_STORE")
+	status := m.Run()
+	os.RemoveAll(home)
+	os.Exit(status)
 }
 
 // machine is one machine's config, and a way to run commands on it.
@@ -116,7 +126,7 @@ func TestAScriptFileIsSubmittedAsItIs(t *testing.T) {
 	}
 }
 
-func TestInitRunSubmit(t *testing.T) {
+func TestInitRunSubmitStart(t *testing.T) {
 	m := machine{t, filepath.Join(t.TempDir(), "config")}
 	storeDir := filepath.Join(t.TempDir(), "store")
 	out := m.ok("", "init", "--store", storeDir, "--name", "box")
@@ -128,11 +138,11 @@ func TestInitRunSubmit(t *testing.T) {
 	dir := files(t, map[string]string{"hello.yaml": hello, "greet.js": `return { text: "hello " + input.name }`})
 
 	// With the controller stopped, a submitted run is waiting to start.
-	id := strings.TrimSpace(m.ok("", "submit", filepath.Join(dir, "hello.yaml"), "--input", `{"name": "directory"}`, "--label", "team=ops"))
+	id := strings.TrimSpace(m.ok("", "run", "submit", filepath.Join(dir, "hello.yaml"), "--input", `{"name": "directory"}`, "--label", "team=ops"))
 	if strings.ContainsAny(id, " \n") || !strings.HasPrefix(id, "box-client/") {
 		t.Fatalf("submit printed %q", id)
 	}
-	if out := m.ok("", "show", id); !strings.Contains(out, "waiting") {
+	if out := m.ok("", "run", "show", id); !strings.Contains(out, "waiting") {
 		t.Fatalf("before any controller ran, show printed %s", out)
 	}
 
@@ -141,37 +151,57 @@ func TestInitRunSubmit(t *testing.T) {
 	defer stop()
 	go func() {
 		var out, said bytes.Buffer
-		roles <- cli.Run(ctx, []string{"run", "controller", "runner", "--interval", "200ms", "--config", m.config}, strings.NewReader(""), &out, &said)
+		roles <- cli.Run(ctx, []string{"start", "controller", "--interval", "200ms", "runner", "--interval", "200ms", "--config", m.config}, strings.NewReader(""), &out, &said)
 	}()
-	if out := m.ok("", "show", id, "--wait", "--json"); !strings.Contains(out, `"status":"done"`) || !strings.Contains(out, "hello directory") {
+	if out := m.ok("", "run", "show", id, "--wait", "--json"); !strings.Contains(out, `"status":"done"`) || !strings.Contains(out, "hello directory") {
 		t.Fatalf("the run ended as %s", out)
 	}
 	// A row of the listing shows the run's labels.
-	if out := m.ok("", "ls", "--all", "--label", "team=ops"); !strings.Contains(out, id) || !strings.Contains(out, "  labels: team=ops\n") {
+	if out := m.ok("", "run", "ls", "--all", "--label", "team=ops"); !strings.Contains(out, id) || !strings.Contains(out, "  labels: team=ops\n") {
 		t.Fatalf("ls printed %s", out)
 	}
-	if out := m.ok("", "show", id, "--definition"); !strings.Contains(out, `"name":"hello"`) {
+	if out := m.ok("", "run", "show", id, "--definition"); !strings.Contains(out, `"name":"hello"`) {
 		t.Fatalf("the definition printed %s", out)
 	}
 	// A run that does not exist is a failure that says so.
-	if status, _, said := m.run("", "show", "box-client/20200101T000000.000Z-0000000000"); status != 1 || !strings.Contains(said, "no such run") {
+	if status, _, said := m.run("", "run", "show", "box-client/20200101T000000.000Z-0000000000"); status != 1 || !strings.Contains(said, "no such run") {
 		t.Fatalf("no such run: %d %s", status, said)
 	}
 	// With no ceiling, a script that reads a file is denied, and the fix
 	// names the command that changes it. The script's own list allowed it,
 	// so nothing is said of adding to the command line.
 	reads := files(t, map[string]string{"reads.js": `return fs.read("/etc/hostname")`})
-	_, out, _ = m.run("", "submit", filepath.Join(reads, "reads.js"), "--allow", "disk", "--wait")
+	_, out, _ = m.run("", "run", "submit", filepath.Join(reads, "reads.js"), "--allow", "disk", "--wait")
 	if !strings.Contains(out, "denied") || !strings.Contains(out, "corbie controller enrol box-client --allow fs.read:/etc/hostname") || strings.Contains(out, "add to the command") {
 		t.Fatalf("a denied run printed %s", out)
 	}
 	m.ok("", "controller", "enrol", "box-client", "--allow", "fs.read:/etc/hostname")
 	m.ok("", "runner", "trust", "box-controller", "--allow", "fs.read:/etc/hostname")
-	if _, out, _ := m.run("", "submit", filepath.Join(reads, "reads.js"), "--allow", "disk", "--wait"); !strings.Contains(out, "done") {
+	if _, out, _ := m.run("", "run", "submit", filepath.Join(reads, "reads.js"), "--allow", "disk", "--wait"); !strings.Contains(out, "done") {
 		t.Fatalf("after the ceilings were raised: %s", out)
 	}
 	stop()
 	<-roles
+}
+
+// With no --store, the store is the directory store in the config, and the
+// roles run on it as on any other.
+func TestInitWithNoStoreSetsItUpInTheConfig(t *testing.T) {
+	t.Setenv("CORBIE_STORE", "")
+	m := machine{t, filepath.Join(t.TempDir(), "config")}
+	out := m.ok("", "init", "--name", "box")
+	storeDir := filepath.Join(m.config, "store")
+	if !strings.Contains(out, "The store is "+storeDir+".") || !strings.Contains(out, "To change that: corbie init --ceiling all") {
+		t.Fatalf("init with no --store printed:\n%s", out)
+	}
+	if _, err := os.Stat(filepath.Join(storeDir, "version")); err != nil {
+		t.Fatalf("the store was not set up in the config: %v", err)
+	}
+	m.staying("start", "controller", "--interval", "20ms", "runner", "--interval", "20ms")
+	dir := files(t, map[string]string{"one.js": `return 1`})
+	if out := m.ok("", "run", "submit", filepath.Join(dir, "one.js"), "--wait", "--json"); !strings.Contains(out, `"status":"done"`) || !strings.Contains(out, `"output":1`) {
+		t.Fatalf("the run ended as %s", out)
+	}
 }
 
 // The three steps of enrolling across machines join into one line.
@@ -224,6 +254,7 @@ func TestEnrolPipe(t *testing.T) {
 }
 
 func TestManualAndHelp(t *testing.T) {
+	t.Setenv("PATH", t.TempDir())
 	m := machine{t, t.TempDir()}
 	listing := m.ok("", "manual")
 	// Every page the list names can be printed, and everything the binary
@@ -236,7 +267,7 @@ func TestManualAndHelp(t *testing.T) {
 			t.Errorf("the page %s prints %q", page.Name, out)
 		}
 	}
-	for _, want := range []string{"flow", "statechart", "agent", "http", "blobs", "corbie submit", "permissions"} {
+	for _, want := range []string{"flow", "statechart", "agent", "http", "blobs", "corbie run submit", "permissions"} {
 		if _, ok := manual.Find(want); !ok {
 			t.Errorf("there is no page for %s", want)
 		}
@@ -251,7 +282,7 @@ func TestManualAndHelp(t *testing.T) {
 			t.Errorf("corbie %s --help: %d %q", c.Name, status, out)
 		}
 	}
-	if status, out, _ := m.run("", "help"); status != 0 || !strings.Contains(out, "corbie submit") {
+	if status, out, _ := m.run("", "help"); status != 0 || !strings.Contains(out, "\n  run ") {
 		t.Fatalf("corbie help: %d", status)
 	}
 	if status, _, _ := m.run("", "frobnicate"); status != 2 {
@@ -399,18 +430,18 @@ func TestViewerNeedsNoIdentity(t *testing.T) {
 	storeDir := filepath.Join(t.TempDir(), "store")
 	m.ok("", "init", "--store", storeDir, "--name", "box")
 	dir := files(t, map[string]string{"hello.yaml": hello, "greet.js": `return 1`})
-	id := strings.TrimSpace(m.ok("", "submit", filepath.Join(dir, "hello.yaml"), "--input", `{"name": "x"}`))
+	id := strings.TrimSpace(m.ok("", "run", "submit", filepath.Join(dir, "hello.yaml"), "--input", `{"name": "x"}`))
 	ctx, stop := context.WithCancel(context.Background())
 	done := make(chan int, 1)
 	go func() {
 		var out, said bytes.Buffer
-		done <- cli.Run(ctx, []string{"run", "controller", "runner", "--interval", "100ms", "--config", m.config}, strings.NewReader(""), &out, &said)
+		done <- cli.Run(ctx, []string{"start", "controller", "--interval", "100ms", "runner", "--interval", "100ms", "--config", m.config}, strings.NewReader(""), &out, &said)
 	}()
-	m.ok("", "show", id, "--wait")
+	m.ok("", "run", "show", id, "--wait")
 	// The record says the run has ended a moment before its head does:
 	// let the controller finish the step before it is stopped.
 	for range 200 {
-		if strings.Contains(m.ok("", "ls", "--all"), "done") {
+		if strings.Contains(m.ok("", "run", "ls", "--all"), "done") {
 			break
 		}
 		time.Sleep(10 * time.Millisecond)
@@ -424,14 +455,14 @@ func TestViewerNeedsNoIdentity(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(viewer.config, "client", "identity")); err == nil {
 		t.Fatal("a viewer was given an identity")
 	}
-	if out := viewer.ok("", "ls", "--all"); !strings.Contains(out, id) || !strings.Contains(out, "done") {
+	if out := viewer.ok("", "run", "ls", "--all"); !strings.Contains(out, id) || !strings.Contains(out, "done") {
 		t.Fatalf("a viewer's listing: %s", out)
 	}
 	// What is inside a run cannot be read.
-	if out := viewer.ok("", "show", id, "--json"); strings.Contains(out, "output") {
+	if out := viewer.ok("", "run", "show", id, "--json"); strings.Contains(out, "output") {
 		t.Fatalf("a viewer was shown what is inside a run: %s", out)
 	}
-	if status, _, _ := viewer.run("", "show", id, "--definition"); status == 0 {
+	if status, _, _ := viewer.run("", "run", "show", id, "--definition"); status == 0 {
 		t.Fatal("a viewer was given a run's definition")
 	}
 }

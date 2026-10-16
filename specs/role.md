@@ -1,6 +1,6 @@
 # Roles
 
-A Corbie process runs as a controller, as a runner, or as both. This area is about how each goes about its work, wherever it is hosted. (`corbie run` can also start a gateway, which is a client and is described there, and can serve the controller's directory to other computers, which is described under Store.) What a controller does with a message and what a runner does with a job are in their own areas.
+A Corbie process runs as a controller, as a runner, or as both. This area is about how each goes about its work, wherever it is hosted. (`corbie start` can also start a gateway, which is a client and is described there, and can serve the controller's directory to other computers, which is described under Store.) What a controller does with a message and what a runner does with a job are in their own areas.
 
 ## Passes
 
@@ -14,7 +14,7 @@ How passes are started depends on the host, and on nothing else.
 
 On a **serverless host** the host calls for a pass when something is written to the role's inbox, and calls the controller once a minute so that wakes are noticed. Both are services the host and the bucket already offer. Corbie has no signalling of its own. A pass knows how long the host will let it run and finishes before that. Whatever it has not reached waits for the next pass, and a runner does not take a job it could not finish in the time left.
 
-On a **computer** `corbie run` runs passes in a loop, sleeping until the next thing is due or for a short interval, whichever is sooner. When one role in the process writes something that another role in the same process reads, the second is woken at once. A served directory does the same for a role on another computer: it tells the role when its inbox is written. That shortcut is the only thing a computer adds. It changes when a pass happens and never what a pass does.
+On a **computer** `corbie start` runs passes in a loop, sleeping until the next thing is due or for a short interval, whichever is sooner. When one role in the process writes something that another role in the same process reads, the second is woken at once. A served directory does the same for a role on another computer: it tells the role when its inbox is written. That shortcut is the only thing a computer adds. It changes when a pass happens and never what a pass does.
 
 **`corbie test`** is the same loop with every role in one process and the store in memory. It is not a separate way of running a machine.
 

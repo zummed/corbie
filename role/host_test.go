@@ -658,12 +658,12 @@ func Test_role_loop_survives_store_out_of_reach(t *testing.T) {
 	reported, over := make(chan error, 1000), make(chan struct{})
 	go func() {
 		defer close(over)
-		role.Run(loop, time.Millisecond, time.Now, func(name string, err error) {
+		role.Run(loop, time.Now, func(name string, err error) {
 			select {
 			case reported <- err:
 			default:
 			}
-		}, role.Role{Name: "controller", Pass: made.Pass})
+		}, role.Role{Name: "controller", Pass: made.Pass, Interval: time.Millisecond})
 	}()
 	defer func() {
 		stop()

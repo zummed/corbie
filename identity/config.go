@@ -78,27 +78,27 @@ func (c Config) SetControllerStore(address string) error {
 	return writeWhole(filepath.Join(c.Dir, string(Controller), "store"), []byte(address+"\n"))
 }
 
-// Served is where the controller's computer serves its directory to other
-// machines, as host:port, or nothing where it does not.
-func (c Config) Served() (string, error) {
-	data, err := os.ReadFile(filepath.Join(c.Dir, string(Controller), "served"))
+// StoreListen is where the store's server on the controller's computer
+// listens, as host:port, or nothing where the directory is not served.
+func (c Config) StoreListen() (string, error) {
+	data, err := os.ReadFile(filepath.Join(c.Dir, string(Controller), "listen"))
 	if errors.Is(err, fs.ErrNotExist) {
 		return "", nil
 	}
 	return strings.TrimSpace(string(data)), err
 }
 
-// SetServed notes where the controller's computer serves its directory, or with
-// nothing given that it does not.
-func (c Config) SetServed(at string) error {
+// SetStoreListen notes where the store's server listens, or with nothing
+// given that the directory is not served.
+func (c Config) SetStoreListen(at string) error {
 	if at == "" {
-		err := os.Remove(filepath.Join(c.Dir, string(Controller), "served"))
+		err := os.Remove(filepath.Join(c.Dir, string(Controller), "listen"))
 		if errors.Is(err, fs.ErrNotExist) {
 			return nil
 		}
 		return err
 	}
-	return writeWhole(filepath.Join(c.Dir, string(Controller), "served"), []byte(at+"\n"))
+	return writeWhole(filepath.Join(c.Dir, string(Controller), "listen"), []byte(at+"\n"))
 }
 
 func (c Config) trustPath(kind Kind, name string) string {

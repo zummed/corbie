@@ -5,6 +5,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"regexp"
 	"slices"
 	"strconv"
 	"strings"
@@ -14,9 +15,12 @@ import (
 )
 
 // The first word of several commands, with nothing after it or asked for
-// help, prints those commands and no others, each with its one line.
+// help, prints the words that follow it, each once and in the table's
+// order: a command's word with its summary, and a word that begins several
+// commands with the words that follow it.
 func TestAGroupOfCommandsPrintsItsCommands(t *testing.T) {
-	for _, group := range []string{"controller", "runner", "client", "controller secret"} {
+	row := regexp.MustCompile(`(?m)^  (\S+)   `)
+	for _, group := range []string{"run", "controller", "runner", "client", "controller secret"} {
 		for _, asked := range [][]string{nil, {"--help"}} {
 			args := append(strings.Fields(group), asked...)
 			var out, said bytes.Buffer
@@ -24,10 +28,32 @@ func TestAGroupOfCommandsPrintsItsCommands(t *testing.T) {
 			if status != 0 || said.Len() != 0 {
 				t.Errorf("corbie %s ended %d and said %q", strings.Join(args, " "), status, said.String())
 			}
+			text := out.String()
+			flat := strings.Join(strings.Fields(text), " ")
+			var words, printed []string
 			for _, c := range cli.Commands {
-				if in := strings.HasPrefix(c.Name, group+" "); in != strings.Contains(out.String(), "  "+c.Summary+"\n") {
-					t.Errorf("corbie %s: the command %s in its group is %v, and its line being printed is %v:\n%s", strings.Join(args, " "), c.Name, in, !in, out.String())
+				rest, in := strings.CutPrefix(c.Name, group+" ")
+				if !in {
+					continue
 				}
+				word, after, deeper := strings.Cut(rest, " ")
+				if !slices.Contains(words, word) {
+					words = append(words, word)
+				}
+				next, _, _ := strings.Cut(after, " ")
+				listed := strings.Contains(flat, " "+word+" "+c.Summary)
+				if deeper {
+					listed = strings.Contains(flat, " "+word+" ") && strings.Contains(flat, next)
+				}
+				if !listed {
+					t.Errorf("corbie %s does not list %s as it should:\n%s", strings.Join(args, " "), c.Name, out.String())
+				}
+			}
+			for _, m := range row.FindAllStringSubmatch(text, -1) {
+				printed = append(printed, m[1])
+			}
+			if !slices.Equal(words, printed) {
+				t.Errorf("corbie %s lists %v, and the words that follow it are %v:\n%s", strings.Join(args, " "), printed, words, out.String())
 			}
 		}
 	}
@@ -100,13 +126,13 @@ func TestDirectoryStoreThatIsNotThereIsSaidToBe(t *testing.T) {
 	if err := os.RemoveAll(storeDir); err != nil {
 		t.Fatal(err)
 	}
-	if status, _, said := m.run("", "ls"); status != 1 || !strings.Contains(said, "the directory "+strconv.Quote(storeDir)+" is not there") {
+	if status, _, said := m.run("", "run", "ls"); status != 1 || !strings.Contains(said, "the directory "+strconv.Quote(storeDir)+" is not there") {
 		t.Fatalf("with its store's directory gone, ls ended %d: %s", status, said)
 	}
 	if err := os.Mkdir(storeDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if status, _, said := m.run("", "ls"); status != 1 || !strings.Contains(said, "this is not a Corbie store") {
+	if status, _, said := m.run("", "run", "ls"); status != 1 || !strings.Contains(said, "this is not a Corbie store") {
 		t.Fatalf("with an empty directory for its store, ls ended %d: %s", status, said)
 	}
 }

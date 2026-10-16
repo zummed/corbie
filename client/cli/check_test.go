@@ -61,7 +61,7 @@ func TestCheckSaysWhichPartDidNotAnswer(t *testing.T) {
 	}
 	// A controller and no runner: the start is taken and the job is not,
 	// and the check names the runner the job went to and its inbox.
-	m.staying("run", "controller", "--interval", "20ms")
+	m.staying("start", "controller", "--interval", "20ms")
 	status, f = m.check("--wait", "2s")
 	if status != 1 || f.OK || len(f.Legs) != 2 || f.Legs[0].Status != "ok" || f.Legs[1].Leg != "job" || f.Legs[1].Status != "never" ||
 		!strings.Contains(f.Legs[1].Why, "box-runner/inbox/") {
@@ -86,7 +86,7 @@ func Test_client_check_is_an_ordinary_run(t *testing.T) {
 	// the check followed.
 	var runs []struct{ Machine, Type, Status string }
 	for end := time.Now().Add(5 * time.Second); ; time.Sleep(20 * time.Millisecond) {
-		if err := json.Unmarshal([]byte(m.ok("", "ls", "--all", "--json")), &runs); err != nil {
+		if err := json.Unmarshal([]byte(m.ok("", "run", "ls", "--all", "--json")), &runs); err != nil {
 			t.Fatal(err)
 		}
 		if len(runs) == 1 && runs[0].Status == "done" || time.Now().After(end) {

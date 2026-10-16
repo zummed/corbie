@@ -29,11 +29,11 @@ Build each function's package
   package/config/controller/…   the controller's config (config/runner/… for a runner)
 
   #!/bin/sh
-  cd "$LAMBDA_TASK_ROOT" && exec ./corbie run $CORBIE_RUN --config "$LAMBDA_TASK_ROOT/config"
+  cd "$LAMBDA_TASK_ROOT" && exec ./corbie start $CORBIE_SERVE --config "$LAMBDA_TASK_ROOT/config"
 
   runtime       provided.al2023
   handler       bootstrap
-  CORBIE_RUN    controller on one function, "runner --jobs 4" on the other
+  CORBIE_SERVE  controller on one function, "runner --jobs 4" on the other
   timeout       for a runner, its longest job's timeout plus ten seconds
 
 A function's code can be replaced while runs are in progress.
@@ -79,7 +79,7 @@ Check it
 Run these where you ran `init`.
 
   corbie check
-  corbie submit hello.js --wait
+  corbie run submit hello.js --wait
 
 If a call is missing, the check's `late` or `never` line names it.
 

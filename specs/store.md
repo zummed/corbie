@@ -69,7 +69,17 @@ A **directory** is for one computer. Every value is a plain file, so a person ca
 
 A **served directory** is for a few computers of one's own, with nothing rented and nothing else installed. The computer that holds the directory and the controller serves it, and a party on another computer reaches it at `corbie://host:port`. Roles on the serving computer use the directory as it is.
 
-For example, the computer `desk` holds the directory and runs `corbie run controller runner store`, and a computer with a graphics card runs `corbie run runner` with the store `corbie://desk:8372`. One private connection joins them. On it `desk` proves the controller's key, and the other computer proves its runner's key.
+For example, the computer `desk` holds the directory and runs `corbie start controller runner store`, and a computer with a graphics card runs `corbie start runner` with the store `corbie://desk:8372`. One private connection joins them. On it `desk` proves the controller's key, and the other computer proves its runner's key.
+
+`corbie init store` sets up the store's server alone, on a computer whose config holds the controller, and `corbie start` then runs it:
+
+```
+corbie init store                            listens on :8372; others are given corbie://<host name>:8372
+corbie init store --listen 10.0.0.5:8372     listens there; others are given corbie://10.0.0.5:8372
+corbie start store --listen :9000            listens there this time; others are given what init saved
+```
+
+The address other computers are given is the one `corbie init store` saved, with this computer's host name where it names every network interface. `corbie start store --listen` never changes it, and `corbie init store --listen ""` serves the directory to no other computer.
 
 There are no keys to a served directory: a party uses the identity it already has. A served directory's wire is private to the two computers. When a connection is made each end proves its own identity key: the party speaks only to the computer that holds its controller's key, and the server speaks only to a party whose key is the one in the controller's trust list for the name it gives, read afresh for every request, so a party that is removed is turned away from its next request on. The server holds each party to its row of the table, exactly as the table is drawn.
 

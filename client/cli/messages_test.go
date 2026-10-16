@@ -26,7 +26,7 @@ func TestCancelSendAndReplyTakeALife(t *testing.T) {
 	ctx := context.Background()
 	inbox := store.Inbox("box-controller")
 	id := "box-client/" + time.Now().UTC().Format("20060102T150405.000Z") + "-0000000000"
-	for _, command := range [][]string{{"cancel", id}, {"send", id, "go"}, {"reply", id, "the-key", "yes"}} {
+	for _, command := range [][]string{{"run", "cancel", id}, {"run", "send", id, "go"}, {"run", "reply", id, "the-key", "yes"}} {
 		before, err := s.List(ctx, inbox)
 		if err != nil {
 			t.Fatal(err)
@@ -34,14 +34,14 @@ func TestCancelSendAndReplyTakeALife(t *testing.T) {
 		began := time.Now()
 		status, out, said := m.run("", append(command, "--life", "200ms")...)
 		if status != 1 || out != "" || !strings.Contains(said, "not taken up") {
-			t.Errorf("corbie %s --life 200ms with no controller ended %d: %s%s", command[0], status, out, said)
+			t.Errorf("corbie %s --life 200ms with no controller ended %d: %s%s", strings.Join(command[:2], " "), status, out, said)
 		}
 		if took := time.Since(began); took > 10*time.Second {
-			t.Errorf("corbie %s --life 200ms waited %v for its receipt", command[0], took)
+			t.Errorf("corbie %s --life 200ms waited %v for its receipt", strings.Join(command[:2], " "), took)
 		}
 		after, err := s.List(ctx, inbox)
 		if err != nil || len(after) != len(before)+1 {
-			t.Fatalf("corbie %s left %d messages in the inbox where there were %d (%v)", command[0], len(after), len(before), err)
+			t.Fatalf("corbie %s left %d messages in the inbox where there were %d (%v)", strings.Join(command[:2], " "), len(after), len(before), err)
 		}
 		// The one that is new: names sort by when they were made, and a
 		// start's name is made before the start is sent.
@@ -55,14 +55,14 @@ func TestCancelSendAndReplyTakeALife(t *testing.T) {
 			t.Fatal(err)
 		}
 		if good := value.Until.Sub(value.Sent); good != 200*time.Millisecond {
-			t.Errorf("what corbie %s --life 200ms sent is good for %v", command[0], good)
+			t.Errorf("what corbie %s --life 200ms sent is good for %v", strings.Join(command[:2], " "), good)
 		}
 		// A life that is no length of time is a mistake, and sends nothing.
 		if status, _, said := m.run("", append(command, "--life", "soon")...); status != 2 || !strings.Contains(said, "--life") {
-			t.Errorf("corbie %s --life soon ended %d: %s", command[0], status, said)
+			t.Errorf("corbie %s --life soon ended %d: %s", strings.Join(command[:2], " "), status, said)
 		}
 		if again, _ := s.List(ctx, inbox); len(again) != len(before)+1 {
-			t.Errorf("corbie %s --life soon sent a message", command[0])
+			t.Errorf("corbie %s --life soon sent a message", strings.Join(command[:2], " "))
 		}
 	}
 }

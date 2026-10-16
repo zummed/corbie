@@ -45,10 +45,13 @@ is retried only if it sets `attempts:`.
 What starts them
 ----------------
 
-  corbie run controller runner   a process that polls the store every --interval
-                                 (default 2s), or sooner when a timer is due
-  serverless functions           the host calls a function when a file is written
-                                 to its inbox, and the controller once a minute
-  corbie test                    everything in one process, with the store in memory
+  corbie start controller runner   a process that polls the store every
+                                   --interval (default 2s), or sooner when a
+                                   timer is due
+  serverless functions             the host calls a function when a file is
+                                   written to its inbox, and the controller once
+                                   a minute
+  corbie test                      everything in one process, with the store in
+                                   memory
 
 Next: `corbie manual the-store` lists every file in the store.

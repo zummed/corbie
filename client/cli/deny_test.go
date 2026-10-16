@@ -37,13 +37,13 @@ func TestCeilingIsGivenADenyList(t *testing.T) {
 	if out := m.ok("", "init", "--store", storeDir, "--name", "box", "--ceiling", "all", "--deny", "fs.read:"+note); !strings.Contains(out, "it refuses: fs.read:"+note) {
 		t.Fatalf("init with a deny entry printed:\n%s", out)
 	}
-	m.staying("run", "controller", "runner", "--interval", "20ms")
+	m.staying("start", "controller", "--interval", "20ms", "runner", "--interval", "20ms")
 	const client, runner = "the ceiling of the client \"box-client\"", "the ceiling of the runner \"box-runner\""
 	// reads runs the script on a file with everything allowed on the
 	// command line, and gives which layers refused the file, if any did.
 	reads := func(file string) string {
 		t.Helper()
-		_, out, said := m.run("", "submit", script, "--allow", "all", "--input", inputOf(file), "--wait", "--json")
+		_, out, said := m.run("", "run", "submit", script, "--allow", "all", "--input", inputOf(file), "--wait", "--json")
 		var run struct{ Status, Refused, Layer string }
 		if err := json.Unmarshal([]byte(out), &run); err != nil {
 			t.Fatalf("submit printed %q and said %q", out, said)

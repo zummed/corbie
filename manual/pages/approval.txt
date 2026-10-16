@@ -54,7 +54,7 @@ The ask
 An ask is any job.
 
   a script        applies a rule, as `ask.js` does
-  a statechart    waits for a person, who answers with `corbie reply`
+  a statechart    waits for a person, who answers with `corbie run reply`
   an agent        has a model review the jobs
 
 For an agent's tool, each held job also has `asked: { does, args, said }`: what

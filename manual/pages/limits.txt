@@ -7,7 +7,7 @@ does not defend against the following.
 - A program that a job starts reads files, writes files and opens connections
   as the runner's user. Permissions are checked when it is started and not
   after. A runner's owner can run every started program in a sandbox or a
-  container with `corbie run --exec-wrapper`, and Corbie provides none.
+  container with `corbie start --exec-wrapper`, and Corbie provides none.
 - A job allowed to read the runner's own files can read the runner's private
   key, and with it decrypt every job sent to that runner.
 - A script allowed to connect to a secret's destination can learn the secret's

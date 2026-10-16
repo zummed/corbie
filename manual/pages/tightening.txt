@@ -26,7 +26,7 @@ Allow everything
       output: {"heading":"# Sales, third quarter","status":200}
       used: fs.read:/srv/reports/latest.md net:example.com:443
 
-`used:` lists each permission the script used. `corbie show <id>` prints the
+`used:` lists each permission the script used. `corbie run show <id>` prints the
 same line for a run on a controller. `corbie test` applies no other limit, so
 the script can do anything your user account can: read it first.
 

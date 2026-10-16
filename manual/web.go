@@ -5,6 +5,7 @@ import (
 	"html"
 	"html/template"
 	"net/http"
+	"net/url"
 	"regexp"
 	"slices"
 	"strings"
@@ -34,8 +35,46 @@ var (
 // list.
 var point = regexp.MustCompile(`^(✓|✗) `)
 
-// named is a page as another page's text names it.
-var named = regexp.MustCompile(`corbie manual ([a-z][a-z0-9-]*)`)
+// named is where a text names a page, and nameWords the words after it
+// that may be the page's name.
+var (
+	named     = regexp.MustCompile(`corbie manual `)
+	nameWords = regexp.MustCompile(`^[a-z][a-z0-9-]*( [a-z][a-z0-9-]*)*`)
+)
+
+// A mention is a page a text names, as corbie manual and the page's name:
+// text[at:end].
+type mention struct {
+	page    Page
+	name    string
+	at, end int
+}
+
+// mentions gives each page a text names. A command's page has a name of
+// several words, such as run show, so of the words after corbie manual the
+// most that name a page are taken.
+func mentions(text string, known func(string) (Page, bool)) []mention {
+	var found []mention
+	for _, at := range named.FindAllStringIndex(text, -1) {
+		// A name that begins inside the one before it is part of that one.
+		if n := len(found); n > 0 && at[0] < found[n-1].end {
+			continue
+		}
+		name := nameWords.FindString(text[at[1]:])
+		for name != "" {
+			if page, ok := known(name); ok {
+				found = append(found, mention{page, name, at[0], at[1] + len(name)})
+				break
+			}
+			last := strings.LastIndex(name, " ")
+			if last < 0 {
+				break
+			}
+			name = name[:last]
+		}
+	}
+	return found
+}
 
 // A group is the pages of one kind, as the list shows them together. The
 // long groups of the reference are folded away until one is opened.
@@ -288,13 +327,14 @@ func set(page Page, known func(string) (Page, bool)) (title, lede string, body t
 	// A page another names is a way to it, in an example as in a sentence,
 	// and is shown by its title.
 	inline := func(text string) string {
-		return named.ReplaceAllStringFunc(html.EscapeString(text), func(found string) string {
-			to, ok := known(strings.TrimPrefix(found, "corbie manual "))
-			if !ok {
-				return found
-			}
-			return `<a class="to" href="` + strings.TrimPrefix(found, "corbie manual ") + `">` + html.EscapeString(to.Title()) + `</a>`
-		})
+		text = html.EscapeString(text)
+		var b strings.Builder
+		from := 0
+		for _, to := range mentions(text, known) {
+			b.WriteString(text[from:to.at] + `<a class="to" href="` + url.PathEscape(to.name) + `">` + html.EscapeString(to.page.Title()) + `</a>`)
+			from = to.end
+		}
+		return b.String() + text[from:]
 	}
 	// In a sentence, what is written between backticks is a command, a
 	// field or a name, and is set apart from the words around it.
@@ -375,12 +415,11 @@ func set(page Page, known func(string) (Page, bool)) (title, lede string, body t
 			// with what the row says of it.
 			var pages []string
 			for _, l := range block {
-				to := named.FindString(l)
-				_, ok := known(strings.TrimPrefix(to, "corbie manual "))
+				to := mentions(l, known)
 				switch {
-				case ok && strings.HasPrefix(strings.TrimSpace(l), to):
+				case len(to) > 0 && strings.TrimSpace(l[:to[0].at]) == "":
 					pages = append(pages, strings.TrimSpace(l))
-				case len(pages) > 0 && !named.MatchString(l):
+				case len(pages) > 0 && len(to) == 0:
 					pages[len(pages)-1] += " " + strings.TrimSpace(l)
 				default:
 					pages = nil
@@ -392,8 +431,8 @@ func set(page Page, known func(string) (Page, bool)) (title, lede string, body t
 			if pages != nil {
 				b.WriteString(`<ul class="pages">` + "\n")
 				for _, row := range pages {
-					to := named.FindString(row)
-					b.WriteString("<li>" + inline(to) + " <span>" + prose(strings.TrimSpace(strings.TrimPrefix(row, to))) + "</span></li>\n")
+					end := mentions(row, known)[0].end
+					b.WriteString("<li>" + inline(row[:end]) + " <span>" + prose(strings.TrimSpace(row[end:])) + "</span></li>\n")
 				}
 				b.WriteString("</ul>\n")
 				break

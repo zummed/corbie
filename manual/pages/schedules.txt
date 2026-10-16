@@ -19,15 +19,16 @@ Corbie has no scheduler: recurring work is a statechart with two states.
     // work.js
     log("the nightly work")
 
-    corbie init --store ~/corbie --ceiling all
-    corbie run controller runner &
-    corbie submit nightly.yaml
-    corbie show <id>
+    corbie init --ceiling all
+    corbie start &
+    corbie run submit nightly.yaml
+    corbie run show <id>
 
 At 18:00 UTC the timer `evening` is due and the statechart moves to `working`,
 and back to `idle` when the job ends. Without `failed: idle`, a job that fails
-ends the run as failed and the schedule stops. `corbie show <id>` prints the
-run as `running`, with `waiting on 1 timer`, until `corbie cancel <id>` ends it.
+ends the run as failed and the schedule stops. `corbie run show <id>` prints
+the run as `running`, with `waiting on 1 timer`, until `corbie run cancel <id>`
+ends it.
 
 A timer's time is a duration or a time of day.
 
@@ -40,7 +41,7 @@ No job runs while the statechart waits. A timer that came due while no
 controller was running is delivered when one starts. A running controller
 delivers a timer at most this late.
 
-  started with corbie run     its --interval (default 2s)
+  started with corbie start   its --interval (default 2s)
   as a serverless function    one minute
 
 Reference

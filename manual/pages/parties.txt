@@ -52,7 +52,7 @@ trusted or removed. `--ceiling` and `--tags` replace what was set, and
 Tags and a ceiling stay as they are unless a flag changes them. `--tags none`
 and `--ceiling none` remove them.
 
-    corbie init --store ~/corbie --ceiling all --name laptop
+    corbie init --ceiling all --name laptop
     corbie controller enrol laptop-client --allow net:api.github.com
     corbie runner trust laptop-controller --allow exec:git
     corbie runner trust laptop-controller --deny 'fs.read:/home/**'
@@ -71,9 +71,9 @@ Other commands
 A viewer
 --------
 
-A viewer has no keys. Its `corbie ls` and `corbie show <id>` list every
-client's runs with their status, and cannot read an input, an output or a
-record.
+A viewer has no keys. Its `corbie run ls` and `corbie run show <id>` list
+every client's runs with their status, and cannot read an input, an output or
+a record.
 
   corbie client trust <card> <address>   on a config with no client keys, sets up a viewer
   corbie controller policy --viewer      on a bucket, prints the policy for the viewer's access key

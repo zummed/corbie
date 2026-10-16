@@ -23,7 +23,7 @@ The detailed rules behind the [Instances overview](../instance.md).
 *Accept:* run a machine whose input, output, error text, log lines, ticket value and ticket answer each hold a marker string of their own, on a memory store that keeps every version of every head. No version of any head holds any of the markers. A label holding a marker does appear.
 
 **R-inst-12** The head may be a moment behind the record, and where the two differ the record is right.
-*Accept:* stop the controller after it has written step 4 and before it has touched the head, which says 3. A client's `show` says the run is at step 4. The next pass brings the head to 4 and takes no new step to do it.
+*Accept:* stop the controller after it has written step 4 and before it has touched the head, which says 3. A client's `run show` says the run is at step 4. The next pass brings the head to 4 and takes no new step to do it.
 
 **R-inst-13** When an instance ends, its head moves from the running heads to the finished ones, and it is written among the finished before it is removed from the running, so an instance is never without a head.
 *Accept:* after a run ends and the pass that ended it is over, its head is under `finished/` with its final status and nothing of that name is under `running/`. On a memory store that notes every write, from an instance's first head until it is removed as past keeping there is no moment when neither place holds its head. Stop the controller between the two writes: both heads exist, a listing that takes in both shows the instance once and as ended, and the next pass removes the running one.
@@ -42,7 +42,7 @@ The detailed rules behind the [Instances overview](../instance.md).
 *Accept:* open the entry for a statechart's step set off by a job's result and a timer together, which moved it from `drafting` to `waiting`. It shows a `done` event and a `timer` event, the name of the result's message in the controller's inbox and the name of the wake, a state in which `waiting` is active with the output of `drafting`, and the job it asked for, under the name the message then sent to the runner carries.
 
 **R-inst-25** The latest step entry is the instance's whole state, and the last step entry of an instance that has ended holds its result.
-*Accept:* remove every step and emit entry of a waiting instance except its latest step; when its next message arrives it takes the same step, with the same result, as an untouched copy of the same instance. The output `show` prints for a finished run is the output its last step entry holds, and a failed run's last step entry holds its error.
+*Accept:* remove every step and emit entry of a waiting instance except its latest step; when its next message arrives it takes the same step, with the same result, as an untouched copy of the same instance. The output `run show` prints for a finished run is the output its last step entry holds, and a failed run's last step entry holds its error.
 
 **R-inst-27** A job's log lines, notes of progress, pieces of a model's reply and named values are written as emit entries in the record of the job's instance, by the job's runner, in the order the job made them, and they reach the record and a watcher without any act of the controller.
 *Accept:* send a job whose script logs `a`, emits the value `x`, reports progress and logs `b`, then stop the controller. While the job runs, a client following the record is shown those four in that order, under the job's name.
@@ -71,7 +71,7 @@ The detailed rules behind the [Instances overview](../instance.md).
 *Accept:* a statechart's first state produced a file that its current state reads as `states.<name>.output`; three keeps later the file is still fetched. A parent hands a file down to a child, moves on so that its own state no longer mentions the file, and runs for three keeps while the child keeps running: the child's jobs still read the file, and once the child has ended and a keep has passed, the file is removed.
 
 **R-inst-41** The definition, its scripts and the run's secrets are never trimmed.
-*Accept:* after the trimming above, `show` prints the instance's definition, a new job reads its script and the files beside it, and a job that names a run secret is sent its value.
+*Accept:* after the trimming above, `run show` prints the instance's definition, a new job reads its script and the files beside it, and a job that names a run secret is sent its value.
 
 **C-inst-06** A blob is trimmed only when it is older than the keep as well as referred to by no current state. Step and emit entries younger than the keep refer to blobs too, and a watcher reading them would find nothing behind the reference. *Test:* `inst_trim_spares_blob_of_a_recent_entry`
 
@@ -80,7 +80,7 @@ The detailed rules behind the [Instances overview](../instance.md).
 ## Watching
 
 **R-inst-42** Every viewer sees what is happening the same way, by reading heads and records from the store: the command line, a terminal screen, a web page, the gateway's streams and an application built on Corbie.
-*Accept:* against one store, `corbie ls`, the gateway's list stream and the client package's list give the same runs with the same statuses, and `corbie show`, the gateway's record stream and the package's follow give the same entries in the same order.
+*Accept:* against one store, `corbie run ls`, the gateway's list stream and the client package's list give the same runs with the same statuses, and `corbie run show`, the gateway's record stream and the package's follow give the same entries in the same order.
 
 **R-inst-43** A watcher lists the running heads it may read and reports which are new and which have changed, and the end of the first listing is marked.
 *Accept:* with five runs in progress, a new watcher is given five heads, then the mark, then only what appears or changes afterwards; with none in progress the mark comes first. Start a run and let it take two steps: the watcher reports it once as new and reports it as changed after its head is rewritten, and a head that has not changed is not reported again.
@@ -106,7 +106,7 @@ The detailed rules behind the [Instances overview](../instance.md).
 ## Sending
 
 **R-inst-56** A client acts on an instance by writing a message into the controller's inbox, and there are four: start a run, cancel one, send it an event, answer a ticket. A client has no inbox of its own.
-*Accept:* `corbie submit`, `cancel`, `send` and `reply` each write exactly one message under `<controller>/inbox/<client>/` and write to no other place in the controller's or a runner's area, the uploads of a start apart. After starts, refusals, cancels, events, answers and finished runs, no name in the store is addressed to a client other than its receipts.
+*Accept:* `corbie run submit`, `run cancel`, `run send` and `run reply` each write exactly one message under `<controller>/inbox/<client>/` and write to no other place in the controller's or a runner's area, the uploads of a start apart. After starts, refusals, cancels, events, answers and finished runs, no name in the store is addressed to a client other than its receipts.
 
 **R-inst-58** For every message a client sends, the controller writes a receipt under the same name, saying that the message was taken or why it was refused. A start that is refused has a receipt saying why and no instance exists for it; an answer to a ticket for a run the client did not start has a receipt saying whether it was the one taken.
 *Accept:* a start, a cancel, an event and an answer that the controller takes each get a receipt saying taken. A cancel for a run the client did not start gets a receipt saying why it was refused. A start whose definition does not pass its check gets a receipt listing what is wrong, and no head and no record exist under the name the client chose. Client `c2`, which can read nothing of `c1`'s run, answers a ticket of that run: its receipt says the answer was the one taken, and a second answer to the same ticket gets a receipt saying it was not.
@@ -121,10 +121,10 @@ The detailed rules behind the [Instances overview](../instance.md).
 *Accept:* a client writes the same answer message again after the first was taken and deleted. The receipt reads as it did, the ticket is not answered a second time, and no second step is taken on its account. The same holds for a start: no second instance is made.
 
 **R-inst-65** A client chooses a run's name before it starts the run, so an application can note the name before anything is sent, and the files it sends along are written into that run's record before the start is sent.
-*Accept:* on a memory store that notes every write, a `submit` with two files writes two blobs under `records/<client>/<the chosen name>/blobs/` and only then the start message, and the run that results has the chosen name. An application using the client package obtains the name, saves it, sends the start and is killed; a new process holding only the saved name reads the run's status and result.
+*Accept:* on a memory store that notes every write, a `run submit` with two files writes two blobs under `records/<client>/<the chosen name>/blobs/` and only then the start message, and the run that results has the chosen name. An application using the client package obtains the name, saves it, sends the start and is killed; a new process holding only the saved name reads the run's status and result.
 
 **R-inst-67** A message is good for as long as its sender says, and for a few minutes when the sender says nothing. Until the controller has taken a start there is no receipt and no head, and a client that asks is told the run is waiting to start.
-*Accept:* a start sent with a life of an hour is taken by a controller that first looks fifty minutes later; a start sent with no life given, found by a controller that first looks an hour later, is not taken, and its receipt says it came too late. With the controller stopped, `corbie submit` prints the run's name and `corbie show` on it says `waiting`, and the store holds the start message and its uploads and nothing else of the run.
+*Accept:* a start sent with a life of an hour is taken by a controller that first looks fifty minutes later; a start sent with no life given, found by a controller that first looks an hour later, is not taken, and its receipt says it came too late. With the controller stopped, `corbie run submit` prints the run's name and `corbie run show` on it says `waiting`, and the store holds the start message and its uploads and nothing else of the run.
 
 ## Interfaces
 

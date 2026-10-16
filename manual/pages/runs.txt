@@ -1,24 +1,25 @@
 Runs: the commands that start, list, show and cancel a run, and the fields of a run as JSON.
 
 A run is one execution of a machine. `<id>` below is the ID that
-`corbie submit` prints. Each command has a page with its flags, such as
-`corbie manual show`.
+`corbie run submit` prints. Each command has a page with its flags, such as
+`corbie manual run show`.
 
 Commands
 --------
 
-  corbie submit <definition>          starts a run and prints its ID
-  corbie ls                           lists this client's runs in progress, with child runs
-  corbie show <id>                    prints one run's status and output
-  corbie cancel <id>                  cancels a run this client started
-  corbie send <id> <event> [data]     sends an event to a run this client started
-  corbie reply <id> <ticket> [value]  answers a ticket the run waits on
-  corbie controller cancel <id>       cancels any run, with the controller's config
+  corbie run submit <definition>          starts a run and prints its ID
+  corbie run ls                           lists this client's runs in progress, with child runs
+  corbie run show <id>                    prints one run's status and output
+  corbie run cancel <id>                  cancels a run this client started
+  corbie run send <id> <event> [data]     sends an event to a run this client started
+  corbie run reply <id> <ticket> [value]  answers a ticket the run waits on
+  corbie controller cancel <id>           cancels any run, with the controller's config
 
 A run as JSON
 -------------
 
-`corbie show <id> --json` and the gateway print a run as one line, wrapped here.
+`corbie run show <id> --json` and the gateway print a run as one line, wrapped
+here.
 
   {"id":"laptop-client/20261013T185126.250Z-571d935912","machine":"fetch-title","type":"flow",
    "status":"done","output":{"title":"Example Domain","url":"https://example.com"},
@@ -63,12 +64,12 @@ To give a blob of one run to another run, write it in the new input with the
 first run's ID added. Both runs must be this client's. Corbie copies the blob
 into the new run's record, so it remains after the first run is deleted.
 
-  corbie submit next.yaml --input '{"doc": {"$blob": "report", "run": "<id>"}}'
+  corbie run submit next.yaml --input '{"doc": {"$blob": "report", "run": "<id>"}}'
 
 The record
 ----------
 
-`corbie show <id> --record --json` prints each entry as one line, child runs' entries included.
+`corbie run show <id> --record --json` prints each entry as one line, child runs' entries included.
 
   id, time          the run the entry belongs to, and when it was written
   step, events      a step's number, and the events it received: `name`, `from`, `data`,
@@ -80,13 +81,13 @@ The record
 Events and tickets
 ------------------
 
-A statechart state with `ticket: <name>` issues a ticket, and `corbie reply`
-answers it (`corbie manual statechart`). Only the client that started the run
-can print the ticket, with `corbie show <id> --tickets`.
+A statechart state with `ticket: <name>` issues a ticket, and
+`corbie run reply` answers it (`corbie manual statechart`). Only the client that
+started the run can print the ticket, with `corbie run show <id> --tickets`.
 
 A statechart with no final state keeps running. Start it once with a label,
 send it an event each time there is work, and find it later with
-`corbie ls --label service=reports`.
+`corbie run ls --label service=reports`.
 
     # reports.yaml
     statechart: reports
@@ -104,18 +105,18 @@ send it an event each time there is work, and find it later with
     // work.js
     return "did " + input.item
 
-    corbie init --store ~/corbie --ceiling all --name laptop
-    corbie run controller runner &
-    corbie submit reports.yaml --label service=reports
-    corbie send <id> work '"q3"'
+    corbie init --ceiling all --name laptop
+    corbie start &
+    corbie run submit reports.yaml --label service=reports
+    corbie run send <id> work '"q3"'
       taken; the machine acted on it
-    corbie send <id> pause
+    corbie run send <id> pause
       taken; the machine had no rule for it
-    corbie show <id> --record
+    corbie run show <id> --record
       step 1  <- start
       step 2  <- work from client "q3"
       step 2  -> job working: a script, on laptop-runner
-    corbie cancel <id>
+    corbie run cancel <id>
       taken
 
 The state `working` has no rule for `work`, so the statechart ignores an event

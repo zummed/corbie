@@ -6,11 +6,11 @@ start a controller and a runner once and submit runs to them.
 Set up
 ------
 
-    corbie init --store ~/corbie --ceiling all --name laptop
-      Next: corbie run controller runner
+    corbie init --ceiling all --name laptop
+      Next: corbie start
 
-`init` creates a controller, a runner and a client in the config directory, and
-makes the directory `~/corbie` the store. `--name laptop` names them
+`init` creates a controller, a runner and a client in the config directory,
+`~/.config/corbie`, and the store in it. `--name laptop` names them
 `laptop-controller`, `laptop-runner` and `laptop-client`. `--ceiling all` sets
 the most any job on this computer may be allowed, and a job still gets only
 what its own `allow:` list grants.
@@ -18,20 +18,20 @@ what its own `allow:` list grants.
 Start the processes
 -------------------
 
-    corbie run controller runner &
+    corbie start &
 
 This command keeps running, in its own terminal or in the background as here.
 
 Submit a run
 ------------
 
-    corbie submit title.yaml --input '{"url": "https://example.com"}'
+    corbie run submit title.yaml --input '{"url": "https://example.com"}'
 
-`submit` writes the definition, the script and the input to the store, prints
-the run's ID and exits. The controller starts the run. `<id>` below is that
-ID.
+`run submit` writes the definition, the script and the input to the store,
+prints the run's ID and exits. The controller starts the run. `<id>` below is
+that ID.
 
-    corbie show <id> --wait
+    corbie run show <id> --wait
       output: {"title":"Example Domain","url":"https://example.com"}
       used: net:example.com:443
 
@@ -40,7 +40,7 @@ ID.
 Read the record
 ---------------
 
-    corbie show <id> --record
+    corbie run show <id> --record
       step 1  <- start {"url":"https://example.com"}
       step 1  -> job get_title: a script, on laptop-runner
       step 2  <- done from get_title {"title":"Example Domain","url":"https://example.com"}
@@ -54,9 +54,9 @@ result and ended the run.
 The store
 ---------
 
-The record is files in `~/corbie`, which `corbie show` reads. Stop
-`corbie run` with Ctrl-C and `corbie show <id>` prints the same result. A run
-submitted while no controller is running is shown as `waiting`.
+The record is files in `~/.config/corbie/store`, which `corbie run show` reads.
+Stop `corbie start` with Ctrl-C and `corbie run show <id>` prints the same
+result. A run submitted while no controller is running is shown as `waiting`.
 
 Next: `corbie manual install` covers running Corbie on several computers, on a
 bucket and as serverless functions.

@@ -53,7 +53,7 @@ Signing and encryption
 ----------------------
 
 Every file except `version`, the blobs and the files under `wakes/` is three
-lines of text. This is the start message `corbie submit` wrote for the run
+lines of text. This is the start message `corbie run submit` wrote for the run
 `<id>`, with line 1 shown one field to a row and lines 2 and 3 cut short. Its
 content is the run's input, labels and reference to the definition's blob.
 
@@ -118,9 +118,9 @@ both write one step and two copies of a runner cannot both take a job.
 Kinds of store
 --------------
 
-  a directory          --store ~/corbie       one computer            corbie manual one-computer
-  a served directory   corbie://host:port     a few computers         corbie manual served-directory
-  a bucket             s3://bucket/path       computers, functions    corbie manual bucket
+  a directory          ~/.config/corbie/store   one computer            corbie manual one-computer
+  a served directory   corbie://host:port       a few computers         corbie manual served-directory
+  a bucket             s3://bucket/path         computers, functions    corbie manual bucket
 
 Each kind enforces the table of who may read and write differently.
 
@@ -133,12 +133,12 @@ Looking for yourself
 --------------------
 
 A directory store is plain files. Set up the store of
-`corbie manual a-real-run`, stop `corbie run`, and run these.
+`corbie manual a-real-run`, stop `corbie start`, and run these.
 
-  corbie submit title.yaml --input '{"url": "https://example.com"}'
-  find ~/corbie -type f           # the start message is in laptop-controller/inbox/
-  corbie run controller runner &
-  find ~/corbie -type f           # steps/, finished/, receipts/, wakes/ and taken/ have files
+  corbie run submit title.yaml --input '{"url": "https://example.com"}'
+  find ~/.config/corbie/store -type f    # the start message is in laptop-controller/inbox/
+  corbie start &
+  find ~/.config/corbie/store -type f    # steps/, finished/, receipts/, wakes/ and taken/ have files
 
 Both inboxes are now empty: the controller and the runner delete a message
 after acting on it. `.lock/` holds the two files a directory store locks while

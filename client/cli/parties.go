@@ -39,7 +39,7 @@ func ceiling(text string, allow, deny []string, has permission.Layer) (permissio
 		entries []string
 	}{{"--ceiling", set}, {"--allow", allow}, {"--deny", deny}} {
 		if err := permission.CheckList(given.entries); err != nil {
-			return permission.Layer{}, mistake("%s: %v", given.flag, err)
+			return permission.Layer{}, Mistake("%s: %v", given.flag, err)
 		}
 	}
 	// With no --ceiling the ceiling on record stays, and --ceiling none
@@ -73,47 +73,148 @@ func hostName() string {
 // reach a served directory by: a controller uses its directory as it is.
 func ownStore(address string) error {
 	if store.IsServed(address) {
-		return mistake("a controller's store is its own directory, or a bucket: %q is how other computers reach a directory that a controller's computer serves", address)
+		return Mistake("a controller's store is its own directory, or a bucket: %q is how other computers reach a directory that a controller's computer serves", address)
 	}
 	return nil
 }
 
-// servable says whether a directory can be served where --serve says: at a
-// host and a port other computers reach this one by, and only a directory.
-func servable(serve, address string) error {
-	if serve == "" {
-		return nil
+// storeListen is where the store's server listens when store is named with
+// no --listen: every network interface, at this port.
+const storeListen = ":8372"
+
+// sharing reads the line of a command that sets the store's server up: the
+// flags registered on e.Flags, wherever they are written, and store with
+// its --listen after it. It says whether store is named, and where its server
+// is to listen: by default storeListen, and nothing where --listen is
+// written empty, which stops the directory being served.
+func sharing(e *Env, args []string) (listen string, shared bool, err error) {
+	mine, named, err := items(e, args)
+	if err != nil {
+		return "", false, err
 	}
-	host, port, err := net.SplitHostPort(serve)
-	if n, perr := strconv.Atoi(port); err != nil || host == "" || perr != nil || n < 1 || n > 65535 {
-		return mistake("--serve takes host:port, the name other computers reach this one by and a port: desk:8372")
+	if _, err := e.Parse(mine); err != nil {
+		return "", false, err
 	}
-	if !store.IsDirectory(address) {
-		return mistake("--serve is for a store that is a directory on this computer: a bucket is reached by every computer already")
+	for _, it := range named {
+		if it.name != "store" {
+			return "", false, Mistake("%q is not set up here: only the store's server is, as store [--listen host:port]", it.name)
+		}
+		set, err := settings(it)
+		if err != nil {
+			return "", false, err
+		}
+		shared, listen = true, set.listen
+		if !set.listened {
+			listen = storeListen
+		}
 	}
-	return nil
+	return listen, shared, nil
 }
 
-func cmdInit(e *env, args []string) error {
-	var ceilingText, name string
-	var deny list
-	e.flags.StringVar(&ceilingText, "ceiling", "", "")
-	e.flags.Var(&deny, "deny", "")
-	e.flags.StringVar(&name, "name", hostName(), "")
-	var serve string
-	e.flags.StringVar(&serve, "serve", "", "")
-	rest, err := e.parse(args)
+// initStore is corbie init store: it sets up the store's server alone, on a
+// config whose controller it proves the key of, or with no address stops
+// the directory being served.
+func initStore(e *Env, listen string) error {
+	for _, flag := range []string{"ceiling", "deny", "name"} {
+		if e.Given(flag) {
+			return Mistake("--%s sets up the controller, the runner and the client, and store sets up only the store's server: run corbie init and corbie init store as two commands", flag)
+		}
+	}
+	cfg, err := e.Config()
 	if err != nil {
 		return err
 	}
-	if len(rest) > 0 {
-		return mistake("init takes no arguments, only flags")
+	if !cfg.Has(identity.Controller) {
+		return fmt.Errorf("this config has no controller, and the store's server proves the controller's key: corbie init sets the controller up first, and a store on a computer of its own is a bucket")
+	}
+	recorded, err := cfg.ControllerStore()
+	if err != nil {
+		return err
+	}
+	if err := servable(listen, cmp.Or(e.store, recorded)); err != nil {
+		return err
+	}
+	if err := cfg.SetStoreListen(listen); err != nil {
+		return err
+	}
+	done := struct {
+		Served string `json:"served,omitzero"`
+	}{}
+	if listen != "" {
+		if done.Served, err = servedAt(listen); err != nil {
+			return err
+		}
+	}
+	return e.Print(done, func() string {
+		if done.Served == "" {
+			return "This computer serves its store directory to no other computer.\n"
+		}
+		return "Other computers reach the directory at " + done.Served + " while corbie start runs here.\n"
+	})
+}
+
+// servable says whether a directory can be served where its server is to
+// listen: at a port, and only a directory.
+func servable(listen, address string) error {
+	if listen == "" {
+		return nil
+	}
+	_, port, err := net.SplitHostPort(listen)
+	if n, perr := strconv.Atoi(port); err != nil || perr != nil || n < 1 || n > 65535 {
+		return Mistake("store --listen takes host:port, or :port for every network interface: :8372")
+	}
+	if !store.IsDirectory(address) {
+		return Mistake("store is for a store that is a directory on this computer: a bucket is reached by every computer already")
+	}
+	return nil
+}
+
+// servedAt is the address other computers are given for a store's server that
+// listens where listen says: the same, with this computer's host name where
+// listen names every network interface.
+func servedAt(listen string) (string, error) {
+	host, port, err := net.SplitHostPort(listen)
+	if err != nil {
+		return "", err
+	}
+	if ip := net.ParseIP(host); host == "" || ip != nil && ip.IsUnspecified() {
+		if host, err = os.Hostname(); err != nil {
+			return "", err
+		}
+	}
+	return store.ServedScheme + net.JoinHostPort(host, port), nil
+}
+
+func cmdInit(e *Env, args []string) error {
+	var ceilingText, name string
+	var deny list
+	e.Flags.StringVar(&ceilingText, "ceiling", "", "")
+	e.Flags.Var(&deny, "deny", "")
+	e.Flags.StringVar(&name, "name", hostName(), "")
+	listen, shared, err := sharing(e, args)
+	if err != nil {
+		return err
+	}
+	if shared {
+		return initStore(e, listen)
+	}
+	cfg, err := e.Config()
+	if err != nil {
+		return err
+	}
+	// The store is the one named, or else the one the config records, so
+	// that init run again keeps it, or else the one CORBIE_STORE names; a
+	// config that records none has the directory store in it.
+	if e.store == "" {
+		if e.store, err = cfg.ControllerStore(); err != nil {
+			return err
+		}
 	}
 	if e.store == "" {
 		e.store = os.Getenv("CORBIE_STORE")
 	}
 	if e.store == "" {
-		return mistake("the store's address is needed: --store <directory or bucket>")
+		e.store = filepath.Join(cfg.Dir, "store")
 	}
 	limit, err := ceiling(ceilingText, nil, deny, permission.Layer{})
 	if err != nil {
@@ -122,18 +223,11 @@ func cmdInit(e *env, args []string) error {
 	if err := ownStore(e.store); err != nil {
 		return err
 	}
-	cfg, err := e.cfg()
-	if err != nil {
-		return err
-	}
 	address := e.store
 	if store.IsDirectory(address) {
 		if address, err = filepath.Abs(strings.TrimPrefix(address, "file://")); err != nil {
 			return err
 		}
-	}
-	if err := servable(serve, address); err != nil {
-		return err
 	}
 	s, err := store.Open(address)
 	if err != nil {
@@ -182,11 +276,6 @@ func cmdInit(e *env, args []string) error {
 	if err := cfg.SetControllerStore(address); err != nil {
 		return err
 	}
-	// Where the directory is served is set again each time, as the ceiling
-	// is: with no --serve, this computer serves nothing.
-	if err := cfg.SetServed(serve); err != nil {
-		return err
-	}
 	for _, t := range trusted {
 		if err := identity.WriteTrust(e.ctx, s, ctl, t); err != nil {
 			return err
@@ -211,15 +300,17 @@ func cmdInit(e *env, args []string) error {
 		Deny    []string `json:"deny,omitzero"`
 		Parties []party  `json:"parties"`
 	}{Config: cfg.Dir, Store: address, Ceiling: append([]string{}, limit.Allow...), Deny: limit.Deny}
-	if at, err := cfg.Served(); err != nil {
+	if listen, err := cfg.StoreListen(); err != nil {
 		return err
-	} else if at != "" {
-		done.Served = store.ServedScheme + at
+	} else if listen != "" {
+		if done.Served, err = servedAt(listen); err != nil {
+			return err
+		}
 	}
 	for _, id := range []*identity.Identity{ctl, run, cli} {
 		done.Parties = append(done.Parties, party{string(id.Kind), id.Name, id.Fingerprint()})
 	}
-	return e.print(done, func() string {
+	return e.Print(done, func() string {
 		var b strings.Builder
 		fmt.Fprintf(&b, "Set up in %s:\n", done.Config)
 		for _, p := range done.Parties {
@@ -230,7 +321,7 @@ func cmdInit(e *env, args []string) error {
 			b.WriteString("A directory keeps no party out: everyone on this computer who can read it can read and write all of it.\n")
 		}
 		if len(limit.Allow) == 0 {
-			b.WriteString("The ceiling is empty: jobs on this computer may do nothing outside themselves.\nTo change that: corbie init --store <same> --ceiling all   (or network, disk, exec, env, or single entries)\n")
+			b.WriteString("The ceiling is empty: jobs on this computer may do nothing outside themselves.\nTo change that: corbie init --ceiling all   (or network, disk, exec, env, or single entries)\n")
 		} else {
 			fmt.Fprintf(&b, "The ceiling, which is the most jobs on this computer may do: %s\n", strings.Join(limit.Allow, ", "))
 		}
@@ -238,11 +329,9 @@ func cmdInit(e *env, args []string) error {
 			fmt.Fprintf(&b, "Whatever the ceiling allows, it refuses: %s\n", strings.Join(limit.Deny, ", "))
 		}
 		if done.Served != "" {
-			fmt.Fprintf(&b, "Other computers reach the directory at %s while corbie run store is running here.\n", done.Served)
-			b.WriteString("Next: corbie run controller runner store\n")
-			return b.String()
+			fmt.Fprintf(&b, "Other computers reach the directory at %s while corbie start runs here.\n", done.Served)
 		}
-		b.WriteString("Next: corbie run controller runner\n")
+		b.WriteString("Next: corbie start\n")
 		return b.String()
 	})
 }
@@ -251,17 +340,14 @@ func cmdInit(e *env, args []string) error {
 // controller card`: it makes the party's identity if it has none, and
 // prints its card. The card alone goes to standard output, which the next
 // step of a pipe reads.
-func cmdCard(kind identity.Kind) func(e *env, args []string) error {
-	return func(e *env, args []string) error {
-		var name, serve string
-		e.flags.StringVar(&name, "name", hostName()+"-"+string(kind), "")
-		if kind == identity.Controller {
-			e.flags.StringVar(&serve, "serve", "", "")
-		}
-		if _, err := e.parse(args); err != nil {
+func cmdCard(kind identity.Kind) func(e *Env, args []string) error {
+	return func(e *Env, args []string) error {
+		var name string
+		e.Flags.StringVar(&name, "name", hostName()+"-"+string(kind), "")
+		if _, err := e.Parse(args); err != nil {
 			return err
 		}
-		cfg, err := e.cfg()
+		cfg, err := e.Config()
 		if err != nil {
 			return err
 		}
@@ -273,7 +359,7 @@ func cmdCard(kind identity.Kind) func(e *env, args []string) error {
 				return err
 			}
 			if e.store == "" && recorded == "" {
-				return mistake("the store's address is needed to make a controller: --store <address>")
+				return Mistake("the store's address is needed to make a controller: --store <address>")
 			}
 			if e.store != "" {
 				if err := ownStore(e.store); err != nil {
@@ -290,31 +376,24 @@ func cmdCard(kind identity.Kind) func(e *env, args []string) error {
 					return err
 				}
 			}
-			if serve != "" {
-				if err := servable(serve, cmp.Or(e.store, recorded)); err != nil {
-					return err
-				}
-				if err := cfg.SetServed(serve); err != nil {
-					return err
-				}
-			}
+
 		}
 		id, err := cfg.Make(kind, name)
 		if err != nil {
 			return err
 		}
-		e.say("%s %s  (%s)", id.Kind, id.Name, id.Fingerprint())
+		e.Say("%s %s  (%s)", id.Kind, id.Name, id.Fingerprint())
 		shown := map[string]string{"card": id.Card.String(), "kind": string(id.Kind), "name": id.Name, "fingerprint": id.Fingerprint()}
-		return e.print(shown, func() string { return id.Card.String() + "\n" })
+		return e.Print(shown, func() string { return id.Card.String() + "\n" })
 	}
 }
 
 // read gives the one thing a step of a pipe was handed: its argument, or
 // with "-" everything on standard input, read to the end.
-func (e *env) read(rest []string, what string) ([]string, error) {
+func (e *Env) read(rest []string, what string) ([]string, error) {
 	text := strings.Join(rest, " ")
 	if len(rest) == 1 && rest[0] == "-" {
-		data, err := io.ReadAll(e.in)
+		data, err := io.ReadAll(e.In)
 		if err != nil {
 			return nil, err
 		}
@@ -322,21 +401,21 @@ func (e *env) read(rest []string, what string) ([]string, error) {
 	}
 	fields := strings.Fields(text)
 	if len(fields) == 0 {
-		return nil, mistake("nothing was given: %s was expected (the step before in the pipe may have failed)", what)
+		return nil, Mistake("nothing was given: %s was expected (the step before in the pipe may have failed)", what)
 	}
 	return fields, nil
 }
 
-func cmdEnrol(e *env, args []string) error {
+func cmdEnrol(e *Env, args []string) error {
 	var ceilingText, tags string
 	var allow, deny list
 	var replace bool
-	e.flags.StringVar(&ceilingText, "ceiling", "", "")
-	e.flags.Var(&allow, "allow", "")
-	e.flags.Var(&deny, "deny", "")
-	e.flags.StringVar(&tags, "tags", "", "")
-	e.flags.BoolVar(&replace, "replace", false, "")
-	rest, err := e.parse(args)
+	e.Flags.StringVar(&ceilingText, "ceiling", "", "")
+	e.Flags.Var(&allow, "allow", "")
+	e.Flags.Var(&deny, "deny", "")
+	e.Flags.StringVar(&tags, "tags", "", "")
+	e.Flags.BoolVar(&replace, "replace", false, "")
+	rest, err := e.Parse(args)
 	if err != nil {
 		return err
 	}
@@ -344,7 +423,7 @@ func cmdEnrol(e *env, args []string) error {
 	if err != nil {
 		return err
 	}
-	ctl, s, err := e.controller()
+	ctl, s, err := e.Controller()
 	if err != nil {
 		return err
 	}
@@ -392,17 +471,17 @@ func cmdEnrol(e *env, args []string) error {
 		trust.Tags = old.Tags
 	}
 	if card.Kind == identity.Runner && limited {
-		return mistake("a runner is given tags; its ceiling is the runner's own to set, with corbie runner trust")
+		return Mistake("a runner is given tags; its ceiling is the runner's own to set, with corbie runner trust")
 	}
 	if card.Kind == identity.Client && tags != "" {
-		return mistake("a client is given a ceiling; tags are for runners")
+		return Mistake("a client is given a ceiling; tags are for runners")
 	}
 	// The card and the address are printed only after the trust is
 	// written.
 	if err := identity.WriteTrust(e.ctx, s, ctl, trust); err != nil {
 		return err
 	}
-	cfg, _ := e.cfg()
+	cfg, _ := e.Config()
 	recorded, _ := cfg.ControllerStore()
 	address, err := e.address(recorded)
 	if err != nil {
@@ -410,31 +489,33 @@ func cmdEnrol(e *env, args []string) error {
 	}
 	// A directory that is served is given by the address other computers reach
 	// it at: the path means nothing anywhere else.
-	if at, _ := cfg.Served(); at != "" && address == recorded {
-		address = store.ServedScheme + at
+	if listen, _ := cfg.StoreListen(); listen != "" && address == recorded {
+		if address, err = servedAt(listen); err != nil {
+			return err
+		}
 	}
-	e.say("enrolled the %s %s  (%s)", card.Kind, card.Name, card.Fingerprint())
-	e.say("this controller is %s  (%s)", ctl.Name, ctl.Fingerprint())
-	return e.print(map[string]string{"card": ctl.Card.String(), "store": address}, func() string {
+	e.Say("enrolled the %s %s  (%s)", card.Kind, card.Name, card.Fingerprint())
+	e.Say("this controller is %s  (%s)", ctl.Name, ctl.Fingerprint())
+	return e.Print(map[string]string{"card": ctl.Card.String(), "store": address}, func() string {
 		return ctl.Card.String() + "\n" + address + "\n"
 	})
 }
 
 // trust is `corbie runner trust` and `corbie client trust`: it takes what a
 // controller's enrol printed, its card and the address of its store.
-func cmdTrust(kind identity.Kind) func(e *env, args []string) error {
-	return func(e *env, args []string) error {
+func cmdTrust(kind identity.Kind) func(e *Env, args []string) error {
+	return func(e *Env, args []string) error {
 		var ceilingText string
 		var allow, deny list
 		var replace bool
 		if kind == identity.Runner {
 			// A runner gives a ceiling; a client gives none.
-			e.flags.StringVar(&ceilingText, "ceiling", "", "")
-			e.flags.Var(&allow, "allow", "")
-			e.flags.Var(&deny, "deny", "")
+			e.Flags.StringVar(&ceilingText, "ceiling", "", "")
+			e.Flags.Var(&allow, "allow", "")
+			e.Flags.Var(&deny, "deny", "")
 		}
-		e.flags.BoolVar(&replace, "replace", false, "")
-		rest, err := e.parse(args)
+		e.Flags.BoolVar(&replace, "replace", false, "")
+		rest, err := e.Parse(args)
 		if err != nil {
 			return err
 		}
@@ -444,7 +525,7 @@ func cmdTrust(kind identity.Kind) func(e *env, args []string) error {
 		if err != nil {
 			return err
 		}
-		cfg, err := e.cfg()
+		cfg, err := e.Config()
 		if err != nil {
 			return err
 		}
@@ -491,28 +572,28 @@ func cmdTrust(kind identity.Kind) func(e *env, args []string) error {
 			trust.Store = old.Store
 		}
 		if trust.Store == "" {
-			return mistake("the address of the controller's store is needed after its card")
+			return Mistake("the address of the controller's store is needed after its card")
 		}
 		if err := cfg.SetTrust(kind, trust); err != nil {
 			return err
 		}
-		e.say("this %s now trusts the controller %s  (%s)", kind, card.Name, card.Fingerprint())
+		e.Say("this %s now trusts the controller %s  (%s)", kind, card.Name, card.Fingerprint())
 		return nil
 	}
 }
 
 // remove is `corbie runner remove` and `corbie client remove`. The
 // controller stays on record with its key, marked as removed.
-func cmdUntrust(kind identity.Kind) func(e *env, args []string) error {
-	return func(e *env, args []string) error {
-		rest, err := e.parse(args)
+func cmdUntrust(kind identity.Kind) func(e *Env, args []string) error {
+	return func(e *Env, args []string) error {
+		rest, err := e.Parse(args)
 		if err != nil {
 			return err
 		}
 		if len(rest) != 1 {
-			return mistake("name the controller to remove")
+			return Mistake("name the controller to remove")
 		}
-		cfg, err := e.cfg()
+		cfg, err := e.Config()
 		if err != nil {
 			return err
 		}
@@ -528,15 +609,15 @@ func cmdUntrust(kind identity.Kind) func(e *env, args []string) error {
 	}
 }
 
-func cmdRemove(e *env, args []string) error {
-	rest, err := e.parse(args)
+func cmdRemove(e *Env, args []string) error {
+	rest, err := e.Parse(args)
 	if err != nil {
 		return err
 	}
 	if len(rest) != 1 {
-		return mistake("name the party to remove")
+		return Mistake("name the party to remove")
 	}
-	ctl, s, err := e.controller()
+	ctl, s, err := e.Controller()
 	if err != nil {
 		return err
 	}
@@ -552,11 +633,11 @@ func cmdRemove(e *env, args []string) error {
 	return identity.WriteTrust(e.ctx, s, ctl, *trust)
 }
 
-func cmdParties(e *env, args []string) error {
-	if _, err := e.parse(args); err != nil {
+func cmdParties(e *Env, args []string) error {
+	if _, err := e.Parse(args); err != nil {
 		return err
 	}
-	ctl, s, err := e.controller()
+	ctl, s, err := e.Controller()
 	if err != nil {
 		return err
 	}
@@ -577,7 +658,7 @@ func cmdParties(e *env, args []string) error {
 	for _, t := range all {
 		rows = append(rows, row{t.Card.Name, string(t.Card.Kind), t.Card.Fingerprint(), t.Ceiling.Allow, t.Ceiling.Deny, t.Tags, t.Removed})
 	}
-	return e.print(rows, func() string {
+	return e.Print(rows, func() string {
 		var b strings.Builder
 		for _, r := range rows {
 			fmt.Fprintf(&b, "%-8s %s  (%s)", r.Kind, r.Name, r.Fingerprint)
@@ -599,15 +680,15 @@ func cmdParties(e *env, args []string) error {
 	})
 }
 
-func cmdSecretSet(e *env, args []string) error {
+func cmdSecretSet(e *Env, args []string) error {
 	var fromEnv bool
-	e.flags.BoolVar(&fromEnv, "env", false, "")
-	rest, err := e.parse(args)
+	e.Flags.BoolVar(&fromEnv, "env", false, "")
+	rest, err := e.Parse(args)
 	if err != nil {
 		return err
 	}
 	if len(rest) == 0 {
-		return mistake("name the secret")
+		return Mistake("name the secret")
 	}
 	name := rest[0]
 	if err := checkSecretName(name); err != nil {
@@ -615,12 +696,12 @@ func cmdSecretSet(e *env, args []string) error {
 	}
 	fromStdin := len(rest) == 2 && rest[1] == "-"
 	if len(rest) != 1 && !fromStdin {
-		return mistake("name the secret, and nothing else: a secret's value is never given on the command line")
+		return Mistake("name the secret, and nothing else: a secret's value is never given on the command line")
 	}
 	if fromEnv && fromStdin {
-		return mistake("--env and - each give the value: give one")
+		return Mistake("--env and - each give the value: give one")
 	}
-	ctl, s, err := e.controller()
+	ctl, s, err := e.Controller()
 	if err != nil {
 		return err
 	}
@@ -630,10 +711,10 @@ func cmdSecretSet(e *env, args []string) error {
 		value, err = secretFromEnv(name)
 	case fromStdin:
 		var data []byte
-		data, err = io.ReadAll(e.in)
+		data, err = io.ReadAll(e.In)
 		value = strings.TrimRight(string(data), "\r\n")
 		if err == nil && value == "" {
-			err = mistake("standard input gave no value for the secret %q", name)
+			err = Mistake("standard input gave no value for the secret %q", name)
 		}
 	default:
 		value, err = secretTyped(e, name, "--env reads it from the environment variable, and - from standard input")
@@ -649,10 +730,10 @@ func cmdSecretSet(e *env, args []string) error {
 // every user of the computer can read it, and is never repeated.
 func checkSecretName(name string) error {
 	if strings.Contains(name, "=") {
-		return mistake("a secret's value is never given on the command line: give the secret's name alone")
+		return Mistake("a secret's value is never given on the command line: give the secret's name alone")
 	}
 	if err := permission.CheckSecretName(name); err != nil {
-		return mistake("%v", err)
+		return Mistake("%v", err)
 	}
 	return nil
 }
@@ -663,9 +744,9 @@ func secretFromEnv(name string) (string, error) {
 	value, ok := os.LookupEnv(name)
 	switch {
 	case !ok:
-		return "", mistake("the environment variable %q is not set", name)
+		return "", Mistake("the environment variable %q is not set", name)
 	case value == "":
-		return "", mistake("the environment variable %q is empty", name)
+		return "", Mistake("the environment variable %q is empty", name)
 	}
 	return value, nil
 }
@@ -673,10 +754,10 @@ func secretFromEnv(name string) (string, error) {
 // secretTyped asks for a secret's value at the terminal, and does not show
 // what is typed. Without a terminal it is a mistake, which says what reads
 // the value otherwise.
-func secretTyped(e *env, name, otherwise string) (string, error) {
-	in, ok := e.in.(*os.File)
+func secretTyped(e *Env, name, otherwise string) (string, error) {
+	in, ok := e.In.(*os.File)
 	if !ok || !term.IsTerminal(int(in.Fd())) {
-		return "", mistake("the secret %q is typed at a terminal, and there is none: %s", name, otherwise)
+		return "", Mistake("the secret %q is typed at a terminal, and there is none: %s", name, otherwise)
 	}
 	fd := int(in.Fd())
 	state, err := term.GetState(fd)
@@ -688,7 +769,7 @@ func secretTyped(e *env, name, otherwise string) (string, error) {
 		err   error
 	}
 	read := make(chan line, 1)
-	fmt.Fprintf(e.errOut, "%s: ", name)
+	fmt.Fprintf(e.Err, "%s: ", name)
 	go func() {
 		typed, err := term.ReadPassword(fd)
 		read <- line{typed, err}
@@ -701,36 +782,36 @@ func secretTyped(e *env, name, otherwise string) (string, error) {
 		got.err = e.ctx.Err()
 		term.Restore(fd, state)
 	}
-	fmt.Fprintln(e.errOut)
+	fmt.Fprintln(e.Err)
 	switch {
 	case got.err != nil:
 		return "", got.err
 	case len(got.typed) == 0:
-		return "", mistake("nothing was typed for the secret %q", name)
+		return "", Mistake("nothing was typed for the secret %q", name)
 	}
 	return string(got.typed), nil
 }
 
-func cmdSecretRemove(e *env, args []string) error {
-	rest, err := e.parse(args)
+func cmdSecretRemove(e *Env, args []string) error {
+	rest, err := e.Parse(args)
 	if err != nil {
 		return err
 	}
 	if len(rest) != 1 {
-		return mistake("name the secret to remove")
+		return Mistake("name the secret to remove")
 	}
-	ctl, s, err := e.controller()
+	ctl, s, err := e.Controller()
 	if err != nil {
 		return err
 	}
 	return secret.Remove(e.ctx, s, ctl, rest[0])
 }
 
-func cmdSecretList(e *env, args []string) error {
-	if _, err := e.parse(args); err != nil {
+func cmdSecretList(e *Env, args []string) error {
+	if _, err := e.Parse(args); err != nil {
 		return err
 	}
-	ctl, s, err := e.controller()
+	ctl, s, err := e.Controller()
 	if err != nil {
 		return err
 	}
@@ -741,7 +822,7 @@ func cmdSecretList(e *env, args []string) error {
 	if names == nil {
 		names = []string{}
 	}
-	return e.print(names, func() string {
+	return e.Print(names, func() string {
 		if len(names) == 0 {
 			return ""
 		}
@@ -751,18 +832,18 @@ func cmdSecretList(e *env, args []string) error {
 
 // cmdControllerCancel cancels any run, whichever client started it, with
 // the controller's own key.
-func cmdControllerCancel(e *env, args []string) error {
-	rest, err := e.parse(args)
+func cmdControllerCancel(e *Env, args []string) error {
+	rest, err := e.Parse(args)
 	if err != nil {
 		return err
 	}
 	if len(rest) != 1 {
-		return mistake("name one run by its ID")
+		return Mistake("name one run by its ID")
 	}
 	if err := store.CheckInstance(rest[0]); err != nil {
-		return mistake("%v", err)
+		return Mistake("%v", err)
 	}
-	ctl, s, err := e.controller()
+	ctl, s, err := e.Controller()
 	if err != nil {
 		return err
 	}
@@ -784,20 +865,20 @@ func cmdControllerCancel(e *env, args []string) error {
 	if _, err := s.Write(e.ctx, name, data, store.OnlyIfNew); err != nil {
 		return err
 	}
-	e.say("the cancel is in the controller's inbox; the controller acts on it at its next pass")
+	e.Say("the cancel is in the controller's inbox; the controller acts on it at its next pass")
 	return nil
 }
 
 // cmdPolicy prints the policy that limits one party's key to a bucket to
 // what that party may touch.
-func cmdPolicy(e *env, args []string) error {
+func cmdPolicy(e *Env, args []string) error {
 	var viewer bool
-	e.flags.BoolVar(&viewer, "viewer", false, "")
-	rest, err := e.parse(args)
+	e.Flags.BoolVar(&viewer, "viewer", false, "")
+	rest, err := e.Parse(args)
 	if err != nil {
 		return err
 	}
-	cfg, err := e.cfg()
+	cfg, err := e.Config()
 	if err != nil {
 		return err
 	}
@@ -819,7 +900,7 @@ func cmdPolicy(e *env, args []string) error {
 	case !viewer && len(rest) == 1 && rest[0] == ctl.Name:
 		party = store.Party{Kind: store.Controller, Name: ctl.Name}
 	case !viewer && len(rest) == 1:
-		s, err := e.open(recorded, ctl, ctl.Card)
+		s, err := e.Open(recorded, ctl, ctl.Card)
 		if err != nil {
 			return err
 		}
@@ -835,12 +916,12 @@ func cmdPolicy(e *env, args []string) error {
 			party.Kind = store.Runner
 		}
 	default:
-		return mistake("name one party, or give --viewer for one who may only see where runs stand")
+		return Mistake("name one party, or give --viewer for one who may only see where runs stand")
 	}
 	policy, err := store.PolicyFor(address, party)
 	if err != nil {
 		return err
 	}
-	_, err = fmt.Fprintln(e.out, policy)
+	_, err = fmt.Fprintln(e.Out, policy)
 	return err
 }

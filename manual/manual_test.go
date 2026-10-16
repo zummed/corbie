@@ -716,6 +716,76 @@ func TestCommandsPageIsItsHelp(t *testing.T) {
 	}
 }
 
+// Every command line a page shows is one corbie reads: a command, with a
+// flag after its name that the command takes, and corbie manual with a page
+// that is there; the words of a group of commands alone; help; or one of
+// the programs ui and bulldog. A command's help is a page too, since one
+// command's help names another.
+//
+// A command line ends at the end of a clause, at a gap of two spaces, at
+// the end of its line, or at a word in angle brackets. Only in a line that
+// is not set in does it go on to the next line, when corbie ends the line.
+// corbie-<name> is a program's name, not a command line.
+func TestPagesShowOnlyRealCommandLines(t *testing.T) {
+	start := regexp.MustCompile("(?:^|[\\s('\"`$])corbie\\b")
+	plain := regexp.MustCompile(`^(?:[a-z][a-z0-9-]*|--[a-z][a-z-]*)$`)
+	group := func(words []string) bool {
+		begins := strings.Join(words, " ") + " "
+		return slices.ContainsFunc(cli.Commands, func(c cli.Command) bool { return strings.HasPrefix(c.Name, begins) })
+	}
+	// names says whether the words, or the first of them, name a page.
+	names := func(words []string) bool {
+		for i := range words {
+			if _, ok := manual.Find(strings.Join(words[:i+1], " ")); ok {
+				return true
+			}
+		}
+		return false
+	}
+	for _, page := range manual.Pages() {
+		for _, at := range start.FindAllStringIndex(page.Text, -1) {
+			begins := strings.LastIndex(page.Text[:at[1]], "\n") + 1
+			line, _, _ := strings.Cut(page.Text[begins:], "\n")
+			after, next, _ := strings.Cut(page.Text[at[1]:], "\n")
+			if strings.TrimSpace(after) == "" && !strings.HasPrefix(line, "  ") {
+				after, _, _ = strings.Cut(next, "\n")
+			}
+			if strings.HasPrefix(after, "-") {
+				continue
+			}
+			after, _, _ = strings.Cut(strings.TrimPrefix(after, " "), "  ")
+			var words []string
+			for _, field := range strings.Fields(after) {
+				word := strings.TrimRight(field, ".,;:)'\"`")
+				if word == "corbie" || !plain.MatchString(word) {
+					break
+				}
+				words = append(words, word)
+				if word != field {
+					break
+				}
+			}
+			if len(words) == 0 || words[0] == "help" || words[0] == "--help" || words[0] == "ui" || words[0] == "bulldog" || group(words) {
+				continue
+			}
+			cmd, rest := cli.Find(words)
+			if cmd == nil {
+				t.Errorf("the page %q shows corbie %s, which is no command:\n  %s", page.Name, strings.Join(words, " "), strings.TrimSpace(line))
+				continue
+			}
+			if cmd.Name == "manual" && len(rest) > 0 && !strings.HasPrefix(rest[0], "--") && !names(rest) {
+				t.Errorf("the page %q shows corbie manual %s, and there is no such page:\n  %s", page.Name, strings.Join(rest, " "), strings.TrimSpace(line))
+			}
+			if len(rest) > 0 && strings.HasPrefix(rest[0], "--") {
+				help, _ := manual.Find("corbie " + cmd.Name)
+				if !regexp.MustCompile(regexp.QuoteMeta(rest[0]) + `([^a-z-]|$)`).MatchString(help.Text) {
+					t.Errorf("the page %q shows corbie %s with %s, which it does not take:\n  %s", page.Name, cmd.Name, rest[0], strings.TrimSpace(line))
+				}
+			}
+		}
+	}
+}
+
 // A page is plain text: printed to a terminal it reads as it stands. It
 // holds what can be printed and the ends of its lines, and nothing else.
 func TestPagesArePlainText(t *testing.T) {
@@ -849,7 +919,7 @@ func TestModelServerGivesThePagesAsPrinted(t *testing.T) {
 	}
 }
 
-// With nothing set up, corbie manual --web serves a browser what corbie
+// With nothing set up, corbie manual web serves a browser what corbie
 // manual prints: a first page that leads to every page, and each page as
 // the same words. It stays until it is stopped, and ends well.
 func TestBrowserIsGivenThePagesAsPrinted(t *testing.T) {
@@ -859,13 +929,13 @@ func TestBrowserIsGivenThePagesAsPrinted(t *testing.T) {
 	said, saying := io.Pipe()
 	ended := make(chan int, 1)
 	go func() {
-		ended <- cli.Run(ctx, []string{"manual", "--web", "--listen", "127.0.0.1:0"}, strings.NewReader(""), io.Discard, saying)
+		ended <- cli.Run(ctx, []string{"manual", "web", "--listen", "127.0.0.1:0"}, strings.NewReader(""), io.Discard, saying)
 		saying.Close()
 	}()
 	line, _ := bufio.NewReader(said).ReadString('\n')
 	at := regexp.MustCompile(`http://\S+`).FindString(line)
 	if at == "" {
-		t.Fatalf("corbie manual --web did not say where the manual is: %q", line)
+		t.Fatalf("corbie manual web did not say where the manual is: %q", line)
 	}
 	get := func(path string) (int, string) {
 		t.Helper()
@@ -893,6 +963,15 @@ func TestBrowserIsGivenThePagesAsPrinted(t *testing.T) {
 		}
 	}
 	tags := regexp.MustCompile(`<[^>]+>`)
+	// A page is named by corbie manual and its name, which for a command's
+	// page is several words. Where one name begins another, the longer is
+	// the page.
+	var names []string
+	for _, page := range manual.Pages() {
+		names = append(names, strings.ReplaceAll(regexp.QuoteMeta(strings.TrimPrefix(page.Name, "corbie ")), " ", `\s+`))
+	}
+	slices.SortFunc(names, func(a, b string) int { return len(b) - len(a) })
+	mentioned := regexp.MustCompile(`corbie\s+manual\s+(?:` + strings.Join(names, "|") + `)\b`)
 	for _, page := range manual.Pages() {
 		path := "/" + url.PathEscape(page.Name)
 		if !reached[path] {
@@ -910,11 +989,9 @@ func TestBrowserIsGivenThePagesAsPrinted(t *testing.T) {
 		// The title and what the page covers stand apart at its head; a
 		// page whose first line gives it no title is headed by its name.
 		// A page another names is shown by its title.
-		titled := regexp.MustCompile(`corbie\s+manual\s+([a-z][a-z0-9-]*)`).ReplaceAllStringFunc(page.Text, func(found string) string {
-			if to, ok := manual.Find(strings.Fields(found)[2]); ok {
-				return to.Title()
-			}
-			return found
+		titled := mentioned.ReplaceAllStringFunc(page.Text, func(found string) string {
+			to, _ := manual.Find(strings.Join(strings.Fields(found)[2:], " "))
+			return to.Title()
 		})
 		got, want := squeezed(words(text)), words(titled)
 		if status != 200 || got != squeezed(strings.Replace(want, ": ", " ", 1)) && got != squeezed(page.Name+" "+want) {
@@ -930,6 +1007,14 @@ func TestBrowserIsGivenThePagesAsPrinted(t *testing.T) {
 	if _, first := get("/first-machine"); !strings.Contains(first, `<a class="to" href="a-list">A list</a>`) {
 		t.Errorf("the page first-machine does not lead a browser to the page it names")
 	}
+	// A command's page, whose name is several words, is a way to it in a
+	// sentence and in a list of pages.
+	if _, runs := get("/runs"); !strings.Contains(runs, `<a class="to" href="run%20show">corbie run show</a>`) {
+		t.Errorf("the page runs does not lead a browser to the page of corbie run show")
+	}
+	if _, secrets := get("/using-secrets"); !strings.Contains(secrets, `<li><a class="to" href="run%20submit">corbie run submit</a>`) {
+		t.Errorf("the page using-secrets does not list the page of corbie run submit among its pages")
+	}
 	if status, _ := get("/nosuchpage"); status != 404 {
 		t.Errorf("a browser asking for a page that is none is answered %d", status)
 	}
@@ -942,11 +1027,11 @@ func TestBrowserIsGivenThePagesAsPrinted(t *testing.T) {
 	}
 	stop()
 	if status := <-ended; status != 0 {
-		t.Errorf("corbie manual --web, stopped, ended %d", status)
+		t.Errorf("corbie manual web, stopped, ended %d", status)
 	}
 	// A page is printed or every page is served, and where they are served
 	// is said only when they are.
-	for _, args := range [][]string{{"manual", "--web", "start"}, {"manual", "--listen", "127.0.0.1:0"}} {
+	for _, args := range [][]string{{"manual", "web", "start"}, {"manual", "--listen", "127.0.0.1:0"}} {
 		if status, printed, _ := corbie("", args...); status != 2 || printed != "" {
 			t.Errorf("corbie %s ended %d and printed %q", strings.Join(args, " "), status, printed)
 		}
@@ -960,11 +1045,12 @@ func squeezed(text string) string {
 	return strings.ToLower(strings.NewReplacer(" ", "", "`", "").Replace(text))
 }
 
-// The model server's manual tool reads and starts nothing: a flag where a
-// page's name goes is refused, and the call comes back.
+// The model server's manual tool reads and starts nothing: a flag, or the
+// name of a command that begins with manual, where a page's name goes is
+// refused, and the call comes back.
 func TestModelServersManualToolTakesNoFlag(t *testing.T) {
 	nothingSetUp(t)
-	for _, page := range []string{"--web", "start --web", "-web"} {
+	for _, page := range []string{"web", "web --listen 127.0.0.1:0", "--json", "start --json"} {
 		call, err := json.Marshal(map[string]any{"jsonrpc": "2.0", "id": 1, "method": "tools/call",
 			"params": map[string]any{"name": "manual", "arguments": map[string]any{"page": page}}})
 		if err != nil {

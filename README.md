@@ -94,7 +94,7 @@ mv corbie ~/.local/bin/
 
 Other builds are on the [latest release](https://github.com/zummed/corbie/releases/latest).
 
-The manual is at [zummed.github.io/corbie](https://zummed.github.io/corbie/). `corbie manual --web` serves the same pages on your computer.
+The manual is at [zummed.github.io/corbie](https://zummed.github.io/corbie/). `corbie manual web` serves the same pages on your computer.
 
 <br>
 

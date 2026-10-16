@@ -53,7 +53,7 @@ A script that is permitted may start programs. Corbie checks the start: which pr
 A runner's owner can change that with one setting, the **exec wrapper**: a command put in front of every program a job starts. It is given when the runner is started.
 
 ```
-corbie run runner --exec-wrapper "bwrap --ro-bind /usr /usr … --"
+corbie start runner --exec-wrapper "bwrap --ro-bind /usr /usr … --"
 
 the script asks for      git status
 the runner starts        bwrap --ro-bind /usr /usr … -- /usr/bin/git status

@@ -35,6 +35,12 @@ func standIn(as string, args []string) bool {
 			os.Exit(1)
 		}
 		fmt.Print(os.Getppid(), " ", sleeper.Process.Pid)
+	case "says-where-it-is":
+		// A program a job starts, which prints its directory and the
+		// file it is given.
+		where, _ := os.Getwd()
+		text, _ := os.ReadFile(args[0])
+		fmt.Print(where, "\n", string(text))
 	case "sleeps":
 		time.Sleep(10 * time.Minute)
 	case "job-that-prints":
@@ -156,6 +162,38 @@ func Test_run_job_end_stops_what_started_at_the_last_moment(t *testing.T) {
 	}
 	t.Cleanup(func() { kill(pid) })
 	soon(t, "the program the job started to be stopped", func() bool { return ended(pid) })
+}
+
+func Test_run_relative_scratch_setting_resolved_once(t *testing.T) {
+	w := newWorld(t)
+	dir, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Chdir(dir)
+	os.Mkdir("scratch-here", 0o700)
+	w.job(w.ctl, "work", `
+		fs.write("a.txt", { text: "written" })
+		const [where, read] = exec.run(input.program, { args: ["says-where-it-is", "a.txt"] }).out.split("\n")
+		return { read, where, files: fs.list(".", { deep: true }).length }`,
+		func(j *instance.Job) { j.Input = map[string]any{"program": program()} })
+	r := w.runner("all")
+	r.Scratch = "scratch-here"
+	pass(t, r)
+	got := w.results()["work"]
+	if got == nil || got.Status != instance.Done {
+		t.Fatalf("the result is %+v", got)
+	}
+	out := got.Output.(map[string]any)
+	where, _ := out["where"].(string)
+	// The job's directory is in the directory the setting names, and the file is
+	// in the job's directory, not in a second scratch-here inside it.
+	if filepath.Dir(where) != filepath.Join(dir, "scratch-here") || out["read"] != "written" || out["files"] != 1.0 {
+		t.Fatalf("the scratch directory is %s, a program started in it read %q, and it holds %v files", where, out["read"], out["files"])
+	}
+	if left, _ := os.ReadDir("scratch-here"); len(left) != 0 {
+		t.Fatalf("left behind: %v", left)
+	}
 }
 
 func Test_run_long_error_output_does_not_stall_job(t *testing.T) {

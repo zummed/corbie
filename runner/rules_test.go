@@ -315,36 +315,6 @@ func Test_run_job_no_call_could_finish_fails_at_once(t *testing.T) {
 	}
 }
 
-func Test_run_relative_scratch_setting_resolved_once(t *testing.T) {
-	w := newWorld(t)
-	dir, err := filepath.EvalSymlinks(t.TempDir())
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Chdir(dir)
-	os.Mkdir("scratch-here", 0o700)
-	w.job(w.ctl, "work", `
-		fs.write("a.txt", { text: "written" })
-		return { read: exec.run("cat", { args: ["a.txt"] }).out, where: exec.run("pwd").out.trim(), files: fs.list(".", { deep: true }).length }`, nil)
-	r := w.runner("all")
-	r.Scratch = "scratch-here"
-	pass(t, r)
-	got := w.results()["work"]
-	if got == nil || got.Status != instance.Done {
-		t.Fatalf("the result is %+v", got)
-	}
-	out := got.Output.(map[string]any)
-	where, _ := out["where"].(string)
-	// The job's directory is in the directory the setting names, and the file is
-	// in the job's directory, not in a second scratch-here inside it.
-	if filepath.Dir(where) != filepath.Join(dir, "scratch-here") || out["read"] != "written" || out["files"] != 1.0 {
-		t.Fatalf("the scratch directory is %s, a program started in it read %q, and it holds %v files", where, out["read"], out["files"])
-	}
-	if left, _ := os.ReadDir("scratch-here"); len(left) != 0 {
-		t.Fatalf("left behind: %v", left)
-	}
-}
-
 func Test_run_result_written_after_all_emits(t *testing.T) {
 	w := newWorld(t)
 	// More than one batch, the last of them not full when the script

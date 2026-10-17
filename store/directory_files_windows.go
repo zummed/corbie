@@ -14,8 +14,9 @@ import (
 // On Windows a file that is open can be neither replaced nor removed, and a
 // file being replaced cannot be opened. Every reader holds a file open for
 // a moment, and so do the programs that watch the disk, as a virus scanner
-// and the search indexer do. A read, a replace or a remove that meets a
-// file held open is tried again, for up to heldFor, as Go's own tools do.
+// and the search indexer do. A directory being removed takes no new file
+// until it is gone. A call that meets a file held open, or a directory being
+// removed, is tried again, for up to heldFor, as Go's own tools do.
 // This is how these calls behave on Windows, not a layer that retries.
 const heldFor = 2 * time.Second
 
@@ -65,6 +66,20 @@ func openFile(path string) (*os.File, error) {
 		return nil, &fs.PathError{Op: "read", Path: path, Err: syscall.EISDIR}
 	}
 	return file, err
+}
+
+// createTemp makes a new temporary file in dir.
+func createTemp(dir string) (*os.File, error) {
+	var file *os.File
+	err := whileHeld(func() (err error) {
+		file, err = os.CreateTemp(dir, tmpPrefix+"*")
+		return err
+	})
+	return file, err
+}
+
+func link(from, to string) error {
+	return whileHeld(func() error { return os.Link(from, to) })
 }
 
 func rename(from, to string) error {

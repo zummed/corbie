@@ -198,7 +198,7 @@ func (f *directory) WriteFrom(ctx context.Context, name string, r io.Reader) (bo
 func (f *directory) place(ctx context.Context, tmp, path string, how How) (bool, error) {
 	defer remove(tmp)
 	if how.kind == onlyIfNew {
-		err := os.Link(tmp, path)
+		err := link(tmp, path)
 		if errors.Is(err, fs.ErrExist) {
 			return false, nil
 		}
@@ -278,7 +278,7 @@ func (f *directory) Copy(ctx context.Context, from, to string) (bool, error) {
 	src, dst := f.path(from), f.path(to)
 	for i := range directoryTries {
 		if err = os.MkdirAll(filepath.Dir(dst), 0o700); err == nil {
-			err = os.Link(src, dst)
+			err = link(src, dst)
 		}
 		switch {
 		case err == nil:
@@ -434,7 +434,7 @@ func writeTemp(dir string, fill func(io.Writer) error) (string, error) {
 	var err error
 	for i := range directoryTries {
 		if err = os.MkdirAll(dir, 0o700); err == nil {
-			if file, err = os.CreateTemp(dir, tmpPrefix+"*"); err == nil {
+			if file, err = createTemp(dir); err == nil {
 				break
 			}
 		}

@@ -85,7 +85,7 @@ The detailed rules behind the [Models overview](../model.md). Requirements are `
 *Accept:* the stored definition of that agent, shown by the client, gives its turn `net:` for the service's host and `secret:ANTHROPIC_KEY@net:` for the same host, and nothing else. The agent's definition allows `fs.read:/srv/**` for the whole definition: a turn script of the agent's own that reads `/srv/a` ends denied, and a tool of the same agent reads it.
 
 **R-model-18** For a model run as a local program, what the turn needs is the start of that program, written into its turn's permissions in place of a connection, with the key bound to the program or, where the definition names none, the variable that says where the runner's user is signed in; and the group each of its own tools that is switched on needs.
-*Accept:* the stored definition of an agent that names the local-program service gives its turn `exec:` for the program and `env:HOME`, and nothing else; with a key, `exec:` and the key bound to the program; with its web search switched on, `network` as well.
+*Accept:* the stored definition of an agent that names the local-program service gives its turn `exec:` for the program, `env:HOME` and `env:USERPROFILE`, which says the same on Windows, and nothing else; with a key, `exec:` and the key bound to the program; with its web search switched on, `network` as well.
 
 **C-model-16** A call to a model service follows no redirect. The key is bound to the service's host, and an answer from anywhere else is not the service's. *Test:* `model_no_redirect_followed`
 

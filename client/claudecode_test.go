@@ -108,7 +108,7 @@ func Test_model_local_program_starts_bare(t *testing.T) {
 	// What the turn needs is the start of the program, and where the
 	// runner's user is signed in; nothing else.
 	def, err := l.Definition(ctx, id)
-	if err != nil || !strings.Contains(jsonOf(def), `"allow":["exec:claude","env:HOME"]`) {
+	if err != nil || !strings.Contains(jsonOf(def), `"allow":["exec:claude","env:HOME","env:USERPROFILE"]`) {
 		t.Fatalf("the stored definition gives its turn: %s, %v", jsonOf(def), err)
 	}
 	// The program was started with its own tools, saved sessions and
@@ -212,7 +212,7 @@ func Test_model_programs_own_tool_needs_its_whole_group(t *testing.T) {
 		t.Fatalf("the program was started with: %s", args)
 	}
 	stored, _ := l.Definition(ctx, id)
-	if !strings.Contains(jsonOf(stored), `"allow":["exec:claude","env:HOME","network"]`) {
+	if !strings.Contains(jsonOf(stored), `"allow":["exec:claude","env:HOME","env:USERPROFILE","network"]`) {
 		t.Fatalf("the stored definition gives its turn: %s", jsonOf(stored))
 	}
 	// Skills are the user's own set-up of the program, and could do

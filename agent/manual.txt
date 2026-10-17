@@ -144,8 +144,9 @@ no `reply_tokens:`.
       used: env:HOME exec:claude network
 
 - With no `secret:`, the program is signed in as the runner's user, and the
-  turn's job gets `exec:claude` and `env:HOME`. With `secret:`, the job gets
-  `exec:claude` and `secret:<secret>@exec:claude`.
+  turn's job gets `exec:claude`, `env:HOME` and, for a runner on Windows,
+  `env:USERPROFILE`. With `secret:`, the job gets `exec:claude` and
+  `secret:<secret>@exec:claude`.
 - The program starts with none of its own tools, no saved session and none of
   its user's settings, so the model's tools are the definition's.
 - Corbie does not run a tool named in `own:` and cannot limit it to a scope,

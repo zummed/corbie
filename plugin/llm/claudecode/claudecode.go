@@ -104,11 +104,11 @@ func chat(job *plugin.Job, c *llm.Call) (*llm.Reply, error) {
 		}
 		opt.Env, opt.Secrets = []string{signIn(key) + "=" + key}, []*plugin.Secret{handle}
 	} else {
-		home, _, err := job.Variable("HOME")
+		home, _, err := job.Variable(plugin.HomeVariable)
 		if err != nil {
 			return nil, err
 		}
-		opt.Env = []string{"HOME=" + home}
+		opt.Env = []string{plugin.HomeVariable + "=" + home}
 	}
 	// It runs in a fresh directory of its own.
 	dir, err := job.Directory("claude-*")

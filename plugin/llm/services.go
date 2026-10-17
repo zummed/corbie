@@ -589,6 +589,7 @@ Needs net:host for the service and secret:NAME@net:host for its key.
 claude-code needs these in their place.
   exec:claude                to start the program
   env:HOME                   with no key: the program is signed in as the runner's user
+  env:USERPROFILE            the same, on Windows
   secret:NAME@exec:claude    with a key: an API key, or the token that claude setup-token prints
   network                    for WebSearch or WebFetch in own:
   disk                       for Read, Glob, Grep, Edit, Write or NotebookEdit in own:

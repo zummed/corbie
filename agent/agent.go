@@ -162,11 +162,11 @@ func (m Model) check() error {
 // key bound to a host never goes over a plain connection. For a service
 // that is a program it is the start of the program, with the key bound to
 // it or, with no key, the variable that says where the runner's user is
-// signed in; and, for each tool of its own the program may use, the whole
+// signed in, which is HOME and on Windows USERPROFILE; and, for each tool of its own the program may use, the whole
 // of what such a tool could use.
 func (m Model) permissions() []string {
 	if service, _ := llm.Find(m.serviceOf()); service != nil && service.Program != "" {
-		allow := []string{"exec:" + service.Program, "env:HOME"}
+		allow := []string{"exec:" + service.Program, "env:HOME", "env:USERPROFILE"}
 		if m.Secret != "" {
 			allow = []string{"exec:" + service.Program, "secret:" + m.Secret + "@exec:" + service.Program}
 		}

@@ -77,15 +77,11 @@ func Test_id_identity_file_readable_by_others_refused(t *testing.T) {
 	if err := id.Save(path); err != nil {
 		t.Fatal(err)
 	}
-	info, _ := os.Stat(path)
-	if info.Mode().Perm() != 0o600 {
-		t.Fatalf("the identity file has mode %o", info.Mode().Perm())
-	}
 	back, err := Load(path)
 	if err != nil || !back.Same(id.Card) || back.Name != "r1" {
 		t.Fatalf("an identity read back: %v", err)
 	}
-	os.Chmod(path, 0o644)
+	letOthersRead(t, path)
 	if _, err := Load(path); err == nil || !strings.Contains(err.Error(), "read by others") {
 		t.Fatalf("an identity file others can read: %v", err)
 	}

@@ -22,6 +22,8 @@ The detailed rules behind the [Identity overview](../identity.md).
 
 **C-id-03** An identity file is written whole or not at all. A party stopped while its identity is being made must not be left with half a key under a name it has already used. *Test:* `id_identity_file_written_whole`
 
+**C-id-21** An identity file made in a directory others can read is still readable by its owner alone. On Windows a new file takes its directory's access list, so a key written there would be readable by everyone the directory lets in. *Test:* `id_identity_file_private_in_a_shared_directory`
+
 **C-id-04** A private key never appears in an error, a log line or any other output, also when the identity file is damaged or cannot be read. Errors are copied into logs and reports that others read. *Test:* `id_private_key_never_printed`
 
 **C-id-05** Names inside a card, and inside anything else that is signed, are matched exactly, letter case included, and a value that gives one name twice is refused. A reader that takes `NAME` for `name` can be handed a value in which the two disagree: signed over one, read by the other. *Test:* `id_signed_value_names_matched_exactly`

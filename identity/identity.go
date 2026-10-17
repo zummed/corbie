@@ -195,9 +195,8 @@ func Load(path string) (*Identity, error) {
 	if err != nil {
 		return nil, err
 	}
-	if info.Mode().Perm()&0o077 != 0 {
-		return nil, fmt.Errorf("the identity file %q can be read by others (mode %o); its key is no longer its owner's alone. If that is not so, run: chmod 600 %s",
-			path, info.Mode().Perm(), path)
+	if err := checkPrivate(path, info); err != nil {
+		return nil, err
 	}
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -236,7 +235,7 @@ func writeWhole(path string, data []byte) error {
 		return err
 	}
 	defer os.Remove(tmp.Name())
-	if err = tmp.Chmod(0o600); err == nil {
+	if err = makePrivate(tmp.Name()); err == nil {
 		_, err = tmp.Write(data)
 	}
 	if err == nil {

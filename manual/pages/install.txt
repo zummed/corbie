@@ -13,8 +13,8 @@ The release has one binary for each system.
   macOS      corbie-darwin-arm64, corbie-darwin-amd64
   Windows    corbie-windows-amd64.exe
 
-Corbie is tested on Linux, and its store, runner and permissions on Windows
-too. Some things differ elsewhere.
+Corbie is tested on Linux, and its store, runner, permissions and keys on
+Windows too. Some things differ elsewhere.
 
 - On macOS and Windows, a job's `memory:` limit covers the script and not the
   programs it starts.
@@ -22,6 +22,8 @@ too. Some things differ elsewhere.
   path with a leading `/` and no drive allows nothing.
 - On Windows, paths and programs' names match in any case, and `exec:git`
   starts `git.exe`. A batch file, such as one npm installs, is not started.
+- On Windows, SYSTEM and Administrators can read Corbie's private keys, as
+  root can elsewhere.
 - On Windows, a directory store's newest names can be lost when the power
   goes: Windows cannot sync a directory.
 

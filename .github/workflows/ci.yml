@@ -56,7 +56,7 @@ jobs:
 
       - uses: jdx/mise-action@v5
 
-      - run: mise exec -- go test ./store/ ./runner/ ./permission/
+      - run: mise exec -- go test ./store/ ./runner/ ./permission/ ./identity/
 
       - run: mise exec -- go test ./plugin/ -run Windows
 

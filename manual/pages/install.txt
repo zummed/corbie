@@ -22,6 +22,8 @@ too. Some things differ elsewhere.
   path with a leading `/` and no drive allows nothing.
 - On Windows, paths and programs' names match in any case, and `exec:git`
   starts `git.exe`. A batch file, such as one npm installs, is not started.
+- On Windows, a directory store's newest names can be lost when the power
+  goes: Windows cannot sync a directory.
 
 Choose where it runs
 --------------------

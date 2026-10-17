@@ -58,6 +58,8 @@ jobs:
 
       - run: mise exec -- go test ./store/ ./runner/ ./permission/
 
+      - run: mise exec -- go test ./plugin/ -run Windows
+
   # The manual is published from the newest commit on main that passed.
   pages:
     if: github.event_name == 'push'

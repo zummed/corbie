@@ -196,7 +196,7 @@ func (f *directory) WriteFrom(ctx context.Context, name string, r io.Reader) (bo
 // temporary file behind. Only this final act answers "already there" or
 // "changed".
 func (f *directory) place(ctx context.Context, tmp, path string, how How) (bool, error) {
-	defer os.Remove(tmp)
+	defer remove(tmp)
 	if how.kind == onlyIfNew {
 		err := os.Link(tmp, path)
 		if errors.Is(err, fs.ErrExist) {

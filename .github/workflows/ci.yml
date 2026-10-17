@@ -56,7 +56,7 @@ jobs:
 
       - uses: jdx/mise-action@v5
 
-      - run: mise exec -- go test ./store/ ./runner/
+      - run: mise exec -- go test ./store/ ./runner/ ./permission/
 
   # The manual is published from the newest commit on main that passed.
   pages:

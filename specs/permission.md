@@ -19,6 +19,13 @@ There are six kinds.
 
 A scope is one of three things, matched the same way wherever it appears: a path, a host, or a name. Any of them may use `*` for a part. A host with no port means every port, and a host written as an address, `10.0.0.*`, matches no name. A path is checked where it really points, after links are followed.
 
+On Windows:
+
+- A path starts with its drive or share and is written with `/`, as `C:/Users/sam/**` or `//server/share/**`.
+- A path with a leading `/` and no drive is on whichever drive is current, so as a scope it matches nothing, and a script that names it is refused.
+- A path and a program's name match in any case, and a program's name matches with or without `.exe` or `.com`.
+- A program named without its extension is found as its `.exe` or `.com`, and never as a batch file, whose arguments cmd.exe reads again as commands.
+
 Kinds are gathered into groups: `network`, `disk`, `exec` and `env`. A group allows every scope of its kinds. `all` allows everything, secrets included, and means the same in every layer. Being allowed a secret is not the same as being sent it: a job is sent only the secrets its definition names (see Secrets).
 
 ## Layers

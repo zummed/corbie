@@ -18,7 +18,7 @@ Each job runs in a process of its own, so it can be stopped at its time limit, h
 
 The job names its script, the script's files and its input, and the runner reads them from the instance's record.
 
-Every job has a scratch directory of its own, made for it and removed when it ends. A runner that starts removes the scratch directories left by one that was killed before it could. A path a script writes without a leading `/` is in that directory. Everything a job starts is stopped when the job ends, however it ends.
+Every job has a scratch directory of its own, made for it and removed when it ends. A runner that starts removes the scratch directories left by one that was killed before it could. A path a script writes without a leading `/`, or on Windows without a drive, is in that directory; on Windows one with a leading `/` and no drive is refused. Everything a job starts is stopped when the job ends, however it ends.
 
 When the script returns, the runner writes any blobs in the output into the instance's record and sends the output to the controller as the job's result, along with the permissions it used. If the script throws, or is refused something, or runs out of time, the result says so. Everything a job writes for the controller is under a name that is that job's alone, so a write whose answer was lost is sent again. Only when the result is written does the runner delete the job from its inbox. It removes the mark once the job's due time has passed.
 

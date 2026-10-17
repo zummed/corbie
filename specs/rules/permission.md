@@ -41,6 +41,10 @@ The detailed rules behind the [Permissions overview](../permission.md). Requirem
 
 **C-perm-09** A program's name and a program's path never pass for each other: `exec:git` does not allow `/tmp/x/git`, and `exec:/usr/bin/git` does not allow the bare name `git`. A file with an allowed program's name could otherwise be started from anywhere. *Test:* `perm_program_name_is_not_a_path`
 
+**C-perm-26** On Windows a path scope has a drive or a share. One with a leading `/` and no drive matches nothing: a definition written for Linux allows less on Windows, never more. *Test:* `perm_windows_path_has_a_drive`
+
+**C-perm-27** On Windows a path and a program's name match in any case, and a program's name matches with or without `.exe` or `.com`. Windows opens and starts the same file by every one of those spellings, so a deny entry written one way would let the others through. *Test:* `perm_windows_name_in_any_case`
+
 **C-perm-10** Everything is allowed in one way, by `all` in a list. No flag or setting does the same. A second way is a second place to look when asking what a job may do. *Test:* `perm_all_only_in_a_list`
 
 ## Layers

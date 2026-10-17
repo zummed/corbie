@@ -13,13 +13,15 @@ The release has one binary for each system.
   macOS      corbie-darwin-arm64, corbie-darwin-amd64
   Windows    corbie-windows-amd64.exe
 
-Corbie is tested on Linux. Two things differ elsewhere.
+Corbie is tested on Linux, and its store, runner and permissions on Windows
+too. Some things differ elsewhere.
 
 - On macOS and Windows, a job's `memory:` limit covers the script and not the
   programs it starts.
-- On Windows, a directory store is safe for one process only, so use
-  `corbie test` or a bucket. A program that a job starts is not stopped when
-  the job ends.
+- On Windows, a path starts with its drive, as `fs.read:C:/Users/sam/**`. A
+  path with a leading `/` and no drive allows nothing.
+- On Windows, paths and programs' names match in any case, and `exec:git`
+  starts `git.exe`. A batch file, such as one npm installs, is not started.
 
 Choose where it runs
 --------------------

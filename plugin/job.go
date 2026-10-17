@@ -292,6 +292,24 @@ func (j *Job) Directory(pattern string) (string, error) {
 	return dir, nil
 }
 
+// File makes a fresh file inside the job's scratch directory, holding the
+// contents, for a plugin to hand a program. Only the runner's user can read
+// it, and it goes with the scratch directory when the job ends.
+func (j *Job) File(pattern string, contents []byte) (string, error) {
+	file, err := os.CreateTemp(j.Scratch, pattern)
+	if err != nil {
+		return "", fileError(err, "the job's scratch directory")
+	}
+	_, err = file.Write(contents)
+	if cerr := file.Close(); err == nil {
+		err = cerr
+	}
+	if err != nil {
+		return "", fileError(err, "the job's scratch directory")
+	}
+	return file.Name(), nil
+}
+
 // ProgramOptions are what a started program is given.
 type ProgramOptions struct {
 	Args  []string

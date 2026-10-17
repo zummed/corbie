@@ -222,13 +222,13 @@ func (s *Set) written(kind, value string) string {
 		return value
 	}
 	scratch := strings.Join(s.pathScope(".").fixed, "/")
-	if value == scratch {
+	if fold(value) == fold(scratch) {
 		return "."
 	}
-	inside, ok := strings.CutPrefix(value, scratch+"/")
-	if !ok {
+	if len(value) <= len(scratch) || fold(value[:len(scratch)+1]) != fold(scratch+"/") {
 		return value
 	}
+	inside := value[len(scratch)+1:]
 	if kind == Exec && !strings.Contains(inside, "/") {
 		return "./" + inside
 	}
@@ -309,13 +309,14 @@ func (s *Set) matches(entry, kind, value string) bool {
 		return s.pathScope(scope).matches(value)
 	case Exec:
 		// A program's name and a program's path never pass for each other.
+		scope = filepath.ToSlash(scope)
 		if strings.Contains(scope, "/") != strings.Contains(value, "/") {
 			return false
 		}
 		if strings.Contains(scope, "/") {
 			return s.pathScope(scope).matches(value)
 		}
-		return matchPart(scope, value)
+		return matchPart(programName(scope), programName(value))
 	case Net:
 		return matchHost(scope, value)
 	case Secret:
@@ -330,10 +331,11 @@ func (s *Set) matches(entry, kind, value string) bool {
 type pathScope struct {
 	fixed   []string
 	pattern []string
+	none    bool // the scope names no place, and matches nothing
 }
 
-// pathScope resolves a path scope, once. A scope with no leading slash
-// names a place in the scratch directory.
+// pathScope resolves a path scope, once. A scope that does not start at
+// the root names a place in the scratch directory.
 func (s *Set) pathScope(scope string) pathScope {
 	s.mu.Lock()
 	ps, ok := s.scopes[scope]
@@ -341,11 +343,21 @@ func (s *Set) pathScope(scope string) pathScope {
 	if ok {
 		return ps
 	}
-	full := scope
-	if !strings.HasPrefix(full, "/") && s.Scratch != "" {
-		full = path.Join(s.Scratch, full)
+	full := filepath.ToSlash(scope)
+	if !rooted(full) && s.Scratch != "" {
+		full = path.Join(filepath.ToSlash(s.Scratch), full)
 	}
-	parts := strings.Split(path.Clean(full), "/")
+	parts, ok := splitPath(full)
+	if !ok {
+		ps = pathScope{none: true}
+		s.mu.Lock()
+		if s.scopes == nil {
+			s.scopes = map[string]pathScope{}
+		}
+		s.scopes[scope] = ps
+		s.mu.Unlock()
+		return ps
+	}
 	split := len(parts)
 	for i, part := range parts {
 		if strings.Contains(part, "*") {
@@ -356,11 +368,14 @@ func (s *Set) pathScope(scope string) pathScope {
 	lead := strings.Join(parts[:split], "/")
 	if lead == "" {
 		lead = "/"
+	} else if split == 1 {
+		lead += "/" // a drive alone: C:/
 	}
 	if real, err := RealPath(filepath.FromSlash(lead)); err == nil {
 		lead = filepath.ToSlash(real)
 	}
-	ps = pathScope{fixed: strings.Split(path.Clean(lead), "/"), pattern: parts[split:]}
+	fixed, _ := splitPath(lead)
+	ps = pathScope{fixed: fixed, pattern: parts[split:]}
 	s.mu.Lock()
 	if s.scopes == nil {
 		s.scopes = map[string]pathScope{}
@@ -371,11 +386,23 @@ func (s *Set) pathScope(scope string) pathScope {
 }
 
 func (ps pathScope) matches(value string) bool {
-	parts := strings.Split(path.Clean(value), "/")
-	if len(parts) < len(ps.fixed) || !slices.Equal(parts[:len(ps.fixed)], ps.fixed) {
+	parts, ok := splitPath(value)
+	if ps.none || !ok || len(parts) < len(ps.fixed) {
 		return false
 	}
-	return matchParts(ps.pattern, parts[len(ps.fixed):])
+	same := func(a, b string) bool { return fold(a) == fold(b) }
+	if !slices.EqualFunc(parts[:len(ps.fixed)], ps.fixed, same) {
+		return false
+	}
+	return matchParts(foldAll(ps.pattern), foldAll(parts[len(ps.fixed):]))
+}
+
+func foldAll(parts []string) []string {
+	folded := make([]string, len(parts))
+	for i, part := range parts {
+		folded[i] = fold(part)
+	}
+	return folded
 }
 
 // RealPath gives where a path really points, following the links in as

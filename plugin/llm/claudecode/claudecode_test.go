@@ -124,3 +124,40 @@ func TestProgramIsGivenItsKeyAsTheKindItIs(t *testing.T) {
 		}
 	}
 }
+
+// The system text, with every tool in it, reaches the program in a file,
+// and is not on its command line.
+func TestProgramReadsItsSystemTextFromAFile(t *testing.T) {
+	if _, err := os.Stat("/bin/sh"); err != nil {
+		t.Skip("no shell on this machine")
+	}
+	dir := t.TempDir()
+	os.WriteFile(filepath.Join(dir, "claude"), []byte(`#!/bin/sh
+cat > /dev/null
+here=$(dirname "$0")
+printf '%s\n' "$@" > "$here/args"
+while [ $# -gt 0 ]; do
+  if [ "$1" = --system-prompt-file ]; then cat "$2" > "$here/system"; fi
+  shift
+done
+cat "$here/reply"
+`), 0o755)
+	os.WriteFile(filepath.Join(dir, "reply"), []byte(`{"type":"result","subtype":"success","is_error":false,"result":"","stop_reason":"end_turn","structured_output":{"text":"Hello.","tool_calls":[]},"usage":{"input_tokens":10,"output_tokens":5}}`+"\n"), 0o600)
+	job := &plugin.Job{Context: context.Background(), Scratch: t.TempDir(), SearchPath: dir + ":/usr/bin:/bin", Channel: channel{},
+		Perms: &permission.Set{Layers: []permission.Layer{{Name: "test", Allow: []string{"exec:claude", "env:HOME"}}}}}
+	t.Cleanup(job.End)
+	module, _ := plugin.Find("llm")
+	if _, err := module.Calls["chat"].Invoke(job, "llm", "chat", []any{map[string]any{"role": "user", "content": "Say hello."}},
+		plugin.Options{"service": "claude-code", "model": "sonnet", "system": "You keep the house.",
+			"tools": []any{map[string]any{"name": "look", "does": "Look at a thing", "args": map[string]any{"at": "string"}}}}); err != nil {
+		t.Fatal(err)
+	}
+	args, _ := os.ReadFile(filepath.Join(dir, "args"))
+	system, _ := os.ReadFile(filepath.Join(dir, "system"))
+	if !strings.HasPrefix(string(system), "You keep the house.") || !strings.Contains(string(system), "Look at a thing") {
+		t.Errorf("the program's system text was %q", system)
+	}
+	if strings.Contains(string(args), "You keep the house.") || strings.Contains(string(args), "Look at a thing") {
+		t.Errorf("the system text was on the command line: %q", args)
+	}
+}

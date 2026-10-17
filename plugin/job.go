@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"sort"
 	"strings"
@@ -199,6 +200,10 @@ func (j *Job) inScratch(path string) (string, error) {
 	if filepath.IsAbs(path) {
 		return path, nil
 	}
+	if filepath.VolumeName(path) != "" || strings.HasPrefix(path, "/") || strings.HasPrefix(path, string(filepath.Separator)) {
+		// On Windows, /srv is on whichever drive is current.
+		return "", Errorf(BadInput, "%s names no place: a path on this computer starts with its drive, as C:/", path)
+	}
 	if j.Scratch == "" {
 		return "", Errorf(BadInput, "the job has no scratch directory, so %s, with no leading /, names no place", path)
 	}
@@ -292,6 +297,24 @@ func (j *Job) Directory(pattern string) (string, error) {
 	return dir, nil
 }
 
+// File makes a fresh file inside the job's scratch directory, holding the
+// contents, for a plugin to hand a program. Only the runner's user can read
+// it, and it goes with the scratch directory when the job ends.
+func (j *Job) File(pattern string, contents []byte) (string, error) {
+	file, err := os.CreateTemp(j.Scratch, pattern)
+	if err != nil {
+		return "", fileError(err, "the job's scratch directory")
+	}
+	_, err = file.Write(contents)
+	if cerr := file.Close(); err == nil {
+		err = cerr
+	}
+	if err != nil {
+		return "", fileError(err, "the job's scratch directory")
+	}
+	return file.Name(), nil
+}
+
 // ProgramOptions are what a started program is given.
 type ProgramOptions struct {
 	Args  []string
@@ -322,7 +345,7 @@ func (j *Job) Program(ctx context.Context, name string, opt ProgramOptions) (*ex
 	if r := j.bound(opt.Secrets, permission.Exec+":"+name); r != nil {
 		return nil, r
 	}
-	if !strings.ContainsRune(name, filepath.Separator) {
+	if !hasPath(name) {
 		if path = j.find(name); path == "" {
 			return nil, Errorf(NotFound, "the program %q was not found", name)
 		}
@@ -339,7 +362,7 @@ func (j *Job) Program(ctx context.Context, name string, opt ProgramOptions) (*ex
 		// script chose: a variable can change what any program loads. The
 		// program's variables are handed to it inside, by env.
 		wrapper := j.Wrapper[0]
-		if !strings.ContainsRune(wrapper, filepath.Separator) {
+		if !hasPath(wrapper) {
 			if wrapper = j.find(wrapper); wrapper == "" {
 				return nil, Errorf(NotFound, "the runner's exec wrapper %q was not found", j.Wrapper[0])
 			}
@@ -370,7 +393,7 @@ func (j *Job) Program(ctx context.Context, name string, opt ProgramOptions) (*ex
 // is taken where the path really points, as every path is, and one with no
 // leading slash is in the scratch directory, never from the root of the disk.
 func (j *Job) named(program string) (string, error) {
-	if !strings.ContainsRune(program, filepath.Separator) {
+	if !hasPath(program) {
 		return program, nil
 	}
 	within, err := j.inScratch(program)
@@ -384,13 +407,22 @@ func (j *Job) named(program string) (string, error) {
 	return filepath.ToSlash(real), nil
 }
 
+// hasPath says whether a program is named by its path, and not by its
+// name alone.
+func hasPath(program string) bool {
+	return strings.ContainsAny(program, "/"+string(filepath.Separator))
+}
+
 // find gives the path of a program named with no path, looked for where
-// the runner looks for programs, or nothing.
+// the runner looks for programs, or nothing. On Windows a program is a
+// file with .exe or .com, and Windows marks no file as one to run.
 func (j *Job) find(name string) string {
 	for _, dir := range filepath.SplitList(j.SearchPath) {
-		candidate := filepath.Join(dir, name)
-		if info, err := os.Stat(candidate); err == nil && !info.IsDir() && info.Mode()&0o111 != 0 {
-			return candidate
+		for _, candidate := range permission.ProgramFiles(filepath.Join(dir, name)) {
+			info, err := os.Stat(candidate)
+			if err == nil && !info.IsDir() && (runtime.GOOS == "windows" || info.Mode()&0o111 != 0) {
+				return candidate
+			}
 		}
 	}
 	return ""

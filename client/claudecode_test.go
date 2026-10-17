@@ -15,9 +15,9 @@ import (
 // standInProgram puts a program named claude first on the path, in a
 // directory of its own. Each time it is started it keeps what it was started
 // with (its arguments, its variables, the directory it runs in and what that
-// holds, and what it was sent) and prints the reply it was given for that
-// start. With a file named hang beside it, it reads nothing and does not
-// end.
+// holds, what it was sent, and the system text in the file it was named)
+// and prints the reply it was given for that start. With a file named hang
+// beside it, it reads nothing and does not end.
 func standInProgram(t *testing.T, replies ...string) string {
 	dir := t.TempDir()
 	os.WriteFile(filepath.Join(dir, "claude"), []byte(`#!/bin/sh
@@ -25,6 +25,10 @@ d=$(dirname "$0")
 if [ -e "$d/hang" ]; then sleep 30; exit 0; fi
 n=$(cat "$d/count" 2>/dev/null || echo 0); n=$((n+1)); echo $n > "$d/count"
 printf '%s\n' "$@" > "$d/args.$n"
+while [ $# -gt 0 ]; do
+  if [ "$1" = --system-prompt-file ]; then cat "$2" > "$d/system.$n"; fi
+  shift
+done
 pwd > "$d/pwd.$n"; ls -A > "$d/ls.$n"; env > "$d/env.$n"
 cat > "$d/stdin.$n"
 cat "$d/reply.$n"
@@ -104,7 +108,7 @@ func Test_model_local_program_starts_bare(t *testing.T) {
 	// What the turn needs is the start of the program, and where the
 	// runner's user is signed in; nothing else.
 	def, err := l.Definition(ctx, id)
-	if err != nil || !strings.Contains(jsonOf(def), `"allow":["exec:claude","env:HOME"]`) {
+	if err != nil || !strings.Contains(jsonOf(def), `"allow":["exec:claude","env:HOME","env:USERPROFILE"]`) {
 		t.Fatalf("the stored definition gives its turn: %s, %v", jsonOf(def), err)
 	}
 	// The program was started with its own tools, saved sessions and
@@ -130,8 +134,8 @@ func Test_model_local_program_starts_bare(t *testing.T) {
 	}
 	// It was told the tools in its system text and not given them, and the
 	// second time it was shown the whole conversation with the results.
-	if !strings.Contains(args, "## add") || !strings.Contains(args, "tool_calls") {
-		t.Fatalf("the system text does not tell of the tools: %s", args)
+	if system := kept(t, dir, "system.1"); !strings.Contains(system, "## add") || !strings.Contains(system, "tool_calls") {
+		t.Fatalf("the system text does not tell of the tools: %s", system)
 	}
 	second := kept(t, dir, "stdin.2")
 	if !strings.Contains(second, "what is 41 plus one?") || !strings.Contains(second, "Assistant called add") ||
@@ -208,7 +212,7 @@ func Test_model_programs_own_tool_needs_its_whole_group(t *testing.T) {
 		t.Fatalf("the program was started with: %s", args)
 	}
 	stored, _ := l.Definition(ctx, id)
-	if !strings.Contains(jsonOf(stored), `"allow":["exec:claude","env:HOME","network"]`) {
+	if !strings.Contains(jsonOf(stored), `"allow":["exec:claude","env:HOME","env:USERPROFILE","network"]`) {
 		t.Fatalf("the stored definition gives its turn: %s", jsonOf(stored))
 	}
 	// Skills are the user's own set-up of the program, and could do
@@ -244,7 +248,7 @@ func TestProgramAnswersInTheShapeWanted(t *testing.T) {
 	if !strings.Contains(args, `"answer":{`) || !strings.Contains(args, `"sum":{"type":"number"}`) {
 		t.Errorf("the program was not given the shape to answer in: %s", args)
 	}
-	if !strings.Contains(args, "Put it in the `answer` field") || strings.Contains(args, "as JSON only") {
-		t.Errorf("the program was not told where its final reply goes: %s", args)
+	if system := kept(t, dir, "system.1"); !strings.Contains(system, "Put it in the `answer` field") || strings.Contains(system, "as JSON only") {
+		t.Errorf("the program was not told where its final reply goes: %s", system)
 	}
 }

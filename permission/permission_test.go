@@ -1,3 +1,5 @@
+//go:build !windows
+
 package permission
 
 import (
@@ -8,8 +10,6 @@ import (
 )
 
 func set(layers ...Layer) *Set { return &Set{Layers: layers, Scratch: "/scratch/job"} }
-
-func allow(entries ...string) Layer { return Layer{Name: "the layer", Allow: entries} }
 
 func TestScopes(t *testing.T) {
 	for _, c := range []struct {
@@ -24,6 +24,9 @@ func TestScopes(t *testing.T) {
 		{"fs.read:/srv/*/a.md", Read, "/srv/x/y/a.md", false},
 		{"fs.read:/srv/*.md", Read, "/srv/notes.md", true},
 		{"fs.read:/srv/**/a.md", Read, "/srv/x/y/a.md", true},
+		{"fs.read:/**", Read, "/srv/x/a.md", true},
+		{"fs.read:/*", Read, "/srv", true},
+		{"fs.read:/*", Read, "/srv/a", false},
 		{"fs.write:out/**", Write, "/scratch/job/out/a", true},
 		{"fs.write:out/**", Write, "/out/a", false},
 		{"net:api.github.com", Net, "api.github.com:443", true},

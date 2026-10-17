@@ -51,8 +51,8 @@ The detailed rules behind the [Runner overview](../runner.md).
 **R-run-16** Every job has a scratch directory of its own, made for it and removed when it ends, however it ends.
 *Accept:* two jobs running at once on one runner each find a different directory, and each is empty when its script starts. One job writes a file into its scratch directory and returns, a second throws, a third is stopped at its time limit: all three directories are gone afterwards.
 
-**R-run-18** A path a script writes without a leading `/` is in the job's scratch directory.
-*Accept:* a permitted script writes `out/report.txt`: the file is at that path under the job's scratch directory, and reading `out/report.txt` gives it back.
+**R-run-18** A path a script writes without a leading `/`, or on Windows without a drive, is in the job's scratch directory. On Windows one with a leading `/` and no drive is refused.
+*Accept:* a permitted script writes `out/report.txt`: the file is at that path under the job's scratch directory, and reading `out/report.txt` gives it back. On Windows, a script allowed `all` that reads `/srv/a` is refused, and is told to write the drive.
 
 **R-run-19** Everything a job starts is stopped when the job ends, however it ends.
 *Accept:* a script starts a program that starts another, and neither would end for an hour. The script then returns, or throws, or runs out of time, or is cancelled: in each case both programs are gone moments after the job ends.

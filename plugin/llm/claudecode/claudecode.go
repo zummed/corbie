@@ -72,9 +72,15 @@ func chat(job *plugin.Job, c *llm.Call) (*llm.Reply, error) {
 			return nil, err
 		}
 	}
+	// The system text, which grows with every tool, is given in a file:
+	// a command line has a limit, and anyone on the machine can read it.
+	prompt, err := job.File("claude-system-*.md", []byte(system(c)))
+	if err != nil {
+		return nil, err
+	}
 	schema, _ := json.Marshal(shape(c), json.Deterministic(true))
 	args := []string{"-p", "--input-format", "stream-json", "--output-format", "stream-json", "--verbose",
-		"--include-partial-messages", "--system-prompt", system(c), "--json-schema", string(schema),
+		"--include-partial-messages", "--system-prompt-file", prompt, "--json-schema", string(schema),
 		"--strict-mcp-config", "--no-session-persistence", "--model", c.Model,
 		"--tools", strings.Join(c.Own, ",")}
 	if len(c.Own) > 0 {
@@ -98,11 +104,11 @@ func chat(job *plugin.Job, c *llm.Call) (*llm.Reply, error) {
 		}
 		opt.Env, opt.Secrets = []string{signIn(key) + "=" + key}, []*plugin.Secret{handle}
 	} else {
-		home, _, err := job.Variable("HOME")
+		home, _, err := job.Variable(plugin.HomeVariable)
 		if err != nil {
 			return nil, err
 		}
-		opt.Env = []string{"HOME=" + home}
+		opt.Env = []string{plugin.HomeVariable + "=" + home}
 	}
 	// It runs in a fresh directory of its own.
 	dir, err := job.Directory("claude-*")

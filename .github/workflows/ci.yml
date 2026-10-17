@@ -43,6 +43,23 @@ jobs:
         with:
           path: site
 
+  # The packages whose code differs on Windows are tested there. The rest
+  # of the tests start programs through sh.
+  windows:
+    runs-on: windows-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - uses: jdx/mise-action@v5
+
+      - run: mise exec -- go test ./store/ ./runner/ ./permission/ ./identity/
+
+      - run: mise exec -- go test ./plugin/ -run Windows
+
   # The manual is published from the newest commit on main that passed.
   pages:
     if: github.event_name == 'push'

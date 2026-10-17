@@ -77,7 +77,7 @@ func (f *directory) Read(ctx context.Context, name string) ([]byte, Mark, error)
 	if err := ctx.Err(); err != nil {
 		return nil, None, err
 	}
-	value, err := os.ReadFile(f.path(name))
+	value, err := readFile(f.path(name))
 	switch {
 	case err == nil:
 		return value, markOf(value), nil
@@ -94,9 +94,9 @@ func (f *directory) ReadPart(ctx context.Context, name string, from, length int6
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	file, err := os.Open(f.path(name))
+	file, err := openFile(f.path(name))
 	if err != nil {
-		if gone(err) || errors.Is(err, fs.ErrPermission) {
+		if gone(err) || errors.Is(err, fs.ErrPermission) || errors.Is(err, syscall.EISDIR) {
 			return nil, nil
 		}
 		return nil, err
@@ -196,9 +196,9 @@ func (f *directory) WriteFrom(ctx context.Context, name string, r io.Reader) (bo
 // temporary file behind. Only this final act answers "already there" or
 // "changed".
 func (f *directory) place(ctx context.Context, tmp, path string, how How) (bool, error) {
-	defer os.Remove(tmp)
+	defer remove(tmp)
 	if how.kind == onlyIfNew {
-		err := os.Link(tmp, path)
+		err := link(tmp, path)
 		if errors.Is(err, fs.ErrExist) {
 			return false, nil
 		}
@@ -226,7 +226,7 @@ func (f *directory) replace(ctx context.Context, tmp, path string, how How) (boo
 			return false, err
 		}
 	}
-	err = os.Rename(tmp, path)
+	err = rename(tmp, path)
 	return err == nil, err
 }
 
@@ -259,7 +259,7 @@ func (f *directory) onDisk(dir string) error {
 // unchanged says whether the file at path still has the mark. The directory's
 // lock is held.
 func (f *directory) unchanged(path string, mark Mark) (bool, error) {
-	value, err := os.ReadFile(path)
+	value, err := readFile(path)
 	if gone(err) {
 		return false, nil
 	}
@@ -278,7 +278,7 @@ func (f *directory) Copy(ctx context.Context, from, to string) (bool, error) {
 	src, dst := f.path(from), f.path(to)
 	for i := range directoryTries {
 		if err = os.MkdirAll(filepath.Dir(dst), 0o700); err == nil {
-			err = os.Link(src, dst)
+			err = link(src, dst)
 		}
 		switch {
 		case err == nil:
@@ -320,7 +320,7 @@ func (f *directory) Delete(ctx context.Context, name string, how How) (bool, err
 			return false, err
 		}
 	}
-	err = os.Remove(path)
+	err = remove(path)
 	if err != nil && !gone(err) {
 		return false, err
 	}
@@ -434,7 +434,7 @@ func writeTemp(dir string, fill func(io.Writer) error) (string, error) {
 	var err error
 	for i := range directoryTries {
 		if err = os.MkdirAll(dir, 0o700); err == nil {
-			if file, err = os.CreateTemp(dir, tmpPrefix+"*"); err == nil {
+			if file, err = createTemp(dir); err == nil {
 				break
 			}
 		}

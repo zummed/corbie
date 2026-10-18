@@ -4,9 +4,11 @@
 package runner
 
 import (
+	"bytes"
 	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"maps"
@@ -20,6 +22,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/zummed/corbie/blob"
 	"github.com/zummed/corbie/identity"
 	"github.com/zummed/corbie/instance"
 	"github.com/zummed/corbie/machine"
@@ -524,17 +527,90 @@ func (r *Runner) answer(ctx context.Context, s Served, w *waiting, result *insta
 		return 0, add(ctx, s.Store, name, data)
 	}
 	size, err := send(result)
+	// An output too large to send is sent in blobs: each long text in it,
+	// and, if that is not enough, the whole of it.
+	for _, whole := range []bool{false, true} {
+		if err != nil || size == 0 {
+			break
+		}
+		if result, err = r.blobbed(ctx, s, job.Instance, result, whole); err == nil {
+			size, err = send(result)
+		}
+	}
 	if err == nil && size > 0 {
-		// A result too large to send is sent as an error that says so.
+		// What is left too large to send is sent as an error that says so.
 		_, err = send(&instance.Result{Job: job.Name, Attempt: job.Attempt, Status: machine.StatusError, Final: true, Used: result.Used,
-			Error: &machine.Error{Status: machine.StatusError,
-				Error: fmt.Sprintf("the job's result is %d bytes, too large to send; put large output in a blob", size)}})
+			Error: &machine.Error{Status: machine.StatusError, Error: fmt.Sprintf("the job's result is %d bytes, too large to send", size)}})
 	}
 	if err != nil {
 		return false, err
 	}
 	_, err = s.Store.Delete(ctx, w.name, store.Overwrite)
 	return true, err
+}
+
+// longText is the longest a text in an output too large to send stays
+// where it is; a longer one is stored as a blob.
+const longText = 64 << 10
+
+// blobbed gives a result with its output, or a failed job's output,
+// stored in blobs in the instance's record: each text in it longer than
+// longText, or with whole, all of it as one blob of JSON.
+func (r *Runner) blobbed(ctx context.Context, s Served, instanceID string, result *instance.Result, whole bool) (*instance.Result, error) {
+	write := func(typ string, contents []byte) (any, error) {
+		ref, err := blob.Write(ctx, s.Store, store.Blob(s.Controller.Name, instanceID, blob.NewName()), typ, blob.NewKey(), bytes.NewReader(contents))
+		return ref.Value(), err
+	}
+	var put func(v any) (any, error)
+	put = func(v any) (any, error) {
+		if whole {
+			contents, err := json.Marshal(v)
+			if err != nil {
+				return nil, err
+			}
+			return write("application/json", contents)
+		}
+		switch v := v.(type) {
+		case string:
+			if len(v) > longText {
+				return write("text/plain", []byte(v))
+			}
+		case map[string]any:
+			out := make(map[string]any, len(v))
+			for k, item := range v {
+				var err error
+				if out[k], err = put(item); err != nil {
+					return nil, err
+				}
+			}
+			return out, nil
+		case []any:
+			out := make([]any, len(v))
+			for i, item := range v {
+				var err error
+				if out[i], err = put(item); err != nil {
+					return nil, err
+				}
+			}
+			return out, nil
+		}
+		return v, nil
+	}
+	out := *result
+	var err error
+	if out.Output != nil {
+		if out.Output, err = put(out.Output); err != nil {
+			return nil, err
+		}
+	}
+	if out.Error != nil && out.Error.Output != nil {
+		failed := *out.Error
+		if failed.Output, err = put(failed.Output); err != nil {
+			return nil, err
+		}
+		out.Error = &failed
+	}
+	return &out, nil
 }
 
 // add writes a value under a name that is this job's alone, only-if-new. A

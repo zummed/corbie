@@ -86,12 +86,14 @@ What a script returns
 The returned value is the job's output. It is plain data, and so is a value
 sent with `emit`.
 
-  no value                 null
-  bytes                    a blob
-  a Date                   text, such as 2026-10-13T20:00:00Z
-  a function               the job fails with status `error`
-  a handle to a secret     the job fails with status `error`
-  an error not caught      the job fails with status `error`, and the error names the line
+  no value                        null
+  bytes                           a blob
+  a Date                          text, such as 2026-10-13T20:00:00Z
+  a function                      the job fails with status `error`
+  a handle to a secret            the job fails with status `error`
+  an error not caught             the job fails with status `error`, and the error names the line
+  an output too large to send     each text in it over 64 KiB a blob, whose items are its lines
+  one still too large             a blob of its JSON
 
 A blob is a large value, such as a file, a long text or an image. To a script
 it is an object with `type` and `size`, and the `blobs` plugin reads and makes

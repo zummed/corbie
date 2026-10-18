@@ -65,6 +65,16 @@ The detailed rules behind the [Agent overview](../agent.md). Area code: `agent`.
 
 **C-agent-06** A tool's job that reads an argument that is not a key of its shape's `properties` is refused when the definition is checked, whatever else the shape allows. The model is never told of that argument, so the value would always be missing. *Test:* `agent_tool_reading_unnamed_argument_is_refused`
 
+**R-agent-57** A tool entry may give a `list:` job in place of `does:` and `args:`. The job runs once, before the first turn, and returns the tools, each with a name, what it does and the shape of its arguments; the list is kept in the agent's record and is the same for every turn. The model is shown each tool under the entry's name and its own joined by `_`, and a call to one runs the entry's `job:` with `tool` the tool's own name.
+*Accept:* an agent's entry `files` has a list script that returns `read` and `write`. The first turn is offered `files_read` and `files_write`, with the descriptions and shapes the list gave. The model calls `files_write`; the entry's job is given `write` as `${tool}` and the arguments sent, and has the entry's permissions. The agent takes three turns, and the record shows one job named `files`, before the first turn. A second run started with the first one's conversation runs the list again.
+
+**R-agent-58** A list that fails fails the agent, and so does a list in which a tool has no name, a shape that is not a JSON Schema of an object, or a name the model would be shown that another tool has or that is longer than 64 characters. In that name, a character other than a letter, a digit, `_` or `-` is written `_`.
+*Accept:* an agent whose list script throws fails, with an error that names the entry, and takes no turn. Lists that give a tool with no name, a tool whose shape has `type: string`, and a tool `read` under an entry `blob`, beside the agent's own `blob_read`, each fail the agent, naming the tool. A list giving `issues.create` under `github` is shown as `github_issues_create`, and a call to it gives the job `issues.create` as `${tool}`.
+
+**C-agent-16** A listed tool's shape may not mark a blob, and a list with one that does fails the agent. A blob's reference holds its key, and the entry's job would send it to whoever wrote the list. *Test:* `agent_listed_shape_marking_a_blob_fails`
+
+**C-agent-17** The `job:` of an entry with a `list:` reads `args` only whole; one that reads a field of it is refused when the definition is checked. The fields are not known until the run, so the value could be missing every time. *Test:* `agent_listed_job_reads_args_whole`
+
 **C-agent-07** A tool may not take the name of a job the agent itself makes: `turn`, `preview` or one of the blob tools. The record names a job by what asked for it, and two askers under one name cannot be told apart. *Test:* `agent_tool_cannot_take_an_agents_own_job_name`
 
 ## Shapes
@@ -131,10 +141,10 @@ The detailed rules behind the [Agent overview](../agent.md). Area code: `agent`.
 
 Uses:
 
-- **Machines.** Values and expressions, jobs and their names, events, children, approval, failure and attempts, and limits. An agent adds `args` to what an expression in a tool's job reads.
+- **Machines.** Values and expressions, jobs and their names, events, children, approval, failure and attempts, and limits. An agent adds `args` to what an expression in a tool's job reads, and `tool` in the job of an entry with a list.
 - **Models.** A turn is a call to a model through the `llm` plugin: the conversation, the tools on offer and the shape wanted go in, every shape in full form; what the model said, the tools it asked for, why it stopped and the tokens used come back. Why it stopped is how a reply cut short is told from one that was finished. What a turn is permitted, the connection and the key, is written by the client when the definition is sent (R-model-15).
 - **Controller.** Takes the agent's steps, starts each turn and each tool as a job, and holds the calls that need approval for the ask.
-- **Runner.** Executes the jobs of turns, tools, the blob tools and previews.
+- **Runner.** Executes the jobs of turns, lists, tools, the blob tools and previews.
 - **Blobs.** A reference stands for a blob everywhere but in front of the model, where a handle stands for it; a large result is a blob in the agent's record, and a preview is in the turn that first shows its handle.
 - **Plugins.** The supplied turn script and the blob tools are libraries that come with Corbie.
 - **Client.** Fills in a shared file of tools when the definition is sent.

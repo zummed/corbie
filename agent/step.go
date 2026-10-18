@@ -6,6 +6,7 @@ import (
 	"maps"
 	"slices"
 	"strings"
+	"unicode"
 
 	"github.com/zummed/corbie/blob"
 	"github.com/zummed/corbie/machine"
@@ -42,6 +43,25 @@ type state struct {
 	Previews []*preview `json:"previews,omitzero"`
 	// Wrong says what was wrong with the last reply, if it did not fit.
 	Wrong string `json:"wrong,omitzero"`
+	// Lists are the jobs listing the tools of the entries that have a
+	// list, made before the first turn; each is named for its entry.
+	Lists []*listing `json:"lists,omitzero"`
+	// Listed are the tools the lists gave, by the name the model is shown.
+	Listed map[string]*listed `json:"listed,omitzero"`
+}
+
+// listing is the job that lists one entry's tools.
+type listing struct {
+	Entry string `json:"entry"`
+	Done  bool   `json:"done,omitzero"`
+}
+
+// listed is one tool a list gave, which its entry's job runs.
+type listed struct {
+	Entry string         `json:"entry"`
+	Name  string         `json:"name"` // as the list gave it
+	Does  string         `json:"does,omitzero"`
+	Args  map[string]any `json:"args"`
 }
 
 // preview is one job that looks at something before the model is shown it:
@@ -146,6 +166,22 @@ func (s *stepper) arrive(event machine.Event) (bool, error) {
 			return true, s.settled()
 		}
 	case s.st.Waiting == previewJob && (event.Name == machine.Done || event.Name == machine.Failed):
+		for _, l := range s.st.Lists {
+			if l.Entry != event.From || l.Done {
+				continue
+			}
+			l.Done = true
+			// A list that fails fails the agent, as a turn does.
+			if event.Name == machine.Failed {
+				s.fail(event, "tools."+l.Entry+".list")
+				return true, nil
+			}
+			if err := s.take(l.Entry, event.Data); err != nil {
+				s.end(&machine.Error{Status: machine.StatusError, Error: err.Error()})
+				return true, nil
+			}
+			return true, s.ready()
+		}
 		for _, p := range s.st.Previews {
 			if p.Job != event.From || p.Done {
 				continue
@@ -162,7 +198,7 @@ func (s *stepper) arrive(event machine.Event) (bool, error) {
 // agent is shown as what that agent replied: its conversation and its count
 // of tokens are in the record, and are not the caller's to read through.
 func (s *stepper) said(c *call, output any) any {
-	if tool := s.a.Tools[c.Tool]; tool == nil || !tool.Agent {
+	if tool, _ := s.tool(c.Tool); tool == nil || !tool.Agent {
 		return output
 	}
 	result, _ := output.(map[string]any)
@@ -235,6 +271,12 @@ func (s *stepper) ready() error {
 			return nil
 		}
 	}
+	for _, l := range s.st.Lists {
+		if !l.Done {
+			return nil
+		}
+	}
+	s.st.Lists = nil
 	if len(s.st.Calls) > 0 {
 		var results []any
 		for _, c := range s.st.Calls {
@@ -350,7 +392,118 @@ func (s *stepper) begin() error {
 	if prompt != nil {
 		s.st.Next = []any{map[string]any{"role": "user", "content": s.shown(prompt)}}
 	}
+	// The entries that list their tools list them once, now; the first
+	// turn waits for them as it waits for its previews.
+	for _, name := range sortedNames(s.a.Tools) {
+		tool := s.a.Tools[name]
+		if tool.List == nil {
+			continue
+		}
+		job, err := tool.List.Fill(s.eval, scope, "tools."+name+".list", name)
+		if err != nil {
+			return err
+		}
+		s.st.Lists = append(s.st.Lists, &listing{Entry: name})
+		s.request(machine.Request{Job: job})
+	}
 	return s.preview()
+}
+
+// take keeps the tools one entry's list gave, each under the entry's name
+// and its own, or says what is wrong with the list.
+func (s *stepper) take(entry string, data any) error {
+	place := "tools." + entry + ".list"
+	items, ok := data.([]any)
+	if !ok {
+		return fmt.Errorf("%s: the list gave no list of tools; it returns [{ name, does, args }, ...]", place)
+	}
+	for _, item := range items {
+		tool, _ := item.(map[string]any)
+		name, _ := tool["name"].(string)
+		if name == "" {
+			return fmt.Errorf("%s: a tool in the list has no name", place)
+		}
+		// Model services take a tool's name in letters, digits, _ and -.
+		shown := entry + "_" + strings.Map(func(r rune) rune {
+			if r == '_' || r == '-' || r < 128 && (unicode.IsLetter(r) || unicode.IsDigit(r)) {
+				return r
+			}
+			return '_'
+		}, name)
+		_, own := s.a.Tools[shown]
+		_, twice := s.st.Listed[shown]
+		does, _ := tool["does"].(string)
+		args, _ := tool["args"].(map[string]any)
+		if len(shown) > 64 {
+			return fmt.Errorf("%s: the tool %q would be shown to the model as %q, which is longer than 64 characters", place, name, shown)
+		}
+		if own || twice {
+			return fmt.Errorf("%s: the tool %q would be shown to the model as %q, which another tool has", place, name, shown)
+		}
+		if _, err := compiled(args); err != nil {
+			return fmt.Errorf("%s: the tool %q's args: %v", place, name, err)
+		}
+		// A blob's reference holds its key, and the entry's job would send
+		// it to whoever wrote the list.
+		if marksBlob(args) {
+			return fmt.Errorf("%s: the tool %q's args mark a blob, and a listed tool cannot take one", place, name)
+		}
+		if s.st.Listed == nil {
+			s.st.Listed = map[string]*listed{}
+		}
+		s.st.Listed[shown] = &listed{Entry: entry, Name: name, Does: does, Args: args}
+	}
+	return nil
+}
+
+// marksBlob says whether a shape marks a blob anywhere in it.
+func marksBlob(v any) bool {
+	switch v := v.(type) {
+	case map[string]any:
+		if v["format"] == "blob" {
+			return true
+		}
+		for _, item := range v {
+			if marksBlob(item) {
+				return true
+			}
+		}
+	case []any:
+		for _, item := range v {
+			if marksBlob(item) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// tool gives the tool the model knows by a name: one of the definition's
+// own, or one a list gave, which its entry's job runs. For a listed tool it
+// also gives the name the list gave, which the job reads as tool.
+func (s *stepper) tool(name string) (*Tool, string) {
+	if tool, ok := s.a.Tools[name]; ok && tool.List == nil {
+		return tool, ""
+	}
+	l, ok := s.st.Listed[name]
+	if !ok {
+		return nil, ""
+	}
+	entry := s.a.Tools[l.Entry]
+	return &Tool{Does: l.Does, Args: l.Args, Job: entry.Job, Agent: entry.Agent}, l.Name
+}
+
+// offered gives the names of the tools the model is offered.
+func (s *stepper) offered() []string {
+	var names []string
+	for name, tool := range s.a.Tools {
+		if tool.List == nil {
+			names = append(names, name)
+		}
+	}
+	names = append(names, slices.Collect(maps.Keys(s.st.Listed))...)
+	slices.Sort(names)
+	return names
 }
 
 // turn asks for the next turn: one call to the model, made by a job. At
@@ -375,10 +528,11 @@ func (s *stepper) turn() error {
 		return err
 	}
 	var tools []any
-	for _, name := range sortedNames(s.a.Tools) {
+	for _, name := range s.offered() {
 		// The model sees a tool's name, what it does and what arguments it
 		// takes; never how it is run or what it is permitted.
-		tools = append(tools, map[string]any{"name": name, "does": s.a.Tools[name].Does, "args": s.a.Tools[name].Args})
+		tool, _ := s.tool(name)
+		tools = append(tools, map[string]any{"name": name, "does": tool.Does, "args": tool.Args})
 	}
 	own := make([]any, len(s.a.Model.Own))
 	for i, tool := range s.a.Model.Own {
@@ -450,8 +604,8 @@ func (s *stepper) replied(data any) error {
 		one.ID, _ = made["id"].(string)
 		one.Tool, _ = made["name"].(string)
 		s.st.Calls = append(s.st.Calls, one)
-		tool, ok := s.a.Tools[one.Tool]
-		if !ok {
+		tool, listedAs := s.tool(one.Tool)
+		if tool == nil {
 			one.Done, one.Error = true, fmt.Sprintf("there is no tool named %q", one.Tool)
 			continue
 		}
@@ -468,7 +622,13 @@ func (s *stepper) replied(data any) error {
 			one.Job = fmt.Sprintf("%s.%d", one.Tool, seen[one.Tool]-1)
 		}
 		scope["args"] = args
-		job, err := tool.Job.Fill(s.eval, scope, "tools."+one.Tool+".job", one.Job)
+		place := "tools." + one.Tool + ".job"
+		delete(scope, "tool")
+		if listedAs != "" {
+			scope["tool"] = listedAs
+			place = "tools." + s.st.Listed[one.Tool].Entry + ".job"
+		}
+		job, err := tool.Job.Fill(s.eval, scope, place, one.Job)
 		if err != nil {
 			return err
 		}

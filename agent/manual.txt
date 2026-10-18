@@ -97,6 +97,8 @@ Tools
   args    the shape of its arguments: { name: type }, or JSON Schema
   job     a script or a machine, as in `corbie manual definitions`; it reads
           `input`, the agent's input, and `args`, the model's arguments
+  list    a job that returns tools, [{ name, does, args }], in place of
+          `does:` and `args:`; `job:` runs each, and reads `tool`, its name
 
 A type is string, number, boolean, list, map, blob or any. A `?` after it
 marks a value that may be left out, and between `{ }` YAML needs it in quotes:
@@ -116,6 +118,20 @@ within its own shape.
   reply, and the sub-agent's conversation stays in its own record.
 - A tool called twice in one turn has jobs named `shelf` and `shelf.1`.
 - No tool is named turn, preview, blob_read, blob_search or blob_code.
+
+An entry with `list:` gives tools that come from elsewhere, such as the tools
+of an MCP server, which change without the definition changing.
+
+- The list runs once, before the first turn, as a job named for the entry.
+- The model gets each tool as the entry's name, `_` and the tool's name:
+  `github` and `create_issue` give `github_create_issue`. Other characters
+  than letters, digits, `_` and `-` become `_`.
+- `job:` reads `${args}` only whole, and `${tool}` is the tool's name as the
+  list gave it.
+- Every listed tool has the permissions of `job:`.
+- The agent fails if the list fails, or gives a tool with no name, args that
+  are not JSON Schema with type: object, args that mark a blob, or a name
+  that is longer than 64 characters or that another tool has.
 
 Blobs
 -----

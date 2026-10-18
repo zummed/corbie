@@ -64,6 +64,9 @@ type Tool struct {
 	// Agent says the tool's job is an agent: the model is shown what that
 	// agent replied, and not the conversation it had.
 	Agent bool `json:"agent,omitzero"`
+	// List is a job that lists tools, each with what it does and the shape
+	// of its arguments, in place of Does and Args: Job runs each of them.
+	List *machine.JobSpec `json:"list,omitzero"`
 }
 
 // DefaultTurns is how many turns an agent has unless it says otherwise.
@@ -260,6 +263,8 @@ func (agentType) Shape() *machine.Shape {
 		{Name: "does", Kind: machine.KindText, Like: "Give back every file on one shelf", Does: "what it does, for the model to choose by"},
 		{Name: "args", Kind: machine.KindTypes, Like: "{ shelf: string }", Does: "the shape of its arguments: each name with the type of its value, or a JSON Schema with type: object"},
 		{Name: "job", Kind: machine.KindJob, Like: "{ script: ./shelf.js }", Does: "the job that is started when the model picks it; it reads input and args"},
+		{Name: "list", Kind: machine.KindJob, Like: "{ script: ./github.js }",
+			Does: "a job that lists tools, in place of does and args; job runs each of them, and reads tool, the name the list gave"},
 	}}
 	return &machine.Shape{Name: "agent", What: "an agent", Fields: []machine.Field{
 		{Name: "model", Kind: machine.KindFields, Of: model, Like: "{ name: claude-sonnet-5-5, secret: ANTHROPIC_KEY }", Does: "the model its turns are sent to"},
@@ -320,8 +325,12 @@ func (agentType) Fill(p *machine.Parser, f *machine.Fields) any {
 			continue
 		}
 		tool := &Tool{Does: tf.Text("does")}
-		args, _ := tf.Map("args")
-		tool.Args = filled(p, place+".args", args)
+		if list, ok := tf.Value("list"); ok {
+			tool.List = p.Job(place+".list", list)
+		}
+		if args, _ := tf.Map("args"); args != nil || tool.List == nil {
+			tool.Args = filled(p, place+".args", args)
+		}
 		if job, ok := tf.Value("job"); ok {
 			tool.Job = p.Job(place+".job", job)
 			tool.Agent = tool.Job != nil && p.MachineType(tool.Job.Machine) == "agent"
@@ -402,6 +411,19 @@ func (agentType) Check(c *machine.Checker, def *machine.Definition) {
 		}
 		if tool == nil || tool.Job == nil {
 			c.Problem(place, "a tool needs a job")
+			continue
+		}
+		if tool.List != nil {
+			if tool.Does != "" || tool.Args != nil {
+				c.Problem(place, "a tool with list: is given what each tool does and its args by the list, and has no does: or args: of its own")
+			}
+			c.Job(place+".list", tool.List, "input")
+			c.Job(place+".job", tool.Job, "args", "input", "tool")
+			// The arguments' fields are not known until the list is made, so
+			// one read here could be missing every time.
+			for _, read := range machine.ReadsIn(tool.Job.Input, "args") {
+				c.Problem(place+".job", "it reads \"args.%s\"; with list:, the job reads ${args} only whole, since its fields are not known until the run", read.Name)
+			}
 			continue
 		}
 		if tool.Does == "" {

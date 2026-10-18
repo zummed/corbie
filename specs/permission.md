@@ -92,6 +92,7 @@ A job with no permissions still has its input and its result, plain computation,
 A script cannot reach outside itself except through the six kinds above, and those are checked. Beyond that, these are true and Corbie says so.
 
 - A program a job starts does its own reading, writing and connecting, as the runner's user. The permissions govern the start and nothing after. A runner's owner can put a box around started programs (see Runner); Corbie does not build one.
+- An agent's listed tools are described by whoever wrote the list, and the model reads that text as it reads a tool's result.
 - A job that may read the runner's own files can read the runner's key, and with it every job sent to that runner.
 - A script allowed to reach a secret's destination can learn the secret from the other side.
 - A tool that a model's own program runs for itself, where a definition has switched one on, is not checked by Corbie: it has everything its group allows, and only its use is noted (see Models).

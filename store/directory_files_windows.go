@@ -78,6 +78,10 @@ func createTemp(dir string) (*os.File, error) {
 	return file, err
 }
 
+func mkdirAll(path string) error {
+	return whileHeld(func() error { return os.MkdirAll(path, 0o700) })
+}
+
 func link(from, to string) error {
 	return whileHeld(func() error { return os.Link(from, to) })
 }

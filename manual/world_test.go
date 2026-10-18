@@ -534,7 +534,7 @@ func (w *world) anthropic(rw http.ResponseWriter, r *http.Request) {
 		says("It holds " + strings.Join(results, " and ") + ".")
 	case picture != "":
 		says("A picture, named " + picture + ".")
-	case strings.Contains(sent.System, "as JSON only, with these names: greeting (string)."):
+	case strings.Contains(sent.System, `as JSON only, fitting this JSON Schema: {"properties":{"greeting":{"type":"string"}},"type":"object"}`):
 		says(fmt.Sprintf(`{"greeting": %q}`, modelSays))
 	default:
 		says(modelSays)

@@ -286,6 +286,98 @@ func TestShapeTypeIsAWord(t *testing.T) {
 	agentRefused(t, agentDef("http://127.0.0.1:1", "reply: { answer: text }"), `"answer": "text" is not a type`)
 }
 
+// A shape is JSON Schema: the short form is filled out into the full one,
+// the model is shown the full form as written, and what it sends is
+// checked against it.
+func TestShapeIsJSONSchema(t *testing.T) {
+	short, err := machineParse(agentDef("http://127.0.0.1:1", ""), scripts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	written, err := machineParse(strings.Replace(agentDef("http://127.0.0.1:1", ""), "args: { n: number }",
+		"args: { type: object, properties: { n: { type: number } }, required: [n], additionalProperties: false }", 1), scripts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if a, b := jsonOf(short.Definition), jsonOf(written.Definition); a != b {
+		t.Fatalf("the short form and the full form were stored differently:\n%s\n%s", a, b)
+	}
+
+	m := newModel(t, calls("c1", "file", `{"labels": ["urgent"], "assign": {"user": "sam"}}`), says("done"))
+	l := local(t, "all")
+	def := strings.Replace(agentDef(m.URL, ""), "tools:\n", `tools:
+		  file:
+		    does: File an issue
+		    args:
+		      type: object
+		      properties:
+		        labels: { type: array, items: { type: string, enum: [bug, docs] } }
+		        assign: { type: object, properties: { user: { type: string } } }
+		    job: { script: ./add.js, input: { n: 1 } }
+`, 1)
+	r := runAgent(t, l, def, map[string]string{"add.js": `throw new Error("the tool must not run")`})
+	if r.Status != "done" {
+		t.Fatalf("the agent ended %s: %s", r.Status, r.Error)
+	}
+	if offered := jsonOf(m.sent[0]["tools"]); !strings.Contains(offered, `"enum":["bug","docs"]`) || !strings.Contains(offered, `"assign":{"properties":{"user":{"type":"string"}},"type":"object"}`) {
+		t.Errorf("the tool was offered as %s", offered)
+	}
+	if shown := lastShown(m.sent[1]); !strings.Contains(shown, "the arguments do not fit the tool: at /labels/0") || strings.Contains(shown, "must not run") {
+		t.Errorf("a label outside the enum was shown as %s", shown)
+	}
+
+	// A shape is 2020-12 unless its $schema names another dialect: a list
+	// of items is draft-07's way of writing them, and not 2020-12's.
+	listed := `args: { type: object, properties: { n: { type: array, items: [ { type: number } ] } } }`
+	agentRefused(t, strings.Replace(agentDef("http://127.0.0.1:1", ""), "args: { n: number }", listed, 1), "it is not JSON Schema")
+	if _, err := machineParse(strings.Replace(agentDef("http://127.0.0.1:1", ""), "args: { n: number }",
+		strings.Replace(listed, "{ type: object", `{ $schema: "http://json-schema.org/draft-07/schema#", type: object`, 1), 1), scripts); err != nil {
+		t.Fatalf("a shape that names draft-07 was not read by it: %v", err)
+	}
+}
+
+// format: blob marks a blob anywhere in a shape: the tool's job is given
+// the blob's reference wherever the model gave its name.
+func TestShapeMarksABlobAtAnyDepth(t *testing.T) {
+	m := newModel(t, calls("c1", "make", `{"text": "page one"}`), calls("c2", "make", `{"text": "page two"}`),
+		calls("c3", "bind", `{"pages": [{"scan": "blob1"}, {"scan": "blob2"}]}`), says("done"))
+	l := local(t, "all")
+	def := strings.Replace(agentDef(m.URL, ""), "tools:\n", `tools:
+		  make:
+		    does: Make a file
+		    args: { text: string }
+		    job: { script: ./make.js, input: { text: "${args.text}" } }
+		  bind:
+		    does: Bind pages into a book
+		    args:
+		      type: object
+		      properties:
+		        pages: { type: array, items: { type: object, properties: { scan: { type: string, format: blob } } } }
+		    job: { script: ./bind.js, input: { pages: "${args.pages}" } }
+`, 1)
+	r := runAgent(t, l, def, map[string]string{"add.js": scripts["add.js"],
+		"make.js": `return { file: blobs.make(input.text) }`,
+		"bind.js": `return { text: input.pages.map(p => blobs.read(p.scan)).join(", ") }`})
+	if r.Status != "done" {
+		t.Fatalf("the agent ended %s: %s", r.Status, r.Error)
+	}
+	if shown := lastShown(m.sent[3]); !strings.Contains(shown, "page one, page two") {
+		t.Errorf("the tool was not given the blobs: %s", shown)
+	}
+}
+
+func Test_agent_shape_ref_outside_the_shape_is_refused(t *testing.T) {
+	for _, ref := range []string{"other.json", "file:///etc/hostname", "https://schemas.example/user.json"} {
+		agentRefused(t, strings.Replace(agentDef("http://127.0.0.1:1", ""), "args: { n: number }",
+			`args: { type: object, properties: { n: { $ref: "`+ref+`" } } }`, 1),
+			"a $ref resolves only within its own shape")
+	}
+	if _, err := machineParse(strings.Replace(agentDef("http://127.0.0.1:1", ""), "args: { n: number }",
+		`args: { type: object, $defs: { count: { type: number } }, properties: { n: { $ref: "#/$defs/count" } } }`, 1), scripts); err != nil {
+		t.Fatalf("a $ref within the shape was refused: %v", err)
+	}
+}
+
 func Test_agent_tool_reading_unnamed_argument_is_refused(t *testing.T) {
 	agentRefused(t, strings.Replace(agentDef("http://127.0.0.1:1", ""), `input: { n: "${args.n}" }`, `input: { n: "${args.other}" }`, 1),
 		`reads "args.other", which the tool's args do not name`)

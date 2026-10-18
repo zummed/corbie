@@ -505,7 +505,7 @@ func (s *stepper) finish(text string) error {
 		if err != nil {
 			s.st.Wrong = err.Error()
 			s.st.Next = []any{map[string]any{"role": "user", "content": fmt.Sprintf(
-				"(your reply does not fit what is wanted: %v. Reply with JSON only, with these names: %s)", err, shapeText(s.a.Reply))}}
+				"(your reply does not fit what is wanted: %v. Reply with JSON only, fitting this JSON Schema: %s)", err, shapeText(s.a.Reply))}}
 			return s.turn()
 		}
 		reply = data
@@ -565,68 +565,31 @@ func shaped(text string) (any, error) {
 }
 
 func shapeText(shape map[string]any) string {
-	var parts []string
-	for _, name := range sortedNames(shape) {
-		parts = append(parts, fmt.Sprintf("%s (%v)", name, shape[name]))
-	}
-	return strings.Join(parts, ", ")
+	text, _ := json.Marshal(shape, json.Deterministic(true))
+	return string(text)
 }
 
 // fit checks data against a shape and gives it with each handle's name,
-// where the shape asks for a blob, turned into the blob's reference. A
-// name is turned into a reference nowhere else: ordinary text from a model
-// may happen to contain one.
+// where the shape marks a blob, turned into the blob's reference. A name
+// is turned into a reference nowhere else: ordinary text from a model may
+// happen to contain one.
 func (s *stepper) fit(shape map[string]any, data any) (map[string]any, error) {
-	given, ok := data.(map[string]any)
-	if !ok && data != nil {
-		return nil, fmt.Errorf("it should be a map of named values")
+	if data == nil {
+		data = map[string]any{}
 	}
-	out := map[string]any{}
-	for name, value := range given {
-		if _, named := shape[name]; !named {
-			return nil, fmt.Errorf("%q is not one of its names", name)
-		}
-		out[name] = value
+	schema, err := compiled(shape)
+	if err != nil {
+		return nil, err
 	}
-	for _, name := range sortedNames(shape) {
-		want, _ := shape[name].(string)
-		optional := strings.HasSuffix(want, "?")
-		want = strings.TrimSuffix(want, "?")
-		value, has := out[name]
-		if !has || value == nil {
-			if !optional {
-				return nil, fmt.Errorf("%q is missing", name)
-			}
-			continue
-		}
-		fits := true
-		switch want {
-		case "string":
-			_, fits = value.(string)
-		case "number":
-			_, fits = value.(float64)
-		case "boolean":
-			_, fits = value.(bool)
-		case "list":
-			_, fits = value.([]any)
-		case "map":
-			_, fits = value.(map[string]any)
-		case "blob":
-			handle, _ := value.(string)
-			if m, isMap := value.(map[string]any); isMap {
-				handle, _ = m["blob"].(string)
-			}
-			ref, known := s.st.Handles[handle]
-			if !known {
-				return nil, fmt.Errorf("%q should name a blob the conversation has shown, and %v is not one", name, value)
-			}
-			out[name] = ref
-		}
-		if !fits {
-			return nil, fmt.Errorf("%q should be a %s", name, want)
-		}
+	if err := schema.Validate(data); err != nil {
+		return nil, wrong(err)
 	}
-	return out, nil
+	out, err := s.blobs(shape, shape, data, 0)
+	if err != nil {
+		return nil, err
+	}
+	given, _ := out.(map[string]any)
+	return given, nil
 }
 
 // shown gives a value as the model is shown it: each blob is a handle, a

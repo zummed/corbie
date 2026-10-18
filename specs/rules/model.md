@@ -10,6 +10,9 @@ The detailed rules behind the [Models overview](../model.md). Requirements are `
 **R-model-02** The call gives back what the model said, the tools it asked for, why it stopped, and how many tokens were used.
 *Accept:* the stand-in answers with a sentence and a request for one tool. The script's result holds the sentence, the tool's name and arguments, the reason the model stopped, and the tokens in and out.
 
+**R-model-23** `chat` takes a tool's arguments and the shape of answer only as JSON Schema, and refuses any other form as bad input. A field marked `format: blob` with no `description` is described to the model as the name of a blob as it was shown.
+*Accept:* a script calls `chat` with a tool whose arguments are `{ shelf: string }`: the call is refused as bad input. With the same arguments as a JSON Schema whose `cover` is marked `format: blob`, the stand-in receives `cover` described as a blob's name; with a `description` of its own, it receives that one.
+
 **R-model-03** The model's text is emitted as it arrives, a few pieces at a time, so a watcher sees a reply being written.
 *Accept:* the stand-in sends a reply in two hundred pieces over ten seconds. A watcher of the run's record sees emit entries holding the reply's text before the call has returned, the pieces put together in order are the whole reply, and the record gained far fewer than two hundred entries for them.
 

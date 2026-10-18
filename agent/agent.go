@@ -28,7 +28,7 @@ type Agent struct {
 	// Turns is how many turns the agent has; twenty if it says nothing.
 	Turns int `json:"turns,omitzero"`
 	// Reply is the shape of the reply in the agent's result, where it is
-	// data and not text: each name with the type of its value.
+	// data and not text: a JSON Schema of an object.
 	Reply map[string]any `json:"reply,omitzero"`
 	// Conversation is a conversation so far, to carry on from.
 	Conversation any `json:"conversation,omitzero"`
@@ -56,7 +56,7 @@ type Model struct {
 }
 
 // Tool is a named job a model may pick, with what it does and the shape of
-// its arguments.
+// its arguments, a JSON Schema of an object.
 type Tool struct {
 	Does string           `json:"does"`
 	Args map[string]any   `json:"args,omitzero"`
@@ -258,7 +258,7 @@ func (agentType) Shape() *machine.Shape {
 	}}
 	tool := &machine.Shape{Name: "tool", What: "a tool", Fields: []machine.Field{
 		{Name: "does", Kind: machine.KindText, Like: "Give back every file on one shelf", Does: "what it does, for the model to choose by"},
-		{Name: "args", Kind: machine.KindTypes, Like: "{ shelf: string }", Does: "the shape of its arguments: each name with the type of its value"},
+		{Name: "args", Kind: machine.KindTypes, Like: "{ shelf: string }", Does: "the shape of its arguments: each name with the type of its value, or a JSON Schema with type: object"},
 		{Name: "job", Kind: machine.KindJob, Like: "{ script: ./shelf.js }", Does: "the job that is started when the model picks it; it reads input and args"},
 	}}
 	return &machine.Shape{Name: "agent", What: "an agent", Fields: []machine.Field{
@@ -267,7 +267,7 @@ func (agentType) Shape() *machine.Shape {
 		{Name: "prompt", Kind: machine.KindValue, Like: "${input.question}", Does: "what the agent is asked; an expression of its input"},
 		{Name: "tools", Kind: machine.KindNamed, Of: tool, Does: "the tools the model may pick, each a named job"},
 		{Name: "tools_file", Kind: machine.KindList, Like: "[./tools.yaml]", Does: "a file of tools shared with other agents, or a list of them"},
-		{Name: "reply", Kind: machine.KindTypes, Like: "{ outcome: string }", Does: "the shape of its reply where it is data: each name with the type of its value"},
+		{Name: "reply", Kind: machine.KindTypes, Like: "{ outcome: string }", Does: "the shape of its reply where it is data: each name with the type of its value, or a JSON Schema with type: object"},
 		{Name: "conversation", Kind: machine.KindValue, Like: "${input.conversation}",
 			Does: "a conversation to carry on from: the conversation of an earlier agent's result, given whole"},
 		{Name: "turn", Kind: machine.KindJob, Like: "./turn.js", Does: "a script of its own to make each turn"},
@@ -285,7 +285,9 @@ func (agentType) Fill(p *machine.Parser, f *machine.Fields) any {
 	}
 	a.Prompt, _ = f.Value("prompt")
 	a.Conversation, _ = f.Value("conversation")
-	a.Reply, _ = f.Map("reply")
+	if reply, _ := f.Map("reply"); reply != nil {
+		a.Reply = filled(p, "reply", reply)
+	}
 	tools, order := f.Map("tools")
 	// Files of tools shared with other agents are filled in here. A tool
 	// of the definition's own stands before one a file gives the same name.
@@ -318,7 +320,8 @@ func (agentType) Fill(p *machine.Parser, f *machine.Fields) any {
 			continue
 		}
 		tool := &Tool{Does: tf.Text("does")}
-		tool.Args, _ = tf.Map("args")
+		args, _ := tf.Map("args")
+		tool.Args = filled(p, place+".args", args)
 		if job, ok := tf.Value("job"); ok {
 			tool.Job = p.Job(place+".job", job)
 			tool.Agent = tool.Job != nil && p.MachineType(tool.Job.Machine) == "agent"
@@ -335,7 +338,7 @@ func (agentType) Fill(p *machine.Parser, f *machine.Fields) any {
 			continue
 		}
 		p.Builtin("corbie:"+name+".js", tool.source)
-		a.Tools[name] = &Tool{Does: tool.does, Args: tool.args,
+		a.Tools[name] = &Tool{Does: tool.does, Args: filled(p, "tools."+name+".args", tool.args),
 			Job: &machine.JobSpec{Script: "corbie:" + name + ".js", Input: tool.input, Alone: true}}
 	}
 	// The job that makes a turn: Corbie's own script, or one the
@@ -355,23 +358,15 @@ func (agentType) Fill(p *machine.Parser, f *machine.Fields) any {
 	return a
 }
 
-// types are the types a tool's argument, or a part of an agent's output,
-// may have.
-var types = []string{"string", "number", "boolean", "list", "map", "blob", "any"}
-
-// shapeProblem says what is wrong with a shape: each name with the type of
-// its value, a ? after the type for one that may be left out.
-func shapeProblem(shape map[string]any) error {
-	for name, t := range shape {
-		text, ok := t.(string)
-		switch {
-		case !ok:
-			return fmt.Errorf("%q: a type is written as a word (the types are %s; add ? for one that may be left out)", name, strings.Join(types, ", "))
-		case !slices.Contains(types, strings.TrimSuffix(text, "?")):
-			return fmt.Errorf("%q: %q is not a type (the types are %s; add ? for one that may be left out)", name, text, strings.Join(types, ", "))
-		}
+// filled gives a shape in full form, reporting a short form it cannot fill
+// out at its place.
+func filled(p *machine.Parser, place string, shape map[string]any) map[string]any {
+	out, err := full(shape)
+	if err != nil {
+		p.Problem(place, "%v", err)
+		return shape
 	}
-	return nil
+	return out
 }
 
 // Check reports what is wrong with an agent in full form.
@@ -390,8 +385,10 @@ func (agentType) Check(c *machine.Checker, def *machine.Definition) {
 	if a.Turns < 0 {
 		c.Problem("limits.turns", "an agent cannot have fewer turns than none")
 	}
-	if err := shapeProblem(a.Reply); err != nil {
-		c.Problem("reply", "%v", err)
+	if a.Reply != nil {
+		if _, err := compiled(a.Reply); err != nil {
+			c.Problem("reply", "%v", err)
+		}
 	}
 	if a.Turn == nil {
 		c.Problem("turn", "an agent needs the job that makes its turns")
@@ -410,14 +407,16 @@ func (agentType) Check(c *machine.Checker, def *machine.Definition) {
 		if tool.Does == "" {
 			c.Problem(place+".does", "a tool says what it does, for the model to choose by")
 		}
-		if err := shapeProblem(tool.Args); err != nil {
+		if _, err := compiled(tool.Args); err != nil {
 			c.Problem(place+".args", "%v", err)
 		}
 		c.Job(place+".job", tool.Job, "args", "input")
 		// A job that reads an argument the shape does not name would always
-		// find it missing: the model is never told of it.
+		// find it missing: the model is never told of it, whatever else the
+		// shape allows.
+		properties, _ := tool.Args["properties"].(map[string]any)
 		for _, read := range machine.ReadsIn(tool.Job.Input, "args") {
-			if _, named := tool.Args[read.Name]; !named {
+			if _, named := properties[read.Name]; !named {
 				c.Problem(place+".job", "it reads \"args.%s\", which the tool's args do not name", read.Name)
 			}
 		}

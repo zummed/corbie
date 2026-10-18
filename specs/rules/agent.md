@@ -63,9 +63,19 @@ The detailed rules behind the [Agent overview](../agent.md). Area code: `agent`.
 **R-agent-34** A call to a tool the agent does not have, or with arguments that do not fit the tool's shape, runs nothing and goes back to the model as an error.
 *Accept:* a scripted model calls `shelf` with a number for the shelf and calls a tool named `burn`; no job is sent for either, and the next turn is shown an error for each.
 
-**C-agent-06** A tool's job that reads an argument the tool's shape does not name is refused when the definition is checked. The model is never told of that argument, so the value would always be missing. *Test:* `agent_tool_reading_unnamed_argument_is_refused`
+**C-agent-06** A tool's job that reads an argument that is not a key of its shape's `properties` is refused when the definition is checked, whatever else the shape allows. The model is never told of that argument, so the value would always be missing. *Test:* `agent_tool_reading_unnamed_argument_is_refused`
 
 **C-agent-07** A tool may not take the name of a job the agent itself makes: `turn`, `preview` or one of the blob tools. The record names a job by what asked for it, and two askers under one name cannot be told apart. *Test:* `agent_tool_cannot_take_an_agents_own_job_name`
+
+## Shapes
+
+**R-agent-55** A tool's `args:` and an agent's `reply:` are each a JSON Schema of an object, 2020-12 unless its `$schema` names another dialect. A shape with `type: object` is the full form and any other is the short form, which the client fills out when the definition is sent; the model is shown the full form as it is written, and what the model sends is checked against it.
+*Accept:* an agent with `args: { shelf: string, from: number? }` and the same agent with that shape written in full give the same stored definition. A tool whose shape gives `labels` an `enum` and `assign` properties of its own is offered to the model with both, as written; the model calls it with a label outside the `enum`, no job is sent, and the next turn is shown an error naming `labels`. A shape with `$schema` naming draft-07 is checked by draft-07.
+
+**R-agent-56** `format: blob` marks a blob at any depth of a shape.
+*Accept:* a tool's shape takes `pages`, a list of objects each with a `scan` marked `format: blob`; the model calls it with two handles' names, and the tool's job is given a reference in each `scan`.
+
+**C-agent-15** A `$ref` in a shape resolves only within that shape; one that names a file, an address or another document is refused when the definition is checked. The check runs on the client and again on the controller, and a `$ref` followed outward would make either one read a file or connect to an address that a definition chose. *Test:* `agent_shape_ref_outside_the_shape_is_refused`
 
 ## Limits
 
@@ -122,7 +132,7 @@ The detailed rules behind the [Agent overview](../agent.md). Area code: `agent`.
 Uses:
 
 - **Machines.** Values and expressions, jobs and their names, events, children, approval, failure and attempts, and limits. An agent adds `args` to what an expression in a tool's job reads.
-- **Models.** A turn is a call to a model through the `llm` plugin: the conversation, the tools on offer and the shape wanted go in; what the model said, the tools it asked for, why it stopped and the tokens used come back. Why it stopped is how a reply cut short is told from one that was finished. What a turn is permitted, the connection and the key, is written by the client when the definition is sent (R-model-15).
+- **Models.** A turn is a call to a model through the `llm` plugin: the conversation, the tools on offer and the shape wanted go in, every shape in full form; what the model said, the tools it asked for, why it stopped and the tokens used come back. Why it stopped is how a reply cut short is told from one that was finished. What a turn is permitted, the connection and the key, is written by the client when the definition is sent (R-model-15).
 - **Controller.** Takes the agent's steps, starts each turn and each tool as a job, and holds the calls that need approval for the ask.
 - **Runner.** Executes the jobs of turns, tools, the blob tools and previews.
 - **Blobs.** A reference stands for a blob everywhere but in front of the model, where a handle stands for it; a large result is a blob in the agent's record, and a preview is in the turn that first shows its handle.

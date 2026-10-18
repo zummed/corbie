@@ -113,7 +113,8 @@ const (
 	// mapping of names, each of which holds a thing of one shape.
 	KindFields Kind = "fields"
 	KindNamed  Kind = "named"
-	// KindTypes is a mapping of names, each with the type of its value.
+	// KindTypes is a shape: a JSON Schema of an object, or the short form,
+	// a mapping of names, each with the type of its value.
 	KindTypes Kind = "types"
 	// KindJob is a job: the path of a script, or a mapping written as a
 	// job is.

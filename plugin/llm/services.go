@@ -527,9 +527,10 @@ Options:
   key             a handle to the secret that holds the service's key
   system          the system prompt
   tools           the tools the model may call: [{ name, does, args }], with
-                  args as { name: type }
-  shape           the fields of a reply that is data, as { name: type }; text
-                  is then JSON
+                  args a JSON Schema with type: "object"
+  shape           a reply that is data, as a JSON Schema with type: "object";
+                  text is then JSON. A field with format: "blob" and no
+                  description is described as a blob's name
   effort          low, medium or high; claude-code also takes xhigh and max
   reply_tokens    the most tokens a reply may hold
   timeout         seconds, or text such as "5m"; default 3m
@@ -604,7 +605,7 @@ This script asks for a reply as data.
 
     const reply = llm.chat([{ role: "user", content: "Say hello." }], {
       model: "claude-sonnet-5-5", key: secrets.get("ANTHROPIC_KEY"),
-      shape: { greeting: "string" },
+      shape: { type: "object", properties: { greeting: { type: "string" } } },
     })
     return JSON.parse(reply.text)       // gives { greeting: "Hello." }
 

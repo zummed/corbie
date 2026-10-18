@@ -3,6 +3,7 @@ package llm
 import (
 	"context"
 	"encoding/json/v2"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -250,14 +251,15 @@ func TestConversationToolsAndShapeReachEachService(t *testing.T) {
 		map[string]any{"role": "user", "content": "Which book is on the top shelf?"},
 		map[string]any{"role": "assistant", "content": "I will look."},
 	}
-	const wanted = "Give your final reply as JSON only, with these names: " +
-		"cover (the name of a blob, as it was shown, may be left out), pages (number), title (string)."
+	shape := map[string]any{"type": "object", "required": []any{"title", "pages"}, "properties": map[string]any{
+		"title": map[string]any{"type": "string"}, "pages": map[string]any{"type": "number"}, "cover": map[string]any{"type": "string", "format": "blob"}}}
+	const wanted = `Give your final reply as JSON only, fitting this JSON Schema: {"properties":{"cover":{"description":"the name of a blob, as it was shown: blob1, blob2, …","format":"blob","type":"string"},"pages":{"type":"number"},"title":{"type":"string"}},"required":["title","pages"],"type":"object"}`
 	for service, where := range map[string]string{"anthropic": "system", "openai": "instructions", "openai-chat": "messages"} {
 		s := newStandIn(t, arriving3[service]...)
 		ask := func(more plugin.Options) map[string]any {
 			t.Helper()
 			opt := plugin.Options{"service": service, "model": "test-model", "address": s.URL, "key": "sk-test",
-				"tools": []any{map[string]any{"name": "look", "does": "Look at a shelf", "args": map[string]any{"at": "string"}}}}
+				"tools": []any{map[string]any{"name": "look", "does": "Look at a shelf", "args": map[string]any{"type": "object", "properties": map[string]any{"at": map[string]any{"type": "string"}}}}}}
 			for name, value := range more {
 				opt[name] = value
 			}
@@ -267,26 +269,57 @@ func TestConversationToolsAndShapeReachEachService(t *testing.T) {
 			return s.sent[len(s.sent)-1]
 		}
 		sent := ask(plugin.Options{"system": "You keep a library.",
-			"shape": map[string]any{"title": "string", "pages": "number", "cover": "blob?"}})
+			"shape": shape})
 		all := text(sent)
 		if !strings.Contains(all, "Which book is on the top shelf?") || !strings.Contains(all, "I will look.") || !strings.Contains(all, `"name":"look"`) {
 			t.Errorf("%s was not sent the conversation and the tool: %s", service, all)
 		}
-		system := text(sent[where])
-		if where == "messages" {
-			system = text(field(list(sent[where])[0], "content"))
+		systemOf := func(sent map[string]any) string {
+			if where == "messages" {
+				return text(field(list(sent[where])[0], "content"))
+			}
+			return text(sent[where])
 		}
-		if system != "You keep a library.\n\n"+wanted {
+		if system := systemOf(sent); system != "You keep a library.\n\n"+wanted {
 			t.Errorf("%s was told, as its system text: %q", service, system)
 		}
 		// With no system text, the shape is all of it; with no shape,
 		// nothing is added.
-		if alone := text(ask(plugin.Options{"shape": map[string]any{"title": "string", "pages": "number", "cover": "blob?"}})); !strings.Contains(alone, `"`+wanted+`"`) {
-			t.Errorf("%s, given a shape and no system text, was sent %s", service, alone)
+		if alone := systemOf(ask(plugin.Options{"shape": shape})); alone != wanted {
+			t.Errorf("%s, given a shape and no system text, was told %s", service, alone)
 		}
 		if none := text(ask(plugin.Options{"system": "You keep a library."})); strings.Contains(none, "JSON only") {
 			t.Errorf("%s, given no shape, was sent %s", service, none)
 		}
+	}
+}
+
+// A tool's arguments and the shape of answer are taken only as JSON
+// Schema. A blob that says nothing of itself is described as the name the
+// model was shown, and one that says something keeps what it says.
+func TestChatTakesShapesAsJSONSchemaOnly(t *testing.T) {
+	s := newStandIn(t, arriving3["anthropic"]...)
+	short := []any{map[string]any{"name": "look", "does": "Look at a shelf", "args": map[string]any{"shelf": "string"}}}
+	var refused *plugin.Error
+	if _, err := s.ask(t, "anthropic", plugin.Options{"tools": short}); !errors.As(err, &refused) || refused.Code != plugin.BadInput {
+		t.Fatalf("a tool's arguments in the short form gave: %v", err)
+	}
+	if _, err := s.ask(t, "anthropic", plugin.Options{"shape": map[string]any{"title": "string"}}); !errors.As(err, &refused) || refused.Code != plugin.BadInput {
+		t.Fatalf("a shape of answer in the short form gave: %v", err)
+	}
+	args := func(cover map[string]any) plugin.Options {
+		return plugin.Options{"tools": []any{map[string]any{"name": "look", "does": "Look at a shelf",
+			"args": map[string]any{"type": "object", "properties": map[string]any{"cover": cover}}}}}
+	}
+	s.must(t, "anthropic", args(map[string]any{"type": "string", "format": "blob"}))
+	sent := text(s.sent[len(s.sent)-1])
+	if !strings.Contains(sent, `"cover":{"description":"the name of a blob, as it was shown: blob1, blob2, …","format":"blob","type":"string"}`) {
+		t.Errorf("a blob that says nothing of itself was sent as %s", sent)
+	}
+	s.must(t, "anthropic", args(map[string]any{"type": "string", "format": "blob", "description": "the scan of the cover"}))
+	sent = text(s.sent[len(s.sent)-1])
+	if !strings.Contains(sent, `"cover":{"description":"the scan of the cover","format":"blob","type":"string"}`) {
+		t.Errorf("a blob with a description of its own was sent as %s", sent)
 	}
 }
 
@@ -305,7 +338,7 @@ func TestEffortReachesAnthropic(t *testing.T) {
 }
 
 func Test_model_openai_tools_not_strict(t *testing.T) {
-	tools := plugin.Options{"tools": []any{map[string]any{"name": "look", "does": "Look at a thing", "args": map[string]any{"at": "string"}}}}
+	tools := plugin.Options{"tools": []any{map[string]any{"name": "look", "does": "Look at a thing", "args": map[string]any{"type": "object", "properties": map[string]any{"at": map[string]any{"type": "string"}}}}}}
 	s := newStandIn(t, arriving3["openai"]...)
 	s.must(t, "openai", tools)
 	if tool := list(s.sent[0]["tools"])[0]; field(tool, "strict") != false {
@@ -631,7 +664,7 @@ func Test_model_kept_parts_sent_back_unchanged(t *testing.T) {
 // to speak the first, where tools and reasoning go together.
 func Test_model_openai_two_forms(t *testing.T) {
 	more := plugin.Options{"effort": "high",
-		"tools": []any{map[string]any{"name": "look", "does": "Look at a thing", "args": map[string]any{"at": "string"}}}}
+		"tools": []any{map[string]any{"name": "look", "does": "Look at a thing", "args": map[string]any{"type": "object", "properties": map[string]any{"at": map[string]any{"type": "string"}}}}}}
 	s := newStandIn(t, arriving3["openai"]...)
 	reply := s.must(t, "openai", more)
 	if reply["text"] != "Hello there." || reply["stop"] != StopTools || text(reply["calls"]) != `[{"args":{"at":"door"},"id":"t1","name":"look"}]` {

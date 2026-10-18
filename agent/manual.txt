@@ -38,7 +38,7 @@ Fields
   tools           the tools, by name
   tools_file      a YAML file of tools shared between agents, or a list of
                   files; a tool in the definition replaces one of its name
-  reply           { name: type }: the reply is data in this shape, not text
+  reply           a shape, as under Tools: the reply is data in this shape
   conversation    the `conversation` of an earlier agent's result: this agent
                   continues it, and each blob keeps its name
   turn            a script that makes each turn in place of Corbie's own, as
@@ -94,13 +94,18 @@ Tools
 -----
 
   does    what the tool does: the model chooses a tool by this text
-  args    the shape of its arguments: { name: type }
+  args    the shape of its arguments: { name: type }, or JSON Schema
   job     a script or a machine, as in `corbie manual definitions`; it reads
           `input`, the agent's input, and `args`, the model's arguments
 
 A type is string, number, boolean, list, map, blob or any. A `?` after it
 marks a value that may be left out, and between `{ }` YAML needs it in quotes:
 `args: { shelf: string, limit: "number?" }`.
+
+A shape written with `type: object` is JSON Schema, which can give an argument
+a `description`, an `enum` or fields of its own; the short form is filled out
+into it. `format: blob` marks a blob at any depth, and a `$ref` resolves only
+within its own shape.
 
 - A tool whose job has `approve: true` waits for the definition's `ask:`,
   which gets `asked: { does, args, said }`: the tool's `does:`, the model's
@@ -117,7 +122,7 @@ Blobs
 
 - The model gets a blob as a handle, `{ blob: "blob1", type, size, items,
   cost, preview }`, and gives the name `blob1` where a tool's `args:` has the
-  type blob.
+  type blob or `format: blob`.
 - `items` counts its lines, rows or entries, `cost` estimates the tokens
   needed to read it, and `preview` is its first items, given once.
 - Every agent has the tools `blob_read`, `blob_search` and `blob_code`, which

@@ -40,6 +40,38 @@ A definition may name files of tools shared with other agents. Each file is fill
 
 A tool that needs approval goes to the agent's ask like any job. The calls from one turn that need it go together, and the ask is shown the arguments, what the tool does and what the model said. A call that needs no approval runs at once, and the next turn waits for the ask as well as for the tools. A call that is not approved goes back to the model as denied, with the ask's note.
 
+## Shapes
+
+A tool's `args:` and an agent's `reply:` are each a JSON Schema of an object, 2020-12 unless its `$schema` names another dialect. A definition writes one in full, or in a short form that gives each field a type:
+
+```yaml
+args: { shelf: string, from: number? }
+```
+
+```
+  string, number, boolean   that JSON type
+  list, map                 an array, an object
+  blob                      a blob, by the name the model was shown
+  any                       any value
+  ? after the type          the field may be left out
+```
+
+A shape with `type: object` is the full form, and any other is the short form. The client fills out the short form when the definition is sent. The full form can say what the short form cannot:
+
+```yaml
+args:
+  type: object
+  properties:
+    repo:   { type: string, description: "owner/name, as zummed/corbie" }
+    labels: { type: array, items: { type: string, enum: [bug, docs, spec] } }
+  required: [repo]
+```
+
+- The model is shown the shape as it is written.
+- What the model sends is checked against the shape: arguments that do not fit go back to the model as an error, and so does a reply.
+- `format: blob` marks a blob, at any depth of the shape.
+- A `$ref` resolves only within its own shape. One that names a file or an address is refused when the definition is checked.
+
 ## Limits
 
 An agent has a number of turns, twenty by default, and the model is told when few remain. At the limit the agent fails. Its error carries the conversation, so an agent started with that conversation carries on from where it stopped.

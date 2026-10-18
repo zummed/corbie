@@ -92,8 +92,7 @@ sent with `emit`.
   a function                      the job fails with status `error`
   a handle to a secret            the job fails with status `error`
   an error not caught             the job fails with status `error`, and the error names the line
-  an output too large to send     each text in it over 64 KiB a blob, whose items are its lines
-  one still too large             a blob of its JSON
+  an output too large to send     its texts and lists over 64 KiB as blobs, of lines and of entries
 
 A blob is a large value, such as a file, a long text or an image. To a script
 it is an object with `type` and `size`, and the `blobs` plugin reads and makes

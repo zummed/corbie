@@ -61,7 +61,7 @@ tools:
 const server = mcp.connect("https://api.githubcopilot.com/mcp/", {
   headers: { Authorization: secrets.text`Bearer ${secrets.get("GITHUB_TOKEN")}` },
 })
-return input.tool ? server.call(input.tool, { args: input.args }) : server.tools()
+return input?.tool ? server.call(input.tool, { args: input.args }) : server.tools()
 ```
 
 1. Before the first turn, the `list:` job runs and returns `[{ name, does, args }, …]`.

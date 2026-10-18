@@ -40,6 +40,75 @@ A definition may name files of tools shared with other agents. Each file is fill
 
 A tool that needs approval goes to the agent's ask like any job. The calls from one turn that need it go together, and the ask is shown the arguments, what the tool does and what the model said. A call that needs no approval runs at once, and the next turn waits for the ask as well as for the tools. A call that is not approved goes back to the model as denied, with the ask's note.
 
+## Listed tools
+
+A tool entry may give a `list:` job in place of `does:` and `args:`. The job returns the tools, and the entry's `job:` runs each of them. This is how an agent is given the tools of an MCP server, which change without the definition changing.
+
+```yaml
+tools:
+  github:
+    list:
+      script: ./github.js
+      allow: [net:api.githubcopilot.com, "secret:GITHUB_TOKEN@net:api.githubcopilot.com"]
+    job:
+      script: ./github.js
+      input: { tool: "${tool}", args: "${args}" }
+      allow: [net:api.githubcopilot.com, "secret:GITHUB_TOKEN@net:api.githubcopilot.com"]
+```
+
+```js
+// github.js
+const server = mcp.connect("https://api.githubcopilot.com/mcp/", {
+  headers: { Authorization: secrets.text`Bearer ${secrets.get("GITHUB_TOKEN")}` },
+})
+return input?.tool ? server.call(input.tool, { args: input.args }) : server.tools()
+```
+
+1. Before the first turn, the `list:` job runs and returns `[{ name, does, args }, …]`.
+2. The model is shown each tool under the entry's name and its own, joined by `_`: `github_create_issue`.
+3. A call runs the entry's `job:`, where `${tool}` is the tool's own name, `create_issue`.
+
+- The list is made once in a run, kept in the agent's record, and is the same for every turn.
+- Every listed tool has the entry's permissions and, if the entry's job is marked for approval, its approval. The ask is shown the name the model used and the arguments.
+- The model can call every tool the list gives. The `list:` script narrows that by returning fewer.
+- What a tool does and its shape are shown to the model as the list gives them.
+- In a name the model is shown, a character other than a letter, a digit, `_` or `-` is written `_`.
+- The entry's `job:` reads `${args}` only whole, since its fields are not known until the run.
+
+A list that fails fails the agent, and so does a list in which a tool has no name, a shape that is not a JSON Schema of an object, a shape that marks a blob, or a name the model is shown that another tool has or that is longer than 64 characters.
+
+## Shapes
+
+A tool's `args:` and an agent's `reply:` are each a JSON Schema of an object, 2020-12 unless its `$schema` names another dialect. A definition writes one in full, or in a short form that gives each field a type:
+
+```yaml
+args: { shelf: string, from: number? }
+```
+
+```
+  string, number, boolean   that JSON type
+  list, map                 an array, an object
+  blob                      a blob, by the name the model was shown
+  any                       any value
+  ? after the type          the field may be left out
+```
+
+A shape with `type: object` is the full form, and any other is the short form. The client fills out the short form when the definition is sent. The full form can say what the short form cannot:
+
+```yaml
+args:
+  type: object
+  properties:
+    repo:   { type: string, description: "owner/name, as zummed/corbie" }
+    labels: { type: array, items: { type: string, enum: [bug, docs, spec] } }
+  required: [repo]
+```
+
+- The model is shown the shape as it is written.
+- What the model sends is checked against the shape: arguments that do not fit go back to the model as an error, and so does a reply.
+- `format: blob` marks a blob, at any depth of the shape.
+- A `$ref` resolves only within its own shape. One that names a file or an address is refused when the definition is checked.
+
 ## Limits
 
 An agent has a number of turns, twenty by default, and the model is told when few remain. At the limit the agent fails. Its error carries the conversation, so an agent started with that conversation carries on from where it stopped.

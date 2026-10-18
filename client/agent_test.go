@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/zummed/corbie/client"
+	"github.com/zummed/corbie/plugin/mcp/standin"
 )
 
 // model is a stand-in for a model service that speaks Anthropic's way of
@@ -284,6 +285,98 @@ func Test_agent_bad_model_is_reported_once(t *testing.T) {
 func TestShapeTypeIsAWord(t *testing.T) {
 	agentRefused(t, agentDef("http://127.0.0.1:1", "reply: { answer: 1 }"), `"answer": a type is written as a word`)
 	agentRefused(t, agentDef("http://127.0.0.1:1", "reply: { answer: text }"), `"answer": "text" is not a type`)
+}
+
+// A shape is JSON Schema: the short form is filled out into the full one,
+// the model is shown the full form as written, and what it sends is
+// checked against it.
+func TestShapeIsJSONSchema(t *testing.T) {
+	short, err := machineParse(agentDef("http://127.0.0.1:1", ""), scripts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	written, err := machineParse(strings.Replace(agentDef("http://127.0.0.1:1", ""), "args: { n: number }",
+		"args: { type: object, properties: { n: { type: number } }, required: [n], additionalProperties: false }", 1), scripts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if a, b := jsonOf(short.Definition), jsonOf(written.Definition); a != b {
+		t.Fatalf("the short form and the full form were stored differently:\n%s\n%s", a, b)
+	}
+
+	m := newModel(t, calls("c1", "file", `{"labels": ["urgent"], "assign": {"user": "sam"}}`), says("done"))
+	l := local(t, "all")
+	def := strings.Replace(agentDef(m.URL, ""), "tools:\n", `tools:
+		  file:
+		    does: File an issue
+		    args:
+		      type: object
+		      properties:
+		        labels: { type: array, items: { type: string, enum: [bug, docs] } }
+		        assign: { type: object, properties: { user: { type: string } } }
+		    job: { script: ./add.js, input: { n: 1 } }
+`, 1)
+	r := runAgent(t, l, def, map[string]string{"add.js": `throw new Error("the tool must not run")`})
+	if r.Status != "done" {
+		t.Fatalf("the agent ended %s: %s", r.Status, r.Error)
+	}
+	if offered := jsonOf(m.sent[0]["tools"]); !strings.Contains(offered, `"enum":["bug","docs"]`) || !strings.Contains(offered, `"assign":{"properties":{"user":{"type":"string"}},"type":"object"}`) {
+		t.Errorf("the tool was offered as %s", offered)
+	}
+	if shown := lastShown(m.sent[1]); !strings.Contains(shown, "the arguments do not fit the tool: at /labels/0") || strings.Contains(shown, "must not run") {
+		t.Errorf("a label outside the enum was shown as %s", shown)
+	}
+
+	// A shape is 2020-12 unless its $schema names another dialect: a list
+	// of items is draft-07's way of writing them, and not 2020-12's.
+	listed := `args: { type: object, properties: { n: { type: array, items: [ { type: number } ] } } }`
+	agentRefused(t, strings.Replace(agentDef("http://127.0.0.1:1", ""), "args: { n: number }", listed, 1), "it is not JSON Schema")
+	if _, err := machineParse(strings.Replace(agentDef("http://127.0.0.1:1", ""), "args: { n: number }",
+		strings.Replace(listed, "{ type: object", `{ $schema: "http://json-schema.org/draft-07/schema#", type: object`, 1), 1), scripts); err != nil {
+		t.Fatalf("a shape that names draft-07 was not read by it: %v", err)
+	}
+}
+
+// format: blob marks a blob anywhere in a shape: the tool's job is given
+// the blob's reference wherever the model gave its name.
+func TestShapeMarksABlobAtAnyDepth(t *testing.T) {
+	m := newModel(t, calls("c1", "make", `{"text": "page one"}`), calls("c2", "make", `{"text": "page two"}`),
+		calls("c3", "bind", `{"pages": [{"scan": "blob1"}, {"scan": "blob2"}]}`), says("done"))
+	l := local(t, "all")
+	def := strings.Replace(agentDef(m.URL, ""), "tools:\n", `tools:
+		  make:
+		    does: Make a file
+		    args: { text: string }
+		    job: { script: ./make.js, input: { text: "${args.text}" } }
+		  bind:
+		    does: Bind pages into a book
+		    args:
+		      type: object
+		      properties:
+		        pages: { type: array, items: { type: object, properties: { scan: { type: string, format: blob } } } }
+		    job: { script: ./bind.js, input: { pages: "${args.pages}" } }
+`, 1)
+	r := runAgent(t, l, def, map[string]string{"add.js": scripts["add.js"],
+		"make.js": `return { file: blobs.make(input.text) }`,
+		"bind.js": `return { text: input.pages.map(p => blobs.read(p.scan)).join(", ") }`})
+	if r.Status != "done" {
+		t.Fatalf("the agent ended %s: %s", r.Status, r.Error)
+	}
+	if shown := lastShown(m.sent[3]); !strings.Contains(shown, "page one, page two") {
+		t.Errorf("the tool was not given the blobs: %s", shown)
+	}
+}
+
+func Test_agent_shape_ref_outside_the_shape_is_refused(t *testing.T) {
+	for _, ref := range []string{"other.json", "file:///etc/hostname", "https://schemas.example/user.json"} {
+		agentRefused(t, strings.Replace(agentDef("http://127.0.0.1:1", ""), "args: { n: number }",
+			`args: { type: object, properties: { n: { $ref: "`+ref+`" } } }`, 1),
+			"a $ref resolves only within its own shape")
+	}
+	if _, err := machineParse(strings.Replace(agentDef("http://127.0.0.1:1", ""), "args: { n: number }",
+		`args: { type: object, $defs: { count: { type: number } }, properties: { n: { $ref: "#/$defs/count" } } }`, 1), scripts); err != nil {
+		t.Fatalf("a $ref within the shape was refused: %v", err)
+	}
 }
 
 func Test_agent_tool_reading_unnamed_argument_is_refused(t *testing.T) {
@@ -707,5 +800,156 @@ func TestAgentAsATool(t *testing.T) {
 	}
 	if strings.Contains(shown, "conversation") || strings.Contains(shown, "tokens") {
 		t.Errorf("the model was shown more of the other agent than its reply: %s", shown)
+	}
+}
+
+// listed is an agent with an entry whose tools come from a list.
+func listed(address, list string) string {
+	return strings.Replace(agentDef(address, ""), "tools:\n", `tools:
+		  files:
+		    list: { script: ./list.js, input: { tools: `+list+` } }
+		    job: { script: ./files.js, input: { tool: "${tool}", args: "${args}" } }
+`, 1)
+}
+
+var listedScripts = map[string]string{
+	"add.js":   scripts["add.js"],
+	"list.js":  `if (input.tools === "none") throw new Error("the server is away"); return input.tools`,
+	"files.js": `return { tool: input.tool, args: input.args }`,
+}
+
+const fileTools = `[
+		      { name: read, does: Read a file, args: { type: object, properties: { path: { type: string } }, required: [path] } },
+		      { name: open.recent, does: Open the last file, args: { type: object } } ]`
+
+func TestAgentListedTools(t *testing.T) {
+	m := newModel(t, calls("c1", "files_read", `{"path": "a.txt"}`), calls("c2", "files_open_recent", `{}`), says("done"))
+	l := local(t, "all")
+	id, err := l.Start(ctx, draft(t, listed(m.URL, fileTools), listedScripts),
+		client.Start{Input: map[string]any{"question": "q"}, Secrets: map[string]string{"TEST_KEY": "sk-test-key"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var jobs []string
+	r, err := l.Follow(ctx, id, 20*time.Millisecond, func(e client.Entry) {
+		for _, ask := range e.Asks {
+			if ask.Kind == "script" {
+				jobs = append(jobs, ask.Name)
+			}
+		}
+	})
+	if err != nil || r.Status != "done" {
+		t.Fatalf("the agent ended %+v, %v", r, err)
+	}
+	// The list runs once, before the first turn.
+	if got := strings.Join(jobs, " "); got != "files turn files_read turn#2 files_open_recent turn#3" {
+		t.Fatalf("the jobs were: %s", got)
+	}
+	// The model is offered each listed tool under the entry's name and its
+	// own, as the list gave it, and not the entry itself.
+	offered := jsonOf(m.sent[0]["tools"])
+	for _, want := range []string{`"name":"files_read"`, `"description":"Read a file"`, `"required":["path"]`, `"name":"files_open_recent"`} {
+		if !strings.Contains(offered, want) {
+			t.Errorf("the model was not offered %s: %s", want, offered)
+		}
+	}
+	if strings.Contains(offered, `"name":"files"`) {
+		t.Errorf("the model was offered the entry: %s", offered)
+	}
+	if offered != jsonOf(m.sent[2]["tools"]) {
+		t.Errorf("the third turn was offered other tools: %s", jsonOf(m.sent[2]["tools"]))
+	}
+	// The entry's job runs each, given the name the list gave.
+	if shown := strings.ReplaceAll(lastShown(m.sent[1]), `\`, ""); !strings.Contains(shown, `"args":{"path":"a.txt"}`) || !strings.Contains(shown, `"tool":"read"`) {
+		t.Errorf("the first call gave: %s", shown)
+	}
+	if shown := strings.ReplaceAll(lastShown(m.sent[2]), `\`, ""); !strings.Contains(shown, `"tool":"open.recent"`) {
+		t.Errorf("the second call gave: %s", shown)
+	}
+	// A run that carries the conversation on lists the tools again.
+	m2 := newModel(t, says("done again"))
+	id, err = l.Start(ctx, draft(t, listed(m2.URL, fileTools)+"\n\t\tconversation: ${input.so}\n", listedScripts), client.Start{
+		Input:   map[string]any{"question": "and again?", "so": carried(r.Output.(map[string]any)["conversation"], r.ID)},
+		Secrets: map[string]string{"TEST_KEY": "sk-test-key"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if second := wait(t, l, id); second.Status != "done" || jsonOf(m2.sent[0]["tools"]) != offered {
+		t.Fatalf("the run that carried on ended %s (%s), offered %s", second.Status, second.Error, jsonOf(m2.sent[0]["tools"]))
+	}
+}
+
+// A list that fails, or that gives a tool the model cannot be offered,
+// fails the agent before its first turn.
+func TestAgentListThatCannotBeUsedFails(t *testing.T) {
+	long := strings.Repeat("x", 60)
+	for list, want := range map[string]string{
+		`none`: "tools.files.list: Error: the server is away",
+		`[ { does: Nameless, args: { type: object } } ]`:                                     "a tool in the list has no name",
+		`[ { name: count, args: { type: string } } ]`:                                        `the tool "count"'s args`,
+		`[ { name: count } ]`:                                                                `the tool "count"'s args`,
+		`[ { name: ` + long + `, args: { type: object } } ]`:                                 "longer than 64 characters",
+		`[ { name: read, args: { type: object } }, { name: read, args: { type: object } } ]`: "which another tool has",
+	} {
+		m := newModel(t)
+		r := runAgent(t, local(t, "all"), listed(m.URL, list), listedScripts)
+		if r.Status != "failed" || !strings.Contains(r.Error, want) || len(m.sent) != 0 {
+			t.Errorf("with the list %s the agent ended %s after %d turns: %s", list, r.Status, len(m.sent), r.Error)
+		}
+	}
+	// An entry named blob that lists read would be shown as blob_read, the
+	// name of one of the blob tools.
+	m := newModel(t)
+	r := runAgent(t, local(t, "all"), strings.Replace(listed(m.URL, `[ { name: read, args: { type: object } } ]`), "  files:\n", "  blob:\n", 1), listedScripts)
+	if r.Status != "failed" || !strings.Contains(r.Error, `"blob_read", which another tool has`) {
+		t.Errorf("the agent ended %s: %s", r.Status, r.Error)
+	}
+}
+
+func Test_agent_listed_shape_marking_a_blob_fails(t *testing.T) {
+	m := newModel(t)
+	r := runAgent(t, local(t, "all"), listed(m.URL,
+		`[ { name: read, args: { type: object, properties: { pages: { type: array, items: { type: string, format: blob } } } } } ]`), listedScripts)
+	if r.Status != "failed" || !strings.Contains(r.Error, `the tool "read"'s args mark a blob`) || len(m.sent) != 0 {
+		t.Fatalf("the agent ended %s: %s", r.Status, r.Error)
+	}
+}
+
+func Test_agent_listed_job_reads_args_whole(t *testing.T) {
+	agentRefused(t, strings.Replace(listed("http://127.0.0.1:1", fileTools), `args: "${args}"`, `args: "${args.path}"`, 1),
+		`it reads "args.path"; with list:, the job reads ${args} only whole`)
+	agentRefused(t, strings.Replace(listed("http://127.0.0.1:1", fileTools), "    job: { script: ./files.js", "    does: Files\n		    job: { script: ./files.js", 1),
+		"a tool with list: is given what each tool does and its args by the list")
+	// Only a job of an entry with a list reads tool.
+	agentRefused(t, strings.Replace(agentDef("http://127.0.0.1:1", ""), `input: { n: "${args.n}" }`, `input: { n: "${tool}" }`, 1), "tool")
+	if _, err := machineParse(listed("http://127.0.0.1:1", fileTools), listedScripts); err != nil {
+		t.Fatalf("an entry whose job reads ${args} whole was refused: %v", err)
+	}
+}
+
+// An agent's entry lists the tools of an MCP server, and one script both
+// lists them and calls the one the model picks.
+func TestAgentWithTheToolsOfAnMCPServer(t *testing.T) {
+	notes := httptest.NewServer(&standin.Server{Only: []string{"add_note", "find_notes"}})
+	t.Cleanup(notes.Close)
+	allow := `allow: ["net:` + strings.TrimPrefix(notes.URL, "http://") + `"]`
+	m := newModel(t, calls("c1", "notes_find_notes", `{"text": "tea"}`), says("Two notes."))
+	def := strings.Replace(agentDef(m.URL, ""), "tools:\n", `tools:
+		  notes:
+		    list: { script: ./notes.js, input: { address: "`+notes.URL+`/mcp" }, `+allow+` }
+		    job: { script: ./notes.js, input: { address: "`+notes.URL+`/mcp", tool: "${tool}", args: "${args}" }, `+allow+` }
+`, 1)
+	r := runAgent(t, local(t, "all"), def, map[string]string{"add.js": scripts["add.js"], "notes.js": `
+		const server = mcp.connect(input.address)
+		return input.tool ? server.call(input.tool, { args: input.args }) : server.tools()
+	`})
+	if r.Status != "done" {
+		t.Fatalf("the agent ended %s: %s", r.Status, r.Error)
+	}
+	if offered := jsonOf(m.sent[0]["tools"]); !strings.Contains(offered, `"name":"notes_add_note"`) || !strings.Contains(offered, `"description":"Find the notes with a text"`) {
+		t.Errorf("the model was offered %s", offered)
+	}
+	if shown := lastShown(m.sent[1]); !strings.Contains(shown, "2 notes: tea at 4, tea at 5") {
+		t.Errorf("the call gave %s", shown)
 	}
 }

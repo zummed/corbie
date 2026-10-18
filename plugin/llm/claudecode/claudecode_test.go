@@ -44,7 +44,7 @@ func ask(t *testing.T, lines ...string) map[string]any {
 	module, _ := plugin.Find("llm")
 	out, err := module.Calls["chat"].Invoke(job, "llm", "chat", []any{map[string]any{"role": "user", "content": "Say hello."}},
 		plugin.Options{"service": "claude-code", "model": "sonnet",
-			"tools": []any{map[string]any{"name": "look", "does": "Look at a thing", "args": map[string]any{"at": "string"}}}})
+			"tools": []any{map[string]any{"name": "look", "does": "Look at a thing", "args": map[string]any{"type": "object", "properties": map[string]any{"at": map[string]any{"type": "string"}}}}}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -149,7 +149,7 @@ cat "$here/reply"
 	module, _ := plugin.Find("llm")
 	if _, err := module.Calls["chat"].Invoke(job, "llm", "chat", []any{map[string]any{"role": "user", "content": "Say hello."}},
 		plugin.Options{"service": "claude-code", "model": "sonnet", "system": "You keep the house.",
-			"tools": []any{map[string]any{"name": "look", "does": "Look at a thing", "args": map[string]any{"at": "string"}}}}); err != nil {
+			"tools": []any{map[string]any{"name": "look", "does": "Look at a thing", "args": map[string]any{"type": "object", "properties": map[string]any{"at": map[string]any{"type": "string"}}}}}}); err != nil {
 		t.Fatal(err)
 	}
 	args, _ := os.ReadFile(filepath.Join(dir, "args"))
@@ -159,5 +159,43 @@ cat "$here/reply"
 	}
 	if strings.Contains(string(args), "You keep the house.") || strings.Contains(string(args), "Look at a thing") {
 		t.Errorf("the system text was on the command line: %q", args)
+	}
+}
+
+// A shape of answer that names parts of itself by $ref is held whole: its
+// $defs are where #/$defs/… points in what the program answers in.
+func TestProgramAnswersInAShapeWithItsDefs(t *testing.T) {
+	if _, err := os.Stat("/bin/sh"); err != nil {
+		t.Skip("no shell on this machine")
+	}
+	dir := t.TempDir()
+	os.WriteFile(filepath.Join(dir, "claude"), []byte(`#!/bin/sh
+cat > /dev/null
+here=$(dirname "$0")
+while [ $# -gt 0 ]; do
+  if [ "$1" = --json-schema ]; then printf '%s' "$2" > "$here/schema"; fi
+  shift
+done
+cat "$here/reply"
+`), 0o755)
+	os.WriteFile(filepath.Join(dir, "reply"), []byte(`{"type":"result","subtype":"success","is_error":false,"result":"","stop_reason":"end_turn","structured_output":{"text":"","answer":{"who":{"name":"Sam"}}},"usage":{"input_tokens":10,"output_tokens":5}}`+"\n"), 0o600)
+	job := &plugin.Job{Context: context.Background(), Scratch: t.TempDir(), SearchPath: dir + ":/usr/bin:/bin", Channel: channel{},
+		Perms: &permission.Set{Layers: []permission.Layer{{Name: "test", Allow: []string{"exec:claude", "env:HOME"}}}}}
+	t.Cleanup(job.End)
+	module, _ := plugin.Find("llm")
+	shape := map[string]any{"type": "object", "$defs": map[string]any{"person": map[string]any{"type": "object", "properties": map[string]any{"name": map[string]any{"type": "string"}}}},
+		"properties": map[string]any{"who": map[string]any{"$ref": "#/$defs/person"}}}
+	if _, err := module.Calls["chat"].Invoke(job, "llm", "chat", []any{map[string]any{"role": "user", "content": "Who is it?"}},
+		plugin.Options{"service": "claude-code", "model": "sonnet", "shape": shape}); err != nil {
+		t.Fatal(err)
+	}
+	var schema map[string]any
+	data, _ := os.ReadFile(filepath.Join(dir, "schema"))
+	if err := json.Unmarshal(data, &schema); err != nil {
+		t.Fatalf("the program was given %q: %v", data, err)
+	}
+	defs, _ := schema["$defs"].(map[string]any)
+	if _, ok := defs["person"]; !ok {
+		t.Fatalf("the program answers in %s", data)
 	}
 }

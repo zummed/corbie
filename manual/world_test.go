@@ -30,6 +30,7 @@ import (
 
 	"github.com/zummed/corbie/permission"
 	"github.com/zummed/corbie/plugin"
+	"github.com/zummed/corbie/plugin/mcp/standin"
 )
 
 // The world is the outside as the manual's examples take it to be: the
@@ -83,6 +84,8 @@ func newWorld() (*world, error) {
 		"DEPLOY_TOKEN":  "deploy-stand1n-t0ken",
 		"QUEUE_TOKEN":   "queue-stand1n-t0ken",
 		"APP_KEY":       "app-stand1n-key",
+		"NOTES_KEY":     "notes-stand1n-key",
+		"NOTES_TOKEN":   "notes-stand1n-t0ken",
 		// A password with a quote and a backslash in it, which a body
 		// written as JSON must escape.
 		"PORTAL_PASSWORD": `a "quoted" pass\word`,
@@ -144,6 +147,7 @@ func newWorld() (*world, error) {
 		"api.anthropic.com": w.anthropic,
 		"models.example":    w.chatModel,
 		"api.typesafe.ai":   w.systemOneModel,
+		"notes.example.com": (&standin.Server{Token: "notes-stand1n-t0ken", Only: notesTools}).ServeHTTP,
 	}
 	names := []string{"queue.example.com", "mail.example.com"}
 	for name := range web {
@@ -534,7 +538,7 @@ func (w *world) anthropic(rw http.ResponseWriter, r *http.Request) {
 		says("It holds " + strings.Join(results, " and ") + ".")
 	case picture != "":
 		says("A picture, named " + picture + ".")
-	case strings.Contains(sent.System, "as JSON only, with these names: greeting (string)."):
+	case strings.Contains(sent.System, `as JSON only, fitting this JSON Schema: {"properties":{"greeting":{"type":"string"}},"type":"object"}`):
 		says(fmt.Sprintf(`{"greeting": %q}`, modelSays))
 	default:
 		says(modelSays)
@@ -617,6 +621,9 @@ func (w *world) chatModel(rw http.ResponseWriter, r *http.Request) {
 
 // The programs of the world. Each is this test binary, started under the
 // program's name, and gives the status it ends with.
+// notesTools are the tools of the MCP servers of notes.
+var notesTools = []string{"add_note", "find_notes"}
+
 var programs = map[string]func(args []string) int{
 	"git": func(args []string) int {
 		if len(args) == 0 || args[0] != "log" {
@@ -645,6 +652,15 @@ var programs = map[string]func(args []string) int{
 			fmt.Fprintln(os.Stderr, err)
 			return 1
 		}
+		return 0
+	},
+	// notes-server is an MCP server of notes, which needs its key.
+	"notes-server": func(args []string) int {
+		if os.Getenv("NOTES_KEY") == "" {
+			fmt.Fprintln(os.Stderr, "notes-server: NOTES_KEY is not set")
+			return 1
+		}
+		(&standin.Server{Only: notesTools}).Serve(os.Stdin, os.Stdout)
 		return 0
 	},
 	"deploy": func(args []string) int {

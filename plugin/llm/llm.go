@@ -222,12 +222,22 @@ func chat(job *plugin.Job, first any, opt plugin.Options) (any, error) {
 	if c.Tools, err = opt.List("tools"); err != nil {
 		return nil, err
 	}
+	// A tool's arguments and the shape of answer are each a JSON Schema of
+	// an object.
+	for _, tool := range c.Tools {
+		if args, _ := field(tool, "args").(map[string]any); args["type"] != "object" {
+			return nil, plugin.Errorf(plugin.BadInput, "llm.chat: the tool %q takes args: a JSON Schema with type: object", text(field(tool, "name")))
+		}
+	}
 	// The shape of answer wanted is given to a service that has a way to
 	// take it, and otherwise told to the model in the system text, which
 	// every service takes.
 	shape, err := opt.Map("shape")
 	if err != nil {
 		return nil, err
+	}
+	if len(shape) > 0 && shape["type"] != "object" {
+		return nil, plugin.Errorf(plugin.BadInput, "llm.chat takes shape: a JSON Schema with type: object")
 	}
 	switch {
 	case len(shape) > 0 && svc.Shapes:
@@ -325,25 +335,10 @@ func decide(job *plugin.Job, first any, opt plugin.Options) (any, error) {
 	return map[string]any{"answers": a.Answers, "model": a.Model, "usage": a.Usage}, nil
 }
 
-// wanted says what shape of answer is wanted, as the model is told it: each
-// name with the type of its value.
+// wanted says what shape of answer is wanted, as the model is told it.
 func wanted(shape map[string]any) string {
-	names := make([]string, 0, len(shape))
-	for name := range shape {
-		names = append(names, name)
-	}
-	sort.Strings(names)
-	for i, name := range names {
-		kind, optional := strings.CutSuffix(text(shape[name]), "?")
-		if kind == "blob" {
-			kind = "the name of a blob, as it was shown"
-		}
-		if optional {
-			kind += ", may be left out"
-		}
-		names[i] = name + " (" + kind + ")"
-	}
-	return "Give your final reply as JSON only, with these names: " + strings.Join(names, ", ") + "."
+	schema, _ := json.Marshal(schema(shape), json.Deterministic(true))
+	return "Give your final reply as JSON only, fitting this JSON Schema: " + string(schema)
 }
 
 // ownKept gives the conversation as one service is to see it: the parts it
@@ -604,42 +599,33 @@ func Schema(args any) map[string]any       { return schema(args) }
 func Text(v any) string                    { return text(v) }
 func ResultText(result any) (string, bool) { return resultText(result) }
 
-// schema gives the shape of a tool's arguments as the services want it.
-// Where a shape asks for a blob, the model gives the name it was shown.
-func schema(args any) map[string]any {
-	shape, _ := args.(map[string]any)
-	properties := map[string]any{}
-	required := []any{}
-	names := make([]string, 0, len(shape))
-	for name := range shape {
-		names = append(names, name)
-	}
-	sort.Strings(names)
-	for _, name := range names {
-		t, _ := shape[name].(string)
-		if !strings.HasSuffix(t, "?") {
-			required = append(required, name)
+// schema gives a shape as the services want it: as it is written, with
+// each field marked format: blob that says nothing of itself described as
+// the name the model was shown.
+func schema(shape any) map[string]any {
+	out, _ := described(shape).(map[string]any)
+	return out
+}
+
+func described(v any) any {
+	switch v := v.(type) {
+	case map[string]any:
+		out := make(map[string]any, len(v)+1)
+		for k, item := range v {
+			out[k] = described(item)
 		}
-		var p map[string]any
-		switch strings.TrimSuffix(t, "?") {
-		case "string":
-			p = map[string]any{"type": "string"}
-		case "number":
-			p = map[string]any{"type": "number"}
-		case "boolean":
-			p = map[string]any{"type": "boolean"}
-		case "list":
-			p = map[string]any{"type": "array"}
-		case "map":
-			p = map[string]any{"type": "object"}
-		case "blob":
-			p = map[string]any{"type": "string", "description": "the name of a blob, as it was shown: blob1, blob2, …"}
-		default:
-			p = map[string]any{}
+		if _, says := v["description"]; v["format"] == "blob" && !says {
+			out["description"] = "the name of a blob, as it was shown: blob1, blob2, …"
 		}
-		properties[name] = p
+		return out
+	case []any:
+		out := make([]any, len(v))
+		for i, item := range v {
+			out[i] = described(item)
+		}
+		return out
 	}
-	return map[string]any{"type": "object", "properties": properties, "required": required}
+	return v
 }
 
 // text gives a part of the conversation as text for a service that takes

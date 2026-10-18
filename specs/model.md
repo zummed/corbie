@@ -4,7 +4,7 @@ An agent's turns are calls to a model, made through the `llm` plugin. This area 
 
 ## Chat
 
-A script calls a model with one call: it gives the conversation so far, the tools on offer and what shape of answer is wanted, and gets back what the model said, the tools it asked for, why it stopped, and how many tokens were used. A service that has a way of its own to hold an answer to a shape is given the shape that way, and any other is told it in the system text. The model's text is emitted as it arrives, a few pieces at a time, so a watcher sees a reply being written.
+A script calls a model with one call: it gives the conversation so far, the tools on offer and what shape of answer is wanted, and gets back what the model said, the tools it asked for, why it stopped, and how many tokens were used. A tool's arguments and the shape of answer are each a JSON Schema, and the plugin takes no other form. A field marked `format: blob` with no `description` is described to the model as the name of a blob as it was shown. A service that has a way of its own to hold an answer to a shape is given the shape that way, and any other is told it in the system text. The model's text is emitted as it arrives, a few pieces at a time, so a watcher sees a reply being written.
 
 Why the model stopped is always passed on. A reply that ended because it ran out of room is told apart from one that was finished.
 

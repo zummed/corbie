@@ -340,7 +340,7 @@ func shape(c *llm.Call) map[string]any {
 		return properties
 	}
 	if len(c.Tools) == 0 {
-		return object([]any{"text"}, with(map[string]any{"text": text}))
+		return defs(object([]any{"text"}, with(map[string]any{"text": text})), c)
 	}
 	var names []any
 	for _, tool := range c.Tools {
@@ -348,7 +348,17 @@ func shape(c *llm.Call) map[string]any {
 	}
 	call := object([]any{"name", "input"}, map[string]any{
 		"name": map[string]any{"type": "string", "enum": names}, "input": map[string]any{"type": "object"}})
-	return object([]any{"text", "tool_calls"}, with(map[string]any{"text": text, "tool_calls": map[string]any{"type": "array", "items": call}}))
+	return defs(object([]any{"text", "tool_calls"}, with(map[string]any{"text": text, "tool_calls": map[string]any{"type": "array", "items": call}})), c)
+}
+
+// defs gives the shape the program answers in the $defs of the shape of
+// answer wanted, which sits inside it: a $ref to #/$defs/… then names the
+// same part as it did.
+func defs(outer map[string]any, c *llm.Call) map[string]any {
+	if held, ok := c.Shape["$defs"]; ok {
+		outer["$defs"] = held
+	}
+	return outer
 }
 
 // system is the system text and, where tools are offered, what they are

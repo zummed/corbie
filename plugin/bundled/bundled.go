@@ -14,6 +14,7 @@ import (
 	_ "github.com/zummed/corbie/plugin/llm"
 	_ "github.com/zummed/corbie/plugin/llm/claudecode"
 	_ "github.com/zummed/corbie/plugin/machines"
+	_ "github.com/zummed/corbie/plugin/mcp"
 	_ "github.com/zummed/corbie/plugin/net"
 	_ "github.com/zummed/corbie/plugin/secrets"
 	_ "github.com/zummed/corbie/plugin/ssh"

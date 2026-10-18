@@ -127,10 +127,25 @@ func groupOrder(group string) int {
 
 // Find gives the page of a name.
 func Find(name string) (Page, bool) {
-	for _, page := range Pages() {
-		if page.Name == name || page.Name == "corbie "+name {
-			return page, true
+	pages := Pages()
+	at := Named(pages, name)
+	if at < 0 {
+		return Page{}, false
+	}
+	return pages[at], true
+}
+
+// Named gives where a page of a name is: the page of that name, or else
+// the command's page that it names without corbie.
+func Named(pages []Page, name string) int {
+	at := -1
+	for i, page := range pages {
+		if page.Name == name {
+			return i
+		}
+		if page.Name == "corbie "+name && at < 0 {
+			at = i
 		}
 	}
-	return Page{}, false
+	return at
 }

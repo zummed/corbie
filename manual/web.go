@@ -154,11 +154,8 @@ func Site() http.Handler {
 			Text       template.HTML
 			Prev, Next *Page
 		}
-		at := -1
-		for i, page := range pages {
-			if page.Name == name || page.Name == "corbie "+name {
-				at = i
-			}
+		at := Named(pages, name)
+		for _, page := range pages {
 			of := partOf(page.Group)
 			if len(shown.Parts) == 0 || shown.Parts[len(shown.Parts)-1].Name != of {
 				shown.Parts = append(shown.Parts, part{Name: of, First: page.Name, Says: says[of]})

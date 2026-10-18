@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/zummed/corbie/client"
+	"github.com/zummed/corbie/plugin/mcp/standin"
 )
 
 // model is a stand-in for a model service that speaks Anthropic's way of
@@ -885,9 +886,9 @@ func TestAgentListThatCannotBeUsedFails(t *testing.T) {
 	for list, want := range map[string]string{
 		`none`: "tools.files.list: Error: the server is away",
 		`[ { does: Nameless, args: { type: object } } ]`:                                     "a tool in the list has no name",
-		`[ { name: count, args: { type: string } } ]`:                                         `the tool "count"'s args`,
-		`[ { name: count } ]`:                                                                 `the tool "count"'s args`,
-		`[ { name: ` + long + `, args: { type: object } } ]`:                                  "longer than 64 characters",
+		`[ { name: count, args: { type: string } } ]`:                                        `the tool "count"'s args`,
+		`[ { name: count } ]`:                                                                `the tool "count"'s args`,
+		`[ { name: ` + long + `, args: { type: object } } ]`:                                 "longer than 64 characters",
 		`[ { name: read, args: { type: object } }, { name: read, args: { type: object } } ]`: "which another tool has",
 	} {
 		m := newModel(t)
@@ -923,5 +924,32 @@ func Test_agent_listed_job_reads_args_whole(t *testing.T) {
 	agentRefused(t, strings.Replace(agentDef("http://127.0.0.1:1", ""), `input: { n: "${args.n}" }`, `input: { n: "${tool}" }`, 1), "tool")
 	if _, err := machineParse(listed("http://127.0.0.1:1", fileTools), listedScripts); err != nil {
 		t.Fatalf("an entry whose job reads ${args} whole was refused: %v", err)
+	}
+}
+
+// An agent's entry lists the tools of an MCP server, and one script both
+// lists them and calls the one the model picks.
+func TestAgentWithTheToolsOfAnMCPServer(t *testing.T) {
+	notes := httptest.NewServer(&standin.Server{Only: []string{"add_note", "find_notes"}})
+	t.Cleanup(notes.Close)
+	allow := `allow: ["net:` + strings.TrimPrefix(notes.URL, "http://") + `"]`
+	m := newModel(t, calls("c1", "notes_find_notes", `{"text": "tea"}`), says("Two notes."))
+	def := strings.Replace(agentDef(m.URL, ""), "tools:\n", `tools:
+		  notes:
+		    list: { script: ./notes.js, input: { address: "`+notes.URL+`/mcp" }, `+allow+` }
+		    job: { script: ./notes.js, input: { address: "`+notes.URL+`/mcp", tool: "${tool}", args: "${args}" }, `+allow+` }
+`, 1)
+	r := runAgent(t, local(t, "all"), def, map[string]string{"add.js": scripts["add.js"], "notes.js": `
+		const server = mcp.connect(input.address)
+		return input.tool ? server.call(input.tool, { args: input.args }) : server.tools()
+	`})
+	if r.Status != "done" {
+		t.Fatalf("the agent ended %s: %s", r.Status, r.Error)
+	}
+	if offered := jsonOf(m.sent[0]["tools"]); !strings.Contains(offered, `"name":"notes_add_note"`) || !strings.Contains(offered, `"description":"Find the notes with a text"`) {
+		t.Errorf("the model was offered %s", offered)
+	}
+	if shown := lastShown(m.sent[1]); !strings.Contains(shown, "2 notes: tea at 4, tea at 5") {
+		t.Errorf("the call gave %s", shown)
 	}
 }

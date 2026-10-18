@@ -162,12 +162,15 @@ func Test_sec_plugins_word_on_encryption(t *testing.T) {
 	if _, err := call(job, "websocket", "connect", "wss://"+plain.address+"/", short); err == nil {
 		t.Error("websocket reached a server that does not encrypt, at a wss address")
 	}
+	if _, err := call(job, "mcp", "connect", "https://"+plain.address+"/", short); err == nil {
+		t.Error("mcp reached a server that does not encrypt, at an https address")
+	}
 	if _, err := call(job, "ssh", "run", plain.address, plugin.Options{"user": "u", "command": "true", "password": handle, "hostKey": "unchecked", "timeout": 0.3}); err == nil {
 		t.Error("ssh signed in to a server that does not encrypt")
 	}
 	// And where the address asks for a plain connection, they give no word.
-	for module, address := range map[string]string{"http": "http://", "websocket": "ws://"} {
-		name := map[string]string{"http": "get", "websocket": "connect"}[module]
+	for module, address := range map[string]string{"http": "http://", "websocket": "ws://", "mcp": "http://"} {
+		name := map[string]string{"http": "get", "websocket": "connect", "mcp": "connect"}[module]
 		if _, err := call(job, module, name, address+plain.address+"/", short); refusedAs(err) != "secret:K@net.unencrypted:"+plain.address {
 			t.Errorf("%s sent a secret bound to a host to a plain address: %v", module, err)
 		}
@@ -202,6 +205,12 @@ func Test_sec_all_checked_before_any_taken(t *testing.T) {
 		},
 		"a connection opened with both in a header": func() (any, error) {
 			return call(job, "websocket", "connect", "wss://"+server.address+"/", plugin.Options{"headers": map[string]any{"Authorization": both}})
+		},
+		"an MCP server connected to with one in each of two headers": func() (any, error) {
+			return call(job, "mcp", "connect", "https://"+server.address+"/", plugin.Options{"headers": map[string]any{"X-A": handleA, "X-B": handleB}})
+		},
+		"an MCP server started with one as an argument and one as a variable": func() (any, error) {
+			return call(job, "mcp", "start", "sh", plugin.Options{"args": append(touch, handleA), "env": map[string]any{"B": handleB}})
 		},
 		"a sign-in on another machine with both joined": func() (any, error) {
 			return call(job, "ssh", "run", server.address, plugin.Options{"user": "u", "command": "true", "password": both, "hostKey": "unchecked"})
@@ -300,6 +309,12 @@ func Test_sec_handle_only_where_sent_as_written(t *testing.T) {
 			t.Errorf("websocket took a handle as the header %s: %v", name, err)
 		}
 	}
+	// An MCP server's own headers are the plugin's to write.
+	for _, name := range append(framing, "Accept", "Content-Type", "MCP-Protocol-Version", "Mcp-Method", "Mcp-Name", "Mcp-Session-Id") {
+		if _, err := call(job, "mcp", "connect", "http://"+server.address+"/", plugin.Options{"headers": map[string]any{name: handle}}); codeOf(err) != plugin.BadInput {
+			t.Errorf("mcp took a handle as the header %s: %v", name, err)
+		}
+	}
 	// The method is text and never a handle.
 	if _, err := call(job, "http", "request", "http://"+server.address+"/", plugin.Options{"method": handle}); codeOf(err) != plugin.BadInput {
 		t.Errorf("http took a handle as the method: %v", err)
@@ -341,6 +356,9 @@ func Test_sec_no_line_break_into_a_header(t *testing.T) {
 			}
 			if _, err := call(job, "websocket", "connect", "ws://"+server.address+"/", plugin.Options{"headers": headers}); codeOf(err) != plugin.BadInput {
 				t.Errorf("websocket, with %s holding %q: %v", what, value, err)
+			}
+			if _, err := call(job, "mcp", "connect", "http://"+server.address+"/", plugin.Options{"headers": headers}); codeOf(err) != plugin.BadInput {
+				t.Errorf("mcp, with %s holding %q: %v", what, value, err)
 			}
 		}
 	}

@@ -120,7 +120,8 @@ within its own shape.
 - No tool is named turn, preview, blob_read, blob_search or blob_code.
 
 An entry with `list:` gives tools that come from elsewhere, such as the tools
-of an MCP server, which change without the definition changing.
+of an MCP server (`corbie manual mcp`), which change without the definition
+changing.
 
 - The list runs once, before the first turn, as a job named for the entry.
 - The model gets each tool as the entry's name, `_` and the tool's name:

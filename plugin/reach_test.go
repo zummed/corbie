@@ -25,7 +25,7 @@ var (
 		"crypto", "crypto/aes", "crypto/cipher", "crypto/ecdsa", "crypto/ed25519", "crypto/hmac", "crypto/md5", "crypto/rand",
 		"crypto/rsa", "crypto/sha1", "crypto/sha256", "crypto/sha512",
 		"encoding/base64", "encoding/csv", "encoding/hex", "encoding/json/jsontext", "encoding/json/v2", "encoding/pem", "encoding/xml",
-		"errors", "fmt", "hash", "io", "io/fs", "net/url", "regexp", "slices", "sort", "strconv", "strings", "time", "unicode",
+		"errors", "fmt", "hash", "io", "io/fs", "net/url", "regexp", "runtime/debug", "slices", "sort", "strconv", "strings", "time", "unicode",
 		"golang.org/x/net/html", "golang.org/x/net/html/charset",
 		"github.com/zummed/corbie/plugin", "github.com/zummed/corbie/plugin/llm",
 	}
@@ -266,7 +266,7 @@ func Test_plug_bundled_reach_only_through_ways_out(t *testing.T) {
 			t.Error(finding)
 		}
 	}
-	if checked < 15 {
+	if checked < 16 {
 		t.Fatalf("only %d plugins were read", checked)
 	}
 

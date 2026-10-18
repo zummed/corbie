@@ -103,6 +103,8 @@ The detailed rules behind the [Instances overview](../instance.md).
 
 **C-inst-11** A watcher stops waiting on a child whose record it cannot read once the child's parent has ended. A follow that waits for every child to end would otherwise never return. *Test:* `inst_watch_ends_despite_unreadable_child`
 
+**C-inst-12** A watcher of a listing that does not take in the finished heads lists the finished heads by name at each look and reads only those it has not listed before. A run read there that it has not reported, and that the listing keeps, is reported once, as new and ended. A run that starts and ends between two looks is never among the running heads, and a watcher that gets no notice of writes would never be told of it. *Test:* `inst_watch_reports_run_ended_between_looks`
+
 ## Sending
 
 **R-inst-56** A client acts on an instance by writing a message into the controller's inbox, and there are four: start a run, cancel one, send it an event, answer a ticket. A client has no inbox of its own.

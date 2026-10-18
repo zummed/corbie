@@ -36,6 +36,9 @@ type hooked struct {
 	before func(act, name string) error
 	// listed may change the names a listing gives.
 	listed func(under string, names []string) []string
+	// silent gives no notices, as a bucket does and as a store does for a
+	// watcher in another process than the writer.
+	silent bool
 }
 
 func (h *hooked) look(act, name string) error {
@@ -72,6 +75,13 @@ func (h *hooked) First(ctx context.Context, under string, n int) ([]string, erro
 		return nil, err
 	}
 	return h.Store.First(ctx, under, n)
+}
+
+func (h *hooked) Notice(under string) (<-chan struct{}, func()) {
+	if h.silent {
+		return make(chan struct{}), func() {}
+	}
+	return h.Store.Notice(under)
 }
 
 func arrange(t *testing.T) *arranged {
@@ -114,14 +124,21 @@ func (a *arranged) put(name string, value []byte, err error) {
 }
 
 // head writes a run's head as the controller would: among the running, or
-// for a run that has ended among the finished.
-func (a *arranged) head(id, status string, step int) {
+// for a run that has ended among the finished. Each label is name=value.
+func (a *arranged) head(id, status string, step int, labels ...string) {
 	a.t.Helper()
 	at := store.RunningHead("controller", id)
 	if status != instance.Running {
 		at = store.FinishedHead("controller", id)
 	}
 	head := &instance.Head{Name: id, Machine: "arranged", Type: "flow", Status: status, Step: step, Started: time.Now()}
+	for _, label := range labels {
+		name, value, _ := strings.Cut(label, "=")
+		if head.Labels == nil {
+			head.Labels = map[string]string{}
+		}
+		head.Labels[name] = value
+	}
 	value, err := a.ctl.Write(at, time.Now(), time.Time{}, head)
 	a.put(at, value, err)
 }

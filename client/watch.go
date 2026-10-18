@@ -68,43 +68,30 @@ func (c *Client) List(ctx context.Context, filter Filter) ([]*Run, error) {
 // heads gives every head this party may read, in the order of their names,
 // and each one's mark, by which a change is noticed.
 func (c *Client) heads(ctx context.Context, finished bool) ([]*Run, map[string]store.Mark, error) {
-	under := func(base string) string {
-		if c.ID != nil {
-			return base + "/" + c.ID.Name
-		}
-		return base
-	}
 	// The running heads are read before the finished ones: a head is
 	// written among the finished before it leaves the running, so a run
 	// that ends in between is in one or the other.
-	places := []string{under(store.Running(c.ctl()))}
+	places := []string{c.under(store.Running(c.ctl()))}
 	if finished {
-		places = append(places, under(store.Finished(c.ctl())))
+		places = append(places, c.under(store.Finished(c.ctl())))
 	}
 	found := map[string]*Run{}
 	marks := map[string]store.Mark{}
 	for _, place := range places {
-		names, err := c.Store.List(ctx, place)
+		names, err := c.listHeads(ctx, place)
 		if err != nil {
-			if errors.Is(err, store.ErrRefused) {
-				return nil, nil, fmt.Errorf("the store gave this party nothing to read")
-			}
 			return nil, nil, err
 		}
 		for _, name := range names {
-			data, mark, err := c.Store.Read(ctx, name)
+			head, mark, err := c.readHead(ctx, name)
 			if err != nil {
 				return nil, nil, err
 			}
-			if mark == store.None {
-				continue // listed and gone: it has moved
-			}
-			var head instance.Head
-			if _, err := identity.Read(data, name, c.Controller, nil, &head); err != nil {
-				continue // a head that does not check is not shown
+			if head == nil {
+				continue
 			}
 			// One found in both places goes by the finished one.
-			found[head.Name] = runOf(&head)
+			found[head.Name] = runOf(head)
 			marks[head.Name] = mark
 		}
 	}
@@ -113,6 +100,39 @@ func (c *Client) heads(ctx context.Context, finished bool) ([]*Run, map[string]s
 		runs = append(runs, found[name])
 	}
 	return runs, marks, nil
+}
+
+// under gives the part of a place of heads this party may read: a client's
+// own, or all of them for a viewer.
+func (c *Client) under(base string) string {
+	if c.ID != nil {
+		return base + "/" + c.ID.Name
+	}
+	return base
+}
+
+// listHeads gives the names of the heads in a place.
+func (c *Client) listHeads(ctx context.Context, place string) ([]string, error) {
+	names, err := c.Store.List(ctx, place)
+	if errors.Is(err, store.ErrRefused) {
+		return nil, fmt.Errorf("the store gave this party nothing to read")
+	}
+	return names, err
+}
+
+// readHead reads the head at a name. It gives nil for one that was listed
+// and is gone, which has moved, and for one that does not check, which is
+// not shown.
+func (c *Client) readHead(ctx context.Context, name string) (*instance.Head, store.Mark, error) {
+	data, mark, err := c.Store.Read(ctx, name)
+	if err != nil || mark == store.None {
+		return nil, store.None, err
+	}
+	var head instance.Head
+	if _, err := identity.Read(data, name, c.Controller, nil, &head); err != nil {
+		return nil, store.None, nil
+	}
+	return &head, mark, nil
 }
 
 // An Update is one thing a watcher of a listing is told: a run that is new
@@ -128,16 +148,18 @@ type Update struct {
 // Watch follows a listing as it changes: the runs that already exist, then
 // the mark, then each run that appears or changes, until the context ends.
 // A run is given once more when it ends, saying how, also when the listing
-// does not take in the finished. It writes nothing and asks nothing of the
-// controller. A look that cannot reach the store is made again at the next
-// interval, and nothing is given on its account.
+// does not take in the finished. A run that the listing keeps, and that
+// started and ended between two looks, is given once, as new and ended. It
+// writes nothing and asks nothing of the controller. A look that cannot
+// reach the store is made again at the next interval, and nothing is given
+// on its account.
 func (c *Client) Watch(ctx context.Context, filter Filter, interval time.Duration, tell func(Update)) error {
 	notice, stop := c.Store.Notice(c.ctl())
 	defer stop()
-	seen := map[string]store.Mark{}
+	w := &watched{seen: map[string]store.Mark{}}
 	first := true
 	for {
-		err := c.changes(ctx, filter, seen, tell)
+		err := c.changes(ctx, filter, w, tell)
 		switch {
 		case err == nil && first:
 			tell(Update{Listed: true})
@@ -151,24 +173,59 @@ func (c *Client) Watch(ctx context.Context, filter Filter, interval time.Duratio
 	}
 }
 
+// watched is what a watcher of a listing has seen.
+type watched struct {
+	seen map[string]store.Mark // the runs given, by ID, and the mark each was given at
+	// ended holds the names of the finished heads at the last look, for a
+	// listing that does not take in the finished. It is nil until a look
+	// has been made.
+	ended map[string]bool
+}
+
 // changes looks at the listing once and gives what is new or has changed
-// since the marks last seen.
-func (c *Client) changes(ctx context.Context, filter Filter, seen map[string]store.Mark, tell func(Update)) error {
+// since the marks last seen. For a listing that does not take in the
+// finished it lists the finished heads by name and reads only those it has
+// not listed before: a run that started and ended between two looks is
+// among them.
+func (c *Client) changes(ctx context.Context, filter Filter, w *watched, tell func(Update)) error {
 	runs, marks, err := c.heads(ctx, filter.Finished)
 	if err != nil {
 		return err
 	}
+	var ended []string
+	if !filter.Finished {
+		if ended, err = c.listHeads(ctx, c.under(store.Finished(c.ctl()))); err != nil {
+			return err
+		}
+	}
 	for _, run := range runs {
-		old, known := seen[run.ID]
+		old, known := w.seen[run.ID]
 		if !known && !filter.keeps(run) {
 			continue
 		}
 		if !known || old != marks[run.ID] {
 			tell(Update{Run: run, New: !known})
 		}
-		seen[run.ID] = marks[run.ID]
+		w.seen[run.ID] = marks[run.ID]
 	}
-	for _, id := range sortedNames(seen) {
+	if w.ended != nil {
+		for _, name := range ended {
+			// One given before is given as it leaves the listing, below.
+			_, given := w.seen[strings.TrimPrefix(name, store.Finished(c.ctl())+"/")]
+			if given || w.ended[name] {
+				continue
+			}
+			head, _, err := c.readHead(ctx, name)
+			if err != nil {
+				return err
+			}
+			if head != nil && filter.keeps(runOf(head)) {
+				tell(Update{Run: runOf(head), New: true})
+			}
+			w.ended[name] = true
+		}
+	}
+	for _, id := range sortedNames(w.seen) {
 		if _, listed := marks[id]; listed {
 			continue
 		}
@@ -181,7 +238,16 @@ func (c *Client) changes(ctx context.Context, filter Filter, seen map[string]sto
 		if head != nil {
 			tell(Update{Run: runOf(head)})
 		}
-		delete(seen, id)
+		delete(w.seen, id)
+		if w.ended != nil {
+			w.ended[store.FinishedHead(c.ctl(), id)] = true
+		}
+	}
+	if !filter.Finished {
+		w.ended = map[string]bool{}
+		for _, name := range ended {
+			w.ended[name] = true
+		}
 	}
 	return nil
 }

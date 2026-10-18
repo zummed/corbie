@@ -10,7 +10,7 @@ The head is sealed to nobody. Anyone the store lets read it can read it and can 
 
 The head is a summary and may be a moment behind. The record is the truth, and the controller brings the head up to date after each step.
 
-When an instance ends, its head moves from the running heads to the finished ones. It is written among the finished before it is removed from the running, so an instance is never without a head. Watching what is in progress therefore costs in proportion to the work in progress, however much history is kept. The price is one more write at the end of every run.
+When an instance ends, its head moves from the running heads to the finished ones. It is written among the finished before it is removed from the running, so an instance is never without a head. A watcher of what is in progress therefore reads the heads of the work in progress and of the runs that have just ended, however much history is kept. The price is one more write at the end of every run.
 
 ## The record
 
@@ -35,6 +35,8 @@ An instance that runs for a long time would grow without limit, so its definitio
 There is one way to see what is happening, and every viewer uses it: the command line, a terminal screen, a web page, the gateway's streams, and an application built on Corbie.
 
 A watcher lists the running heads it may read and notices which are new or changed. The end of the first listing is marked, so a viewer knows when it has seen everything that already existed. A listing can be narrowed by label, by status and by parent, and can take in the finished heads as well.
+
+A run is reported once more when it ends, saying how. For a listing that does not take in the finished heads, the watcher lists the finished heads by name at each look and reads only those it has not listed before, so a run that started and ended between two looks is reported too, once, as new and ended.
 
 For an instance whose record the watcher may read, it then reads the entries it has not seen. Because entries never change, each is read once.
 

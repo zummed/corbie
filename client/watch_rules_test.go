@@ -218,9 +218,55 @@ func Test_inst_watch_store_unreachable_reports_nothing(t *testing.T) {
 	a.head(other, instance.Running, 1)
 	until("the run that appeared afterwards", func() bool { return given() == 4 })
 	mu.Lock()
-	defer mu.Unlock()
 	if !updates[2].Listed || updates[3].Run == nil || updates[3].Run.ID != other || !updates[3].New {
 		t.Fatalf("with the store out of reach in between, the watcher was given %+v", updates)
+	}
+	mu.Unlock()
+
+	// A look that is turned away after it has told one run's ending does not
+	// tell it again, though the listing does not take in the finished.
+	b := arrange(t)
+	b.hooked.silent = true
+	one, two := b.named("one"), b.named("two")
+	b.head(one, instance.Running, 1)
+	b.head(two, instance.Running, 1)
+	var ends []client.Update
+	turned := false
+	go b.Watch(watching, client.Filter{}, time.Millisecond, func(u client.Update) {
+		mu.Lock()
+		defer mu.Unlock()
+		if !u.Listed {
+			ends = append(ends, u)
+			return
+		}
+		// Both end, and the first read of the second's finished head is
+		// turned away.
+		ends = nil
+		for _, id := range []string{one, two} {
+			b.head(id, instance.Done, 2)
+			b.owner.Delete(ctx, store.RunningHead("controller", id), store.Overwrite)
+		}
+		b.hooked.mu.Lock()
+		defer b.hooked.mu.Unlock()
+		b.hooked.before = func(act, name string) error {
+			if act == "read" && name == store.FinishedHead("controller", two) && !turned {
+				turned = true
+				return fmt.Errorf("%w: no answer", store.ErrUnreachable)
+			}
+			return nil
+		}
+	})
+	until("both runs' endings", func() bool {
+		mu.Lock()
+		defer mu.Unlock()
+		return len(ends) >= 2
+	})
+	time.Sleep(20 * time.Millisecond) // long enough for a second telling, were there one
+	mu.Lock()
+	defer mu.Unlock()
+	if len(ends) != 2 || ends[0].Run.ID != one || ends[1].Run.ID != two || ends[0].New || ends[1].New ||
+		ends[0].Run.Status != instance.Done || ends[1].Run.Status != instance.Done {
+		t.Fatalf("with the store out of reach partway through a look, the watcher was given %+v", ends)
 	}
 }
 
@@ -302,6 +348,69 @@ func TestWatchGivesARunOnceMoreWhenItEnds(t *testing.T) {
 	defer mu.Unlock()
 	if len(updates) != 3 || updates[2].Run == nil || updates[2].Run.ID != id || updates[2].Run.Status != instance.Done || updates[2].New {
 		t.Fatalf("the watcher was given %+v", updates)
+	}
+}
+
+// A watcher of a listing that does not take in the finished, on a store
+// that gives no notices, is told of a run the listing keeps that started
+// and ended between two looks: once, as new and ended. A run the listing
+// does not keep is not told, and a finished head that was there before the
+// watch began is never read.
+func Test_inst_watch_reports_run_ended_between_looks(t *testing.T) {
+	a := arrange(t)
+	a.hooked.silent = true
+	before, flash, other := a.named("before"), a.named("flash"), a.named("other")
+	a.head(before, instance.Done, 2, "role=out")
+	reads := map[string]int{}
+	a.hooked.before = func(act, name string) error {
+		if act == "read" {
+			reads[name]++
+		}
+		return nil
+	}
+	var mu sync.Mutex
+	var updates []client.Update
+	watching, stop := context.WithCancel(ctx)
+	defer stop()
+	go a.Watch(watching, client.Filter{Labels: map[string]string{"role": "out"}}, time.Millisecond, func(u client.Update) {
+		mu.Lock()
+		defer mu.Unlock()
+		if updates = append(updates, u); u.Listed {
+			// Between this look and the next, two runs start and end.
+			for _, id := range []string{flash, other} {
+				role := map[string]string{flash: "role=out", other: "role=in"}[id]
+				a.head(id, instance.Running, 1, role)
+				a.head(id, instance.Done, 2, role)
+				a.owner.Delete(ctx, store.RunningHead("controller", id), store.Overwrite)
+			}
+		}
+	})
+	for deadline := time.Now().Add(5 * time.Second); ; time.Sleep(time.Millisecond) {
+		mu.Lock()
+		n := len(updates)
+		mu.Unlock()
+		if n >= 2 {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("a run that started and ended between two looks was never told: the watcher was given %+v", updates)
+		}
+	}
+	time.Sleep(50 * time.Millisecond) // many looks, long enough for a second telling, were there one
+	stop()
+	mu.Lock()
+	defer mu.Unlock()
+	if len(updates) != 2 || !updates[0].Listed || updates[1].Run == nil || updates[1].Run.ID != flash ||
+		updates[1].Run.Status != instance.Done || !updates[1].New {
+		t.Fatalf("the watcher was given %+v", updates)
+	}
+	a.hooked.mu.Lock()
+	defer a.hooked.mu.Unlock()
+	if n := reads[store.FinishedHead("controller", before)]; n != 0 {
+		t.Fatalf("a finished head there before the watch began was read %d times", n)
+	}
+	if n := reads[store.FinishedHead("controller", flash)]; n != 1 {
+		t.Fatalf("the head of the run that ended between two looks was read %d times", n)
 	}
 }
 

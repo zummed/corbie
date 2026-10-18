@@ -24,9 +24,8 @@ When the script returns, the runner writes any blobs in the output into the inst
 
 1. Each text in it longer than 64 KiB is stored as a blob of plain text, whose items are its lines.
 2. Each list in it longer than 64 KiB as JSON, and holding no blobs, is stored as a blob of JSON, whose items are its entries.
-3. If the output is still too large and holds no blobs, the whole of it is stored as one blob of JSON.
 
-A value that holds blobs, including the texts stored by the first step, is not put into a blob, because a reference inside a blob is not copied with it. An output still too large to send fails the job, saying so. If the script throws, or is refused something, or runs out of time, the result says so. Everything a job writes for the controller is under a name that is that job's alone, so a write whose answer was lost is sent again. Only when the result is written does the runner delete the job from its inbox. It removes the mark once the job's due time has passed.
+A list that holds blobs, including the texts stored by the first step, stays a list, because a reference inside a blob is not copied with it. An output still too large to send fails the job, saying so. If the script throws, or is refused something, or runs out of time, the result says so. Everything a job writes for the controller is under a name that is that job's alone, so a write whose answer was lost is sent again. Only when the result is written does the runner delete the job from its inbox. It removes the mark once the job's due time has passed.
 
 ## Cancelling
 

@@ -527,29 +527,20 @@ func (r *Runner) answer(ctx context.Context, s Served, w *waiting, result *insta
 		return 0, add(ctx, s.Store, name, data)
 	}
 	size, err := send(result)
-	// An output too large to send is sent in blobs: its long texts and
-	// lists, and, if that is not enough, the whole of it. A value that
-	// holds blobs is never put into a blob: a reference inside a blob is
-	// not copied with the blob, and the blob could outlive what it names.
-	for _, whole := range []bool{false, true} {
-		if err != nil || size == 0 || (whole && len(blob.Refs(result.Output)) > 0) {
-			break
-		}
+	if err == nil && size > 0 {
+		// An output too large to send is sent with its long texts and
+		// lists in blobs.
 		sent := *result
-		if sent.Output, err = r.blobbed(ctx, s, job.Instance, result.Output, whole); err == nil {
+		if sent.Output, err = r.blobbed(ctx, s, job.Instance, result.Output); err == nil {
 			result = &sent
 			size, err = send(result)
 		}
 	}
-	holds := len(blob.Refs(result.Output))
 	if err == nil && size > 0 {
 		// What is left too large to send is sent as an error that says so.
-		said := fmt.Sprintf("the job's result is %d bytes, too large to send", size)
-		if holds > 0 {
-			said += fmt.Sprintf("; it holds %d blobs, and an output that holds blobs is not put into a blob: return fewer", holds)
-		}
 		_, err = send(&instance.Result{Job: job.Name, Attempt: job.Attempt, Status: machine.StatusError, Final: true, Used: result.Used,
-			Error: &machine.Error{Status: machine.StatusError, Error: said}})
+			Error: &machine.Error{Status: machine.StatusError, Error: fmt.Sprintf(
+				"the job's result is %d bytes, too large to send even with its long texts and lists in blobs; a list that holds blobs stays a list", size)}})
 	}
 	if err != nil {
 		return false, err
@@ -562,21 +553,16 @@ func (r *Runner) answer(ctx context.Context, s Served, w *waiting, result *insta
 // where it is; a longer one is stored as a blob.
 const longText = 64 << 10
 
-// blobbed gives an output stored in blobs in the instance's record, from
-// the inside out: each text in it longer than longText as a blob of text,
-// and each list longer than that as JSON, holding no blobs, as a blob of
-// JSON. With whole, all of it is one blob of JSON.
-func (r *Runner) blobbed(ctx context.Context, s Served, instanceID string, output any, whole bool) (any, error) {
+// blobbed gives an output with its long values stored in blobs in the
+// instance's record, from the inside out: each text longer than longText
+// as a blob of text, and each list longer than that as JSON as a blob of
+// JSON. A list that holds blobs, those just made among them, stays a list:
+// a reference inside a blob is not copied with the blob, and the blob
+// could outlive what it names.
+func (r *Runner) blobbed(ctx context.Context, s Served, instanceID string, output any) (any, error) {
 	write := func(typ string, contents []byte) (any, error) {
 		ref, err := blob.Write(ctx, s.Store, store.Blob(s.Controller.Name, instanceID, blob.NewName()), typ, blob.NewKey(), bytes.NewReader(contents))
 		return ref.Value(), err
-	}
-	if whole {
-		contents, err := json.Marshal(output)
-		if err != nil {
-			return nil, err
-		}
-		return write("application/json", contents)
 	}
 	var put func(v any) (any, error)
 	put = func(v any) (any, error) {

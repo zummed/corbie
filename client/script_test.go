@@ -144,6 +144,10 @@ func TestOutputTooLargeIsSentInBlobs(t *testing.T) {
 			t.Errorf("the long text %d was %v", i, blob)
 		}
 	}
+	// A map of many small values has no long text or list, and is too
+	// large to send.
+	wantError(t, script(t, l, `return Object.fromEntries(Array.from({ length: 50000 }, (_, n) => ["k" + n, n]))`, "timeout: 10s"),
+		"error", "too large to send even with its long texts and lists in blobs")
 	count := out["count"].(map[string]any)
 	if count["lines"] != 60000.0 || count["entries"] != 50000.0 ||
 		jsonOf(count["edge"]) != `["65536:0","65536:1","65536:2","65536:3","65536:4"]` {
@@ -151,8 +155,8 @@ func TestOutputTooLargeIsSentInBlobs(t *testing.T) {
 	}
 }
 
-// A long text holding a secret's value is stored as a blob with the
-// secret's name in its place, as it is when it is sent as text.
+// A long text, and a long list, holding a secret's value are each stored
+// as a blob with the secret's name in its place, as they are when sent.
 func TestOutputInABlobIsMasked(t *testing.T) {
 	const value = "s3cret-value-of-k"
 	echo := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.Write([]byte(r.Header.Get("X-K"))) }))
@@ -163,17 +167,24 @@ func TestOutputInABlobIsMasked(t *testing.T) {
 		flow: masked
 		stages:
 		  echo: { job: { script: ./echo.js, input: { url: "`+echo.URL+`" }, allow: ["net:`+host+`", "secret:K@net.unencrypted:`+host+`"] } }
-		  read: { job: { script: ./read.js, input: { text: "${stages.echo.output.text}" } } }
+		  read: { job: { script: ./read.js, input: { text: "${stages.echo.output.text}", rows: "${stages.echo.output.rows}" } } }
 		output: ${stages.read.output}
 	`, map[string]string{
-		"echo.js": `return { text: "x".repeat(300000) + http.get(input.url, { headers: { "X-K": secrets.get("K") } }).body }`,
-		"read.js": `const text = blobs.read(input.text, { as: "text" }); return { value: text.includes("` + value + `"), tail: text.slice(-12), size: text.length }`,
+		"echo.js": `
+			const said = http.get(input.url, { headers: { "X-K": secrets.get("K") } }).body
+			return { text: "x".repeat(300000) + said, rows: Array.from({ length: 5000 }, (_, n) => ({ n, said })) }
+		`,
+		"read.js": `
+			const text = blobs.read(input.text, { as: "text" })
+			const rows = blobs.read(input.rows, { as: "text" })
+			return { value: text.includes("` + value + `") || rows.includes("` + value + `"), tail: text.slice(-12), size: text.length, row: JSON.parse(rows)[7] }
+		`,
 	}), client.Start{Secrets: map[string]string{"K": value}})
 	if err != nil {
 		t.Fatal(err)
 	}
 	r := wait(t, l, id)
-	if r.Status != "done" || jsonOf(r.Output) != `{"size":300010,"tail":"xx[secret K]","value":false}` {
+	if r.Status != "done" || jsonOf(r.Output) != `{"row":{"n":7,"said":"[secret K]"},"size":300010,"tail":"xx[secret K]","value":false}` {
 		t.Fatalf("the run ended %s (%s) with %v", r.Status, r.Error, jsonOf(r.Output))
 	}
 }
@@ -181,7 +192,7 @@ func TestOutputInABlobIsMasked(t *testing.T) {
 func Test_run_large_output_holding_blobs_is_not_put_in_a_blob(t *testing.T) {
 	l := local(t)
 	r := script(t, l, `return Array.from({ length: 2000 }, (_, n) => blobs.make("blob " + n))`, "timeout: 30s")
-	wantError(t, r, "error", "too large to send; it holds 2000 blobs, and an output that holds blobs is not put into a blob: return fewer")
+	wantError(t, r, "error", "too large to send even with its long texts and lists in blobs; a list that holds blobs stays a list")
 	// A long text beside a blob is still stored as a blob of its own.
 	r = script(t, l, `return { file: blobs.make("a file"), text: "x".repeat(300000) }`, "timeout: 10s")
 	if out, _ := r.Output.(map[string]any); r.Status != "done" || out["text"].(map[string]any)["type"] != "text/plain" {

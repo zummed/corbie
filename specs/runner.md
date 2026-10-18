@@ -20,12 +20,7 @@ The job names its script, the script's files and its input, and the runner reads
 
 Every job has a scratch directory of its own, made for it and removed when it ends. A runner that starts removes the scratch directories left by one that was killed before it could. A path a script writes without a leading `/`, or on Windows without a drive, is in that directory; on Windows one with a leading `/` and no drive is refused. Everything a job starts is stopped when the job ends, however it ends.
 
-When the script returns, the runner writes any blobs in the output into the instance's record and sends the output to the controller as the job's result, along with the permissions it used. An output too large to send is sent in blobs:
-
-1. Each text in it longer than 64 KiB is stored as a blob of plain text, whose items are its lines.
-2. Each list in it longer than 64 KiB as JSON, and holding no blobs, is stored as a blob of JSON, whose items are its entries.
-
-A list that holds blobs, including the texts stored by the first step, stays a list, because a reference inside a blob is not copied with it. An output still too large to send fails the job, saying so. If the script throws, or is refused something, or runs out of time, the result says so. Everything a job writes for the controller is under a name that is that job's alone, so a write whose answer was lost is sent again. Only when the result is written does the runner delete the job from its inbox. It removes the mark once the job's due time has passed.
+When the script returns, the runner writes any blobs in the output into the instance's record and sends the output to the controller as the job's result, along with the permissions it used. If the script throws, or is refused something, or runs out of time, the result says so. Everything a job writes for the controller is under a name that is that job's alone, so a write whose answer was lost is sent again. Only when the result is written does the runner delete the job from its inbox. It removes the mark once the job's due time has passed.
 
 ## Cancelling
 

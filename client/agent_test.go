@@ -953,26 +953,3 @@ func TestAgentWithTheToolsOfAnMCPServer(t *testing.T) {
 		t.Errorf("the call gave %s", shown)
 	}
 }
-
-// A tool whose output is too large to send gives the model handles: a long
-// text as a text blob of lines, and a large list as a blob of its entries.
-func TestAgentToolWithAnOutputTooLargeToSend(t *testing.T) {
-	m := newModel(t, calls("c1", "dump", `{}`), says("done"))
-	def := strings.Replace(agentDef(m.URL, ""), "tools:\n", `tools:
-		  dump:
-		    does: Give everything
-		    args: {}
-		    job: { script: ./dump.js }
-`, 1)
-	r := runAgent(t, local(t, "all"), def, map[string]string{"add.js": scripts["add.js"],
-		"dump.js": `return { text: "a line\n".repeat(60000), rows: Array.from({ length: 50000 }, (_, n) => ({ n })) }`})
-	if r.Status != "done" {
-		t.Fatalf("the agent ended %s: %s", r.Status, r.Error)
-	}
-	shown := strings.ReplaceAll(lastShown(m.sent[1]), `\`, "")
-	for _, want := range []string{`"text":{"blob":"blob`, `"type":"text/plain"`, `"items":60000`, `"items":50000`, `"preview":["a line","a line"`} {
-		if !strings.Contains(shown, want) {
-			t.Errorf("the model was not shown %s: %s", want, shown)
-		}
-	}
-}

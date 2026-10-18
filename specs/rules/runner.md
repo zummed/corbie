@@ -60,11 +60,6 @@ The detailed rules behind the [Runner overview](../runner.md).
 **R-run-20** When the script returns, the runner writes any blobs in its output into the instance's record and then sends the output to the controller as the job's result, along with the permissions it used.
 *Accept:* a script returns `{ a: 1, f: <a file> }` having read one file and connected to one host: when the result is in the controller's inbox, the blob is already complete in the instance's record; the machine receives `done` with `a` as 1 and `f` as a reference; and the result lists that read and that connection and nothing else.
 
-**R-run-53** An output too large to send is sent with its long values in blobs: each text in it longer than 64 KiB as a blob of plain text, and each list in it longer than 64 KiB as JSON and holding no blobs as a blob of JSON.
-*Accept:* a script returns `{ title: "t", text: <60000 lines> }`: the job is done, `title` is `t`, and `text` is a reference to a text blob whose items are the 60000 lines. A script returns a list of 50000 small maps, and another five texts of 65537 bytes: the first's output is a blob of JSON whose items are the 50000 maps, and the second's is a list of five text blobs. Five texts of exactly 64 KiB are one blob of JSON. A tool of an agent returns a long text and a long list, and the model is shown a handle for each, with its items. A long text, and a long list, holding a secret's value are each stored with the secret's name in its place.
-
-**C-run-58** A list that holds blobs, those just stored for its texts among them, is not stored as a blob, and an output still too large for it fails the job, saying so. A reference inside a blob is not copied with the blob, so the blob could outlive what it names. *Test:* `run_large_output_holding_blobs_is_not_put_in_a_blob`
-
 **R-run-23** If the script throws, or is refused something, or runs out of time, the result says so.
 *Accept:* `throw new Error("no")` gives the machine `failed` with an error whose text holds `no`. A script allowed nothing reads a file: the result has the status denied and carries the refusal. A script that never returns, in a job with a one-second time limit: the result has the status timeout.
 
@@ -87,6 +82,8 @@ The detailed rules behind the [Runner overview](../runner.md).
 **C-run-19** A script past its time limit is interrupted inside its process first, and the process is killed from outside if it has not ended shortly after. An interrupt reaches only script code, and a script waiting inside a call or on a started program never sees it. *Test:* `run_time_limit_stops_script_stuck_in_a_call`
 
 **C-run-21** A memory limit is enforced twice: inside the process, by interrupting the script at the limit, and from outside, on Linux, by killing the process when the memory it really holds goes well past it. The script engine counts only its own values, and what a plugin holds is not seen from inside. *Test:* `run_memory_limit_enforced_from_outside`
+
+**C-run-22** A result too large to send is sent as an error that says so and says to put large output in a blob. With no result at all the controller waits out the due time, and the machine learns only of a timeout. *Test:* `run_result_too_large_is_an_error_result`
 
 **C-run-23** A job's result is written only after every emit of that job has been written. A result that overtakes its emits shows the machine a finished job before its values, and the values then arrive for a job nobody is waiting on. *Test:* `run_result_written_after_all_emits`
 

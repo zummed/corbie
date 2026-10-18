@@ -638,6 +638,9 @@ Options:
   same call made with { responses, state }, in this job or a later one,
   carries on. The plugin tells a server it takes requests made with a form,
   and the script gives the responses.
+- A job whose output is too large to send fails. A script that gives an
+  agent a tool's result puts a large text into a blob, which the model reads
+  with its blob tools: ` + "`text.length > 100000 ? blobs.make(text) : text`" + `.
 - With client, the plugin finds the server's sign-in server from the server,
   gets a token, and sends it to that server and no other.
 - A program the plugin started is stopped when the job ends.

@@ -55,7 +55,7 @@ ends.
 
   curl -H "Authorization: Bearer $TOKEN" "http://127.0.0.1:8371/runs/$ID?wait"
     {"id":"laptop-client/20261013T185126.250Z-571d935912","machine":"fetch-title",
-     "type":"flow","status":"done",
+     "type":"flow","status":"done","input":{"url":"https://example.com"},
      "output":{"title":"Example Domain","url":"https://example.com"}, …}
 
 Other requests

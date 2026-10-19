@@ -8,12 +8,13 @@ import (
 
 	"github.com/zummed/corbie/client"
 	"github.com/zummed/corbie/machine"
+	llmstandin "github.com/zummed/corbie/plugin/llm/standin"
 )
 
 func Test_agent_next_turn_waits_for_open_approval(t *testing.T) {
 	// One turn asks for a tool that is held for a yes, and for one that is
 	// not. The ask is a person, who takes their time.
-	both := `{"content":[{"type":"tool_use","id":"held","name":"deploy","input":{"n":10}},{"type":"tool_use","id":"free","name":"add","input":{"n":1}}],"stop_reason":"tool_use","usage":{"input_tokens":1,"output_tokens":1}}`
+	both := llmstandin.Reply{Calls: []llmstandin.ToolCall{{ID: "held", Name: "deploy", Args: `{"n":10}`}, {ID: "free", Name: "add", Args: `{"n":1}`}}}
 	m := newModel(t, both, says("done"))
 	l := local(t, "all")
 	id, err := l.Start(ctx, draft(t, strings.ReplaceAll(`
@@ -91,10 +92,10 @@ func Test_agent_next_turn_waits_for_open_approval(t *testing.T) {
 	case <-time.After(30 * time.Second):
 		t.Fatal("the agent did not end")
 	}
-	if len(m.sent) != 2 {
-		t.Fatalf("the model was called %d times", len(m.sent))
+	if len(m.Calls) != 2 {
+		t.Fatalf("the model was called %d times", len(m.Calls))
 	}
-	if second := jsonOf(m.sent[1]); !strings.Contains(second, `"content":"{\"n\":11}","is_error":false,"tool_use_id":"held"`) ||
+	if second := jsonOf(m.Calls[1]); !strings.Contains(second, `"content":"{\"n\":11}","is_error":false,"tool_use_id":"held"`) ||
 		!strings.Contains(second, `"content":"{\"n\":2}","is_error":false,"tool_use_id":"free"`) {
 		t.Fatalf("the second turn was shown: %s", second)
 	}
@@ -104,8 +105,8 @@ func Test_agent_handle_name_is_stable_and_never_reused(t *testing.T) {
 	// The model is shown one blob, then another; the first again; a third
 	// in the same turn as the second again; and at the end reads the first
 	// and the third by the names it was given.
-	two := `{"content":[{"type":"tool_use","id":"c4","name":"make","input":{"text":"the third"}},{"type":"tool_use","id":"c5","name":"again","input":{"it":"blob2"}}],"stop_reason":"tool_use","usage":{"input_tokens":1,"output_tokens":1}}`
-	reads := `{"content":[{"type":"tool_use","id":"c6","name":"blob_read","input":{"blob":"blob1"}},{"type":"tool_use","id":"c7","name":"blob_read","input":{"blob":"blob3"}}],"stop_reason":"tool_use","usage":{"input_tokens":1,"output_tokens":1}}`
+	two := llmstandin.Reply{Calls: []llmstandin.ToolCall{{ID: "c4", Name: "make", Args: `{"text":"the third"}`}, {ID: "c5", Name: "again", Args: `{"it":"blob2"}`}}}
+	reads := llmstandin.Reply{Calls: []llmstandin.ToolCall{{ID: "c6", Name: "blob_read", Args: `{"blob":"blob1"}`}, {ID: "c7", Name: "blob_read", Args: `{"blob":"blob3"}`}}}
 	m := newModel(t, calls("c1", "make", `{"text": "the first"}`), calls("c2", "make", `{"text": "the second"}`),
 		calls("c3", "again", `{"it": "blob1"}`), two, reads, says("done"))
 	l := local(t, "all")
@@ -125,7 +126,7 @@ func Test_agent_handle_name_is_stable_and_never_reused(t *testing.T) {
 	if r.Status != "done" {
 		t.Fatalf("the agent ended %s: %s", r.Status, r.Error)
 	}
-	shown := func(turn int) string { return strings.ReplaceAll(lastShown(m.sent[turn]), `\`, "") }
+	shown := func(turn int) string { return strings.ReplaceAll(lastShown(m.Calls[turn]), `\`, "") }
 	for turn, want := range map[int][]string{
 		1: {`"file":{"blob":"blob1"`},
 		2: {`"file":{"blob":"blob2"`},
@@ -142,14 +143,14 @@ func Test_agent_handle_name_is_stable_and_never_reused(t *testing.T) {
 			}
 		}
 	}
-	if all := strings.ReplaceAll(jsonOf(m.sent), `\`, ""); strings.Contains(all, `"blob":"blob4"`) {
+	if all := strings.ReplaceAll(jsonOf(m.Calls), `\`, ""); strings.Contains(all, `"blob":"blob4"`) {
 		t.Errorf("three blobs were given more than three names: %s", all)
 	}
 
 	// An agent that carries the conversation on keeps the names: a blob it
 	// has not seen takes one the conversation never used, and a name from
 	// the earlier turns still means the blob it was given to.
-	both := `{"content":[{"type":"tool_use","id":"d1","name":"make","input":{"text":"the fourth"}},{"type":"tool_use","id":"d2","name":"blob_read","input":{"blob":"blob1"}}],"stop_reason":"tool_use","usage":{"input_tokens":1,"output_tokens":1}}`
+	both := llmstandin.Reply{Calls: []llmstandin.ToolCall{{ID: "d1", Name: "make", Args: `{"text":"the fourth"}`}, {ID: "d2", Name: "blob_read", Args: `{"blob":"blob1"}`}}}
 	m2 := newModel(t, both, says("done"))
 	id, err := l.Start(ctx, draft(t, strings.Replace(def, m.URL, m2.URL, 1)+"\n\t\tconversation: ${input.so}\n", map[string]string{"add.js": scripts["add.js"],
 		"make.js":  `return { file: blobs.make(input.text) }`,
@@ -162,7 +163,7 @@ func Test_agent_handle_name_is_stable_and_never_reused(t *testing.T) {
 	if second := wait(t, l, id); second.Status != "done" {
 		t.Fatalf("the agent that carried on ended %s: %s", second.Status, second.Error)
 	}
-	last := strings.ReplaceAll(lastShown(m2.sent[1]), `\`, "")
+	last := strings.ReplaceAll(lastShown(m2.Calls[1]), `\`, "")
 	for _, part := range []string{`"file":{"blob":"blob4"`, `"items":["the first"]`} {
 		if !strings.Contains(last, part) {
 			t.Errorf("the agent that carried on was not shown %s: %s", part, last)

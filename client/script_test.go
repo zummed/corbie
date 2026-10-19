@@ -1,13 +1,17 @@
 package client_test
 
 import (
+	"context"
+	"encoding/json/v2"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/zummed/corbie/client"
+	"github.com/zummed/corbie/flow"
 	"github.com/zummed/corbie/plugin"
 )
 
@@ -26,6 +30,49 @@ func wantError(t *testing.T, r *client.Run, failure, holds string) {
 	t.Helper()
 	if r.Status != "failed" || r.Failure != failure || !strings.Contains(r.Error, holds) {
 		t.Fatalf("the run ended %s/%s with %q; want %s with an error holding %q", r.Status, r.Failure, r.Error, failure, holds)
+	}
+}
+
+// A script given to the package is wrapped in a flow of one stage, whose
+// job carries what the script may do and its limits, and the run's
+// output is what the script returned.
+func TestScriptIsWrappedInAFlowOfOneStage(t *testing.T) {
+	job := client.ScriptJob{Allow: []string{"fs.read:/etc/hostname"}, Deny: []string{"net:example.com"},
+		Timeout: "7s", Memory: "64MB", Tags: []string{"gpu"}}
+	draft, err := client.Script("9-double.me.js", []byte("return input * 2"), job)
+	if err != nil {
+		t.Fatal(err)
+	}
+	def := draft.Definition
+	if def.Type != "flow" || def.Name != "_-double_me" || len(draft.Files) != 1 || string(draft.Files["./9-double.me.js"]) != "return input * 2" {
+		t.Fatalf("the script was wrapped as %s %s with the files %v", def.Type, def.Name, draft.Files)
+	}
+	var body flow.Flow
+	if err := json.Unmarshal(def.Body, &body); err != nil {
+		t.Fatal(err)
+	}
+	stage := body.Stages[client.ScriptStage]
+	if len(body.Stages) != 1 || stage == nil {
+		t.Fatalf("the flow has the stages %v", body.Stages)
+	}
+	if s := stage.Job; s.Script != "./9-double.me.js" || !slices.Equal(s.Allow, job.Allow) || !slices.Equal(s.Deny, job.Deny) ||
+		s.Timeout != "7s" || s.Memory != 64<<20 || !slices.Equal(s.Tags, job.Tags) {
+		t.Fatalf("the stage's job is %+v", s)
+	}
+	// Started with no tag, which no runner here has, it runs the script.
+	job.Tags = nil
+	if draft, err = client.Script("double.js", []byte("return input * 2"), job); err != nil {
+		t.Fatal(err)
+	}
+	l := local(t)
+	id, err := l.Start(ctx, draft, client.Start{Input: 21})
+	if err != nil {
+		t.Fatal(err)
+	}
+	waitCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
+	if r, err := l.Wait(waitCtx, id, 50*time.Millisecond); err != nil || r.Status != "done" || r.Output != 42.0 {
+		t.Fatalf("the run ended %+v: %v", r, err)
 	}
 }
 
@@ -52,6 +99,28 @@ func Test_run_require_reads_only_listed_files(t *testing.T) {
 	wantError(t, script(t, l, `return require("./other.js")`, "timeout: 5s"), "error", "not among the files the job lists")
 	wantError(t, script(t, l, `return require("../`+filepath.Base(dir)+`/on-disk.js")`, "timeout: 5s"), "error", "not among the files the job lists")
 	wantError(t, script(t, l, `return require("no-such-plugin")`, "timeout: 5s"), "error", `does not have the plugin "no-such-plugin"`)
+}
+
+func TestRequireReadsFromTheRequiringFile(t *testing.T) {
+	// A relative require is read from the directory of the file that
+	// calls it, and the file is found among the job's files.
+	l := local(t, "all")
+	def := `
+		flow: one
+		stages:
+		  it: { job: { script: ./lib/fetch.js, files: [./lib/util.js, ./top.js] } }
+		output: ${stages.it.output}
+	`
+	files := map[string]string{
+		"lib/fetch.js": `return require("./util.js").two`,
+		"lib/util.js":  `exports.two = require("../top.js").one * 2`,
+		"top.js":       `exports.one = 1`,
+	}
+	if r := run(t, l, def, files, nil); r.Output != 2.0 {
+		t.Fatalf("the run ended %s with %v: %s", r.Status, r.Output, r.Error)
+	}
+	files["lib/fetch.js"] = `return require("./lib/util.js").two`
+	wantError(t, run(t, l, def, files, nil), "error", `the file "./lib/lib/util.js" is not among the files the job lists`)
 }
 
 func Test_run_plugin_cannot_take_a_scripts_own_name(t *testing.T) {

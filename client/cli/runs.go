@@ -77,42 +77,13 @@ func (s *starting) prepare(e *Env, file string) (*machine.Draft, client.Start, e
 	if err != nil {
 		return nil, start, err
 	}
-	dir := filepath.Dir(file)
-	// Only the files beside the definition are read: a path that leaves
-	// their directory is refused.
-	load := func(name string) ([]byte, error) {
-		if clean := path.Clean(name); clean == ".." || strings.HasPrefix(clean, "../") || path.IsAbs(clean) {
-			return nil, fmt.Errorf("it is outside the directory the definition is in")
-		}
-		return os.ReadFile(filepath.Join(dir, filepath.FromSlash(name)))
-	}
+	var draft *machine.Draft
 	script := strings.HasSuffix(file, ".js")
 	if script {
-		// A script file is wrapped in a flow of one stage, and what it may
-		// do and its limits are given on the command line.
-		job := map[string]any{"script": "./" + filepath.Base(file), "input": "${input}"}
-		if len(s.allow) > 0 {
-			job["allow"] = []string(s.allow)
-		}
-		if len(s.deny) > 0 {
-			job["deny"] = []string(s.deny)
-		}
-		if s.timeout != "" {
-			job["timeout"] = s.timeout
-		}
-		if s.memory != "" {
-			job["memory"] = s.memory
-		}
-		if len(s.tags) > 0 {
-			job["tags"] = []string(s.tags)
-		}
-		// Written as JSON, which is YAML too; its first name is the type.
-		name := sanitize(strings.TrimSuffix(filepath.Base(file), ".js"))
-		src, err = json.Marshal(map[string]any{"flow": name, "stages": map[string]any{"script": map[string]any{"job": job}},
-			"output": "${stages.script.output}"}, json.Deterministic(true))
-		if err != nil {
-			return nil, start, err
-		}
+		// What a script file may do and its limits are given on the
+		// command line.
+		draft, err = client.Script(filepath.Base(file), src, client.ScriptJob{Allow: s.allow, Deny: s.deny,
+			Timeout: s.timeout, Memory: s.memory, Tags: s.tags})
 	} else {
 		// A flag that has no effect on what was given is a mistake.
 		for name, given := range map[string]bool{"--memory": s.memory != "", "--tag": len(s.tags) > 0} {
@@ -130,8 +101,17 @@ func (s *starting) prepare(e *Env, file string) (*machine.Draft, client.Start, e
 			}
 			start.Allow = &permission.Layer{Allow: s.allow, Deny: s.deny}
 		}
+		dir := filepath.Dir(file)
+		// Only the files beside the definition are read: a path that leaves
+		// their directory is refused.
+		load := func(name string) ([]byte, error) {
+			if clean := path.Clean(name); clean == ".." || strings.HasPrefix(clean, "../") || path.IsAbs(clean) {
+				return nil, fmt.Errorf("it is outside the directory the definition is in")
+			}
+			return os.ReadFile(filepath.Join(dir, filepath.FromSlash(name)))
+		}
+		draft, err = machine.Parse(src, load)
 	}
-	draft, err := machine.Parse(src, load)
 	if err != nil {
 		return nil, start, err
 	}
@@ -147,12 +127,13 @@ func (s *starting) prepare(e *Env, file string) (*machine.Draft, client.Start, e
 		}
 	}
 	// A file is given as input under a name: --input-file report=report.pdf.
+	files := map[string]client.InputFile{}
 	for _, given := range s.files {
 		name, at, ok := strings.Cut(given, "=")
 		if !ok || name == "" || at == "" {
 			return nil, start, Mistake("--input-file takes name=path: the name the file has in the input, and where the file is")
 		}
-		if _, twice := start.Files[name]; twice {
+		if _, twice := files[name]; twice {
 			return nil, start, Mistake("--input-file gives two files under the name %q", name)
 		}
 		file, err := os.Open(at)
@@ -160,10 +141,10 @@ func (s *starting) prepare(e *Env, file string) (*machine.Draft, client.Start, e
 			return nil, start, err
 		}
 		s.opened = append(s.opened, file)
-		if start.Files == nil {
-			start.Files = map[string]client.InputFile{}
-		}
-		start.Files[name] = client.InputFile{Name: filepath.Base(at), Contents: file}
+		files[name] = client.InputFile{Name: filepath.Base(at), Contents: file}
+	}
+	if start.Input, err = client.WithFiles(start.Input, files); err != nil {
+		return nil, start, err
 	}
 	for _, label := range s.labels {
 		name, value, _ := strings.Cut(label, "=")
@@ -215,22 +196,6 @@ func (s *starting) prepare(e *Env, file string) (*machine.Draft, client.Start, e
 		}
 	}
 	return draft, start, nil
-}
-
-func sanitize(name string) string {
-	var b strings.Builder
-	for i, r := range name {
-		ok := r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r == '_' || (i > 0 && (r >= '0' && r <= '9' || r == '-'))
-		if ok {
-			b.WriteRune(r)
-		} else {
-			b.WriteRune('_')
-		}
-	}
-	if b.Len() == 0 {
-		return "script"
-	}
-	return b.String()
 }
 
 // interval is how often a command that waits looks again at a store that
@@ -377,6 +342,10 @@ func runText(run *client.Run, script bool) string {
 			}
 		}
 	}
+	if run.Input != nil {
+		in, _ := json.Marshal(run.Input, json.Deterministic(true))
+		fmt.Fprintf(&b, "  input: %s\n", in)
+	}
 	if run.Output != nil {
 		out, _ := json.Marshal(run.Output, json.Deterministic(true))
 		fmt.Fprintf(&b, "  output: %s\n", out)
@@ -389,7 +358,7 @@ func runText(run *client.Run, script bool) string {
 
 // wrapped is how a refusal names the layer of a script file's own list,
 // which is that of the one stage it is wrapped in.
-const wrapped = `the job "script" in the definition of `
+const wrapped = `the job "` + client.ScriptStage + `" in the definition of `
 
 // labelsOf prints a run's labels: each name with its value, or alone if it
 // has none.

@@ -32,6 +32,7 @@ prints the run's ID and exits. The controller starts the run. `<id>` below is
 that ID.
 
     corbie run show <id> --wait
+      input: {"url":"https://example.com"}
       output: {"title":"Example Domain","url":"https://example.com"}
       used: net:example.com:443
 

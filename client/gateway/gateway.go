@@ -229,6 +229,7 @@ func (g *Gateway) start(w http.ResponseWriter, r *http.Request) {
 	var st client.Start
 	var definition string
 	beside := map[string]string{}
+	files := map[string]client.InputFile{}
 	for name, p := range parts {
 		kind, rest, _ := strings.Cut(name, ":")
 		var err error
@@ -249,10 +250,7 @@ func (g *Gateway) start(w http.ResponseWriter, r *http.Request) {
 			var contents io.ReadCloser
 			if contents, err = p.open(); err == nil {
 				defer contents.Close()
-				if st.Files == nil {
-					st.Files = map[string]client.InputFile{}
-				}
-				st.Files[rest] = client.InputFile{Name: p.filename, Contents: contents}
+				files[rest] = client.InputFile{Name: p.filename, Contents: contents}
 			}
 		default:
 			fail(w, http.StatusBadRequest, fmt.Errorf("the form has a part named %q; %s", name, shape))
@@ -288,7 +286,11 @@ func (g *Gateway) start(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// An input of null is no input.
-	st.Input, st.Labels, st.Secrets = s.Input, s.Labels, s.Secrets
+	if st.Input, err = client.WithFiles(s.Input, files); err != nil {
+		fail(w, http.StatusBadRequest, err)
+		return
+	}
+	st.Labels, st.Secrets = s.Labels, s.Secrets
 	st.Timeout, st.Life = time.Duration(s.Timeout), time.Duration(s.Life)
 	// The start's own list, which narrows the run and everything below.
 	if len(s.Allow)+len(s.Deny) > 0 {

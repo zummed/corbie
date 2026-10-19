@@ -3,6 +3,7 @@ package runner
 import (
 	"errors"
 	"fmt"
+	"path"
 	"reflect"
 	"regexp"
 	"slices"
@@ -118,7 +119,7 @@ func (e *engine) run() (result *instance.Result) {
 	info.Set("attempt", e.b.Job.Attempt)
 	info.Set("instance", e.b.Job.Instance)
 	value, err := call(goja.Undefined(), input, info, e.vm.ToValue(e.emit), e.vm.ToValue(e.log), e.vm.ToValue(e.progress),
-		e.vm.ToValue(e.require))
+		e.vm.ToValue(e.require(e.b.Job.Path)))
 	if err != nil {
 		return e.failure(err)
 	}
@@ -263,45 +264,54 @@ func sortedCalls(calls map[string]*plugin.Call) []string {
 }
 
 // load runs a library or a file written in script, which fills in exports.
+// Its require reads a relative path from its own directory.
 func (e *engine) load(name, source string, exports *goja.Object) error {
 	fn, err := e.vm.RunScript(name, "(function(exports,require){\"use strict\";"+source+"\n})")
 	if err != nil {
 		return fmt.Errorf("the file %q cannot be read: %s", name, oneLine(err.Error()))
 	}
 	call, _ := goja.AssertFunction(fn)
-	_, err = call(goja.Undefined(), exports, e.vm.ToValue(e.require))
+	_, err = call(goja.Undefined(), exports, e.vm.ToValue(e.require(name)))
 	return err
 }
 
-// require gives a plugin or a library by its bare name, or one of the files
-// the job lists beside the script by its path. A path is looked up only
-// among those files, never on the runner's disk.
-func (e *engine) require(call goja.FunctionCall) goja.Value {
-	name := call.Argument(0).String()
-	if !strings.HasPrefix(name, "./") && !strings.HasPrefix(name, "../") {
-		module, err := e.module(name)
-		if err != nil {
-			e.throw(plugin.Errorf(plugin.NotFound, "%v", err))
+// require gives the require of the file at a path: a plugin or a library
+// by its bare name, or one of the job's files by its path from that file's
+// directory. A path is looked up only among the job's files, never on the
+// runner's disk.
+func (e *engine) require(from string) func(goja.FunctionCall) goja.Value {
+	return func(call goja.FunctionCall) goja.Value {
+		name := call.Argument(0).String()
+		if !strings.HasPrefix(name, "./") && !strings.HasPrefix(name, "../") {
+			module, err := e.module(name)
+			if err != nil {
+				e.throw(plugin.Errorf(plugin.NotFound, "%v", err))
+			}
+			return module
 		}
-		return module
-	}
-	if v, ok := e.modules[name]; ok {
-		return v
-	}
-	source, ok := e.b.Files[name]
-	if !ok {
-		e.throw(plugin.Errorf(plugin.NotFound, "the file %q is not among the files the job lists beside its script", name))
-	}
-	exports := e.vm.NewObject()
-	e.modules[name] = exports
-	if err := e.load(name, source, exports); err != nil {
-		var thrown *goja.Exception
-		if errors.As(err, &thrown) {
-			panic(thrown.Value())
+		// The job's files are named by clean paths that start with ./ or ../.
+		file := path.Join(path.Dir(from), name)
+		if file != ".." && !strings.HasPrefix(file, "../") {
+			file = "./" + file
 		}
-		e.throw(err)
+		source, ok := e.b.Files[file]
+		if !ok {
+			e.throw(plugin.Errorf(plugin.NotFound, "the file %q is not among the files the job lists", file))
+		}
+		if v, ok := e.modules[file]; ok {
+			return v
+		}
+		exports := e.vm.NewObject()
+		e.modules[file] = exports
+		if err := e.load(file, source, exports); err != nil {
+			var thrown *goja.Exception
+			if errors.As(err, &thrown) {
+				panic(thrown.Value())
+			}
+			e.throw(err)
+		}
+		return exports
 	}
-	return exports
 }
 
 // wrap makes a plugin's call a function of the script's: the one obvious

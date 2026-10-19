@@ -621,20 +621,23 @@ func (s *stepper) replied(data any) error {
 		if seen[one.Tool] > 1 {
 			one.Job = fmt.Sprintf("%s.%d", one.Tool, seen[one.Tool]-1)
 		}
+		// The ask is shown the arguments, what the tool does and what the
+		// model said, and for a listed tool its entry and its own name.
+		shown := map[string]any{"does": tool.Does, "args": one.Args, "said": text}
 		scope["args"] = args
 		place := "tools." + one.Tool + ".job"
 		delete(scope, "tool")
 		if listedAs != "" {
+			entry := s.st.Listed[one.Tool].Entry
 			scope["tool"] = listedAs
-			place = "tools." + s.st.Listed[one.Tool].Entry + ".job"
+			place = "tools." + entry + ".job"
+			shown["entry"], shown["tool"] = entry, listedAs
 		}
 		job, err := tool.Job.Fill(s.eval, scope, place, one.Job)
 		if err != nil {
 			return err
 		}
-		// The ask is shown the arguments, what the tool does and what the
-		// model said.
-		job.Shown = map[string]any{"does": tool.Does, "args": one.Args, "said": text}
+		job.Shown = shown
 		s.request(machine.Request{Job: job})
 	}
 	return s.settled()

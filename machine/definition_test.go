@@ -3,6 +3,7 @@ package machine
 import (
 	"encoding/json/jsontext"
 	"encoding/json/v2"
+	"errors"
 	"fmt"
 	"strings"
 	"testing"
@@ -98,7 +99,8 @@ func TestFirstLineGivesTypeAndName(t *testing.T) {
 	}
 }
 
-// Everything wrong is reported together, each with its place.
+// Everything wrong is reported together, each with its place, and a
+// mistake in a child's file with that file.
 func TestEverythingWrongIsReportedTogether(t *testing.T) {
 	got := problems(t, `probe: p
 colour: blue
@@ -106,14 +108,34 @@ value: "${input.a +}"
 work:
   one: { script: ./missing.js }
   two: { machine: ./child.yaml, memory: 1GB }
-`, map[string]string{"child.yaml": "probe: child\n"})
+  three: { machine: ./kids/kid.yaml }
+`, map[string]string{"child.yaml": "probe: child\n", "kids/kid.yaml": "probe: kid\nvalue: \"${input.a +}\"\n"})
 	for _, want := range []string{"colour", "value", "missing.js"} {
 		if !strings.Contains(got, want) {
 			t.Errorf("the report says nothing of %s:\n%s", want, got)
 		}
 	}
-	if strings.Count(got, "\n") < 2 {
-		t.Errorf("three mistakes were reported as:\n%s", got)
+	if strings.Count(got, "\n") < 3 {
+		t.Errorf("four mistakes were reported as:\n%s", got)
+	}
+	if !strings.Contains(got, "\nkids/kid.yaml: value: in ${input.a +}") {
+		t.Errorf("the child's mistake was reported as:\n%s", got)
+	}
+
+	_, err := Parse([]byte("probe: p\nwork:\n  kid: { machine: ./kids/kid.yaml }\n"), files(map[string]string{"kids/kid.yaml": "probe: kid\nvalue: \"${input.a +}\"\n"}))
+	var found Problems
+	if !errors.As(err, &found) || len(found) != 1 {
+		t.Fatalf("the child's mistake was reported as: %v", err)
+	}
+	if found[0].File != "kids/kid.yaml" || found[0].Place != "value" {
+		t.Errorf("the child's mistake is in file %q at %q", found[0].File, found[0].Place)
+	}
+	written, err := json.Marshal(found[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(written), `"file":"kids/kid.yaml"`) {
+		t.Errorf("the child's mistake is written as %s", written)
 	}
 }
 
@@ -312,7 +334,7 @@ work:
 	var body probeBody
 	json.Unmarshal(draft.Definition.Body, &body)
 	job := body.Jobs["job"]
-	if job.Script != "./a.js" || job.Memory != 256<<20 || job.Timeout.String() != "1m30s" || job.Attempts != 3 || len(job.Files) != 1 {
+	if job.Script != "./a.js" || job.Memory != 256<<20 || job.Timeout != "90s" || job.Attempts != 3 || len(job.Files) != 1 {
 		t.Fatalf("the job is %+v", job)
 	}
 	if body.Jobs["short"].Script != "./a.js" || !body.Jobs["kid"].IsMachine() {

@@ -102,9 +102,12 @@ type Job struct {
 	// Request names what asked: every attempt at the same job has the same.
 	Request string `json:"request"`
 
-	Script blob.Ref            `json:"script"`
-	Files  map[string]blob.Ref `json:"files,omitzero"`
-	Input  any                 `json:"input,omitzero"`
+	Script blob.Ref `json:"script"`
+	// Path is the script's path as the definition names it, and none for
+	// a stored script. Files are keyed the same way.
+	Path  string              `json:"path,omitzero"`
+	Files map[string]blob.Ref `json:"files,omitzero"`
+	Input any                 `json:"input,omitzero"`
 
 	// Layers are every layer of permissions that applies, each by name.
 	Layers []permission.Layer `json:"layers"`

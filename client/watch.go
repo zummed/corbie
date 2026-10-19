@@ -586,8 +586,8 @@ var ErrNoFile = errors.New("the run shows no file at the path")
 // A path shown in a run's result says where the blob is in the output:
 // report, pages[2]. A path shown anywhere else begins with the place of
 // what holds the blob (steps/<number> or emits/<job>/<number>, which is an
-// entry of the run's record, or definition) and after the next slash says
-// where the blob is in that.
+// entry of the run's record, input or definition) and after the next slash
+// says where the blob is in that.
 func (c *Client) Fetch(ctx context.Context, id, path string) (io.Reader, File, error) {
 	ref, err := c.find(ctx, id, path)
 	if err != nil {
@@ -617,6 +617,8 @@ func (c *Client) find(ctx context.Context, id, path string) (blob.Ref, error) {
 			holder, err = c.emit(ctx, id, parts[1], number, runner)
 		}
 		in = parts[3]
+	case parts[0] == "input" && len(parts) >= 2:
+		holder, in = latest.State.Input, strings.Join(parts[1:], "/")
 	case parts[0] == "definition" && len(parts) >= 2:
 		// A definition names its scripts and machines by their own names
 		// in the record it is in.

@@ -46,7 +46,7 @@ The detailed rules behind the [Runner overview](../runner.md).
 *Accept:* a runner is started with the variable `RUNNER_ONLY` set; a job permitted to start programs starts one that prints its variables, giving it none, and lists what it has open: `RUNNER_ONLY` is not printed, and nothing of the runner's is open, not its identity file, its config or its connections to the store.
 
 **R-run-15** The runner reads the script, the script's files and the input from the places in the instance's record that the job names.
-*Accept:* a job names a script, one file beside it and an input: the script that runs is the one stored in the record, `require` of the file gives the stored file, and `input` is the stored input.
+*Accept:* a job names a script, lists one file and gives an input: the script that runs is the one stored in the record, `require` of the file gives the stored file, and `input` is the stored input.
 
 **R-run-16** Every job has a scratch directory of its own, made for it and removed when it ends, however it ends.
 *Accept:* two jobs running at once on one runner each find a different directory, and each is empty when its script starts. One job writes a file into its scratch directory and returns, a second throws, a third is stopped at its time limit: all three directories are gone afterwards.
@@ -114,8 +114,8 @@ The detailed rules behind the [Runner overview](../runner.md).
 **R-run-41** `job` says which request this is, and every attempt at one job is told the same request name.
 *Accept:* a script returns what `job` says, in a job that takes two attempts: both attempts see the same request name, and another job sees a different one.
 
-**R-run-42** `require` of a bare name gives a plugin or a library that comes with the binary; of a path starting `./`, one of the files the job lists beside the script; and nothing else.
-*Accept:* `require("http").get` is the same call as `http.get`, and the bare name of a library that comes with the binary gives that library. A job lists `./lib/util.js`: `require("./lib/util.js")` gives what that file offers. A `./` path the job does not list, a path that starts with `/`, a path that starts with `../` and a bare name that is neither a plugin nor a bundled library each fail the call with an error that says what was asked for, and none reads the runner's disk.
+**R-run-42** `require` of a bare name gives a plugin or a library that comes with the binary; of a path starting `./` or `../`, the file at that path from the directory of the file that calls it, among the files the job lists; and nothing else.
+*Accept:* `require("http").get` is the same call as `http.get`, and the bare name of a library that comes with the binary gives that library. A job names `./lib/fetch.js` and lists `./lib/util.js` and `./top.js`: `require("./util.js")` in `fetch.js` gives what `lib/util.js` offers, and `require("../top.js")` in `util.js` gives `top.js`. A path to a file the job does not list, a path that starts with `/` and a bare name that is neither a plugin nor a bundled library each fail the call with an error that says what was asked for, and none reads the runner's disk.
 
 **R-run-46** A script cannot start jobs, whether scripts or machines.
 *Accept:* a script uses `machines` to define a machine and returns: no job and no instance has been made by it, and the definition runs only when a machine asks for it as a job.

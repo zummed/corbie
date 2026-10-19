@@ -58,8 +58,7 @@ It may use JavaScript's operators, `? :`, arrow functions, methods such as
 - Put a value that contains `${...}` in quotes when it is inside `{ }` or `[ ]`,
   or when the expression has a colon followed by a space.
 - These take no expression: a name, a type, a permission's kind, a secret's
-  name, a `deny:` or `ask_about:` entry, a tag, a timer's time and a ticket's
-  name.
+  name, a `deny:` or `ask_about:` entry, a tag and a ticket's name.
 
 Jobs
 ----
@@ -67,8 +66,8 @@ Jobs
 A machine contains jobs. A job is a script, which a runner executes, or a
 machine, which the controller starts as a child run.
 
-  script: ./fetch.js           a script file beside the definition; its path starts with ./ or ../
-  machine: ./child.yaml        a definition file beside this one, or a definition written in place
+  script: ./fetch.js           a script file; its path starts with ./ or ../
+  machine: ./child.yaml        a definition file, or a definition written in place
   input: { url: "${item}" }    the input of the script or of the child run
   allow: [net:example.com]     for a script, what the job may do, with the definition's `allow:`;
                                for a machine, a limit on everything the child run does
@@ -84,6 +83,11 @@ machine, which the controller starts as a child run.
   job: ./fetch.js                                         short for job: { script: ./fetch.js }
   job: { machine: "${stages.make.output.definition}" }    exactly one expression in place of a path
 
+- A relative path is read from the directory of the file it is written in:
+  a definition, a machine kept in its own file, a file of tools, or a script
+  that loads another with `require`.
+- Every file is in the directory of the definition that is submitted, or below
+  it. A path starting `../` works only from a file in a subdirectory.
 - A child run whose job has no `allow:` has what its own definition allows.
 - A job is retried only after an error or a timeout. It waits 1s before the
   second attempt, 2s before the third and 4s before the fourth.
@@ -123,8 +127,10 @@ The ask is a job, and the controller adds two fields to its input.
   ask: { machine: ./ask.yaml }    a machine, which can wait for a person
 
   input.asking    { machine, instance }: the machine whose jobs are held, and its run's ID
-  input.jobs      [{ name, input, allow, script or machine, asked }]: each held job;
-                  asked is { does, args, said }, only for an agent's tool call
+  input.jobs      [{ name, input, allow, script or machine, asked }]: each held job
+
+- A held job has `asked: { does, args, said }` only for an agent's tool call,
+  with `entry` and `tool` too for a tool from a `list:`.
 
 The ask returns `{ approve: [names of jobs], note: "..." }`.
 

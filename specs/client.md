@@ -8,7 +8,7 @@ The client is a public Go package in the Corbie repository. An application writt
 
 It does two kinds of thing.
 
-It **sends**: start a run, cancel one, send an event to one, answer a ticket. To start a run it takes a definition and the files beside it, fills out the short forms, checks the whole and reports everything wrong at once, uploads the files, and sends the start. A start may carry input, files as input, labels, run secrets, a list that narrows what the run may do, and a timeout.
+It **sends**: start a run, cancel one, send an event to one, answer a ticket. To start a run it takes a definition and the files it names, fills out the short forms, checks the whole and reports everything wrong at once, uploads the files, and sends the start. A start may carry input, labels, run secrets, a list that narrows what the run may do, and a timeout. Any value in the input may be a file.
 
 It **reads**: list runs and follow the list as it changes; show one run, where it stands and how it ended; read a run's record so far, children included, and follow it as it grows; fetch a file from a result; show the definition a run was started from.
 
@@ -20,7 +20,9 @@ To a client a run is an instance: a root it started, or one below it.
 
 Wherever a run is shown, it has the same shape and the same words.
 
-A run is `waiting` to start, `running`, `done`, `failed` or `cancelled`. A failed run says why: an `error`, a `timeout`, or `denied` with the refusal. A finished run has its output, and a list of the permissions it used, which for a machine are those of every job in it and below it. A run waiting on a ticket shows the ticket's name. The ticket's value is in the record, which only the client that started the run can read.
+A run is `waiting` to start, `running`, `done`, `failed` or `cancelled`. A failed run says why: an `error`, a `timeout`, or `denied` with the refusal. A finished run has its output, and a list of the permissions it used, which for a machine are those of every job in it and below it.
+
+A run waiting on a ticket shows the ticket's name. The ticket's value is in the record, which only the client that started the run can read. Only that client is shown the run's input, its output, the failure's text and the permissions it used.
 
 A blob in any value is shown as its type, its size and the path to ask for it by. Its key is never shown, at the command line, over HTTP or to a model.
 
@@ -104,7 +106,7 @@ controller secret set NAME --env      the environment variable NAME
 controller secret set NAME -          standard input, to the end
 ```
 
-A script file can be submitted as it is. It is wrapped in a flow of one stage, and the permissions it may use and its limits are given on the command line.
+A script file can be submitted as it is. The package wraps it in a flow of one stage, with the permissions it may use and its limits, which the command line takes as flags.
 
 `corbie check` is the last step of setting anything up. It starts a small run of its own, which asks for one job and sets one timer, follows it as any client does, and reports each thing that had to happen, with how long it took. While it waits it says what for.
 
@@ -176,7 +178,7 @@ A program's word that is itself a role's or a program's name begins the next nam
 
 ## The gateway
 
-The gateway offers the package over HTTP for applications not written in Go. It has a route for each thing the package does. A listing and a record are each given as they stand, and with `?watch` as a stream that follows them. Files go in as uploads and come out by their path in a result.
+The gateway offers the package over HTTP for applications not written in Go. Its routes start, list, show and cancel runs, read a run's record, definition and files, and send events and answers to a run. A listing and a record are each given as they stand, and with `?watch` as a stream that follows them. Files go in as uploads and come out by their path in a result.
 
 A gateway is started with `corbie start gateway`, alone or beside a controller and a runner. It is one client with one ceiling. Callers show it a token it was given when it was started, and all of them act as that client. Different ceilings need different gateways. A request with a field the gateway does not know is refused.
 

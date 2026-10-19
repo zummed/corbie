@@ -9,7 +9,7 @@ Commands
 
   corbie run submit <definition>          starts a run and prints its ID
   corbie run ls                           lists this client's runs in progress, with child runs
-  corbie run show <id>                    prints one run's status and output
+  corbie run show <id>                    prints one run's status, input and output
   corbie run cancel <id>                  cancels a run this client started
   corbie run send <id> <event> [data]     sends an event to a run this client started
   corbie run reply <id> <ticket> [value]  answers a ticket the run waits on
@@ -22,7 +22,8 @@ A run as JSON
 here.
 
   {"id":"laptop-client/20261013T185126.250Z-571d935912","machine":"fetch-title","type":"flow",
-   "status":"done","output":{"title":"Example Domain","url":"https://example.com"},
+   "status":"done","input":{"url":"https://example.com"},
+   "output":{"title":"Example Domain","url":"https://example.com"},
    "used":["net:example.com:443"],"step":2,
    "started":"2026-10-13T18:51:26.25Z","ended":"2026-10-13T18:51:27.31Z"}
 
@@ -32,6 +33,7 @@ here.
   failure               for a failed run: denied, timeout or error
   error                 the failure's text; `cancelled` for a cancelled run
   refused, layer, fix   for a refused permission: the entry, the layer and the change that allows it
+  input                 what the run was started with
   output                the machine's output
   used                  the permissions its jobs used, child runs included
   step                  the number of its latest step
@@ -55,6 +57,7 @@ A blob is printed as `{ "$blob": <path>, "type", "size" }`. The path gives the
 blob's place in the run.
 
   report, pages[2]                      in the output
+  input/report                          in the input
   steps/3/events[0].data.report         in step 3 of the record
   emits/<job>/1/values[0].data.report   in a value that the job emitted
   definition/scripts.<name>             a script of the definition

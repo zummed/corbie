@@ -35,7 +35,7 @@ A mapping may be one of several sorts of thing that hold different fields. Its s
 
 A field its sort does not hold is not offered to a person, and is refused if it is written.
 
-A definition is checked as a whole, and everything wrong with it is reported together. The client checks it before sending, so mistakes are found at once, and the controller checks it again with the same code, because it does not take a client's word.
+A definition is checked as a whole, and everything wrong with it is reported together. Each problem names its place, and its file when the problem is in a child's file, as a path from the definition's directory: `kids/kid.yaml: value: …`. The client checks it before sending, so mistakes are found at once, and the controller checks it again with the same code, because it does not take a client's word.
 
 An instance never changes its definition. A machine that wants to change how it works changes a child's definition and starts the child again.
 
@@ -47,7 +47,7 @@ A condition, such as `when:`, is exactly one expression. It holds unless its val
 
 Expressions are JavaScript. They read `input`, which is what the machine was started with, and whatever its type adds: a flow's stages, a statechart's states and current event, an agent tool's arguments. Everything that varies from one run of a definition to the next comes in through `input`, and there is no other way to vary it.
 
-Some fields are names, not values, and an expression in them is refused: a thing's name, a type, a permission's kind, a deny entry, a secret's name, a tag, a timer's time, a ticket's name. The path of a script or a machine is a name too, with one exception: it may be exactly one expression that gives a stored definition or script.
+Some fields are names, not values, and an expression in them is refused: a thing's name, a type, a permission's kind, a deny entry, a secret's name, a tag, a ticket's name. The path of a script or a machine is a name too, with one exception: it may be exactly one expression that gives a stored definition or script.
 
 An expression may run for one second. The time it sees is the time of the step, and random numbers differ from one expression to the next but are the same if the step is taken again.
 
@@ -55,9 +55,24 @@ An expression may run for one second. The time it sees is the time of the step, 
 
 A machine contains jobs, which do its work. A job is a script, which a runner executes, or a machine, which the controller starts as a child run. Either way it has an input, the permissions it may use, a limit on time, and optionally a number of attempts. A script also has a limit on memory and tags that choose which runners may take it.
 
-A job may be written where it is used or kept in its own file. A script is a file named by its path, with the files it loads listed beside it; a client sends them along with the definition.
+A program using Corbie as a library can list a definition's jobs, each with its place, such as `stages.a.job`.
 
-Every job has a name that says what asked for it: a stage, a state, a tool, an agent's `turn`, the `ask`. An item of a list adds its position and a later attempt adds its number. The record and every watcher use these names.
+A `timeout:` with an expression is filled in when its job is asked for, and `limits: { timeout: }` when the run starts; a filled value that is not a length of time fails the machine.
+
+A job may be written where it is used or kept in its own file. A script is a file named by its path, and its job lists the files the script loads; a client sends them along with the definition. A relative path is read from the directory of the file it is written in: a definition, a machine kept in its own file, a file of tools, or a script that loads another with `require`.
+
+Every job has a name that says what asked for it: a stage, a state, a tool, an agent's `turn`, the `ask`. A job's name has a suffix when other jobs have the same name:
+
+```
+get_title.0   one of several jobs asked for in one step
+turn#2        the second time the name asked for a job in the run
+get_title@2   the second attempt
+```
+
+- An item of a list adds its position from 0: `get_title.0`, `get_title.1`.
+- A tool called twice in one agent turn has jobs named `shelf` and `shelf.1`, and a second preview before one turn is `preview.1`.
+
+The record and every watcher use these names.
 
 ## Events
 

@@ -42,7 +42,7 @@ Besides plugins, a script has a few things of its own:
 
 - `emit(name, value)` sends a named value up while the script runs. `log(text)` and `progress(done, total)` are emits for a watcher's benefit. Emits are written to the record a few at a time, not one write each.
 - `job` says which request this is. Every attempt at the same job has the same request name, so a script can use it to avoid doing something twice.
-- `require` loads something by name or by path. A bare name is a plugin or a library that comes with the binary. A path starting `./` is one of the files the job lists beside the script.
+- `require` loads something by name or by path. A bare name is a plugin or a library that comes with the binary. A path starting `./` or `../` is read from the directory of the file that calls it, and is one of the files the job lists.
 
 A script cannot start jobs, whether scripts or machines. Deciding what runs is a machine's work.
 

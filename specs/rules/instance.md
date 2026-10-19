@@ -71,7 +71,7 @@ The detailed rules behind the [Instances overview](../instance.md).
 *Accept:* a statechart's first state produced a file that its current state reads as `states.<name>.output`; three keeps later the file is still fetched. A parent hands a file down to a child, moves on so that its own state no longer mentions the file, and runs for three keeps while the child keeps running: the child's jobs still read the file, and once the child has ended and a keep has passed, the file is removed.
 
 **R-inst-41** The definition, its scripts and the run's secrets are never trimmed.
-*Accept:* after the trimming above, `run show` prints the instance's definition, a new job reads its script and the files beside it, and a job that names a run secret is sent its value.
+*Accept:* after the trimming above, `run show` prints the instance's definition, a new job reads its script and the files it lists, and a job that names a run secret is sent its value.
 
 **C-inst-06** A blob is trimmed only when it is older than the keep as well as referred to by no current state. Step and emit entries younger than the keep refer to blobs too, and a watcher reading them would find nothing behind the reference. *Test:* `inst_trim_spares_blob_of_a_recent_entry`
 

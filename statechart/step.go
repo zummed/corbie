@@ -303,9 +303,18 @@ func (s *stepper) enterOne(name string) error {
 		return err
 	}
 	for _, timerName := range sortedNames(st.Timers) {
-		w, err := parseAt(st.Timers[timerName])
+		place := n.place + ".timers." + timerName
+		filled, err := s.eval.Fill(st.Timers[timerName], s.scope(name), place)
 		if err != nil {
 			return err
+		}
+		text, ok := filled.(string)
+		if !ok {
+			return fmt.Errorf("%s: a timer's time is text: a length of time or a time of day", place)
+		}
+		w, err := parseAt(text)
+		if err != nil {
+			return fmt.Errorf("%s: %v", place, err)
 		}
 		timer := timerName + "." + name
 		at := w.next(s.in.Time)

@@ -113,6 +113,9 @@ The detailed rules behind the [Statechart overview](../statechart.md). Area code
 **R-chart-69** A time of day is due at its next occurrence after entry; it may be given a weekday and a time zone, and without a zone it is UTC.
 *Accept:* a state with a timer at `18:00` is entered at 17:00 UTC and its timer is due at 18:00 that day; entered at 19:00, it is due at 18:00 the next day, whatever zone the controller's host is set to. One naming Monday at 09:00 is entered on a Tuesday; its timer is due at 09:00 the following Monday. One naming 09:00 in Europe/London is entered in July; its timer is due at 08:00 UTC.
 
+**R-chart-71** A timer's time with an expression is filled in when the state is entered, and a filled time that is not a length of time or a time of day fails the chart.
+*Accept:* a chart with `timers: { t: "${input.due}" }` started with `{due: "18:00"}` has its timer due at 18:00. Started with `{due: "soon"}`, it fails on entry, and the error names `states.<state>.timers.t`.
+
 **C-chart-07** A time of day is due strictly after entry: a state entered at exactly its time waits for the next occurrence. A chart that returns to its waiting state at the very moment it fired would otherwise fire again at once. *Test:* `chart_time_of_day_is_strictly_after_entry`
 
 **C-chart-08** A time of day that a zone's clock skips on some day is due at the moment the clock jumps past it. Daily work set inside the skipped hour would otherwise miss that day. *Test:* `chart_time_of_day_in_skipped_hour_fires_at_the_jump`

@@ -22,7 +22,7 @@ type Definition struct {
 	Name    string   `json:"name"`
 	Input   []string `json:"input,omitzero"`   // the inputs it needs
 	Keep    Duration `json:"keep,omitzero"`    // how long its instances are kept
-	Timeout Duration `json:"timeout,omitzero"` // how long an instance may run
+	Timeout string   `json:"timeout,omitzero"` // how long an instance may run: a length of time, or an expression
 	Depth   *int     `json:"depth,omitzero"`   // how many levels of machines may be below it; eight if not said
 	Jobs    int      `json:"jobs,omitzero"`    // how many jobs an instance may start
 	Allow   []string `json:"allow,omitzero"`
@@ -54,7 +54,7 @@ type JobSpec struct {
 	Input    any      `json:"input,omitzero"`
 	Allow    []string `json:"allow,omitzero"`
 	Deny     []string `json:"deny,omitzero"`
-	Timeout  Duration `json:"timeout,omitzero"`
+	Timeout  string   `json:"timeout,omitzero"` // a length of time, or an expression that gives one
 	Attempts int      `json:"attempts,omitzero"`
 	Memory   int64    `json:"memory,omitzero"`
 	Tags     []string `json:"tags,omitzero"`
@@ -68,10 +68,13 @@ func (s *JobSpec) IsMachine() bool { return s.Machine != "" }
 
 // Fill gives the job with its values filled in from a scope.
 func (s *JobSpec) Fill(e *Evaluator, scope Scope, place, name string) (*Job, error) {
-	job := &Job{Name: name, Files: s.Files, Deny: s.Deny, Timeout: s.Timeout, Attempts: s.Attempts,
+	job := &Job{Name: name, Files: s.Files, Deny: s.Deny, Attempts: s.Attempts,
 		Memory: s.Memory, Tags: s.Tags, Approve: s.Approve, Alone: s.Alone}
 	var err error
 	if job.Input, err = e.Fill(s.Input, scope, place+".input"); err != nil {
+		return nil, err
+	}
+	if job.Timeout, err = e.Duration(s.Timeout, scope, place+".timeout"); err != nil {
 		return nil, err
 	}
 	for i, entry := range s.Allow {
@@ -105,17 +108,23 @@ func isDefinition(v any) bool {
 	return ok && ref.Type == blob.Definition
 }
 
-// A Problem is one thing wrong with a definition: where, and what.
+// A Problem is one thing wrong with a definition: in which file, where, and
+// what. File is the path of the child definition's file, from the
+// directory of the definition, and empty for the definition itself.
 type Problem struct {
+	File  string `json:"file,omitzero"`
 	Place string `json:"place"`
 	Text  string `json:"text"`
 }
 
 func (p Problem) String() string {
-	if p.Place == "" {
-		return oneLine(p.Text)
+	var parts []string
+	for _, part := range []string{p.File, p.Place, p.Text} {
+		if part != "" {
+			parts = append(parts, part)
+		}
 	}
-	return oneLine(p.Place + ": " + p.Text)
+	return oneLine(strings.Join(parts, ": "))
 }
 
 // Problems is everything wrong with a definition, reported together.
@@ -134,8 +143,17 @@ func (ps Problems) Error() string {
 type Checker struct {
 	problems Problems
 	def      *Definition
-	// approves is set when a job of the definition is marked for approval.
+	// approves is set when a job of the definition may be held for approval.
 	approves bool
+	// jobs is every job the check visits, with its place.
+	jobs []PlacedJob
+}
+
+// A PlacedJob is a job of a definition and its place, such as
+// stages.a.job.
+type PlacedJob struct {
+	Place string
+	Job   *JobSpec
 }
 
 // Problem notes one thing wrong.
@@ -176,6 +194,19 @@ func (c *Checker) Value(place string, value any, names ...string) {
 	}
 }
 
+// Duration checks a length of time: written out, or with expressions,
+// which may read the names.
+func (c *Checker) Duration(place, text string, names ...string) {
+	switch {
+	case HasExpr(text):
+		c.Value(place, text, names...)
+	case text != "":
+		if _, err := ParseDuration(text); err != nil {
+			c.Problem(place, "%v", err)
+		}
+	}
+}
+
 // Cond checks a condition, which is a bare expression.
 func (c *Checker) Cond(place, src string, names ...string) {
 	if err := CheckExpr(src, names); err != nil {
@@ -188,6 +219,7 @@ func (c *Checker) Job(place string, s *JobSpec, names ...string) {
 	if s == nil {
 		return
 	}
+	c.jobs = append(c.jobs, PlacedJob{Place: place, Job: s})
 	switch {
 	case s.Script != "" && s.Machine != "":
 		c.Problem(place, "a job is a script or a machine, not both")
@@ -205,6 +237,7 @@ func (c *Checker) Job(place string, s *JobSpec, names ...string) {
 		}
 	}
 	c.Value(place+".input", s.Input, names...)
+	c.Duration(place+".timeout", s.Timeout, names...)
 	c.permissions(place, s.Allow, s.Deny)
 	for i, tag := range s.Tags {
 		if HasExpr(tag) || tag == "" {
@@ -261,11 +294,22 @@ func (c *Checker) permissions(place string, allow, deny []string) {
 // result says whether any job in it is held for approval, which needs an
 // ask in the definition or above it.
 func Check(def *Definition) (Problems, bool) {
+	c := check(def)
+	return c.problems, c.approves || len(def.AskAbout) > 0
+}
+
+// Jobs gives every job of a definition with its place, in the order the
+// check visits them.
+func Jobs(def *Definition) []PlacedJob {
+	return check(def).jobs
+}
+
+func check(def *Definition) *Checker {
 	c := &Checker{def: def}
 	t, ok := TypeOf(def.Type)
 	if !ok {
 		c.Problem("", "%q is not a type of machine (the types are: %s)", def.Type, strings.Join(Types(), ", "))
-		return c.problems, false
+		return c
 	}
 	if HasExpr(def.Name) || !nameForm.MatchString(def.Name) {
 		c.Problem(def.Type, "%q is not a name for a machine", def.Name)
@@ -275,6 +319,7 @@ func Check(def *Definition) (Problems, bool) {
 			c.Problem(fmt.Sprintf("input[%d]", i), "%q is not a name for an input", name)
 		}
 	}
+	c.Duration("limits.timeout", def.Timeout, "input")
 	if (def.Depth != nil && *def.Depth < 0) || def.Jobs < 0 {
 		c.Problem("", "depth and jobs cannot be less than nothing")
 	}
@@ -290,7 +335,7 @@ func Check(def *Definition) (Problems, bool) {
 	c.Job("ask", def.Ask, "input")
 	c.approves = false // the ask's own job is never itself held by this definition's marks
 	t.Check(c, def)
-	return c.problems, c.approves || len(def.AskAbout) > 0
+	return c
 }
 
 // DecodeBody reads a definition's body into a type's own form, strictly: a

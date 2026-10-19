@@ -4,7 +4,7 @@ A flow is a set of stages that run once each, in an order that follows from the 
 
 ```yaml
 flow: digest
-input: [urls]
+input: { urls: list }
 
 stages:
   fetch:

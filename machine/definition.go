@@ -18,15 +18,15 @@ import (
 // A Definition is a machine's definition in its one full form, which is
 // what is stored and run. A written definition is filled out into it.
 type Definition struct {
-	Type    string   `json:"type"`
-	Name    string   `json:"name"`
-	Input   []string `json:"input,omitzero"`   // the inputs it needs
-	Keep    Duration `json:"keep,omitzero"`    // how long its instances are kept
-	Timeout string   `json:"timeout,omitzero"` // how long an instance may run: a length of time, or an expression
-	Depth   *int     `json:"depth,omitzero"`   // how many levels of machines may be below it; eight if not said
-	Jobs    int      `json:"jobs,omitzero"`    // how many jobs an instance may start
-	Allow   []string `json:"allow,omitzero"`
-	Deny    []string `json:"deny,omitzero"`
+	Type    string         `json:"type"`
+	Name    string         `json:"name"`
+	Input   map[string]any `json:"input,omitzero"`   // the shape of its input
+	Keep    Duration       `json:"keep,omitzero"`    // how long its instances are kept
+	Timeout string         `json:"timeout,omitzero"` // how long an instance may run: a length of time, or an expression
+	Depth   *int           `json:"depth,omitzero"`   // how many levels of machines may be below it; eight if not said
+	Jobs    int            `json:"jobs,omitzero"`    // how many jobs an instance may start
+	Allow   []string       `json:"allow,omitzero"`
+	Deny    []string       `json:"deny,omitzero"`
 	// AskAbout lists the permissions that must be asked about.
 	AskAbout []string `json:"ask_about,omitzero"`
 	Ask      *JobSpec `json:"ask,omitzero"`
@@ -314,9 +314,13 @@ func check(def *Definition) *Checker {
 	if HasExpr(def.Name) || !nameForm.MatchString(def.Name) {
 		c.Problem(def.Type, "%q is not a name for a machine", def.Name)
 	}
-	for i, name := range def.Input {
-		if !nameForm.MatchString(name) {
-			c.Problem(fmt.Sprintf("input[%d]", i), "%q is not a name for an input", name)
+	if def.Input != nil {
+		if schema, err := CompileShape(def.Input); err != nil {
+			c.Problem("input", "%v", err)
+		} else {
+			for _, problem := range misplacedDefaults(schema) {
+				c.Problem("input", "%s", problem)
+			}
 		}
 	}
 	c.Duration("limits.timeout", def.Timeout, "input")

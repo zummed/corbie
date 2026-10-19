@@ -440,7 +440,7 @@ func (s *stepper) take(entry string, data any) error {
 		if own || twice {
 			return fmt.Errorf("%s: the tool %q would be shown to the model as %q, which another tool has", place, name, shown)
 		}
-		if _, err := compiled(args); err != nil {
+		if _, err := machine.CompileShape(args); err != nil {
 			return fmt.Errorf("%s: the tool %q's args: %v", place, name, err)
 		}
 		// A blob's reference holds its key, and the entry's job would send
@@ -740,12 +740,12 @@ func (s *stepper) fit(shape map[string]any, data any) (map[string]any, error) {
 	if data == nil {
 		data = map[string]any{}
 	}
-	schema, err := compiled(shape)
+	schema, err := machine.CompileShape(shape)
 	if err != nil {
 		return nil, err
 	}
-	if err := schema.Validate(data); err != nil {
-		return nil, wrong(err)
+	if err := machine.Fits(schema, data); err != nil {
+		return nil, err
 	}
 	out, err := s.blobs(shape, shape, data, 0)
 	if err != nil {

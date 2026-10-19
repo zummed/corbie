@@ -148,7 +148,7 @@ func (s *Shape) field(name string) *Field {
 
 // The fields every type of machine takes, after the first line.
 var shared = []Field{
-	{Name: "input", Kind: KindList, Like: "[urls, depth]", Does: "the inputs it needs; a start without one fails"},
+	{Name: "input", Kind: KindTypes, Like: "{ urls: list, depth: number? }", Does: "the shape of its input: each name with the type of its value, or a JSON Schema with type: object"},
 	{Name: "keep", Kind: KindDuration, Like: "7d", Does: "how long its instances are kept after they end (a week)"},
 	{Name: "allow", Kind: KindList, Like: "[net:example.com]", Does: "permissions for every script the definition runs"},
 	{Name: "deny", Kind: KindList, Like: "[exec]", Does: "what no script the definition runs may do"},

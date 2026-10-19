@@ -6,7 +6,7 @@ Corbie itself knows nothing about models. A turn is an ordinary job and so is a 
 
 ```yaml
 agent: librarian
-input: [dir, question]
+input: { dir: string, question: string }
 model: { name: claude-sonnet-5-5, secret: ANTHROPIC_KEY }
 prompt: ${input.question}
 
@@ -81,21 +81,13 @@ A list that fails fails the agent, and so does a list in which a tool has no nam
 
 ## Shapes
 
-A tool's `args:` and an agent's `reply:` are each a JSON Schema of an object, 2020-12 unless its `$schema` names another dialect. A definition writes one in full, or in a short form that gives each field a type:
+A tool's `args:` and an agent's `reply:` are shapes, as [Machines](machine.md#shapes) gives them:
 
 ```yaml
 args: { shelf: string, from: number? }
 ```
 
-```
-  string, number, boolean   that JSON type
-  list, map                 an array, an object
-  blob                      a blob, by the name the model was shown
-  any                       any value
-  ? after the type          the field may be left out
-```
-
-A shape with `type: object` is the full form, and any other is the short form. The client fills out the short form when the definition is sent. The full form can say what the short form cannot:
+The full form can say what the short form cannot:
 
 ```yaml
 args:
@@ -109,7 +101,6 @@ args:
 - The model is shown the shape as it is written.
 - What the model sends is checked against the shape: arguments that do not fit go back to the model as an error, and so does a reply.
 - `format: blob` marks a blob, at any depth of the shape.
-- A `$ref` resolves only within its own shape. One that names a file or an address is refused when the definition is checked.
 
 ## Limits
 

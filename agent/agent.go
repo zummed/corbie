@@ -375,7 +375,7 @@ func (agentType) Fill(p *machine.Parser, f *machine.Fields) any {
 // filled gives a shape in full form, reporting a short form it cannot fill
 // out at its place.
 func filled(p *machine.Parser, place string, shape map[string]any) map[string]any {
-	out, err := full(shape)
+	out, err := shortForm.Full(shape)
 	if err != nil {
 		p.Problem(place, "%v", err)
 		return shape
@@ -400,7 +400,7 @@ func (agentType) Check(c *machine.Checker, def *machine.Definition) {
 		c.Problem("limits.turns", "an agent cannot have fewer turns than none")
 	}
 	if a.Reply != nil {
-		if _, err := compiled(a.Reply); err != nil {
+		if _, err := machine.CompileShape(a.Reply); err != nil {
 			c.Problem("reply", "%v", err)
 		}
 	}
@@ -434,7 +434,7 @@ func (agentType) Check(c *machine.Checker, def *machine.Definition) {
 		if tool.Does == "" {
 			c.Problem(place+".does", "a tool says what it does, for the model to choose by")
 		}
-		if _, err := compiled(tool.Args); err != nil {
+		if _, err := machine.CompileShape(tool.Args); err != nil {
 			c.Problem(place+".args", "%v", err)
 		}
 		c.Job(place+".job", tool.Job, "args", "input")

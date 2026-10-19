@@ -9,7 +9,7 @@ job is a JavaScript script or another machine.
 
     # title.yaml
     flow: fetch-title
-    input: [url]
+    input: { url: string }
 
     stages:
       get_title:

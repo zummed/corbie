@@ -1,7 +1,7 @@
 # ask-person.yaml: an ask that waits for a person. It hands out the ticket
 # decision and ends with what the answer says.
 statechart: ask-person
-input: [asking, jobs]
+input: { asking: any, jobs: any }
 initial: asking
 states:
   asking:

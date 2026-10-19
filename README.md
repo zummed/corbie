@@ -20,7 +20,7 @@ The YAML says what runs.
 ```yaml
 # title.yaml
 flow: fetch-title
-input: [url]
+input: { url: string }
 
 stages:
   get_title:

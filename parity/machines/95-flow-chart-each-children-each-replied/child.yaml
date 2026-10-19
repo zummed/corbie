@@ -1,5 +1,5 @@
 statechart: child
-input: [topic]
+input: { topic: any }
 initial: asking
 states:
   asking:

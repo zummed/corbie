@@ -5,7 +5,7 @@ events sent to it.
 
     # librarian.yaml
     agent: librarian
-    input: [dir, question]
+    input: { dir: string, question: string }
     model: { name: claude-sonnet-5-5, secret: ANTHROPIC_KEY }
     system: You answer questions about a library of files.
     prompt: ${input.question}
@@ -101,14 +101,13 @@ Tools
   list    a job that returns tools, [{ name, does, args }], in place of
           `does:` and `args:`; `job:` runs each, and reads `tool`, its name
 
-A type is string, number, boolean, list, map, blob or any. A `?` after it
-marks a value that may be left out, and between `{ }` YAML needs it in quotes:
-`args: { shelf: string, limit: "number?" }`.
+A shape is written as `input:` is, in `corbie manual definitions`:
+`args: { shelf: string, limit: "number?" }`. A name the shape does not give is
+refused, and a blob is the name the model was shown.
 
 A shape written with `type: object` is JSON Schema, which can give an argument
-a `description`, an `enum` or fields of its own; the short form is filled out
-into it. `format: blob` marks a blob at any depth, and a `$ref` resolves only
-within its own shape.
+a `description`, an `enum` or fields of its own. `format: blob` marks a blob at
+any depth.
 
 - A tool whose job has `approve: true` waits for the definition's `ask:`,
   which gets `asked: { does, args, said }`: the tool's `does:`, the model's

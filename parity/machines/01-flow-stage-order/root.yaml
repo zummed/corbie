@@ -1,6 +1,6 @@
 # Stages written in the reverse of the order they must run in.
 flow: stage-order
-input: [n]
+input: { n: any }
 stages:
   last:
     follows: [third]

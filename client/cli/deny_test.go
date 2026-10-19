@@ -115,7 +115,7 @@ func TestStartIsGivenADenyList(t *testing.T) {
 	script, note, _ := noted(t)
 	input := inputOf(note)
 	definition := filepath.Join(filepath.Dir(script), "reads.yaml")
-	os.WriteFile(definition, []byte("flow: reads\nallow: [disk]\ninput: [path]\nstages:\n  it: { job: { script: ./reads.js, input: { path: \"${input.path}\" } } }\noutput: ${stages.it.output}\n"), 0o644)
+	os.WriteFile(definition, []byte("flow: reads\nallow: [disk]\ninput: { path: any }\nstages:\n  it: { job: { script: ./reads.js, input: { path: \"${input.path}\" } } }\noutput: ${stages.it.output}\n"), 0o644)
 	m := machine{t, t.TempDir()}
 	for file, layer := range map[string]string{definition: "the list the run was started with", script: "the job \"script\" in the definition of \"reads\""} {
 		if out := m.ok("", "test", file, "--input", input, "--allow", "disk", "--json"); !strings.Contains(out, `"output":"the note"`) {

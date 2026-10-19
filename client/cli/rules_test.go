@@ -676,7 +676,7 @@ func Test_client_test_and_start_share_roles(t *testing.T) {
 	m, _ := working(t, "all")
 	dir := files(t, map[string]string{
 		"outer.yaml": `flow: outer
-input: [name]
+input: { name: any }
 stages:
   greet: { job: { script: ./greet.js, input: { name: "${input.name}" } } }
   kid: { job: { machine: ./kid.yaml, input: { said: "${stages.greet.output.text}" } } }

@@ -12,7 +12,7 @@ A machine runs until it reaches an end of its own, is cancelled, or passes its t
 
 ## Definitions
 
-A definition is data, written in YAML. Its first line gives its type and its name. It may list the inputs it needs, how long its instances are kept, and its limits.
+A definition is data, written in YAML. Its first line gives its type and its name. It may give the shape of its input, how long its instances are kept, and its limits.
 
 Definitions are meant to be written by people and by models, so each type offers short forms where they read better. Each short form has one meaning and one place it can be written. When a client sends a definition, every short form is filled out into one full form, and only the full form is stored and run. The same filling-out is how a type offers a convenience over something Corbie already does: where a feature can be expressed as a short form over an existing mechanism it is, and the machine that runs never learns of it.
 
@@ -50,6 +50,54 @@ Expressions are JavaScript. They read `input`, which is what the machine was sta
 Some fields are names, not values, and an expression in them is refused: a thing's name, a type, a permission's kind, a deny entry, a secret's name, a tag, a ticket's name. The path of a script or a machine is a name too, with one exception: it may be exactly one expression that gives a stored definition or script.
 
 An expression may run for one second. The time it sees is the time of the step, and random numbers differ from one expression to the next but are the same if the step is taken again.
+
+## Shapes
+
+A shape is a JSON Schema of an object, 2020-12 unless its `$schema` names another dialect. A definition's `input:`, a tool's `args:` and an agent's `reply:` are shapes. A definition writes one in full, or in a short form that gives each name a type:
+
+```yaml
+input: { urls: list, depth: number? }
+```
+
+```
+  string, number, boolean   that JSON type
+  list, map                 an array, an object
+  blob                      a blob: in input:, the blob; in args: and reply:, the name the model was shown
+  any                       any value
+  ? after the type          the name may be left out
+```
+
+A shape with `type: object` is the full form, and any other is the short form. The client fills out the short form when the definition is sent. The short form of `args:` and `reply:` refuses a name it does not give, and that of `input:` takes it.
+
+A `$ref` resolves only within its own shape. One that names a file or an address is refused when the definition is checked.
+
+## Input
+
+A definition's `input:` is the shape of what an instance is started with. A definition without one takes any input.
+
+1. The controller fills in each missing name that has a `default`, in the input and in each object that `properties` and `items` lead to. A default filled in is filled the same way.
+2. The controller checks the filled input against `input:`.
+3. An input that does not fit fails the instance at its first step, naming each place, and nothing starts.
+4. The filled input is the data of the `start` event, and what every expression reads as `input`.
+
+```yaml
+input:
+  type: object
+  properties:
+    urls:  { type: array }
+    depth: { type: number, default: 2 }
+    fetch: { type: object, default: {}, properties: { retries: { type: number, default: 3 } } }
+  required: [urls]
+```
+
+```
+  started with                         input reads
+  { urls: [a] }                        { urls: [a], depth: 2, fetch: { retries: 3 } }
+  { urls: [a], fetch: { wait: 5 } }    { urls: [a], depth: 2, fetch: { wait: 5, retries: 3 } }
+  { depth: 2 }                         the instance fails: missing property 'urls'
+```
+
+A `default` that `properties` and `items` do not lead to from the top, such as one under `anyOf` or behind a `$ref`, is refused when the definition is checked, and so is a default that does not fit its own place.
 
 ## Jobs
 

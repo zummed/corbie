@@ -4,7 +4,7 @@ A statechart is a machine that is always in some state and moves between states 
 
 ```yaml
 statechart: review
-input: [document]
+input: { document: string }
 initial: drafting
 
 states:

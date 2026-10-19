@@ -4,7 +4,7 @@ Use it for work that waits, loops, branches or reacts to events.
 
     # review.yaml
     statechart: review
-    input: [document]
+    input: { document: string }
     initial: drafting
 
     states:

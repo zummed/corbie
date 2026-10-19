@@ -1,5 +1,5 @@
 statechart: child
-input: [how]
+input: { how: any }
 initial: choosing
 states:
   choosing:

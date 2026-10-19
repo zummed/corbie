@@ -347,7 +347,7 @@ func TestStartCarriesEverythingAStartMay(t *testing.T) {
 	host := strings.TrimPrefix(server.URL, "http://")
 	const carries = `
 flow: carries
-input: [url, host, n]
+input: { url: any, host: any, n: any }
 stages:
   call:
     job:

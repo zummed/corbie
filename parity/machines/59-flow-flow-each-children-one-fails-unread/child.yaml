@@ -1,5 +1,5 @@
 flow: child
-input: [fail]
+input: { fail: any }
 stages:
   bad:
     when: ${input.fail}

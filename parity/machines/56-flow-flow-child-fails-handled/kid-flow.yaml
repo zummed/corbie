@@ -1,7 +1,7 @@
 # kid-flow.yaml: a child flow of two stages. It fails in its second stage
 # when its input says fail.
 flow: kid-flow
-input: [n]
+input: { n: any }
 stages:
   one:
     job: { script: ./add.js, input: { n: "${input.n}" } }

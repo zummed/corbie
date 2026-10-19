@@ -1,5 +1,5 @@
 statechart: middle
-input: [depth]
+input: { depth: any }
 initial: running
 states:
   running:

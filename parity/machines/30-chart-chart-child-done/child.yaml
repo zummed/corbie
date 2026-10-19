@@ -1,5 +1,5 @@
 statechart: child
-input: [n]
+input: { n: any }
 initial: working
 states:
   working:

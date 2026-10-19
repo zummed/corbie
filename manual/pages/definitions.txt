@@ -7,7 +7,7 @@ digits, `_` and `-`, and starts with a letter.
 Fields every type takes
 -----------------------
 
-  input: [urls, depth]         the inputs a run needs; a run started without one fails
+  input: { urls: list }        the shape of a run's input, as below
   keep: 7d                     how long a run is kept after it ends; default 7d
   limits: { timeout: 1h }      how much a run may use, as below
   allow: [net:example.com]     permissions of every script job in the definition
@@ -22,8 +22,51 @@ Fields every type takes
   jobs: 100      how many jobs a run may start; default no limit
   turns: 20      an agent's turns, as in `corbie manual agent`
 
-A length of time is written `30s`, `5m`, `48h` or `7d`. An input that `input:`
-does not list is optional, and reads as `null` when the run starts without it.
+A length of time is written `30s`, `5m`, `48h` or `7d`.
+
+Input
+-----
+
+`input:` is the shape of a run's input: each name, with the type of its value.
+
+  string, number, boolean    that JSON type
+  list, map                  an array, an object
+  blob                       a blob, such as a file given with --input-file
+  any                        any value
+  ? after the type           the name may be left out; inside { } YAML needs it in quotes
+
+The controller checks the input when the run starts.
+
+1. It fills in each missing name that has a `default`.
+2. It checks the input against `input:`.
+3. A run whose input does not fit fails, and the error names each place.
+
+A shape written with `type: object` is JSON Schema, which can give a `default`.
+
+    # look.yaml
+    flow: look
+    input:
+      type: object
+      properties:
+        url: { type: string }
+        depth: { type: number, default: 2 }
+      required: [url]
+    stages:
+      it:
+        job: { script: ./echo.js, input: "${input}" }
+    output: ${stages.it.output}
+
+    // echo.js
+    return input
+
+    corbie test look.yaml --input '{"url": "https://example.com"}'
+      output: {"depth":2,"url":"https://example.com"}
+
+- A name that `input:` does not give is taken as it is, and a name the input
+  does not hold reads as `null`. A definition with no `input:` takes any input.
+- A default is filled in the input and in each object that `properties` and
+  `items` lead to. A `default` anywhere else is refused.
+- A `$ref` resolves only within its own shape.
 
 Values and expressions
 ----------------------

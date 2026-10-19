@@ -40,7 +40,7 @@ func TestFlowOrderFollowsData(t *testing.T) {
 	l := local(t)
 	r := run(t, l, `
 		flow: order
-		input: [n]
+		input: { n: any }
 		stages:
 		  last:
 		    job: { script: ./add.js, input: { n: "${stages.third.output.n}" } }
@@ -60,7 +60,7 @@ func TestFlowSkipSpreads(t *testing.T) {
 	l := local(t)
 	r := run(t, l, `
 		flow: skips
-		input: [go]
+		input: { go: any }
 		stages:
 		  gate:
 		    when: ${input.go}
@@ -141,7 +141,7 @@ func TestFlowEach(t *testing.T) {
 	l := local(t)
 	r := run(t, l, `
 		flow: each
-		input: [numbers]
+		input: { numbers: any }
 		stages:
 		  bump:
 		    each: ${input.numbers}
@@ -216,7 +216,7 @@ func TestFlowRunsAChildWrittenInPlace(t *testing.T) {
 	l := local(t)
 	r := run(t, l, `
 		flow: parent
-		input: [numbers]
+		input: { numbers: any }
 		stages:
 		  kids:
 		    each: ${input.numbers}
@@ -224,7 +224,7 @@ func TestFlowRunsAChildWrittenInPlace(t *testing.T) {
 		      input: { n: "${item}" }
 		      machine:
 		        flow: kid
-		        input: [n]
+		        input: { n: any }
 		        stages:
 		          one: { job: { script: ./add.js, input: { n: "${input.n}" } } }
 		          two: { job: { script: ./add.js, input: { n: "${stages.one.output.n}" } } }
@@ -239,7 +239,7 @@ func TestFilesAndPermissions(t *testing.T) {
 	os.WriteFile(filepath.Join(dir, "in.txt"), []byte("hello\n"), 0o600)
 	const def = `
 		flow: files
-		input: [dir]
+		input: { dir: any }
 		allow: ["fs.read:${input.dir}/**"]
 		stages:
 		  copy:
@@ -311,13 +311,13 @@ func TestEachOverEmittedItemsIsWrittenOut(t *testing.T) {
 func TestConditionIsOneExpression(t *testing.T) {
 	flowRefused(t, `
 		flow: bad
-		input: [n]
+		input: { n: any }
 		stages:
 		  a: { when: input.n > 1, job: ./add.js }
 	`, scripts, "a condition is one expression")
 	flowRefused(t, `
 		statechart: bad
-		input: [n]
+		input: { n: any }
 		states:
 		  a: { on: { go_on: { go: b, when: "x ${input.n}" } } }
 		  b: { end: done }
@@ -376,7 +376,7 @@ func Test_flow_each_refuses_what_is_not_a_list(t *testing.T) {
 	l := local(t)
 	r := run(t, l, `
 		flow: notalist
-		input: [items]
+		input: { items: any }
 		stages:
 		  each_one:
 		    each: ${input.items}

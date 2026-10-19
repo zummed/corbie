@@ -170,7 +170,7 @@ func TestManyRunnersOnAServedDirectory(t *testing.T) {
 	ran := t.TempDir()
 	dir := files(t, map[string]string{
 		"farm.yaml": `flow: farm
-input: [items]
+input: { items: any }
 stages:
   work:
     each: ${input.items}

@@ -54,7 +54,7 @@ func TestPermissionScopeFilledFromAnythingButTheInputIsRefused(t *testing.T) {
 	}
 	flowRefused(t, `
 		flow: f
-		input: [dir]
+		input: { dir: any }
 		stages:
 		  a: { job: { script: ./add.js, deny: ["fs.read:${input.dir}/**"] } }
 	`, scripts, "a deny entry is written out in full")
@@ -69,7 +69,7 @@ func TestAgentToolScopeIsFilledFromTheAgentsInput(t *testing.T) {
 	l := local(t, "all")
 	id, err := l.Start(ctx, draft(t, `
 		agent: reader
-		input: [dir]
+		input: { dir: any }
 		model: { name: test-model, service: anthropic, address: `+m.URL+`, secret: TEST_KEY }
 		prompt: Read the note.
 		tools:
@@ -187,7 +187,7 @@ func TestFlowItemsStartAsTheyAreEmitted(t *testing.T) {
 	l := local(t, "disk")
 	r := run(t, l, `
 		flow: follows
-		input: [dir]
+		input: { dir: any }
 		allow: ["fs.read:${input.dir}/**", "fs.write:${input.dir}/**"]
 		stages:
 		  source:
@@ -212,7 +212,7 @@ func TestFlowPassesANamedStagesItemsUpAsTheyArrive(t *testing.T) {
 	l := local(t, "disk")
 	r := run(t, l, `
 		flow: parent
-		input: [dir]
+		input: { dir: any }
 		allow: ["fs.read:${input.dir}/**", "fs.write:${input.dir}/**"]
 		stages:
 		  kid:
@@ -220,7 +220,7 @@ func TestFlowPassesANamedStagesItemsUpAsTheyArrive(t *testing.T) {
 		      input: { dir: "${input.dir}" }
 		      machine:
 		        flow: kid
-		        input: [dir]
+		        input: { dir: any }
 		        allow: ["fs.read:${input.dir}/**"]
 		        emit: source
 		        stages:
@@ -372,5 +372,52 @@ func TestJobsAreListedWithTheirPlaces(t *testing.T) {
 		if !slices.Equal(places, c.want) {
 			t.Errorf("the jobs are at %v, not %v", places, c.want)
 		}
+	}
+}
+
+// A definition's input: is a shape. Its short form takes names it does not
+// give, and a blob there is the blob itself; an input that does not fit
+// fails the run, naming each place.
+func TestInputIsAShape(t *testing.T) {
+	l := local(t)
+	echo := map[string]string{"echo.js": "return input"}
+	def := `
+		flow: one
+		input: { n: number, report: "blob?" }
+		stages:
+		  it: { job: { script: ./echo.js, input: "${input}" } }
+		output: ${stages.it.output}
+	`
+	if r := run(t, l, def, echo, map[string]any{"n": 1, "more": true}); r.Status != "done" {
+		t.Fatalf("an input with a name its shape does not give ended %s: %s", r.Status, r.Error)
+	}
+	file := client.InputFile{Name: "report.txt", Contents: strings.NewReader("a report")}
+	if r := run(t, l, def, echo, map[string]any{"n": 1, "report": file}); r.Status != "done" {
+		t.Fatalf("an input with a file as its blob ended %s: %s", r.Status, r.Error)
+	}
+	r := run(t, l, def, echo, map[string]any{"n": "one", "report": "a report"})
+	for _, holds := range []string{"at /n:", "at /report:"} {
+		if r.Status != "failed" || !strings.Contains(r.Error, holds) {
+			t.Errorf("an input that does not fit ended %s with %q; want an error holding %q", r.Status, r.Error, holds)
+		}
+	}
+}
+
+// A default is filled in only where properties and items lead from the top
+// of the input's shape, and must fit its own place.
+func TestMisplacedDefaultIsRefused(t *testing.T) {
+	for _, c := range []struct{ input, holds string }{
+		{`{ type: object, anyOf: [{ properties: { n: { default: 1 } } }] }`, "at #/anyOf/0/properties/n: a default is filled in only where"},
+		{`{ type: object, properties: { n: { $ref: "#/$defs/n" } }, $defs: { n: { default: 1 } } }`, "at #/$defs/n: a default is filled in only where"},
+		{`{ type: object, properties: { n: { type: number, default: two } } }`, "at #/properties/n: the default does not fit its own place"},
+	} {
+		def := "flow: one\ninput: " + c.input + "\nstages:\n  it: { job: ./echo.js }\n"
+		if _, err := machineParse(def, map[string]string{"echo.js": "return input"}); err == nil || !strings.Contains(err.Error(), c.holds) {
+			t.Errorf("want a refusal holding %q, got: %v", c.holds, err)
+		}
+	}
+	good := "flow: one\ninput: { type: object, properties: { n: { type: number, default: 2 }, all: { type: array, items: { properties: { m: { default: [] } } } } } }\nstages:\n  it: { job: ./echo.js }\n"
+	if _, err := machineParse(good, map[string]string{"echo.js": "return input"}); err != nil {
+		t.Errorf("defaults under properties and items are refused: %v", err)
 	}
 }

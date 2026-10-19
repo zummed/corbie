@@ -2,7 +2,7 @@
 # output arrives as the data of done, and is remembered as
 # states.running.output.
 statechart: parent
-input: [n]
+input: { n: any }
 initial: running
 states:
   running:

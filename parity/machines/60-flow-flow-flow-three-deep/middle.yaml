@@ -1,5 +1,5 @@
 flow: middle
-input: [n, fail]
+input: { n: any, fail: any }
 stages:
   bump:
     job: { script: ./add.js, input: { n: "${input.n}" } }

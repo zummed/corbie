@@ -9,7 +9,7 @@ parallel, and the job reads its item as `${item}`. The script is the one from
 
     # titles.yaml
     flow: fetch-titles
-    input: [urls]
+    input: { urls: list }
 
     stages:
       get_title:
@@ -36,7 +36,7 @@ and run number.
 
     # paged.yaml
     flow: paged-titles
-    input: [pages]
+    input: { pages: number }
 
     stages:
       list_pages:

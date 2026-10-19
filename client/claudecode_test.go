@@ -59,7 +59,7 @@ func printed(text string, calls string) string {
 
 const programAgent = `
 	agent: sums
-	input: [question]
+	input: { question: any }
 	model: { name: sonnet, service: claude-code MORE }
 	system: You add numbers.
 	prompt: ${input.question}

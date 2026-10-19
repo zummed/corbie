@@ -97,7 +97,7 @@ func dedent(text string) string {
 
 const sum = `
 	statechart: sum
-	input: [a]
+	input: { a: any }
 	initial: adding
 	states:
 	  adding:
@@ -135,7 +135,7 @@ func TestScriptThrows(t *testing.T) {
 func TestMissingInput(t *testing.T) {
 	l := local(t)
 	r := run(t, l, sum, map[string]string{"add.js": "return 1", "lib.js": ""}, map[string]any{})
-	if r.Status != "failed" || !strings.Contains(r.Error, `"a"`) {
+	if r.Status != "failed" || !strings.Contains(r.Error, "missing property 'a'") {
 		t.Fatalf("the run ended %s with %q", r.Status, r.Error)
 	}
 }

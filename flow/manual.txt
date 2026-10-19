@@ -5,7 +5,7 @@ stages that do not depend on each other run in parallel.
 
     # digest.yaml
     flow: digest
-    input: [urls]
+    input: { urls: list }
 
     stages:
       fetch:
@@ -68,7 +68,7 @@ A failed stage fails the flow, unless a stage handles it: a stage whose
 
     # report.yaml
     flow: report
-    input: [fail]
+    input: { fail: boolean }
     stages:
       summarise:
         job: { script: ./summary.js, input: { fail: "${input.fail}" } }

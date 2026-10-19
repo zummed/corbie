@@ -78,7 +78,7 @@ func files(t *testing.T, contents map[string]string) string {
 }
 
 const hello = `flow: hello
-input: [name]
+input: { name: any }
 stages:
   greet:
     job: { script: ./greet.js, input: { name: "${input.name}" } }

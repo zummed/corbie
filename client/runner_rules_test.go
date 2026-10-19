@@ -58,7 +58,7 @@ func Test_run_file_made_a_blob_is_read_in_place(t *testing.T) {
 	// file: none of it goes to the store.
 	r := run(t, l, `
 		flow: one
-		input: [lies]
+		input: { lies: any }
 		stages:
 		  it: { job: { script: ./it.js, files: [./lib.js], input: { lies: "${input.lies}" }, timeout: 10s, allow: ["all"] } }
 		output: ${stages.it.output}

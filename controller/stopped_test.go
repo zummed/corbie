@@ -304,7 +304,7 @@ func Test_ctl_carry_out_larger_than_a_pass_finishes(t *testing.T) {
 	w := newWorld(t)
 	run := w.submit(`
 		flow: wide
-		input: [items]
+		input: { items: any }
 		stages:
 		  kids:
 		    each: "${input.items}"
@@ -345,7 +345,7 @@ func Test_role_long_carry_out_finishes_over_several_passes(t *testing.T) {
 	w.enrol(w.party("r1", identity.Runner), permission.Layer{Allow: []string{"all"}}, nil)
 	run := w.submit(`
 		flow: wide
-		input: [items]
+		input: { items: any }
 		stages:
 		  jobs: { each: "${input.items}", job: { script: ./work.js, input: "${item}" } }
 	`, map[string]string{"work.js": "return input"}, manyItems())

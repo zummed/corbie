@@ -1,5 +1,5 @@
 {
   "status": "failed",
   "failure": "error",
-  "error_contains": "\"m\""
+  "error_contains": "missing property 'm'"
 }

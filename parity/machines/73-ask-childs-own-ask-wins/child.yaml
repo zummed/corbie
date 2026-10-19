@@ -1,5 +1,5 @@
 flow: child
-input: [n]
+input: { n: any }
 ask:
   script: ./yes.js
 stages:

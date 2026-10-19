@@ -941,8 +941,13 @@ func (p *pass) begin(inst string, waiting []*arrival) (*taken, error) {
 			Refused: "the definition did not pass its check", Problems: problems}})
 		return &b.out, nil
 	}
+	// The input the machine is started with has its defaults filled in.
+	var inputErr error
+	if len(problems) == 0 {
+		st.Input, inputErr = machine.Input(def, s.Input)
+	}
 	b.use(start)
-	b.record(machine.Event{Name: machine.Start, Data: s.Input}, start, false)
+	b.record(machine.Event{Name: machine.Start, Data: st.Input}, start, false)
 	if start.kind == identity.Client {
 		b.ask(instance.Ask{Kind: instance.AskReceipt, Sender: start.sender, Message: start.name, Receipt: &instance.Receipt{Taken: true}})
 		st.Above.MaxDepth = machine.DefaultDepth
@@ -962,16 +967,13 @@ func (p *pass) begin(inst string, waiting []*arrival) (*taken, error) {
 		b.end(instance.Failed, nil, b.p.failf("the definition did not pass its check: %s", strings.ReplaceAll(problems.Error(), "\n", "; ")))
 		return b.done()
 	}
-	input, _ := s.Input.(map[string]any)
-	for _, name := range def.Input {
-		if _, ok := input[name]; !ok {
-			b.end(instance.Failed, nil, b.p.failf("the input %q is needed and was not given", name))
-			return b.done()
-		}
+	if inputErr != nil {
+		b.end(instance.Failed, nil, b.p.failf("%v", inputErr))
+		return b.done()
 	}
 	// Its older history is trimmed as it runs, a keep at a time.
 	b.ask(instance.Ask{Kind: instance.AskWake, At: b.time.Add(p.keepFor(def, &st.Above)), What: wakeTrim})
-	limit, err := machine.NewEvaluator(b.time, b.seed("timeout")).Duration(def.Timeout, machine.Scope{"input": s.Input}, "limits.timeout")
+	limit, err := machine.NewEvaluator(b.time, b.seed("timeout")).Duration(def.Timeout, machine.Scope{"input": st.Input}, "limits.timeout")
 	if err != nil {
 		b.end(instance.Failed, nil, b.p.failf("%v", err))
 		return b.done()
@@ -983,7 +985,7 @@ func (p *pass) begin(inst string, waiting []*arrival) (*taken, error) {
 		st.TimeoutAt = b.time.Add(time.Duration(limit))
 		b.ask(instance.Ask{Kind: instance.AskWake, At: st.TimeoutAt, What: wakeTimeout})
 	}
-	b.events = []machine.Event{{Name: machine.Start, Data: s.Input}}
+	b.events = []machine.Event{{Name: machine.Start, Data: st.Input}}
 	b.sources = []*arrival{{wake: true}}
 	if err := b.machine(); err != nil {
 		return nil, err

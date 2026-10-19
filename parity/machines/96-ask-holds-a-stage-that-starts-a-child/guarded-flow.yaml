@@ -1,6 +1,6 @@
 # guarded-flow.yaml: a flow whose one stage is marked for approval.
 flow: guarded-flow
-input: [n]
+input: { n: any }
 stages:
   guarded:
     job: { script: ./add.js, input: { n: "${input.n}" }, approve: true }

@@ -16,7 +16,7 @@ Put these two files in a new directory and run the command.
 
     # title.yaml
     flow: fetch-title
-    input: [url]
+    input: { url: string }
 
     stages:
       get_title:
@@ -49,7 +49,7 @@ Delete the `allow:` line and run the same command.
 
     # title.yaml
     flow: fetch-title
-    input: [url]
+    input: { url: string }
 
     stages:
       get_title:

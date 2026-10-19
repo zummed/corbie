@@ -1,7 +1,7 @@
 # kid-chart.yaml: a child statechart. It runs one script, then finishes; it
 # ends in a failed final state, with an output, when its input says fail.
 statechart: kid-chart
-input: [n]
+input: { n: any }
 initial: working
 states:
   working:

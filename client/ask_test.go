@@ -175,7 +175,7 @@ func Test_mach_every_refusal_is_recorded(t *testing.T) {
 func Test_mach_inherited_ask_filled_from_declaring_machine(t *testing.T) {
 	const def = `
 		flow: declares
-		input: [who, variable]
+		input: { who: any, variable: any }
 		ask: { script: ./ask.js, input: { who: "${input.who}" }, allow: ["env:${input.variable}"] }
 		stages:
 		  below:
@@ -183,7 +183,7 @@ func Test_mach_inherited_ask_filled_from_declaring_machine(t *testing.T) {
 		      input: { who: child, variable: PATH }
 		      machine:
 		        flow: inherits
-		        input: [who, variable]
+		        input: { who: any, variable: any }
 		        stages:
 		          work: { job: { script: ./WORK, input: { n: 1 }, approve: true } }
 		        output: ${stages.work.output}

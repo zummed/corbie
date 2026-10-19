@@ -1,5 +1,5 @@
 flow: child
-input: [which]
+input: { which: any }
 limits: { jobs: 2 }
 stages:
   one:

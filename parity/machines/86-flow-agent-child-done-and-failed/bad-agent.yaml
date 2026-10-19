@@ -1,5 +1,5 @@
 agent: bad-agent
-input: [topic]
+input: { topic: any }
 model: { name: scripted, service: anthropic }
 turn: ./turn-bad.js
 prompt: "Look into ${input.topic}."

@@ -1,0 +1,10 @@
+{
+  "status": "done",
+  "output": {
+    "urls": ["a"],
+    "depth": 2,
+    "fetch": { "retries": 3, "timeout": 5 },
+    "pages": [{ "size": 10 }, { "size": 3 }]
+  },
+  "note": "R-mach-10"
+}

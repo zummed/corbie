@@ -46,7 +46,7 @@ func calls(id, tool, args string) llmstandin.Reply {
 func agentDef(address, extra string) string {
 	return strings.ReplaceAll(strings.ReplaceAll(`
 		agent: sums
-		input: [question]
+		input: { question: any }
 		model: { name: test-model, service: anthropic, address: ADDRESS, secret: TEST_KEY }
 		system: You add numbers.
 		prompt: ${input.question}
@@ -758,7 +758,7 @@ func TestAgentAsATool(t *testing.T) {
 `, 1)
 	r := runAgent(t, l, def, map[string]string{"add.js": scripts["add.js"], "sparks.yaml": strings.ReplaceAll(`
 		agent: sparks
-		input: [question]
+		input: { question: any }
 		model: { name: test-model, service: anthropic, address: ADDRESS, secret: TEST_KEY }
 		prompt: ${input.question}
 	`, "ADDRESS", helper.URL)})

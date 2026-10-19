@@ -24,8 +24,14 @@ The detailed rules behind the [Machines overview](../machine.md). Area code: `ma
 **R-mach-09** A definition's first line gives its type and its name.
 *Accept:* a definition beginning `flow: digest` is a flow named `digest`; one whose first line names no known type is refused, and the refusal names the line.
 
-**R-mach-10** A definition may list the inputs it needs, and an instance started without one of them fails at its first step, saying which, and starts nothing.
-*Accept:* parity case 14.
+**R-mach-10** The controller fills in each missing name of an instance's input that has a `default` in the definition's `input:`, in the input and in each object that `properties` and `items` lead to, and checks the filled input against `input:`; an input that does not fit fails the instance at its first step, naming each place, and starts nothing. The filled input is the data of the `start` event.
+*Accept:* parity case 14. Parity case 105: a flow started with `{urls: [a], fetch: {timeout: 5}, pages: [{}, {size: 3}]}` gives its stage `depth: 2`, `fetch: {retries: 3, timeout: 5}` and `pages: [{size: 10}, {size: 3}]` from the defaults of its `input:`.
+
+**R-mach-137** A definition's `input:`, a tool's `args:` and an agent's `reply:` are each a shape: a JSON Schema of an object, 2020-12 unless its `$schema` names another dialect, written in full with `type: object` or in the short form, which the client fills out when the definition is sent. The short form of `input:` takes a name it does not give, and a `blob` there is the blob itself.
+*Accept:* a flow with `input: { n: number, report: "blob?" }` started with `{n: 1, more: true}` ends done, and so does one started with a file as `report`; started with `{n: "one", report: "a report"}`, it fails with an error naming `/n` and `/report`.
+
+**R-mach-138** A `default` in `input:` that `properties` and `items` do not lead to from the top, and a default that does not fit its own place, are each refused when the definition is checked.
+*Accept:* a default under `anyOf`, one in `$defs` behind a `$ref`, and `default: two` for a number are each refused, and the refusal names its place. Defaults under `properties` and under `items` are taken.
 
 **R-mach-12** When a client sends a definition, every short form in it is filled out into the one full form, and only the full form is stored and run; each short form has one meaning and one place it can be written.
 *Accept:* a statechart sent with a transition written as a bare state name, and the same chart with that transition written out, give the same stored definition, and the definition shown for the run contains no short form. A short form written in a place other than its own is reported as a problem naming that place.

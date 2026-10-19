@@ -3,7 +3,7 @@
 # list: bump_again takes the list as its own items, and gather is given
 # bump_again's list.
 flow: each-list
-input: [numbers]
+input: { numbers: any }
 stages:
   bump:
     each: ${input.numbers}

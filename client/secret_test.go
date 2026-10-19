@@ -35,7 +35,7 @@ func runWithSecret(t *testing.T, l *client.Local, def string, files map[string]s
 
 const usesSecret = `
 	flow: uses
-	input: [url, host]
+	input: { url: any, host: any }
 	stages:
 	  call:
 	    job:

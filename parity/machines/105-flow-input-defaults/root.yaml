@@ -1,0 +1,23 @@
+# A flow whose input gives defaults at the top, in an object and in each item of a list.
+flow: input-defaults
+input:
+  type: object
+  properties:
+    urls:  { type: array }
+    depth: { type: number, default: 2 }
+    fetch:
+      type: object
+      default: {}
+      properties:
+        retries: { type: number, default: 3 }
+    pages:
+      type: array
+      items:
+        type: object
+        properties:
+          size: { type: number, default: 10 }
+  required: [urls]
+stages:
+  a:
+    job: { script: ./echo.js, input: "${input}" }
+output: ${stages.a.output}

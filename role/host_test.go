@@ -434,7 +434,7 @@ func Test_role_minute_call_takes_waiting_messages(t *testing.T) {
 // time it runs, and emits a value.
 const oneJob = `
 	statechart: one-job
-	input: [dir]
+	input: { dir: any }
 	initial: working
 	states:
 	  working:

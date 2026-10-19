@@ -1,7 +1,7 @@
 # An agent whose turn is a script of the definition's own, so no model is
 # reached. The scripted model replies once with no tool calls.
 agent: one-reply
-input: [topic]
+input: { topic: any }
 model: { name: scripted, service: anthropic }
 turn: ./turn.js
 system: You are scripted.

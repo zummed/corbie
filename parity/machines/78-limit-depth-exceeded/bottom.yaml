@@ -1,5 +1,5 @@
 flow: bottom
-input: [n]
+input: { n: any }
 stages:
   work:
     job: { script: ./add.js, input: { n: "${input.n}" } }

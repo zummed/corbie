@@ -1,5 +1,5 @@
 flow: bottom
-input: [n, fail]
+input: { n: any, fail: any }
 stages:
   work:
     job: { script: ./maybe.js, input: { n: "${input.n + 1}", fail: "${input.fail}" } }

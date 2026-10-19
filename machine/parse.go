@@ -92,7 +92,13 @@ func (p *Parser) fill(written map[string]any, first, place string) (draft *Draft
 
 	f := p.Fields("", written, definitionShape(t))
 	def.Name = f.Text(t.Name())
-	def.Input = f.Strings("input")
+	if input, _ := f.Map("input"); input != nil {
+		if full, err := InputForm.Full(input); err != nil {
+			p.Problem("input", "%v", err)
+		} else {
+			def.Input = full
+		}
+	}
 	def.Keep = f.Duration("keep")
 	limits := f.Fields("limits")
 	def.Timeout = limits.text("timeout", KindDuration)

@@ -79,7 +79,7 @@ The detailed rules behind the [Agent overview](../agent.md). Area code: `agent`.
 
 ## Shapes
 
-**R-agent-55** A tool's `args:` and an agent's `reply:` are each a JSON Schema of an object, 2020-12 unless its `$schema` names another dialect. A shape with `type: object` is the full form and any other is the short form, which the client fills out when the definition is sent; the model is shown the full form as it is written, and what the model sends is checked against it.
+**R-agent-55** A tool's `args:` and an agent's `reply:` are shapes, whose short form refuses a name it does not give; the model is shown the full form as it is written, and what the model sends is checked against it.
 *Accept:* an agent with `args: { shelf: string, from: number? }` and the same agent with that shape written in full give the same stored definition. A tool whose shape gives `labels` an `enum` and `assign` properties of its own is offered to the model with both, as written; the model calls it with a label outside the `enum`, no job is sent, and the next turn is shown an error naming `labels`. A shape with `$schema` naming draft-07 is checked by draft-07.
 
 **R-agent-56** `format: blob` marks a blob at any depth of a shape.

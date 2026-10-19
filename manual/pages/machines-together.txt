@@ -41,7 +41,7 @@ An agent uses the flow as a tool
 
     # helper.yaml
     agent: page-helper
-    input: [question]
+    input: { question: string }
     model: { name: claude-haiku-5-5, secret: ANTHROPIC_KEY }
     prompt: ${input.question}
 

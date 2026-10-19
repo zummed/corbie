@@ -1,6 +1,6 @@
 # guarded-chart.yaml: a chart whose one working state is marked for approval.
 statechart: guarded-chart
-input: [n]
+input: { n: any }
 initial: guarded
 states:
   guarded:

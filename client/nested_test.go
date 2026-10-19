@@ -24,7 +24,7 @@ func TestParentNarrowsOnlyWithAList(t *testing.T) {
 	files := map[string]string{"read.js": `return fs.read(input.path)`}
 	const named = `
 		flow: parent
-		input: [dir, year]
+		input: { dir: any, year: any }
 		ABOVE
 		stages:
 		  kid:
@@ -33,7 +33,7 @@ func TestParentNarrowsOnlyWithAList(t *testing.T) {
 		      input: { dir: "${input.dir}", year: "${input.year}" }
 		      machine:
 		        flow: child
-		        input: [dir, year]
+		        input: { dir: any, year: any }
 		        allow: ["fs.read:${input.dir}/**"]
 		        stages:
 		          read: { job: { script: ./read.js, input: { path: "${input.dir}/${input.year}/a" } } }
@@ -70,7 +70,7 @@ func Test_perm_made_machine_gets_only_its_jobs_list(t *testing.T) {
 	dir := years(t)
 	files := map[string]string{"make.js": `
 		return machines.define(
-			"flow: made\ninput: [dir]\nallow: ['fs.read:" + input.dir + "/**']\nstages:\n" +
+			"flow: made\ninput: { dir: any }\nallow: ['fs.read:" + input.dir + "/**']\nstages:\n" +
 			"  read: { job: { script: ./read.js, input: { path: '" + input.dir + "/2026/a' } } }\n" +
 			"output: ${stages.read.output}\n",
 			{ files: { "./read.js": "return fs.read(input.path)" } })
@@ -78,7 +78,7 @@ func Test_perm_made_machine_gets_only_its_jobs_list(t *testing.T) {
 	l := local(t, "disk")
 	const made = `
 		flow: maker
-		input: [dir]
+		input: { dir: any }
 		stages:
 		  make: { job: { script: ./make.js, input: { dir: "${input.dir}" } } }
 		  go:

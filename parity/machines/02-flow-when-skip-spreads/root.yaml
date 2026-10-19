@@ -1,7 +1,7 @@
 # A stage whose when: is false is skipped; the skip spreads to what reads it
 # or names it in follows:, but not to a stage whose own when: reads .skipped.
 flow: skip-spreads
-input: [go]
+input: { go: any }
 stages:
   gate:
     when: ${input.go}

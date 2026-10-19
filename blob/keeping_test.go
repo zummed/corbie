@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -29,13 +30,13 @@ var ctx = context.Background()
 // noting is a store that notes whether anything in it was changed.
 type noting struct {
 	store.Store
-	changes int
+	changes atomic.Int64
 }
 
 func (n *noting) Write(ctx context.Context, name string, value []byte, how store.How) (bool, error) {
 	done, err := n.Store.Write(ctx, name, value, how)
 	if done {
-		n.changes++
+		n.changes.Add(1)
 	}
 	return done, err
 }
@@ -43,7 +44,7 @@ func (n *noting) Write(ctx context.Context, name string, value []byte, how store
 func (n *noting) WriteFrom(ctx context.Context, name string, r io.Reader) (bool, error) {
 	done, err := n.Store.WriteFrom(ctx, name, r)
 	if done {
-		n.changes++
+		n.changes.Add(1)
 	}
 	return done, err
 }
@@ -51,7 +52,7 @@ func (n *noting) WriteFrom(ctx context.Context, name string, r io.Reader) (bool,
 func (n *noting) Copy(ctx context.Context, from, to string) (bool, error) {
 	done, err := n.Store.Copy(ctx, from, to)
 	if done {
-		n.changes++
+		n.changes.Add(1)
 	}
 	return done, err
 }
@@ -59,7 +60,7 @@ func (n *noting) Copy(ctx context.Context, from, to string) (bool, error) {
 func (n *noting) Delete(ctx context.Context, name string, how store.How) (bool, error) {
 	done, err := n.Store.Delete(ctx, name, how)
 	if done {
-		n.changes++
+		n.changes.Add(1)
 	}
 	return done, err
 }
@@ -106,11 +107,11 @@ func (k *kept) later(d time.Duration) {
 	k.t.Helper()
 	k.now = k.now.Add(d)
 	for range 200 {
-		before := k.st.changes
+		before := k.st.changes.Load()
 		if _, err := k.ctrl.Pass(ctx); err != nil {
 			k.t.Fatal("pass:", err)
 		}
-		if k.st.changes == before {
+		if k.st.changes.Load() == before {
 			return
 		}
 	}

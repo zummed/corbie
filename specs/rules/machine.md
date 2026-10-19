@@ -30,7 +30,7 @@ The detailed rules behind the [Machines overview](../machine.md). Area code: `ma
 **R-mach-137** A definition's `input:`, a tool's `args:` and an agent's `reply:` are each a shape: a JSON Schema of an object, 2020-12 unless its `$schema` names another dialect, written in full with `type: object` or in the short form, which the client fills out when the definition is sent. The short form of `input:` takes a name it does not give, and a `blob` there is the blob itself.
 *Accept:* a flow with `input: { n: number, report: "blob?" }` started with `{n: 1, more: true}` ends done, and so does one started with a file as `report`; started with `{n: "one", report: "a report"}`, it fails with an error naming `/n` and `/report`.
 
-**R-mach-138** A `default` in `input:` that `properties` and `items` do not lead to from the top, and a default that does not fit its own place, are each refused when the definition is checked.
+**R-mach-138** A `default` in `input:` that `properties` and `items` do not lead to from the top, outside an entry of `$defs` that no `$ref` names, and a default that does not fit its own place, are each refused when the definition is checked.
 *Accept:* a default under `anyOf`, one in `$defs` behind a `$ref`, and `default: two` for a number are each refused, and the refusal names its place. Defaults under `properties` and under `items` are taken.
 
 **R-mach-12** When a client sends a definition, every short form in it is filled out into the one full form, and only the full form is stored and run; each short form has one meaning and one place it can be written.

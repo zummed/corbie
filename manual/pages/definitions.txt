@@ -65,7 +65,8 @@ A shape written with `type: object` is JSON Schema, which can give a `default`.
 - A name that `input:` does not give is taken as it is, and a name the input
   does not hold reads as `null`. A definition with no `input:` takes any input.
 - A default is filled in the input and in each object that `properties` and
-  `items` lead to. A `default` anywhere else is refused.
+  `items` lead to. A `default` elsewhere, such as under `anyOf` or behind a
+  `$ref`, is refused.
 - A `$ref` resolves only within its own shape.
 
 Values and expressions

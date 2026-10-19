@@ -97,7 +97,7 @@ input:
   { depth: 2 }                         the instance fails: missing property 'urls'
 ```
 
-A `default` that `properties` and `items` do not lead to from the top, such as one under `anyOf` or behind a `$ref`, is refused when the definition is checked, and so is a default that does not fit its own place.
+A `default` that `properties` and `items` do not lead to from the top, such as one under `anyOf` or behind a `$ref`, is refused when the definition is checked, and so is a default that does not fit its own place. An entry of `$defs` that no `$ref` names is not read, and neither is a default in it.
 
 ## Jobs
 

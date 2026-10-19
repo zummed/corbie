@@ -121,6 +121,8 @@ func needs(page string) []string {
 	return kinds
 }
 
+// groupOrder places a group: a group not named here, a program's own,
+// comes before Corbie's.
 func groupOrder(group string) int {
 	return slices.Index([]string{"Start", "Setting up", "Where it runs", "Tasks", "How it works", "Reference", "Machine types", "Plugins", "Libraries", "Commands"}, group)
 }

@@ -150,6 +150,14 @@ corbie bulldog check: it takes one folder, and 0 are named
 usage: corbie bulldog check <folder>
 ```
 
+The program is given `manual` and `mcp` beside its own commands, as Corbie has them. Its manual is Corbie's, with a page for each of its commands and any pages it adds to the manual. Its model server runs its commands, under a tool named after the program, each giving back what it prints on the command line, and tells a model the manual's page named after the program when it connects:
+
+```
+corbie bulldog manual                    Corbie's pages, the program's pages and its commands
+corbie bulldog manual office             a page the program added
+corbie bulldog mcp --allow check         a model may run corbie bulldog check, and no other
+```
+
 `corbie start` with nothing named runs the roles the config holds: its controller, its runner, and the store's server when `corbie init store` set it up. A name means exactly what is named:
 
 ```
@@ -186,6 +194,6 @@ It keeps nothing itself. It runs wherever a process can stay up, and is not offe
 
 ## For a model
 
-`corbie mcp` serves two tools to a model: the manual, and the command line. The model may run only the commands it was started with permission for, each named by its whole name, as in `--allow "run submit"`, with the config the server was started on. It needs nothing running and keeps nothing.
+`corbie mcp` serves two tools to a model: the manual, and the command line. The model may run only the commands it was started with permission for, each named by its whole name, as in `--allow "run submit"`, with the config the server was started on. It needs nothing running and keeps nothing. A program read with `cli.Program` serves the same two tools with its own `mcp`, and its model runs only the program's commands.
 
 Each call runs by itself. A call that stays until a run ends keeps no other call from being answered, and it ends when the model's host stops it.

@@ -25,6 +25,7 @@ import (
 
 	"github.com/zummed/corbie/client"
 	"github.com/zummed/corbie/identity"
+	"github.com/zummed/corbie/manual"
 	"github.com/zummed/corbie/role"
 	"github.com/zummed/corbie/store"
 )
@@ -67,6 +68,7 @@ type Env struct {
 	Flags *flag.FlagSet
 	ctx   context.Context
 	cmd   *Command
+	table table // the table the command was found in
 
 	config string
 	store  string
@@ -106,10 +108,13 @@ func Main(args []string, in io.Reader, out, errOut io.Writer) int {
 // Program runs the command line of a program that corbie <name> runs,
 // from the program's own table of commands, and gives its exit status as
 // Main does. A command named "" is the one run when no other is named.
+// The program is given corbie's manual and mcp beside its own commands:
+// its manual has its commands' pages among Corbie's, and a model is told
+// the manual's page named after it when it connects.
 func Program(name string, commands []Command, args []string, in io.Reader, out, errOut io.Writer) int {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
-	t := table{"corbie " + name, commands, ""}
+	t := table{"corbie " + name, append(slices.Clip(commands), forPrograms(name)...), ""}
 	if cmd, rest := t.find(args); cmd != nil {
 		return t.do(ctx, cmd, rest, in, out, errOut)
 	}
@@ -239,6 +244,26 @@ type table struct {
 // own is corbie's own table.
 func own() table { return table{"corbie", Commands, everywhere} }
 
+// word is the last word of the table's name: corbie, or a program's name.
+func (t table) word() string { return t.name[strings.LastIndex(t.name, " ")+1:] }
+
+// own says whether the table is corbie's own.
+func (t table) own() bool { return t.name == own().name }
+
+// pages are the manual's pages, with a program's commands among them:
+// corbie's own are in the manual already.
+func (t table) pages() []manual.Page {
+	pages := manual.Pages()
+	if t.own() {
+		return pages
+	}
+	for i := range t.commands {
+		c := &t.commands[i]
+		pages = append(pages, manual.Page{Name: t.named(c), Group: "Commands", Summary: c.Summary, Text: t.helpOf(c)})
+	}
+	return pages
+}
+
 // named is a command's whole name, as it is typed.
 func (t table) named(c *Command) string { return strings.TrimSpace(t.name + " " + c.Name) }
 
@@ -247,6 +272,7 @@ func (t table) named(c *Command) string { return strings.TrimSpace(t.name + " " 
 // said along the way to errOut.
 func (t table) do(ctx context.Context, cmd *Command, rest []string, in io.Reader, out, errOut io.Writer) int {
 	e := cmd.env(ctx, in, out, errOut)
+	e.table = t
 	named := t.named(cmd)
 	err := cmd.Run(e, rest)
 	var u usage

@@ -14,6 +14,6 @@ The pages for commands are made from the one table of commands, and the list of 
 
 ## Reading it
 
-`corbie manual` lists the pages and `corbie manual <page>` prints one. `corbie mcp` gives a model the same two things.
+`corbie manual` lists the pages and `corbie manual <page>` prints one. `corbie mcp` gives a model the same two things. A program read with `cli.Program` has the same manual, with its own commands' pages and any it adds, the pages it adds before Corbie's, and gives it to a model through its own `mcp`.
 
 `corbie manual web` serves the same pages to a browser on this computer, each as the text that is printed. A page that another page names is shown there as a link, by its title. It serves until it is stopped. It reads no config and no store, and is no part of a running system.

@@ -365,11 +365,11 @@ func cmdManual(e *Env, args []string) error {
 	if err != nil {
 		return err
 	}
+	pages := e.table.pages()
 	if len(rest) == 0 {
-		pages := manual.Pages()
 		return e.Print(pages, func() string {
 			var b strings.Builder
-			b.WriteString("The pages of the manual. Print one with: corbie manual <page>\n\n")
+			fmt.Fprintf(&b, "The pages of the manual. Print one with: %s manual <page>\n\n", e.table.name)
 			group := ""
 			for _, page := range pages {
 				if page.Group != group {
@@ -387,10 +387,11 @@ func cmdManual(e *Env, args []string) error {
 		})
 	}
 	name := strings.Join(rest, " ")
-	page, ok := manual.Find(name)
-	if !ok {
-		return Mistake("%q is not a page of the manual; corbie manual lists them", name)
+	at := manual.Named(pages, name)
+	if at < 0 {
+		return Mistake("%q is not a page of the manual; %s manual lists them", name, e.table.name)
 	}
+	page := pages[at]
 	return e.Print(page, func() string { return strings.TrimRight(page.Text, "\n") + "\n" })
 }
 

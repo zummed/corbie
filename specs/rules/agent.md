@@ -46,7 +46,7 @@ The detailed rules behind the [Agent overview](../agent.md). Area code: `agent`.
 *Accept:* parity case 85: one tool that is a script, one that is a flow and one that is a chart. The librarian is started with the directory `/srv/library` and its model calls `shelf` with the shelf `B`; the tool's job is given that directory and that shelf as its input, and may read under `/srv/library` and nowhere else.
 
 **R-agent-25** A definition may name files of tools shared with other agents, one or several, and each file is filled in when the definition is sent.
-*Accept:* two agents name one file of tools; the model of each is offered the file's tools beside the agent's own. The stored definition of such an agent holds the file's tools written out, and changing the file afterwards changes nothing for a run already started.
+*Accept:* two agents name one file of tools; the model of each is offered the file's tools beside the agent's own. The stored definition of such an agent holds the file's tools written out, and changing the file afterwards changes nothing for a run already started. The package starts an agent from the directory `a/` that names `../shared/tools.yaml`, whose tools name `./wait.yaml` and `./run.js`: its stored definition names them by their paths from `a/`, `../shared/wait.yaml` and `../shared/run.js`. Two files of tools in different directories that each name `./run.js` each run their own.
 
 **R-agent-54** A tool whose job is an agent is shown to the model as what that agent replied. The sub-agent's conversation and its count of tokens stay in its own record.
 *Accept:* an agent calls a tool that is another agent; its next turn is shown that agent's reply as the tool's result, and neither its conversation nor its tokens.
@@ -54,8 +54,8 @@ The detailed rules behind the [Agent overview](../agent.md). Area code: `agent`.
 **R-agent-27** A tool that fails goes back to the model as an error, with whatever output it still gave, and the agent carries on.
 *Accept:* parity case 85: the third turn is shown both errors, and the agent ends well; in the result for the chart's call the model sees `reached gave_up` and the failed final state's output.
 
-**R-agent-29** A tool that needs approval goes to the agent's ask like any job; the calls from one turn that need it go together, the ask is shown the arguments, what the tool does and what the model said, and a call that is not approved goes back to the model as denied, with the ask's note.
-*Accept:* parity case 89: the ask is run once, with both calls, is shown each call's arguments, description and the model's words, and the refused call reaches the model as denied with the note.
+**R-agent-29** A tool that needs approval goes to the agent's ask like any job; the calls from one turn that need it go together, the ask is shown the arguments, what the tool does and what the model said, and for a listed tool the entry's name as `entry` and the tool's own name as `tool`; a call that is not approved goes back to the model as denied, with the ask's note.
+*Accept:* parity case 89: the ask is run once, with both calls, is shown each call's arguments, description and the model's words, and the refused call reaches the model as denied with the note. An entry `github` lists `create_issue`; the ask for a call of `github_create_issue` is shown `entry: github` and `tool: create_issue`, and the ask for a call of a tool of the definition's own is shown neither.
 
 **R-agent-33** A call that needs no approval is not held by one in the same turn that does.
 *Accept:* a turn asks for one tool that is marked for approval and one that is not; the second's job is asked for in the same step as the ask.

@@ -480,7 +480,7 @@ func TestBlobShownInAnEntryIsFetchedByItsPath(t *testing.T) {
 		"again.js": `
 			emit("seen", { mine: blobs.make("made by the child") })
 			return { copy: blobs.make(blobs.read(input.report, { as: "text" }) + ", copied") }`,
-	}), client.Start{Files: map[string]client.InputFile{"given": {Name: "notes.txt", Contents: strings.NewReader("given with the start")}}})
+	}), client.Start{Input: map[string]any{"given": client.InputFile{Name: "notes.txt", Contents: strings.NewReader("given with the start")}}})
 	if err != nil {
 		t.Fatal(err)
 	}

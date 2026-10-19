@@ -21,6 +21,7 @@ type chart struct {
 	state jsontext.Value
 	step  int
 	at    time.Time
+	input map[string]any
 }
 
 func parse(t *testing.T, src string) (*machine.Definition, error) {
@@ -47,8 +48,12 @@ func newChart(t *testing.T, src string) *chart {
 func (c *chart) give(events ...machine.Event) []string {
 	c.t.Helper()
 	c.step++
+	input := c.input
+	if input == nil {
+		input = map[string]any{"n": 1.0}
+	}
 	out, err := chartType{}.Step(&machine.StepIn{Definition: c.def, State: c.state, Events: events,
-		Input: map[string]any{"n": 1.0}, Time: c.at, Seed: []byte(fmt.Sprint("seed", c.step))})
+		Input: input, Time: c.at, Seed: []byte(fmt.Sprint("seed", c.step))})
 	if err != nil {
 		c.t.Fatal(err)
 	}
@@ -407,6 +412,36 @@ func Test_chart_zone_known_without_host_zone_files(t *testing.T) {
 	if _, err := parseAt("09:00 Nowhere/Atall"); err == nil {
 		t.Fatal("a zone that does not exist was taken")
 	}
+}
+
+// A timer's time may come from input. It is filled in when the state is
+// entered, and a filled time that is not a length of time or a time of day
+// fails the chart.
+func TestTimerTimeComesFromInput(t *testing.T) {
+	const src = `
+statechart: reminder
+initial: waiting
+states:
+	waiting:
+		timers: { t: "${input.due}", z: "${input.due} Europe/London" }
+		on: { t: done, z: done }
+	done: { end: done }
+`
+	c := newChart(t, src)
+	c.input = map[string]any{"due": "18:00"}
+	c.give(start())
+	if at, _ := c.timer("t.waiting"); !at.Equal(time.Date(2026, 10, 13, 18, 0, 0, 0, time.UTC)) {
+		t.Fatalf("18:00 from input is due %v", at)
+	}
+	if at, _ := c.timer("z.waiting"); !at.Equal(time.Date(2026, 10, 14, 17, 0, 0, 0, time.UTC)) {
+		t.Fatalf("18:00 London from input, entered at 18:00 London, is due %v", at)
+	}
+	_, err := chartType{}.Step(&machine.StepIn{Definition: c.def, Events: []machine.Event{start()},
+		Input: map[string]any{"due": "soon"}, Time: entered, Seed: []byte("seed")})
+	if err == nil || !strings.Contains(err.Error(), "states.waiting.timers.t: ") || !strings.Contains(err.Error(), "not a length of time") {
+		t.Fatalf("want the chart to fail naming the timer, got: %v", err)
+	}
+	refused(t, strings.Replace(src, "${input.due}", "${nothing.here}", 1), `reads "nothing"`)
 }
 
 func due(t *testing.T, at string, from time.Time) time.Time {

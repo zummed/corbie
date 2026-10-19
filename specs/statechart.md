@@ -71,7 +71,9 @@ An event sent to a chart goes to the chart and to nothing below it. A child hear
 
 The client that started the run reads the ticket's value and hands it to whoever should answer. A chart run as a child hands it to its parent with a send that reads `${tickets.<name>}`.
 
-`timers:` names timers that start when the state is entered and are cancelled when it is left. A timer that is due arrives as an event with the timer's name, from the state, and no other event is taken under that name. A length of time counts from entry. A time of day, optionally with a weekday and a time zone, is due at its next occurrence after entry; without a zone it is UTC.
+`timers:` names timers that start when the state is entered and are cancelled when it is left. A timer that is due arrives as an event with the timer's name, from the state, and no other event is taken under that name.
+
+A length of time counts from entry. A time of day, optionally with a weekday and a time zone, is due at its next occurrence after entry; without a zone it is UTC. A time with an expression is filled in when the state is entered, and a filled time that is not a length of time or a time of day fails the chart.
 
 A rule under a ticket's or a timer's name belongs in the state that issues or starts it, or in a state that holds that one: anywhere else it would never be taken, and the definition is refused.
 

@@ -51,16 +51,15 @@ func (c *Client) identity() error {
 type Start struct {
 	// Run is the run's name, if it was chosen beforehand with NewRun.
 	Run string
-	// Input is the run's input. A blob of another of this client's runs is
-	// carried over by writing it as it was shown, with the run it was shown
-	// for added: { "$blob": <its path>, "run": <that run's ID> }, with or
-	// without the type and size it was shown with. The blob is copied into
-	// the new run's record, and the copy stands in the input.
-	Input any
-	// Files are files given as input. Each is put into the run's record
-	// and stands in the input as a blob, under the name it has here; the
-	// input is then a map, or nothing.
-	Files  map[string]InputFile
+	// Input is the run's input. An InputFile may stand in place of any
+	// value in a map[string]any or a []any of it: the file is put into the
+	// run's record, and stands in the input as a blob. A blob of another of
+	// this client's runs is carried over by writing it as it was shown, with
+	// the run it was shown for added: { "$blob": <its path>, "run": <that
+	// run's ID> }, with or without the type and size it was shown with. The
+	// blob is copied into the new run's record, and the copy stands in the
+	// input.
+	Input  any
 	Labels map[string]string
 	// Allow narrows what the run, and everything below it, may do.
 	Allow *permission.Layer
@@ -81,6 +80,38 @@ var ErrStart = errors.New("the start cannot be sent")
 type InputFile struct {
 	Name     string
 	Contents io.Reader
+}
+
+// MarshalJSON refuses a file that Start cannot find in the input: one
+// that is not an InputFile in a map[string]any or a []any.
+func (f InputFile) MarshalJSON() ([]byte, error) {
+	return nil, fmt.Errorf("%w: the file %q is not an InputFile in a map[string]any or a []any of the input", ErrStart, f.Name)
+}
+
+// WithFiles gives an input with each file standing under its name. The
+// input is a map of names, or nothing.
+func WithFiles(input any, files map[string]InputFile) (any, error) {
+	if len(files) == 0 {
+		return input, nil
+	}
+	if input == nil {
+		input = map[string]any{}
+	}
+	named, ok := input.(map[string]any)
+	if !ok {
+		return nil, fmt.Errorf("%w: a file is given as input under a name, and the input is not a map of names", ErrStart)
+	}
+	out := make(map[string]any, len(named)+len(files))
+	for name, value := range named {
+		out[name] = value
+	}
+	for name, file := range files {
+		if _, taken := named[name]; taken {
+			return nil, fmt.Errorf("%w: the input has a value under %q, and a file is given under that name too", ErrStart, name)
+		}
+		out[name] = file
+	}
+	return out, nil
 }
 
 // NewRun chooses the name of a run before it is started, so that an
@@ -111,8 +142,13 @@ func (c *Client) Start(ctx context.Context, draft *machine.Draft, start Start) (
 			return "", fmt.Errorf("%w: %w", ErrStart, err)
 		}
 	}
-	// Everything is looked over before anything is written.
-	input, err := c.carried(ctx, start)
+	if file, whole := start.Input.(InputFile); whole {
+		return "", fmt.Errorf("%w: the file %q is the whole input; a file goes in a map[string]any or a []any of it", ErrStart, file.Name)
+	}
+	// Everything is looked over before anything is written: the input is
+	// made plain data, with each file left where it stands.
+	keep := func(file InputFile) (any, error) { return file, nil }
+	input, err := c.resolve(ctx, start.Input, keep)
 	if err != nil {
 		return "", err
 	}
@@ -125,13 +161,15 @@ func (c *Client) Start(ctx context.Context, draft *machine.Draft, start Start) (
 	if err != nil {
 		return "", err
 	}
-	for _, name := range sortedNames(start.Files) {
-		file := start.Files[name]
+	// Each file is written, and its blob stands where the file stood. A
+	// blob carried over is already its copy here, so nothing is looked up
+	// again.
+	write := func(file InputFile) (any, error) {
 		given, err := blob.Write(ctx, c.Store, store.Blob(c.ctl(), run, blob.NewName()), blob.TypeOf(file.Name), blob.NewKey(), file.Contents)
-		if err != nil {
-			return "", err
-		}
-		input.(map[string]any)[name] = given.Value()
+		return given.Value(), err
+	}
+	if input, err = c.resolve(ctx, input, write); err != nil {
+		return "", err
 	}
 	seed := make([]byte, 32)
 	rand.Read(seed)
@@ -141,57 +179,36 @@ func (c *Client) Start(ctx context.Context, draft *machine.Draft, start Start) (
 	return run, c.send(ctx, startMessage(run), start.Life, msg)
 }
 
-// carried gives a start's input as it is sent, but for its files: plain
-// data, in which each blob carried over from another run is the reference
-// to it where it is now. Nothing is written. With files to come, the input
-// is a map with no value under a file's name.
-func (c *Client) carried(ctx context.Context, start Start) (any, error) {
-	input, err := plain(start.Input)
-	if err != nil {
-		return nil, err
-	}
-	if len(start.Files) > 0 {
-		if input == nil {
-			input = map[string]any{}
-		}
-		named, ok := input.(map[string]any)
-		if !ok {
-			return nil, fmt.Errorf("%w: a file is given as input under a name, and the input is not a map of names", ErrStart)
-		}
-		for name := range start.Files {
-			if _, taken := named[name]; taken {
-				return nil, fmt.Errorf("%w: the input has a value under %q, and a file is given under that name too", ErrStart, name)
-			}
-		}
-	}
-	return c.resolve(ctx, input)
-}
-
-// resolve gives a value in which each blob that names the run it was shown
-// for is the reference to that blob, found as Fetch finds it.
-func (c *Client) resolve(ctx context.Context, v any) (any, error) {
+// resolve gives a value as plain data, in which each file is what file
+// gives for it, and each blob that names the run it was shown for is the
+// reference to that blob, found as Fetch finds it.
+func (c *Client) resolve(ctx context.Context, v any, file func(InputFile) (any, error)) (any, error) {
 	switch v := v.(type) {
+	case InputFile:
+		return file(v)
+	case nil, string, float64, bool:
+		return v, nil
 	case map[string]any:
-		if run, path, ok := shownFor(v); ok {
+		out := make(map[string]any, len(v))
+		for name, inner := range v {
+			resolved, err := c.resolve(ctx, inner, file)
+			if err != nil {
+				return nil, err
+			}
+			out[name] = resolved
+		}
+		if run, path, ok := shownFor(out); ok {
 			ref, err := c.find(ctx, run, path)
 			if err != nil {
 				return nil, fmt.Errorf("the blob at %q of the run %q: %w", path, run, err)
 			}
 			return ref.Value(), nil
 		}
-		out := make(map[string]any, len(v))
-		for name, inner := range v {
-			resolved, err := c.resolve(ctx, inner)
-			if err != nil {
-				return nil, err
-			}
-			out[name] = resolved
-		}
 		return out, nil
 	case []any:
 		out := make([]any, len(v))
 		for i, inner := range v {
-			resolved, err := c.resolve(ctx, inner)
+			resolved, err := c.resolve(ctx, inner, file)
 			if err != nil {
 				return nil, err
 			}
@@ -199,7 +216,11 @@ func (c *Client) resolve(ctx context.Context, v any) (any, error) {
 		}
 		return out, nil
 	}
-	return v, nil
+	data, err := plain(v)
+	if err != nil {
+		return nil, err
+	}
+	return c.resolve(ctx, data, file)
 }
 
 // shownFor says whether a value is a blob as it is shown with the run it

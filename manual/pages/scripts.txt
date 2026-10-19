@@ -46,9 +46,11 @@ What a script has
     corbie test double.yaml --input '{"n": 21}'
       output: 42
 
-A loaded file has the plugins and `require`, and not `input`, `job`, `emit`,
-`log` or `progress`. A script cannot start a script or a machine: only a
-machine starts jobs.
+A path given to `require` is read from the directory of the file that calls
+it. A loaded file has the plugins and `require`, and not `input`, `job`,
+`emit`, `log` or `progress`.
+
+A script cannot start a script or a machine: only a machine starts jobs.
 
 Plugins
 -------

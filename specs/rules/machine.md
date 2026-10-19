@@ -1,6 +1,6 @@
 # Machines
 
-The detailed rules behind the [Machines overview](../machine.md). Area code: `mach`. What is shared by every machine type is stated here once and is not repeated under Flow, Statechart or Agent. Attempts, timers and timeouts are the controller's and are under Controller; what a job may be held for is under Permissions.
+The detailed rules behind the [Machines overview](../machine.md). Area code: `mach`. What is shared by every machine type is stated here once and is not repeated under Flow, Statechart or Agent. Counting attempts, keeping timers and ending a machine whose timeout has passed are the controller's, under Controller; what a job may be held for is under Permissions.
 
 ## Steps
 
@@ -31,7 +31,7 @@ The detailed rules behind the [Machines overview](../machine.md). Area code: `ma
 *Accept:* a statechart sent with a transition written as a bare state name, and the same chart with that transition written out, give the same stored definition, and the definition shown for the run contains no short form. A short form written in a place other than its own is reported as a problem naming that place.
 
 **R-mach-16** A definition is checked as a whole, and everything wrong with it is reported together.
-*Accept:* a definition with an unknown field, an expression that does not compile and a reference to a stage that does not exist is refused once, with three problems, each naming its place.
+*Accept:* a definition with an unknown field, an expression that does not compile and a reference to a stage that does not exist is refused once, with three problems, each naming its place. A definition whose child, named by the path `./kids/kid.yaml`, has an expression that does not compile is refused with one problem, which carries the file `kids/kid.yaml`.
 
 **R-mach-17** The client checks a definition before sending it, and the controller checks it again with the same code and refuses what fails.
 *Accept:* a definition with a mistake is submitted; the command fails listing the problems, and nothing has been written to the store. A trusted client writes a start carrying a full-form definition with two mistakes straight into the controller's inbox; no instance is made, and the receipt lists the same two problems, in the same words, that the client's own check gives for that definition.
@@ -62,7 +62,7 @@ The detailed rules behind the [Machines overview](../machine.md). Area code: `ma
 **R-mach-24** Expressions are JavaScript, and an expression reads `input` and what its machine's type adds, and nothing else.
 *Accept:* `${input.urls.filter(u => u.startsWith("https")).length}` gives the number of matching items. A flow's expression that reads `states`, and an expression that names something outside the language itself such as `require` or `process`, are each refused when the definition is checked.
 
-**R-mach-27** An expression in a field that is a name is refused: a thing's name, a type, a permission's kind, a deny entry, a secret's name, a tag, a timer's time, a ticket's name. The path of a script or a machine is a name too, except that it may be exactly one expression that gives a stored definition or script.
+**R-mach-27** An expression in a field that is a name is refused: a thing's name, a type, a permission's kind, a deny entry, a secret's name, a tag, a ticket's name. The path of a script or a machine is a name too, except that it may be exactly one expression that gives a stored definition or script.
 *Accept:* seven definitions, each with `${input.x}` in one of these fields, are each refused when checked, and each refusal names the field. `machine: "${input.definition}"`, given a stored definition, runs it as a child; `script: "./${input.name}.js"` is refused when checked.
 
 **R-mach-133** A condition, such as `when:`, is exactly one expression, written `${…}`; a condition written any other way is refused when the definition is checked. It holds unless its value is false, null, zero or empty text.
@@ -90,14 +90,17 @@ The detailed rules behind the [Machines overview](../machine.md). Area code: `ma
 **R-mach-35** A job of either kind has an input, the permissions it may use, a limit on time, and optionally a number of attempts, written the same way for both; a script also has a limit on memory and tags that choose its runners.
 *Accept:* a script job written with all six is sent, carrying that input, those permissions and both limits, to a runner holding the tags; a machine job written with an input, a time limit and attempts behaves as parity cases 30, 98 and 62 show, and a machine job written with memory or tags is refused when checked.
 
-**R-mach-36** A job may be written where it is used or kept in its own file; a script is a file named by its path, with the files it loads listed beside it, and a client sends them along with the definition.
-*Accept:* a stage whose child flow is written in place, and one that names the same flow in a file, produce records of the same shape and the same output. A job names `./fetch.js` and lists `./lib.js` beside it: both are in the run's record before the first step is taken, and the script loads `./lib.js` and runs.
+**R-mach-136** A program using Corbie as a library can list a definition's jobs, each with its place.
+*Accept:* a flow of the two stages `a` and `b` gives `stages.a.job` and `stages.b.job`, in that order. An agent with the one tool `add` gives `turn`, `tools.add.job`, and the jobs of the tools for working with blobs that every agent has.
 
-**R-mach-39** Every job has a name that says what asked for it: a stage, a state, a tool, an agent's `turn`, or the `ask`; an item of a list adds its position and a later attempt adds its number.
-*Accept:* parity cases 01, 16, 85, 84 and 63, one for each: the record names the job after the stage, the state, the tool, `turn` and `ask`. `each:` over three items gives three jobs named for the stage and the positions 0, 1 and 2, and parity case 10's error names the second item as item 1. A stage given two attempts whose first fails has its second attempt's job named with the number 2.
+**R-mach-135** A `timeout:` with an expression is filled in when its job is asked for, and `limits: { timeout: }` when the run starts; a filled value that is not a length of time fails the machine.
+*Accept:* a flow whose stage `it` has a job with `timeout: "${input.t}"` is started with `{t: "2s"}`, and its script is stopped after 2s; started with `{t: "soon"}`, the run fails, and the error names `stages.it.job.timeout`. A flow with `limits: { timeout: "${input.t}" }` started with `{t: "1s"}` fails as out of time after 1s; started with `{t: "soon"}`, it fails, and the error names `limits.timeout`.
 
-**R-mach-42** When one name asks for a job more than once, the jobs are told apart in the order they were asked for.
-*Accept:* parity case 16 (a state entered three times) and parity case 90 (an agent's turns one to four).
+**R-mach-36** A job may be written where it is used or kept in its own file; a script is a file named by its path, its job lists the files the script loads, and a client sends them along with the definition. A relative path is read from the directory of the file it is written in: a definition, a machine kept in its own file, a file of tools, or a script that loads another with `require`.
+*Accept:* a stage whose child flow is written in place, and one that names the same flow in a file, produce records of the same shape and the same output. A job names `./fetch.js` and lists `./lib.js`: both are in the run's record before the first step is taken, and the script loads `./lib.js` and runs. A flow names the child `./kids/kid.yaml`, whose stage names `./kid.js`: the child runs `kids/kid.js`.
+
+**R-mach-39** Every job has a name that says what asked for it: a stage, a state, a tool, an agent's `turn`, or the `ask`. Jobs asked for in one step under one name add `.` and a number: an item of a list its position from 0, and an agent's second call of one tool in a turn, or its second preview, `.1`. A name that asks again in the run adds `#` and the count of times it has asked, and a later attempt adds `@` and its number.
+*Accept:* parity cases 01, 16, 85, 84 and 63, one for each: the record names the job after the stage, the state, the tool, `turn` and `ask`. `each:` over three items gives three jobs named for the stage and the positions 0, 1 and 2, and parity case 10's error names the second item as item 1. A stage given two attempts whose first fails has its second attempt's job named with `@2`. Parity case 89 calls `guarded_add` twice in one turn and names the jobs `guarded_add` and `guarded_add.1`. Parity case 16 enters the state `working` four times and names its jobs `working`, `working#2`, `working#3` and `working#4`, and parity case 90 names an agent's second turn `turn#2`.
 
 ## Events
 
@@ -268,3 +271,4 @@ Used by:
 - **Client.** Fills out and checks a definition with this area's code before sending it; sends events and answers to tickets.
 - **Controller.** Checks a definition with this area's code before starting it, and calls a type's step.
 - **Manual.** Prints each type's page.
+- **Applications.** A Go program using Corbie as a library lists a definition's jobs, each with its place.

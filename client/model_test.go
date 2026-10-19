@@ -27,8 +27,8 @@ func Test_model_plain_address_key_bound_to_it(t *testing.T) {
 	if r := wait(t, l, id); r.Status != "done" {
 		t.Fatalf("the agent ended %s/%s: %s", r.Status, r.Failure, r.Error)
 	}
-	if len(m.keys) != 2 || m.keys[0] != "sk-test-key" || m.keys[1] != "sk-test-key" {
-		t.Fatalf("the model was sent the keys %q", m.keys)
+	if len(m.Calls) != 2 || m.Calls[0].Key != "sk-test-key" || m.Calls[1].Key != "sk-test-key" {
+		t.Fatalf("the model was sent the calls %v", m.Calls)
 	}
 	stored, err := l.Definition(ctx, id)
 	if want := `"allow":["net:` + at.Host + `","secret:TEST_KEY@net.unencrypted:` + at.Host + `"]`; err != nil || !strings.Contains(jsonOf(stored), want) {

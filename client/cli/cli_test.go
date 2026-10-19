@@ -459,7 +459,7 @@ func TestViewerNeedsNoIdentity(t *testing.T) {
 		t.Fatalf("a viewer's listing: %s", out)
 	}
 	// What is inside a run cannot be read.
-	if out := viewer.ok("", "run", "show", id, "--json"); strings.Contains(out, "output") {
+	if out := viewer.ok("", "run", "show", id, "--json"); strings.Contains(out, "output") || strings.Contains(out, "input") {
 		t.Fatalf("a viewer was shown what is inside a run: %s", out)
 	}
 	if status, _, _ := viewer.run("", "run", "show", id, "--definition"); status == 0 {

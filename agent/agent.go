@@ -7,6 +7,7 @@ import (
 	"encoding/json/jsontext"
 	"encoding/json/v2"
 	"fmt"
+	"maps"
 	"net"
 	"net/url"
 	"slices"
@@ -279,6 +280,28 @@ func (agentType) Shape() *machine.Shape {
 	}}
 }
 
+// fillTool reads one tool as written and adds it to the agent's tools.
+func fillTool(p *machine.Parser, a *Agent, shape *machine.Shape, name string, written any) {
+	place := "tools." + name
+	tf := p.Fields(place, written, shape)
+	if tf == nil {
+		return
+	}
+	tool := &Tool{Does: tf.Text("does")}
+	if list, ok := tf.Value("list"); ok {
+		tool.List = p.Job(place+".list", list)
+	}
+	if args, _ := tf.Map("args"); args != nil || tool.List == nil {
+		tool.Args = filled(p, place+".args", args)
+	}
+	if job, ok := tf.Value("job"); ok {
+		tool.Job = p.Job(place+".job", job)
+		tool.Agent = tool.Job != nil && p.MachineType(tool.Job.Machine) == "agent"
+	}
+	tf.Done()
+	a.Tools[name] = tool
+}
+
 // Fill reads an agent as written and gives its full form.
 func (agentType) Fill(p *machine.Parser, f *machine.Fields) any {
 	a := &Agent{System: f.Text("system"), Turns: p.Limits().Int("turns")}
@@ -293,9 +316,15 @@ func (agentType) Fill(p *machine.Parser, f *machine.Fields) any {
 	if reply, _ := f.Map("reply"); reply != nil {
 		a.Reply = filled(p, "reply", reply)
 	}
+	a.Tools = map[string]*Tool{}
 	tools, order := f.Map("tools")
-	// Files of tools shared with other agents are filled in here. A tool
-	// of the definition's own stands before one a file gives the same name.
+	for _, name := range order {
+		fillTool(p, a, f.Of("tools"), name, tools[name])
+	}
+	// Files of tools shared with other agents are filled in here, each
+	// read from its own directory. A tool of the definition's own stands
+	// before one a file gives the same name, and an earlier file's before
+	// a later one's.
 	for _, file := range f.Strings("tools_file") {
 		shared, err := p.Load(file)
 		if err != nil {
@@ -306,37 +335,13 @@ func (agentType) Fill(p *machine.Parser, f *machine.Fields) any {
 		if err := yaml.Unmarshal(shared, &more); err != nil {
 			p.Problem("tools_file", "%q is not YAML that can be read: %v", file, err)
 		}
-		if tools == nil {
-			tools = map[string]any{}
-		}
-		for name, tool := range more {
-			if _, own := tools[name]; !own {
-				tools[name] = tool
-				order = append(order, name)
+		p.In(file, func() {
+			for _, name := range slices.Sorted(maps.Keys(more)) {
+				if _, own := a.Tools[name]; !own {
+					fillTool(p, a, f.Of("tools"), name, more[name])
+				}
 			}
-		}
-		sort.Strings(order)
-	}
-	a.Tools = map[string]*Tool{}
-	for _, name := range order {
-		place := "tools." + name
-		tf := p.Fields(place, tools[name], f.Of("tools"))
-		if tf == nil {
-			continue
-		}
-		tool := &Tool{Does: tf.Text("does")}
-		if list, ok := tf.Value("list"); ok {
-			tool.List = p.Job(place+".list", list)
-		}
-		if args, _ := tf.Map("args"); args != nil || tool.List == nil {
-			tool.Args = filled(p, place+".args", args)
-		}
-		if job, ok := tf.Value("job"); ok {
-			tool.Job = p.Job(place+".job", job)
-			tool.Agent = tool.Job != nil && p.MachineType(tool.Job.Machine) == "agent"
-		}
-		tf.Done()
-		a.Tools[name] = tool
+		})
 	}
 	// The blob tools every agent has are ordinary scripts. They need no
 	// permission, and the code tool runs what the model wrote, so they get

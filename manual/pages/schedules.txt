@@ -30,12 +30,13 @@ ends the run as failed and the schedule stops. `corbie run show <id>` prints
 the run as `running`, with `waiting on 1 timer`, until `corbie run cancel <id>`
 ends it.
 
-A timer's time is a duration or a time of day.
+A timer's time is a length of time or a time of day.
 
-  90s, 48h, 7d             a duration, from when the statechart enters the state
+  90s, 48h, 7d             a length of time, from when the statechart enters the state
   "18:00"                  a time of day in UTC, due at its next occurrence
   "mon 09:00"              a time on one day of the week
   "09:00 Europe/London"    a time of day in a named time zone
+  "${input.at}"            one of these, from input, when the state is entered
 
 No job runs while the statechart waits. A timer that came due while no
 controller was running is delivered when one starts. A running controller

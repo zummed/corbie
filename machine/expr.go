@@ -655,6 +655,27 @@ func ReadsIn(value any, root string) []Read {
 	return reads
 }
 
+// Duration fills in a length of time from a scope's names. Empty text
+// gives none.
+func (e *Evaluator) Duration(text string, scope Scope, place string) (Duration, error) {
+	if text == "" {
+		return 0, nil
+	}
+	filled, err := e.Text(text, scope, place)
+	if err != nil {
+		return 0, err
+	}
+	written, ok := filled.(string)
+	if !ok {
+		return 0, fmt.Errorf("%s: %s is %s, not a length of time (write it like 30s, 5m, 48h or 7d)", place, text, describe(filled))
+	}
+	d, err := ParseDuration(written)
+	if err != nil {
+		return 0, fmt.Errorf("%s: %v", place, err)
+	}
+	return d, nil
+}
+
 // Entry fills in a permission's scope from a scope's names. What fills it
 // must be there, and be text that is not empty or a number: an empty value
 // would turn ${input.dir}/** into /**, the whole disk, and a value that

@@ -31,6 +31,9 @@ type Run struct {
 	Layer   string `json:"layer,omitzero"`
 	Fix     string `json:"fix,omitzero"`
 
+	// Input and Output are shown only to the client that started the
+	// run.
+	Input  any `json:"input,omitzero"`
 	Output any `json:"output,omitzero"`
 	// Used lists the permissions the run used: those of every job in it
 	// and below it.
@@ -121,6 +124,12 @@ func (c *Client) Show(ctx context.Context, id string) (*Run, error) {
 	// A blob in the output is shown as its type, its size and the path to
 	// ask for it by: its key is left out here, where the one shape is made.
 	run.Status, run.Step, run.Output, run.Used, run.Ended = st.Status, latest.Number, blob.Show(st.Output), st.Used, st.Ended
+	// A blob in the input is shown with a path that begins input/.
+	input, err := shown("input", &st.Input)
+	if err != nil {
+		return nil, err
+	}
+	run.Input = *input
 	run.Jobs, run.Timers, run.Tickets = 0, len(st.Timers), nil
 	for _, r := range st.Jobs {
 		if r.Runner != "" {

@@ -372,7 +372,7 @@ func (p *pass) job(inst string, step *instance.Step, ask *instance.Ask) (*instan
 		if !ok {
 			return nil, none, p.failf("the script %s is not among those the definition holds", asked.Script), nil
 		}
-		job.Script = beside.Beside(ref)
+		job.Script, job.Path = beside.Beside(ref), asked.Script
 		for _, file := range asked.Files {
 			ref, ok := def.Scripts[file]
 			if !ok {

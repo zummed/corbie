@@ -20,6 +20,7 @@ type Parser struct {
 	problems Problems
 	load     func(path string) ([]byte, error)
 	dir      string   // where the definition's paths start from
+	in       string   // the directory of the file being read, from dir
 	chain    []string // the machine files being read, outermost first
 	draft    *Draft
 	inline   int
@@ -52,12 +53,12 @@ func parse(src []byte, load func(path string) ([]byte, error), root bool) (*Draf
 	return draft, nil
 }
 
-// Problem notes one thing wrong, at a place in the definition.
+// Problem notes one thing wrong, at a place in the file being read.
 func (p *Parser) Problem(place, format string, args ...any) {
-	if len(p.chain) > 0 {
-		place = strings.TrimSuffix(p.chain[len(p.chain)-1]+": "+place, ": ")
-	}
 	problem := Problem{Place: place, Text: fmt.Sprintf(format, args...)}
+	if len(p.chain) > 0 {
+		problem.File = p.chain[len(p.chain)-1]
+	}
 	if !slices.Contains(p.problems, problem) {
 		p.problems = append(p.problems, problem)
 	}
@@ -94,7 +95,7 @@ func (p *Parser) fill(written map[string]any, first, place string) (draft *Draft
 	def.Input = f.Strings("input")
 	def.Keep = f.Duration("keep")
 	limits := f.Fields("limits")
-	def.Timeout = limits.Duration("timeout")
+	def.Timeout = limits.text("timeout", KindDuration)
 	if limits.Has("depth") {
 		depth := limits.Int("depth")
 		def.Depth = &depth
@@ -156,13 +157,15 @@ func (p *Parser) Job(place string, written any) *JobSpec {
 	if f == nil {
 		return s
 	}
-	s.Script = f.Text("script")
-	s.Files = f.Strings("files")
+	s.Script = p.path(f.Text("script"))
+	for _, file := range f.Strings("files") {
+		s.Files = append(s.Files, p.path(file))
+	}
 	machine, hasMachine := f.Value("machine")
 	s.Input, _ = f.Value("input")
 	s.Allow = f.Strings("allow")
 	s.Deny = f.Strings("deny")
-	s.Timeout = f.Duration("timeout")
+	s.Timeout = f.text("timeout", KindDuration)
 	s.Attempts = f.Int("attempts")
 	s.Memory = f.Size("memory")
 	s.Tags = f.Strings("tags")
@@ -177,9 +180,9 @@ func (p *Parser) Job(place string, written any) *JobSpec {
 	if hasMachine {
 		switch m := machine.(type) {
 		case string:
-			s.Machine = m
+			s.Machine = p.path(m)
 			if !HasExpr(m) {
-				p.machineFile(place+".machine", m)
+				p.machineFile(place+".machine", s.Machine)
 			}
 		case map[string]any:
 			// A machine written in place.
@@ -193,7 +196,7 @@ func (p *Parser) Job(place string, written any) *JobSpec {
 			}
 			p.child(place+".machine", s.Machine, func(sub *Parser) (*Draft, bool) {
 				return sub.fill(m, first, place+".machine")
-			}, p.dir, "")
+			}, path.Join(p.dir, p.in), "")
 		default:
 			p.Problem(place+".machine", "a machine is the path of a definition, or a definition written in place")
 		}
@@ -232,12 +235,40 @@ func (p *Parser) MachineType(name string) string {
 	return ""
 }
 
-// Load reads a file beside the definition, by its path.
+// Load reads a file by its path from the directory of the file being read.
 func (p *Parser) Load(name string) ([]byte, error) {
-	if !strings.HasPrefix(name, "./") && !strings.HasPrefix(name, "../") {
-		return nil, fmt.Errorf("the path of a file beside the definition starts with ./")
+	if !relative(name) {
+		return nil, fmt.Errorf("the path starts with ./ or ../")
 	}
-	return p.load(path.Join(p.dir, name))
+	return p.load(path.Join(p.dir, p.in, name))
+}
+
+// In fills what is written in another file, named by its path from the
+// directory of the file being read: a path written there is read from
+// that file's directory.
+func (p *Parser) In(file string, fill func()) {
+	outer := p.in
+	p.in = path.Dir(path.Join(p.in, file))
+	defer func() { p.in = outer }()
+	fill()
+}
+
+// path gives a relative path written in the file being read as a clean
+// path from the directory of the definition, starting with ./ or ../.
+// Anything else is given as it is.
+func (p *Parser) path(name string) string {
+	if !relative(name) || HasExpr(name) {
+		return name
+	}
+	joined := path.Join(p.in, name)
+	if joined == ".." || strings.HasPrefix(joined, "../") {
+		return joined
+	}
+	return "./" + joined
+}
+
+func relative(name string) bool {
+	return strings.HasPrefix(name, "./") || strings.HasPrefix(name, "../")
 }
 
 // file loads a script or a file a script loads.
@@ -248,9 +279,9 @@ func (p *Parser) file(place, name string) {
 	if strings.HasPrefix(name, "corbie:") {
 		return // one of Corbie's own, added by the type that uses it
 	}
-	if !strings.HasPrefix(name, "./") && !strings.HasPrefix(name, "../") {
+	if !relative(name) {
 		p.draft.Definition.Scripts[name] = blob.Ref{}
-		p.Problem(place, "%q: the path of a script starts with ./", name)
+		p.Problem(place, "%q: the path of a script starts with ./ or ../", name)
 		return
 	}
 	// Named once, it is in the definition's table, read or not: what is

@@ -57,9 +57,11 @@ An ask is any job.
   a statechart    waits for a person, who answers with `corbie run reply`
   an agent        has a model review the jobs
 
-For an agent's tool, each held job also has `asked: { does, args, said }`: what
-the tool does, the arguments the model gave and what the model said. A call
-that is not approved goes back to the model as denied.
+For an agent's tool, each held job has `asked: { does, args, said }`: what the
+tool does, the arguments the model gave and what the model said. For a tool
+from a `list:`, `asked` has `entry` and `tool` too: the entry's name and the
+tool's own, such as `github` and `create_issue`. A call that is not approved
+goes back to the model as denied.
 
 A machine with no `ask:` uses the ask of the machine above it.
 

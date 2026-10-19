@@ -269,9 +269,10 @@ func TestStartCarryingABlobThatIsNotThereSendsNothing(t *testing.T) {
 	}
 }
 
-// A start gives a file as input under a name: the run's script reads the
-// file's bytes there, whatever they are, the input shown has a blob of the
-// file's type and size, and the blob is in the new run's record.
+// A start gives a file in place of a value of its input: the run's script
+// reads the file's bytes there, whatever they are and however deep, the
+// input shown has a blob of the file's type and size, and the blob is in
+// the new run's record.
 func TestStartGivesAFileAsInput(t *testing.T) {
 	l := local(t)
 	// Bytes that are no text: every value a byte can have, twice over.
@@ -288,8 +289,8 @@ func TestStartGivesAFileAsInput(t *testing.T) {
 		const bytes = blobs.read(input.report, { as: "bytes" })
 		return { type: input.report.type, size: input.report.size, sum: crypto.hash(bytes), n: input.n }
 	`})
-	id, err := l.Start(ctx, d, client.Start{Input: map[string]any{"n": 3},
-		Files: map[string]client.InputFile{"report": {Name: "report.pdf", Contents: bytes.NewReader(pdf)}}})
+	id, err := l.Start(ctx, d, client.Start{Input: map[string]any{"n": 3,
+		"report": client.InputFile{Name: "report.pdf", Contents: bytes.NewReader(pdf)}}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -325,28 +326,99 @@ func TestStartGivesAFileAsInput(t *testing.T) {
 		t.Fatalf("the file fetched from the input is %d bytes that are not the file's", len(got))
 	}
 
-	// A file is given under a name of a map: an input that is something
-	// else, or that has a value under the name, is refused, and nothing is
-	// written.
-	writes := &ordered{Store: l.Client.Store}
-	l.Client.Store = writes
-	for what, input := range map[string]any{"a list": []any{1}, "a text": "text", "a value under the name": map[string]any{"report": 1}} {
-		_, err := l.Start(ctx, d, client.Start{Input: input,
-			Files: map[string]client.InputFile{"report": {Name: "report.pdf", Contents: bytes.NewReader(pdf)}}})
-		if err == nil || len(writes.names()) != 0 {
-			t.Errorf("a file given with an input that is %s: %v, and %d values written", what, err, len(writes.names()))
-		}
-	}
-	// With no input, the file is the whole of it.
-	id, err = l.Start(ctx, d, client.Start{Files: map[string]client.InputFile{"report": {Name: "notes.txt", Contents: strings.NewReader("notes")}}})
+	// A file stands in the input as deep as it is given.
+	id, err = l.Start(ctx, draft(t, `
+		flow: deep
+		stages:
+		  read: { job: { script: ./read.js, input: "${input}" } }
+		output: ${stages.read.output}
+	`, map[string]string{"read.js": `
+		const data = input.attachments[0].data
+		return { type: data.type, size: data.size, text: blobs.read(data, { as: "text" }) }
+	`}), client.Start{Input: map[string]any{"attachments": []any{
+		map[string]any{"data": client.InputFile{Name: "notes.txt", Contents: strings.NewReader("notes")}}}}})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if r := wait(t, l, id); r.Status != instance.Done || r.Output.(map[string]any)["type"] != "text/plain" || r.Output.(map[string]any)["size"] != 5.0 {
-		t.Fatalf("a run given only a file ended %s with %s (%s)", r.Status, jsonOf(r.Output), r.Error)
+	want = map[string]any{"type": "text/plain", "size": 5.0, "text": "notes"}
+	if r := wait(t, l, id); r.Status != instance.Done || jsonOf(r.Output) != jsonOf(want) {
+		t.Fatalf("a run given a file at input.attachments[0].data ended %s with %s (%s); want %s", r.Status, jsonOf(r.Output), r.Error, jsonOf(want))
 	}
 	if blobs, _ := l.Memory.As(ownerOf()).List(ctx, store.Blobs("controller", id)); len(blobs) != 3 {
 		t.Fatalf("the run's record holds %d blobs; its definition, its script and the file are three", len(blobs))
+	}
+	// A file in a value of another type cannot be found, and is refused
+	// before anything is written.
+	writes := &ordered{Store: l.Client.Store}
+	l.Client.Store = writes
+	_, err = l.Start(ctx, d, client.Start{Input: map[string]client.InputFile{"report": {Name: "report.pdf", Contents: bytes.NewReader(pdf)}}})
+	if !errors.Is(err, client.ErrStart) || len(writes.names()) != 0 {
+		t.Errorf("a file in a map of files: %v, and %d values written", err, len(writes.names()))
+	}
+	_, err = l.Start(ctx, d, client.Start{Input: client.InputFile{Name: "report.pdf", Contents: bytes.NewReader(pdf)}})
+	if !errors.Is(err, client.ErrStart) || len(writes.names()) != 0 {
+		t.Errorf("a file as the whole input: %v, and %d values written", err, len(writes.names()))
+	}
+}
+
+// Files given under names join an input that is a map of names, or none.
+func TestFilesJoinTheInputUnderTheirNames(t *testing.T) {
+	file := client.InputFile{Name: "report.pdf", Contents: strings.NewReader("pdf")}
+	files := map[string]client.InputFile{"report": file}
+	input, err := client.WithFiles(nil, files)
+	if named, _ := input.(map[string]any); err != nil || len(named) != 1 || named["report"] != file {
+		t.Errorf("files with no input give %v: %v", input, err)
+	}
+	given := map[string]any{"n": 3}
+	input, err = client.WithFiles(given, files)
+	if named, _ := input.(map[string]any); err != nil || len(named) != 2 || named["n"] != 3 || named["report"] != file || len(given) != 1 {
+		t.Errorf("files with an input give %v, and the input given is now %v: %v", input, given, err)
+	}
+	for what, input := range map[string]any{"a list": []any{1}, "a text": "text", "a value under the name": map[string]any{"report": 1}} {
+		if _, err := client.WithFiles(input, files); !errors.Is(err, client.ErrStart) {
+			t.Errorf("a file given with an input that is %s: %v", what, err)
+		}
+	}
+}
+
+// A run is shown with its input to the client that started it, a blob in
+// the input at a path that fetches it. A client that did not start the run
+// is shown it without its input.
+func TestRunIsShownWithItsInput(t *testing.T) {
+	l := local(t)
+	id, err := l.Start(ctx, draft(t, `
+		flow: counts
+		stages:
+		  count: { job: { script: ./count.js, input: "${input}" } }
+		output: ${stages.count.output}
+	`, map[string]string{"count.js": `return input.n + 1`}), client.Start{Input: map[string]any{"n": 3,
+		"report": client.InputFile{Name: "report.md", Contents: strings.NewReader("the report")}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := wait(t, l, id)
+	input, _ := plainOf(t, r.Input).(map[string]any)
+	report, _ := input["report"].(map[string]any)
+	if r.Status != instance.Done || input["n"] != 3.0 || report["$blob"] != "input/report" || report["size"] != 10.0 || len(report) != 3 {
+		t.Fatalf("the run ended %s and is shown with the input %s", r.Status, jsonOf(r.Input))
+	}
+	contents, _, err := l.Fetch(ctx, id, "input/report")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, _ := io.ReadAll(contents); string(got) != "the report" {
+		t.Fatalf("the file fetched from the input is %q", got)
+	}
+	viewer := client.New(nil, l.Controller.ID.Card, l.Store)
+	var shown *client.Run
+	waitFor(t, l, func([]*client.Run) string {
+		if shown, err = viewer.Show(ctx, id); err == nil {
+			return "shown"
+		}
+		return ""
+	})
+	if shown.Input != nil || shown.Output != nil {
+		t.Fatalf("a client that did not start the run is shown %s", jsonOf(shown))
 	}
 }
 
@@ -375,12 +447,12 @@ func TestAgentCarriesOnFromAnotherRunsConversation(t *testing.T) {
 	if second.Status != instance.Done || second.Output.(map[string]any)["reply"] != "And one more is 43." {
 		t.Fatalf("the second agent ended %s with %s (%s)", second.Status, jsonOf(second.Output), second.Error)
 	}
-	if len(m.sent) != 3 {
-		t.Fatalf("the model was called %d times", len(m.sent))
+	if len(m.Calls) != 3 {
+		t.Fatalf("the model was called %d times", len(m.Calls))
 	}
 	// The second agent's first turn: everything the first one's last turn
 	// was shown, what it replied, and the new prompt.
-	was, now := m.sent[1]["messages"].([]any), m.sent[2]["messages"].([]any)
+	was, now := m.Calls[1].Messages, m.Calls[2].Messages
 	if len(now) != len(was)+2 || jsonOf(now[:len(was)]) != jsonOf(was) ||
 		!strings.Contains(jsonOf(now[len(was)]), "It is 42.") || !strings.Contains(jsonOf(now[len(was)+1]), "and one more?") {
 		t.Fatalf("the second agent's first turn was shown\n  %s\nand the first agent's last turn\n  %s", jsonOf(now), jsonOf(was))

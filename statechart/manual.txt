@@ -115,10 +115,11 @@ first one whose `when:` is true is taken.
 
 A timer's time is one of these.
 
-  90s, 48h, 7d             a duration, from when the state is entered
+  90s, 48h, 7d             a length of time, from when the state is entered
   "18:00"                  a time of day in UTC, at its next occurrence
   "mon 09:00"              a time on one day of the week
   "09:00 Europe/London"    a time of day in a named time zone
+  "${input.at}"            one of these, from input, when the state is entered
 
 What an expression reads
 ------------------------

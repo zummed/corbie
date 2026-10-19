@@ -971,7 +971,11 @@ func (p *pass) begin(inst string, waiting []*arrival) (*taken, error) {
 	}
 	// Its older history is trimmed as it runs, a keep at a time.
 	b.ask(instance.Ask{Kind: instance.AskWake, At: b.time.Add(p.keepFor(def, &st.Above)), What: wakeTrim})
-	limit := def.Timeout
+	limit, err := machine.NewEvaluator(b.time, b.seed("timeout")).Duration(def.Timeout, machine.Scope{"input": s.Input}, "limits.timeout")
+	if err != nil {
+		b.end(instance.Failed, nil, b.p.failf("%v", err))
+		return b.done()
+	}
 	if s.Timeout > 0 && (limit == 0 || s.Timeout < limit) {
 		limit = s.Timeout
 	}

@@ -192,8 +192,8 @@ with status waiting, which no controller has started, is not listed.
 
   corbie manual runs   a run as it is printed, and with --json`},
 		{Name: "run show", Usage: "<id> [--record | --watch | --wait | --tickets | --step n | --definition | --save <directory>]", Summary: "show one run: its status and its result", Run: cmdShow, Help: `
-It prints the run's status, and its output or its error when it has ended. It
-takes one of these flags at most.
+It prints the run's status and input, and its output or its error when it has
+ended. It takes one of these flags at most.
 
   --record             print each entry of the run's record so far, child
                        runs' included, then the run

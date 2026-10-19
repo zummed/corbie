@@ -24,7 +24,9 @@ tools:
 
 An agent's definition names its model and may give a system text, a prompt, tools, limits and the shape of its reply.
 
-Each turn is one call to the model, made by a job. The model sees the system text, the conversation so far, and for each tool its name, what it does and what arguments it takes. It never sees how a tool is run or what the tool is permitted. The tools it picks in one turn all run at once, and the next turn starts when every one of them has settled. A turn that fails fails the agent.
+Each turn is one call to the model, made by a job named `turn`, which emits the reply under `text` (see Models). The model sees the system text, the conversation so far, and for each tool its name, what it does and what arguments it takes. It never sees how a tool is run or what the tool is permitted.
+
+The tools the model picks in one turn all run at once, and the next turn starts when every one of them has settled. A turn that fails fails the agent.
 
 Corbie supplies the script that makes a turn. A definition may put its own in its place, and the supplied one can be called from it, which is how an agent's behaviour is wrapped or changed. There is no other hook.
 
@@ -36,7 +38,7 @@ An agent may be started with the conversation of an earlier agent's result, and 
 
 A tool is a named job, a script or a machine, with a description, the shape of its arguments, and its own permissions. The job reads the agent's input and the arguments the model supplied. A tool whose job is an agent is how an agent has sub-agents: the model is shown what the sub-agent replied, and the sub-agent's conversation stays in its own record.
 
-A definition may name files of tools shared with other agents. Each file is filled in when the definition is sent.
+A definition may name files of tools shared with other agents. Each file is filled in when the definition is sent, and a path in it is read from the file's directory.
 
 A tool that needs approval goes to the agent's ask like any job. The calls from one turn that need it go together, and the ask is shown the arguments, what the tool does and what the model said. A call that needs no approval runs at once, and the next turn waits for the ask as well as for the tools. A call that is not approved goes back to the model as denied, with the ask's note.
 
@@ -69,7 +71,7 @@ return input?.tool ? server.call(input.tool, { args: input.args }) : server.tool
 3. A call runs the entry's `job:`, where `${tool}` is the tool's own name, `create_issue`.
 
 - The list is made once in a run, kept in the agent's record, and is the same for every turn.
-- Every listed tool has the entry's permissions and, if the entry's job is marked for approval, its approval. The ask is shown the name the model used and the arguments.
+- Every listed tool has the entry's permissions and, if the entry's job is marked for approval, its approval. The ask is shown the name the model used, the arguments, the entry's name as `entry` and the tool's own name as `tool`.
 - The model can call every tool the list gives. The `list:` script narrows that by returning fewer.
 - What a tool does and its shape are shown to the model as the list gives them.
 - In a name the model is shown, a character other than a letter, a digit, `_` or `-` is written `_`.
@@ -135,7 +137,7 @@ A blob is shown to the model as a handle: a short name, its type and size, how m
   preview: [ { date: "2026-01-02", total: "19.50" }, … ] }
 ```
 
-The first time a blob is to be shown, a job looks at it, between the tool's result and the next turn: it counts the items and takes the first few as the preview. The preview is part of what the model is told in that turn, and stays in the conversation as anything it was told does. It is kept nowhere else, and a blob shown again is shown without it.
+The first time a blob is to be shown, a job named `preview` looks at it, between the tool's result and the next turn: it counts the items and takes the first few as the preview. The preview is part of what the model is told in that turn, and stays in the conversation as anything it was told does. It is kept nowhere else, and a blob shown again is shown without it.
 
 A blob of a type the model's service takes as content, an image or a document, is also sent to the model as it is, beside its handle, from the turn it is first shown. Any other blob is only its handle, and the model works on it with its tools.
 

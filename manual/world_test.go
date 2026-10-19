@@ -30,6 +30,7 @@ import (
 
 	"github.com/zummed/corbie/permission"
 	"github.com/zummed/corbie/plugin"
+	llmstandin "github.com/zummed/corbie/plugin/llm/standin"
 	"github.com/zummed/corbie/plugin/mcp/standin"
 )
 
@@ -144,7 +145,7 @@ func newWorld() (*world, error) {
 		"example.com":       w.news,
 		"www.iana.org":      w.iana,
 		"feed.example.com":  w.feed,
-		"api.anthropic.com": w.anthropic,
+		"api.anthropic.com": (&llmstandin.Server{Key: w.secrets["ANTHROPIC_KEY"], Answer: anthropic}).ServeHTTP,
 		"models.example":    w.chatModel,
 		"api.typesafe.ai":   w.systemOneModel,
 		"notes.example.com": (&standin.Server{Token: "notes-stand1n-t0ken", Only: notesTools}).ServeHTTP,
@@ -485,27 +486,12 @@ func serveSSH(conn net.Conn, config *ssh.ServerConfig) {
 // knows and not yet shown a result, it asks for the tool; shown results,
 // it says what they were; shown a picture, it says its name; told to
 // answer as data with a greeting, it does; otherwise it says hello.
-func (w *world) anthropic(rw http.ResponseWriter, r *http.Request) {
-	if r.URL.Path != "/v1/messages" || r.Header.Get("x-api-key") != w.secrets["ANTHROPIC_KEY"] {
-		http.Error(rw, `{"type":"error","error":{"type":"authentication_error","message":"invalid x-api-key"}}`, 401)
-		return
-	}
-	var sent struct {
-		System   string `json:"system"`
-		Messages []struct {
-			Role    string `json:"role"`
-			Content any    `json:"content"`
-		} `json:"messages"`
-		Tools []struct {
-			Name string `json:"name"`
-		} `json:"tools"`
-	}
-	body, _ := io.ReadAll(r.Body)
-	json.Unmarshal(body, &sent)
+func anthropic(c llmstandin.Call) llmstandin.Reply {
 	var results []string
 	picture := ""
-	for _, message := range sent.Messages {
-		blocks, _ := message.Content.([]any)
+	for _, message := range c.Messages {
+		content, _ := message.(map[string]any)
+		blocks, _ := content["content"].([]any)
 		for i, block := range blocks {
 			switch b, _ := block.(map[string]any); b["type"] {
 			case "tool_result":
@@ -517,44 +503,21 @@ func (w *world) anthropic(rw http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}
-	rw.Header().Set("Content-Type", "text/event-stream")
-	event := func(v string, args ...any) {
-		data := fmt.Sprintf(v, args...)
-		var typed struct{ Type string }
-		json.Unmarshal([]byte(data), &typed)
-		fmt.Fprintf(rw, "event: %s\ndata: %s\n\n", typed.Type, data)
-		rw.(http.Flusher).Flush()
-	}
-	says := func(text string) {
-		quoted, _ := json.Marshal(text)
-		event(`{"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}`)
-		event(`{"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":%s}}`, quoted)
-		event(`{"type":"content_block_stop","index":0}`)
-	}
-	event(`{"type":"message_start","message":{"role":"assistant","content":[],"usage":{"input_tokens":10,"output_tokens":1}}}`)
-	stop := "end_turn"
 	switch {
 	case len(results) > 0:
-		says("It holds " + strings.Join(results, " and ") + ".")
+		return llmstandin.Reply{Text: "It holds " + strings.Join(results, " and ") + "."}
 	case picture != "":
-		says("A picture, named " + picture + ".")
-	case strings.Contains(sent.System, `as JSON only, fitting this JSON Schema: {"properties":{"greeting":{"type":"string"}},"type":"object"}`):
-		says(fmt.Sprintf(`{"greeting": %q}`, modelSays))
-	default:
-		says(modelSays)
-		for _, tool := range sent.Tools {
-			if args, known := modelAsks[tool.Name]; known {
-				quoted, _ := json.Marshal(args)
-				event(`{"type":"content_block_start","index":1,"content_block":{"type":"tool_use","id":"call_1","name":%q,"input":{}}}`, tool.Name)
-				event(`{"type":"content_block_delta","index":1,"delta":{"type":"input_json_delta","partial_json":%s}}`, quoted)
-				event(`{"type":"content_block_stop","index":1}`)
-				stop = "tool_use"
-				break
-			}
+		return llmstandin.Reply{Text: "A picture, named " + picture + "."}
+	case strings.Contains(c.System, `as JSON only, fitting this JSON Schema: {"properties":{"greeting":{"type":"string"}},"type":"object"}`):
+		return llmstandin.Reply{Text: fmt.Sprintf(`{"greeting": %q}`, modelSays)}
+	}
+	for _, tool := range c.Tools {
+		name, _ := tool.(map[string]any)["name"].(string)
+		if args, known := modelAsks[name]; known {
+			return llmstandin.Reply{Text: modelSays, Calls: []llmstandin.ToolCall{{ID: "call_1", Name: name, Args: args}}}
 		}
 	}
-	event(`{"type":"message_delta","delta":{"stop_reason":%q},"usage":{"output_tokens":5}}`, stop)
-	event(`{"type":"message_stop"}`)
+	return llmstandin.Reply{Text: modelSays}
 }
 
 // systemOneModel is a model that speaks the System One format. It says a

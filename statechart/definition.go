@@ -149,7 +149,7 @@ func fillState(p *machine.Parser, place string, written any) *State {
 		for _, name := range order {
 			at, ok := timers[name].(string)
 			if !ok {
-				p.Problem(place+".timers."+name, "a timer's time is a length of time or a time of day, written out")
+				p.Problem(place+".timers."+name, "a timer's time is text: a length of time or a time of day")
 			}
 			s.Timers[name] = at
 		}
@@ -397,7 +397,9 @@ func (chartType) Check(c *machine.Checker, def *machine.Definition) {
 			case !handled(all, name, timer):
 				c.Problem(at, "nothing goes anywhere when the timer is due: give it a rule under on:, in this state or one that holds it")
 			}
-			if _, err := parseAt(s.Timers[timer]); err != nil {
+			if machine.HasExpr(s.Timers[timer]) {
+				c.Value(at, s.Timers[timer], names...)
+			} else if _, err := parseAt(s.Timers[timer]); err != nil {
 				c.Problem(at, "%v", err)
 			}
 		}
@@ -558,9 +560,6 @@ var weekdays = map[string]int{"sun": 0, "mon": 1, "tue": 2, "wed": 3, "thu": 4, 
 // 09:00 Europe/London, mon 09:00 Europe/London.
 func parseAt(text string) (when, error) {
 	bad := fmt.Errorf("%q is not a length of time or a time of day (write it like 48h, 18:00, \"mon 09:00\" or \"09:00 Europe/London\")", text)
-	if machine.HasExpr(text) {
-		return when{}, fmt.Errorf("%q: a timer's time is written out, with no expression", text)
-	}
 	if !strings.Contains(text, ":") {
 		d, err := machine.ParseDuration(text)
 		if err != nil {

@@ -3,8 +3,10 @@ package client_test
 import (
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/zummed/corbie/client"
 	"github.com/zummed/corbie/machine"
@@ -83,7 +85,7 @@ func TestAgentToolScopeIsFilledFromTheAgentsInput(t *testing.T) {
 	if r := wait(t, l, id); r.Status != "done" {
 		t.Fatalf("the agent ended %s: %s", r.Status, r.Error)
 	}
-	if shown := lastShown(m.sent[1]); !strings.Contains(shown, "the note") {
+	if shown := lastShown(m.Calls[1]); !strings.Contains(shown, "the note") {
 		t.Fatalf("the tool's result was shown as: %s", shown)
 	}
 }
@@ -135,12 +137,12 @@ func TestLargeTextResultIsStoredAsText(t *testing.T) {
 	if r.Status != "done" {
 		t.Fatalf("the agent ended %s: %s", r.Status, r.Error)
 	}
-	shown := lastShown(m.sent[1])
+	shown := lastShown(m.Calls[1])
 	if len(shown) > 4000 || !strings.Contains(shown, `\"blob\":\"blob1\"`) || !strings.Contains(shown, `\"items\":3000`) ||
 		!strings.Contains(shown, `\"preview\":[\"line number 0\",\"line number 1\"`) || !strings.Contains(shown, `text/plain`) {
 		t.Fatalf("a text of three thousand lines was shown as: %s", shown)
 	}
-	if read := lastShown(m.sent[2]); !strings.Contains(read, `line number 2999`) {
+	if read := lastShown(m.Calls[2]); !strings.Contains(read, `line number 2999`) {
 		t.Fatalf("reading the end of the stored text gave: %s", read)
 	}
 }
@@ -269,5 +271,106 @@ func TestControllerRefusesWhatTheClientLetThroughInTheSameWords(t *testing.T) {
 	runs, listErr := l.List(ctx, client.Filter{})
 	if listErr != nil || len(runs) != 0 {
 		t.Fatalf("a refused definition left %d runs behind (%v)", len(runs), listErr)
+	}
+}
+
+// A relative path in a child's own file is read from that file's
+// directory.
+func TestPathIsReadFromTheDirectoryOfItsFile(t *testing.T) {
+	l := local(t)
+	r := run(t, l, `
+		flow: parent
+		stages:
+		  kid: { job: { machine: ./kids/kid.yaml } }
+		output: ${stages.kid.output}
+	`, map[string]string{
+		"kids/kid.yaml": "flow: kid\nstages:\n  it: { job: ./kid.js }\noutput: ${stages.it.output}\n",
+		"kids/kid.js":   `return "the kid's own"`,
+		"kid.js":        `return "the parent's"`,
+	}, nil)
+	if r.Status != "done" || r.Output != "the kid's own" {
+		t.Fatalf("the run ended %s with %v: %s", r.Status, r.Output, r.Error)
+	}
+}
+
+// A job's timeout and a run's timeout may come from input. Each is filled
+// in when the job is filled or the run starts, and a filled value that is
+// not a length of time fails the run, naming its place.
+func TestTimeoutComesFromInput(t *testing.T) {
+	l := local(t)
+	job := `
+		flow: one
+		stages:
+		  it: { job: { script: ./it.js, timeout: "${input.t}" } }
+	`
+	loops := map[string]string{"it.js": "for (;;) {}"}
+	started := time.Now()
+	wantError(t, run(t, l, job, loops, map[string]any{"t": "2s"}), "error", "time limit of 2s")
+	if took := time.Since(started); took > 15*time.Second {
+		t.Fatalf("a job with a timeout of 2s from input was stopped after %v", took)
+	}
+	r := run(t, l, job, loops, map[string]any{"t": "soon"})
+	if r.Status != "failed" || !strings.Contains(r.Error, `stages.it.job.timeout: "soon" is not a length of time`) {
+		t.Fatalf("a timeout of soon from input ended %s/%s: %s", r.Status, r.Failure, r.Error)
+	}
+	r = run(t, l, job, loops, map[string]any{"t": 5})
+	if r.Status != "failed" || !strings.Contains(r.Error, "stages.it.job.timeout: ${input.t} is a number, not a length of time") {
+		t.Fatalf("a timeout of 5 from input ended %s/%s: %s", r.Status, r.Failure, r.Error)
+	}
+
+	limited := `
+		flow: one
+		limits: { timeout: "${input.t}" }
+		stages:
+		  it: { job: { script: ./it.js, timeout: 20s } }
+	`
+	started = time.Now()
+	r = run(t, l, limited, loops, map[string]any{"t": "1s"})
+	if r.Status != "failed" || r.Failure != "timeout" || time.Since(started) > 15*time.Second {
+		t.Fatalf("a run with a timeout of 1s from input ended %s/%s after %v: %s", r.Status, r.Failure, time.Since(started), r.Error)
+	}
+	r = run(t, l, limited, loops, map[string]any{"t": "soon"})
+	if r.Status != "failed" || !strings.Contains(r.Error, `limits.timeout: "soon" is not a length of time`) {
+		t.Fatalf("a run timeout of soon from input ended %s/%s: %s", r.Status, r.Failure, r.Error)
+	}
+
+	for _, c := range []struct{ def, holds string }{
+		{strings.Replace(job, "${input.t}", "${nothing.here}", 1), `stages.it.job.timeout: in ${nothing.here}`},
+		{strings.Replace(job, `"${input.t}"`, "soon", 1), `stages.it.job.timeout: "soon" is not a length of time`},
+		{strings.Replace(limited, "${input.t}", "${stages.it.output}", 1), "limits.timeout: in ${stages.it.output}"},
+		{strings.Replace(limited, `"${input.t}"`, "soon", 1), `limits.timeout: "soon" is not a length of time`},
+	} {
+		if _, err := machineParse(c.def, loops); err == nil || !strings.Contains(err.Error(), c.holds) {
+			t.Errorf("want a refusal holding %q, got: %v", c.holds, err)
+		}
+	}
+}
+
+// A program using Corbie as a library lists a definition's jobs, each with
+// its place. An agent's jobs include those of the tools for working with
+// blobs that every agent has.
+func TestJobsAreListedWithTheirPlaces(t *testing.T) {
+	for _, c := range []struct {
+		def  string
+		want []string
+	}{
+		{`
+			flow: two
+			stages:
+			  a: { job: ./add.js }
+			  b: { job: { script: ./add.js, input: { n: "${stages.a.output}" } } }
+		`, []string{"stages.a.job", "stages.b.job"}},
+		{agentDef("http://127.0.0.1:1", ""), []string{"turn", "tools.add.job", "tools.blob_code.job", "tools.blob_read.job", "tools.blob_search.job"}},
+	} {
+		var places []string
+		for _, job := range machine.Jobs(draft(t, c.def, scripts).Definition) {
+			if job.Job == nil {
+				t.Errorf("the job at %s is empty", job.Place)
+			}
+			places = append(places, job.Place)
+		}
+		if !slices.Equal(places, c.want) {
+			t.Errorf("the jobs are at %v, not %v", places, c.want)
+		}
 	}
 }

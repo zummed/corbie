@@ -37,7 +37,8 @@ Fields
   prompt          the first message to the model, an expression of the input
   tools           the tools, by name
   tools_file      a YAML file of tools shared between agents, or a list of
-                  files; a tool in the definition replaces one of its name
+                  files; a tool in the definition replaces one of its name,
+                  and a path in a file is read from the file's directory
   reply           a shape, as under Tools: the reply is data in this shape
   conversation    the `conversation` of an earlier agent's result: this agent
                   continues it, and each blob keeps its name
@@ -130,6 +131,7 @@ changing.
 - `job:` reads `${args}` only whole, and `${tool}` is the tool's name as the
   list gave it.
 - Every listed tool has the permissions of `job:`.
+- The ask gets `entry` and `tool` in `asked`: `github` and `create_issue`.
 - The agent fails if the list fails, or gives a tool with no name, args that
   are not JSON Schema with type: object, args that mark a blob, or a name
   that is longer than 64 characters or that another tool has.

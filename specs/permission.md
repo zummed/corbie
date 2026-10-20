@@ -17,7 +17,7 @@ There are six kinds.
 | `env` | reading a variable of the runner's | a name |
 | `secret` | sending a secret somewhere | a secret's name and a destination |
 
-A scope is one of three things, matched the same way wherever it appears: a path, a host, or a name. Any of them may use `*` for a part. A host with no port means every port, and a host written as an address, `10.0.0.*`, matches no name. A path is checked where it really points, after links are followed.
+A scope is one of three things, matched the same way wherever it appears: a path, a host, or a name. Any of them may use `*` for a part. A host with no port means every port, a host of `*` means every host, and a host written as an address, `10.0.0.*`, matches no name. A path is checked where it really points, after links are followed.
 
 On Windows:
 

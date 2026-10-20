@@ -501,7 +501,8 @@ func matchParts(pattern, parts []string) bool {
 }
 
 // matchHost matches a host, with a port if the scope names one: a scope
-// with no port means every port, and * stays inside one part of a name.
+// with no port means every port, * alone means every host, and otherwise *
+// stays inside one part of a name.
 func matchHost(scope, value string) bool {
 	host, port := splitHost(scope)
 	gotHost, gotPort := splitHost(value)
@@ -509,6 +510,9 @@ func matchHost(scope, value string) bool {
 		return false
 	}
 	host, gotHost = NormalHost(host), NormalHost(gotHost)
+	if host == "*" {
+		return true
+	}
 	if addressScope(host) || net.ParseIP(gotHost) != nil {
 		// An address is one part, and a scope written as an address
 		// matches no name: 10.x.example.com has the parts of 10.*.*.*.
@@ -649,8 +653,11 @@ func (s *Set) AllowsAnAddress() bool {
 }
 
 // addressScope says whether a host scope is written as an address, whole
-// or with * for parts of it, and not as a name.
+// or with * for parts of it, and not as a name. * alone is every host.
 func addressScope(host string) bool {
+	if host == "*" {
+		return false
+	}
 	return net.ParseIP(host) != nil || strings.Contains(host, ":") || strings.Trim(host, "0123456789.*") == ""
 }
 

@@ -13,8 +13,8 @@ The detailed rules behind the [Permissions overview](../permission.md). Requirem
 **R-perm-09** A scope is a path, a host or a name, and each of the three is matched the same way wherever it appears.
 *Accept:* for the path `/srv/*/log`, the host `*.example.com` and the name `APP_*`, the values matched are the same whether the scope stands in a definition's allow list, in a deny list, in a start's list, in either ceiling, or after the `@` of a secret's entry.
 
-**R-perm-10** Any scope may use `*` for a part. A `*` stands for any run of characters inside one part and never crosses into the next: a part of a path lies between two `/`, a part of a host between two `.`, and a name is one part. In a path, `**` stands for any number of parts.
-*Accept:* `fs.read:/srv/*/log` passes `/srv/a/log` and refuses `/srv/a/b/log`; `fs.read:/srv/**` passes both; `net:*.example.com` passes `api.example.com` and refuses `example.com` and `a.b.example.com`; `env:AWS_*` passes `AWS_REGION`.
+**R-perm-10** Any scope may use `*` for a part. A `*` stands for any run of characters inside one part and never crosses into the next: a part of a path lies between two `/`, a part of a host between two `.`, and a name is one part. In a path, `**` stands for any number of parts. A host of `*` alone matches every host, name or address.
+*Accept:* `fs.read:/srv/*/log` passes `/srv/a/log` and refuses `/srv/a/b/log`; `fs.read:/srv/**` passes both; `net:*.example.com` passes `api.example.com` and refuses `example.com` and `a.b.example.com`; `net:*` passes `a.b.example.com` and `10.0.0.5`; `env:AWS_*` passes `AWS_REGION`.
 
 **R-perm-11** A path is checked where it really points, after links are followed.
 *Accept:* `/srv/reports/latest` is a link to `/etc/passwd`. A job allowed `fs.read:/srv/reports/**` is refused when it reads `/srv/reports/latest`, and the refusal names `/etc/passwd`. A job allowed `fs.read:/etc/passwd` reads it through the link.
@@ -101,7 +101,7 @@ The detailed rules behind the [Permissions overview](../permission.md). Requirem
 
 **C-perm-17** Every address a name resolves to is checked, and the name is not looked up a second time between the check and the connection. A name can resolve differently the second time. *Test:* `perm_connects_only_to_what_was_checked`
 
-**C-perm-24** A host scope written as an address, whole or with `*` for parts of it, matches an address and never a name. `10.x.example.com` has the parts of `10.*.*.*`, and a name that passes is connected to at whatever it resolves to. *Test:* `perm_address_scope_matches_only_an_address`
+**C-perm-24** A host scope written as an address, whole or with `*` for parts of it, matches an address and never a name. `*` alone is not written as an address. `10.x.example.com` has the parts of `10.*.*.*`, and a name that passes is connected to at whatever it resolves to. *Test:* `perm_address_scope_matches_only_an_address`
 
 ## Refusals
 

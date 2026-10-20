@@ -216,6 +216,22 @@ func Test_perm_address_scope_matches_only_an_address(t *testing.T) {
 			t.Fatalf("a secret bound to an address pattern was sent to the name %s", value)
 		}
 	}
+	// * alone is not an address: it is every host.
+	s = set(allow("net:*:443", "secret:K@net:*"))
+	for _, value := range []string{"a.b.example.com:443", "10.0.3.7:443"} {
+		if r := s.Check(Net, value); r != nil {
+			t.Fatalf("net:*:443 refused %s: %v", value, r)
+		}
+		if r := s.Check(Secret, "K@net:"+value); r != nil {
+			t.Fatalf("a secret bound to net:* was refused %s: %v", value, r)
+		}
+	}
+	if s.Check(Net, "a.example:22") == nil {
+		t.Fatal("net:*:443 passed port 22")
+	}
+	if s.AllowsAnAddress() {
+		t.Fatal("net:* was taken as an address")
+	}
 }
 
 func Test_perm_dangling_link_followed(t *testing.T) {

@@ -247,7 +247,7 @@ func Test_blob_copy_up_takes_blobs_referred_to_inside_blobs(t *testing.T) {
 		t.Fatal(err)
 	}
 	// The child's record goes.
-	names, _ := s.List(ctx, store.Record("ctl", child))
+	names, _ := store.Names(s.List(ctx, store.Record("ctl", child)))
 	for _, name := range names {
 		s.Delete(ctx, name, store.Overwrite)
 	}
@@ -270,11 +270,11 @@ func Test_blob_copy_up_takes_blobs_referred_to_inside_blobs(t *testing.T) {
 		}
 	}
 	// Done twice, it is done once.
-	before, _ := s.List(ctx, "ctl")
+	before, _ := store.Names(s.List(ctx, "ctl"))
 	if _, err := copyAll(s, up, parent); err != nil {
 		t.Fatal(err)
 	}
-	if after, _ := s.List(ctx, "ctl"); len(after) != len(before) {
+	if after, _ := store.Names(s.List(ctx, "ctl")); len(after) != len(before) {
 		t.Fatal("a second copy wrote more blobs")
 	}
 }
@@ -330,7 +330,7 @@ func TestFaultsOfABlobAreItsOwn(t *testing.T) {
 			t.Errorf("%s: copying gives %v", what, err)
 		}
 	}
-	if names, _ := s.List(ctx, "ctl/records/c1/i2"); len(names) != 0 {
+	if names, _ := store.Names(s.List(ctx, "ctl/records/c1/i2")); len(names) != 0 {
 		t.Errorf("copied all the same: %v", names)
 	}
 	if Unusable(store.ErrUnreachable) || Unusable(nil) {

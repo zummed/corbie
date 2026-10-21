@@ -28,14 +28,14 @@ func Test_client_listing_never_misses_a_run_that_ends(t *testing.T) {
 	// ends one: its head is written among the finished, and then removed
 	// from the running.
 	listings := 0
-	a.hooked.listed = func(under string, names []string) []string {
+	a.hooked.listed = func(under string, listed []store.Listed) []store.Listed {
 		if listings++; listings == 1 {
 			a.head(ends, instance.Done, 2)
 			if _, err := a.owner.Delete(ctx, store.RunningHead("controller", ends), store.Overwrite); err != nil {
 				t.Error(err)
 			}
 		}
-		return names
+		return listed
 	}
 	runs, err := a.List(ctx, client.Filter{Finished: true})
 	if err != nil || len(runs) != 2 {
@@ -58,13 +58,13 @@ func Test_client_follow_reads_once_more_after_end(t *testing.T) {
 	a.step(root, 2, instance.Done)
 	// The store's first listing of the emits does not show the entry yet.
 	listings := 0
-	a.hooked.listed = func(under string, names []string) []string {
+	a.hooked.listed = func(under string, listed []store.Listed) []store.Listed {
 		if under == store.Emits("controller", root) {
 			if listings++; listings == 1 {
 				return nil
 			}
 		}
-		return names
+		return listed
 	}
 	run, told := a.follow(root)
 	if run.Status != instance.Done || !slices.Contains(told, `root emit "the last thing the job said"`) {

@@ -185,7 +185,7 @@ func Test_role_fresh_process_every_pass_same_store(t *testing.T) {
 		// is shown a job that an earlier pass of its own has answered.
 		again := start()
 		pass("controller")
-		jobs, err := s.List(ctx, store.Inbox("r1"))
+		jobs, err := store.Names(s.List(ctx, store.Inbox("r1")))
 		if err != nil || len(jobs) != 1 {
 			t.Fatalf("the jobs sent are %v (%v)", jobs, err)
 		}
@@ -215,7 +215,7 @@ func Test_role_fresh_process_every_pass_same_store(t *testing.T) {
 		}
 		pass("controller")
 		var told []string
-		names, err := s.List(ctx, "")
+		names, err := store.Names(s.List(ctx, ""))
 		if err != nil {
 			t.Fatal(err)
 		}

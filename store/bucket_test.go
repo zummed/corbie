@@ -75,7 +75,7 @@ func TestBucketNamesOfAnyCharacters(t *testing.T) {
 	}
 	slices.Sort(names)
 	f.set(func() { f.page = 1 })
-	if got := must[[]string](t)(b.List(ctx, "odd")); !slices.Equal(got, names) {
+	if got := must[[]string](t)(Names(b.List(ctx, "odd"))); !slices.Equal(got, names) {
 		t.Errorf("listed %q, want %q", got, names)
 	}
 }
@@ -121,16 +121,16 @@ func Test_store_list_follows_pages(t *testing.T) {
 		}
 
 		// A bucket gives a thousand names at a time.
-		if got := must[[]string](t)(b.List(ctx, "p")); !slices.Equal(got, want) {
+		if got := must[[]string](t)(Names(b.List(ctx, "p"))); !slices.Equal(got, want) {
 			t.Fatalf("listed %d names, want %d", len(got), len(want))
 		}
 		f.sees("a listing of 2500 names", map[string]int{fList: 3})
 
 		f.set(func() { f.page = 300 })
-		if got := must[[]string](t)(b.List(ctx, "p")); !slices.Equal(got, want) {
+		if got := must[[]string](t)(Names(b.List(ctx, "p"))); !slices.Equal(got, want) {
 			t.Fatalf("listed %d names three hundred at a time, want %d", len(got), len(want))
 		}
-		if got := must[[]string](t)(b.List(ctx, "")); !slices.Equal(got, append(want, "q/other")) {
+		if got := must[[]string](t)(Names(b.List(ctx, ""))); !slices.Equal(got, append(want, "q/other")) {
 			t.Fatalf("the whole store lists %d names", len(got))
 		}
 	}
@@ -158,7 +158,7 @@ func Test_store_unreachable_is_never_an_answer(t *testing.T) {
 		check("read of nothing", m != None, err)
 		part, err := b.ReadPart(ctx, "a/there", 0, 1)
 		check("read part", part != nil, err)
-		names, err := b.List(ctx, "a")
+		names, err := Names(b.List(ctx, "a"))
 		check("list", names != nil, err)
 		done, err := b.Write(ctx, "a/there", []byte("y"), Overwrite)
 		check("overwrite", done, err)
@@ -351,7 +351,7 @@ func Test_store_bucket_resends_only_what_is_safe_twice(t *testing.T) {
 			return errors.Join(err, same(string(v), "234"))
 		},
 		fList: func() error {
-			names, err := b.List(ctx, "s")
+			names, err := Names(b.List(ctx, "s"))
 			return errors.Join(err, same(fmt.Sprint(names), "[s/x]"))
 		},
 		fOverwrite: func() error {
@@ -598,6 +598,38 @@ func Test_store_bucket_value_in_parts_appears_whole(t *testing.T) {
 	}
 }
 
+// A bucket's listing gives each name the ETag the bucket lists it with,
+// which is the mark a read gives and the one If-Match takes. No value is
+// read to give it.
+func Test_store_bucket_listing_reads_no_value(t *testing.T) {
+	f := newFakeS3(t)
+	b := f.open(owner)
+	f.set(func() { f.page = 2 })
+	for _, name := range []string{"l/a", "l/b", "l/c"} {
+		must[bool](t)(b.Write(ctx, name, []byte("the value of "+name), Overwrite))
+	}
+	f.took()
+	listed := must[[]Listed](t)(b.List(ctx, "l"))
+	first := must[[]Listed](t)(b.First(ctx, "l", 1))
+	f.sees("a listing of two pages and the first name", map[string]int{fList: 3})
+	if len(listed) != 3 || len(first) != 1 || first[0] != listed[0] {
+		t.Fatalf("the listing gave %v and the first %v", listed, first)
+	}
+	for _, l := range listed {
+		if value, _ := f.value(l.Name); l.Mark != Mark(etag([]byte(value))) {
+			t.Fatalf("%s is listed with %q, not its ETag", l.Name, l.Mark)
+		}
+		if _, mark := read(t, b, l.Name); l.Mark != mark {
+			t.Fatalf("%s is listed with %q and read with %q", l.Name, l.Mark, mark)
+		}
+	}
+	f.took()
+	if !must[bool](t)(b.Write(ctx, "l/b", []byte("another"), OnlyIfUnchanged(listed[1].Mark))) {
+		t.Fatal("only-if-unchanged with the ETag a listing gave did not write")
+	}
+	f.sees("only-if-unchanged with a listed ETag", map[string]int{fUnchanged: 1})
+}
+
 func Test_store_bucket_reads_bounded_at_once(t *testing.T) {
 	f := newFakeS3(t)
 	b := f.open(owner)
@@ -613,7 +645,7 @@ func Test_store_bucket_reads_bounded_at_once(t *testing.T) {
 
 	// A caller reads every name a listing gave, all at once.
 	var wg sync.WaitGroup
-	for _, name := range must[[]string](t)(b.List(ctx, "many")) {
+	for _, name := range must[[]string](t)(Names(b.List(ctx, "many"))) {
 		wg.Go(func() {
 			if value, _, err := b.Read(ctx, name); err != nil || string(value) != name {
 				t.Errorf("read %s: %q %v", name, value, err)
@@ -665,7 +697,7 @@ func Test_store_address_and_errors_carry_no_key(t *testing.T) {
 	say(err)
 	_, err = s.Delete(ctx, "ctl/running/c1/i1", Overwrite)
 	say(err)
-	_, err = s.List(ctx, "ctl/trust")
+	_, err = Names(s.List(ctx, "ctl/trust"))
 	say(err)
 	f.set(func() { f.turnAway = bucketTries })
 	_, _, err = s.Read(ctx, "ctl/running/c1/i1")
@@ -674,7 +706,7 @@ func Test_store_address_and_errors_carry_no_key(t *testing.T) {
 	_, err = s.Write(ctx, "ctl/running/c1/x", []byte("x"), OnlyIfNew)
 	say(err)
 	f.set(func() { f.turnAway, f.status = 1, http.StatusTeapot })
-	_, err = s.List(ctx, "ctl/running")
+	_, err = Names(s.List(ctx, "ctl/running"))
 	say(err)
 	f.set(func() { f.lose[fRead] = 1 << 30 })
 	_, _, err = s.Read(ctx, "ctl/running/c1/i1")
@@ -686,7 +718,7 @@ func Test_store_address_and_errors_carry_no_key(t *testing.T) {
 	unknown := must[Store](t)(Open(address))
 	_, err = unknown.Write(ctx, "a/x", []byte("x"), OnlyIfNew)
 	say(err)
-	_, err = unknown.List(ctx, "a")
+	_, err = Names(unknown.List(ctx, "a"))
 	say(err)
 	secrets = append(secrets, "AKIDUNKNOWN")
 
@@ -694,7 +726,7 @@ func Test_store_address_and_errors_carry_no_key(t *testing.T) {
 	const nowhereAt = "http://127.0.0.1:1"
 	nowhere := must[Store](t)(Open("s3://" + fakeBucket + "?region=" + fakeRegion + "&endpoint=" + nowhereAt))
 	nowhere.(*bucket).wait = time.Millisecond / 4
-	_, err = nowhere.List(ctx, "a")
+	_, err = Names(nowhere.List(ctx, "a"))
 	say(err)
 
 	// An address that wrongly has a key in it is not opened, nor repeated.

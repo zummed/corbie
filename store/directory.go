@@ -335,7 +335,43 @@ func (f *directory) Delete(ctx context.Context, name string, how How) (bool, err
 	return true, nil
 }
 
-func (f *directory) List(ctx context.Context, under string) ([]string, error) {
+// List reads each file it lists, after the listing and without its lock,
+// for the mark a read gives.
+func (f *directory) List(ctx context.Context, under string) ([]Listed, error) {
+	names, err := f.names(ctx, under)
+	if err != nil {
+		return nil, err
+	}
+	return f.marked(ctx, names)
+}
+
+// marked gives each name with the mark a read of it gives. A name that is
+// gone when it is read was deleted after it was listed, and is left out.
+func (f *directory) marked(ctx context.Context, names []string) ([]Listed, error) {
+	listed := make([]Listed, 0, len(names))
+	for _, name := range names {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+		file, err := openFile(f.path(name))
+		switch {
+		case gone(err), errors.Is(err, fs.ErrPermission), errors.Is(err, syscall.EISDIR):
+			continue
+		case err != nil:
+			return nil, err
+		}
+		mark, err := markFrom(file)
+		file.Close()
+		if err != nil {
+			return nil, err
+		}
+		listed = append(listed, Listed{name, mark})
+	}
+	return listed, nil
+}
+
+// names gives every name under the path, in order.
+func (f *directory) names(ctx context.Context, under string) ([]string, error) {
 	if err := checkUnder(under); err != nil {
 		return nil, err
 	}
@@ -385,8 +421,9 @@ func (f *directory) List(ctx context.Context, under string) ([]string, error) {
 
 // First reads the directories under the path one at a time, in order, and
 // stops once it has enough names: so a path whose first parts are times,
-// as the wakes are, is read only as far as is needed.
-func (f *directory) First(ctx context.Context, under string, n int) ([]string, error) {
+// as the wakes are, is read only as far as is needed. It gives fewer than n
+// where a file goes between the walk and the read for its mark.
+func (f *directory) First(ctx context.Context, under string, n int) ([]Listed, error) {
 	if err := checkUnder(under); err != nil {
 		return nil, err
 	}
@@ -411,14 +448,14 @@ func (f *directory) First(ctx context.Context, under string, n int) ([]string, e
 			names = append(names, at)
 			continue
 		}
-		below, err := f.List(ctx, at)
+		below, err := f.names(ctx, at)
 		if err != nil {
 			return nil, err
 		}
 		names = append(names, below...)
 	}
 	slices.Sort(names)
-	return names[:min(len(names), n)], nil
+	return f.marked(ctx, names[:min(len(names), n)])
 }
 
 func (f *directory) Notice(under string) (<-chan struct{}, func()) {

@@ -138,7 +138,7 @@ func (k *kept) start(run, src string, files map[string]string) {
 
 func (k *kept) blobs(run string) []string {
 	k.t.Helper()
-	names, err := k.st.List(ctx, store.Blobs("ctl", run))
+	names, err := store.Names(k.st.List(ctx, store.Blobs("ctl", run)))
 	if err != nil {
 		k.t.Fatal(err)
 	}
@@ -196,7 +196,7 @@ func Test_blob_trim_follows_references_inside_blobs(t *testing.T) {
 	if slices.Contains(after, loose.At) {
 		t.Fatal("after two days and a half with a keep of a day, a blob nothing refers to is still there: nothing was trimmed")
 	}
-	if steps, _ := k.st.List(ctx, store.Steps("ctl", run)); len(steps) > 4 {
+	if steps, _ := store.Names(k.st.List(ctx, store.Steps("ctl", run))); len(steps) > 4 {
 		t.Fatalf("%d steps remain", len(steps))
 	}
 	// What the state refers to only through the stored definition is all

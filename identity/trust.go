@@ -78,13 +78,13 @@ func WriteTrust(ctx context.Context, s store.Store, ctl *Identity, t Trust) erro
 
 // ListTrust reads everything a controller holds about other parties.
 func ListTrust(ctx context.Context, s store.Store, ctl Card) ([]Trust, error) {
-	names, err := s.List(ctx, store.TrustList(ctl.Name))
+	listed, err := s.List(ctx, store.TrustList(ctl.Name))
 	if err != nil {
 		return nil, err
 	}
 	var all []Trust
-	for _, name := range names {
-		t, err := ReadTrust(ctx, s, ctl, name[strings.LastIndexByte(name, '/')+1:])
+	for _, l := range listed {
+		t, err := ReadTrust(ctx, s, ctl, l.Name[strings.LastIndexByte(l.Name, '/')+1:])
 		if err != nil {
 			return nil, err
 		}

@@ -314,19 +314,20 @@ func (b *bucket) step(ctx context.Context, r request) (answer, error) {
 }
 
 // List reads the listing to its end: a bucket gives at most a thousand
-// names at a time, in the order they sort.
-func (b *bucket) List(ctx context.Context, under string) ([]string, error) {
+// names at a time, in the order they sort, each with its ETag, which is the
+// mark a read gives.
+func (b *bucket) List(ctx context.Context, under string) ([]Listed, error) {
 	return b.list(ctx, under, 0)
 }
 
 // First reads one page of a listing, which is a thousand names at most.
-func (b *bucket) First(ctx context.Context, under string, n int) ([]string, error) {
-	names, err := b.list(ctx, under, 1)
-	return names[:max(min(len(names), n, firstMost), 0)], err
+func (b *bucket) First(ctx context.Context, under string, n int) ([]Listed, error) {
+	listed, err := b.list(ctx, under, 1)
+	return listed[:max(min(len(listed), n, firstMost), 0)], err
 }
 
 // list reads a listing to its end, or for a number of pages.
-func (b *bucket) list(ctx context.Context, under string, pages int) ([]string, error) {
+func (b *bucket) list(ctx context.Context, under string, pages int) ([]Listed, error) {
 	if err := checkUnder(under); err != nil {
 		return nil, err
 	}
@@ -336,7 +337,7 @@ func (b *bucket) list(ctx context.Context, under string, pages int) ([]string, e
 	}
 	// Names come back escaped, so that no name can spoil the listing.
 	query := url.Values{"list-type": {"2"}, "encoding-type": {"url"}, "prefix": {prefix}}
-	var names []string
+	var listed []Listed
 	for {
 		a, err := b.send(ctx, request{method: http.MethodGet, query: query, twice: true})
 		switch {
@@ -348,7 +349,7 @@ func (b *bucket) list(ctx context.Context, under string, pages int) ([]string, e
 			return nil, a.unexpected()
 		}
 		var page struct {
-			Contents              []struct{ Key string }
+			Contents              []struct{ Key, ETag string }
 			IsTruncated           bool
 			NextContinuationToken string
 		}
@@ -360,10 +361,10 @@ func (b *bucket) list(ctx context.Context, under string, pages int) ([]string, e
 			if err != nil {
 				return nil, err
 			}
-			names = append(names, strings.TrimPrefix(key, b.prefix))
+			listed = append(listed, Listed{strings.TrimPrefix(key, b.prefix), Mark(c.ETag)})
 		}
 		if pages--; !page.IsTruncated || pages == 0 {
-			return names, nil
+			return listed, nil
 		}
 		query.Set("continuation-token", page.NextContinuationToken)
 	}

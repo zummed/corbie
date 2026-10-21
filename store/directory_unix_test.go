@@ -37,7 +37,7 @@ func Test_store_directory_list_when_read_only(t *testing.T) {
 				os.Chmod(d, 0o700)
 			}
 		})
-		names, err := s.List(ctx, "r")
+		names, err := Names(s.List(ctx, "r"))
 		if err != nil || !slices.Equal(names, []string{"r/a"}) {
 			t.Fatalf("listing a directory that can only be read: %v %v", names, err)
 		}

@@ -170,7 +170,7 @@ func TestStartThatIsNoUploadFormIsRefused(t *testing.T) {
 	if status, _, text := c.do("POST", "/runs", `{"definition": "statechart: door"}`); status != 400 || !strings.Contains(text, "upload form") {
 		t.Errorf("a start that is JSON was answered %d %s", status, text)
 	}
-	if names, _ := c0.Store.List(context.Background(), store.Records("controller")+"/client"); len(names) != 0 {
+	if names, _ := store.Names(c0.Store.List(context.Background(), store.Records("controller")+"/client")); len(names) != 0 {
 		t.Fatalf("the refused starts left %d values in the store: %v", len(names), names)
 	}
 }
@@ -251,7 +251,7 @@ func TestCancelEventAndAnswerTakeALife(t *testing.T) {
 	}
 	// A start takes one too.
 	id := c.start(map[string]any{"definition": door, "life": "90s"})
-	if sent, err := owner.List(ctx, store.Inbox("controller")); err != nil || len(sent) != 1 || goodFor(sent[0]) != 90*time.Second {
+	if sent, err := store.Names(owner.List(ctx, store.Inbox("controller"))); err != nil || len(sent) != 1 || goodFor(sent[0]) != 90*time.Second {
 		t.Fatalf("a start with a life of 90s left %v in the inbox (%v)", sent, err)
 	}
 	for path, body := range map[string]string{
@@ -259,7 +259,7 @@ func TestCancelEventAndAnswerTakeALife(t *testing.T) {
 		"/events":  `{"event": "open", "life": "200ms"}`,
 		"/tickets": `{"ticket": "the-ticket", "value": true, "life": "200ms"}`,
 	} {
-		before, err := owner.List(ctx, store.Inbox("controller"))
+		before, err := store.Names(owner.List(ctx, store.Inbox("controller")))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -271,7 +271,7 @@ func TestCancelEventAndAnswerTakeALife(t *testing.T) {
 		if took := time.Since(began); took > 10*time.Second {
 			t.Errorf("%s with a life of 200ms was answered after %v", path, took)
 		}
-		after, err := owner.List(ctx, store.Inbox("controller"))
+		after, err := store.Names(owner.List(ctx, store.Inbox("controller")))
 		if err != nil || len(after) != len(before)+1 {
 			t.Fatalf("%s left %d messages in the inbox where there were %d (%v)", path, len(after), len(before), err)
 		}
@@ -288,7 +288,7 @@ func TestCancelEventAndAnswerTakeALife(t *testing.T) {
 				t.Errorf("%s given %s was answered %d %s", path, wrong, status, text)
 			}
 		}
-		if again, _ := owner.List(ctx, store.Inbox("controller")); len(again) != len(before)+1 {
+		if again, _ := store.Names(owner.List(ctx, store.Inbox("controller"))); len(again) != len(before)+1 {
 			t.Errorf("%s given a life that is none sent a message", path)
 		}
 	}

@@ -245,7 +245,7 @@ type failingLists struct {
 	fail atomic.Bool
 }
 
-func (f *failingLists) List(ctx context.Context, under string) ([]string, error) {
+func (f *failingLists) List(ctx context.Context, under string) ([]store.Listed, error) {
 	if f.fail.Load() && strings.HasSuffix(under, "/trust") {
 		return nil, fmt.Errorf("%w: turned away", store.ErrUnreachable)
 	}

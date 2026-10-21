@@ -141,7 +141,7 @@ func Test_store_served_directory_holds_each_party_to_its_row(t *testing.T) {
 	if v, mark := read(t, other, "ctl/running/cli/i1"); v != "" || mark != None {
 		t.Errorf("a client read another client's head: %q", v)
 	}
-	if _, err := other.List(ctx, "ctl/records/cli"); !errors.Is(err, ErrRefused) {
+	if _, err := Names(other.List(ctx, "ctl/records/cli")); !errors.Is(err, ErrRefused) {
 		t.Errorf("a client listed another client's records: %v", err)
 	}
 	if v, _ := read(t, client, "ctl/secrets/TOKEN"); v != "" {
@@ -359,7 +359,7 @@ func Test_store_served_directory_failure_names_nothing_of_the_machine(t *testing
 
 	// A number of names that is no number drops no connection.
 	for kind, s := range map[string]Store{"served": f.as(Party{Kind: Owner, Name: "owner"}), "directory": f.directory} {
-		if names, err := s.First(ctx, "ctl", -1); err != nil || len(names) != 0 {
+		if names, err := Names(s.First(ctx, "ctl", -1)); err != nil || len(names) != 0 {
 			t.Errorf("%s: the first -1 names: %v %v", kind, names, err)
 		}
 	}

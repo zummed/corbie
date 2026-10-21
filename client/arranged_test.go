@@ -34,8 +34,8 @@ type hooked struct {
 	// before is told of each read and each listing: "read" or "list", and
 	// the name. An error it gives is the look's answer.
 	before func(act, name string) error
-	// listed may change the names a listing gives.
-	listed func(under string, names []string) []string
+	// listed may change what a listing gives.
+	listed func(under string, listed []store.Listed) []store.Listed
 	// silent gives no notices, as a bucket does and as a store does for a
 	// watcher in another process than the writer.
 	silent bool
@@ -57,20 +57,20 @@ func (h *hooked) Read(ctx context.Context, name string) ([]byte, store.Mark, err
 	return h.Store.Read(ctx, name)
 }
 
-func (h *hooked) List(ctx context.Context, under string) ([]string, error) {
+func (h *hooked) List(ctx context.Context, under string) ([]store.Listed, error) {
 	if err := h.look("list", under); err != nil {
 		return nil, err
 	}
-	names, err := h.Store.List(ctx, under)
+	listed, err := h.Store.List(ctx, under)
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	if err == nil && h.listed != nil {
-		names = h.listed(under, names)
+		listed = h.listed(under, listed)
 	}
-	return names, err
+	return listed, err
 }
 
-func (h *hooked) First(ctx context.Context, under string, n int) ([]string, error) {
+func (h *hooked) First(ctx context.Context, under string, n int) ([]store.Listed, error) {
 	if err := h.look("list", under); err != nil {
 		return nil, err
 	}

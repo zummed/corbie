@@ -465,7 +465,8 @@ func (f *fakeS3) act(kind string, r *http.Request, key string, body []byte) repl
 }
 
 // list gives one page of a listing: the names in order, escaped as S3
-// escapes them, and where to go on from if there are more.
+// escapes them, each with its ETag, and where to go on from if there are
+// more.
 func (f *fakeS3) list(q url.Values) reply {
 	var keys []string
 	for key := range f.objects {
@@ -477,7 +478,7 @@ func (f *fakeS3) list(q url.Values) reply {
 	var page struct {
 		XMLName               xml.Name `xml:"ListBucketResult"`
 		IsTruncated           bool
-		Contents              []struct{ Key string }
+		Contents              []struct{ Key, ETag string }
 		NextContinuationToken string `xml:",omitempty"`
 	}
 	if len(keys) > f.page {
@@ -486,8 +487,8 @@ func (f *fakeS3) list(q url.Values) reply {
 		page.NextContinuationToken = keys[len(keys)-1]
 	}
 	for _, key := range keys {
-		key = strings.ReplaceAll(url.QueryEscape(key), "%2F", "/")
-		page.Contents = append(page.Contents, struct{ Key string }{key})
+		escaped := strings.ReplaceAll(url.QueryEscape(key), "%2F", "/")
+		page.Contents = append(page.Contents, struct{ Key, ETag string }{escaped, etag(f.objects[key])})
 	}
 	body, err := xml.Marshal(page)
 	if err != nil {

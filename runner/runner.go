@@ -241,11 +241,11 @@ type waiting struct {
 // few jobs and not all of them.
 func (r *Runner) look(ctx context.Context) error {
 	for _, s := range r.Serves {
-		names, err := s.Store.List(ctx, store.Inbox(r.ID.Name))
+		names, err := store.Names(s.Store.List(ctx, store.Inbox(r.ID.Name)))
 		if err != nil {
 			return err
 		}
-		marks, err := s.Store.List(ctx, store.TakenList(r.ID.Name))
+		marks, err := store.Names(s.Store.List(ctx, store.TakenList(r.ID.Name)))
 		if err != nil {
 			return err
 		}
@@ -563,7 +563,7 @@ const maxResult = 256 << 10
 func (r *Runner) sweep(ctx context.Context) error {
 	now := r.Now()
 	for _, s := range r.Serves {
-		names, err := s.Store.List(ctx, store.TakenList(r.ID.Name))
+		names, err := store.Names(s.Store.List(ctx, store.TakenList(r.ID.Name)))
 		if err != nil {
 			return err
 		}

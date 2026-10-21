@@ -63,12 +63,12 @@ func (o *open) Delete(ctx context.Context, name string, how store.How) (bool, er
 	return o.Store.Delete(ctx, name, how)
 }
 
-func (o *open) List(ctx context.Context, under string) ([]string, error) {
+func (o *open) List(ctx context.Context, under string) ([]store.Listed, error) {
 	defer o.begin()()
 	return o.Store.List(ctx, under)
 }
 
-func (o *open) First(ctx context.Context, under string, n int) ([]string, error) {
+func (o *open) First(ctx context.Context, under string, n int) ([]store.Listed, error) {
 	defer o.begin()()
 	return o.Store.First(ctx, under, n)
 }

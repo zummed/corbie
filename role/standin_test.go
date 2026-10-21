@@ -311,14 +311,14 @@ func (l link) Delete(ctx context.Context, name string, how store.How) (bool, err
 	return l.inner.Delete(context.WithoutCancel(ctx), name, how)
 }
 
-func (l link) List(ctx context.Context, under string) ([]string, error) {
+func (l link) List(ctx context.Context, under string) ([]store.Listed, error) {
 	if err := l.c.begin(under, false); err != nil {
 		return nil, err
 	}
 	return l.inner.List(context.WithoutCancel(ctx), under)
 }
 
-func (l link) First(ctx context.Context, under string, n int) ([]string, error) {
+func (l link) First(ctx context.Context, under string, n int) ([]store.Listed, error) {
 	if err := l.c.begin(under, false); err != nil {
 		return nil, err
 	}

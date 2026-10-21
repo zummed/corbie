@@ -19,8 +19,8 @@ The detailed rules behind the [Store overview](../store.md).
 **R-store-06** A value is deleted whatever is there, or only-if-unchanged, and deleting a name that holds nothing is not a failure.
 *Accept:* delete a name outright; a read then says "not there"; delete it again: no error. Read a value, let another writer change it, then delete only-if-unchanged: the answer is "changed" and the newer value is still there.
 
-**R-store-08** The store lists every name under a path, in the order the names sort.
-*Accept:* write `p/b`, `p/a`, `p/c/d` and `q/a` in any order. A listing under `p/` gives `p/a`, `p/b`, `p/c/d` in that order and nothing from `q/`, and gives the same in every kind of store.
+**R-store-08** The store lists every name under a path, in the order the names sort, each with what a read of it gives for a later only-if-unchanged write.
+*Accept:* write `p/b`, `p/a`, `p/c/d` and `q/a` in any order. A listing under `p/` gives `p/a`, `p/b`, `p/c/d` in that order and nothing from `q/`, and gives the same in every kind of store. Each name comes with what a read of it gives, and an only-if-unchanged write of `p/a` with it succeeds; the next listing gives `p/a` with what a read of the new value gives and the other two as before.
 
 **R-store-09** A value appears whole or not at all.
 *Accept:* one writer overwrites a name with large values again and again while a reader reads it in a loop: every read gives "not there" or one whole value, never part of one. A writer killed partway through a write leaves the name holding what it held before.
@@ -98,8 +98,8 @@ Each rule here is checked on the memory store opened as the party named, and on 
 **R-store-50** Corbie says that a directory keeps no party out of anything.
 *Accept:* `corbie init` with a directory store prints, among what it did, that a directory keeps no party out. The manual's page on the store says the same.
 
-**R-store-51** In a bucket Corbie uses only what the overview names: reading a value or a part of one, ordered listing, the three ways of writing, the two ways of deleting, and the bucket's own copy for a blob (see Blobs).
-*Accept:* run the whole of Corbie's tests against a bucket stand-in that refuses every other kind of request. Nothing fails.
+**R-store-51** In a bucket Corbie uses only what the overview names: reading a value or a part of one, ordered listing with each value's ETag, the three ways of writing, the two ways of deleting, and the bucket's own copy for a blob (see Blobs).
+*Accept:* run the whole of Corbie's tests against a bucket stand-in that refuses every other kind of request, and whose listing gives each name's ETag as S3's does. Nothing fails.
 
 **R-store-53** In a bucket each party uses a key of its own, and Corbie prints the policy for each party, which limits that party's key to its row of the table.
 *Accept:* a controller, a runner and a client work on one bucket with three different keys; taking one party's key away stops that party and no other. Print the policy for a runner, for a client and for a heads-only viewer, and put each on a bucket stand-in: every act in that party's row is allowed and every act outside it is refused.
@@ -170,6 +170,10 @@ Each rule here is checked on the memory store opened as the party named, and on 
 **C-store-32** A value in a bucket is never changed by copying it onto itself. A bucket counts that as replacing the value, which a party limited to only-if-new may not do. *Test:* `store_bucket_never_copies_a_value_onto_itself`
 
 **C-store-34** Values named by a listing are read a bounded number at a time. A process has a limit of open connections and files, and a bucket turns away a burst. *Test:* `store_bucket_reads_bounded_at_once`
+
+**C-store-44** In a bucket, what a listing gives for each name is the ETag in the bucket's own listing, and no value is read to give it. A watcher lists at every look, and a read for each name is the cost the listing is there to save. *Test:* `store_bucket_listing_reads_no_value`
+
+**C-store-45** In a directory, what a listing gives for each name is made from the file's contents, as a read's is, never from its size or its time. A value rewritten at the same size within the resolution of the file's time keeps both, and a watcher would never read it again. *Test:* `store_directory_listing_follows_contents`
 
 ## What the store is trusted with
 

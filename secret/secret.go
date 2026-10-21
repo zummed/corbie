@@ -59,12 +59,13 @@ func Remove(ctx context.Context, s store.Store, ctl *identity.Identity, name str
 
 // List gives the names of the controller's secrets.
 func List(ctx context.Context, s store.Store, ctl string) ([]string, error) {
-	names, err := s.List(ctx, store.Secrets(ctl))
+	listed, err := s.List(ctx, store.Secrets(ctl))
 	if err != nil {
 		return nil, err
 	}
-	for i, name := range names {
-		names[i] = name[strings.LastIndexByte(name, '/')+1:]
+	names := make([]string, len(listed))
+	for i, l := range listed {
+		names[i] = l.Name[strings.LastIndexByte(l.Name, '/')+1:]
 	}
 	return names, nil
 }

@@ -121,7 +121,7 @@ func (b bounded) Delete(ctx context.Context, name string, how How) (bool, error)
 	return b.Store.Delete(ctx, name, how)
 }
 
-func (b bounded) List(ctx context.Context, under string) ([]string, error) {
+func (b bounded) List(ctx context.Context, under string) ([]Listed, error) {
 	if err := b.take(ctx); err != nil {
 		return nil, err
 	}
@@ -129,7 +129,7 @@ func (b bounded) List(ctx context.Context, under string) ([]string, error) {
 	return b.Store.List(ctx, under)
 }
 
-func (b bounded) First(ctx context.Context, under string, n int) ([]string, error) {
+func (b bounded) First(ctx context.Context, under string, n int) ([]Listed, error) {
 	if err := b.take(ctx); err != nil {
 		return nil, err
 	}

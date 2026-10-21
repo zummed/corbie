@@ -27,7 +27,7 @@ func TestCancelSendAndReplyTakeALife(t *testing.T) {
 	inbox := store.Inbox("box-controller")
 	id := "box-client/" + time.Now().UTC().Format("20060102T150405.000Z") + "-0000000000"
 	for _, command := range [][]string{{"run", "cancel", id}, {"run", "send", id, "go"}, {"run", "reply", id, "the-key", "yes"}} {
-		before, err := s.List(ctx, inbox)
+		before, err := store.Names(s.List(ctx, inbox))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -39,7 +39,7 @@ func TestCancelSendAndReplyTakeALife(t *testing.T) {
 		if took := time.Since(began); took > 10*time.Second {
 			t.Errorf("corbie %s --life 200ms waited %v for its receipt", strings.Join(command[:2], " "), took)
 		}
-		after, err := s.List(ctx, inbox)
+		after, err := store.Names(s.List(ctx, inbox))
 		if err != nil || len(after) != len(before)+1 {
 			t.Fatalf("corbie %s left %d messages in the inbox where there were %d (%v)", strings.Join(command[:2], " "), len(after), len(before), err)
 		}
@@ -61,7 +61,7 @@ func TestCancelSendAndReplyTakeALife(t *testing.T) {
 		if status, _, said := m.run("", append(command, "--life", "soon")...); status != 2 || !strings.Contains(said, "--life") {
 			t.Errorf("corbie %s --life soon ended %d: %s", strings.Join(command[:2], " "), status, said)
 		}
-		if again, _ := s.List(ctx, inbox); len(again) != len(before)+1 {
+		if again, _ := store.Names(s.List(ctx, inbox)); len(again) != len(before)+1 {
 			t.Errorf("corbie %s --life soon sent a message", strings.Join(command[:2], " "))
 		}
 	}

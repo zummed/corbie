@@ -4,7 +4,7 @@ The store is the one place Corbie keeps anything. Every party reads and writes i
 
 ## Named values
 
-The store holds one kind of thing: a value with a name. Names are paths, and the store can list the names under a path in order. Everything else in Corbie, from a message to an instance's head to a job a runner has taken, is a named value used in a particular way.
+The store holds one kind of thing: a value with a name. Names are paths, and the store lists the names under a path in order, each with what a read of it gives for a later only-if-unchanged write, so a reader can tell which values have changed without reading them. Everything else in Corbie, from a message to an instance's head to a job a runner has taken, is a named value used in a particular way.
 
 There are three ways to write a value, and the rest of these specs call them by name.
 
@@ -16,7 +16,7 @@ A value is deleted by the first or the third. A value appears whole or not at al
 
 These three are all the coordination Corbie has. There are no locks, no leases and no transactions across names.
 
-Almost everything is written only-if-new and never changed afterwards. Very few values are ever rewritten: an instance's head, its note of how far a large step has been carried out, and the controller's lists of who it trusts and which secrets it holds. This makes the store easy to reason about and cheap to watch, since a value read once need never be read again unless it is one of those few.
+Almost everything is written only-if-new and never changed afterwards. Very few values are ever rewritten: an instance's head, its note of how far a large step has been carried out, and the controller's lists of who it trusts and which secrets it holds. This makes the store easy to reason about and cheap to watch: a value read once is read again only when a listing shows it has changed.
 
 ## Layout
 
@@ -65,7 +65,7 @@ Blobs are encrypted and their keys travel only in sealed messages, so the right 
 
 A store is a directory, a directory served to other computers, a bucket or memory, chosen by its address.
 
-A **directory** is for one computer. Every value is a plain file, so a person can look at an instance with ordinary tools. A change the directory has answered is on disk: a computer that loses power comes back with everything it said it had written, and nothing it said it had deleted. Windows cannot sync a directory, so there a name made or removed just before the power went may be lost, as far as NTFS keeps it. Every party on the computer can read and write all of it. A directory keeps no party out of anything, and Corbie says so.
+A **directory** is for one computer. Every value is a plain file, so a person can look at an instance with ordinary tools. A listing reads every file it lists. A change the directory has answered is on disk: a computer that loses power comes back with everything it said it had written, and nothing it said it had deleted. Windows cannot sync a directory, so there a name made or removed just before the power went may be lost, as far as NTFS keeps it. Every party on the computer can read and write all of it. A directory keeps no party out of anything, and Corbie says so.
 
 A **served directory** is for a few computers of one's own, with nothing rented and nothing else installed. The computer that holds the directory and the controller serves it, and a party on another computer reaches it at `corbie://host:port`. Roles on the serving computer use the directory as it is.
 
@@ -89,7 +89,7 @@ A party waiting on its inbox is told the moment something is written there, as r
 
 The serving computer is the store. While it is off nothing moves, and what was waiting waits. Its process can be stopped and started again, as it is to update it, with work in flight on the other computers: they wait about ten seconds for it and carry on. Off for longer, a job that finished meanwhile cannot say so, and is a timeout when its time is up. Corbie offers no second computer to take over and no copies kept in step: two computers that each believe they hold the store break only-if-new, on which everything rests. A store that must outlive a computer is a bucket, and a served directory copies into one unchanged. Only the controller's computer serves, and only a directory. Someone with no identity is not shown a served directory's heads; a watcher there is a client.
 
-A **bucket** is for several computers and for serverless hosts. It needs a service that offers the three ways of writing, ordered listing, reading part of a value, and copying a value within the store. Corbie names the services it is tested against, says which of them can enforce the table above, and claims nothing more. In a bucket each party holds its own key, and the bucket's policy limits that key to its row of the table. Corbie prints the policy for each party. A policy cannot hold a name to one part, so it lets a runner or a client add names deeper in a record than the layout draws; it never lets one replace or remove anything.
+A **bucket** is for several computers and for serverless hosts. It needs a service that offers the three ways of writing, ordered listing with each value's ETag, reading part of a value, and copying a value within the store. Corbie names the services it is tested against, says which of them can enforce the table above, and claims nothing more. In a bucket each party holds its own key, and the bucket's policy limits that key to its row of the table. Corbie prints the policy for each party. A policy cannot hold a name to one part, so it lets a runner or a client add names deeper in a record than the layout draws; it never lets one replace or remove anything.
 
 **Memory** is for `corbie test` and Corbie's own tests. It enforces the table as a bucket does, so access rules can be tried without a bucket.
 

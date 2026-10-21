@@ -100,7 +100,7 @@ func (w table) noRead(s Store, names ...string) {
 func (w table) lists(s Store, paths ...string) {
 	w.t.Helper()
 	for _, path := range paths {
-		if names, err := s.List(ctx, path); err != nil || len(names) == 0 {
+		if names, err := Names(s.List(ctx, path)); err != nil || len(names) == 0 {
 			w.t.Errorf("list %s: %v %v", path, names, err)
 		}
 	}
@@ -109,7 +109,7 @@ func (w table) lists(s Store, paths ...string) {
 func (w table) noList(s Store, paths ...string) {
 	w.t.Helper()
 	for _, path := range paths {
-		if names, err := s.List(ctx, path); !errors.Is(err, ErrRefused) || names != nil {
+		if names, err := Names(s.List(ctx, path)); !errors.Is(err, ErrRefused) || names != nil {
 			w.t.Errorf("list %s: %v %v, want refused", path, names, err)
 		}
 	}

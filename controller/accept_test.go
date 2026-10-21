@@ -218,7 +218,7 @@ type unread struct {
 	after func()
 }
 
-func (u *unread) List(ctx context.Context, under string) ([]string, error) {
+func (u *unread) List(ctx context.Context, under string) ([]store.Listed, error) {
 	names, err := u.Store.List(ctx, under)
 	if under == store.Inbox("ctl") && u.after != nil {
 		u.after()

@@ -49,14 +49,14 @@ func (s *stopping) Read(ctx context.Context, name string) ([]byte, store.Mark, e
 	return s.Store.Read(ctx, name)
 }
 
-func (s *stopping) List(ctx context.Context, under string) ([]string, error) {
+func (s *stopping) List(ctx context.Context, under string) ([]store.Listed, error) {
 	if err := s.check(); err != nil {
 		return nil, err
 	}
 	return s.Store.List(ctx, under)
 }
 
-func (s *stopping) First(ctx context.Context, under string, n int) ([]string, error) {
+func (s *stopping) First(ctx context.Context, under string, n int) ([]store.Listed, error) {
 	if err := s.check(); err != nil {
 		return nil, err
 	}

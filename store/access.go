@@ -238,7 +238,7 @@ func (h held) Delete(ctx context.Context, name string, how How) (bool, error) {
 	return h.s.Delete(ctx, name, how)
 }
 
-func (h held) List(ctx context.Context, under string) ([]string, error) {
+func (h held) List(ctx context.Context, under string) ([]Listed, error) {
 	if err := checkUnder(under); err != nil {
 		return nil, err
 	}
@@ -248,7 +248,7 @@ func (h held) List(ctx context.Context, under string) ([]string, error) {
 	return h.s.List(ctx, under)
 }
 
-func (h held) First(ctx context.Context, under string, n int) ([]string, error) {
+func (h held) First(ctx context.Context, under string, n int) ([]Listed, error) {
 	if err := checkUnder(under); err != nil {
 		return nil, err
 	}

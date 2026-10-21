@@ -97,13 +97,13 @@ func (c *Controller) Pass(ctx context.Context) (next time.Time, err error) {
 
 	// The inbox is read before any wake is acted on: a result that has
 	// arrived wins over its own due time.
-	names, err := p.store.List(ctx, store.Inbox(p.ctl))
+	names, err := store.Names(p.store.List(ctx, store.Inbox(p.ctl)))
 	if err != nil {
 		return next, err
 	}
 	// Wakes are named by their times and read soonest first, a batch at a
 	// time: a pass costs what is due, however many wakes there are.
-	wakes, err := p.store.First(ctx, store.Wakes(p.ctl), wakeBatch)
+	wakes, err := store.Names(p.store.First(ctx, store.Wakes(p.ctl), wakeBatch))
 	if err != nil {
 		return next, err
 	}
@@ -112,7 +112,7 @@ func (c *Controller) Pass(ctx context.Context) (next time.Time, err error) {
 	// turn. Then every wake is read.
 	if len(wakes) == wakeBatch {
 		if at, _, _, ok := store.ParseWake(p.ctl, wakes[wakeBatch-1]); !ok || !at.After(p.now) {
-			if wakes, err = p.store.List(ctx, store.Wakes(p.ctl)); err != nil {
+			if wakes, err = store.Names(p.store.List(ctx, store.Wakes(p.ctl))); err != nil {
 				return next, err
 			}
 		}

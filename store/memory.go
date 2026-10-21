@@ -4,6 +4,7 @@ import (
 	"context"
 	"io"
 	"slices"
+	"strings"
 	"sync"
 )
 
@@ -134,26 +135,26 @@ func (s memoryAs) Delete(ctx context.Context, name string, how How) (bool, error
 	return done, nil
 }
 
-func (s memoryAs) List(ctx context.Context, under string) ([]string, error) {
+func (s memoryAs) List(ctx context.Context, under string) ([]Listed, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
 	s.m.mu.Lock()
 	defer s.m.mu.Unlock()
-	var names []string
-	for name := range s.m.values {
+	var listed []Listed
+	for name, value := range s.m.values {
 		if within(name, under) {
-			names = append(names, name)
+			listed = append(listed, Listed{name, markOf(value)})
 		}
 	}
-	slices.Sort(names)
+	slices.SortFunc(listed, func(a, b Listed) int { return strings.Compare(a.Name, b.Name) })
 	s.m.note(Op{Party: s.p, Act: ActList, Name: under, Done: true})
-	return names, nil
+	return listed, nil
 }
 
-func (s memoryAs) First(ctx context.Context, under string, n int) ([]string, error) {
-	names, err := s.List(ctx, under)
-	return names[:max(min(len(names), n, firstMost), 0)], err
+func (s memoryAs) First(ctx context.Context, under string, n int) ([]Listed, error) {
+	listed, err := s.List(ctx, under)
+	return listed[:max(min(len(listed), n, firstMost), 0)], err
 }
 
 func (s memoryAs) Notice(under string) (<-chan struct{}, func()) {

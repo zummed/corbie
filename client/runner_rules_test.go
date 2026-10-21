@@ -8,12 +8,13 @@ import (
 	"testing"
 
 	"github.com/zummed/corbie/client"
+	"github.com/zummed/corbie/store"
 )
 
 // blobsOf counts the blobs in a run's record.
 func blobsOf(t *testing.T, l *client.Local, r *client.Run) int {
 	t.Helper()
-	names, err := l.Memory.As(ownerOf()).List(ctx, "controller/records/"+r.ID+"/blobs")
+	names, err := store.Names(l.Memory.As(ownerOf()).List(ctx, "controller/records/"+r.ID+"/blobs"))
 	if err != nil {
 		t.Fatal(err)
 	}

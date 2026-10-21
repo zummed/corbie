@@ -171,7 +171,7 @@ func (c *Client) unstarted(ctx context.Context, id string) (*Run, error) {
 	}
 	// A start's definition is written into the run's record before the
 	// start is sent, so a name with nothing in its record was never sent.
-	uploaded, err := c.Store.First(ctx, store.Blobs(c.ctl(), id), 1)
+	uploaded, err := store.Names(c.Store.First(ctx, store.Blobs(c.ctl(), id), 1))
 	if err != nil {
 		return nil, err
 	}

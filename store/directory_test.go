@@ -110,7 +110,7 @@ func Test_store_directory_value_whole_or_absent(t *testing.T) {
 
 	// A writer killed partway leaves a temporary file and the name as it was.
 	os.WriteFile(filepath.Join(dir, "big", tmpPrefix+"killed"), []byte("half"), 0o600)
-	names, err := s.List(ctx, "big")
+	names, err := Names(s.List(ctx, "big"))
 	if err != nil || !slices.Equal(names, []string{"big/value"}) {
 		t.Fatalf("listing shows %v (%v)", names, err)
 	}
@@ -179,7 +179,7 @@ func Test_store_directory_clearing_spares_temporary_file_in_use(t *testing.T) {
 	os.WriteFile(fresh, []byte("in use"), 0o600)
 	os.WriteFile(old, []byte("left over"), 0o600)
 	os.Chtimes(old, time.Now().Add(-2*tmpMaxAge), time.Now().Add(-2*tmpMaxAge))
-	if _, err := s.List(ctx, "t"); err != nil {
+	if _, err := Names(s.List(ctx, "t")); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := os.Stat(fresh); err != nil {
@@ -213,7 +213,7 @@ func Test_store_directory_list_while_names_replaced(t *testing.T) {
 		})
 	}
 	for range 200 {
-		names, err := s.List(ctx, "l")
+		names, err := Names(s.List(ctx, "l"))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -223,6 +223,28 @@ func Test_store_directory_list_while_names_replaced(t *testing.T) {
 	}
 	close(stop)
 	wg.Wait()
+}
+
+// A directory lists a name with the mark its contents give, as a read does:
+// a value rewritten to the same size, with the file's time put back, is
+// listed with another mark.
+func Test_store_directory_listing_follows_contents(t *testing.T) {
+	s, dir := newDirectory(t)
+	must[bool](t)(s.Write(ctx, "c/x", []byte("one"), Overwrite))
+	file := filepath.Join(dir, "c", "x")
+	info, err := os.Stat(file)
+	if err != nil {
+		t.Fatal(err)
+	}
+	before := must[[]Listed](t)(s.List(ctx, "c"))
+	must[bool](t)(s.Write(ctx, "c/x", []byte("two"), Overwrite))
+	if err := os.Chtimes(file, info.ModTime(), info.ModTime()); err != nil {
+		t.Fatal(err)
+	}
+	after := must[[]Listed](t)(s.List(ctx, "c"))
+	if _, mark := read(t, s, "c/x"); len(after) != 1 || after[0].Mark != mark || after[0].Mark == before[0].Mark {
+		t.Fatalf("a value rewritten at the same size and time was listed with %v, and before with %v", after, before)
+	}
 }
 
 func Test_store_directory_write_not_starved_by_listings(t *testing.T) {
@@ -240,7 +262,7 @@ func Test_store_directory_write_not_starved_by_listings(t *testing.T) {
 					return
 				default:
 				}
-				s.List(ctx, "s")
+				Names(s.List(ctx, "s"))
 			}
 		})
 	}
@@ -303,7 +325,7 @@ func Test_store_directory_wait_ends_with_deadline(t *testing.T) {
 	if _, err := s.Write(past, "w/a", []byte("y"), Overwrite); err == nil {
 		t.Fatal("a write past its deadline went ahead")
 	}
-	if _, err := s.List(past, "w"); err == nil {
+	if _, err := Names(s.List(past, "w")); err == nil {
 		t.Fatal("a listing past its deadline went ahead")
 	}
 	if time.Since(start) > time.Second {
@@ -372,7 +394,7 @@ func Test_store_directory_killed_party_blocks_nobody(t *testing.T) {
 	if _, err := s.Write(deadline, "k/a", []byte("y"), Overwrite); err != nil {
 		t.Fatal("a killed party still holds the lock:", err)
 	}
-	if _, err := s.List(deadline, "k"); err != nil {
+	if _, err := Names(s.List(deadline, "k")); err != nil {
 		t.Fatal(err)
 	}
 }

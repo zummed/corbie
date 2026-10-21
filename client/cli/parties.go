@@ -240,7 +240,7 @@ func cmdInit(e *Env, args []string) error {
 	// held in the store under its name is another controller's, and nothing
 	// is made here under a name that is taken there.
 	if !cfg.Has(identity.Controller) {
-		held, err := s.First(e.ctx, store.TrustList(name+"-controller"), 1)
+		held, err := store.Names(s.First(e.ctx, store.TrustList(name+"-controller"), 1))
 		if err != nil {
 			return err
 		}

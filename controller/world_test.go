@@ -184,7 +184,7 @@ func (w *world) steps(run string) []*instance.Step {
 }
 
 func (w *world) list(under string) []string {
-	names, err := w.owner.List(ctx, under)
+	names, err := store.Names(w.owner.List(ctx, under))
 	if err != nil {
 		w.t.Fatal(err)
 	}

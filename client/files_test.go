@@ -187,7 +187,7 @@ func TestStartCarriesABlobFromAnotherRun(t *testing.T) {
 	// have in the first run's, and were written before the start was.
 	var copied []int
 	sent := -1
-	theirs, err := owner.List(ctx, store.Blobs("controller", a.ID))
+	theirs, err := store.Names(owner.List(ctx, store.Blobs("controller", a.ID)))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -204,7 +204,7 @@ func TestStartCarriesABlobFromAnotherRun(t *testing.T) {
 	}
 	// The first run goes, record and heads, before the second reads.
 	standingAt(t, l, b)
-	gone, err := owner.List(ctx, store.Record("controller", a.ID))
+	gone, err := store.Names(owner.List(ctx, store.Record("controller", a.ID)))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -344,7 +344,7 @@ func TestStartGivesAFileAsInput(t *testing.T) {
 	if r := wait(t, l, id); r.Status != instance.Done || jsonOf(r.Output) != jsonOf(want) {
 		t.Fatalf("a run given a file at input.attachments[0].data ended %s with %s (%s); want %s", r.Status, jsonOf(r.Output), r.Error, jsonOf(want))
 	}
-	if blobs, _ := l.Memory.As(ownerOf()).List(ctx, store.Blobs("controller", id)); len(blobs) != 3 {
+	if blobs, _ := store.Names(l.Memory.As(ownerOf()).List(ctx, store.Blobs("controller", id))); len(blobs) != 3 {
 		t.Fatalf("the run's record holds %d blobs; its definition, its script and the file are three", len(blobs))
 	}
 	// A file in a value of another type cannot be found, and is refused
@@ -475,8 +475,8 @@ func TestAgentCarriesOnFromAnotherRunsConversation(t *testing.T) {
 			t.Errorf("turn %d of the second agent's conversation is not the first one's", i)
 		}
 	}
-	names, err := l.Memory.As(ownerOf()).List(ctx, store.Blobs("controller", id))
-	theirs, _ := l.Memory.As(ownerOf()).List(ctx, store.Blobs("controller", first.ID))
+	names, err := store.Names(l.Memory.As(ownerOf()).List(ctx, store.Blobs("controller", id)))
+	theirs, _ := store.Names(l.Memory.As(ownerOf()).List(ctx, store.Blobs("controller", first.ID)))
 	held := 0
 	for _, name := range names {
 		if slices.Contains(theirs, store.Blob("controller", first.ID, path.Base(name))) {

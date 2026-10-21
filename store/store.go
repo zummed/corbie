@@ -3,6 +3,7 @@
 package store
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
@@ -45,14 +46,15 @@ type Store interface {
 	// only-if-unchanged. Deleting a name that holds nothing is done.
 	Delete(ctx context.Context, name string, how How) (bool, error)
 
-	// List gives every name under the path, in the order names sort.
-	List(ctx context.Context, under string) ([]string, error)
+	// List gives every name under the path, in the order names sort, each
+	// with the mark a read of it gives.
+	List(ctx context.Context, under string) ([]Listed, error)
 
 	// First gives the first names under the path, in the order names sort,
-	// and no more than n of them (at most a thousand). It costs one look,
-	// however many names there are: what is owed to time is read this way,
-	// soonest first.
-	First(ctx context.Context, under string, n int) ([]string, error)
+	// and no more than n of them (at most a thousand), each with the mark a
+	// read of it gives. It costs one look, however many names there are:
+	// what is owed to time is read this way, soonest first.
+	First(ctx context.Context, under string, n int) ([]Listed, error)
 
 	// Notice gives a channel that is sent to when this process writes or
 	// deletes a name under the path, and a func that ends it. A store that
@@ -68,6 +70,24 @@ type Mark string
 
 // None is the mark of a name that holds nothing.
 const None Mark = ""
+
+// A Listed is one name a listing gives, with the mark a read of it gives:
+// a value that has not changed since it was read is listed with the mark
+// it was read with.
+type Listed struct {
+	Name string
+	Mark Mark
+}
+
+// Names gives the names of a listing, in its order, for a caller that
+// needs no marks: names, err := Names(s.List(ctx, under)).
+func Names(listed []Listed, err error) ([]string, error) {
+	var names []string
+	for _, l := range listed {
+		names = append(names, l.Name)
+	}
+	return names, err
+}
 
 // How is one of the three ways of writing.
 type How struct {
@@ -140,8 +160,17 @@ func checkUnder(under string) error {
 // markOf is the mark of a value in the stores that have no marks of their
 // own: a value read again unchanged has the same mark.
 func markOf(value []byte) Mark {
-	sum := sha256.Sum256(value)
-	return Mark(hex.EncodeToString(sum[:12]))
+	mark, _ := markFrom(bytes.NewReader(value))
+	return mark
+}
+
+// markFrom gives the mark of the value r gives, without holding all of it.
+func markFrom(r io.Reader) (Mark, error) {
+	h := sha256.New()
+	if _, err := io.Copy(h, r); err != nil {
+		return None, err
+	}
+	return Mark(hex.EncodeToString(h.Sum(nil)[:12])), nil
 }
 
 // within says whether name is under the path.

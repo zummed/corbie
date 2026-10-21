@@ -128,7 +128,7 @@ func Test_role_standin_host_freezes_kills_and_counts(t *testing.T) {
 		}
 	}
 	c = h.call("heedless", heedless)
-	wrote, _ := owner.List(ctx, "heedless")
+	wrote, _ := store.Names(owner.List(ctx, "heedless"))
 	if !c.killed || h.killed() != 1 || len(wrote) != 5+grace || told == nil {
 		t.Fatalf("a copy that went on after its time was up: killed: %v, having written %d values; its pass was told: %v", c.killed, len(wrote), told)
 	}
@@ -145,7 +145,7 @@ func Test_role_standin_host_freezes_kills_and_counts(t *testing.T) {
 		}
 	}
 	c = h.call("heeds", heeds)
-	wrote, _ = owner.List(ctx, "heeds")
+	wrote, _ = store.Names(owner.List(ctx, "heeds"))
 	if c.killed || h.killed() != 1 || len(wrote) != 5 {
 		t.Fatalf("a copy that stopped when its time was up: killed: %v, having written %d values", c.killed, len(wrote))
 	}
@@ -160,7 +160,7 @@ func Test_role_standin_host_freezes_kills_and_counts(t *testing.T) {
 	if !c.killed || there("heedless/"+fmt.Sprintf("%03d", 5+grace+1)) {
 		t.Fatal("a copy the host killed went on")
 	}
-	wrote, _ = owner.List(ctx, "heedless")
+	wrote, _ = store.Names(owner.List(ctx, "heedless"))
 	if len(wrote) != 5+grace {
 		t.Fatalf("a copy killed at a write that finds its values already there: %d values", len(wrote))
 	}
@@ -640,7 +640,7 @@ type away struct {
 	out atomic.Bool
 }
 
-func (a *away) List(ctx context.Context, under string) ([]string, error) {
+func (a *away) List(ctx context.Context, under string) ([]store.Listed, error) {
 	if a.out.Load() {
 		return nil, fmt.Errorf("%w: no answer", store.ErrUnreachable)
 	}

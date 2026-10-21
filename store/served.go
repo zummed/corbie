@@ -255,15 +255,15 @@ func (s *served) change(ctx context.Context, c call) (bool, error) {
 	return err == nil && a.done == "true", err
 }
 
-func (s *served) List(ctx context.Context, under string) ([]string, error) {
-	return s.names(ctx, under, url.Values{"under": {under}})
+func (s *served) List(ctx context.Context, under string) ([]Listed, error) {
+	return s.list(ctx, under, url.Values{"under": {under}})
 }
 
-func (s *served) First(ctx context.Context, under string, n int) ([]string, error) {
-	return s.names(ctx, under, url.Values{"under": {under}, "first": {strconv.Itoa(max(min(n, firstMost), 0))}})
+func (s *served) First(ctx context.Context, under string, n int) ([]Listed, error) {
+	return s.list(ctx, under, url.Values{"under": {under}, "first": {strconv.Itoa(max(min(n, firstMost), 0))}})
 }
 
-func (s *served) names(ctx context.Context, under string, q url.Values) ([]string, error) {
+func (s *served) list(ctx context.Context, under string, q url.Values) ([]Listed, error) {
 	if err := checkUnder(under); err != nil {
 		return nil, err
 	}
@@ -271,7 +271,15 @@ func (s *served) names(ctx context.Context, under string, q url.Values) ([]strin
 	if err != nil || len(a.body) == 0 {
 		return nil, err
 	}
-	return strings.Split(string(a.body), "\n"), nil
+	var listed []Listed
+	for line := range strings.SplitSeq(string(a.body), "\n") {
+		at := strings.LastIndex(line, "\t")
+		if at < 0 {
+			return nil, fmt.Errorf("store: the served directory listed %q with no mark", line)
+		}
+		listed = append(listed, Listed{line[:at], Mark(line[at+1:])})
+	}
+	return listed, nil
 }
 
 // Notice asks the server, again and again, to say when a name under the

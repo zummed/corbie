@@ -263,7 +263,7 @@ func Test_client_gateway_definition_cannot_read_gateway_disk(t *testing.T) {
 		t.Fatalf("a definition naming a file sent with it was answered %d %s", status, text)
 	}
 	// Nothing was started by any of the refused.
-	if names, _ := c0.Store.List(context.Background(), store.Records("controller")+"/client"); len(names) != 2 {
+	if names, _ := store.Names(c0.Store.List(context.Background(), store.Records("controller")+"/client")); len(names) != 2 {
 		t.Fatalf("the refused requests left %d values in the store: %v", len(names), names)
 	}
 }

@@ -139,7 +139,7 @@ func (w *world) noted() []store.Op {
 
 func (w *world) list(under string) []string {
 	w.t.Helper()
-	names, err := w.owner.List(ctx, under)
+	names, err := store.Names(w.owner.List(ctx, under))
 	if err != nil {
 		w.t.Fatal(err)
 	}

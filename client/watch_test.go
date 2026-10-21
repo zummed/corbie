@@ -210,7 +210,7 @@ func TestBlobInAResult(t *testing.T) {
 	}
 	// The raw store shows no key and none of the text.
 	owner := l.Memory.As(store.Party{Kind: store.Owner})
-	names, _ := owner.List(ctx, "controller")
+	names, _ := store.Names(owner.List(ctx, "controller"))
 	for _, name := range names {
 		raw, _, _ := owner.Read(ctx, name)
 		if strings.Contains(string(raw), "the report's text") {
@@ -232,7 +232,7 @@ func Test_client_file_named_twice_uploaded_once(t *testing.T) {
 	if r.Status != "done" {
 		t.Fatal(r.Error)
 	}
-	blobs, _ := l.Memory.As(store.Party{Kind: store.Owner}).List(ctx, "controller/records/"+r.ID+"/blobs")
+	blobs, _ := store.Names(l.Memory.As(store.Party{Kind: store.Owner}).List(ctx, "controller/records/"+r.ID+"/blobs"))
 	if len(blobs) != 2 { // the script, and the definition
 		t.Fatalf("a script used by three stages left %d blobs in the record", len(blobs))
 	}
@@ -369,7 +369,7 @@ func Test_blob_reference_to_nothing_handed_up_opens_nothing(t *testing.T) {
 		t.Fatalf("the file beside them reads %q", text)
 	}
 	// Nothing but blobs was copied anywhere.
-	names, _ := l.Memory.As(store.Party{Kind: store.Owner}).List(ctx, store.Records("controller"))
+	names, _ := store.Names(l.Memory.As(store.Party{Kind: store.Owner}).List(ctx, store.Records("controller")))
 	for _, name := range names {
 		if strings.HasSuffix(name, "/"+path.Base(trust)) || strings.HasSuffix(name, "/passwd") {
 			t.Errorf("%s was copied as if it were a blob", name)

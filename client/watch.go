@@ -55,7 +55,7 @@ func (f Filter) keeps(r *Run) bool {
 // every instance, not only roots. A client sees its own; a viewer with
 // access to heads sees everyone's.
 func (c *Client) List(ctx context.Context, filter Filter) ([]*Run, error) {
-	heads, _, err := c.heads(ctx, filter.Finished)
+	heads, _, _, err := c.heads(ctx, filter.Finished, nil)
 	var runs []*Run
 	for _, run := range heads {
 		if filter.keeps(run) {
@@ -65,9 +65,18 @@ func (c *Client) List(ctx context.Context, filter Filter) ([]*Run, error) {
 	return runs, err
 }
 
+// A headRead is a head as it was last read: the mark it was read at, and the
+// run it gives, which is nil for a head that does not check.
+type headRead struct {
+	mark store.Mark
+	run  *Run
+}
+
 // heads gives every head this party may read, in the order of their names,
-// and each one's mark, by which a change is noticed.
-func (c *Client) heads(ctx context.Context, finished bool) ([]*Run, map[string]store.Mark, error) {
+// and each one's mark, by which a change is noticed. A head listed with the
+// mark it was read at in last is not read again. What this look read, and
+// what it took from last, is given by name for the next.
+func (c *Client) heads(ctx context.Context, finished bool, last map[string]headRead) ([]*Run, map[string]store.Mark, map[string]headRead, error) {
 	// The running heads are read before the finished ones: a head is
 	// written among the finished before it leaves the running, so a run
 	// that ends in between is in one or the other.
@@ -77,34 +86,50 @@ func (c *Client) heads(ctx context.Context, finished bool) ([]*Run, map[string]s
 	}
 	found := map[string]*Run{}
 	marks := map[string]store.Mark{}
+	read := map[string]headRead{}
 	for _, place := range places {
-		names, err := c.listHeads(ctx, place)
+		listed, err := c.listHeads(ctx, place)
 		if err != nil {
-			return nil, nil, err
+			return nil, nil, nil, err
 		}
-		read := make([]*instance.Head, len(names))
-		readAt := make([]store.Mark, len(names))
-		err = store.Each(ctx, store.SideBySide, len(names), func(i int) (err error) {
-			read[i], readAt[i], err = c.readHead(ctx, names[i])
+		var unread []string
+		for _, l := range listed {
+			if was, known := last[l.Name]; known && was.mark == l.Mark {
+				read[l.Name] = was
+			} else {
+				unread = append(unread, l.Name)
+			}
+		}
+		now := make([]headRead, len(unread))
+		err = store.Each(ctx, store.SideBySide, len(unread), func(i int) error {
+			head, mark, err := c.readHead(ctx, unread[i])
+			now[i].mark = mark
+			if head != nil {
+				now[i].run = runOf(head)
+			}
 			return err
 		})
 		if err != nil {
-			return nil, nil, err
+			return nil, nil, nil, err
 		}
-		for i, head := range read {
-			if head == nil {
-				continue
+		for i, name := range unread {
+			if now[i].mark != store.None {
+				read[name] = now[i]
 			}
-			// One found in both places goes by the finished one.
-			found[head.Name] = runOf(head)
-			marks[head.Name] = readAt[i]
+		}
+		for _, l := range listed {
+			if was := read[l.Name]; was.run != nil {
+				// One found in both places goes by the finished one.
+				found[was.run.ID] = was.run
+				marks[was.run.ID] = was.mark
+			}
 		}
 	}
 	runs := make([]*Run, 0, len(found))
 	for _, name := range sortedNames(found) {
 		runs = append(runs, found[name])
 	}
-	return runs, marks, nil
+	return runs, marks, read, nil
 }
 
 // under gives the part of a place of heads this party may read: a client's
@@ -116,18 +141,18 @@ func (c *Client) under(base string) string {
 	return base
 }
 
-// listHeads gives the names of the heads in a place.
-func (c *Client) listHeads(ctx context.Context, place string) ([]string, error) {
-	names, err := c.Store.List(ctx, place)
+// listHeads lists the heads in a place.
+func (c *Client) listHeads(ctx context.Context, place string) ([]store.Listed, error) {
+	listed, err := c.Store.List(ctx, place)
 	if errors.Is(err, store.ErrRefused) {
 		return nil, fmt.Errorf("the store gave this party nothing to read")
 	}
-	return names, err
+	return listed, err
 }
 
-// readHead reads the head at a name. It gives nil for one that was listed
-// and is gone, which has moved, and for one that does not check, which is
-// not shown.
+// readHead reads the head at a name, and gives the mark it was read at. It
+// gives no head for one that was listed and is gone, which has moved and
+// has the mark None, and for one that does not check, which is not shown.
 func (c *Client) readHead(ctx context.Context, name string) (*instance.Head, store.Mark, error) {
 	data, mark, err := c.Store.Read(ctx, name)
 	if err != nil || mark == store.None {
@@ -135,7 +160,7 @@ func (c *Client) readHead(ctx context.Context, name string) (*instance.Head, sto
 	}
 	var head instance.Head
 	if _, err := identity.Read(data, name, c.Controller, nil, &head); err != nil {
-		return nil, store.None, nil
+		return nil, mark, nil
 	}
 	return &head, mark, nil
 }
@@ -181,6 +206,7 @@ func (c *Client) Watch(ctx context.Context, filter Filter, interval time.Duratio
 // watched is what a watcher of a listing has seen.
 type watched struct {
 	seen map[string]store.Mark // the runs given, by ID, and the mark each was given at
+	read map[string]headRead   // the heads listed at the last look, by name, as each was read
 	// ended holds the names of the finished heads at the last look, for a
 	// listing that does not take in the finished. It is nil until a look
 	// has been made.
@@ -193,16 +219,17 @@ type watched struct {
 // not listed before: a run that started and ended between two looks is
 // among them.
 func (c *Client) changes(ctx context.Context, filter Filter, w *watched, tell func(Update)) error {
-	runs, marks, err := c.heads(ctx, filter.Finished)
+	runs, marks, read, err := c.heads(ctx, filter.Finished, w.read)
 	if err != nil {
 		return err
 	}
 	var ended []string
 	if !filter.Finished {
-		if ended, err = c.listHeads(ctx, c.under(store.Finished(c.ctl()))); err != nil {
+		if ended, err = store.Names(c.listHeads(ctx, c.under(store.Finished(c.ctl())))); err != nil {
 			return err
 		}
 	}
+	w.read = read
 	for _, run := range runs {
 		old, known := w.seen[run.ID]
 		if !known && !filter.keeps(run) {
@@ -286,6 +313,7 @@ type Entry struct {
 type followed struct {
 	parent string
 	next   int  // the first step not yet read
+	listed bool // whether its steps have been listed: after that they are read by number
 	read   bool // whether any step of it could be read
 	ended  bool
 	jobs   map[string]identity.Card // the runner each job went to, by the job's full name
@@ -413,70 +441,24 @@ func sortedNames[V any](m map[string]V) []string {
 
 // read gives the entries of one instance's record that have not been
 // given: its new steps, then the new emits of the jobs its steps sent. A
-// child one of its steps started is followed from then on.
+// child one of its steps started is followed from then on. A look that
+// fails lists the steps again at the next.
 func (c *Client) read(ctx context.Context, name string, all map[string]*followed, tell func(Entry)) error {
 	f := all[name]
-	var steps []string
-	if !f.ended {
-		// The steps are read from their listing. The older steps of a run
-		// that has gone on a long time are trimmed, so reading starts from
-		// the first that is there, and one that is listed and gone when it
-		// is read is passed over.
-		var err error
-		if steps, err = c.Store.List(ctx, store.Steps(c.ctl(), name)); err != nil {
-			return err
-		}
-	}
-	var numbers []int
-	for _, at := range steps {
-		if number := store.Number(at); number >= f.next {
-			numbers = append(numbers, number)
-		}
-	}
-	read := make([]*instance.Step, len(numbers))
-	failed := make([]error, len(numbers))
-	// A step this client cannot read ends what is given, so each step's
-	// error is kept for its turn.
-	err := store.Each(ctx, store.SideBySide, len(numbers), func(i int) error {
-		read[i], failed[i] = instance.ReadStep(ctx, c.Store, c.Controller, c.ID, name, numbers[i])
-		return nil
-	})
+	readable, err := c.steps(ctx, name, all, tell)
 	if err != nil {
+		f.listed = false
 		return err
 	}
-	for i, step := range read {
-		if errors.Is(failed[i], identity.ErrNotForUs) {
-			return nil // a record this client cannot read
-		}
-		if failed[i] != nil {
-			return failed[i]
-		}
-		if step == nil {
-			continue
-		}
-		for _, ask := range step.Asks {
-			switch ask.Kind {
-			case instance.AskScript:
-				f.jobs[ask.Name] = ask.Card
-			case instance.AskChild:
-				// A child is found from any step that started one.
-				if _, known := all[ask.Child]; !known {
-					all[ask.Child] = &followed{parent: name, jobs: map[string]identity.Card{}, emits: map[string]bool{}}
-				}
-			}
-		}
-		entry, err := stepEntry(name, step)
-		if err != nil {
-			return err
-		}
-		f.next, f.read, f.ended = numbers[i]+1, true, step.State.Status != instance.Running
-		tell(entry)
+	if !readable {
+		return nil // a record this client cannot read
 	}
 	if len(f.jobs) == 0 {
 		return nil
 	}
-	names, err := c.Store.List(ctx, store.Emits(c.ctl(), name))
+	names, err := store.Names(c.Store.List(ctx, store.Emits(c.ctl(), name)))
 	if err != nil {
+		f.listed = false
 		return err
 	}
 	var unread, jobs []string
@@ -496,6 +478,7 @@ func (c *Client) read(ctx context.Context, name string, all map[string]*followed
 		return err
 	})
 	if err != nil {
+		f.listed = false
 		return err
 	}
 	for i, emit := range emits {
@@ -510,6 +493,113 @@ func (c *Client) read(ctx context.Context, name string, all map[string]*followed
 			tell(Entry{ID: name, Time: value.At, Job: emit.Job, Name: value.Name, Data: value.Data})
 		}
 	}
+	return nil
+}
+
+// steps gives the step entries of one instance's record that have not been
+// given. The first look lists them: the older steps of a run that has gone
+// on a long time are trimmed, so reading starts from the first that is
+// there, and one that is listed and gone when it is read is passed over.
+// A later look reads on by number from the first not given, until one is
+// not there, and lists again where the head is past that one. It says
+// false for a record this client cannot read.
+func (c *Client) steps(ctx context.Context, name string, all map[string]*followed, tell func(Entry)) (bool, error) {
+	f := all[name]
+	if f.ended {
+		return true, nil
+	}
+	for f.listed && !f.ended {
+		step, err := instance.ReadStep(ctx, c.Store, c.Controller, c.ID, name, f.next)
+		if err != nil {
+			return !errors.Is(err, identity.ErrNotForUs), ignore(err, identity.ErrNotForUs)
+		}
+		if step == nil {
+			// Not written yet, or trimmed before it was read by a follower
+			// held up longer than the keep: the head says which.
+			head, _, err := instance.ReadHead(ctx, c.Store, c.Controller, name)
+			if err != nil || head == nil || head.Step < f.next {
+				return true, err
+			}
+			f.listed = false
+			break
+		}
+		if err := c.give(name, step, all, tell); err != nil {
+			return true, err
+		}
+		f.next++
+	}
+	if f.listed || f.ended {
+		return true, nil
+	}
+	listed, err := store.Names(c.Store.List(ctx, store.Steps(c.ctl(), name)))
+	if err != nil {
+		return true, err
+	}
+	f.listed = true
+	var numbers []int
+	for _, at := range listed {
+		if number := store.Number(at); number >= f.next {
+			numbers = append(numbers, number)
+		}
+	}
+	read := make([]*instance.Step, len(numbers))
+	failed := make([]error, len(numbers))
+	// A step this client cannot read ends what is given, so each step's
+	// error is kept for its turn.
+	err = store.Each(ctx, store.SideBySide, len(numbers), func(i int) error {
+		read[i], failed[i] = instance.ReadStep(ctx, c.Store, c.Controller, c.ID, name, numbers[i])
+		return nil
+	})
+	if err != nil {
+		return true, err
+	}
+	for i, step := range read {
+		if failed[i] != nil {
+			// The next look reads it again by number, and is given the
+			// same answer.
+			f.next = numbers[i]
+			return !errors.Is(failed[i], identity.ErrNotForUs), ignore(failed[i], identity.ErrNotForUs)
+		}
+		if step != nil {
+			if err := c.give(name, step, all, tell); err != nil {
+				return true, err
+			}
+		}
+		f.next = numbers[i] + 1
+	}
+	f.next = max(f.next, 1)
+	return true, nil
+}
+
+// ignore gives err, or nil where it is the error named.
+func ignore(err, named error) error {
+	if errors.Is(err, named) {
+		return nil
+	}
+	return err
+}
+
+// give gives one step entry of an instance's record, and follows from then
+// on the jobs it sent and the children it started.
+func (c *Client) give(name string, step *instance.Step, all map[string]*followed, tell func(Entry)) error {
+	f := all[name]
+	for _, ask := range step.Asks {
+		switch ask.Kind {
+		case instance.AskScript:
+			f.jobs[ask.Name] = ask.Card
+		case instance.AskChild:
+			// A child is found from any step that started one.
+			if _, known := all[ask.Child]; !known {
+				all[ask.Child] = &followed{parent: name, jobs: map[string]identity.Card{}, emits: map[string]bool{}}
+			}
+		}
+	}
+	entry, err := stepEntry(name, step)
+	if err != nil {
+		return err
+	}
+	f.read, f.ended = true, step.State.Status != instance.Running
+	tell(entry)
 	return nil
 }
 

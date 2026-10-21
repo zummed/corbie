@@ -133,24 +133,43 @@ func checkNamedValues(t *testing.T, s Store) {
 	for _, name := range []string{"p/b", "q/a", "p/c/d", "p/a", "pp/a"} {
 		ok(s.Write(ctx, name, []byte(name), OnlyIfNew))
 	}
-	names := must[[]string](t)(s.List(ctx, "p"))
+	names := must[[]string](t)(Names(s.List(ctx, "p")))
 	if want := []string{"p/a", "p/b", "p/c/d"}; !slices.Equal(names, want) {
 		t.Fatalf("listing gave %v, want %v", names, want)
+	}
+	// Each name is listed with the mark a read of it gives, which an
+	// only-if-unchanged write takes, and which is another once the value is
+	// rewritten.
+	listed := must[[]Listed](t)(s.List(ctx, "p"))
+	for _, l := range listed {
+		if _, mark := read(t, s, l.Name); l.Mark != mark {
+			t.Fatalf("%s is listed with the mark %q and read with %q", l.Name, l.Mark, mark)
+		}
+	}
+	if first := must[[]Listed](t)(s.First(ctx, "p", 1)); len(first) != 1 || first[0] != listed[0] {
+		t.Fatalf("the first under p is %v, and the listing gave %v", first, listed[0])
+	}
+	if !ok(s.Write(ctx, "p/a", []byte("p/a again"), OnlyIfUnchanged(listed[0].Mark))) {
+		t.Fatal("only-if-unchanged with the mark a listing gave did not write")
+	}
+	again := must[[]Listed](t)(s.List(ctx, "p"))
+	if _, mark := read(t, s, "p/a"); again[0].Mark != mark || mark == listed[0].Mark || !slices.Equal(again[1:], listed[1:]) {
+		t.Fatalf("with p/a rewritten the listing gave %v, and before %v", again, listed)
 	}
 	// The first names under a path, in order, and no more than asked for.
 	for _, name := range []string{"w/20261010T120000.000Z/c/i/a", "w/20261010T110000.000Z/c/i/b", "w/20261010T110000.000Z/c/i/a", "w/20261011T090000.000Z/c/i/a"} {
 		ok(s.Write(ctx, name, []byte("\n"), OnlyIfNew))
 	}
-	if got := must[[]string](t)(s.First(ctx, "w", 2)); !slices.Equal(got, []string{"w/20261010T110000.000Z/c/i/a", "w/20261010T110000.000Z/c/i/b"}) {
+	if got := must[[]string](t)(Names(s.First(ctx, "w", 2))); !slices.Equal(got, []string{"w/20261010T110000.000Z/c/i/a", "w/20261010T110000.000Z/c/i/b"}) {
 		t.Fatalf("the first two names are %v", got)
 	}
-	if got := must[[]string](t)(s.First(ctx, "w", 100)); len(got) != 4 || !slices.IsSorted(got) {
+	if got := must[[]string](t)(Names(s.First(ctx, "w", 100))); len(got) != 4 || !slices.IsSorted(got) {
 		t.Fatalf("the first hundred names are %v", got)
 	}
-	if got := must[[]string](t)(s.First(ctx, "nothing/here", 5)); len(got) != 0 {
+	if got := must[[]string](t)(Names(s.First(ctx, "nothing/here", 5))); len(got) != 0 {
 		t.Fatalf("the first names of an empty path are %v", got)
 	}
-	if names := must[[]string](t)(s.List(ctx, "nothing/here")); len(names) != 0 {
+	if names := must[[]string](t)(Names(s.List(ctx, "nothing/here"))); len(names) != 0 {
 		t.Fatalf("listing an empty path gave %v", names)
 	}
 
@@ -273,7 +292,7 @@ func Test_store_name_part_cannot_leave_its_place(t *testing.T) {
 					t.Errorf("delete %q: %v", name, err)
 				}
 			}
-			if _, err := s.List(ctx, "a/../.."); !errors.Is(err, ErrName) {
+			if _, err := Names(s.List(ctx, "a/../..")); !errors.Is(err, ErrName) {
 				t.Errorf("list: %v", err)
 			}
 		})

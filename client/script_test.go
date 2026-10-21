@@ -13,6 +13,7 @@ import (
 	"github.com/zummed/corbie/client"
 	"github.com/zummed/corbie/flow"
 	"github.com/zummed/corbie/plugin"
+	"github.com/zummed/corbie/store"
 )
 
 // script runs one script as a job and gives the run.
@@ -243,7 +244,7 @@ func Test_run_emit_entries_numbered_from_one_without_gaps(t *testing.T) {
 		}
 	}
 	// Written a few at a time, numbered from one with none left out.
-	entries, _ := l.Memory.As(ownerOf()).List(ctx, "controller/records/"+id+"/emits")
+	entries, _ := store.Names(l.Memory.As(ownerOf()).List(ctx, "controller/records/"+id+"/emits"))
 	if len(entries) < 2 || len(entries) > 20 {
 		t.Fatalf("102 emits were written as %d entries", len(entries))
 	}

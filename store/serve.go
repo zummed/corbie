@@ -27,7 +27,7 @@ import (
 //	POST /write?name=&how=&mark=        the body is the value
 //	POST /copy?from=&to=
 //	POST /delete?name=&how=&mark=
-//	GET  /list?under=&first=            the names, one to a line
+//	GET  /list?under=&first=            the names, one to a line, each with a tab and its mark
 //	GET  /wait?under=                   answers when a name there is written
 //
 // A connection is made by a party with its own identity key, to the machine
@@ -202,17 +202,21 @@ func (s *Server) answer(r *http.Request) servedAnswer {
 	case "POST /delete":
 		done, err = held.Delete(ctx, q.Get("name"), how)
 	case "GET /list":
-		var names []string
+		var listed []Listed
 		if first := q.Get("first"); first != "" {
 			n, nerr := strconv.Atoi(first)
 			if nerr != nil || n < 0 {
 				return said(http.StatusUnprocessableEntity, "no such number of names")
 			}
-			names, err = held.First(ctx, q.Get("under"), n)
+			listed, err = held.First(ctx, q.Get("under"), n)
 		} else {
-			names, err = held.List(ctx, q.Get("under"))
+			listed, err = held.List(ctx, q.Get("under"))
 		}
-		a.body = []byte(strings.Join(names, "\n"))
+		lines := make([]string, len(listed))
+		for i, l := range listed {
+			lines[i] = l.Name + "\t" + string(l.Mark)
+		}
+		a.body = []byte(strings.Join(lines, "\n"))
 	case "GET /wait":
 		done, err = s.wait(ctx, party, q.Get("under"))
 	default:

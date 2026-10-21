@@ -114,7 +114,7 @@ func (w *world) leave(as *identity.Identity, name, script string, change func(*i
 func (w *world) results() map[string]*instance.Result {
 	w.t.Helper()
 	out := map[string]*instance.Result{}
-	names, _ := w.owner.List(ctx, store.Inbox(w.ctl.Name))
+	names, _ := store.Names(w.owner.List(ctx, store.Inbox(w.ctl.Name)))
 	for _, name := range names {
 		data, _, _ := w.owner.Read(ctx, name)
 		var msg instance.Message
@@ -144,7 +144,7 @@ func TestJobIsRunAndAnswered(t *testing.T) {
 		t.Fatalf("the result is %+v", got)
 	}
 	// The job is gone from the inbox only once its result is written.
-	if left, _ := w.owner.List(ctx, store.Inbox("r1")); len(left) != 0 {
+	if left, _ := store.Names(w.owner.List(ctx, store.Inbox("r1"))); len(left) != 0 {
 		t.Fatalf("the job is still in the inbox: %v", left)
 	}
 	resultAt, deleteAt := -1, -1
@@ -163,7 +163,7 @@ func TestJobIsRunAndAnswered(t *testing.T) {
 		t.Fatalf("result at %d, delete at %d", resultAt, deleteAt)
 	}
 	// The mark stays until the job's due time has passed.
-	if marks, _ := w.owner.List(ctx, store.TakenList("r1")); len(marks) != 1 {
+	if marks, _ := store.Names(w.owner.List(ctx, store.TakenList("r1"))); len(marks) != 1 {
 		t.Fatalf("the marks are %v", marks)
 	}
 }
@@ -249,7 +249,7 @@ func TestTwoCopiesRunAJobOnce(t *testing.T) {
 		t.Fatalf("%d results came for six jobs", len(got))
 	}
 	// Each job emitted once: one entry under its name.
-	emits, _ := w.owner.List(ctx, store.Emits("ctl", inst))
+	emits, _ := store.Names(w.owner.List(ctx, store.Emits("ctl", inst)))
 	if len(emits) != 6 {
 		t.Fatalf("six jobs left %d emit entries: a job ran more than once", len(emits))
 	}
@@ -281,8 +281,8 @@ func Test_run_copy_at_its_limit_leaves_jobs_unmarked(t *testing.T) {
 			}
 			return
 		default:
-			marks, _ := w.owner.List(ctx, store.TakenList("r1"))
-			inbox, _ := w.owner.List(ctx, store.Inbox("r1"))
+			marks, _ := store.Names(w.owner.List(ctx, store.TakenList("r1")))
+			inbox, _ := store.Names(w.owner.List(ctx, store.Inbox("r1")))
 			// A mark is written only for a job this copy has room for.
 			if held := len(marks) - (4 - len(inbox)); held > most {
 				most = held
@@ -299,7 +299,7 @@ func TestOverdueJobIsNotStarted(t *testing.T) {
 	if got := w.results(); len(got) != 0 {
 		t.Fatalf("an overdue job was answered: %+v", got["late"])
 	}
-	if emits, _ := w.owner.List(ctx, store.Emits("ctl", inst)); len(emits) != 0 {
+	if emits, _ := store.Names(w.owner.List(ctx, store.Emits("ctl", inst))); len(emits) != 0 {
 		t.Fatal("an overdue job was run")
 	}
 }
@@ -322,7 +322,7 @@ func Test_id_refused_message_removed_from_inbox(t *testing.T) {
 	if len(got) != 1 || got["good"] == nil || got["good"].Output != "ran" {
 		t.Fatalf("the results are %v", got)
 	}
-	if left, _ := w.owner.List(ctx, store.Inbox("r1")); len(left) != 0 {
+	if left, _ := store.Names(w.owner.List(ctx, store.Inbox("r1"))); len(left) != 0 {
 		t.Fatalf("what the runner does not accept was left in its inbox: %v", left)
 	}
 }
@@ -363,10 +363,10 @@ func Test_run_job_with_cancel_waiting_is_not_started(t *testing.T) {
 	if got == nil || got.Status != machine.StatusCancelled {
 		t.Fatalf("a job whose cancel was waiting: %+v", got)
 	}
-	if emits, _ := w.owner.List(ctx, store.Emits("ctl", inst)); len(emits) != 0 {
+	if emits, _ := store.Names(w.owner.List(ctx, store.Emits("ctl", inst))); len(emits) != 0 {
 		t.Fatal("a job whose cancel was waiting was started")
 	}
-	if left, _ := w.owner.List(ctx, store.Inbox("r1")); len(left) != 0 {
+	if left, _ := store.Names(w.owner.List(ctx, store.Inbox("r1"))); len(left) != 0 {
 		t.Fatalf("left in the inbox: %v", left)
 	}
 }
@@ -512,18 +512,18 @@ func TestMarkGoesOnceTheDueTimeHasPassed(t *testing.T) {
 	w.job(w.ctl, "quick", `return 1`, func(j *instance.Job) { j.Due = time.Now().Add(2 * time.Second) })
 	r := w.runner("all")
 	pass(t, r)
-	if marks, _ := w.owner.List(ctx, store.TakenList("r1")); len(marks) != 1 {
+	if marks, _ := store.Names(w.owner.List(ctx, store.TakenList("r1"))); len(marks) != 1 {
 		t.Fatalf("after the job the marks are %v", marks)
 	}
 	// Five minutes past the due time, by the runner's own clock.
 	r.Now = func() time.Time { return time.Now().Add(4 * time.Minute) }
 	pass(t, r)
-	if marks, _ := w.owner.List(ctx, store.TakenList("r1")); len(marks) != 1 {
+	if marks, _ := store.Names(w.owner.List(ctx, store.TakenList("r1"))); len(marks) != 1 {
 		t.Fatal("the mark went before the allowance for clocks had passed")
 	}
 	r.Now = func() time.Time { return time.Now().Add(6 * time.Minute) }
 	pass(t, r)
-	if marks, _ := w.owner.List(ctx, store.TakenList("r1")); len(marks) != 0 {
+	if marks, _ := store.Names(w.owner.List(ctx, store.TakenList("r1"))); len(marks) != 0 {
 		t.Fatalf("the mark is still there: %v", marks)
 	}
 }

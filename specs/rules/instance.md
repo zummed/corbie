@@ -82,8 +82,8 @@ The detailed rules behind the [Instances overview](../instance.md).
 **R-inst-42** Every viewer sees what is happening the same way, by reading heads and records from the store: the command line, a terminal screen, a web page, the gateway's streams and an application built on Corbie.
 *Accept:* against one store, `corbie run ls`, the gateway's list stream and the client package's list give the same runs with the same statuses, and `corbie run show`, the gateway's record stream and the package's follow give the same entries in the same order.
 
-**R-inst-43** A watcher lists the running heads it may read and reports which are new and which have changed, and the end of the first listing is marked.
-*Accept:* with five runs in progress, a new watcher is given five heads, then the mark, then only what appears or changes afterwards; with none in progress the mark comes first. Start a run and let it take two steps: the watcher reports it once as new and reports it as changed after its head is rewritten, and a head that has not changed is not reported again.
+**R-inst-43** A watcher lists the running heads it may read, reads only those that are new or have changed since it last read them, and reports which are new and which have changed; the end of the first listing is marked.
+*Accept:* with five runs in progress, a new watcher is given five heads, then the mark, then only what appears or changes afterwards; with none in progress the mark comes first. Start a run and let it take two steps: the watcher reports it once as new and reports it as changed after its head is rewritten, and a head that has not changed is not reported again. On a memory store that notes every read, a head that has not changed is not read again.
 
 **R-inst-45** A listing can be narrowed by label, by status and by parent, and can take in the finished heads as well.
 *Accept:* with runs labelled `team=ops` and `team=web`, a listing narrowed to `team=ops` gives only the first kind, and a child of one of them is given too. A listing narrowed to one instance as parent gives its children and no others. With two runs going and three ended and kept, the plain listing gives two and the wider one gives five, and the wider one narrowed to failed gives only instances whose head says failed.
@@ -104,6 +104,8 @@ The detailed rules behind the [Instances overview](../instance.md).
 **C-inst-11** A watcher stops waiting on a child whose record it cannot read once the child's parent has ended. A follow that waits for every child to end would otherwise never return. *Test:* `inst_watch_ends_despite_unreadable_child`
 
 **C-inst-12** A watcher of a listing that does not take in the finished heads lists the finished heads by name at each look and reads only those it has not listed before. A run read there that it has not reported, and that the listing keeps, is reported once, as new and ended. A run that starts and ends between two looks is never among the running heads, and a watcher that gets no notice of writes would never be told of it. *Test:* `inst_watch_reports_run_ended_between_looks`
+
+**C-inst-13** A watcher reads a head only when it is new or a listing shows it has changed since the watcher last read it. A watcher looks every two seconds, and on a bucket a look that reads a few hundred heads takes seconds. *Test:* `inst_watch_reads_only_heads_that_changed`
 
 ## Sending
 
@@ -132,7 +134,7 @@ The detailed rules behind the [Instances overview](../instance.md).
 
 Uses:
 
-- **Store**: heads under `running/` and `finished/`, records under `records/`, receipts under `receipts/`, each within the table of who may touch what; ordered listing; the notice a directory or memory store gives a watcher in the same process.
+- **Store**: heads under `running/` and `finished/`, records under `records/`, receipts under `receipts/`, each within the table of who may touch what; ordered listing, each name with what a read of it gives; the notice a directory or memory store gives a watcher in the same process.
 - **Identity**: the controller's signature on a head; the sealing of record entries to the controller and the root's client, and of a receipt to its client; the signature of a runner on what it emits.
 - **Blobs**: the larger values a record's entries refer to, where they live in the record, and the rules for when a blob in a record goes.
 

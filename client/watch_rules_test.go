@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"slices"
 	"strings"
 	"sync"
@@ -99,16 +100,24 @@ func Test_inst_watch_ends_despite_unreadable_child(t *testing.T) {
 	a.put(at, value, err)
 	// The readable child ends only at the fourth look at it, well after the
 	// parent has been seen to have ended.
-	looks := 0
+	looks, past := 0, 0
 	a.hooked.before = func(act, name string) error {
-		if act == "list" && name == store.Steps("controller", slow) {
+		if act == "read" && name == store.Step("controller", slow, 2) {
 			if looks++; looks == 4 {
 				a.step(slow, 2, instance.Cancelled)
 			}
 		}
+		// The sealed child is asked for its first step again, never for one
+		// before it.
+		if act == "read" && name == store.Step("controller", sealed, 0) {
+			past++
+		}
 		return nil
 	}
 	run, told := a.follow(root)
+	if past != 0 {
+		t.Fatalf("a step before the first of a record that cannot be read was read %d times", past)
+	}
 	if run.Status != instance.Cancelled {
 		t.Fatalf("the follow ended with the run %s", run.Status)
 	}
@@ -473,6 +482,148 @@ func Test_inst_watch_reports_run_ended_between_looks(t *testing.T) {
 	}
 	if n := reads[store.FinishedHead("controller", flash)]; n != 1 {
 		t.Fatalf("the head of the run that ended between two looks was read %d times", n)
+	}
+}
+
+// A follow lists a record's steps once and then reads on by number: each
+// step is read once, and a look with nothing new reads only the next.
+func TestFollowListsStepsOnceThenReadsByNumber(t *testing.T) {
+	a := arrange(t)
+	a.hooked.silent = true
+	id := a.named("steady")
+	for number := 1; number <= 3; number++ {
+		a.step(id, number, instance.Running)
+	}
+	a.head(id, instance.Running, 3)
+	// The run ends at the fifth look for its fourth step. What is read
+	// after that is the run being shown as it ended, and is not counted.
+	reads, lists, ended := map[string]int{}, 0, false
+	a.hooked.before = func(act, name string) error {
+		switch {
+		case ended:
+		case act == "list" && name == store.Steps("controller", id):
+			lists++
+		case act == "read" && strings.HasPrefix(name, store.Steps("controller", id)):
+			if reads[name]++; name == store.Step("controller", id, 4) && reads[name] == 5 {
+				a.step(id, 4, instance.Done)
+				a.head(id, instance.Done, 4)
+				ended = true
+			}
+		}
+		return nil
+	}
+	run, told := a.follow(id)
+	want := map[string]int{
+		store.Step("controller", id, 1): 1,
+		store.Step("controller", id, 2): 1,
+		store.Step("controller", id, 3): 1,
+		store.Step("controller", id, 4): 5,
+	}
+	if run.Status != instance.Done || len(told) != 4 || lists != 1 || !maps.Equal(reads, want) {
+		t.Fatalf("the follow ended %s, told %v; the steps were listed %d times and read %v, want once and %v", run.Status, told, lists, reads, want)
+	}
+}
+
+// A follower held up for longer than the keep finds the step it was to read
+// next trimmed: it goes on from the first step there, to the run's end.
+func TestFollowGoesOnPastStepsTrimmedWhileItWasBehind(t *testing.T) {
+	a := arrange(t)
+	a.hooked.silent = true
+	id := a.named("behind")
+	a.step(id, 1, instance.Running)
+	a.head(id, instance.Running, 1)
+	behind := true
+	a.hooked.before = func(act, name string) error {
+		// While the follower was held up after the first step, the run took
+		// three more, and the second and third were trimmed.
+		if act == "read" && name == store.Step("controller", id, 2) && behind {
+			behind = false
+			a.step(id, 2, instance.Running)
+			a.step(id, 3, instance.Running)
+			a.step(id, 4, instance.Done)
+			a.head(id, instance.Done, 4)
+			for _, number := range []int{2, 3} {
+				if _, err := a.owner.Delete(ctx, store.Step("controller", id, number), store.Overwrite); err != nil {
+					t.Error(err)
+				}
+			}
+		}
+		return nil
+	}
+	run, told := a.follow(id)
+	if want := []string{"behind step 1", "behind step 4"}; run.Status != instance.Done || !slices.Equal(told, want) {
+		t.Fatalf("the follow ended %s, told %v, want %v", run.Status, told, want)
+	}
+}
+
+// A watcher on a store that gives no notices reads a head only when it is
+// new or the listing gives it a mark other than the one it was read at.
+// Look after look, a head that has not changed is read once, and so are a
+// head the listing does not keep and a finished head; a head rewritten is
+// read once more.
+func Test_inst_watch_reads_only_heads_that_changed(t *testing.T) {
+	a := arrange(t)
+	a.hooked.silent = true
+	still, moves, other, ended := a.named("still"), a.named("moves"), a.named("other"), a.named("ended")
+	a.head(still, instance.Running, 1, "role=out")
+	a.head(moves, instance.Running, 1, "role=out")
+	a.head(other, instance.Running, 1, "role=in")
+	a.head(ended, instance.Done, 2, "role=out")
+	reads, looks := map[string]int{}, 0
+	a.hooked.before = func(act, name string) error {
+		switch {
+		case act == "read":
+			reads[name]++
+		case name == store.Running("controller")+"/client":
+			looks++
+		}
+		return nil
+	}
+	// after waits for a few more looks than have been made.
+	after := func(more int) {
+		a.hooked.mu.Lock()
+		want := looks + more
+		a.hooked.mu.Unlock()
+		for deadline := time.Now().Add(5 * time.Second); ; time.Sleep(time.Millisecond) {
+			a.hooked.mu.Lock()
+			n := looks
+			a.hooked.mu.Unlock()
+			if n >= want {
+				return
+			}
+			if time.Now().After(deadline) {
+				t.Fatalf("the watcher made %d looks, want %d", n, want)
+			}
+		}
+	}
+	var mu sync.Mutex
+	var updates []client.Update
+	watching, stop := context.WithCancel(ctx)
+	defer stop()
+	go a.Watch(watching, client.Filter{Labels: map[string]string{"role": "out"}, Finished: true}, time.Millisecond, func(u client.Update) {
+		mu.Lock()
+		defer mu.Unlock()
+		updates = append(updates, u)
+	})
+	after(5)
+	a.head(moves, instance.Running, 2, "role=out")
+	after(5)
+	stop()
+	mu.Lock()
+	defer mu.Unlock()
+	if len(updates) != 5 || !updates[3].Listed || updates[4].Run == nil || updates[4].Run.ID != moves || updates[4].Run.Step != 2 {
+		t.Fatalf("the watcher was given %+v", updates)
+	}
+	a.hooked.mu.Lock()
+	defer a.hooked.mu.Unlock()
+	want := map[string]int{
+		store.RunningHead("controller", still):  1,
+		store.RunningHead("controller", other):  1,
+		store.FinishedHead("controller", ended): 1,
+		store.RunningHead("controller", moves):  2,
+	}
+	if !maps.Equal(reads, want) {
+		t.Fatalf("over %d looks the heads were read %v, want %v", looks, reads, want)
 	}
 }
 

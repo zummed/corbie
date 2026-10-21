@@ -109,7 +109,7 @@ func (p *pass) keep(a *arrival) error {
 // cancelled one names it. A machine whose step has been trimmed away ended
 // before this one did, and its own wake came due before this one's.
 func (p *pass) remove(inst string) error {
-	names, err := p.store.List(p.ctx, store.Record(p.ctl, inst))
+	names, err := store.Names(p.store.List(p.ctx, store.Record(p.ctl, inst)))
 	if err != nil {
 		return err
 	}
@@ -179,7 +179,7 @@ func (p *pass) written(name string) (time.Time, error) {
 // The definition, its scripts and the run's secrets always stay.
 func (p *pass) trim(inst string, latest *instance.Step, keep time.Duration) error {
 	before := p.now.Add(-keep)
-	names, err := p.store.List(p.ctx, store.Record(p.ctl, inst))
+	names, err := store.Names(p.store.List(p.ctx, store.Record(p.ctl, inst)))
 	if err != nil {
 		return err
 	}
@@ -316,7 +316,7 @@ func (p *pass) hourly(wakes []string, busy bool) error {
 	}
 	// An upload for a run that has not started within a day: a record that
 	// holds blobs and no step, under a name older than a day.
-	records, err := p.store.List(p.ctx, store.Records(p.ctl))
+	records, err := store.Names(p.store.List(p.ctx, store.Records(p.ctl)))
 	if err != nil {
 		return err
 	}
@@ -372,7 +372,7 @@ func (p *pass) pastReceipts() (gone []string, more bool, err error) {
 		if party.Card.Kind != identity.Client {
 			continue
 		}
-		names, err := p.store.First(p.ctx, store.Receipts(p.ctl, party.Card.Name), wakeBatch)
+		names, err := store.Names(p.store.First(p.ctx, store.Receipts(p.ctl, party.Card.Name), wakeBatch))
 		if err != nil {
 			return nil, false, err
 		}

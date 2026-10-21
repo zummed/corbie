@@ -34,7 +34,7 @@ An instance that runs for a long time would grow without limit, so its definitio
 
 There is one way to see what is happening, and every viewer uses it: the command line, a terminal screen, a web page, the gateway's streams, and an application built on Corbie.
 
-A watcher lists the running heads it may read and notices which are new or changed. The end of the first listing is marked, so a viewer knows when it has seen everything that already existed. A listing can be narrowed by label, by status and by parent, and can take in the finished heads as well.
+A watcher lists the running heads it may read, and reads a head only when it is new or has changed since it last read it. The end of the first listing is marked, so a viewer knows when it has seen everything that already existed. A listing can be narrowed by label, by status and by parent, and can take in the finished heads as well.
 
 A run is reported once more when it ends, saying how. For a listing that does not take in the finished heads, the watcher lists the finished heads by name at each look and reads only those it has not listed before, so a run that started and ended between two looks is reported too, once, as new and ended.
 

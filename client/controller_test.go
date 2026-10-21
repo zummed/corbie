@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/zummed/corbie/client"
+	"github.com/zummed/corbie/store"
 )
 
 // The controller makes the attempts a job asks for and gives the machine
@@ -167,7 +168,7 @@ func TestCancelReachesEverythingBelow(t *testing.T) {
 	}
 	// The job is stopped long before its thirty seconds.
 	waitFor(t, l, func([]*client.Run) string {
-		names, _ := l.Memory.As(ownerOf()).List(ctx, "runner/inbox")
+		names, _ := store.Names(l.Memory.As(ownerOf()).List(ctx, "runner/inbox"))
 		if len(names) == 0 {
 			return "empty"
 		}

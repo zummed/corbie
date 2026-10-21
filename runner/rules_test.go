@@ -56,7 +56,7 @@ func (b *between) Write(ctx context.Context, name string, value []byte, how stor
 	return written, err
 }
 
-func (b *between) List(ctx context.Context, under string) ([]string, error) {
+func (b *between) List(ctx context.Context, under string) ([]store.Listed, error) {
 	if b.listing != nil {
 		b.listing(under)
 	}
@@ -95,7 +95,7 @@ func (w *world) cancel(message string) string {
 func (w *world) emitted(job string) []*instance.Emit {
 	w.t.Helper()
 	var entries []*instance.Emit
-	names, _ := w.owner.List(ctx, store.Emits("ctl", inst)+"/"+job)
+	names, _ := store.Names(w.owner.List(ctx, store.Emits("ctl", inst)+"/"+job))
 	for _, name := range names {
 		data, _, _ := w.owner.Read(ctx, name)
 		var entry instance.Emit
@@ -109,7 +109,7 @@ func (w *world) emitted(job string) []*instance.Emit {
 
 // inbox lists what is waiting for the runner.
 func (w *world) inbox() []string {
-	names, _ := w.owner.List(ctx, store.Inbox("r1"))
+	names, _ := store.Names(w.owner.List(ctx, store.Inbox("r1")))
 	return names
 }
 
@@ -277,7 +277,7 @@ func Test_run_job_taken_only_if_limit_fits_time_left(t *testing.T) {
 	if left := w.inbox(); len(left) != 1 || !strings.HasSuffix(left[0], "/"+long) {
 		t.Fatalf("the inbox holds %v", left)
 	}
-	if marks, _ := w.owner.List(ctx, store.TakenList("r1")); len(marks) != 1 || strings.HasSuffix(marks[0], "/"+long) {
+	if marks, _ := store.Names(w.owner.List(ctx, store.TakenList("r1"))); len(marks) != 1 || strings.HasSuffix(marks[0], "/"+long) {
 		t.Fatalf("the marks are %v", marks)
 	}
 	// With no limit from its host, the copy takes it.
@@ -364,7 +364,7 @@ func Test_run_result_stays_good_while_controller_is_away(t *testing.T) {
 	w.job(w.ctl, "work", `emit("n", 1); return "done"`, func(j *instance.Job) { j.Wants = []string{"n"} })
 	pass(t, w.runner("all"))
 	later := time.Now().AddDate(1, 0, 0)
-	names, _ := w.owner.List(ctx, store.Inbox("ctl"))
+	names, _ := store.Names(w.owner.List(ctx, store.Inbox("ctl")))
 	kinds := map[string]int{}
 	for _, name := range names {
 		data, _, _ := w.owner.Read(ctx, name)

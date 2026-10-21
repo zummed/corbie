@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"reflect"
 	"strings"
 	"time"
 
@@ -152,23 +153,58 @@ func (c *Client) Start(ctx context.Context, draft *machine.Draft, start Start) (
 	if err != nil {
 		return "", err
 	}
-	// A value carried over from another run is copied into this one's
-	// record: every blob lives in the record of one instance.
-	if input, err = blob.CopyAll(ctx, c.Store, input, c.ctl(), run); err != nil {
-		return "", err
+	// Every upload is made side by side, under one bound: the definition
+	// and its files, a copy of each blob carried over from another run
+	// (every blob lives in the record of one instance), and a blob for each
+	// file of the input. made is what stands at each blob's name in the
+	// input once they are done.
+	s := store.Bounded(c.Store, store.SideBySide)
+	var ref blob.Ref
+	uploads := []func() error{func() (err error) {
+		ref, err = draft.Store(ctx, s, c.ctl(), run)
+		return err
+	}}
+	made := map[string]*blob.Ref{}
+	for _, carried := range blob.Refs(input) {
+		if made[carried.At] == nil {
+			copied := new(blob.Ref)
+			made[carried.At] = copied
+			uploads = append(uploads, func() (err error) {
+				*copied, err = blob.CopyWhole(ctx, s, carried, c.ctl(), run)
+				return err
+			})
+		}
 	}
-	ref, err := draft.Store(ctx, c.Store, c.ctl(), run)
-	if err != nil {
-		return "", err
-	}
-	// Each file is written, and its blob stands where the file stood. A
-	// blob carried over is already its copy here, so nothing is looked up
-	// again.
+	// A file is named as its blob at once, and the blob is written with
+	// the rest. A file given at more than one place is one blob at each of
+	// them: one reader is read once. A reader that cannot be compared is a
+	// value of its own wherever it is given. A blob carried over is a value
+	// here, so nothing is looked up again.
+	readers := map[io.Reader]blob.Ref{}
 	write := func(file InputFile) (any, error) {
-		given, err := blob.Write(ctx, c.Store, store.Blob(c.ctl(), run, blob.NewName()), blob.TypeOf(file.Name), blob.NewKey(), file.Contents)
-		return given.Value(), err
+		shared := reflect.ValueOf(file.Contents).Comparable()
+		if named, given := readers[file.Contents]; shared && given {
+			return named.Value(), nil
+		}
+		named := blob.Ref{At: store.Blob(c.ctl(), run, blob.NewName()), Type: blob.TypeOf(file.Name), Key: blob.NewKey()}
+		if shared {
+			readers[file.Contents] = named
+		}
+		given := new(blob.Ref)
+		made[named.At] = given
+		uploads = append(uploads, func() (err error) {
+			*given, err = blob.Write(ctx, s, named.At, named.Type, named.Key, file.Contents)
+			return err
+		})
+		return named.Value(), nil
 	}
 	if input, err = c.resolve(ctx, input, write); err != nil {
+		return "", err
+	}
+	if err := store.Each(ctx, store.SideBySide, len(uploads), func(i int) error { return uploads[i]() }); err != nil {
+		return "", err
+	}
+	if input, err = blob.Walk(input, func(_ string, at blob.Ref) (any, error) { return made[at.At].Value(), nil }); err != nil {
 		return "", err
 	}
 	seed := make([]byte, 32)

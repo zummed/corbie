@@ -396,26 +396,32 @@ type Draft struct {
 	needsAsk bool
 }
 
-// Store writes a draft into an instance's record: its files, its child
-// definitions and then the definition itself, which names them. It gives
-// the stored definition's reference.
+// Store writes a draft into an instance's record: its files and its child
+// definitions side by side, and then the definition itself, which names
+// them. It gives the stored definition's reference. What bounds how many
+// requests are open at once is a store from store.Bounded.
 func (d *Draft) Store(ctx context.Context, s store.Store, ctl, instance string) (blob.Ref, error) {
+	paths, names := sortedKeys(d.Files), sortedKeys(d.Children)
+	refs := make([]blob.Ref, len(paths)+len(names))
+	err := store.Each(ctx, store.SideBySide, len(refs), func(i int) (err error) {
+		if i < len(paths) {
+			refs[i], err = blob.Write(ctx, s, store.Blob(ctl, instance, blob.NewName()), blob.TypeOf(paths[i]), blob.NewKey(),
+				strings.NewReader(string(d.Files[paths[i]])))
+		} else {
+			refs[i], err = d.Children[names[i-len(paths)]].Store(ctx, s, ctl, instance)
+		}
+		return err
+	})
+	if err != nil {
+		return blob.Ref{}, err
+	}
 	def := *d.Definition
 	def.Scripts, def.Machines = map[string]blob.Ref{}, map[string]blob.Ref{}
-	for _, path := range sortedKeys(d.Files) {
-		ref, err := blob.Write(ctx, s, store.Blob(ctl, instance, blob.NewName()), blob.TypeOf(path), blob.NewKey(),
-			strings.NewReader(string(d.Files[path])))
-		if err != nil {
-			return blob.Ref{}, err
-		}
-		def.Scripts[path] = ref.Local()
+	for i, path := range paths {
+		def.Scripts[path] = refs[i].Local()
 	}
-	for _, name := range sortedKeys(d.Children) {
-		ref, err := d.Children[name].Store(ctx, s, ctl, instance)
-		if err != nil {
-			return blob.Ref{}, err
-		}
-		def.Machines[name] = ref.Local()
+	for i, name := range names {
+		def.Machines[name] = refs[len(paths)+i].Local()
 	}
 	contents, err := json.Marshal(&def, json.Deterministic(true))
 	if err != nil {

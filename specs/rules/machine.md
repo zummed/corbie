@@ -270,6 +270,7 @@ Uses:
 - **Secrets.** A definition names the secrets a job uses; a machine holds only the names.
 - **Blobs.** A value may hold a reference to a blob; a value handed up from a child is copied into the parent's record before the parent sees it.
 - **Plugins.** A script defines a machine at run time through the `machines` plugin; a machine type is added as an extension.
+- **Store.** Writes a draft's files and definitions into an instance's record, a bounded number at a time.
 
 Used by:
 

@@ -8,7 +8,7 @@ The client is a public Go package in the Corbie repository. An application writt
 
 It does two kinds of thing.
 
-It **sends**: start a run, cancel one, send an event to one, answer a ticket. To start a run it takes a definition and the files it names, fills out the short forms, checks the whole and reports everything wrong at once, uploads the files, and sends the start. A start may carry input, labels, run secrets, a list that narrows what the run may do, and a timeout. Any value in the input may be a file.
+It **sends**: start a run, cancel one, send an event to one, answer a ticket. To start a run it takes a definition and the files it names, fills out the short forms, checks the whole and reports everything wrong at once, uploads the definition, its files and any file in the input side by side, a bounded number at a time, and sends the start once every one is in the store. A start may carry input, labels, run secrets, a list that narrows what the run may do, and a timeout. Any value in the input may be a file.
 
 It **reads**: list runs and follow the list as it changes; show one run, where it stands and how it ended; read a run's record so far, children included, and follow it as it grows; fetch a file from a result; show the definition a run was started from.
 

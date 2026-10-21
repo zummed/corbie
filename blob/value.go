@@ -229,24 +229,17 @@ func Named(ctx context.Context, s store.Store, def Ref) ([]Ref, error) {
 	return all, nil
 }
 
-// CopyAll gives a value in which every blob has been copied into an
-// instance's record, with what stored definitions among them name. The
-// copies are in the store before the value is returned.
-func CopyAll(ctx context.Context, s store.Store, v any, ctl, instance string) (any, error) {
-	return Walk(v, func(_ string, ref Ref) (any, error) {
-		named, err := Named(ctx, s, ref)
-		if err != nil {
-			return nil, err
+// CopyWhole copies a blob into an instance's record, with what it names if
+// it is a stored definition. It gives the copy's reference.
+func CopyWhole(ctx context.Context, s store.Store, ref Ref, ctl, instance string) (Ref, error) {
+	named, err := Named(ctx, s, ref)
+	if err != nil {
+		return Ref{}, err
+	}
+	for _, inner := range named {
+		if _, err := Copy(ctx, s, inner, ctl, instance); err != nil {
+			return Ref{}, err
 		}
-		for _, inner := range named {
-			if _, err := Copy(ctx, s, inner, ctl, instance); err != nil {
-				return nil, err
-			}
-		}
-		copied, err := Copy(ctx, s, ref, ctl, instance)
-		if err != nil {
-			return nil, err
-		}
-		return copied.Value(), nil
-	})
+	}
+	return Copy(ctx, s, ref, ctl, instance)
 }

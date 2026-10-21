@@ -13,6 +13,8 @@ The detailed rules behind [the Client overview](../client.md).
 **R-client-06** To start a run the package reads the definition and the files it names as one set (every script the definition names by path, the files each job lists, every machine kept in its own file, and a file of tools an agent names), fills out the short forms, checks the whole and reports everything wrong at once, and uploads the files before it sends the start.
 *Accept:* a flow names a script and lists one file it loads, and a child machine kept in its own file with a script of its own; after the start the run's record holds all five, the controller's first step finds them there, and the run finishes using them. A definition with a mistake of its own, a second in another stage and a third in a child's file is started: one report lists all three, the child's among them.
 
+**C-client-54** A start's uploads are made side by side, a bounded number at a time. One after another, each upload waits a round trip to a bucket; all at once, a bucket refuses the burst. *Test:* `client_start_uploads_side_by_side`
+
 **R-client-09** When the check finds anything wrong, nothing is uploaded and nothing is sent.
 *Accept:* after the report of the three mistakes above, a listing of the store shows no new value.
 
@@ -221,7 +223,7 @@ The detailed rules behind [the Client overview](../client.md).
 
 Uses:
 
-- **Store.** Reads heads, records and its own receipts; writes messages into the controller's inbox and new blobs into the records of its own runs; is told at once of a write made in the same process, and otherwise looks again at the one interval (R-inst-54).
+- **Store.** Reads heads, records and its own receipts; writes messages into the controller's inbox and new blobs into the records of its own runs, a bounded number at a time; is told at once of a write made in the same process, and otherwise looks again at the one interval (R-inst-54).
 - **Instances.** The head and the entries of a record are what it reads, by the one way of watching, with its narrowings (R-inst-43 to R-inst-49); a receipt is what it gets back for a message; the three levels of watching set what it shows, and a head that is not the controller's is not shown (R-inst-01); the run's name is chosen before anything is sent (R-inst-65).
 - **Blobs.** Makes a blob for each uploaded file, reads a blob through its reference, copies a blob from one record to another (R-blob-25), and shows a blob as its type, size and path with no key (R-blob-06).
 - **Identity.** The client's own identity and its controller's card: it signs and seals each message, opens receipts and records sealed to it, and checks the controller's signature on a head. `corbie init` and the `controller`, `runner` and `client` commands that enrol and trust are Identity's (R-id-12 to R-id-22).

@@ -280,11 +280,11 @@ func (p *pass) carry(inst string, step *instance.Step, ask *instance.Ask) error 
 // handed up as it is, and opens nothing there as it opened nothing here.
 func (p *pass) handUp(v any, to string) (any, error) {
 	return blob.Walk(v, func(_ string, ref blob.Ref) (any, error) {
-		copied, err := blob.CopyAll(p.ctx, p.store, ref.Value(), p.ctl, to)
+		copied, err := blob.CopyWhole(p.ctx, p.store, ref, p.ctl, to)
 		if err != nil {
 			return ref.Value(), p.blobError(err)
 		}
-		return copied, nil
+		return copied.Value(), nil
 	})
 }
 

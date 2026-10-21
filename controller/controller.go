@@ -37,7 +37,7 @@ type Controller struct {
 
 // New makes a controller on a store.
 func New(id *identity.Identity, s store.Store) *Controller {
-	return &Controller{ID: id, Store: s, Now: time.Now, SideBySide: 16}
+	return &Controller{ID: id, Store: s, Now: time.Now, SideBySide: store.SideBySide}
 }
 
 // wakeBatch is how many wakes a pass reads at once.
@@ -92,7 +92,7 @@ func (a *arrival) good(now time.Time) bool { return a.wake || a.value.Good(now) 
 // says when the next thing is due, if it knows of one.
 func (c *Controller) Pass(ctx context.Context) (next time.Time, err error) {
 	p := &pass{c: c, ctx: ctx, now: c.Now().UTC(), ctl: c.ID.Name,
-		store: bounded{c.Store, make(chan struct{}, max(c.SideBySide, 1))},
+		store: store.Bounded(c.Store, c.SideBySide),
 		trust: map[string]*identity.Trust{}, defs: map[string]*machine.Definition{}}
 
 	// The inbox is read before any wake is acted on: a result that has
@@ -185,35 +185,7 @@ func (c *Controller) Pass(ctx context.Context) (next time.Time, err error) {
 // the first error. One of them may itself do things side by side: what
 // bounds the pass is how many requests its store has open.
 func (p *pass) each(n int, do func(i int) error) error {
-	limit := max(p.c.SideBySide, 1)
-	var wg sync.WaitGroup
-	var mu sync.Mutex
-	var first error
-	slots := make(chan struct{}, limit)
-	for i := range n {
-		mu.Lock()
-		stop := first != nil
-		mu.Unlock()
-		if stop || p.ctx.Err() != nil {
-			break
-		}
-		slots <- struct{}{}
-		wg.Go(func() {
-			defer func() { <-slots }()
-			if err := do(i); err != nil {
-				mu.Lock()
-				if first == nil {
-					first = err
-				}
-				mu.Unlock()
-			}
-		})
-	}
-	wg.Wait()
-	if first == nil {
-		first = p.ctx.Err()
-	}
-	return first
+	return store.Each(p.ctx, p.c.SideBySide, n, do)
 }
 
 // open reads one message from the inbox. It is checked in order: signed by

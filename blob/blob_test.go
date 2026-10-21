@@ -221,6 +221,15 @@ func definition(t *testing.T, s store.Store, instance string, inner ...Ref) Ref 
 	return ref
 }
 
+// copyAll gives a value with every blob in it copied whole into an
+// instance's record, as a value is handed up.
+func copyAll(s store.Store, v any, instance string) (any, error) {
+	return Walk(v, func(_ string, ref Ref) (any, error) {
+		copied, err := CopyWhole(ctx, s, ref, "ctl", instance)
+		return copied.Value(), err
+	})
+}
+
 func Test_blob_copy_up_takes_blobs_referred_to_inside_blobs(t *testing.T) {
 	s := memory(t)
 	child, parent := "c1/20261010T120000.000Z-child", "c1/20261010T120000.000Z-parent"
@@ -233,7 +242,7 @@ func Test_blob_copy_up_takes_blobs_referred_to_inside_blobs(t *testing.T) {
 	plain := write(t, s, store.Blob("ctl", child, "plain"), lookalike)
 
 	value := map[string]any{"def": def.Value(), "files": []any{file.Value(), plain.Value()}, "n": 3.0}
-	up, err := CopyAll(ctx, s, value, "ctl", parent)
+	up, err := copyAll(s, value, parent)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -262,7 +271,7 @@ func Test_blob_copy_up_takes_blobs_referred_to_inside_blobs(t *testing.T) {
 	}
 	// Done twice, it is done once.
 	before, _ := s.List(ctx, "ctl")
-	if _, err := CopyAll(ctx, s, up, "ctl", parent); err != nil {
+	if _, err := copyAll(s, up, parent); err != nil {
 		t.Fatal(err)
 	}
 	if after, _ := s.List(ctx, "ctl"); len(after) != len(before) {
@@ -316,7 +325,7 @@ func TestFaultsOfABlobAreItsOwn(t *testing.T) {
 		"a definition that is not one":   real,
 		"a definition that is not there": {At: "ctl/records/c1/i1/blobs/none", Type: Definition, Size: 4, Key: NewKey()},
 	} {
-		_, err := CopyAll(ctx, s, ref.Value(), "ctl", "c1/i2")
+		_, err := CopyWhole(ctx, s, ref, "ctl", "c1/i2")
 		if !Unusable(err) {
 			t.Errorf("%s: copying gives %v", what, err)
 		}

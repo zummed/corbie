@@ -3,8 +3,11 @@ package client_test
 import (
 	"context"
 	"errors"
+	"fmt"
+	"io"
 	"slices"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -273,5 +276,97 @@ func TestUnstartedRunIsWaitingOnlyWhileItsStartIsGood(t *testing.T) {
 		if run, err := wait(); !errors.Is(err, client.ErrNeverTaken) || !strings.Contains(err.Error(), "never taken up") || within.Err() != nil {
 			t.Fatalf("%s on a start past its time gave %+v, %v", what, run, err)
 		}
+	}
+}
+
+// uploads counts the blob writes a store has open at once, and notes, when
+// a message is written, how many were open and how many had been made.
+type uploads struct {
+	store.Store
+	open, most, made  atomic.Int64
+	openAt, madeAt    atomic.Int64
+	fail              error // what each blob write after the fifth gives
+	messages, refused atomic.Int64
+}
+
+func (u *uploads) WriteFrom(ctx context.Context, name string, r io.Reader) (bool, error) {
+	n := u.open.Add(1)
+	defer u.open.Add(-1)
+	for {
+		most := u.most.Load()
+		if n <= most || u.most.CompareAndSwap(most, n) {
+			break
+		}
+	}
+	time.Sleep(50 * time.Microsecond) // long enough for writes made side by side to meet
+	if u.fail != nil && u.made.Load() >= 5 {
+		u.refused.Add(1)
+		return false, u.fail
+	}
+	done, err := u.Store.WriteFrom(ctx, name, r)
+	if err == nil {
+		u.made.Add(1)
+	}
+	return done, err
+}
+
+func (u *uploads) Write(ctx context.Context, name string, value []byte, how store.How) (bool, error) {
+	if strings.HasPrefix(name, store.Inbox("controller")+"/") {
+		u.messages.Add(1)
+		u.openAt.Store(u.open.Load())
+		u.madeAt.Store(u.made.Load())
+	}
+	return u.Store.Write(ctx, name, value, how)
+}
+
+// A start's uploads, the definition, its files and the input's files, are
+// made side by side, a bounded number at a time, and the start is sent once
+// every one is in the store.
+func Test_client_start_uploads_side_by_side(t *testing.T) {
+	const scripts, inner = 40, 3
+	var src strings.Builder
+	files := map[string]string{}
+	src.WriteString("flow: wide\nstages:\n")
+	for i := range scripts {
+		fmt.Fprintf(&src, "  s%d: { job: { script: ./s%d.js } }\n", i, i)
+		files[fmt.Sprintf("s%d.js", i)] = "return 1"
+	}
+	src.WriteString("  kid:\n    job:\n      machine:\n        flow: kid\n        stages:\n")
+	for i := range inner {
+		fmt.Fprintf(&src, "          k%d: { job: { script: ./k%d.js } }\n", i, i)
+		files[fmt.Sprintf("k%d.js", i)] = "return 2"
+	}
+	d := draft(t, src.String(), files)
+	input := func() map[string]any {
+		file := func(name string) client.InputFile {
+			return client.InputFile{Name: name, Contents: strings.NewReader(name)}
+		}
+		return map[string]any{"one": file("one.txt"), "more": []any{file("two.txt"), map[string]any{"three": file("three.txt")}}}
+	}
+	const blobs = scripts + inner + 2 + 3 // the two definitions and the input's files
+
+	a := arrange(t)
+	u := &uploads{Store: a.hooked}
+	c := client.New(a.ID, a.ctl.Card, u)
+	run, err := c.Start(ctx, d, client.Start{Input: input()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if most := u.most.Load(); most < 2 || most > store.SideBySide {
+		t.Fatalf("a start wrote %d blobs at once; the bound is %d", most, store.SideBySide)
+	}
+	if u.messages.Load() != 1 || u.openAt.Load() != 0 || u.madeAt.Load() != blobs {
+		t.Fatalf("the start was sent with %d blob writes open and %d of %d made", u.openAt.Load(), u.madeAt.Load(), blobs)
+	}
+	if names, err := a.owner.List(ctx, store.Blobs("controller", run)); err != nil || len(names) != blobs {
+		t.Fatalf("the run's record holds %d blobs, %v", len(names), err)
+	}
+
+	// A write that fails is the start's error, and nothing is sent.
+	refused := errors.New("refused")
+	u = &uploads{Store: a.hooked, fail: refused}
+	c = client.New(a.ID, a.ctl.Card, u)
+	if _, err := c.Start(ctx, d, client.Start{Input: input()}); !errors.Is(err, refused) || u.messages.Load() != 0 {
+		t.Fatalf("a start whose upload failed gave %v and sent %d messages", err, u.messages.Load())
 	}
 }

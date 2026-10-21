@@ -487,3 +487,30 @@ func TestAgentCarriesOnFromAnotherRunsConversation(t *testing.T) {
 		t.Fatalf("the second agent's record holds %d of the first one's two turns (%v)", held, err)
 	}
 }
+
+// A file given at two places in the input is one blob at both, read once
+// and whole.
+func TestFileGivenTwiceIsOneBlob(t *testing.T) {
+	l := local(t)
+	text := strings.Repeat("all of it ", 20000)
+	file := client.InputFile{Name: "notes.txt", Contents: strings.NewReader(text)}
+	id, err := l.Start(ctx, draft(t, `
+		flow: twice
+		stages:
+		  read: { job: { script: ./read.js, input: "${input}" } }
+		output: ${stages.read.output}
+	`, map[string]string{"read.js": `
+		const one = blobs.read(input.one, { as: "text" }), other = blobs.read(input.more[0], { as: "text" })
+		return { size: one.length, same: one === other }
+	`}), client.Start{Input: map[string]any{"one": file, "more": []any{file}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := map[string]any{"size": float64(len(text)), "same": true}
+	if r := wait(t, l, id); r.Status != instance.Done || jsonOf(r.Output) != jsonOf(want) {
+		t.Fatalf("a run given one file at two places ended %s with %s (%s); want %s", r.Status, jsonOf(r.Output), r.Error, jsonOf(want))
+	}
+	if blobs, _ := l.Memory.As(ownerOf()).List(ctx, store.Blobs("controller", id)); len(blobs) != 3 {
+		t.Fatalf("the run's record holds %d blobs; its definition, its script and the file are three", len(blobs))
+	}
+}

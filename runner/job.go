@@ -261,7 +261,7 @@ func (j *supervised) serve(w *wire, p *piece) error {
 			}
 			return fail(err)
 		}
-		ref, err := draft.Store(j.ctx, st, ctl, j.job.Instance)
+		ref, err := draft.Store(j.ctx, store.Bounded(st, store.SideBySide), ctl, j.job.Instance)
 		if err != nil {
 			return fail(err)
 		}

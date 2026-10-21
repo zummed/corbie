@@ -199,6 +199,7 @@ Used by:
 - **Controller**: owns every name in its area; writes jobs and cancels into runners' inboxes.
 - **Runner**: reads its inbox, writes marks, emits, blobs and results, each within its row of the table.
 - **Client**: writes messages and uploads, and reads its receipts, heads and records.
+- **Machines**: a draft's files and definitions are written into a record side by side, under the store's bound.
 - **Secrets**: the controller's secrets are the values under `secrets/`, sealed to the controller.
 - **Plugins**: an extension may add a kind of store, which must pass the checks of R-store-13.
 - **Manual**: carries the list of bucket services Corbie is tested against and the statement that a directory keeps no party out.

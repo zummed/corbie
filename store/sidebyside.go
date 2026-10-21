@@ -8,7 +8,8 @@ import (
 
 // SideBySide is how many requests one Bounded store has open at once by
 // default: the store of one controller pass, one start or one definition
-// made while a machine runs.
+// made while a machine runs; and how many of the values a listing names a
+// watcher or a follower reads at once.
 const SideBySide = 16
 
 // Each does n things side by side, at most limit at a time, and gives the

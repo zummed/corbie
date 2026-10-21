@@ -82,17 +82,22 @@ func (c *Client) heads(ctx context.Context, finished bool) ([]*Run, map[string]s
 		if err != nil {
 			return nil, nil, err
 		}
-		for _, name := range names {
-			head, mark, err := c.readHead(ctx, name)
-			if err != nil {
-				return nil, nil, err
-			}
+		read := make([]*instance.Head, len(names))
+		readAt := make([]store.Mark, len(names))
+		err = store.Each(ctx, store.SideBySide, len(names), func(i int) (err error) {
+			read[i], readAt[i], err = c.readHead(ctx, names[i])
+			return err
+		})
+		if err != nil {
+			return nil, nil, err
+		}
+		for i, head := range read {
 			if head == nil {
 				continue
 			}
 			// One found in both places goes by the finished one.
 			found[head.Name] = runOf(head)
-			marks[head.Name] = mark
+			marks[head.Name] = readAt[i]
 		}
 	}
 	runs := make([]*Run, 0, len(found))
@@ -209,20 +214,27 @@ func (c *Client) changes(ctx context.Context, filter Filter, w *watched, tell fu
 		w.seen[run.ID] = marks[run.ID]
 	}
 	if w.ended != nil {
+		var unread []string
 		for _, name := range ended {
 			// One given before is given as it leaves the listing, below.
 			_, given := w.seen[strings.TrimPrefix(name, store.Finished(c.ctl())+"/")]
-			if given || w.ended[name] {
-				continue
+			if !given && !w.ended[name] {
+				unread = append(unread, name)
 			}
-			head, _, err := c.readHead(ctx, name)
-			if err != nil {
-				return err
-			}
+		}
+		read := make([]*instance.Head, len(unread))
+		err := store.Each(ctx, store.SideBySide, len(unread), func(i int) (err error) {
+			read[i], _, err = c.readHead(ctx, unread[i])
+			return err
+		})
+		if err != nil {
+			return err
+		}
+		for i, head := range read {
 			if head != nil && filter.keeps(runOf(head)) {
 				tell(Update{Run: runOf(head), New: true})
 			}
-			w.ended[name] = true
+			w.ended[unread[i]] = true
 		}
 	}
 	for _, id := range sortedNames(w.seen) {
@@ -415,17 +427,29 @@ func (c *Client) read(ctx context.Context, name string, all map[string]*followed
 			return err
 		}
 	}
+	var numbers []int
 	for _, at := range steps {
-		number := store.Number(at)
-		if number < f.next {
-			continue
+		if number := store.Number(at); number >= f.next {
+			numbers = append(numbers, number)
 		}
-		step, err := instance.ReadStep(ctx, c.Store, c.Controller, c.ID, name, number)
-		if errors.Is(err, identity.ErrNotForUs) {
+	}
+	read := make([]*instance.Step, len(numbers))
+	failed := make([]error, len(numbers))
+	// A step this client cannot read ends what is given, so each step's
+	// error is kept for its turn.
+	err := store.Each(ctx, store.SideBySide, len(numbers), func(i int) error {
+		read[i], failed[i] = instance.ReadStep(ctx, c.Store, c.Controller, c.ID, name, numbers[i])
+		return nil
+	})
+	if err != nil {
+		return err
+	}
+	for i, step := range read {
+		if errors.Is(failed[i], identity.ErrNotForUs) {
 			return nil // a record this client cannot read
 		}
-		if err != nil {
-			return err
+		if failed[i] != nil {
+			return failed[i]
 		}
 		if step == nil {
 			continue
@@ -445,7 +469,7 @@ func (c *Client) read(ctx context.Context, name string, all map[string]*followed
 		if err != nil {
 			return err
 		}
-		f.next, f.read, f.ended = number+1, true, step.State.Status != instance.Running
+		f.next, f.read, f.ended = numbers[i]+1, true, step.State.Status != instance.Running
 		tell(entry)
 	}
 	if len(f.jobs) == 0 {
@@ -455,20 +479,27 @@ func (c *Client) read(ctx context.Context, name string, all map[string]*followed
 	if err != nil {
 		return err
 	}
+	var unread, jobs []string
 	for _, at := range names {
 		if f.emits[at] {
 			continue
 		}
 		parts := strings.Split(strings.TrimPrefix(at, store.Emits(c.ctl(), name)+"/"), "/")
-		runner, known := f.jobs[parts[0]]
-		if len(parts) != 2 || !known {
+		if _, known := f.jobs[parts[0]]; len(parts) != 2 || !known {
 			continue // from a runner that had no such job, or its step is not read yet
 		}
-		emit, err := c.emit(ctx, name, parts[0], store.Number(at), runner)
-		if err != nil {
-			return err
-		}
-		f.emits[at] = true
+		unread, jobs = append(unread, at), append(jobs, parts[0])
+	}
+	emits := make([]*instance.Emit, len(unread))
+	err = store.Each(ctx, store.SideBySide, len(unread), func(i int) (err error) {
+		emits[i], err = c.emit(ctx, name, jobs[i], store.Number(unread[i]), f.jobs[jobs[i]])
+		return err
+	})
+	if err != nil {
+		return err
+	}
+	for i, emit := range emits {
+		f.emits[unread[i]] = true
 		if emit == nil {
 			continue
 		}

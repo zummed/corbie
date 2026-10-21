@@ -8,6 +8,7 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -310,6 +311,67 @@ func Test_store_listed_name_gone_on_read_is_skipped(t *testing.T) {
 	slices.Sort(want)
 	if run.Status != instance.Done || !slices.Equal(told, want) {
 		t.Fatalf("with a step and an emit gone between the listing and the read, the follow ended %s and was told %v, want %v", run.Status, told, want)
+	}
+}
+
+// overlapping is a store that counts how many reads are made at once. A
+// read waits for a second to begin, so reads made side by side are seen to
+// be, and reads made one after another each wait out the timeout.
+type overlapping struct {
+	store.Store
+	open, most atomic.Int64
+	two        chan struct{}
+	once       sync.Once
+}
+
+func (o *overlapping) Read(ctx context.Context, name string) ([]byte, store.Mark, error) {
+	n := o.open.Add(1)
+	defer o.open.Add(-1)
+	for most := o.most.Load(); n > most && !o.most.CompareAndSwap(most, n); most = o.most.Load() {
+	}
+	if n >= 2 {
+		o.once.Do(func() { close(o.two) })
+	}
+	select {
+	case <-o.two:
+	case <-time.After(time.Second):
+	}
+	return o.Store.Read(ctx, name)
+}
+
+// A listing reads the heads it names, and a record the steps and emits it
+// lists, side by side, a bounded number at a time.
+func TestListedValuesAreReadSideBySide(t *testing.T) {
+	a := arrange(t)
+	for i := range 3 * store.SideBySide {
+		a.head(a.named(fmt.Sprint("run", i)), instance.Running, 1)
+	}
+	long := a.named("long")
+	for number := 1; number < 3*store.SideBySide; number++ {
+		a.step(long, number, instance.Running, a.job(fmt.Sprintf("work.%d", number)))
+		a.emit(long, fmt.Sprintf("work.%d", number), 1, number)
+	}
+	a.step(long, 3*store.SideBySide, instance.Done)
+	a.head(long, instance.Done, 3*store.SideBySide)
+	for _, look := range []func(c *client.Client) (int, error){
+		func(c *client.Client) (int, error) {
+			runs, err := c.List(ctx, client.Filter{})
+			return len(runs), err
+		},
+		func(c *client.Client) (int, error) {
+			n := 0
+			_, err := c.Record(ctx, long, func(client.Entry) { n++ })
+			return n, err
+		},
+	} {
+		o := &overlapping{Store: a.hooked, two: make(chan struct{})}
+		n, err := look(client.New(a.ID, a.ctl.Card, o))
+		if err != nil || n < 3*store.SideBySide {
+			t.Fatalf("gave %d, %v", n, err)
+		}
+		if most := o.most.Load(); most < 2 || most > store.SideBySide {
+			t.Fatalf("%d reads were made at once; the bound is %d", most, store.SideBySide)
+		}
 	}
 }
 

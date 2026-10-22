@@ -444,35 +444,26 @@ states:
 	refused(t, strings.Replace(src, "${input.due}", "${nothing.here}", 1), `reads "nothing"`)
 }
 
-func due(t *testing.T, at string, from time.Time) time.Time {
-	t.Helper()
-	w, err := parseAt(at)
-	if err != nil {
-		t.Fatal(err)
-	}
-	return w.next(from)
-}
-
 func TestTimeOfDay(t *testing.T) {
 	day := func(d, h, m int) time.Time { return time.Date(2026, 10, d, h, m, 0, 0, time.UTC) }
 	// A length of time counts from entry.
-	if got := due(t, "48h", entered); !got.Equal(entered.Add(48 * time.Hour)) {
+	if got, _ := Next("48h", entered); !got.Equal(entered.Add(48 * time.Hour)) {
 		t.Fatalf("48h is due %v", got)
 	}
 	// A time of day is due at its next occurrence after entry.
-	if got := due(t, "18:00", day(13, 17, 0)); !got.Equal(day(13, 18, 0)) {
+	if got, _ := Next("18:00", day(13, 17, 0)); !got.Equal(day(13, 18, 0)) {
 		t.Fatalf("18:00 entered at 17:00 is due %v", got)
 	}
-	if got := due(t, "18:00", day(13, 19, 0)); !got.Equal(day(14, 18, 0)) {
+	if got, _ := Next("18:00", day(13, 19, 0)); !got.Equal(day(14, 18, 0)) {
 		t.Fatalf("18:00 entered at 19:00 is due %v", got)
 	}
 	// A weekday: entered on a Tuesday, Monday at 09:00 is the following Monday.
-	if got := due(t, "mon 09:00", day(13, 17, 0)); !got.Equal(day(19, 9, 0)) {
+	if got, _ := Next("mon 09:00", day(13, 17, 0)); !got.Equal(day(19, 9, 0)) {
 		t.Fatalf("Monday 09:00 entered on a Tuesday is due %v", got)
 	}
 	// A zone: 09:00 in London in July is 08:00 UTC.
 	july := time.Date(2026, 7, 1, 0, 0, 0, 0, time.UTC)
-	if got := due(t, "09:00 Europe/London", july); !got.Equal(july.Add(8 * time.Hour)) {
+	if got, _ := Next("09:00 Europe/London", july); !got.Equal(july.Add(8 * time.Hour)) {
 		t.Fatalf("09:00 London in July is due %v", got)
 	}
 }
@@ -554,7 +545,7 @@ states:
 
 func Test_chart_time_of_day_is_strictly_after_entry(t *testing.T) {
 	at := time.Date(2026, 10, 13, 18, 0, 0, 0, time.UTC)
-	if got := due(t, "18:00", at); !got.Equal(at.Add(24 * time.Hour)) {
+	if got, _ := Next("18:00", at); !got.Equal(at.Add(24 * time.Hour)) {
 		t.Fatalf("entered at exactly its time, it is due %v", got)
 	}
 }
@@ -563,8 +554,35 @@ func Test_chart_time_of_day_in_skipped_hour_fires_at_the_jump(t *testing.T) {
 	// In London the clock goes from 01:00 to 02:00 on 29 March 2026.
 	before := time.Date(2026, 3, 28, 12, 0, 0, 0, time.UTC)
 	want := time.Date(2026, 3, 29, 1, 0, 0, 0, time.UTC)
-	if got := due(t, "01:30 Europe/London", before); !got.Equal(want) {
+	if got, _ := Next("01:30 Europe/London", before); !got.Equal(want) {
 		t.Fatalf("a time the clock skips is due %v, want the jump at %v", got, want)
+	}
+}
+
+func Test_chart_next_is_when_the_timer_is_due(t *testing.T) {
+	c := newChart(t, `
+statechart: waits
+initial: waiting
+states:
+	waiting:
+		timers: { a: 48h, b: "18:00", c: "mon 09:00", d: "09:00 Europe/London", e: "01:30 Europe/London" }
+		on: { a: done, b: done, c: done, d: done, e: done }
+	done: { end: done }
+`)
+	// The day before London's clock goes from 01:00 to 02:00.
+	c.at = time.Date(2026, 3, 28, 12, 0, 0, 0, time.UTC)
+	c.give(start())
+	for timer, at := range map[string]string{"a": "48h", "b": "18:00", "c": "mon 09:00", "d": "09:00 Europe/London", "e": "01:30 Europe/London"} {
+		want, err := Next(at, c.at)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got, _ := c.timer(timer + ".waiting"); !got.Equal(want) {
+			t.Errorf("%s: the chart's timer is due %v, and Next gives %v", at, got, want)
+		}
+	}
+	if _, err := Next("soon", c.at); err == nil || !strings.Contains(err.Error(), "not a length of time or a time of day") {
+		t.Fatalf("want a time that is not one refused as the chart refuses it, got: %v", err)
 	}
 }
 

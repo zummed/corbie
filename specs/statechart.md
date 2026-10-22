@@ -79,6 +79,8 @@ A rule under a ticket's or a timer's name belongs in the state that issues or st
 
 Corbie has no scheduler. Work that recurs is done by a chart that waits on a timer and starts the work as a child.
 
+A program written in Go shows when a timer is due with `statechart.Next(at, from)`. Given a time as `timers:` writes it and the moment the timer starts, it gives the moment the chart sets its timer to.
+
 ## A chart that is started once and used many times
 
 A chart can stand ready for as long as it runs and do a piece of work each time it is told to. Its client finds it by its label and sends it an event; the chart moves to a state that runs the work as a child, and comes back when the child is done.

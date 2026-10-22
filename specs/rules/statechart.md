@@ -122,6 +122,8 @@ The detailed rules behind the [Statechart overview](../statechart.md). Area code
 
 **C-chart-09** Time zones are known to the binary itself, and a zone that means "wherever the controller is running" is refused. A host with no zone files would otherwise refuse or misread a zone that another host accepts, and the same chart would be due at different moments on different hosts. *Test:* `chart_zone_known_without_host_zone_files`
 
+**C-chart-13** `statechart.Next` gives the moment a chart sets a timer to, for the same time and the same moment of entry, and a chart's timers are set by it. A program that worked out a time of day a second way would show a moment the timer does not fire at, such as on a day a zone's clock skips. *Test:* `chart_next_is_when_the_timer_is_due`
+
 ## A chart that is started once and used many times
 
 **C-chart-12** A chart that is used many times does not grow with use: its state after the thousandth piece of work is no larger than after the first. The latest step holds the whole state, so a state that kept every past job would make each step slower than the last. *Test:* `chart_state_does_not_grow_with_use`

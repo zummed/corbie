@@ -556,6 +556,16 @@ type when struct {
 var weekdays = map[string]int{"sun": 0, "mon": 1, "tue": 2, "wed": 3, "thu": 4, "fri": 5, "sat": 6,
 	"sunday": 0, "monday": 1, "tuesday": 2, "wednesday": 3, "thursday": 4, "friday": 5, "saturday": 6}
 
+// Next gives when a timer is due that is written at, as timers: writes it,
+// and started at from. A chart's timers are set by it.
+func Next(at string, from time.Time) (time.Time, error) {
+	w, err := parseAt(at)
+	if err != nil {
+		return time.Time{}, err
+	}
+	return w.next(from), nil
+}
+
 // parseAt reads a time as an after rule writes it: 48h, 18:00, mon 09:00,
 // 09:00 Europe/London, mon 09:00 Europe/London.
 func parseAt(text string) (when, error) {

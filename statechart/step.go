@@ -312,12 +312,11 @@ func (s *stepper) enterOne(name string) error {
 		if !ok {
 			return fmt.Errorf("%s: a timer's time is text: a length of time or a time of day", place)
 		}
-		w, err := parseAt(text)
+		at, err := Next(text, s.in.Time)
 		if err != nil {
 			return fmt.Errorf("%s: %v", place, err)
 		}
 		timer := timerName + "." + name
-		at := w.next(s.in.Time)
 		if s.st.Timers == nil {
 			s.st.Timers = map[string]time.Time{}
 		}

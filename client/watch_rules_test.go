@@ -85,6 +85,40 @@ func TestFollowGivesTheEntriesOfOneLookInTheOrderTheyWereWritten(t *testing.T) {
 	}
 }
 
+// On a clock that does not move, every entry carries the same time. The
+// emits of one instance are then given in the order their jobs were sent,
+// each job's by number, though the store lists hearing#2 before hearing.
+func Test_inst_watch_same_time_emits_in_order_jobs_sent(t *testing.T) {
+	a := arrange(t)
+	a.stopped = time.Now()
+	id := a.named("hearing")
+	a.step(id, 1, instance.Running, a.job("hearing"))
+	a.step(id, 2, instance.Running, a.job("hearing#2"))
+	a.step(id, 3, instance.Running, a.job("hearing#2@2"))
+	a.step(id, 4, instance.Done)
+	a.emit(id, "hearing#2@2", 1, "hearing#2@2 1")
+	a.emit(id, "hearing#2", 1, "hearing#2 1")
+	a.emit(id, "hearing", 1, "hearing 1")
+	a.emit(id, "hearing", 2, "hearing 2")
+	_, told := a.follow(id)
+	want := []string{"hearing step 1", "hearing step 2", "hearing step 3", "hearing step 4",
+		`hearing emit "hearing 1"`, `hearing emit "hearing 2"`, `hearing emit "hearing#2 1"`, `hearing emit "hearing#2@2 1"`}
+	if !slices.Equal(told, want) {
+		t.Fatalf("the follow gave %v, want %v", told, want)
+	}
+	var record []string
+	if _, err := a.Record(ctx, id, func(e client.Entry) {
+		if e.Job != "" {
+			record = append(record, e.Data.(string))
+		}
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if want := []string{"hearing 1", "hearing 2", "hearing#2 1", "hearing#2@2 1"}; !slices.Equal(record, want) {
+		t.Fatalf("the record gave %v, want %v", record, want)
+	}
+}
+
 // A child with nothing in its record that can be read is not waited on once
 // its parent has ended; a child that can be read is followed to its own
 // end, also after its parent's.

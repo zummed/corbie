@@ -107,6 +107,8 @@ The detailed rules behind the [Instances overview](../instance.md).
 
 **C-inst-13** A watcher reads a head only when it is new or a listing shows it has changed since the watcher last read it. A watcher looks every two seconds, and on a bucket a look that reads a few hundred heads takes seconds. *Test:* `inst_watch_reads_only_heads_that_changed`
 
+**C-inst-14** Emits of one instance that carry the same time are given in the order their jobs were sent, and each job's in the order of their numbers. The store lists emits by the names of their jobs, which puts `hearing#2` before `hearing`, and a client that takes the last value of a name would be given an older one. *Test:* `inst_watch_same_time_emits_in_order_jobs_sent`
+
 ## Sending
 
 **R-inst-56** A client acts on an instance by writing a message into the controller's inbox, and there are four: start a run, cancel one, send it an event, answer a ticket. A client has no inbox of its own.

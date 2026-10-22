@@ -23,6 +23,9 @@ type arranged struct {
 	owner    store.Store
 	ctl, run *identity.Identity
 	hooked   *hooked
+	// stopped, when set, is the time every step and emit entry carries: a
+	// clock that does not move.
+	stopped time.Time
 }
 
 // hooked is a client's store that tells a test of each look before it is
@@ -108,6 +111,14 @@ func arrange(t *testing.T) *arranged {
 	return a
 }
 
+// now gives the time an entry written now carries.
+func (a *arranged) now() time.Time {
+	if !a.stopped.IsZero() {
+		return a.stopped
+	}
+	return time.Now()
+}
+
 // named gives the name of a run of the client's, made a moment ago.
 func (a *arranged) named(tail string) string {
 	return "client/" + store.Stamp(time.Now().Add(-time.Second)) + "-" + tail
@@ -148,7 +159,7 @@ func (a *arranged) head(id, status string, step int, labels ...string) {
 func (a *arranged) step(id string, number int, status string, asks ...instance.Ask) {
 	a.t.Helper()
 	at := store.Step("controller", id, number)
-	step := &instance.Step{Number: number, Time: time.Now(), Asks: asks,
+	step := &instance.Step{Number: number, Time: a.now(), Asks: asks,
 		State: instance.State{Machine: "arranged", Type: "flow", Status: status, Started: time.Now()}}
 	if status == instance.Done {
 		step.State.Output = map[string]any{"from": id}
@@ -171,7 +182,7 @@ func child(name, id string) instance.Ask {
 func (a *arranged) emit(id, job string, number int, data any) {
 	a.t.Helper()
 	at := store.Emit("controller", id, job, number)
-	entry := &instance.Emit{Job: job, Number: number, Values: []instance.Emitted{{Name: "note", Data: data, At: time.Now()}}}
+	entry := &instance.Emit{Job: job, Number: number, Values: []instance.Emitted{{Name: "note", Data: data, At: a.now()}}}
 	value, err := a.run.Write(at, time.Now(), time.Time{}, entry, a.ctl.Card, a.ID.Card)
 	a.put(at, value, err)
 }

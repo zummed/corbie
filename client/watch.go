@@ -1,11 +1,13 @@
 package client
 
 import (
+	"cmp"
 	"context"
 	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"io"
+	"path"
 	"slices"
 	"strconv"
 	"strings"
@@ -316,8 +318,15 @@ type followed struct {
 	listed bool // whether its steps have been listed: after that they are read by number
 	read   bool // whether any step of it could be read
 	ended  bool
-	jobs   map[string]identity.Card // the runner each job went to, by the job's full name
-	emits  map[string]bool          // the emit entries already given
+	jobs   map[string]sent // the jobs its steps sent, by the job's full name
+	emits  map[string]bool // the emit entries already given
+}
+
+// sent is a job a followed instance's step sent: the runner it went to, and
+// how many of the instance's jobs were sent before it.
+type sent struct {
+	runner identity.Card
+	order  int
 }
 
 // Follow gives each entry of a run's record as it is written, with those of
@@ -334,7 +343,7 @@ func (c *Client) Follow(ctx context.Context, id string, interval time.Duration, 
 	}
 	notice, stop := c.Store.Notice(store.Records(c.ctl()))
 	defer stop()
-	all := map[string]*followed{id: {jobs: map[string]identity.Card{}, emits: map[string]bool{}}}
+	all := map[string]*followed{id: {jobs: map[string]sent{}, emits: map[string]bool{}}}
 	ended := false
 	for {
 		run, err := c.look(ctx, id, all, tell)
@@ -370,7 +379,7 @@ func (c *Client) Record(ctx context.Context, id string, tell func(Entry)) (*Run,
 	if err := store.CheckInstance(id); err != nil {
 		return nil, err
 	}
-	all := map[string]*followed{id: {jobs: map[string]identity.Card{}, emits: map[string]bool{}}}
+	all := map[string]*followed{id: {jobs: map[string]sent{}, emits: map[string]bool{}}}
 	if run, err := c.look(ctx, id, all, tell); err != nil || run != nil {
 		return run, err
 	}
@@ -379,9 +388,9 @@ func (c *Client) Record(ctx context.Context, id string, tell func(Entry)) (*Run,
 
 // look reads what is new in the record of a run and of every instance below
 // it, and gives the run once it and everything below it have ended. What
-// one look finds is given in the order it was written: by the time each
-// entry carries, an instance's own entries staying in their own order where
-// the times are the same.
+// one look finds is given by the time each entry carries, an instance's own
+// entries staying in the order read gives them where the times are the
+// same.
 func (c *Client) look(ctx context.Context, id string, all map[string]*followed, tell func(Entry)) (*Run, error) {
 	var found []Entry
 	err := c.readAll(ctx, all, func(entry Entry) { found = append(found, entry) })
@@ -440,9 +449,10 @@ func sortedNames[V any](m map[string]V) []string {
 }
 
 // read gives the entries of one instance's record that have not been
-// given: its new steps, then the new emits of the jobs its steps sent. A
-// child one of its steps started is followed from then on. A look that
-// fails lists the steps again at the next.
+// given: its new steps, then the new emits of the jobs its steps sent, in
+// the order the jobs were sent and each job's by number. A child one of its
+// steps started is followed from then on. A look that fails lists the steps
+// again at the next.
 func (c *Client) read(ctx context.Context, name string, all map[string]*followed, tell func(Entry)) error {
 	f := all[name]
 	readable, err := c.steps(ctx, name, all, tell)
@@ -461,6 +471,12 @@ func (c *Client) read(ctx context.Context, name string, all map[string]*followed
 		f.listed = false
 		return err
 	}
+	// The listing gives the jobs by name, which puts hearing#2 before
+	// hearing: they are put in the order they were sent, each job's emits
+	// staying in the order of their numbers.
+	slices.SortStableFunc(names, func(a, b string) int {
+		return cmp.Compare(f.jobs[path.Base(path.Dir(a))].order, f.jobs[path.Base(path.Dir(b))].order)
+	})
 	var unread, jobs []string
 	for _, at := range names {
 		if f.emits[at] {
@@ -474,7 +490,7 @@ func (c *Client) read(ctx context.Context, name string, all map[string]*followed
 	}
 	emits := make([]*instance.Emit, len(unread))
 	err = store.Each(ctx, store.SideBySide, len(unread), func(i int) (err error) {
-		emits[i], err = c.emit(ctx, name, jobs[i], store.Number(unread[i]), f.jobs[jobs[i]])
+		emits[i], err = c.emit(ctx, name, jobs[i], store.Number(unread[i]), f.jobs[jobs[i]].runner)
 		return err
 	})
 	if err != nil {
@@ -586,11 +602,13 @@ func (c *Client) give(name string, step *instance.Step, all map[string]*followed
 	for _, ask := range step.Asks {
 		switch ask.Kind {
 		case instance.AskScript:
-			f.jobs[ask.Name] = ask.Card
+			if _, known := f.jobs[ask.Name]; !known {
+				f.jobs[ask.Name] = sent{ask.Card, len(f.jobs)}
+			}
 		case instance.AskChild:
 			// A child is found from any step that started one.
 			if _, known := all[ask.Child]; !known {
-				all[ask.Child] = &followed{parent: name, jobs: map[string]identity.Card{}, emits: map[string]bool{}}
+				all[ask.Child] = &followed{parent: name, jobs: map[string]sent{}, emits: map[string]bool{}}
 			}
 		}
 	}

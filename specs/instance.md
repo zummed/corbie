@@ -38,7 +38,7 @@ A watcher lists the running heads it may read, and reads a head only when it is 
 
 A run is reported once more when it ends, saying how. For a listing that does not take in the finished heads, the watcher lists the finished heads by name at each look and reads only those it has not listed before, so a run that started and ended between two looks is reported too, once, as new and ended.
 
-For an instance whose record the watcher may read, it then reads the entries it has not seen. Because entries never change, each is read once.
+For an instance whose record the watcher may read, it then reads the entries it has not seen. Because entries never change, each is read once. It gives what one look finds in the order of the time each entry carries. Emits of one instance that carry the same time go in the order their jobs were sent, as on a clock that does not move.
 
 What a watcher sees depends only on what the store lets it read, and there are three levels. With no access it sees nothing. With access to heads it sees where every instance stands and nothing inside any of them, which is what a dashboard or a metrics exporter needs. A client sees where its own runs stand and everything inside them.
 

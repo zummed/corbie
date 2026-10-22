@@ -36,7 +36,9 @@ When a machine's last step both sends events and ends the machine, the events ar
 
 ## Sending a job
 
-A script job is sent as a message to a runner, signed by the controller and sealed to that runner. The message carries everything the runner needs to know: where in the record to read the script, its files and the input; each layer of permissions that applies, by name, so a refusal can say which layer refused; the values of the secrets it may use; its limits; where in the record the job writes what it emits; and which emitted names the machine wants to hear about.
+A script job is sent as a message to a runner, signed by the controller and sealed to that runner. The message carries everything the runner needs to know: where in the record to read the script, its files and the input; each layer of permissions that applies, by name, so a refusal can say which layer refused; the values of the secrets it may use; the key to the kept values it may use; its limits; where in the record the job writes what it emits; and which emitted names the machine wants to hear about.
+
+That key is the key of one kept path, which opens the values at and below it (see Store). For each layer it knows of, the controller takes the parts that the layer's kept scopes share before their first part with a `*`, and sends the key of the deepest of these. A job allowed `kept.read:house/docs/**`, under a client's ceiling of `all`, is sent the key of `house/docs`; a job that some layer allows no kept value, or denies them with `kept` or `**`, or whose layers' parts lie on no one path, is sent no key.
 
 A job's tags choose its runner. The job goes to a runner that has every tag it names, and a job that names none may go to any runner. Where several qualify the controller picks one from the request and the attempt, so the same attempt always goes to the same runner, and a later attempt goes to a different one where more than one qualifies. It takes no account of load. A job whose tags no runner has, or which names a secret that is not set, fails before anything is sent.
 

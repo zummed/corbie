@@ -15,6 +15,7 @@ import (
 // kept is a job's channel that holds one blob as the store would, and
 // counts what is fetched of it.
 type kept struct {
+	plugin.Channel
 	contents string
 	fetched  int
 }

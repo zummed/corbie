@@ -83,6 +83,9 @@ The detailed rules behind the [Controller overview](../controller.md). What the 
 **R-ctl-37** A script job is sent as a message to one runner, signed by the controller and sealed to that runner, carrying everything its runner needs: with the message and the store, and nothing else from the controller, the runner can run the job.
 *Accept:* the job in a runner's inbox checks against the controller's card and opens with that runner's key and with no other party's. A runner that has never seen the definition runs the job from the message alone, reading the script, its files and the input from the places in the record that the job names.
 
+**R-ctl-102** A job is sent the key of one kept path: in each layer the controller knows of, the parts its kept scopes share before their first part with a `*`, and of those the deepest. A job that some layer allows no kept value, or denies them with a group or a scope of `**`, or whose layers' parts lie on no one path, is sent no key.
+*Accept:* a job allowed `kept.read:notes/**` under a client's ceiling of `all` is sent the key of `notes`; one allowed `kept.read:notes/**` and `kept.write:notes/tea`, started with the list `kept.read:notes/tea`, the key of `notes/tea`; one allowed `kept` under a ceiling of `kept.read:house/**`, the key of `house`. Under a client's ceiling of `disk`, or of `all` with `kept` denied, the job is sent no key, and its read is refused, naming the ceiling. Started with `kept.read:other/**`, a job allowed `kept.read:notes/**` is sent no key.
+
 **R-ctl-43** A job goes to a runner that has every tag it names, and a job that names no tag may go to any runner.
 *Accept:* runner A has the tag `gpu`, runner B has `gpu` and `eu`: a job that names `gpu` and `eu` goes to B every time. Over many jobs that name no tag, with one runner that has tags and one that has none, both receive jobs.
 
@@ -163,7 +166,8 @@ Uses:
 - **Instance**: writes heads, step entries and receipts in the form that area gives, moves a head from running to finished, and removes what is past keeping by that area's rules.
 - **Machine**: gives a type's step the definition, the state before and the events, and takes back the new state and the requests; checks a definition with the same code as the client (R-mach-17); starts children, counts depth and jobs, makes tickets and takes their answers, and holds jobs for the ask, as the Machines rules state (R-mach-65 to R-mach-115).
 - **Blob**: copies what a child hands up into the parent's record, once and for every type (R-blob-23), and reads the small blobs a step needs.
-- **Permission**: puts each layer that applies into a job by name, and reads the permissions a job declares against the lists of those to be asked about (R-perm-42).
+- **Permission**: puts each layer that applies into a job by name, reads from the layers which kept path's key the job is sent, and reads the permissions a job declares against the lists of those to be asked about (R-perm-42).
+- **Store** and **Identity**: makes the key of a kept path from its own key for kept values (R-store-65, R-id-51).
 - **Secret**: puts into a job the values of the secrets it names and every layer allows (R-sec-14); fails a job that names a secret that is not set (R-sec-20), and denies one that names a secret a layer does not allow.
 
 Used by:

@@ -6,7 +6,7 @@ A job can do nothing outside itself unless it is permitted. This area is how a p
 
 A permission is a kind and a scope: `fs.read:/srv/reports/**`, `net:api.github.com`, `exec:git`.
 
-There are six kinds.
+There are eight kinds.
 
 | Kind | Allows | Scope |
 |---|---|---|
@@ -16,8 +16,12 @@ There are six kinds.
 | `exec` | starting a program | a program's name or path |
 | `env` | reading a variable of the runner's | a name |
 | `secret` | sending a secret somewhere | a secret's name and a destination |
+| `kept.read` | reading a value kept in the store | a kept path |
+| `kept.write` | keeping a value in the store, or removing one | a kept path |
 
-A scope is one of three things, matched the same way wherever it appears: a path, a host, or a name. Any of them may use `*` for a part. A host with no port means every port, a host of `*` means every host, and a host written as an address, `10.0.0.*`, matches no name. A path is checked where it really points, after links are followed.
+A scope is one of three things, matched the same way wherever it appears: a path, a host, or a name. Any of them may use `*` for a part. A host with no port means every port, a host of `*` means every host, and a host written as an address, `10.0.0.*`, matches no name. A path on the disk is checked where it really points, after links are followed.
+
+A kept path names a value in the store, not a file: `notes/tea`. It is parts joined by `/`, each of the lower-case letters a to z, digits, `.`, `-` and `_`, none empty and none starting with a dot, at most 256 characters. It is matched as it is written, with no link followed and its case counting on every system.
 
 On Windows:
 
@@ -26,7 +30,7 @@ On Windows:
 - A path and a program's name match in any case, and a program's name matches with or without `.exe` or `.com`.
 - A program named without its extension is found as its `.exe` or `.com`, and never as a batch file, whose arguments cmd.exe reads again as commands.
 
-Kinds are gathered into groups: `network`, `disk`, `exec` and `env`. A group allows every scope of its kinds. `all` allows everything, secrets included, and means the same in every layer. Being allowed a secret is not the same as being sent it: a job is sent only the secrets its definition names (see Secrets).
+Kinds are gathered into groups: `network`, `disk`, `exec`, `env` and `kept`. A group allows every scope of its kinds. `all` allows everything, secrets included, and means the same in every layer. Being allowed a secret is not the same as being sent it: a job is sent only the secrets its definition names (see Secrets).
 
 ## Layers
 
@@ -65,7 +69,7 @@ The scope of a definition's allow entry may be filled from the machine's input, 
 
 ## Checking
 
-The check is made at the moment a script acts, and it is made in one place. A plugin never checks a permission and never opens anything by itself. It asks Corbie for a way to connect, a path, a program or a variable, and Corbie checks every layer, notes what was used, and hands over the thing or refuses (see Plugins).
+The check is made at the moment a script acts, and it is made in one place. A plugin never checks a permission and never opens anything by itself. It asks Corbie for a way to connect, a path, a program, a variable or a kept value, and Corbie checks every layer, notes what was used, and hands over the thing or refuses (see Plugins).
 
 A connection is checked by the name asked for and again by the address it resolves to, and only a checked address is connected to. Where a service hands out further addresses, each is checked the same way.
 
@@ -89,7 +93,7 @@ A job with no permissions still has its input and its result, plain computation,
 
 ## What Corbie does not defend against
 
-A script cannot reach outside itself except through the six kinds above, and those are checked. Beyond that, these are true and Corbie says so.
+A script cannot reach outside itself except through the eight kinds above, and those are checked. Beyond that, these are true and Corbie says so.
 
 - A program a job starts does its own reading, writing and connecting, as the runner's user. The permissions govern the start and nothing after. A runner's owner can put a box around started programs (see Runner); Corbie does not build one.
 - A permission to connect to a host governs the connection and nothing sent over it. A job allowed an MCP server can call any of its tools; what a call can do is set by the credentials the server is given.
@@ -101,5 +105,8 @@ A script cannot reach outside itself except through the six kinds above, and tho
 - Whether a connection is encrypted is known to Corbie when Corbie does the encrypting. Where a service's own protocol does it, that is the plugin's word.
 - A job cannot listen for connections. Nothing a job opens outlives the job.
 - A served directory's wire is private to the two computers. Someone on the network between them can see that they talk and how much, and can hold work up or cut it off, and nothing else (see Store).
+- A runner sent a job that may use kept values holds the key to them for good: the key of a kept path, which opens every value at or below it (see Store).
+- Any runner can remove a kept value or put an older one back.
+- Whoever runs the store sees every kept path.
 
-Jobs that must be kept apart go to different runners.
+Jobs that must be kept apart go to different runners. Kept values that must be kept apart belong to different controllers.

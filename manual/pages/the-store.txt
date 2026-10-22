@@ -19,6 +19,7 @@ Layout
     wakes/<time>/<run>/<name>     an empty file per timer, job timeout, run timeout, retry and deletion
     trust/<name>                  the card of each runner and client it trusts, with tags or ceiling
     secrets/<name>                its secrets
+    kept/<path>=                  each value jobs keep, `corbie manual kept`
   <runner>/
     inbox/<sender>/<message>      jobs for the runner
     taken/<due time>/<job>        one file for each job it has taken
@@ -38,6 +39,7 @@ Who may read and write
   records: emits/             all          adds          reads its own         -
   records: blobs/             all          reads, adds   reads, adds its own   -
   wakes/, trust/, secrets/    all          -             -                     -
+  kept/                       all          all           -                     -
   <runner>/inbox/             adds         all           -                     -
   <runner>/taken/             -            all           -                     -
 
@@ -47,15 +49,17 @@ Who may read and write
   viewer    reads the status files only, for a dashboard
 
 A runner can add to any run's record. Each file it adds names a job, and
-readers ignore a file from a runner that was not sent that job.
+readers ignore a file from a runner that was not sent that job. Every runner
+can write and delete every kept value.
 
 Signing and encryption
 ----------------------
 
-Every file except `version`, the blobs and the files under `wakes/` is three
-lines of text. This is the start message `corbie run submit` wrote for the run
-`<id>`, with line 1 shown one field to a row and lines 2 and 3 cut short. Its
-content is the run's input, labels and reference to the definition's blob.
+Every file except `version`, the blobs, the kept values and the files under
+`wakes/` is three lines of text. This is the start message `corbie run submit`
+wrote for the run `<id>`, with line 1 shown one field to a row and lines 2 and
+3 cut short. Its content is the run's input, labels and reference to the
+definition's blob.
 
   {"by":"laptop-client",                       the writer
    "at":"laptop-controller/inbox/<id>",        the path of the file
@@ -69,21 +73,29 @@ A reader checks the signature against the writer's card and `at` against the
 path where it found the file. It refuses a file that was altered, moved or
 signed by another writer.
 
-  signature     Ed25519
-  content       AES-256-GCM, under a key made for that file
-  that key      HPKE, for the X25519 public key of each reader
+  signature      Ed25519
+  content        AES-256-GCM, under a key made for that file
+  that key       HPKE, for the X25519 public key of each reader
+  a kept value   XChaCha20-Poly1305, under the key of its path
 
   a message in an inbox           encrypted for the process whose inbox it is in
   a step, an emit                 encrypted for the controller and the client in the run's ID
   an answer under receipts/       encrypted for the client that sent the message
   a controller's secret           encrypted for the controller
   a blob                          encrypted under its own key, and not signed
+  a kept value                    encrypted under the key of its path, and not signed
   a status, a trust entry,        signed and not encrypted
     a file under taken/
 
 A blob's key is in the reference to it, which is written only inside an
-encrypted file. A job's message holds the values of the secrets the job names.
-A status holds no input, output, error text or log line.
+encrypted file. A job's message holds the values of the secrets the job names,
+and the key of one kept path that its permissions allow. A status holds no
+input, output, error text or log line.
+
+The keys of kept paths are made from the controller's private key: the key of
+each path is a keyed hash of the key of the path above it and its own last
+part. The key of `house` decrypts the values at `house` and below it, such as
+`house/docs/boiler`, and no other.
 
 Each controller, runner and client has two private keys, for signing and for
 decryption, and a card with its two public keys. Two trust each other when
@@ -95,9 +107,10 @@ What the store's operator can do
 
 Whoever operates the directory or the bucket can read every path and every
 file that is not encrypted: each client and runner with its ceiling or tags,
-and each run's machine name, status, labels, start time, number of steps and
-which runner took which job. They cannot read an encrypted file, and a signed
-file or a blob they alter or move is refused.
+each run's machine name, status, labels, start time, number of steps and
+which runner took which job, and every kept path. They cannot read an
+encrypted file, and a signed file, a blob or a kept value they alter or move
+is refused.
 
 They can delete any file and restore the store to an earlier state. Corbie
 trusts the store not to return an old file in place of a newer one, and

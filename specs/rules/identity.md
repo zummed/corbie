@@ -16,6 +16,9 @@ The detailed rules behind the [Identity overview](../identity.md).
 **R-id-06** A party's name is chosen when its identity is made, and no command changes it afterwards. `corbie runner card` and `corbie client card` make the party's identity if it has none, and print its card.
 *Accept:* on an empty config `corbie client card` prints a card; run a second time, also asking for another name, it prints the same card with the same name and keys.
 
+**R-id-51** A controller's key for kept values is made from its own private key: every copy of the controller makes the same key, another identity makes another, and no value in the store holds it.
+*Accept:* a controller's identity saved and loaded again makes the same key, and a new controller of the same name makes another. Neither the identity's file nor its card holds the key.
+
 **C-id-01** A fingerprint is made from both of a card's public keys. Made from the signing key alone it is the same for a card whose decrypting key has been swapped, and the two people comparing fingerprints see nothing wrong. *Test:* `id_fingerprint_changes_with_either_key`
 
 **C-id-02** An identity file that anyone but its owner can read is refused, and the refusal says so. A key others on the computer can read is no longer that party's alone, and using it quietly hides the fact. *Test:* `id_identity_file_readable_by_others_refused`
@@ -131,7 +134,7 @@ Uses:
 
 Used by:
 
-- **Controller**: asks whether a sender is trusted, reads a client's ceiling and a runner's tags, opens messages sealed to it, signs heads, and seals jobs and receipts; which of a client's accepted messages it then acts on, and how a late one is answered, are its own (R-ctl-07, R-inst-67).
+- **Controller**: asks whether a sender is trusted, reads a client's ceiling and a runner's tags, opens messages sealed to it, signs heads, seals jobs and receipts, and makes the keys of kept paths from its key for kept values; which of a client's accepted messages it then acts on, and how a late one is answered, are its own (R-ctl-07, R-inst-67).
 - **Runner**: opens jobs and cancels, applies the ceiling it gave the controller that signed a job, signs what it adds to a record, and seals results.
 - **Client**: signs and seals what it sends, opens its receipts and records, and checks heads against the controller's card.
 - **Instance**: a head carries the controller's signature; record entries are sealed to the controller and to the client that started the root.

@@ -4,6 +4,7 @@ package runner_test
 
 import (
 	"bytes"
+	"encoding/base64"
 	"encoding/binary"
 	"fmt"
 	"io"
@@ -16,6 +17,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/zummed/corbie/instance"
 	"github.com/zummed/corbie/machine"
 	"github.com/zummed/corbie/runner"
 )
@@ -46,6 +48,14 @@ func standInHere(as string, args []string) bool {
 		binary.BigEndian.PutUint32(size[:], uint32(len(args[1])))
 		toRunner().Write(append(size[:], args[1]...))
 		io.Copy(io.Discard, fromRunner())
+	case "job-that-keeps-what-it-is-given":
+		// A job's process that writes down the first piece its runner
+		// sends it, the job it is given, and ends.
+		var size [4]byte
+		io.ReadFull(fromRunner(), size[:])
+		given := make([]byte, binary.BigEndian.Uint32(size[:]))
+		io.ReadFull(fromRunner(), given)
+		os.WriteFile(args[0], given, 0o600)
 	case "job-that-holds-memory":
 		// A job's process that holds memory no script made, and stays.
 		number()
@@ -129,5 +139,24 @@ func Test_run_unreadable_channel_stops_job_and_fails_it(t *testing.T) {
 		// The process had not ended by itself: the runner stopped it.
 		soon(t, "the job's process to be stopped", func() bool { return ended(pid) })
 		end()
+	}
+}
+
+// The runner holds a job's key to kept values, and its process is given
+// the job without it.
+func Test_run_job_process_holds_no_kept_key(t *testing.T) {
+	w := newWorld(t)
+	key := bytes.Repeat([]byte{7}, 32)
+	file := filepath.Join(t.TempDir(), "given")
+	w.job(w.ctl, "work", `return "ran"`, func(j *instance.Job) { j.Kept = &instance.Kept{Path: "notes", Key: key} })
+	r := w.runner("all")
+	r.Command = []string{os.Args[0], "job-that-keeps-what-it-is-given", file}
+	pass(t, r)
+	given, err := os.ReadFile(file)
+	if err != nil || !bytes.Contains(given, []byte(`"op":"begin"`)) {
+		t.Fatalf("the job's process wrote down %q: %v", given, err)
+	}
+	if bytes.Contains(given, []byte(base64.StdEncoding.EncodeToString(key))) || bytes.Contains(given, []byte(`"kept"`)) {
+		t.Fatalf("the job's process was given the key to kept values: %s", given)
 	}
 }

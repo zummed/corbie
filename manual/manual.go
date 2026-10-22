@@ -111,7 +111,7 @@ func needs(page string) []string {
 		if !strings.HasPrefix(paragraph, "Needs ") {
 			continue
 		}
-		for _, kind := range []string{permission.Env, permission.Exec, permission.Read, permission.Write, permission.Net, permission.Secret} {
+		for _, kind := range []string{permission.Env, permission.Exec, permission.Read, permission.Write, permission.Net, permission.Secret, permission.KeptRead, permission.KeptWrite} {
 			if strings.Contains(paragraph, kind+":") && !slices.Contains(kinds, kind) {
 				kinds = append(kinds, kind)
 			}

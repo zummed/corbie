@@ -4,9 +4,9 @@ A script can do nothing outside itself except by calling a plugin. This area is 
 
 ## Three layers
 
-A library, written in script, calls plugins: a Graph helper, a paging loop, an API wrapper. A plugin, written in Go, asks Corbie for a way out: http, net, fs, exec, crypto and the rest. The ways out are kept by Corbie, and there are four: open a connection, open a path, start a program, read a variable.
+A library, written in script, calls plugins: a Graph helper, a paging loop, an API wrapper. A plugin, written in Go, asks Corbie for a way out: http, net, fs, exec, crypto and the rest. The ways out are kept by Corbie, and there are five: open a connection, open a path, start a program, read a variable, read or write a kept value.
 
-**The ways out** are few and Corbie keeps them. A plugin never opens anything by itself. It asks Corbie for a way to connect, a path, a program or a variable, and Corbie checks the job's permissions, notes what was used, puts secrets in where they are bound to go, and hands the thing over or refuses. Because there is one place, the checks, the record of what was used and the handling of secrets are the same for every plugin and cannot be forgotten by one.
+**The ways out** are few and Corbie keeps them. A plugin never opens anything by itself. It asks Corbie for a way to connect, a path, a program, a variable or a kept value, and Corbie checks the job's permissions, notes what was used, puts secrets in where they are bound to go, and hands the thing over or refuses. Because there is one place, the checks, the record of what was used and the handling of secrets are the same for every plugin and cannot be forgotten by one.
 
 **Plugins** are thin and low-level. They give a script the plain building blocks: a web request, a raw connection, a file, a program, a hash. With them anything can be done.
 
@@ -20,6 +20,7 @@ A library, written in script, calls plugins: a Graph helper, a paging loop, an A
 | Path | a file's real location, to read or to write | `fs.read`, `fs.write` |
 | Program | a started program, given its arguments, variables and files | `exec` |
 | Variable | the value of one of the runner's variables | `env` |
+| Kept value | the value kept at a kept path, to read, keep, list or remove | `kept.read`, `kept.write` |
 | The job's own channel | its result, what it emits, its blobs, the machines it defines | nothing; every job has it |
 
 A plugin that connects is given a way to open connections, not one open connection, because many services hand out further addresses to connect to. Each address is checked like the first, and a secret can be had only for an address it is bound to.
@@ -49,6 +50,7 @@ A plugin's page in the manual is its specification. It lists each call, its opti
 | `fs` | files and directories |
 | `exec` | starting a program and getting what it printed |
 | `env` | the runner's variables |
+| `kept` | values kept in the store, which outlive every run |
 | `crypto` | hashes, keyed hashes, random bytes, signing and checking, encryption |
 | `compress` | packing and unpacking |
 | `html`, `xml` | reading a page or a document as a tree |

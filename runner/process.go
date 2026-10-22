@@ -209,6 +209,36 @@ func (c *channel) Define(source string, files map[string]string) (blob.Ref, erro
 	return *answer.Ref, nil
 }
 
+func (c *channel) ReadKept(path string) ([]byte, bool, error) {
+	answer, err := c.asks(&piece{Op: opKeptRead, Path: path}, nil)
+	if err != nil {
+		return nil, false, err
+	}
+	value, _ := answer.Data.([]byte)
+	if value == nil {
+		value = []byte{}
+	}
+	return value, answer.Set, nil
+}
+
+func (c *channel) WriteKept(path string, value []byte) error {
+	_, err := c.asks(&piece{Op: opKeptWrite, Path: path, Size: int64(len(value))}, bytes.NewReader(value))
+	return err
+}
+
+func (c *channel) ListKept(path string) ([]string, error) {
+	answer, err := c.asks(&piece{Op: opKeptList, Path: path}, nil)
+	if err != nil {
+		return nil, err
+	}
+	return answer.Paths, nil
+}
+
+func (c *channel) RemoveKept(path string) error {
+	_, err := c.asks(&piece{Op: opKeptRemove, Path: path}, nil)
+	return err
+}
+
 // failed makes the result of a job that failed.
 func failed(e *machine.Error) *instance.Result {
 	return &instance.Result{Status: e.Status, Error: e}

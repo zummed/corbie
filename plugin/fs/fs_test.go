@@ -15,6 +15,7 @@ import (
 // kept is a job's channel that holds one blob as the store would, and
 // notes the most that was fetched of it at once.
 type kept struct {
+	plugin.Channel
 	size    int64
 	largest int64
 	fetches int

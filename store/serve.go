@@ -17,6 +17,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"golang.org/x/crypto/chacha20poly1305"
 )
 
 // A directory can be served to other computers by the computer that holds it.
@@ -48,9 +50,10 @@ const (
 	// servedWait is how long a wait is held before it answers that nothing
 	// was written.
 	servedWait = 25 * time.Second
-	// servedValue is the most a value that replaces another may hold. A
-	// value written only-if-new is of any size, and goes straight to disk.
-	servedValue = 64 << 20
+	// servedValue is the most a value that replaces another may hold: a
+	// kept value of 64 MiB with its nonce and tag. A value written
+	// only-if-new is of any size, and goes straight to disk.
+	servedValue = 64<<20 + chacha20poly1305.NonceSizeX + chacha20poly1305.Overhead
 )
 
 // Proof is what an end of a served directory's wire shows of itself as a

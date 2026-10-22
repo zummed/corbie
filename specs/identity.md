@@ -8,6 +8,8 @@ An identity is a pair of private keys, one for signing and one for decrypting, k
 
 A party's name is chosen when its identity is made and never changes. The store has no identity. It is storage.
 
+A controller's key for kept values is made from its private key, so every copy of the controller makes the same key and the store holds none (see Store).
+
 A computer's parties live in one config directory, with a place each for a controller, a runner and a client. One computer can be all three.
 
 ## Enrolment

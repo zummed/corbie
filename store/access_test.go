@@ -36,7 +36,7 @@ func newTable(t *testing.T, open func(Party) Store) table {
 		"ctl/running/c1/i1", "ctl/running/c2/i2", "ctl/finished/c1/i0", "ctl/finished/c2/i9",
 		"ctl/records/c1/i1/steps/1", "ctl/records/c1/i1/emits/j1/1", "ctl/records/c1/i1/blobs/b1",
 		"ctl/records/c2/i2/steps/1", "ctl/records/c2/i2/blobs/b1",
-		"ctl/wakes/t/c1/i1/w", "ctl/trust/r1", "ctl/secrets/s1",
+		"ctl/wakes/t/c1/i1/w", "ctl/trust/r1", "ctl/secrets/s1", "ctl/kept/notes/tea=",
 		"r1/inbox/ctl/j1", "r1/taken/j1", "r2/inbox/ctl/j2", "r2/taken/j2",
 	} {
 		if _, err := w.owner.Write(ctx, name, []byte("was"), Overwrite); err != nil {
@@ -119,7 +119,7 @@ func TestControllerRow(t *testing.T) { eachTable(t, controllerRow) }
 
 func controllerRow(t *testing.T, w table) {
 	for _, name := range []string{"ctl/inbox/c1/x", "ctl/receipts/c1/x", "ctl/running/c1/x", "ctl/finished/c1/x",
-		"ctl/records/c1/x/steps/1", "ctl/wakes/t/c1/x/w", "ctl/trust/x", "ctl/secrets/x"} {
+		"ctl/records/c1/x/steps/1", "ctl/wakes/t/c1/x/w", "ctl/trust/x", "ctl/secrets/x", "ctl/kept/x="} {
 		w.allowed(w.ctl, OnlyIfNew, name)
 		w.allowed(w.ctl, Overwrite, name)
 		w.reads(w.ctl, name)
@@ -167,6 +167,17 @@ func runnerRow(t *testing.T, w table) {
 	w.noRead(w.r1, "r2/inbox/ctl/j2", "r2/taken/j2")
 	w.noList(w.r1, "r2/inbox", "r2/taken")
 
+	// Every runner reads, writes, rewrites, deletes and lists kept values.
+	for _, r := range []Store{w.r1, w.r2} {
+		w.allowed(r, OnlyIfNew, "ctl/kept/notes/cake=")
+		w.allowed(r, Overwrite, "ctl/kept/notes/tea=", "ctl/kept/notes/cake=")
+		w.reads(r, "ctl/kept/notes/tea=")
+		w.lists(r, "ctl/kept", "ctl/kept/notes")
+		if done, err := r.Delete(ctx, "ctl/kept/notes/cake=", Overwrite); err != nil || !done {
+			t.Errorf("delete a kept value: %v", err)
+		}
+	}
+
 	// Nothing else is given: no value and no name.
 	w.noRead(w.r1, "ctl/records/c1/i1/steps/1", "ctl/records/c1/i1/emits/j1/1", "ctl/running/c1/i1",
 		"ctl/receipts/c1/m1", "ctl/wakes/t/c1/i1/w", "ctl/trust/r1", "ctl/secrets/s1", "ctl/inbox/r1/m1")
@@ -192,9 +203,11 @@ func clientRow(t *testing.T, w table) {
 		"ctl/records/c1/i1/steps/1", "ctl/records/c1/i1/emits/j1/1", "ctl/records/c1/i1/blobs/b1")
 	w.lists(w.c1, "ctl/receipts/c1", "ctl/running/c1", "ctl/finished/c1", "ctl/records/c1", "ctl/records/c1/i1/steps")
 	w.noRead(w.c1, "ctl/receipts/c2/m1", "ctl/running/c2/i2", "ctl/finished/c2/i9", "ctl/records/c2/i2/steps/1",
-		"ctl/inbox/c1/m1", "ctl/wakes/t/c1/i1/w", "ctl/trust/r1", "ctl/secrets/s1", "r1/inbox/ctl/j1", "r1/taken/j1")
+		"ctl/inbox/c1/m1", "ctl/wakes/t/c1/i1/w", "ctl/trust/r1", "ctl/secrets/s1", "ctl/kept/notes/tea=", "r1/inbox/ctl/j1", "r1/taken/j1")
 	w.noList(w.c1, "ctl/receipts/c2", "ctl/running/c2", "ctl/running", "ctl/records/c2", "ctl/inbox/c1",
-		"ctl/wakes", "ctl/trust", "ctl/secrets", "r1", "r1/inbox")
+		"ctl/wakes", "ctl/trust", "ctl/secrets", "ctl/kept", "r1", "r1/inbox")
+	w.refused(w.c1, OnlyIfNew, "ctl/kept/notes/cake=")
+	w.noDelete(w.c1, "ctl/kept/notes/tea=")
 }
 
 func TestViewerRow(t *testing.T) { eachTable(t, viewerRow) }
@@ -202,8 +215,9 @@ func TestViewerRow(t *testing.T) { eachTable(t, viewerRow) }
 func viewerRow(t *testing.T, w table) {
 	w.lists(w.viewer, "ctl/running", "ctl/finished", "ctl/running/c2")
 	w.reads(w.viewer, "ctl/running/c1/i1", "ctl/running/c2/i2", "ctl/finished/c1/i0")
-	w.noRead(w.viewer, "ctl/records/c1/i1/steps/1", "ctl/inbox/c1/m1", "ctl/receipts/c1/m1", "ctl/trust/r1", "r1/taken/j1")
-	w.noList(w.viewer, "ctl", "ctl/records", "ctl/inbox", "ctl/receipts", "r1", "")
+	w.noRead(w.viewer, "ctl/records/c1/i1/steps/1", "ctl/inbox/c1/m1", "ctl/receipts/c1/m1", "ctl/trust/r1", "ctl/kept/notes/tea=", "r1/taken/j1")
+	w.noList(w.viewer, "ctl", "ctl/records", "ctl/inbox", "ctl/receipts", "ctl/kept", "r1", "")
+	w.refused(w.viewer, OnlyIfNew, "ctl/kept/notes/cake=")
 	w.refused(w.viewer, OnlyIfNew, "ctl/running/c1/x", "ctl/inbox/c1/x", "ctl/finished/c1/x")
 	w.refused(w.viewer, Overwrite, "ctl/running/c1/i1")
 	w.noDelete(w.viewer, "ctl/running/c1/i1", "ctl/finished/c1/i0")
@@ -241,27 +255,28 @@ func refusedReadRefusedWrite(t *testing.T, w table) {
 }
 
 // The whole wall between limited parties is that each of their writes is
-// only-if-new.
+// only-if-new, but in a runner's own area and among kept values.
 func Test_store_policy_limited_party_cannot_replace(t *testing.T) {
 	for _, kind := range []Kind{Runner, Client, Viewer, Nobody} {
 		for _, g := range (Party{Kind: kind, Name: "p", Controller: "ctl"}).grants() {
-			own := kind == Runner && (g.pattern == "p/inbox/**" || g.pattern == "p/taken/**")
+			own := kind == Runner && (g.pattern == "p/inbox/**" || g.pattern == "p/taken/**" || g.pattern == "ctl/kept/**")
 			if !own && g.acts&(ActRewrite|ActDelete) != 0 {
 				t.Errorf("kind %d may replace or delete %s", kind, g.pattern)
 			}
 		}
 	}
 
-	// And so in the policy printed for each: outside a runner's own area,
-	// nothing is deleted, and nothing is put under a name by a request that
-	// does not carry the condition.
+	// And so in the policy printed for each: outside a runner's own area
+	// and the kept values, nothing is deleted, and nothing is put under a
+	// name by a request that does not carry the condition.
 	for _, who := range []string{"runner", "client", "viewer", "nobody"} {
 		for _, s := range carry(t, policyParties[who]).Statement {
 			_, onlyIfNew := s.Condition["Null"]["s3:if-none-match"]
 			_, noValue := s.Condition["Bool"]["s3:ObjectCreationOperation"]
 			changes := s.Action == "s3:DeleteObject" || (s.Action == "s3:PutObject" && !onlyIfNew && !noValue)
 			for _, resource := range s.Resource {
-				if changes && !strings.HasPrefix(resource, "arn:aws:s3:::bkt/pre/fix/r1/") {
+				own := strings.HasPrefix(resource, "arn:aws:s3:::bkt/pre/fix/r1/") || (who == "runner" && strings.HasPrefix(resource, "arn:aws:s3:::bkt/pre/fix/ctl/kept/"))
+				if changes && !own {
 					t.Errorf("the %s's policy lets it replace or delete %s", who, resource)
 				}
 			}

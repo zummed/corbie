@@ -6,6 +6,7 @@ package identity
 import (
 	"crypto/ecdh"
 	"crypto/ed25519"
+	"crypto/hkdf"
 	"crypto/rand"
 	"crypto/sha256"
 	"crypto/tls"
@@ -165,6 +166,14 @@ func newIdentity(name string, kind Kind, signKey ed25519.PrivateKey, sealKey *ec
 // Proof is what the identity shows of itself to the other end of a served
 // directory's wire: that it holds its signing key.
 func (id *Identity) Proof() (tls.Certificate, error) { return store.Proof(id.signKey) }
+
+// KeptKey is the key of the top kept path, from which the key of every
+// other is made. It is made from the identity's private key and kept
+// nowhere, so every copy of a controller makes the same key, and it ends
+// with the controller's identity.
+func (id *Identity) KeptKey() ([]byte, error) {
+	return hkdf.Key(sha256.New, id.sealKey.Bytes(), nil, "corbie kept values", 32)
+}
 
 // SignKey is the key a card's signatures are checked with.
 func (c Card) SignKey() ed25519.PublicKey { return c.sign }

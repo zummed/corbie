@@ -34,6 +34,7 @@ type piece struct {
 	Size   int64             `json:"size,omitzero"`
 	Source string            `json:"source,omitzero"`
 	Files  map[string]string `json:"files,omitzero"`
+	Path   string            `json:"path,omitzero"` // a kept path
 
 	// In an answer, and the text of a form.
 	Value    string           `json:"value,omitzero"`
@@ -42,6 +43,7 @@ type piece struct {
 	Code     string           `json:"code,omitzero"`
 	Why      *machine.Error   `json:"why,omitzero"`
 	Problems machine.Problems `json:"problems,omitzero"`
+	Paths    []string         `json:"paths,omitzero"`
 }
 
 // The things said on the channel.
@@ -56,6 +58,11 @@ const (
 	opDefine = "define" // job: a machine to fill out, check and store
 	opForm   = "form"   // job: one more form a secret's value is about to leave in
 	opResult = "result" // job: how the script ended
+
+	opKeptRead   = "kept.read"   // job: the value kept at a path
+	opKeptWrite  = "kept.write"  // job: a value to keep at a path; its bytes follow
+	opKeptList   = "kept.list"   // job: the kept paths below a path
+	opKeptRemove = "kept.remove" // job: the value kept at a path, to remove
 )
 
 // begin is everything a job's process is given.

@@ -321,7 +321,7 @@ func cmdInit(e *Env, args []string) error {
 			b.WriteString("A directory keeps no party out: everyone on this computer who can read it can read and write all of it.\n")
 		}
 		if len(limit.Allow) == 0 {
-			b.WriteString("The ceiling is empty: jobs on this computer may do nothing outside themselves.\nTo change that: corbie init --ceiling all   (or network, disk, exec, env, or single entries)\n")
+			b.WriteString("The ceiling is empty: jobs on this computer may do nothing outside themselves.\nTo change that: corbie init --ceiling all   (or network, disk, exec, env, kept, or single entries)\n")
 		} else {
 			fmt.Fprintf(&b, "The ceiling, which is the most jobs on this computer may do: %s\n", strings.Join(limit.Allow, ", "))
 		}

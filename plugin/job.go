@@ -24,9 +24,9 @@ import (
 
 // A Job is what a plugin is given of the job its script runs in: the few
 // ways out, which Corbie keeps. A plugin never opens anything by itself. It
-// asks here for a way to connect, a path, a program or a variable; every
-// layer of the job's permissions is checked, what was used is noted, and
-// the thing is handed over or refused.
+// asks here for a way to connect, a path, a program, a variable or a kept
+// value; every layer of the job's permissions is checked, what was used is
+// noted, and the thing is handed over or refused.
 type Job struct {
 	Context context.Context
 	// Perms is every layer that applies to the job.
@@ -55,13 +55,18 @@ type Job struct {
 }
 
 // The Channel is a job's own way to its runner: what it emits, its blobs,
-// the machines it defines, and the runner's variables it is allowed.
+// the machines it defines, and the runner's variables and the kept values
+// it is allowed.
 type Channel interface {
 	Emit(name string, data any) error
 	Variable(name string) (value string, set bool, err error)
 	ReadBlob(ref blob.Ref, from, length int64) ([]byte, error)
 	WriteBlob(typ string, size int64, contents io.Reader) (blob.Ref, error)
 	Define(source string, files map[string]string) (blob.Ref, error)
+	ReadKept(path string) (value []byte, kept bool, err error)
+	WriteKept(path string, value []byte) error
+	ListKept(path string) ([]string, error)
+	RemoveKept(path string) error
 }
 
 // OnEnd has something done when the job ends, however it ends.
@@ -457,6 +462,66 @@ func (j *Job) Variable(name string) (string, bool, error) {
 		return "", false, r
 	}
 	return j.Channel.Variable(name)
+}
+
+// ReadKept gives the value kept at a path, and whether one is.
+func (j *Job) ReadKept(path string) ([]byte, bool, error) {
+	if err := permission.CheckKeptPath(path); err != nil {
+		return nil, false, Errorf(BadInput, "%v", err)
+	}
+	if r := j.Perms.Check(permission.KeptRead, path); r != nil {
+		return nil, false, r
+	}
+	return j.Channel.ReadKept(path)
+}
+
+// WriteKept keeps a value at a path, in place of any value there.
+func (j *Job) WriteKept(path string, value []byte) error {
+	if err := permission.CheckKeptPath(path); err != nil {
+		return Errorf(BadInput, "%v", err)
+	}
+	if len(value) > MaxWhole {
+		return Errorf(BadInput, "a kept value is at most %d MiB, and this is %d bytes", MaxWhole>>20, len(value))
+	}
+	if r := j.Perms.Check(permission.KeptWrite, path); r != nil {
+		return r
+	}
+	return j.Channel.WriteKept(path, value)
+}
+
+// ListKept gives every kept path below a path that the job may read, in
+// order. It is checked as reading everything below the path, and leaves
+// out what a deny entry refuses: a listing past a deny would give the
+// names it guards.
+func (j *Job) ListKept(path string) ([]string, error) {
+	if err := permission.CheckKeptPath(path); err != nil {
+		return nil, Errorf(BadInput, "%v", err)
+	}
+	if r := j.Perms.Check(permission.KeptRead, path+"/**"); r != nil {
+		return nil, r
+	}
+	listed, err := j.Channel.ListKept(path)
+	if err != nil {
+		return nil, err
+	}
+	var paths []string
+	for _, p := range listed {
+		if j.Perms.Peek(permission.KeptRead, p) {
+			paths = append(paths, p)
+		}
+	}
+	return paths, nil
+}
+
+// RemoveKept removes the value kept at a path. Nothing there is no error.
+func (j *Job) RemoveKept(path string) error {
+	if err := permission.CheckKeptPath(path); err != nil {
+		return Errorf(BadInput, "%v", err)
+	}
+	if r := j.Perms.Check(permission.KeptWrite, path); r != nil {
+		return r
+	}
+	return j.Channel.RemoveKept(path)
 }
 
 // Reveal gives the real text of a value that may hold secrets, for the

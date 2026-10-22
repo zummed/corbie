@@ -1,8 +1,8 @@
 What Corbie does not defend against: Corbie makes no check and gives no protection in these cases.
 
-A script uses files, the network, other programs, environment variables and
-secrets only through six kinds of permission, and Corbie checks every use. It
-does not defend against the following.
+A script uses files, the network, other programs, environment variables,
+secrets and kept values only through eight kinds of permission, and Corbie
+checks every use. It does not defend against the following.
 
 - A program that a job starts reads files, writes files and opens connections
   as the runner's user. Permissions are checked when it is started and not
@@ -23,14 +23,19 @@ does not defend against the following.
   the plugin reports.
 - Jobs on one runner are not isolated from each other. Send jobs that must be
   isolated to different runners, which a job selects with `tags:`.
+- A runner sent a job that may use kept values keeps a key for good. It is the
+  key of the path that the job's kept scopes share, and it decrypts every
+  value at that path and below it.
+- Any runner can delete a kept value or put an older one back. Keep values
+  that must be isolated under different controllers.
 
 These are true of the store.
 
 - A directory store keeps no process out. Every user of the computer who can
   read the directory can read and write all of it.
-- Whoever operates the store can read every file path, delete any file and
-  restore the store to an earlier state. They cannot read an encrypted file,
-  and a file they alter is refused by its reader.
+- Whoever operates the store can read every file path, kept paths included,
+  delete any file and restore the store to an earlier state. They cannot read
+  an encrypted file, and a file they alter is refused by its reader.
 - Someone on the network between a served directory and a computer that uses
   it can see that the two communicate and how much data they exchange, and can
   delay or cut the connection. They can do nothing else.

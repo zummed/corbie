@@ -28,8 +28,8 @@ The detailed rules behind the [Store overview](../store.md).
 **R-store-10** Every read, write and delete concerns one name, and nothing is held between calls: no lock, no lease, no set of writes that stand or fall together.
 *Accept:* a party killed between any two of its writes leaves every name open at once to the others in all three ways, with nothing to wait out. When a caller makes two writes to two names and the second is refused, the first stands.
 
-**R-store-11** Only four kinds of value are ever rewritten: the head of a running instance, the note of how far a large step has been carried out, an entry in the controller's list of who it trusts, and an entry in its list of secrets. Every other value is written only-if-new.
-*Accept:* run flows, statecharts and agents to their ends on a memory store that notes every write. Every write to a name outside `running/`, `trust/` and `secrets/`, a record's `carried` apart, is only-if-new.
+**R-store-11** Only five kinds of value are ever rewritten: the head of a running instance, the note of how far a large step has been carried out, an entry in the controller's list of who it trusts, an entry in its list of secrets, and a kept value. Every other value is written only-if-new.
+*Accept:* run flows, statecharts and agents to their ends on a memory store that notes every write. Every write to a name outside `running/`, `trust/`, `secrets/` and `kept/`, a record's `carried` apart, is only-if-new.
 
 **R-store-12** Every party reaches the store directly. Nothing of Corbie's runs inside it, and nothing of Corbie's stands in front of a directory or a bucket; what serves a directory to other computers keeps nothing of its own.
 *Accept:* with no controller and no runner running, a client writes a start into the controller's inbox and a viewer lists heads, each using only the store's address and its own access to the store. A served directory's server is stopped and started again in the middle of a run on another computer: the run goes on from the directory, and the server has written no value of its own.
@@ -48,8 +48,8 @@ The detailed rules behind the [Store overview](../store.md).
 **R-store-14** The layout's version is the value named `version` at the top of the store, written once when the store is set up, and a Corbie that does not know the version it finds refuses to use the store.
 *Accept:* `corbie init` on an empty directory leaves a value named `version` that every party can read; setting up a second controller identity on the same store leaves it as it was. Point any command or role at a store whose `version` this Corbie does not know: it ends in failure saying the store's layout is one it does not know, having written and deleted nothing. A store with no `version` is refused the same way by everything except the commands that set a store up.
 
-**R-store-17** Every value is at the place the overview's drawing gives it, under the party that writes it: messages to a party at `<party>/inbox/<sender>/<message>`; a client's receipts at `<controller>/receipts/<sender>/<message>` under the message's own name; heads at `<controller>/running/<client>/<instance>` and `finished/<client>/<instance>`; a record's steps, emits and blobs at `<controller>/records/<client>/<instance>/steps/<number>`, `emits/<job>/<number>` and `blobs/<name>`; wakes at `<controller>/wakes/<time>/<instance>/<name>`, listed soonest first; trust at `<controller>/trust/<party>`; secrets at `<controller>/secrets/<name>`; a runner's marks at `<runner>/taken/<due time>/<job>`.
-*Accept:* run a flow started by `c1` through a job on `r1` that logs, returns a file and sets a timer, then enrol a runner and set a secret. Each of the values above exists at exactly that path, and the memory store shows the party named as its writer: the controller for steps and the job's message, `c1` for the start and an uploaded file, `r1` for the result, the emits and the returned file. Three wakes set for three times list in order of their times.
+**R-store-17** Every value is at the place the overview's drawing gives it, under the party that writes it: messages to a party at `<party>/inbox/<sender>/<message>`; a client's receipts at `<controller>/receipts/<sender>/<message>` under the message's own name; heads at `<controller>/running/<client>/<instance>` and `finished/<client>/<instance>`; a record's steps, emits and blobs at `<controller>/records/<client>/<instance>/steps/<number>`, `emits/<job>/<number>` and `blobs/<name>`; wakes at `<controller>/wakes/<time>/<instance>/<name>`, listed soonest first; trust at `<controller>/trust/<party>`; secrets at `<controller>/secrets/<name>`; kept values at `<controller>/kept/<path>=`; a runner's marks at `<runner>/taken/<due time>/<job>`.
+*Accept:* run a flow started by `c1` through a job on `r1` that logs, keeps a value at `notes/tea`, returns a file and sets a timer, then enrol a runner and set a secret. Each of the values above exists at exactly that path, and the memory store shows the party named as its writer: the controller for steps and the job's message, `c1` for the start and an uploaded file, `r1` for the result, the emits, the kept value and the returned file. Three wakes set for three times list in order of their times.
 
 **R-store-29** The drawing in the overview is the whole layout: no name is written that it does not draw.
 *Accept:* after flows, statecharts and agents have run, with children, timers, keys, receipts, cancels and housekeeping, on a memory store, every name in the store matches one line of the drawing.
@@ -74,11 +74,11 @@ Each rule here is checked on the memory store opened as the party named, and on 
 **R-store-31** The controller may write, rewrite, delete and read every name in its own area; it may add jobs and cancels to a runner's inbox under its own name, only-if-new, and may touch nothing else in a runner's area.
 *Accept:* as the controller, write, overwrite, delete, read and list a name under each of `inbox/`, `receipts/`, `running/`, `finished/`, `records/`, `wakes/`, `trust/` and `secrets/` in its area: every act is allowed. Write a job and a cancel under `<runner>/inbox/<controller>/` only-if-new: allowed. Overwrite or delete one of them, write under `<runner>/inbox/<another party>/`, write under `<runner>/taken/`, or read or list anything in a runner's area: each refused, and no name is given.
 
-**R-store-34** A runner may add messages to the controller's inbox under its own name, only-if-new; may add emit entries and blobs to any record, only-if-new, and can never change or remove what is in a record or write a step entry; may write, rewrite, delete and read its own inbox and its own marks; may read the blobs in any record; and may do nothing else.
-*Accept:* as runner `r1`: write a result under `<controller>/inbox/r1/` only-if-new: allowed; overwrite or delete it, or write under `<controller>/inbox/c1/`: refused. Write a new name under `emits/` and `blobs/` in the record of an instance it holds a job for and in one it holds no job for: all allowed; overwrite, write only-if-unchanged or delete one it wrote, or write any name under `steps/`: refused and the value is as it was. Delete a job from `r1/inbox/`, write a mark under `r1/taken/` only-if-new and delete it, list both, and read a blob in any record: allowed; the same in another runner's area: refused. Read or list a step entry, an emit entry, a head, a receipt, a wake, a trust entry, a secret or the controller's inbox: no value and no name is given.
+**R-store-34** A runner may add messages to the controller's inbox under its own name, only-if-new; may add emit entries and blobs to any record, only-if-new, and can never change or remove what is in a record or write a step entry; may write, rewrite, delete and read its own inbox and its own marks; may read the blobs in any record; may write, rewrite, delete, read and list every kept value under `<controller>/kept/`; and may do nothing else.
+*Accept:* as runner `r1`: write a result under `<controller>/inbox/r1/` only-if-new: allowed; overwrite or delete it, or write under `<controller>/inbox/c1/`: refused. Write a new name under `emits/` and `blobs/` in the record of an instance it holds a job for and in one it holds no job for: all allowed; overwrite, write only-if-unchanged or delete one it wrote, or write any name under `steps/`: refused and the value is as it was. Delete a job from `r1/inbox/`, write a mark under `r1/taken/` only-if-new and delete it, list both, and read a blob in any record: allowed; the same in another runner's area: refused. As `r1` and as `r2`, write, overwrite, read, list and delete a kept value under `<controller>/kept/`: allowed. Read or list a step entry, an emit entry, a head, a receipt, a wake, a trust entry, a secret or the controller's inbox: no value and no name is given.
 
 **R-store-39** A client may add messages to the controller's inbox under its own name, only-if-new; may add blobs to the records of its own runs, only-if-new, and may write nothing else in any record; may read its own receipts, heads and records; and may do nothing else.
-*Accept:* as client `c1`: write a start under `<controller>/inbox/c1/` only-if-new: allowed; overwrite or delete it, or write under `<controller>/inbox/c2/`: refused. Write a new name under `records/c1/<instance>/blobs/`: allowed; overwrite or delete it, write under `steps/` or `emits/` of the same record, or write a blob under `records/c2/`: refused. Read and list `receipts/c1/`, `running/c1/`, `finished/c1/` and `records/c1/`: allowed; the same paths for `c2`, the controller's inbox (the messages `c1` itself wrote included), `wakes/`, `trust/`, `secrets/` or any runner's area: no value and no name is given.
+*Accept:* as client `c1`: write a start under `<controller>/inbox/c1/` only-if-new: allowed; overwrite or delete it, or write under `<controller>/inbox/c2/`: refused. Write a new name under `records/c1/<instance>/blobs/`: allowed; overwrite or delete it, write under `steps/` or `emits/` of the same record, or write a blob under `records/c2/`: refused. Read and list `receipts/c1/`, `running/c1/`, `finished/c1/` and `records/c1/`: allowed; the same paths for `c2`, the controller's inbox (the messages `c1` itself wrote included), `wakes/`, `trust/`, `secrets/`, `kept/` or any runner's area: no value and no name is given. Write or delete a kept value: refused.
 
 **R-store-42** A viewer given heads only may read every head and may write nothing.
 *Accept:* as such a viewer, list and read everything under `running/` and `finished/`: allowed. Read or list any other path except `version`: no value and no name is given. Any write or delete anywhere: refused.
@@ -88,7 +88,18 @@ Each rule here is checked on the memory store opened as the party named, and on 
 
 **C-store-09** A read of one name that the store refuses counts as "not there", while a write, a delete or a listing that the store refuses is reported as refused, never as done and never as "already there". A bucket answers a limited key "refused" for a name that holds nothing exactly as for one it may not read, so the two cannot be told apart; but taking a refused write for an answer would mark a message as sent that was never written. *Test:* `store_refused_read_is_not_there_refused_write_stays_refused`
 
-**C-store-11** The policy printed for a runner or a client allows each write only when it is only-if-new. That one condition is the whole wall between parties in a bucket; without it a party could replace another's entry. *Test:* `store_policy_limited_party_cannot_replace`
+**C-store-11** The policy printed for a runner or a client allows each write only when it is only-if-new, outside a runner's own inbox and marks and the kept values. That one condition is the whole wall between parties in a bucket; without it a party could replace another's entry. *Test:* `store_policy_limited_party_cannot_replace`
+
+## Kept values
+
+**R-store-65** A kept value is encrypted under its own path's key. The key at the top is the controller's key for kept values (R-id-51), and the key of each path below is a keyed hash of the key of the path above it and its own last part, so the key of a path opens the value kept there and every value kept below it, and no other.
+*Accept:* given the key of `house`, a runner opens the values kept at `house`, `house/docs` and `house/docs/boiler`, and not those at `garden/docs`, `housekeeping` or the top. The key the controller makes for `house/docs` is the one made from the key of `house`.
+
+**C-store-46** A kept value's name is its path with `=` after it, so no kept value's name is the path above another's. A job may keep `a` and `a/b`, and in a directory a name cannot be both a file and a directory. *Test:* `store_kept_path_never_above_another`
+
+**C-store-47** Each write of a kept value is encrypted with a random nonce of its own. The key of a kept path is the same for every value kept there for ever, and a nonce used twice under it gives both values away. *Test:* `store_kept_value_encrypted_afresh`
+
+**C-store-48** A kept value's path is bound into its encryption, and a value found at another path is refused as altered. Any runner, and whoever runs the store, could otherwise put one path's value in another's place. *Test:* `store_kept_value_moved_refused`
 
 ## Kinds of store
 
@@ -177,11 +188,11 @@ Each rule here is checked on the memory store opened as the party named, and on 
 
 ## What the store is trusted with
 
-**R-store-57** Whoever runs the store cannot read what is sealed.
-*Accept:* start a run whose input, output, emits, run secrets and receipts each hold a marker string of their own, then read every value in the store raw. No marker appears in any value under `inbox/`, `receipts/`, `records/` or `secrets/`.
+**R-store-57** Whoever runs the store cannot read what is sealed, or a kept value.
+*Accept:* start a run whose input, output, emits, run secrets, receipts and kept value each hold a marker string of their own, then read every value in the store raw. No marker appears in any value under `inbox/`, `receipts/`, `records/`, `secrets/` or `kept/`.
 
-**R-store-58** A value that matters cannot be altered without it showing: it is signed by its writer, or named in something that is.
-*Accept:* change one byte of, in turn, a message in an inbox, a head, a step entry, an emit entry, a blob, a receipt, a trust entry and a secret. Each time, the party that next reads it refuses it as altered and does nothing it says.
+**R-store-58** A value that matters cannot be altered without it showing: it is signed by its writer, or named in something that is, or, for a kept value, encrypted with its path bound in.
+*Accept:* change one byte of, in turn, a message in an inbox, a head, a step entry, an emit entry, a blob, a receipt, a trust entry, a secret and a kept value. Each time, the party that next reads it refuses it as altered and does nothing it says.
 
 **R-store-59** Anything a party does by setting its own clock against a time another party wrote allows five minutes; the allowance is for treating another party's time as passed, never for delaying a timer.
 *Accept:* a receiver whose clock is five minutes ahead of the sender's takes a message sent a moment ago with the usual life, and does not drop it as past its time. A runner whose clock is five minutes ahead does not remove a mark until five minutes after the job's due time by its own clock. A timer set for a time is delivered at that time by the controller's clock, not five minutes later.
@@ -196,14 +207,14 @@ Uses:
 
 Used by:
 
-- **Identity**: keeps the controller's trust entries under `trust/`; every message in an inbox is signed and sealed by it; each end of a served directory's wire is known by its identity key; enrolment hands out the store's address with the controller's card.
+- **Identity**: keeps the controller's trust entries under `trust/`; every message in an inbox is signed and sealed by it; each end of a served directory's wire is known by its identity key; enrolment hands out the store's address with the controller's card; the top kept path's key is the controller's key for kept values.
 - **Instances**: heads under `running/` and `finished/`, records under `records/`, receipts under `receipts/`; watching is listing and reading these, and a directory or memory store tells a watcher in the same process at once that something was written.
 - **Blobs**: each blob is one value under a record's `blobs/`, of which a reader may fetch a part; a copy is a link in a directory and the bucket's own copy in a bucket; the right to read a blob's bytes gives nothing without its reference (R-blob-03).
 - **Roles**: a pass lists an inbox and the due wakes and does all its work through the three ways of writing; a store in the same process wakes a role when another role writes what it reads.
-- **Controller**: owns every name in its area; writes jobs and cancels into runners' inboxes.
-- **Runner**: reads its inbox, writes marks, emits, blobs and results, each within its row of the table.
+- **Controller**: owns every name in its area; writes jobs and cancels into runners' inboxes; sends a job the key of a kept path.
+- **Runner**: reads its inbox, writes marks, emits, blobs and results, and reads, writes, lists and removes kept values for its jobs, each within its row of the table.
 - **Client**: writes messages and uploads, and reads its receipts, heads and records.
 - **Machines**: a draft's files and definitions are written into a record side by side, under the store's bound.
 - **Secrets**: the controller's secrets are the values under `secrets/`, sealed to the controller.
-- **Plugins**: an extension may add a kind of store, which must pass the checks of R-store-13.
+- **Plugins**: an extension may add a kind of store, which must pass the checks of R-store-13; the `kept` plugin keeps values under `kept/`.
 - **Manual**: carries the list of bucket services Corbie is tested against and the statement that a directory keeps no party out.

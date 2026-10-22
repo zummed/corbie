@@ -48,6 +48,25 @@ func Secrets(ctl string) string                    { return ctl + "/secrets" }
 func Secret(ctl, name string) string               { return ctl + "/secrets/" + name }
 func TakenList(runner string) string               { return runner + "/taken" }
 
+// Kept is the name of the value kept at a path: a value a job keeps, which
+// outlives every run. The name is the path with = after it, a character no
+// kept path holds, so that no kept value's name is the path above
+// another's: a and a/b can both be kept, and in a directory a name cannot
+// be both a file and a directory.
+func Kept(ctl, path string) string { return ctl + "/kept/" + path + "=" }
+
+// KeptList is the path to list for the values kept below a kept path.
+func KeptList(ctl, path string) string { return ctl + "/kept/" + path }
+
+// KeptPathOf gives the kept path of a kept value's name.
+func KeptPathOf(ctl, name string) (string, bool) {
+	path, ok := strings.CutPrefix(name, ctl+"/kept/")
+	if !ok {
+		return "", false
+	}
+	return strings.CutSuffix(path, "=")
+}
+
 // Taken is the name of the mark a runner leaves for a job it has taken. The
 // name carries the job's due time, so the marks whose time has passed are
 // found by listing alone.

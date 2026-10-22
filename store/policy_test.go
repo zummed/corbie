@@ -108,14 +108,14 @@ func TestPolicyIsTheTable(t *testing.T) {
 		"ctl/running/c1/i1", "ctl/running/c2/i2", "ctl/finished/c1/i0", "ctl/finished/c2/i9",
 		"ctl/records/c1/i1/steps/1", "ctl/records/c1/i1/emits/j1/1", "ctl/records/c1/i1/blobs/b1",
 		"ctl/records/c2/i2/steps/1", "ctl/records/c2/i2/emits/j1/1", "ctl/records/c2/i2/blobs/b1",
-		"ctl/wakes/t/c1/i1/w", "ctl/trust/r1", "ctl/secrets/s1",
+		"ctl/wakes/t/c1/i1/w", "ctl/trust/r1", "ctl/secrets/s1", "ctl/kept/notes=", "ctl/kept/notes/tea=",
 		"r1/inbox/ctl/j1", "r1/inbox/c1/x", "r1/taken/j1", "r2/inbox/ctl/j2", "r2/inbox/r1/x", "r2/taken/j2",
 	}
 	paths := []string{
 		"", "ctl", "ctl/inbox", "ctl/inbox/c1", "ctl/inbox/r1", "ctl/receipts", "ctl/receipts/c1", "ctl/receipts/c2",
 		"ctl/running", "ctl/running/c1", "ctl/running/c2", "ctl/finished", "ctl/finished/c1", "ctl/finished/c2",
 		"ctl/records", "ctl/records/c1", "ctl/records/c1/i1", "ctl/records/c1/i1/steps", "ctl/records/c1/i1/blobs",
-		"ctl/records/c2", "ctl/records/c2/i2/blobs", "ctl/wakes", "ctl/trust", "ctl/secrets",
+		"ctl/records/c2", "ctl/records/c2/i2/blobs", "ctl/wakes", "ctl/trust", "ctl/secrets", "ctl/kept", "ctl/kept/notes",
 		"r1", "r1/inbox", "r1/inbox/ctl", "r1/taken", "r2", "r2/inbox", "r2/taken",
 	}
 	for who, p := range policyParties {

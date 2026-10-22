@@ -21,6 +21,7 @@ var layout = []*regexp.Regexp{
 	regexp.MustCompile(`^ctl/wakes/\d{8}T\d{6}\.\d{3}Z/[^/]+/[^/]+/[^/]+$`),
 	regexp.MustCompile(`^ctl/trust/[^/]+$`),
 	regexp.MustCompile(`^ctl/secrets/[^/]+$`),
+	regexp.MustCompile(`^ctl/kept/.+=$`),
 }
 
 // A whole run, with children, events, a ticket, a timer and receipts, keeps
@@ -64,9 +65,9 @@ func TestWhatEveryRunKeepsTo(t *testing.T) {
 		if !drawn {
 			t.Errorf("a name the layout does not draw was written: %s", op.Name)
 		}
-		// Only the head of a running instance, a trust entry and a secret
-		// are ever rewritten.
-		rewritable := strings.HasPrefix(op.Name, "ctl/running/") || strings.HasPrefix(op.Name, "ctl/trust/") || strings.HasPrefix(op.Name, "ctl/secrets/")
+		// Only the head of a running instance, a trust entry, a secret and a
+		// kept value are ever rewritten.
+		rewritable := strings.HasPrefix(op.Name, "ctl/running/") || strings.HasPrefix(op.Name, "ctl/trust/") || strings.HasPrefix(op.Name, "ctl/secrets/") || strings.HasPrefix(op.Name, "ctl/kept/")
 		if op.Act == store.ActRewrite && !rewritable {
 			t.Errorf("%s was rewritten (%s)", op.Name, op.How)
 		}

@@ -30,27 +30,29 @@ type Layer struct {
 	Fix string `json:"fix,omitzero"`
 }
 
-// The six kinds of permission.
+// The eight kinds of permission.
 const (
-	Read   = "fs.read"
-	Write  = "fs.write"
-	Net    = "net"
-	Exec   = "exec"
-	Env    = "env"
-	Secret = "secret"
+	Read      = "fs.read"
+	Write     = "fs.write"
+	Net       = "net"
+	Exec      = "exec"
+	Env       = "env"
+	Secret    = "secret"
+	KeptRead  = "kept.read"
+	KeptWrite = "kept.write"
 )
 
 // Unencrypted is a destination of a secret and not a kind: a connection to
 // a host, whether it is encrypted or not.
 const Unencrypted = "net.unencrypted"
 
-var kinds = map[string]bool{Read: true, Write: true, Net: true, Exec: true, Env: true, Secret: true}
+var kinds = map[string]bool{Read: true, Write: true, Net: true, Exec: true, Env: true, Secret: true, KeptRead: true, KeptWrite: true}
 
 // The groups, each standing for every scope of its kinds. "all" allows
 // everything, secrets included, and means the same in every layer.
 var groups = map[string][]string{
-	"network": {Net}, "disk": {Read, Write}, "exec": {Exec}, "env": {Env},
-	"all": {Read, Write, Net, Exec, Env, Secret},
+	"network": {Net}, "disk": {Read, Write}, "exec": {Exec}, "env": {Env}, "kept": {KeptRead, KeptWrite},
+	"all": {Read, Write, Net, Exec, Env, Secret, KeptRead, KeptWrite},
 }
 
 // CheckWritten says what is wrong with an entry as it is written in a list:
@@ -62,10 +64,15 @@ func CheckWritten(entry string) error {
 	}
 	kind, scope, ok := strings.Cut(entry, ":")
 	if !ok || !kinds[kind] {
-		return fmt.Errorf("%q is not a permission: write a kind and a scope, such as net:api.github.com (the kinds are fs.read, fs.write, net, exec, env and secret; the groups are network, disk, exec, env and all)", entry)
+		return fmt.Errorf("%q is not a permission: write a kind and a scope, such as net:api.github.com (the kinds are fs.read, fs.write, net, exec, env, secret, kept.read and kept.write; the groups are network, disk, exec, env, kept and all)", entry)
 	}
 	if scope == "" {
 		return fmt.Errorf("%q has no scope", entry)
+	}
+	if (kind == KeptRead || kind == KeptWrite) && !strings.Contains(scope, "${") {
+		if err := keptPath(scope, true); err != nil {
+			return fmt.Errorf("%q: %v", entry, err)
+		}
 	}
 	if kind == Net && !strings.Contains(scope, "${") && (strings.Contains(scope, "://") || strings.ContainsAny(scope, "/?#@")) {
 		return fmt.Errorf("%q: a net scope is a host alone, with a port if it matters, as in net:api.github.com or net:db.internal:5432; leave out the scheme and the path", entry)
@@ -103,6 +110,33 @@ func CheckWritten(entry string) error {
 func CheckSecretName(name string) error {
 	if !secretName(name, false) {
 		return fmt.Errorf("%q is not a name a secret can have: a name holds no @, :, =, *, $, {, }, slash, backslash or blank, and does not start with - or .", name)
+	}
+	return nil
+}
+
+// CheckKeptPath says whether a value can be kept at the path. It is the
+// one rule for a kept path, in a call, in a scope and in the store: a
+// directory takes two names that differ only in case for one, and the
+// store a value is kept in may be a directory.
+func CheckKeptPath(path string) error { return keptPath(path, false) }
+
+// keptPath says what is wrong with a kept path or, with pattern, a kept
+// scope: there a * stands for any run of characters in a part, and ** for
+// any number of whole parts.
+func keptPath(path string, pattern bool) error {
+	wrong := fmt.Errorf("%q is not a kept path: a kept path is parts joined by /, each of the lower-case letters a to z, digits, ., - and _, none empty and none starting with a dot, at most 256 characters", path)
+	if path == "" || len(path) > 256 {
+		return wrong
+	}
+	for part := range strings.SplitSeq(path, "/") {
+		if part == "" || part[0] == '.' || (part != "**" && strings.Contains(part, "**")) {
+			return wrong
+		}
+		for _, c := range part {
+			if !(c >= 'a' && c <= 'z' || c >= '0' && c <= '9' || c == '.' || c == '-' || c == '_' || pattern && c == '*') {
+				return wrong
+			}
+		}
 	}
 	return nil
 }
@@ -321,6 +355,10 @@ func (s *Set) matches(entry, kind, value string) bool {
 		return matchHost(scope, value)
 	case Secret:
 		return s.matchSecret(scope, value)
+	case KeptRead, KeptWrite:
+		// A kept path is a name in the store, matched as it is written:
+		// nothing in it is a file.
+		return matchParts(strings.Split(scope, "/"), strings.Split(value, "/"))
 	}
 	return matchPart(scope, value)
 }
@@ -562,6 +600,77 @@ func AllowsSecret(layers []Layer, name string) bool {
 		}
 	}
 	return true
+}
+
+// KeptBelow gives the deepest kept path at or below which lies every kept
+// path that every layer allows: in each layer, the parts its kept scopes
+// share before their first part with a * in it, and of those the deepest.
+// Where some layer allows no kept path, or denies every one, or those
+// parts lie on no one path, no kept path passes every layer, and there is
+// none.
+func KeptBelow(layers []Layer) (string, bool) {
+	var deepest []string
+	for _, layer := range layers {
+		fixed, allows := keptFixed(layer)
+		if !allows {
+			return "", false
+		}
+		short, long := fixed, deepest
+		if len(short) > len(long) {
+			short, long = long, short
+		}
+		if !slices.Equal(short, long[:len(short)]) {
+			return "", false
+		}
+		deepest = long
+	}
+	return strings.Join(deepest, "/"), len(layers) > 0
+}
+
+// keptFixed gives the parts a layer's kept scopes share before the first
+// part with a * in it, and whether the layer allows any kept path. A kind
+// the layer denies at every path, by a group or by the scope **, allows
+// nothing there.
+func keptFixed(layer Layer) ([]string, bool) {
+	open := map[string]bool{KeptRead: true, KeptWrite: true}
+	for _, entry := range layer.Deny {
+		for _, kind := range []string{KeptRead, KeptWrite} {
+			if slices.Contains(groups[entry], kind) || entry == kind+":**" {
+				open[kind] = false
+			}
+		}
+	}
+	var shared []string
+	allows := false
+	for _, entry := range layer.Allow {
+		var fixed []string
+		if in, isGroup := groups[entry]; isGroup {
+			if !slices.ContainsFunc(in, func(kind string) bool { return open[kind] }) {
+				continue
+			}
+		} else {
+			kind, scope, _ := strings.Cut(entry, ":")
+			if !open[kind] || keptPath(scope, true) != nil {
+				continue
+			}
+			for part := range strings.SplitSeq(scope, "/") {
+				if strings.Contains(part, "*") {
+					break
+				}
+				fixed = append(fixed, part)
+			}
+		}
+		if !allows {
+			shared, allows = fixed, true
+			continue
+		}
+		same := 0
+		for same < len(shared) && same < len(fixed) && shared[same] == fixed[same] {
+			same++
+		}
+		shared = shared[:same]
+	}
+	return shared, allows
 }
 
 // Declares says whether a job's allow list declares a permission that is

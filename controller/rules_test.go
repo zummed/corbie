@@ -767,7 +767,7 @@ func TestSecretALayerDoesNotAllowIsNotSentAndItsJobIsDenied(t *testing.T) {
 		          refused: { end: done }
 	`
 	all := []string{"all"}
-	groups := []string{"network", "disk", "exec", "env"}
+	groups := []string{"network", "disk", "exec", "env", "kept"}
 	for _, c := range []struct {
 		name            string
 		chart           string
@@ -782,7 +782,7 @@ func TestSecretALayerDoesNotAllowIsNotSentAndItsJobIsDenied(t *testing.T) {
 		{name: "a layer denies it to one place only", chart: alone, entry: "secret:K@*", ceiling: all, denied: []string{"secret:K@net:other.example"}},
 		{name: "the ceiling has no entry for it", chart: alone, entry: "secret:K@net:api.example", ceiling: []string{"network"},
 			layer: "the ceiling of the client \"c1\"", fix: "the controller's owner runs: corbie controller enrol c1 --allow secret:K@net:api.example"},
-		{name: "a ceiling of the four groups", chart: alone, entry: "secret:K@*", ceiling: groups,
+		{name: "a ceiling of the five groups", chart: alone, entry: "secret:K@*", ceiling: groups,
 			layer: "the ceiling of the client \"c1\"", fix: "the controller's owner runs: corbie controller enrol c1 --allow secret:K@*"},
 		{name: "the start's list has no entry for it", chart: alone, entry: "secret:K@net:api.example", ceiling: all, start: []string{"network"},
 			layer: "the list the run was started with", fix: "start the run with secret:K@net:api.example in its list as well (corbie run submit --allow)"},

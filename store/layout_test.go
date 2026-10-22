@@ -67,7 +67,7 @@ func Test_store_no_name_is_a_path_above_another(t *testing.T) {
 		Step("ctl", i, 1), Emit("ctl", i, "fetch", 1), Blob("ctl", i, "b1"), Step("ctl", child, 1),
 		Wake("ctl", now, i, "timer.x"), Trust("ctl", "r1"), Secret("ctl", "KEY"),
 		Message("r1", "ctl", JobMessage(i, "fetch")), Taken("r1", now, JobMessage(i, "fetch")),
-		Message("ctl", "ctl", LinkMessage(i, 3, 0, "start")),
+		Message("ctl", "ctl", LinkMessage(i, 3, 0, "start")), Kept("ctl", "notes"), Kept("ctl", "notes/tea"),
 	}
 	for _, a := range names {
 		if err := checkName(a); err != nil {

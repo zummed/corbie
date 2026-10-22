@@ -188,6 +188,7 @@ func Test_compress_unknown_option(t *testing.T) {
 // kept is a job's channel that holds one blob as the store would, and
 // counts what is fetched of it.
 type kept struct {
+	plugin.Channel
 	contents []byte
 	fetched  int64
 }

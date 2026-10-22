@@ -18,6 +18,8 @@ Each job runs in a process of its own, so it can be stopped at its time limit, h
 
 The job names its script, the script's files and its input, and the runner reads them from the instance's record.
 
+A job may use kept values (see Store). The runner holds the key the job was sent and reads and writes the values for it. The job's process never holds the key: it asks its runner for each value.
+
 Every job has a scratch directory of its own, made for it and removed when it ends. A runner that starts removes the scratch directories left by one that was killed before it could. A path a script writes without a leading `/`, or on Windows without a drive, is in that directory; on Windows one with a leading `/` and no drive is refused. Everything a job starts is stopped when the job ends, however it ends.
 
 When the script returns, the runner writes any blobs in the output into the instance's record and sends the output to the controller as the job's result, along with the permissions it used. If the script throws, or is refused something, or runs out of time, the result says so. Everything a job writes for the controller is under a name that is that job's alone, so a write whose answer was lost is sent again. Only when the result is written does the runner delete the job from its inbox. It removes the mark once the job's due time has passed.
@@ -65,6 +67,6 @@ Nothing a script chooses reaches the wrapper itself. It is started with the scra
 
 ## One runner is one box
 
-Everything on a runner shares that runner: its user, its key, its computer. A job that is permitted to read the runner's files can read its key. Scratch directories are removed, but jobs on one runner are not walled off from each other, and on a serverless host the jobs that land on one warm copy share it in the same way.
+Everything on a runner shares that runner: its user, its key, its computer. A job that is permitted to read the runner's files can read its key, and a runner keeps the key to the kept values of every job sent to it. Scratch directories are removed, but jobs on one runner are not walled off from each other, and on a serverless host the jobs that land on one warm copy share it in the same way.
 
 Jobs that must be kept apart go to different runners. A runner is cheap to set apart: a container, a user of its own, or a function of its own, with tags to send the right jobs to it.

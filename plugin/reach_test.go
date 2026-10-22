@@ -266,7 +266,7 @@ func Test_plug_bundled_reach_only_through_ways_out(t *testing.T) {
 			t.Error(finding)
 		}
 	}
-	if checked < 16 {
+	if checked < 17 {
 		t.Fatalf("only %d plugins were read", checked)
 	}
 

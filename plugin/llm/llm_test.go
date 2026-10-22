@@ -20,6 +20,7 @@ import (
 
 // watcher is a job's channel that keeps what was emitted.
 type watcher struct {
+	plugin.Channel
 	mu     sync.Mutex
 	pieces []string
 	seen   chan struct{} // closed at the first emit

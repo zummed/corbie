@@ -11,6 +11,7 @@ import (
 	_ "github.com/zummed/corbie/plugin/fs"
 	_ "github.com/zummed/corbie/plugin/html"
 	_ "github.com/zummed/corbie/plugin/http"
+	_ "github.com/zummed/corbie/plugin/kept"
 	_ "github.com/zummed/corbie/plugin/llm"
 	_ "github.com/zummed/corbie/plugin/llm/claudecode"
 	_ "github.com/zummed/corbie/plugin/machines"

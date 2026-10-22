@@ -69,6 +69,8 @@ The detailed rules behind the [Runner overview](../runner.md).
 **R-run-27** The runner removes a job's mark only once the job's due time has passed, allowing five minutes for clocks that differ, also when the job finished early and its message is gone.
 *Accept:* a job finishes well before its due time: its mark is still there after the job's message has been deleted, and is still there four minutes after the due time. Six minutes after it, and one more pass, the mark is gone.
 
+**C-run-58** A job's process is given the job without its key to kept values; the runner holds the key and reads and writes the values for the process. A script that may start a program or read its process's memory could otherwise take the key, and with it every value at or below the job's kept path. *Test:* `run_job_process_holds_no_kept_key`
+
 **C-run-54** A runner that starts removes the scratch directories left by a runner that is gone, and leaves alone those of one still running. A runner that is killed removes nothing, and what its jobs wrote would lie there for the next job permitted to read the directory, until the disk was full. *Test:* `run_scratch_left_by_runner_that_is_gone_removed`
 
 **C-run-13** Everything a job starts is in one group with the job's process, and the group is stopped when the job ends and once more after the job's process has gone. A program started in the job's last moment is missed by the first stop. *Test:* `run_job_end_stops_what_started_at_the_last_moment`
@@ -174,7 +176,7 @@ The detailed rules behind the [Runner overview](../runner.md).
 
 Uses:
 
-- **Store**: lists and reads its own inbox, writes and removes its marks, deletes jobs and cancels it has dealt with, adds emits and blobs to records only-if-new, reads blobs in records, and writes results into the controller's inbox.
+- **Store**: lists and reads its own inbox, writes and removes its marks, deletes jobs and cancels it has dealt with, adds emits and blobs to records only-if-new, reads blobs in records, reads, writes, lists and removes a job's kept values with the key the job holds (R-store-65), and writes results into the controller's inbox.
 - **Role**: is run as passes, and is told how long its host will let a pass run.
 - **Identity**: opens jobs and cancels from controllers it trusts, signs what it adds to a record, seals results, and takes the ceiling it gave the controller that signed a job.
 - **Permission**: checks every call that reaches outside against each layer in the job and the runner's own ceiling, and notes what was used for the result (R-perm-50); the scratch directory needs an entry like any path (R-perm-12).

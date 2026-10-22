@@ -16,7 +16,7 @@ A value is deleted by the first or the third. A value appears whole or not at al
 
 These three are all the coordination Corbie has. There are no locks, no leases and no transactions across names.
 
-Almost everything is written only-if-new and never changed afterwards. Very few values are ever rewritten: an instance's head, its note of how far a large step has been carried out, and the controller's lists of who it trusts and which secrets it holds. This makes the store easy to reason about and cheap to watch: a value read once is read again only when a listing shows it has changed.
+Almost everything is written only-if-new and never changed afterwards. Very few values are ever rewritten: an instance's head, its note of how far a large step has been carried out, the controller's lists of who it trusts and which secrets it holds, and the values jobs keep. This makes the store easy to reason about and cheap to watch: a value read once is read again only when a listing shows it has changed.
 
 ## Layout
 
@@ -38,6 +38,7 @@ version                                  the layout's version
   wakes/<time>/<instance>/<name>         when an instance is next due attention
   trust/<party>                          who the controller trusts
   secrets/<name>                         the secrets it holds
+  kept/<path>=                           the values jobs keep
 
 <runner>/
   inbox/<sender>/<message>               jobs for the runner
@@ -53,13 +54,25 @@ The layout is drawn so that the right to read or write is only ever a matter of 
 | Party | May write | May read |
 |---|---|---|
 | Controller | everything in its own area; jobs into runners' inboxes | everything in its own area |
-| Runner | results into the controller's inbox; new emits and blobs in records; its own inbox and marks | its own inbox and marks; blobs in records |
+| Runner | results into the controller's inbox; new emits and blobs in records; its own inbox and marks; kept values | its own inbox and marks; blobs in records; kept values |
 | Client | messages into the controller's inbox; new blobs in the records of its own runs | its own receipts, heads and records |
 | A viewer given heads only | nothing | every head |
 
 Every party can read the layout's version. A runner or a client adds to a record only-if-new: it can never change or remove what is there. A runner is not limited to the records of the jobs it holds, so a runner can add junk to any record. What it adds is signed by it and tied to a job, and readers ignore an entry from a runner that had no such job.
 
-Blobs are encrypted and their keys travel only in sealed messages, so the right to read a blob's bytes gives nothing without its reference.
+Blobs are encrypted and their keys travel only in sealed messages, so the right to read a blob's bytes gives nothing without its reference. Every runner may write, rewrite and remove any kept value, which is encrypted too.
+
+## Kept values
+
+A job keeps a value at a kept path with the plugin `kept`, and the value stays until a job removes it. A kept path is parts joined by `/`, as Permissions gives it. The value at a path is named with `=` after the path, which no kept path holds, so a value can be kept at `notes` and another at `notes/tea`.
+
+Each kept path has a key, which is made and never stored:
+
+- The key at the top, above every path, is made from the controller's private key (see Identity).
+- The key of each path below is a keyed hash of the key of the path above it and its own last part.
+- A value is encrypted under its own path's key, with a nonce of its own and its path bound in.
+
+The key of `house` therefore opens the values at `house` and below it, such as `house/docs/boiler`, and no other. A job is sent the key of one kept path (see Controller), and its runner reads and writes the values for it. A client reads a kept value only through a run of its own.
 
 ## Kinds of store
 
@@ -89,13 +102,13 @@ A party waiting on its inbox is told the moment something is written there, as r
 
 The serving computer is the store. While it is off nothing moves, and what was waiting waits. Its process can be stopped and started again, as it is to update it, with work in flight on the other computers: they wait about ten seconds for it and carry on. Off for longer, a job that finished meanwhile cannot say so, and is a timeout when its time is up. Corbie offers no second computer to take over and no copies kept in step: two computers that each believe they hold the store break only-if-new, on which everything rests. A store that must outlive a computer is a bucket, and a served directory copies into one unchanged. Only the controller's computer serves, and only a directory. Someone with no identity is not shown a served directory's heads; a watcher there is a client.
 
-A **bucket** is for several computers and for serverless hosts. It needs a service that offers the three ways of writing, ordered listing with each value's ETag, reading part of a value, and copying a value within the store. Corbie names the services it is tested against, says which of them can enforce the table above, and claims nothing more. In a bucket each party holds its own key, and the bucket's policy limits that key to its row of the table. Corbie prints the policy for each party. A policy cannot hold a name to one part, so it lets a runner or a client add names deeper in a record than the layout draws; it never lets one replace or remove anything.
+A **bucket** is for several computers and for serverless hosts. It needs a service that offers the three ways of writing, ordered listing with each value's ETag, reading part of a value, and copying a value within the store. Corbie names the services it is tested against, says which of them can enforce the table above, and claims nothing more. In a bucket each party holds its own key, and the bucket's policy limits that key to its row of the table. Corbie prints the policy for each party. A policy cannot hold a name to one part, so it lets a runner or a client add names deeper in a record than the layout draws; it never lets one replace or remove anything in a record.
 
 **Memory** is for `corbie test` and Corbie's own tests. It enforces the table as a bucket does, so access rules can be tried without a bucket.
 
 ## What the store is trusted with
 
-Whoever runs the store can delete anything and can see every name. They cannot read what is sealed, and cannot alter a value without it showing, because everything that matters is signed by its writer or named in something that is. Corbie trusts the store not to hand back an old value in place of a newer one.
+Whoever runs the store can delete anything and can see every name, kept paths among them. They cannot read what is sealed or a kept value, and cannot alter a value without it showing: everything that matters is signed by its writer or named in something that is, and a kept value is encrypted with its path bound in. Corbie trusts the store not to hand back an old value in place of a newer one.
 
 A store that has gone back in time, as a directory restored from a backup has, is still whole and signed, and simply older. Runs that moved since move again and their jobs run again, what was started since is gone, a party enrolled since is unknown, and a party removed since is trusted again. A backup is for a lost disk, not for undoing. A directory is copied with nothing running on it, or from a snapshot, so that the copy is one moment and not several.
 

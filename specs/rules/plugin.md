@@ -7,7 +7,7 @@ The detailed rules behind the [Plugins overview](../plugin.md). Requirements are
 **R-plug-01** A script can do nothing outside itself except by calling a plugin.
 *Accept:* in a job whose every layer is `all`, nothing a script has apart from plugins and the libraries over them reads a file, opens a connection, starts a program or reads a variable of the runner's.
 
-**R-plug-02** A plugin never opens anything by itself. It asks Corbie for a way to connect, a path, a program or a variable.
+**R-plug-02** A plugin never opens anything by itself. It asks Corbie for a way to connect, a path, a program, a variable or a kept value.
 *Accept:* for each plugin that comes with Corbie, every call that reaches outside is refused in a job no layer allows anything, and nothing happens outside the job: a stand-in server sees no connection, no file is made, no program starts.
 
 **R-plug-03** At a way out, Corbie checks the job's permissions, notes what was used, puts secrets in where they are bound to go, and hands the thing over or refuses. This is the same for every plugin and no plugin does any of it.
@@ -34,7 +34,7 @@ The detailed rules behind the [Plugins overview](../plugin.md). Requirements are
 *Accept:* a stand-in plugin asks for `HOME` in a job allowed `env:HOME` and gets the runner's value. Asked for `PATH`, it is refused.
 
 **R-plug-12** The job's own channel is its result, what it emits, its blobs and the machines it defines; it is checked against nothing, every job has it, and nothing leaves a job except by these ways.
-*Accept:* in a job no layer allows anything, the `blobs` and `machines` plugins work, and `emit` and the script's return value reach the record and the result. The public package gives a plugin a way to connect, a path, a program, a variable and the job's own channel, and no other means of reaching outside the job.
+*Accept:* in a job no layer allows anything, the `blobs` and `machines` plugins work, and `emit` and the script's return value reach the record and the result. The public package gives a plugin a way to connect, a path, a program, a variable, a kept value and the job's own channel, and no other means of reaching outside the job.
 
 **R-plug-14** A plugin that wraps someone else's library turns off whatever that library would find by itself: the computer's variables, files in the user's home, and its own lookups.
 *Accept:* the runner has proxy variables set, and its user's home holds settings, known hosts and keys for the programs the wrapped libraries imitate. Requests through `http`, `websocket` and `llm` go straight to their hosts. `ssh` signs in with nothing but what the script gave and trusts no host the script did not name. Each name a script gives reaches Corbie's check as it was written.
@@ -68,11 +68,11 @@ The detailed rules behind the [Plugins overview](../plugin.md). Requirements are
 
 ## What comes with Corbie
 
-**R-plug-25** The plugins that come with Corbie are `http`, `net`, `fs`, `exec`, `env`, `crypto`, `compress`, `html`, `xml`, `websocket`, `ssh`, `blobs`, `secrets`, `machines`, `llm` and `mcp`, and no others. Databases, message queues and mail are not among them.
-*Accept:* the list of plugins the binary as it comes prints in its manual is exactly these sixteen.
+**R-plug-25** The plugins that come with Corbie are `http`, `net`, `fs`, `exec`, `env`, `kept`, `crypto`, `compress`, `html`, `xml`, `websocket`, `ssh`, `blobs`, `secrets`, `machines`, `llm` and `mcp`, and no others. Databases, message queues and mail are not among them.
+*Accept:* the list of plugins the binary as it comes prints in its manual is exactly these seventeen.
 
-**R-plug-26** Each gives a script what the overview's table says, and needs the kind its page names and nothing else: `http`, `net`, `websocket` and `ssh` need `net` for the host; `fs` needs `fs.read` or `fs.write` at the path's real location, and a path with no leading `/` is in the job's scratch directory; `exec` needs `exec` for the program; `env` needs `env` for the name; `mcp` needs `net` for the host it connects to, or `exec` for the program it starts; `crypto`, `compress`, `html`, `xml`, `blobs`, `secrets` and `machines` need no permission.
-*Accept:* for each of the first eight and `mcp`, a call with the one entry its page names passes against a stand-in (a request with a header and a body reaches a server as written and its status, headers and body are read; a line and ten bytes go out and come back on a raw connection; a file is written, read back, listed and removed; `echo hello` gives `hello` and how it ended; `HOME` is read; a message of text and one of bytes go each way on a `websocket`; a command runs on another computer; a stand-in MCP server, over the web and as a program, lists its tools and answers a call) and the same call without the entry ends the job denied. For the other seven, in a job no layer allows anything: a hash and a keyed hash of `abc` equal the known answers, sixteen random bytes come twice and differ, a signature checks as good and as bad once a byte changes, what was encrypted decrypts to the same bytes; bytes packed and unpacked are the same, and bytes packed by the usual tool outside Corbie unpack; `html.parse("<title>T</title>").find("title").text` gives `T` and an `xml` document gives an element's text and an attribute; a blob is made from bytes, read back whole and in part, and is in the instance's record; `secrets.get("K")` gives a handle; a flow is defined and a job in the parent names it and runs it.
+**R-plug-26** Each gives a script what the overview's table says, and needs the kind its page names and nothing else: `http`, `net`, `websocket` and `ssh` need `net` for the host; `fs` needs `fs.read` or `fs.write` at the path's real location, and a path with no leading `/` is in the job's scratch directory; `exec` needs `exec` for the program; `env` needs `env` for the name; `kept` needs `kept.read` or `kept.write` for the kept path, and `kept.read` for everything below a path it lists; `mcp` needs `net` for the host it connects to, or `exec` for the program it starts; `crypto`, `compress`, `html`, `xml`, `blobs`, `secrets` and `machines` need no permission.
+*Accept:* for each plugin that needs a kind, a call with the one entry its page names passes (against a stand-in where it reaches one: a request with a header and a body reaches a server as written and its status, headers and body are read; a line and ten bytes go out and come back on a raw connection; a file is written, read back, listed and removed; `echo hello` gives `hello` and how it ended; `HOME` is read; a value is kept, read back, listed and removed; a message of text and one of bytes go each way on a `websocket`; a command runs on another computer; a stand-in MCP server, over the web and as a program, lists its tools and answers a call) and the same call without the entry ends the job denied. For the other seven, in a job no layer allows anything: a hash and a keyed hash of `abc` equal the known answers, sixteen random bytes come twice and differ, a signature checks as good and as bad once a byte changes, what was encrypted decrypts to the same bytes; bytes packed and unpacked are the same, and bytes packed by the usual tool outside Corbie unpack; `html.parse("<title>T</title>").find("title").text` gives `T` and an `xml` document gives an element's text and an attribute; a blob is made from bytes, read back whole and in part, and is in the instance's record; `secrets.get("K")` gives a handle; a flow is defined and a job in the parent names it and runs it.
 
 **R-plug-30** `http` gives a script uploads, redirects it follows or not, and large bodies into blobs.
 *Accept:* A form with one field and one file, given as bytes and again as a blob, reaches the server as an upload with the field, the file's name and every byte. A server answers with a redirect: told to follow, the script gets the answer at the place redirected to; told not to, it gets the redirect itself, with its status and the place it points to. An answer larger than the job's memory limit is received into a blob, the script gets the reference, and the blob holds every byte.
@@ -94,6 +94,9 @@ The detailed rules behind the [Plugins overview](../plugin.md). Requirements are
 
 **R-plug-57** `mcp` signs in to a server with a header the script gives, or with a client's credentials, a secret or a key, given as handles. Each address the sign-in connects to is checked like the server's.
 *Accept:* a stand-in server takes a bearer token in a header. A second takes only a token from a stand-in sign-in server: given a client id and a secret bound to the sign-in server, the plugin gets a token and the call succeeds; with `net` for the sign-in server's host missing, the call is refused, naming it.
+
+**R-plug-58** `kept` keeps a value whole at a kept path in place of any value there, gives it back as text, bytes, JSON or a blob, or `otherwise` where nothing is kept, lists every kept path below a path in order, and removes one, nothing there being no error; the last write wins, a value is at most 64 MiB, and a handle cannot be kept.
+*Accept:* the page's example keeps two values, reads them back, reads one never kept, removes one and lists the rest. A value one run keeps, a later run reads. A value over 64 MiB, a handle, alone or inside JSON, and a path in capitals are each refused as bad input, and nothing is kept.
 
 **C-plug-09** `http` follows redirects itself, one at a time, and takes each secret's value afresh for each place it is redirected to, so a request carrying a secret is followed only to a host the secret is also bound to. The server would otherwise choose where the secret goes next. *Test:* `plug_http_secret_not_carried_to_another_host`
 
@@ -129,6 +132,8 @@ The detailed rules behind the [Plugins overview](../plugin.md). Requirements are
 
 **C-plug-31** `ssh` takes a key or a password only as a handle, and refuses one given as plain text; a password is offered both as a password and as the answer to a question the server asks. A sign-in written into a script is in the record for every reader of it, and many servers take a password only the second way. *Test:* `plug_ssh_sign_in_as_handle_both_ways`
 
+**C-plug-32** Listing kept values below a path is checked as reading `<path>/**`, and the paths a deny entry refuses are left out of what it gives. Checked as reading the path alone, the refusal would give a line that lists nothing, and a listing past a deny would give the names it guards. *Test:* `plug_kept_list_checked_as_reading_below`
+
 ## Extensions
 
 **R-plug-48** An extension is a Go module compiled into the binary. It can offer any of: plugins, libraries written in script, a machine type, a model service.
@@ -144,13 +149,13 @@ The detailed rules behind the [Plugins overview](../plugin.md). Requirements are
 *Accept:* of two runners, the one whose binary has `pg` is enrolled with the tag `pg`. A job tagged `pg` always goes to it and runs. A job with no tag may go to either, and on the other fails with an error that names `pg`.
 
 **R-plug-54** An extension cannot add a kind of permission.
-*Accept:* the public package gives an extension no way to name a seventh kind, and in a binary with extensions an entry of a kind outside the six is still refused (R-perm-01).
+*Accept:* the public package gives an extension no way to name a ninth kind, and in a binary with extensions an entry of a kind outside the eight is still refused (R-perm-01).
 
 ## Interfaces
 
 - **Permissions** check every way out but the job's own channel, and note what was used. Plugins make no check and add no kind.
 - **Secrets** go into a way out where they are bound to go, and what a plugin hands back as text is masked on its way to the script.
-- **Runner** runs the script, gives it `require`, `emit` and its scratch directory, starts and stops what a job starts, puts the exec wrapper in front of every program (C-run-49), and fails a job that calls a plugin its binary does not have.
+- **Runner** runs the script, gives it `require`, `emit` and its scratch directory, reads and writes its kept values with the key the job holds, starts and stops what a job starts, puts the exec wrapper in front of every program (C-run-49), and fails a job that calls a plugin its binary does not have.
 - **Machines** fill out, check and store a definition the `machines` plugin is given.
 - **Blobs** are made and read by the `blobs` plugin, in the job's own instance's record, and are where `http` sends a large body.
 - **Models** are the `llm` plugin and the model services behind it.

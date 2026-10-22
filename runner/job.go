@@ -16,6 +16,7 @@ import (
 	"github.com/zummed/corbie/blob"
 	"github.com/zummed/corbie/instance"
 	"github.com/zummed/corbie/machine"
+	"github.com/zummed/corbie/permission"
 	"github.com/zummed/corbie/plugin"
 	"github.com/zummed/corbie/store"
 )
@@ -177,7 +178,11 @@ func (j *supervised) run() *instance.Result {
 	if !j.r.Now().Before(job.Due) {
 		return failed(&machine.Error{Status: machine.StatusTimeout, Error: "the job's result was already overdue when it came to be started"})
 	}
-	err = w.send(&piece{Op: opBegin, Begin: &begin{Job: job, Script: string(script), Files: files,
+	// The job's process is given the job without the key to kept values,
+	// which the runner holds and uses for it.
+	given := *job
+	given.Kept = nil
+	err = w.send(&piece{Op: opBegin, Begin: &begin{Job: &given, Script: string(script), Files: files,
 		Layers: append(slices.Clone(job.Layers), j.r.ceiling(j.s)), Scratch: scratch, Wrapper: j.r.Wrapper,
 		SearchPath: os.Getenv("PATH")}}, nil)
 	if err != nil {
@@ -250,6 +255,63 @@ func (j *supervised) serve(w *wire, p *piece) error {
 	case opForm:
 		j.masks.Note(p.Value, p.Name)
 		return w.send(&piece{Op: opAnswer}, nil)
+	case opKeptRead:
+		key, err := j.keptKey(p.Path)
+		if err != nil {
+			return fail(err)
+		}
+		sealed, mark, err := st.Read(j.ctx, store.Kept(ctl, p.Path))
+		if err != nil {
+			return fail(err)
+		}
+		if mark == store.None {
+			return w.send(&piece{Op: opAnswer}, nil)
+		}
+		value, err := store.OpenKept(key, p.Path, sealed)
+		if err != nil {
+			return fail(err)
+		}
+		return w.send(&piece{Op: opAnswer, Set: true, Size: int64(len(value))}, bytes.NewReader(value))
+	case opKeptWrite:
+		// The value's bytes follow.
+		if p.Size < 0 || p.Size > plugin.MaxWhole {
+			return fmt.Errorf("a kept value of %d bytes is not one the channel carries", p.Size)
+		}
+		value := make([]byte, p.Size)
+		if _, err := io.ReadFull(w.r, value); err != nil {
+			return err
+		}
+		key, err := j.keptKey(p.Path)
+		if err != nil {
+			return fail(err)
+		}
+		sealed, err := store.SealKept(key, p.Path, value)
+		if err != nil {
+			return fail(err)
+		}
+		if _, err := st.Write(j.ctx, store.Kept(ctl, p.Path), sealed, store.Overwrite); err != nil {
+			return fail(err)
+		}
+		return w.send(&piece{Op: opAnswer}, nil)
+	case opKeptList:
+		names, err := store.Names(st.List(j.ctx, store.KeptList(ctl, p.Path)))
+		if err != nil {
+			return fail(err)
+		}
+		var paths []string
+		for _, name := range names {
+			if path, ok := store.KeptPathOf(ctl, name); ok && permission.CheckKeptPath(path) == nil {
+				paths = append(paths, path)
+			}
+		}
+		// A path sorts before those below it, which its = did not.
+		slices.Sort(paths)
+		return w.send(&piece{Op: opAnswer, Paths: paths}, nil)
+	case opKeptRemove:
+		if _, err := st.Delete(j.ctx, store.Kept(ctl, p.Path), store.Overwrite); err != nil {
+			return fail(err)
+		}
+		return w.send(&piece{Op: opAnswer}, nil)
 	case opDefine:
 		// A definition made while a machine runs is filled out, checked and
 		// stored exactly as one sent by a client is.
@@ -268,6 +330,17 @@ func (j *supervised) serve(w *wire, p *piece) error {
 		return w.send(&piece{Op: opAnswer, Ref: &ref}, nil)
 	}
 	return fmt.Errorf("the job's process said %q, which is not something a job says", p.Op)
+}
+
+// keptKey gives the key of a kept path, made from the key the job was
+// sent.
+func (j *supervised) keptKey(path string) ([]byte, error) {
+	if kept := j.job.Kept; kept != nil {
+		if key, ok := store.KeptKey(kept.Key, kept.Path, path); ok {
+			return key, nil
+		}
+	}
+	return nil, fmt.Errorf("the job was sent no key to the kept value at %s", path)
 }
 
 // tail keeps the end of what a job's process prints, read to its end so

@@ -31,7 +31,7 @@ Each area below has an overview in this directory, written to be read. The detai
 
 ## Areas
 
-**[Store](store.md).** The one place everything is kept: named values, the three ways of writing one, and the directory, bucket and memory stores.
+**[Store](store.md).** The one place everything is kept: named values, the three ways of writing one, the values jobs keep, and the directory, bucket and memory stores.
 
 **[Instances](instance.md).** The head and the record of an instance, how long they are kept, and how anyone with the right to read them watches a run.
 

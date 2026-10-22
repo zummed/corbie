@@ -392,6 +392,18 @@ func (p *pass) job(inst string, step *instance.Step, ask *instance.Ask) (*instan
 	ceiling.Fix = fmt.Sprintf("the controller's owner runs: corbie controller enrol %s --allow %%s", client.Card.Name)
 	job.Layers = append(job.Layers, ceiling)
 
+	// The key to the kept values the job may use: the key of the deepest
+	// kept path at or below which lies everything every layer allows of
+	// them, and no key above it.
+	if path, ok := permission.KeptBelow(job.Layers); ok {
+		top, err := p.c.ID.KeptKey()
+		if err != nil {
+			return nil, none, nil, err
+		}
+		key, _ := store.KeptKey(top, "", path)
+		job.Kept = &instance.Kept{Path: path, Key: key}
+	}
+
 	// The values of the secrets the job names, and no others. A run secret
 	// overrides a controller secret of the same name. One that a layer does
 	// not let travel at all is not sent, and the job is refused as its

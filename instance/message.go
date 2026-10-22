@@ -93,6 +93,13 @@ type EmitNote struct {
 	Data  any    `json:"data,omitzero"`
 }
 
+// Kept is the key of one kept path, which opens the value kept there and
+// every value kept below it.
+type Kept struct {
+	Path string `json:"path,omitzero"` // the top is the empty path
+	Key  []byte `json:"key"`
+}
+
 // A Job is everything a runner needs to run a script: with the job and the
 // store, and nothing else from the controller, the runner can run it.
 type Job struct {
@@ -113,6 +120,9 @@ type Job struct {
 	Layers []permission.Layer `json:"layers"`
 	// Secrets are the values of the secrets the job names.
 	Secrets map[string]string `json:"secrets,omitzero"`
+	// Kept is the key to the kept values the job may use, where it may use
+	// any. The runner holds it, and never gives it to the job's process.
+	Kept *Kept `json:"kept,omitzero"`
 
 	Timeout machine.Duration `json:"timeout"`
 	Memory  int64            `json:"memory,omitzero"`

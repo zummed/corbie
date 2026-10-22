@@ -88,6 +88,7 @@ func (p Party) grants() []grant {
 			{ActAdd | ActRead, c + "/records/*/*/blobs/*"},
 			{actsAll, n + "/inbox/**"},
 			{actsAll, n + "/taken/**"},
+			{actsAll, c + "/kept/**"},
 		}
 	case Client:
 		return []grant{

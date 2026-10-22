@@ -20,7 +20,7 @@ import (
 
 // channel is a job's channel that gives the runner's variables and keeps
 // nothing.
-type channel struct{}
+type channel struct{ plugin.Channel }
 
 func (channel) Emit(string, any) error                               { return nil }
 func (channel) Variable(name string) (string, bool, error)           { return os.Getenv(name), true, nil }

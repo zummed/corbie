@@ -335,3 +335,34 @@ func TestConfigTrust(t *testing.T) {
 		t.Fatalf("the controller's store is %q", addr)
 	}
 }
+
+// A controller's key for kept values is made from its own private key:
+// every copy of the controller makes the same key, another identity makes
+// another, and the identity's file and card hold nothing of it.
+func TestKeptKeyIsMadeFromTheControllersOwnKey(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "controller", "identity")
+	id := party(t, "ctl", Controller)
+	if err := id.Save(path); err != nil {
+		t.Fatal(err)
+	}
+	twin, err := Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	key, err1 := id.KeptKey()
+	again, err2 := twin.KeptKey()
+	other, err3 := party(t, "ctl", Controller).KeptKey()
+	if err := errors.Join(err1, err2, err3); err != nil {
+		t.Fatal(err)
+	}
+	if len(key) != 32 || !bytes.Equal(key, again) || bytes.Equal(key, other) {
+		t.Fatal("two copies of a controller make different keys, or two controllers one key")
+	}
+	file, _ := os.ReadFile(path)
+	if bytes.Contains(file, key) || strings.Contains(string(file), b64.EncodeToString(key)) || strings.Contains(id.Card.String(), b64.EncodeToString(key)) {
+		t.Fatal("the key for kept values is written down")
+	}
+	if bytes.Equal(key, id.sealKey.Bytes()) {
+		t.Fatal("the key for kept values is the private key itself")
+	}
+}

@@ -1,7 +1,7 @@
 Permissions: a job can use files, the network, programs and secrets only where every layer allows it.
 
 A permission is a kind and a scope. A script uses anything outside itself
-only through these six kinds, and Corbie checks each use.
+only through these eight kinds, and Corbie checks each use.
 
   fs.read:/srv/reports/**    read files
   fs.write:out/**            write files; no leading / means the job's scratch directory
@@ -9,9 +9,14 @@ only through these six kinds, and Corbie checks each use.
   exec:git                   start a program
   env:HOME                   read an environment variable of the runner
   secret:TOKEN@net:host      send a secret to one place
+  kept.read:notes/**         read a value kept in the store; see `corbie manual kept`
+  kept.write:notes/**        keep a value in the store, or remove one
 
   *     any characters in one part of a path, between two /, or of a host, between two dots
   **    any number of parts of a path
+
+A path on the disk is checked where it points after links are followed. A
+kept path names a value in the store and is matched as it is written.
 
 A secret goes to one of these places. The job also needs an entry for the
 place itself, such as `net:host`.
@@ -28,6 +33,7 @@ A group is an entry with no scope.
   disk       every fs.read and fs.write scope
   exec       every exec scope
   env        every env scope
+  kept       every kept.read and kept.write scope
   all        everything, secrets included
 
 Layers

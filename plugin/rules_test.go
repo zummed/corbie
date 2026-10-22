@@ -269,6 +269,8 @@ func Test_sec_handle_never_the_data(t *testing.T) {
 			"written to a file as data": func() (any, error) {
 				return call(job, "fs", "write", "out.json", plugin.Options{"json": data})
 			},
+			"kept as text": func() (any, error) { return call(job, "kept", "write", "notes/tea", plugin.Options{"text": data}) },
+			"kept as data": func() (any, error) { return call(job, "kept", "write", "notes/tea", plugin.Options{"json": data}) },
 		} {
 			if out, err := do(); codeOf(err) != plugin.BadInput {
 				t.Errorf("a handle (%T) was %s: %v, %v", data, what, out, err)

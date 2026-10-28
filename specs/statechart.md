@@ -92,9 +92,21 @@ states:
     on: { work: working }
   working:
     job: { machine: ./report.yaml, input: "${event.data}" }
+    defer: [work]
     on:
       done: ready
       failed: ready
 ```
 
-Such a chart does one piece of work at a time. An event that arrives while it is busy finds no rule and is dropped, and the sender's receipt says so. Work that must go on many at once is started by a client, one run each.
+Such a chart does one piece of work at a time. An event that arrives while it is busy finds no rule and is dropped, and the sender's receipt says so, unless an active state names it under `defer:`.
+
+1. An event that no rule takes is kept when an active state names it under `defer:`, and the receipt says the chart acted on it.
+2. Kept events are offered again in the order they arrived, each once no active state defers it, and before any newer event.
+3. A kept event that no rule takes then is dropped.
+
+- A rule of a state that holds the deferring state is taken before the event is kept.
+- A state cannot defer `done`, `failed`, a ticket's name, a timer's name, or an event no state has a rule for, and a definition that tries is refused.
+- A chart that ends or is cancelled drops the events it kept.
+- A chart keeps at most 100 events. One more is dropped, and the sender's receipt says so; the newest is dropped because a receipt already written for an older one cannot change.
+
+Work that must go on many at once is started by a client, one run each.

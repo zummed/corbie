@@ -1,0 +1,19 @@
+# A chat: in idle, said starts an answer. While it answers, said and finish
+# are kept, and each is offered again once the chat is back in idle. The
+# answer so far goes through the script.
+statechart: chat
+initial: idle
+states:
+  idle:
+    on:
+      said: answering
+      finish: finished
+  answering:
+    job:
+      script: ./note.js
+      input: { so_far: "${states.answering.output?.said}", text: "${event.data}" }
+    defer: [said, finish]
+    on: { done: idle }
+  finished:
+    end: done
+    output: ${states.answering.output}

@@ -52,7 +52,7 @@ The detailed rules behind the [Statechart overview](../statechart.md). Area code
 **R-chart-31** A rule may be written as a bare state name, as one transition, or as a list of transitions.
 *Accept:* `on: { done: waiting }`, `on: { done: { go: waiting } }` and `on: { done: [{ go: waiting }] }` give the same stored definition.
 
-**R-chart-32** An event the current state has no rule for is offered to the state that holds it, and so on outward; a failure nobody takes fails the chart, and any other event nobody takes is dropped.
+**R-chart-32** An event the current state has no rule for is offered to the state that holds it, and so on outward; a failure nobody takes fails the chart, and any other event nobody takes is dropped, unless an active state names it under `defer:`.
 *Accept:* offered outward: parity case 18 for a failure and parity case 21 for an answer. Parity case 17: the failure nobody takes fails the chart. Parity case 33: the event the parent has no rule for is received and changes nothing.
 
 **R-chart-35** An event is taken by one rule at most.
@@ -125,6 +125,14 @@ The detailed rules behind the [Statechart overview](../statechart.md). Area code
 ## A chart that is started once and used many times
 
 **C-chart-12** A chart that is used many times does not grow with use: its state after the thousandth piece of work is no larger than after the first. The latest step holds the whole state, so a state that kept every past job would make each step slower than the last. *Test:* `chart_state_does_not_grow_with_use`
+
+**R-chart-72** An event that no rule takes is kept when an active state names it under `defer:`, and the receipt for it says the chart acted on it; kept events are offered again in the order they arrived, each once no active state defers it and before any newer event, and one that no rule takes then is dropped.
+*Accept:* parity case 106: the parent sends `said` a, b and c and then `finish` from one entry, and the chat answers a, b and c in that order and then finishes. `TestKeptEventsGoBeforeLaterOnes`: with `said b` kept, the answer to a and `said c` arrive in one step; b is answered and c is kept. A kept `work` and a kept `stop`, and a state is entered that defers `work` and not `stop`: `stop` is taken and `work` stays kept. A kept event offered again that no rule takes is dropped, and the chart no longer keeps it. A holder's rule for `said` is taken though the state it holds defers `said`.
+
+**R-chart-73** `defer:` cannot name `done`, `failed`, a ticket's name, a timer's name or an event no state of the chart has a rule for, and a definition that does is refused when checked.
+*Accept:* charts deferring `done`, a ticket's name, a timer's name, an expression and `said` with no rule for it are each refused with a problem at the `defer:` entry. A final state with `defer:` is refused.
+
+**C-chart-13** A chart keeps at most 100 events; one more is dropped, and the receipt for it says the chart did not act on it. Every step reads the chart's state whole, so a sender could otherwise make each step slower than the last. *Test:* `chart_kept_events_are_bounded`
 
 ## Interfaces
 

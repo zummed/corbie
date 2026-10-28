@@ -15,7 +15,8 @@ import (
 )
 
 // state is everything a chart remembers between steps. It does not grow
-// with use: one output for each state, and what the active states wait on.
+// with use: one output for each state, what the active states wait on, and
+// at most maxKept events kept for later.
 type state struct {
 	// Active is the active states, outermost first.
 	Active  []string             `json:"active"`
@@ -25,11 +26,17 @@ type state struct {
 	// Partial holds, for a state with several named jobs, the outputs of
 	// those that are done.
 	Partial map[string]map[string]any `json:"partial,omitzero"`
+	// Kept is the events an active state deferred, in the order they
+	// arrived.
+	Kept []machine.Event `json:"kept,omitzero"`
 }
 
-// maxMoves is how many transitions one step may make before its chain is
-// taken not to come to rest.
+// maxMoves is how many transitions one event may set off before its chain
+// is taken not to come to rest.
 const maxMoves = 500
+
+// maxKept is how many deferred events a chart keeps.
+const maxKept = 100
 
 // stepper is one step being taken.
 type stepper struct {
@@ -75,16 +82,56 @@ func (chartType) Step(in *machine.StepIn) (*machine.StepOut, error) {
 		if s.ended {
 			break
 		}
-		s.event = event
-		if err := s.handle(i, event); err != nil {
+		if err := s.give(i, event); err != nil {
 			return nil, err
 		}
-		if err := s.settle(); err != nil {
+		if err := s.offerKept(); err != nil {
 			return nil, err
 		}
 	}
 	s.out.State = s.st
 	return s.out, nil
+}
+
+// give gives one event to the chart and acts on the final states it
+// reaches.
+func (s *stepper) give(i int, event machine.Event) error {
+	s.event = event
+	s.moves = 0
+	if err := s.handle(i, event); err != nil {
+		return err
+	}
+	return s.settle()
+}
+
+// offerKept offers the kept events again, oldest first, each once no
+// active state defers it.
+func (s *stepper) offerKept() error {
+	for !s.ended {
+		at := slices.IndexFunc(s.st.Kept, func(e machine.Event) bool { return !s.deferred(e.Name) })
+		if at < 0 {
+			return nil
+		}
+		event := s.st.Kept[at]
+		s.st.Kept = slices.Delete(s.st.Kept, at, at+1)
+		if len(s.st.Kept) == 0 {
+			s.st.Kept = nil
+		}
+		if err := s.give(-1, event); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// deferred says whether an active state defers events of a name.
+func (s *stepper) deferred(name string) bool {
+	for _, active := range s.st.Active {
+		if slices.Contains(s.all[active].state.Defer, name) {
+			return true
+		}
+	}
+	return false
 }
 
 func (s *stepper) request(r machine.Request) { s.out.Requests = append(s.out.Requests, r) }
@@ -155,14 +202,27 @@ func (s *stepper) handle(i int, event machine.Event) error {
 		}
 		from = event.From
 	} else if s.taken(event.Name) {
-		s.out.Ignored = append(s.out.Ignored, i)
+		s.ignore(i)
 		return nil
 	}
 	taken, err := s.offer(from, func(st *State) []Transition { return st.On[event.Name] })
-	if err == nil && !taken {
+	switch {
+	case err != nil || taken:
+		return err
+	case s.deferred(event.Name) && len(s.st.Kept) < maxKept:
+		s.st.Kept = append(s.st.Kept, event)
+	default:
+		s.ignore(i)
+	}
+	return nil
+}
+
+// ignore notes that the chart did not act on an event given in this step.
+// A kept event offered again was given in an earlier step, and is -1.
+func (s *stepper) ignore(i int) {
+	if i >= 0 {
 		s.out.Ignored = append(s.out.Ignored, i)
 	}
-	return err
 }
 
 // failed gives a job's failure to its state and outward. A failure nobody

@@ -5,6 +5,7 @@ import (
 	"encoding/json/v2"
 	"fmt"
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -22,6 +23,7 @@ type chart struct {
 	step  int
 	at    time.Time
 	input map[string]any
+	out   *machine.StepOut // the latest step's
 }
 
 func parse(t *testing.T, src string) (*machine.Definition, error) {
@@ -58,6 +60,7 @@ func (c *chart) give(events ...machine.Event) []string {
 		c.t.Fatal(err)
 	}
 	c.state, _ = json.Marshal(out.State)
+	c.out = out
 	var told []string
 	for _, r := range out.Requests {
 		switch {
@@ -85,6 +88,29 @@ func (c *chart) give(events ...machine.Event) []string {
 		told = append(told, "ignored "+events[i].Name)
 	}
 	return told
+}
+
+// kept gives the names of the events the chart keeps.
+func (c *chart) kept() []string {
+	var st state
+	json.Unmarshal(c.state, &st)
+	var names []string
+	for _, e := range st.Kept {
+		names = append(names, e.Name)
+	}
+	return names
+}
+
+// input gives the input of the job of a name the latest step asked for.
+func (c *chart) jobInput(name string) any {
+	c.t.Helper()
+	for _, r := range c.out.Requests {
+		if r.Job != nil && r.Job.Name == name {
+			return r.Job.Input
+		}
+	}
+	c.t.Fatalf("the latest step asked for no job named %q", name)
+	return nil
 }
 
 func (c *chart) active() []string {
@@ -391,6 +417,152 @@ func TestChartsRefused(t *testing.T) {
 	refused(t, head+"initial: a\nstates:\n\ta: { ticket: x, on: { x: b } }\n\tb: { ticket: x, on: { x: a } }\n", "a ticket's name is used once")
 	refused(t, head+"initial: a\nstates:\n\ta: { on: { x: b } }\n\tb: { ticket: x, on: { x: a } }\n", `the state "a" can never receive "x". "x" is the ticket of the state "b"`)
 	refused(t, head+"initial: a\nstates:\n\ta: { on: { t: b } }\n\tb: { timers: { t: 1h }, on: { t: a } }\n", `the state "a" can never receive "t". "t" is a timer of the state "b"`)
+	refused(t, head+"initial: a\nstates:\n\ta: { job: ./w.js, defer: [done], on: { done: a } }\n", `"done" cannot be deferred`)
+	refused(t, head+"initial: a\nstates:\n\ta: { job: ./w.js, defer: [x], on: { done: b } }\n\tb: { ticket: x, on: { x: a } }\n", `"x" cannot be deferred`)
+	refused(t, head+"initial: a\nstates:\n\ta: { job: ./w.js, defer: [t], on: { done: b } }\n\tb: { timers: { t: 1h }, on: { t: a } }\n", `"t" cannot be deferred`)
+	refused(t, head+"initial: a\nstates:\n\ta: { job: ./w.js, defer: ['${input.x}'], on: { done: a } }\n", "cannot be deferred")
+	refused(t, head+"initial: a\nstates:\n\ta: { job: ./w.js, defer: [said], on: { done: a } }\n", `no state has a rule for "said"`)
+	refused(t, head+"initial: a\nstates:\n\ta: { on: { said: b } }\n\tb: { end: done, defer: [said] }\n", "a final state only ends")
+}
+
+const chat = `
+statechart: chat
+initial: idle
+states:
+	idle:
+		on: { said: answering }
+	answering:
+		job: { script: ./answer.js, input: { text: "${event.data}" } }
+		defer: [said]
+		on: { done: idle }
+`
+
+func said(text string) machine.Event {
+	return machine.Event{Name: "said", From: "client", Data: text}
+}
+
+func TestKeptEventsGoBeforeLaterOnes(t *testing.T) {
+	c := newChart(t, chat)
+	c.give(start())
+	c.want(c.give(said("a")), "job answering")
+	c.want(c.give(said("b")))
+	c.want(c.kept(), "said")
+	// The answer to a and c arrive in one step: b is answered first, and c
+	// is kept behind it.
+	c.want(c.give(done("answering", nil), said("c")), "cancel answering", "job answering")
+	if got := c.jobInput("answering"); !reflect.DeepEqual(got, map[string]any{"text": "b"}) {
+		t.Fatalf("the second answer is to %v, want b", got)
+	}
+	c.want(c.kept(), "said")
+	c.want(c.give(done("answering", nil)), "cancel answering", "job answering")
+	if got := c.jobInput("answering"); !reflect.DeepEqual(got, map[string]any{"text": "c"}) {
+		t.Fatalf("the third answer is to %v, want c", got)
+	}
+	c.want(c.give(done("answering", nil)), "cancel answering")
+	c.want(c.kept())
+	c.want(c.active(), "idle")
+}
+
+func TestKeptEventOfAnotherNameGoesAhead(t *testing.T) {
+	c := newChart(t, `
+statechart: worker
+initial: ready
+states:
+	ready:
+		on: { work: busy }
+	busy:
+		job: ./work.js
+		defer: [work, stop]
+		on: { done: holding }
+	holding:
+		job: ./work.js
+		defer: [work]
+		on:
+		  stop: { send: { to: parent, event: stopping } }
+		  done: ready
+`)
+	c.give(start())
+	c.give(machine.Event{Name: "work", From: "client"})
+	c.want(c.give(machine.Event{Name: "work", From: "client"}, machine.Event{Name: "stop", From: "client"}))
+	c.want(c.kept(), "work", "stop")
+	// holding defers work and not stop: stop is offered and work stays.
+	c.want(c.give(done("busy", nil)), "cancel busy", "job holding", "send stopping to parent")
+	c.want(c.kept(), "work")
+	c.want(c.give(done("holding", nil)), "cancel holding", "job busy")
+	c.want(c.kept())
+}
+
+func TestKeptEventNoRuleTakesIsDropped(t *testing.T) {
+	c := newChart(t, `
+statechart: worker
+initial: ready
+states:
+	ready:
+		on: { work: busy }
+	busy:
+		job: ./work.js
+		defer: [extra]
+		on: { done: ready }
+	elsewhere:
+		on: { extra: ready }
+`)
+	c.give(start())
+	c.give(machine.Event{Name: "work", From: "client"})
+	c.want(c.give(machine.Event{Name: "extra", From: "client"}))
+	c.want(c.kept(), "extra")
+	c.want(c.give(done("busy", nil)), "cancel busy")
+	c.want(c.kept())
+	c.want(c.active(), "ready")
+}
+
+func TestHoldersRuleIsTakenBeforeADefer(t *testing.T) {
+	c := newChart(t, `
+statechart: nested
+initial: outer
+states:
+	outer:
+		on: { said: other }
+		states:
+			answering:
+				job: ./work.js
+				defer: [said]
+	other:
+		job: ./work.js
+`)
+	c.give(start())
+	c.want(c.give(said("a")), "cancel answering", "job other")
+	c.want(c.kept())
+}
+
+func Test_chart_kept_events_are_bounded(t *testing.T) {
+	c := newChart(t, chat)
+	c.give(start())
+	c.give(said("first"))
+	var events []machine.Event
+	for i := range maxKept + 1 {
+		events = append(events, said(fmt.Sprint(i)))
+	}
+	c.want(c.give(events...), "ignored said")
+	if !slices.Equal(c.out.Ignored, []int{maxKept}) || len(c.kept()) != maxKept {
+		t.Fatalf("ignored %v and kept %d; want the last ignored and %d kept", c.out.Ignored, len(c.kept()), maxKept)
+	}
+}
+
+func TestChainLimitIsForOneEvent(t *testing.T) {
+	c := newChart(t, `
+statechart: flipping
+initial: a
+states:
+	a: { on: { flip: b } }
+	b: { on: { flip: a } }
+`)
+	c.give(start())
+	var events []machine.Event
+	for range maxMoves + 1 {
+		events = append(events, machine.Event{Name: "flip", From: "client"})
+	}
+	c.want(c.give(events...))
+	c.want(c.active(), "b")
 }
 
 func Test_chart_timers_refused(t *testing.T) {

@@ -71,6 +71,9 @@ A state has these fields, and at most one of `job:`, `jobs:` and `states:`.
              output is each job's output by name
   states     states inside this one, with their own `initial:`
   ticket     the name of a ticket the state issues while it is active
+  defer      [<event>, ...]: events kept while the state is active and no
+             rule takes them, and offered again once no active state defers
+             them
   timers     { <name>: <time> }: timers started on entry, cancelled on leaving
   entry      { send: ... }, sent on entering the state
   exit       { send: ... }, sent on leaving it
@@ -107,6 +110,8 @@ first one whose `when:` is true is taken.
 - An event that the active state has no transition for goes to the state it
   is inside, and so on outward.
 - A job's failure that no state has a transition for fails the statechart.
+- Any other event that no state has a transition for is dropped, unless an
+  active state names it under `defer:`. A chart keeps at most 100 events.
 - An `entry:` send to the state's own child arrives once the child has
   started. An `exit:` send cannot go to it.
 - When a client started the run, a send to parent is only written to the

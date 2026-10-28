@@ -26,10 +26,13 @@ type State struct {
 	States  map[string]*State           `json:"states,omitzero"`
 	Job     *machine.JobSpec            `json:"job,omitzero"`
 	Jobs    map[string]*machine.JobSpec `json:"jobs,omitzero"`
-	Ticket  string                      `json:"ticket,omitzero"`
-	Timers  map[string]string           `json:"timers,omitzero"` // the time of each, by its name
-	Entry   []Send                      `json:"entry,omitzero"`
-	Exit    []Send                      `json:"exit,omitzero"`
+	// Defer names events that are kept, not dropped, when no rule takes
+	// them while the state is active.
+	Defer  []string          `json:"defer,omitzero"`
+	Ticket string            `json:"ticket,omitzero"`
+	Timers map[string]string `json:"timers,omitzero"` // the time of each, by its name
+	Entry  []Send            `json:"entry,omitzero"`
+	Exit   []Send            `json:"exit,omitzero"`
 	// On is where to go on each event, by its name: done, failed, a
 	// timer, a ticket's answer, or any other event.
 	On map[string][]Transition `json:"on,omitzero"`
@@ -91,6 +94,7 @@ func init() {
 		{Name: "states", Kind: machine.KindNamed, Of: stateShape, Does: "states of its own"},
 		{Name: "job", Kind: machine.KindJob, Like: "{ script: ./draft.js }", Does: "a script or a machine, started on entry and cancelled on leaving"},
 		{Name: "jobs", Kind: machine.KindNamed, Of: machine.JobShape, Does: "several named jobs; the state is done when all are, and its output is each one's by name"},
+		{Name: "defer", Kind: machine.KindList, Like: "[said]", Does: "events kept while the state is active and no rule takes them, and offered again once no active state defers them"},
 		{Name: "ticket", Kind: machine.KindWord, Like: "verdict", Does: "the name of a ticket the state issues while it is active, read as ${tickets.name}; its answer is an event of that name"},
 		{Name: "timers", Kind: machine.KindNamed, Like: "{ too_long: 48h }",
 			Does: "timers started on entry and cancelled on leaving, each a length of time (90s, 48h, 7d) or a time of day; each is an event of its name when it is due"},
@@ -143,6 +147,7 @@ func fillState(p *machine.Parser, place string, written any) *State {
 			s.Jobs[name] = p.Job(place+".jobs."+name, jobs[name])
 		}
 	}
+	s.Defer = f.Strings("defer")
 	s.Ticket = f.Text("ticket")
 	if timers, order := f.Map("timers"); timers != nil {
 		s.Timers = map[string]string{}
@@ -365,7 +370,7 @@ func (chartType) Check(c *machine.Checker, def *machine.Definition) {
 		switch {
 		case s.End != "" && s.End != machine.Done && s.End != machine.Failed:
 			c.Problem(n.place+".end", "%q: a final state ends as done or as failed", s.End)
-		case s.End != "" && (holds || s.Job != nil || s.Jobs != nil || s.Ticket != "" || s.Timers != nil ||
+		case s.End != "" && (holds || s.Job != nil || s.Jobs != nil || s.Defer != nil || s.Ticket != "" || s.Timers != nil ||
 			s.On != nil || s.Entry != nil || s.Exit != nil):
 			c.Problem(n.place, "a final state only ends: it has end: and may give an output, and nothing else")
 		case s.End == "" && s.Output != nil:
@@ -401,6 +406,16 @@ func (chartType) Check(c *machine.Checker, def *machine.Definition) {
 				c.Value(at, s.Timers[timer], names...)
 			} else if _, err := parseAt(s.Timers[timer]); err != nil {
 				c.Problem(at, "%v", err)
+			}
+		}
+		for i, event := range s.Defer {
+			at := fmt.Sprintf("%s.defer[%d]", n.place, i)
+			_, _, owners := ownersOf(all, event)
+			switch {
+			case machine.HasExpr(event) || reserved(event) || len(owners) > 0:
+				c.Problem(at, "%q cannot be deferred: a state defers an event's own name, written out, and not done, failed, a ticket's name or a timer's name", event)
+			case !ruled(all, event):
+				c.Problem(at, "no state has a rule for %q, so a kept one would only be dropped: give it a rule under on:", event)
 			}
 		}
 		c.Value(n.place+".output", s.Output, names...)
@@ -502,6 +517,19 @@ func ticketOf(all map[string]*node, name string) string {
 func within(all map[string]*node, holder, name string) bool {
 	for ; name != ""; name = all[name].parent {
 		if name == holder {
+			return true
+		}
+	}
+	return false
+}
+
+// ruled says whether any state of the chart has a rule for an event.
+func ruled(all map[string]*node, event string) bool {
+	for _, n := range all {
+		if n.state == nil {
+			continue
+		}
+		if _, ok := n.state.On[event]; ok {
 			return true
 		}
 	}

@@ -1,0 +1,7 @@
+{
+  "status": "done",
+  "output": {
+    "said": ["a", "b", "c"]
+  },
+  "note": "R-chart-72: events an active state defers are kept, and offered again in the order they arrived once no active state defers them."
+}

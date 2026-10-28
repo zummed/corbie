@@ -1,0 +1,17 @@
+# The parent sends the chat said a, b and c and then finish, from one
+# entry. The chat answers a while b, c and finish arrive.
+statechart: parent
+initial: talking
+states:
+  talking:
+    job: { machine: ./chat.yaml }
+    entry:
+      send:
+        - { to: talking, event: said, data: a }
+        - { to: talking, event: said, data: b }
+        - { to: talking, event: said, data: c }
+        - { to: talking, event: finish }
+    on: { done: finished }
+  finished:
+    end: done
+    output: ${event.data}

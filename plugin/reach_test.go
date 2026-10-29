@@ -26,7 +26,7 @@ var (
 		"crypto/rsa", "crypto/sha1", "crypto/sha256", "crypto/sha512",
 		"encoding/base64", "encoding/csv", "encoding/hex", "encoding/json/jsontext", "encoding/json/v2", "encoding/pem", "encoding/xml",
 		"errors", "fmt", "hash", "io", "io/fs", "net/url", "regexp", "runtime/debug", "slices", "sort", "strconv", "strings", "time", "unicode",
-		"golang.org/x/net/html", "golang.org/x/net/html/charset",
+		"golang.org/x/net/html", "golang.org/x/net/html/charset", "go.yaml.in/yaml/v3",
 		"github.com/zummed/corbie/plugin", "github.com/zummed/corbie/plugin/llm",
 	}
 	// outward are the packages that can reach outside, with the names of

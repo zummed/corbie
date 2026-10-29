@@ -263,6 +263,8 @@ func Test_sec_handle_never_the_data(t *testing.T) {
 			"written as XML": func() (any, error) {
 				return call(job, "xml", "write", map[string]any{"tag": "a", "text": data}, nil)
 			},
+			"read as YAML":    func() (any, error) { return call(job, "yaml", "parse", data, nil) },
+			"written as YAML": func() (any, error) { return call(job, "yaml", "write", map[string]any{"a": data}, nil) },
 			"written to a file as text": func() (any, error) {
 				return call(job, "fs", "write", "out.txt", plugin.Options{"text": data})
 			},

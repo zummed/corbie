@@ -52,6 +52,7 @@ A plugin's page in the manual is its specification. It lists each call, its opti
 | `crypto` | hashes, keyed hashes, random bytes, signing and checking, encryption |
 | `compress` | packing and unpacking |
 | `html`, `xml` | reading a page or a document as a tree |
+| `yaml` | reading a YAML document as data, and writing data as YAML |
 | `websocket` | a connection that carries messages both ways, kept alive while the script works |
 | `ssh` | running a command on another computer |
 | `blobs` | making and reading blobs |

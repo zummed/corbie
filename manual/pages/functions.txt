@@ -34,7 +34,13 @@ Build each function's package
   runtime       provided.al2023
   handler       bootstrap
   CORBIE_SERVE  controller on one function, "runner --jobs 4" on the other
-  timeout       for a runner, its longest job's timeout plus ten seconds
+  timeout       for a runner, its longest job's timeout plus ten seconds;
+                for a controller, at least 30 seconds
+
+Each step of a machine made while running, and each step after the first of
+an agent with a `list:` tool, starts a process, up to four at a time, which
+takes about 15 ms and may hold 1 GiB of memory. A function with less memory is
+stopped by Lambda at that point, and the step's machine fails.
 
 A function's code can be replaced while runs are in progress.
 

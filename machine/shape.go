@@ -66,6 +66,9 @@ type Field struct {
 	// and, of a value, of a mapping written there where a shorter form
 	// could be. A job holds the shape of a job, and needs none said.
 	Of *Shape `json:"-"`
+	// Path says what the field holds is a path, or a list of them, read
+	// from the file it is written in; a mapping there is a machine.
+	Path bool `json:"-"`
 	// Values are the values it takes, where they are known. With Open any
 	// other may be written too: these are then the known ones, and no
 	// more than that.
@@ -133,6 +136,14 @@ func (f *Field) Holds() *Shape {
 	return f.Of
 }
 
+// entry gives a field that stands for one named thing of a named field.
+func (f *Field) entry() *Field {
+	if f.Of == JobShape {
+		return &Field{Kind: KindJob}
+	}
+	return &Field{Kind: KindFields, Of: f.Of}
+}
+
 // field gives the field of a name, or nil.
 func (s *Shape) field(name string) *Field {
 	if s == nil {
@@ -154,6 +165,7 @@ var shared = []Field{
 	{Name: "deny", Kind: KindList, Like: "[exec]", Does: "what no script the definition runs may do"},
 	{Name: "ask_about", Kind: KindList, Like: "[exec]", Does: "permissions that must be asked about before a job starts"},
 	{Name: "ask", Kind: KindJob, Like: "{ machine: ./ask.yaml }", Does: "the job that approves when a job needs approval"},
+	{Name: "meta", Kind: KindValue, Like: `{ on: { at: "02:00 Europe/London" } }`, Does: "data of any kind, which Corbie keeps with the definition and never reads"},
 }
 
 // The limits every type of machine takes. A type may add its own.
@@ -163,16 +175,24 @@ var limits = []Field{
 	{Name: "jobs", Kind: KindNumber, Like: "100", Does: "how many jobs an instance may start"},
 }
 
+// restartShape is the shape of a job's restart policy.
+var restartShape = &Shape{Name: "restart", What: "a job's restart policy", Fields: []Field{
+	{Name: "when", Kind: KindWord, Like: "always", Does: "failure, after an error or a timeout, which is the default, or always, after the job ends well too"},
+	{Name: "limit", Kind: KindValue, Like: "5 in 1h", Does: "how many restarts: a number, or a number in a length of time; no limit if not given"},
+	{Name: "delay", Kind: KindWord, Like: "1s to 5m", Does: "the wait before a restart: two lengths of time double from the first to the second, and one is the same each time; 1s to 5m if not given"},
+}}
+
 // JobShape is the shape of a job, wherever one is written.
 var JobShape = &Shape{Name: "job", What: "a job", Fields: []Field{
-	{Name: "script", Kind: KindWord, Like: "./fetch.js", Does: "a script, which a runner executes: a file beside the definition"},
-	{Name: "files", Kind: KindList, Like: "[./lib.js]", Does: "files the script loads with require"},
-	{Name: "machine", Kind: KindValue, Like: "./child.yaml", Does: "a machine, which the controller starts as a child: a definition beside this one, or written in place"},
+	{Name: "script", Kind: KindWord, Path: true, Like: "./fetch.js", Does: "a script, which a runner executes: a file beside the definition"},
+	{Name: "files", Kind: KindList, Path: true, Like: "[./lib.js]", Does: "files the script loads with require"},
+	{Name: "machine", Kind: KindValue, Path: true, Like: "./child.yaml", Does: "a machine, which the controller starts as a child: a definition beside this one, or written in place"},
+	{Name: "key", Kind: KindWord, Like: "question:${run.id}", Does: "the key the machine is started with, which names its run among this client's running runs"},
 	{Name: "input", Kind: KindValue, Like: `{ url: "${item}" }`, Does: "what the script or the machine is given"},
 	{Name: "allow", Kind: KindList, Like: "[net:example.com]", Does: "what the job may do, with the definition's allow; for a machine, it narrows everything the child does"},
 	{Name: "deny", Kind: KindList, Like: "[exec]", Does: "what the job may not do"},
 	{Name: "timeout", Kind: KindDuration, Like: "5m", Does: "how long it may take, five minutes by default; for a machine, the child's timeout"},
-	{Name: "attempts", Kind: KindNumber, Like: "3", Does: "how many times it is tried on an error or a timeout"},
+	{Name: "restart", Kind: KindFields, Like: "{ when: always, limit: 5 in 1h, delay: 1s to 5m }", Does: "what happens when the job ends", Of: restartShape},
 	{Name: "memory", Kind: KindSize, Like: "256MB", Does: "the most memory the job may use"},
 	{Name: "tags", Kind: KindList, Like: "[gpu]", Does: "chooses runners: one that has every tag"},
 	{Name: "approve", Kind: KindFlag, Like: "true", Does: "wait for the definition's ask to approve it"},

@@ -203,8 +203,14 @@ func (r Ref) Local() Ref {
 }
 
 // Named gives the blobs a stored definition names, and those the
-// definitions among them name, each resolved to where it is.
+// definitions among them name, each resolved to where it is, and each once:
+// a definition is stored text that a job may have written, and may name
+// another any number of times.
 func Named(ctx context.Context, s store.Store, def Ref) ([]Ref, error) {
+	return named(ctx, s, def, map[string]bool{})
+}
+
+func named(ctx context.Context, s store.Store, def Ref, seen map[string]bool) ([]Ref, error) {
 	if def.Type != Definition {
 		return nil, nil
 	}
@@ -219,8 +225,12 @@ func Named(ctx context.Context, s store.Store, def Ref) ([]Ref, error) {
 	var all []Ref
 	for _, inner := range Refs(v) {
 		inner = def.Beside(inner)
+		if seen[inner.At] {
+			continue
+		}
+		seen[inner.At] = true
 		all = append(all, inner)
-		more, err := Named(ctx, s, inner)
+		more, err := named(ctx, s, inner, seen)
 		if err != nil {
 			return nil, err
 		}

@@ -24,6 +24,7 @@ import (
 	"github.com/zummed/corbie/instance"
 	"github.com/zummed/corbie/machine"
 	"github.com/zummed/corbie/permission"
+	"github.com/zummed/corbie/role"
 	"github.com/zummed/corbie/store"
 )
 
@@ -74,7 +75,8 @@ type Served struct {
 
 // running is a job this copy is running.
 type running struct {
-	stop func(why *machine.Error)
+	instance string
+	stop     func(why *machine.Error)
 }
 
 // New makes a runner.
@@ -119,7 +121,7 @@ func (r *Runner) clearScratch() {
 	left, _ := filepath.Glob(filepath.Join(base, scratchPrefix+"*"))
 	for _, directory := range left {
 		pid, _, _ := strings.Cut(strings.TrimPrefix(filepath.Base(directory), scratchPrefix), "-")
-		if n, err := strconv.Atoi(pid); err == nil && n != os.Getpid() && gone(n) {
+		if n, err := strconv.Atoi(pid); err == nil && n != os.Getpid() && role.Gone(n) {
 			os.RemoveAll(directory)
 		}
 	}
@@ -286,10 +288,10 @@ func (r *Runner) look(ctx context.Context) error {
 					if err != nil {
 						return err
 					}
-					if found != nil && found.msg.Kind == instance.KindJob {
+					if found != nil && found.msg.Kind == instance.KindJob && found.msg.Job.Instance == w.msg.Instance {
 						waitingJobs[target] = found
+						marked[target] = true
 					}
-					marked[target] = true
 				}
 			}
 			if err := r.cancel(ctx, s, w, waitingJobs); err != nil {
@@ -386,7 +388,8 @@ func (r *Runner) open(ctx context.Context, s Served, name string) (*waiting, err
 // as cancelled. A cancel for a job that another copy holds is left for
 // that copy. A job stays in the inbox until it is answered, so a cancel
 // whose job is not there has nothing left to stop, and goes: what a pass
-// does with a cancel is read from the store, whoever finished the job.
+// does with a cancel is read from the store, whoever finished the job. A
+// cancel stops only a job of the instance it names.
 func (r *Runner) cancel(ctx context.Context, s Served, w *waiting, jobs map[string]*waiting) error {
 	target := w.msg.Cancel
 	r.mu.Lock()
@@ -394,6 +397,7 @@ func (r *Runner) cancel(ctx context.Context, s Served, w *waiting, jobs map[stri
 	_, ran := r.finished[target]
 	r.mu.Unlock()
 	switch {
+	case isRunning && job.instance != w.msg.Instance:
 	case isRunning:
 		job.stop(&machine.Error{Status: machine.StatusCancelled, Error: "the job was cancelled"})
 	case ran:
@@ -487,7 +491,7 @@ func (r *Runner) take(ctx context.Context, s Served, w *waiting) (later bool, er
 	jobCtx, cancel := context.WithCancel(context.WithoutCancel(ctx))
 	run := &supervised{r: r, s: s, w: w, job: job, ctx: jobCtx}
 	r.mu.Lock()
-	r.running[w.base] = &running{stop: run.stop}
+	r.running[w.base] = &running{instance: job.Instance, stop: run.stop}
 	r.mu.Unlock()
 	go func() {
 		defer cancel()

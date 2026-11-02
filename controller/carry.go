@@ -26,17 +26,29 @@ func errorsIs(err, target error) bool { return errors.Is(err, target) }
 // messages and wakes the entry names. Every write is only-if-new under a
 // name the entry gives, so doing any of it again is harmless.
 func (p *pass) finish(inst string, step *instance.Step) error {
-	// What does not depend on anything else is written side by side. The
-	// ending is written last, after the step's events.
-	var last []instance.Ask
-	var rest []instance.Ask
+	// The step that ends a run frees its key before anything else.
+	if st := &step.State; st.Status != instance.Running && st.Key != "" {
+		if err := p.free(inst, st.Key); err != nil {
+			return err
+		}
+	}
+	// What does not depend on anything else is written side by side. A step's
+	// events go after it, one after another in the order sent, since a run
+	// takes what sorts before an event it has heard as a copy. The ending is
+	// written last, after the step's events.
+	var last, rest, events []instance.Ask
 	for _, ask := range step.Asks {
-		if ask.Kind == instance.AskEnd {
+		switch ask.Kind {
+		case instance.AskEnd:
 			last = append(last, ask)
-		} else {
+		case instance.AskEvent:
+			events = append(events, ask)
+		default:
 			rest = append(rest, ask)
 		}
 	}
+	apart := len(rest)
+	rest = append(rest, events...)
 	// A step that asks for more than a pass can carry out is taken further
 	// by each pass: how far it has got is noted in the record a batch at a
 	// time, and a later pass begins there.
@@ -49,10 +61,18 @@ func (p *pass) finish(inst string, step *instance.Step) error {
 	}
 	for done < len(rest) {
 		from, to := done, min(done+carryBatch, len(rest))
-		if err := p.each(to-from, func(i int) error { return p.carry(inst, step, &rest[from+i]) }); err != nil {
-			return err
+		if from < apart {
+			to = min(to, apart)
+			if err := p.each(to-from, func(i int) error { return p.carry(inst, step, &rest[from+i]) }); err != nil {
+				return err
+			}
 		}
-		if done = to; done < len(rest) {
+		for i := max(from, apart); i < to; i++ {
+			if err := p.carry(inst, step, &rest[i]); err != nil {
+				return err
+			}
+		}
+		if done = to; done < len(rest) && len(rest) > carryBatch {
 			if err := p.noteCarried(inst, step.Number, done); err != nil {
 				return err
 			}
@@ -163,7 +183,7 @@ func (p *pass) carry(inst string, step *instance.Step, ask *instance.Ask) error 
 				return err
 			}
 			if failure != nil {
-				failure.Error = "the job was too large to send: " + failure.Error
+				failure.Error = "the job could not be sent: " + failure.Error
 			}
 		}
 		if failure != nil {
@@ -178,17 +198,13 @@ func (p *pass) carry(inst string, step *instance.Step, ask *instance.Ask) error 
 		return p.failJob(inst, ask.Name, ask.Message, ask.Error)
 
 	case instance.AskChild:
-		start, failure, err := p.child(inst, step, ask)
+		msg := &instance.Message{Kind: instance.KindStart, Instance: ask.Child, From: inst, Start: p.child(inst, step, ask)}
+		failure, err := p.send(store.Message(p.ctl, p.ctl, ask.Message), noEnd, msg, p.c.ID.Card)
 		if err != nil {
 			return err
 		}
-		if failure == nil {
-			msg := &instance.Message{Kind: instance.KindStart, Instance: ask.Child, From: inst, Start: start}
-			if failure, err = p.send(store.Message(p.ctl, p.ctl, ask.Message), noEnd, msg, p.c.ID.Card); err != nil {
-				return err
-			}
-		}
 		if failure != nil {
+			failure.Error = "the machine could not be started: " + failure.Error
 			return p.failJob(inst, ask.Name, ask.Message+".failed", failure)
 		}
 		return nil
@@ -199,7 +215,7 @@ func (p *pass) carry(inst string, step *instance.Step, ask *instance.Ask) error 
 			if err != nil || !to.Trusted() {
 				return err
 			}
-			msg := &instance.Message{Kind: instance.KindCancel, Instance: inst, Cancel: strings.TrimSuffix(ask.Message, ".cancel")}
+			msg := &instance.Message{Kind: instance.KindCancel, Instance: inst, Cancel: strings.TrimSuffix(ask.Message, cancelSuffix)}
 			_, err = p.send(store.Message(ask.Runner, p.ctl, ask.Message), ask.At, msg, to.Card)
 			return err
 		}
@@ -207,7 +223,13 @@ func (p *pass) carry(inst string, step *instance.Step, ask *instance.Ask) error 
 		_, err := p.send(store.Message(p.ctl, p.ctl, ask.Message), noEnd, msg, p.c.ID.Card)
 		return err
 
+	case instance.AskTell:
+		return p.tell(ask.To, inst, ask.Message, ask.Text)
+
 	case instance.AskEvent:
+		if ask.Key != "" {
+			return p.toKey(inst, step, ask)
+		}
 		if ask.To == "" || ask.Undelivered {
 			return nil // written in the record, and nowhere else
 		}
@@ -233,17 +255,17 @@ func (p *pass) carry(inst string, step *instance.Step, ask *instance.Ask) error 
 		if err != nil || failure == nil {
 			return err
 		}
-		// An event too large to deliver fails the job it belongs to: the
+		// An event that cannot be delivered fails the job it belongs to: the
 		// parent is given the failure in the event's place, and the child is
 		// cancelled as its parent would cancel it.
-		failure.Error = fmt.Sprintf("the event %s was too large to send: %s", ask.Event.Name, failure.Error)
+		failure.Error = fmt.Sprintf("the event %s could not be sent: %s", ask.Event.Name, failure.Error)
 		msg = &instance.Message{Kind: instance.KindResult, Instance: parent, From: child,
 			Result: &instance.Result{Job: job, Status: failure.Status, Error: failure, Final: true}}
-		if _, err := p.send(store.Message(p.ctl, p.ctl, ask.Message), noEnd, msg, p.c.ID.Card); err != nil {
+		if _, err := p.send(store.Message(p.ctl, p.ctl, ask.Message+".failed"), noEnd, msg, p.c.ID.Card); err != nil {
 			return err
 		}
 		msg = &instance.Message{Kind: instance.KindCancel, Instance: child, From: parent}
-		_, err = p.send(store.Message(p.ctl, p.ctl, ask.Message+".cancel"), noEnd, msg, p.c.ID.Card)
+		_, err = p.send(store.Message(p.ctl, p.ctl, ask.Message+cancelSuffix), noEnd, msg, p.c.ID.Card)
 		return err
 
 	case instance.AskEnd:
@@ -263,10 +285,10 @@ func (p *pass) carry(inst string, step *instance.Step, ask *instance.Ask) error 
 		if err != nil || failure == nil {
 			return err
 		}
-		// A result too large to deliver fails the job it belongs to.
-		failure.Error = "the result was too large to pass to its parent: " + failure.Error
+		// A result that cannot be delivered fails the job it belongs to.
+		failure.Error = "the result could not be passed to its parent: " + failure.Error
 		msg.Result = &instance.Result{Job: ask.Name, Status: machine.StatusError, Error: failure, Final: true}
-		_, err = p.send(store.Message(p.ctl, p.ctl, ask.Message), noEnd, msg, p.c.ID.Card)
+		_, err = p.send(store.Message(p.ctl, p.ctl, ask.Message+".failed"), noEnd, msg, p.c.ID.Card)
 		return err
 
 	case instance.AskReceipt:
@@ -307,7 +329,10 @@ func (p *pass) due(at time.Time) {
 }
 
 // send writes a message into an inbox only-if-new, sealed to its receiver.
-// One too large to be a message is not written, and the reason is given.
+// One too large to be a message is not written, and the reason is given. So
+// is a name in the controller's own inbox that holds some other message: a
+// carry-out done again finds this same message there, or finds it gone. A
+// runner's inbox cannot be read, and only one job has a job's name.
 func (p *pass) send(name string, until time.Time, msg *instance.Message, to identity.Card) (*machine.Error, error) {
 	data, err := p.c.ID.Write(name, p.now, until, msg, to)
 	if err != nil {
@@ -315,10 +340,32 @@ func (p *pass) send(name string, until time.Time, msg *instance.Message, to iden
 	}
 	if len(data) > MaxMessage {
 		return &machine.Error{Status: machine.StatusError,
-			Error: fmt.Sprintf("it is %d bytes and a message may be %d; pass large values as blobs", len(data), MaxMessage)}, nil
+			Error: fmt.Sprintf("it is too large: it is %d bytes and a message may be %d; pass large values as blobs", len(data), MaxMessage)}, nil
 	}
-	_, err = p.store.Write(p.ctx, name, data, store.OnlyIfNew)
-	return nil, err
+	written, err := p.store.Write(p.ctx, name, data, store.OnlyIfNew)
+	if err != nil || written || to.Name != p.ctl {
+		return nil, err
+	}
+	same, err := p.same(name, msg)
+	if err != nil || same {
+		return nil, err
+	}
+	return &machine.Error{Status: machine.StatusError, Error: "its name is taken by another message: " + name}, nil
+}
+
+// same says whether what is under a name in the controller's own inbox is a
+// message as given.
+func (p *pass) same(name string, msg *instance.Message) (bool, error) {
+	data, mark, err := p.store.Read(p.ctx, name)
+	if err != nil || mark == store.None {
+		return err == nil, err
+	}
+	var there instance.Message
+	if _, err := identity.Read(data, name, p.c.ID.Card, p.c.ID, &there); err != nil {
+		return false, nil
+	}
+	// An event sent to a key may have been moved on to another run.
+	return there.Kind == msg.Kind && there.From == msg.From && (there.Instance == msg.Instance || msg.Kind == instance.KindKeyed), nil
 }
 
 // failJob fails a job before anything was sent for it. The failure reaches
@@ -332,8 +379,8 @@ func (p *pass) failJob(inst, job, message string, failure *machine.Error) error 
 }
 
 // ownLayer is the layer a job's own permissions make, by name.
-func ownLayer(def *machine.Definition, job *machine.Job) permission.Layer {
-	name := fmt.Sprintf("the job %q in the definition of %q", job.Name, def.Name)
+func ownLayer(job *machine.Job) permission.Layer {
+	name := fmt.Sprintf("the job %q in the definition of %q", job.Name, job.Found.In)
 	return permission.Layer{Name: name, Allow: job.Allow, Deny: job.Deny,
 		Fix: "add the line %s to the allow list of " + name}
 }
@@ -343,10 +390,6 @@ func ownLayer(def *machine.Definition, job *machine.Job) permission.Layer {
 func (p *pass) job(inst string, step *instance.Step, ask *instance.Ask) (*instance.Message, identity.Card, *machine.Error, error) {
 	st, asked := &step.State, ask.Job
 	none := identity.Card{}
-	def, beside, above, err := p.source(st, asked)
-	if err != nil {
-		return nil, none, nil, err
-	}
 	runner, err := p.trusted(ask.Runner)
 	if err != nil {
 		return nil, none, nil, err
@@ -363,30 +406,12 @@ func (p *pass) job(inst string, step *instance.Step, ask *instance.Ask) (*instan
 	}
 	request, _, _ := strings.Cut(ask.Name, "@")
 	job := &instance.Job{Instance: inst, Name: ask.Name, Attempt: ask.Attempt, Request: inst + "/" + request,
+		Script: asked.Found.Blob, Path: asked.Script, Files: asked.Found.Files,
 		Input: asked.Input, Timeout: timeoutOf(asked), Memory: asked.Memory, Due: ask.At, Wants: asked.Wants, Client: client.Card}
 
-	if stored, ok := blob.AsRef(asked.Stored); ok {
-		job.Script = stored
-	} else {
-		ref, ok := def.Scripts[asked.Script]
-		if !ok {
-			return nil, none, p.failf("the script %s is not among those the definition holds", asked.Script), nil
-		}
-		job.Script, job.Path = beside.Beside(ref), asked.Script
-		for _, file := range asked.Files {
-			ref, ok := def.Scripts[file]
-			if !ok {
-				return nil, none, p.failf("the file %q is not among those the definition holds", file), nil
-			}
-			if job.Files == nil {
-				job.Files = map[string]blob.Ref{}
-			}
-			job.Files[file] = beside.Beside(ref)
-		}
-	}
 	// Every layer the controller knows of, each by name: the job in its
 	// definition, the start, each parent's job, and the client's ceiling.
-	job.Layers = append([]permission.Layer{ownLayer(def, asked)}, above...)
+	job.Layers = append([]permission.Layer{ownLayer(asked)}, layersAbove(st, asked)...)
 	ceiling := client.Ceiling
 	ceiling.Name = "the ceiling of the client " + strconv.Quote(client.Card.Name)
 	ceiling.Fix = fmt.Sprintf("the controller's owner runs: corbie controller enrol %s --allow %%s", client.Card.Name)
@@ -442,20 +467,14 @@ func refusedSecret(layers []permission.Layer, allow []string, name string) *perm
 	return nil
 }
 
-// source gives where a job's script or machine is found, and the layers
-// above it: the instance's own definition; or, for an ask taken from above,
-// the definition that declares the ask, so that a machine which inherits an
-// ask cannot widen what the ask may reach.
-func (p *pass) source(st *instance.State, job *machine.Job) (*machine.Definition, blob.Ref, []permission.Layer, error) {
-	def, err := p.definition(st)
-	if err != nil {
-		return nil, blob.Ref{}, nil, err
+// layersAbove gives the layers above a job: the instance's own or, for an ask
+// taken from above, those of the machine that declares it, so that a machine
+// which inherits an ask cannot widen what the ask may reach.
+func layersAbove(st *instance.State, job *machine.Job) []permission.Layer {
+	if job.Above {
+		return st.Above.Ask.Layers
 	}
-	if job.Name == instance.AskName && def.Ask == nil && st.Above.Ask != nil {
-		above, err := p.definitionAt(st.Above.Ask.Definition)
-		return above, st.Above.Ask.Definition, st.Above.Ask.Layers, err
-	}
-	return def, st.Definition, st.Above.Layers, nil
+	return st.Above.Layers
 }
 
 func timeoutOf(job *machine.Job) machine.Duration {
@@ -469,35 +488,27 @@ func timeoutOf(job *machine.Job) machine.Duration {
 // where it is. A job that carries a list narrows the child with it, and one
 // that carries none adds no layer: a child the definition names is the
 // definition's own words. A machine made while running is not, so it is
-// always narrowed, and with no list it is allowed nothing.
-func (p *pass) child(inst string, step *instance.Step, ask *instance.Ask) (*instance.Start, *machine.Error, error) {
+// always narrowed, and with no list it is allowed nothing; and everything
+// below it was made while running too.
+func (p *pass) child(inst string, step *instance.Step, ask *instance.Ask) *instance.Start {
 	st, job := &step.State, ask.Job
-	def, beside, layers, err := p.source(st, job)
-	if err != nil {
-		return nil, nil, err
-	}
-	own, err := p.definition(st)
-	if err != nil {
-		return nil, nil, err
-	}
-	var ref blob.Ref
-	if stored, ok := blob.AsRef(job.Stored); ok {
-		ref = stored
-	} else if local, ok := def.Machines[job.Machine]; ok {
-		ref = beside.Beside(local)
-	} else {
-		return nil, p.failf("the machine %q is not among those the definition holds", job.Machine), nil
-	}
-	layers = slices.Clone(layers)
-	if _, made := blob.AsRef(job.Stored); made || len(job.Allow)+len(job.Deny) > 0 {
-		layers = append(layers, ownLayer(def, job))
+	layers := slices.Clone(layersAbove(st, job))
+	_, made := blob.AsRef(job.Stored)
+	if made || len(job.Allow)+len(job.Deny) > 0 {
+		layers = append(layers, ownLayer(job))
 	}
 	above := &instance.Above{Parent: inst, Job: ask.Name, Depth: st.Above.Depth + 1, MaxDepth: st.Above.MaxDepth,
 		Layers:   layers,
-		AskAbout: st.Above.AskAbout, Ask: st.Above.Ask, Secrets: st.Above.Secrets, IsAsk: job.Name == instance.AskName,
-		Keep: machine.Duration(p.keepFor(own, &st.Above))}
-	if own.Ask != nil {
-		above.Ask = &instance.AskAbove{Definition: st.Definition, Input: st.Input, Layers: st.Above.Layers}
+		AskAbout: st.Above.AskAbout, Ask: st.Above.Ask, Secrets: st.Above.Secrets, Context: st.Above.Context, IsAsk: job.Name == instance.AskName,
+		Made: made || st.Above.Made && !job.Above, Keep: st.Keep}
+	// The nearest ask above the child is the one its job goes to: an ask
+	// nearer than its machine's, or the machine's own. A machine made while
+	// running keeps none, so it hands down the one above it.
+	switch {
+	case job.Ask != nil:
+		above.Ask = &instance.AskAbove{Spec: job.Ask, At: job.AskAt, Definition: st.Definition, Input: st.Input, Layers: st.Above.Layers}
+	case st.Ask != nil:
+		above.Ask = &instance.AskAbove{Spec: st.Ask, At: instance.AskName, Definition: st.Definition, Input: st.Input, Layers: st.Above.Layers}
 	}
 	if above.IsAsk {
 		// A machine run as an ask takes no ask from above it, and is not
@@ -506,8 +517,12 @@ func (p *pass) child(inst string, step *instance.Step, ask *instance.Ask) (*inst
 	}
 	mac := hmac.New(sha256.New, st.Seed)
 	mac.Write([]byte("child\x00" + ask.Name))
-	return &instance.Start{Definition: ref, Input: job.Input, Labels: st.Labels, Timeout: job.Timeout,
-		Seed: mac.Sum(nil), Above: above}, nil, nil
+	start := &instance.Start{Definition: job.Found.Blob, Input: job.Input, Labels: st.Labels, Timeout: job.Timeout,
+		Seed: mac.Sum(nil), Above: above}
+	if job.RunKey != nil {
+		start.Key = *job.RunKey
+	}
+	return start
 }
 
 // receipt answers a client's message that led to no step.
@@ -533,13 +548,9 @@ func (p *pass) writeReceipt(sender, message string, r *instance.Receipt) error {
 // the finished before it is removed from the running.
 func (p *pass) head(inst string, step *instance.Step) error {
 	st := &step.State
-	keep, err := p.keepOf(st)
-	if err != nil {
-		return err
-	}
 	head := &instance.Head{Name: inst, Machine: st.Machine, Type: st.Type, Status: st.Status, Step: step.Number,
-		Started: st.Started, Ended: st.Ended, Parent: st.Above.Parent, Timers: len(st.Timers), Labels: st.Labels,
-		Keep: machine.Duration(keep)}
+		Started: st.Started, Ended: st.Ended, Parent: st.Above.Parent, Key: st.Key, StartedBy: st.Above.StartedBy,
+		Timers: len(st.Timers), Labels: st.Labels, Keep: st.Keep}
 	if st.Error != nil && st.Status == instance.Failed {
 		head.Failure = st.Error.Status
 	}

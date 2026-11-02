@@ -326,7 +326,7 @@ const everything = `
 	states:
 	  working:
 	    jobs:
-	      flaky: { script: ./work.js, attempts: 2 }
+	      flaky: { script: ./work.js, restart: { limit: 1 } }
 	      kid:
 	        machine:
 	          statechart: child

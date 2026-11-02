@@ -22,9 +22,18 @@ Every job has a scratch directory of its own, made for it and removed when it en
 
 When the script returns, the runner writes any blobs in the output into the instance's record and sends the output to the controller as the job's result, along with the permissions it used. If the script throws, or is refused something, or runs out of time, the result says so. Everything a job writes for the controller is under a name that is that job's alone, so a write whose answer was lost is sent again. Only when the result is written does the runner delete the job from its inbox. It removes the mark once the job's due time has passed.
 
+## A machine a script defines
+
+1. A script calls `machines.define`.
+2. The job's process fills out and checks the definition, under the job's time and memory limits.
+3. It sends each file and each stored definition to the runner as a blob the job makes.
+4. The runner writes each one into the instance's record, as it writes any blob.
+
+The runner reads no definition, so what reading one costs falls on that job alone. A job's process can store anything as a definition, as a script can with `blobs.make`, so the check that counts is the controller's, when a job starts the machine (see Machines).
+
 ## Cancelling
 
-The controller cancels a job by leaving a cancel for it in the runner's inbox. The copy of the runner that is running the job looks for one every few seconds, stops the job and everything it started, and sends a result saying it was cancelled. A copy that is not running that job leaves the cancel where it is, and it goes when it is no longer good.
+The controller cancels a job by leaving a cancel for it in the runner's inbox. The copy of the runner that is running the job looks for one every few seconds, stops the job and everything it started, and sends a result saying it was cancelled. A copy that is not running that job leaves the cancel where it is, and it goes when it is no longer good. A cancel stops only a job of the instance it names.
 
 ## What a script is
 
@@ -41,8 +50,8 @@ A script starts with nothing: no files, no network, no environment. Everything i
 Besides plugins, a script has a few things of its own:
 
 - `emit(name, value)` sends a named value up while the script runs. `log(text)` and `progress(done, total)` are emits for a watcher's benefit. Emits are written to the record a few at a time, not one write each.
-- `job` says which request this is. Every attempt at the same job has the same request name, so a script can use it to avoid doing something twice.
-- `require` loads something by name or by path. A bare name is a plugin or a library that comes with the binary. A path starting `./` or `../` is read from the directory of the file that calls it, and is one of the files the job lists.
+- `job` says which request this is. Every attempt after a failure has the same request name, so a script can use it to avoid doing something twice. A restart after a job ended well has a new one.
+- `require` loads something by name or by path. A bare name is a plugin or a library that comes with the binary. A path starting `./` or `../` is read from the directory of the file that calls it, and is one of the files the job lists. A file whose path ends in `.yaml`, `.yml` or `.json` gives its data, read as the `yaml` plugin reads a document, so a script loads data shipped with its definition with no permission and on any host.
 
 A script cannot start jobs, whether scripts or machines. Deciding what runs is a machine's work.
 

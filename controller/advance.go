@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"errors"
 	"slices"
 	"strings"
 
@@ -62,12 +63,27 @@ func (p *pass) advance(inst string, waiting []*arrival) error {
 			continue
 		}
 		taken, err := p.take(inst, latest, waiting)
+		if errors.Is(err, errLeft) {
+			return nil // what is waiting waits for a later pass
+		}
 		if err != nil {
 			return err
 		}
 		// What was refused or dropped is answered and deleted, the receipt
 		// before the message.
+		moved := map[sendingTo]bool{}
 		for _, d := range taken.dropped {
+			if d.move {
+				// One at a time: a later event goes where the first has gone.
+				to := sendingTo{d.a.msg.From, d.a.msg.Key}
+				if moved[to] {
+					p.later()
+				} else if err := p.redirect(d.a); err != nil {
+					return err
+				}
+				moved[to] = true
+				continue
+			}
 			if d.receipt != nil {
 				if err := p.receipt(d.a, d.receipt); err != nil {
 					return err

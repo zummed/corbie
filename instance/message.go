@@ -18,6 +18,8 @@ const (
 	KindResult = "result" // a job's outcome: a script's from its runner, a child's from the controller
 	KindEmit   = "emit"   // a value a job sent up that the machine wants
 	KindJob    = "job"    // a job for a runner
+	KindKeyed  = "keyed"  // an event sent to a key, with what starts a run for it if there is one
+	KindNote   = "note"   // something to be written in a run's record
 )
 
 // A Message is what one party leaves in another's inbox. Kind says which
@@ -29,6 +31,8 @@ type Message struct {
 	// From is, in a message the controller sends itself, the instance it
 	// is sent on behalf of.
 	From string `json:"from,omitzero"`
+	// Key is the key an event was sent to.
+	Key string `json:"key,omitzero"`
 
 	Start  *Start         `json:"start,omitzero"`
 	Event  *machine.Event `json:"event,omitzero"`
@@ -36,6 +40,7 @@ type Message struct {
 	Result *Result        `json:"result,omitzero"`
 	Emit   *EmitNote      `json:"emit,omitzero"`
 	Job    *Job           `json:"job,omitzero"`
+	Note   string         `json:"note,omitzero"`
 	// Cancel names, for a runner, the job that is cancelled.
 	Cancel string `json:"cancel,omitzero"`
 }
@@ -61,6 +66,13 @@ type Start struct {
 	Seed []byte `json:"seed"`
 	// Above is set by the controller when it starts a child.
 	Above *Above `json:"above,omitzero"`
+	// Key is the key the run is started with.
+	Key string `json:"key,omitzero"`
+	// Context is the directory the client submitted from.
+	Context string `json:"context,omitzero"`
+	// Run is the run an event sent to a key starts: the event's data is its
+	// input. What a client or a job starts is the message's own instance.
+	Run string `json:"run,omitzero"`
 }
 
 // An Answer answers a ticket: the ticket's value and the answer.

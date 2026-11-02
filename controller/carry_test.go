@@ -60,7 +60,7 @@ func Test_ctl_names_of_what_a_step_asks_for_fixed_by_entry(t *testing.T) {
 		states:
 		  s:
 		    jobs:
-		      job: { script: ./work.js, attempts: 2 }
+		      job: { script: ./work.js, restart: { limit: 1 } }
 		      kid:
 		        machine:
 		          statechart: kid
@@ -404,7 +404,7 @@ func Test_ctl_stopped_after_attempt_failed_next_attempt_still_made(t *testing.T)
 		w := newWorld(t)
 		r1 = w.party("r1", identity.Runner)
 		w.enrol(r1, permission.Layer{}, nil)
-		run = w.submit(strings.Replace(oneJob, "timeout: 1m", "timeout: 1m, attempts: 2", 1), map[string]string{"work.js": "return 1"}, nil)
+		run = w.submit(strings.Replace(oneJob, "timeout: 1m", "timeout: 1m, restart: { limit: 1 }", 1), map[string]string{"work.js": "return 1"}, nil)
 		w.settle()
 		w.result(r1, run, "working", instance.Result{Attempt: 1, Status: machine.StatusError, Error: &machine.Error{Status: machine.StatusError, Error: "not this time"}})
 		return w
@@ -630,7 +630,7 @@ func TestEventTooLargeToSendFailsItsJob(t *testing.T) {
 		w.settle()
 		last := w.latest(run)
 		if head := w.head(run); head.Status != instance.Failed || last.State.Error == nil ||
-			!strings.Contains(last.State.Error.Error, "the event big was too large to send") ||
+			!strings.Contains(last.State.Error.Error, "the event big could not be sent: it is too large") ||
 			!strings.Contains(last.State.Error.Error, "pass large values as blobs") {
 			t.Fatalf("%s: the parent is %s with %+v; its last step took %q", direction, head.Status, last.State.Error, events(last))
 		}

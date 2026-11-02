@@ -1,0 +1,9 @@
+# A job starts a clerk with a key. The clerk's send starts a room, and the room
+# answers the clerk by its key. The room's input is the event's data.
+statechart: desk
+initial: asking
+states:
+  asking:
+    job: { machine: ./clerk.yaml, key: clerk }
+    on: { done: finished }
+  finished: { end: done, output: "${states.asking.output}" }

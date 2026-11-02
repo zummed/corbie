@@ -18,6 +18,8 @@ const starts = `
                            repeatable
   --label k=v              a label on the run, readable by anyone who can
                            list runs; repeatable
+  --key <key>              the key that names the run among this client's
+                           running runs; refused if a running run has it
   --allow <entry>          one permission the run's jobs may use; with
                            --allow or --deny they may use no other; repeatable
   --deny <entry>           one permission the run's jobs are refused,
@@ -166,7 +168,7 @@ The ceilings allow everything. Each job's own allow: list still applies.
 ` + starts + `
   --watch                  print each entry of the run's record as it is
                            written` + scripts},
-		{Name: "run submit", Usage: "<definition or script> [--input <json>] [--wait | --watch]", Summary: "start a run and print its ID", Run: cmdSubmit, Help: `
+		{Name: "run submit", Usage: "<definition or script> [--input <json>] [--wait | --watch] | <directory>... [--check] [--again <file>]", Summary: "start a run and print its ID", Run: cmdSubmit, Help: `
 It reads the definition and the files it names, reports every fault in them
 together, uploads the files and sends the start message. It prints the run's
 ID and exits, unless --wait or --watch is given.
@@ -175,7 +177,23 @@ ID and exits, unless --wait or --watch is given.
   --watch                  print each entry of the run's record as it is
                            written, until the run ends
 
-With --wait or --watch the command fails unless the run ends with status done.` + scripts},
+With --wait or --watch the command fails unless the run ends with status done.
+
+Given directories, it reads every *.yaml in them and those below them, but for
+.git, whose first key gives a type of machine. It starts a machine whose latest
+run is at another hash, or that has no run, and cancels any run still going. It
+cancels the run of a machine whose file has gone. A run at the machine's hash
+is left as it is, running or ended. A file with a problem is reported, and its
+run is left as it is. Each run has the key file:<path>, from the current
+directory, which is the context. A machine whose input: names dir is given the
+context's absolute path there.
+
+  --check          read every machine and print each one ok or its problems,
+                   and start and cancel nothing
+  --again <file>   start this machine though its run has ended; repeatable
+
+  corbie manual a-directory   a directory of machines
+` + scripts},
 		{Name: "run ls", Usage: "[--watch] [--all] [--label k=v] [--status <status>] [--parent <id>]", Summary: "list runs", Run: cmdLs, Help: `
 It lists this client's runs that are in progress, child runs included. A run
 with status waiting, which no controller has started, is not listed.
@@ -216,11 +234,12 @@ with the reason. It fails if the cancel is refused.
 
   --life <time>   how long the cancel is valid while no controller takes it,
                   and how long the command waits for the answer; default 5m`},
-		{Name: "run send", Usage: "<id> <event> [data] [--life 5m]", Summary: "send an event to a run that this client started", Run: cmdSend, Help: `
+		{Name: "run send", Usage: "<id> <event> [data] [--life 5m] | --key <key> <event> [data] [--life 5m]", Summary: "send an event to a run that this client started", Run: cmdSend, Help: `
 The data is JSON, or plain text if it does not parse as JSON. The command
 prints whether the machine acted on the event or had no rule for it, or
 refused with the reason. It fails if the event is refused.
 
+  --key <key>     send to the run with this key, in place of naming its ID
   --life <time>   how long the event is valid while no controller takes it,
                   and how long the command waits for the answer; default 5m`},
 		{Name: "run reply", Usage: "<id> <ticket> [value] [--life 5m]", Summary: "answer a ticket that a run waits on", Run: cmdReply, Help: `

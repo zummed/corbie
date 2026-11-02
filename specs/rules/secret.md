@@ -31,7 +31,7 @@ The detailed rules behind the [Secrets overview](../secret.md). Requirements are
 *Accept:* the job in the runner's inbox cannot be opened with another runner's key or with the client's, and after the run ends the value is in no head, step, emit, result or receipt. Every layer the controller knows of allows `A`, and the runner's ceiling has no entry that covers it: the job is sent with the value, the script's sending of `A` is refused, naming the runner's ceiling, and nothing arrives at the destination.
 
 **R-sec-19** Each attempt at a job is built afresh, so it gets the value current at that time.
-*Accept:* a job asks for two attempts and its first fails. The owner sets the secret again before the second, and the second attempt sends the new value.
+*Accept:* a job has `restart: { limit: 1 }` and its first attempt fails. The owner sets the secret again before the second, and the second attempt sends the new value.
 
 **R-sec-20** A job that names a secret that is not set fails before anything is sent.
 *Accept:* a job names `MISSING`, which is neither a controller secret nor a run secret. The job fails with an error naming `MISSING`, and no runner's inbox ever holds it.

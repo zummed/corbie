@@ -21,6 +21,7 @@ import (
 	"github.com/zummed/corbie/machine"
 	"github.com/zummed/corbie/permission"
 	"github.com/zummed/corbie/plugin"
+	"github.com/zummed/corbie/plugin/yaml"
 )
 
 // engine runs one script. A script is JavaScript and is the body of a
@@ -278,7 +279,7 @@ func (e *engine) load(name, source string, exports *goja.Object) error {
 // require gives the require of the file at a path: a plugin or a library
 // by its bare name, or one of the job's files by its path from that file's
 // directory. A path is looked up only among the job's files, never on the
-// runner's disk.
+// runner's disk. A file of YAML or JSON gives its data.
 func (e *engine) require(from string) func(goja.FunctionCall) goja.Value {
 	return func(call goja.FunctionCall) goja.Value {
 		name := call.Argument(0).String()
@@ -300,6 +301,19 @@ func (e *engine) require(from string) func(goja.FunctionCall) goja.Value {
 		}
 		if v, ok := e.modules[file]; ok {
 			return v
+		}
+		switch path.Ext(file) {
+		case ".yaml", ".yml", ".json":
+			data, err := yaml.Data([]byte(source))
+			if err != nil {
+				e.throw(plugin.Errorf(plugin.BadInput, "the file %q cannot be read: %v", file, err))
+			}
+			value, err := e.toJS(data, asItIs)
+			if err != nil {
+				e.throw(err)
+			}
+			e.modules[file] = value
+			return value
 		}
 		exports := e.vm.NewObject()
 		e.modules[file] = exports
@@ -377,6 +391,9 @@ func (e *engine) emit(call goja.FunctionCall) goja.Value {
 	name := call.Argument(0).String()
 	if goja.IsUndefined(call.Argument(0)) || name == "" {
 		e.throw(plugin.Errorf(plugin.BadInput, "emit takes a name and a value"))
+	}
+	if machine.Reserved(name) {
+		e.throw(plugin.Errorf(plugin.BadInput, "no event can be emitted under the name %q, which Corbie gives a machine itself", name))
 	}
 	data, err := e.leaving(call.Argument(1))
 	if err != nil {

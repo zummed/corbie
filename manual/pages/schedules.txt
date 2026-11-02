@@ -49,6 +49,6 @@ Reference
 ---------
 
   corbie manual statechart     every field of a state, `timers:` among them
-  corbie manual definitions    a job's fields, such as input, attempts and timeout
+  corbie manual definitions    a job's fields, such as input, restart and timeout
   corbie manual runs           listing runs, and cancelling one
   corbie manual functions      running a controller as a serverless function

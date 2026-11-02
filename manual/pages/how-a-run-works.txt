@@ -40,7 +40,7 @@ therefore share one store.
 
 A runner is different. A script that was running when its runner stopped is
 not run again, because Corbie cannot know what it had done. The job fails, and
-is retried only if it sets `attempts:`.
+is restarted only if it sets `restart:`.
 
 What starts them
 ----------------

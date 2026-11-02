@@ -370,3 +370,22 @@ func Test_client_start_uploads_side_by_side(t *testing.T) {
 		t.Fatalf("a start whose upload failed gave %v and sent %d messages", err, u.messages.Load())
 	}
 }
+
+// A start's key is bounded, and a start past the bound sends nothing. A
+// send to a key no run has says so.
+func Test_client_start_and_send_hold_a_key_to_its_bound(t *testing.T) {
+	l := local(t)
+	draft, err := machineParse("flow: f\nstages:\n  a: { job: ./add.js }\n", scripts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := l.Start(ctx, draft, client.Start{Key: strings.Repeat("a", 257)}); !errors.Is(err, client.ErrStart) {
+		t.Fatalf("a key of 257 characters: %v", err)
+	}
+	if _, err := l.SendToKey(ctx, "nobody", "e", nil, 0); !errors.Is(err, client.ErrNoKey) {
+		t.Fatalf("a key no run has: %v", err)
+	}
+	if _, err := l.SendToKey(ctx, "", "e", nil, 0); err == nil {
+		t.Fatal("an empty key was sent to")
+	}
+}

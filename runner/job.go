@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"os/exec"
 	"slices"
 	"strings"
 	"sync"
@@ -17,6 +16,7 @@ import (
 	"github.com/zummed/corbie/instance"
 	"github.com/zummed/corbie/machine"
 	"github.com/zummed/corbie/plugin"
+	"github.com/zummed/corbie/role"
 	"github.com/zummed/corbie/store"
 )
 
@@ -32,8 +32,7 @@ type supervised struct {
 
 	mu   sync.Mutex
 	why  *machine.Error // why it was stopped from outside
-	wire *wire
-	cmd  *exec.Cmd
+	proc *role.Process
 	// masks knows every form the job's secrets leave in, for what the
 	// job's process prints to be searched.
 	masks *plugin.Job
@@ -44,10 +43,6 @@ type supervised struct {
 // scriptLimit is the largest a script or one of its files may be.
 const scriptLimit = 16 << 20
 
-// stopGrace is how long a script that has been told to stop is given
-// before its process is killed.
-const stopGrace = 2 * time.Second
-
 // stop stops the job from outside: the script is interrupted inside its
 // process first, and the process and everything it started is killed if it
 // has not ended shortly after.
@@ -57,15 +52,13 @@ func (j *supervised) stop(why *machine.Error) {
 	if first {
 		j.why = why
 	}
-	w, cmd := j.wire, j.cmd
+	proc := j.proc
 	j.mu.Unlock()
-	if !first || cmd == nil {
+	if !first || proc == nil {
 		return
 	}
-	if w != nil {
-		w.send(&piece{Op: opStop, Why: why}, nil)
-	}
-	time.AfterFunc(stopGrace, func() { killGroup(cmd) })
+	wire{proc.Wire}.send(&piece{Op: opStop, Why: why}, nil)
+	time.AfterFunc(role.Grace, proc.Kill)
 }
 
 func (j *supervised) stopped() *machine.Error {
@@ -118,45 +111,18 @@ func (j *supervised) run() *instance.Result {
 	}
 	defer os.RemoveAll(scratch)
 
-	toJob, toJobW, err := os.Pipe()
-	if err != nil {
-		return jobError("%v", err)
-	}
-	fromJobR, fromJob, err := os.Pipe()
-	if err != nil {
-		return jobError("%v", err)
-	}
-	cmd := exec.Command(j.r.Command[0], j.r.Command[1:]...)
-	cmd.Env = []string{} // nothing of the runner's
-	cmd.Dir = scratch
-	giveChannel(cmd, toJob, fromJob)
 	j.masks = &plugin.Job{Secrets: job.Secrets}
 	said := &tail{limit: 8 << 10, mask: j.masks.Mask}
-	cmd.Stdout, cmd.Stderr = said, said
-	cmd.WaitDelay = stopGrace
-	ownGroup(cmd)
-	if err := cmd.Start(); err != nil {
+	proc, err := role.Start(j.r.Command, scratch, said)
+	if err != nil {
 		return jobError("the job's process could not be started: %v", err)
 	}
-	toJob.Close()
-	fromJob.Close()
-	w := &wire{r: fromJobR, w: toJobW}
+	defer proc.Close()
+	w := wire{proc.Wire}
 	j.mu.Lock()
-	j.wire, j.cmd = w, cmd
+	j.proc = proc
 	already := j.why
 	j.mu.Unlock()
-	// ended sees the process and everything it started gone, and what it
-	// printed read to its end.
-	ended := func() {
-		killGroup(cmd)
-		cmd.Wait()
-		killGroup(cmd) // once more, for what started at the last moment
-	}
-	defer func() {
-		ended()
-		toJobW.Close()
-		fromJobR.Close()
-	}()
 	if already != nil {
 		return failed(already)
 	}
@@ -169,7 +135,13 @@ func (j *supervised) run() *instance.Result {
 	if job.Memory > 0 {
 		done := make(chan struct{})
 		defer close(done)
-		go j.watchMemory(cmd.Process.Pid, done)
+		// From outside, what the process really holds is judged well past the
+		// limit: the script's engine counts only its own values.
+		go role.Watch(proc.Cmd.Process.Pid, 2*job.Memory+(64<<20), done, func() {
+			j.stop(&machine.Error{Status: machine.StatusError,
+				Error: fmt.Sprintf("the job went past its memory limit of %d bytes", job.Memory)})
+			proc.Kill()
+		})
 	}
 	// Whether a job is overdue is checked last, at the moment its script
 	// would start: a copy can be frozen for any length of time on the way
@@ -183,7 +155,7 @@ func (j *supervised) run() *instance.Result {
 	if err != nil {
 		// The process may be gone already. All it printed is quoted, as it
 		// is where its channel ends.
-		ended()
+		proc.Ended()
 		return jobError("the job could not be given to its process: %v: %s", err, said.String())
 	}
 	for {
@@ -195,7 +167,7 @@ func (j *supervised) run() *instance.Result {
 			if errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) {
 				// All it printed is quoted, not what had been read of it
 				// when its channel closed.
-				ended()
+				proc.Ended()
 				return jobError("the job's process ended without a result: %s", said.String())
 			}
 			// Nothing that follows an unreadable piece can be trusted.
@@ -211,7 +183,7 @@ func (j *supervised) run() *instance.Result {
 }
 
 // serve does one thing the job's process asks of its runner.
-func (j *supervised) serve(w *wire, p *piece) error {
+func (j *supervised) serve(w wire, p *piece) error {
 	st, ctl := j.s.Store, j.s.Controller.Name
 	fail := func(err error) error {
 		return w.send(&piece{Op: opAnswer, Error: err.Error()}, nil)
@@ -240,7 +212,7 @@ func (j *supervised) serve(w *wire, p *piece) error {
 	case opBlob:
 		// A blob the job made: its bytes follow, and go into the record of
 		// the instance the job is for.
-		contents := io.LimitReader(w.r, p.Size)
+		contents := io.LimitReader(w.R, p.Size)
 		ref, err := blob.Write(j.ctx, st, store.Blob(ctl, j.job.Instance, blob.NewName()), p.Type, blob.NewKey(), contents)
 		io.Copy(io.Discard, contents)
 		if err != nil {
@@ -250,22 +222,6 @@ func (j *supervised) serve(w *wire, p *piece) error {
 	case opForm:
 		j.masks.Note(p.Value, p.Name)
 		return w.send(&piece{Op: opAnswer}, nil)
-	case opDefine:
-		// A definition made while a machine runs is filled out, checked and
-		// stored exactly as one sent by a client is.
-		draft, err := machine.ParseMade([]byte(p.Source), machine.Given(p.Files))
-		if err != nil {
-			var problems machine.Problems
-			if errors.As(err, &problems) {
-				return w.send(&piece{Op: opAnswer, Problems: problems}, nil)
-			}
-			return fail(err)
-		}
-		ref, err := draft.Store(j.ctx, store.Bounded(st, store.SideBySide), ctl, j.job.Instance)
-		if err != nil {
-			return fail(err)
-		}
-		return w.send(&piece{Op: opAnswer, Ref: &ref}, nil)
 	}
 	return fmt.Errorf("the job's process said %q, which is not something a job says", p.Op)
 }

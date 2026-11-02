@@ -63,7 +63,7 @@ func (chartType) Step(in *machine.StepIn) (*machine.StepOut, error) {
 		return nil, err
 	}
 	s := &stepper{chart: &chart, in: in, st: &state{}, out: &machine.StepOut{}, jobs: map[string]string{},
-		eval: machine.NewEvaluator(in.Time, in.Seed), fresh: map[string]bool{}}
+		eval: machine.NewEvaluator(in.Time, in.Seed, in.Run), fresh: map[string]bool{}}
 	s.all = chart.index(func(string, string, ...any) {})
 	for name, n := range s.all {
 		if n.state.Job != nil {
@@ -463,7 +463,15 @@ func (s *stepper) send(holder, place string, sends []Send) error {
 		if err != nil {
 			return err
 		}
-		s.request(machine.Request{Send: &machine.Send{To: send.To, Event: send.Event, Data: data}})
+		out := &machine.Send{To: send.To, Machine: send.Machine, Event: send.Event, Data: data}
+		if send.Key != "" {
+			key, err := s.eval.Key(send.Key, s.scope(holder), fmt.Sprintf("%s[%d].to.key", place, i))
+			if err != nil {
+				return err
+			}
+			out.Key = &key
+		}
+		s.request(machine.Request{Send: out})
 	}
 	return nil
 }

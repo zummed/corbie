@@ -2,10 +2,10 @@ package cli
 
 import (
 	"encoding/json/v2"
+	"flag"
 	"fmt"
 	"io"
 	"os"
-	"path"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -26,6 +26,7 @@ func (l *list) Set(v string) error { *l = append(*l, v); return nil }
 // starting is everything a start may be given on the command line.
 type starting struct {
 	input, life, timeout, memory     string
+	key                              string
 	labels, allow, deny, tags, files list
 	secrets, secretsFromEnv          list
 	wait, watch                      bool
@@ -44,6 +45,7 @@ func (s *starting) flags(e *Env) {
 	e.Flags.StringVar(&s.input, "input", "", "")
 	e.Flags.Var(&s.files, "input-file", "")
 	e.Flags.Var(&s.labels, "label", "")
+	e.Flags.StringVar(&s.key, "key", "", "")
 	e.Flags.Var(&s.allow, "allow", "")
 	e.Flags.Var(&s.deny, "deny", "")
 	e.Flags.Var(&s.secrets, "secret", "")
@@ -54,6 +56,9 @@ func (s *starting) flags(e *Env) {
 	e.Flags.Var(&s.tags, "tag", "")
 	e.Flags.BoolVar(&s.watch, "watch", false, "")
 }
+
+// startOnly lists the flags that are for starting one definition.
+var startOnly = []string{"input", "input-file", "label", "key", "allow", "deny", "secret", "secret-env", "life", "timeout", "memory", "tag", "watch", "wait"}
 
 // addSecret puts a run secret into a start, its value read by read.
 func addSecret(start *client.Start, name string, read func(string) (string, error)) error {
@@ -101,16 +106,15 @@ func (s *starting) prepare(e *Env, file string) (*machine.Draft, client.Start, e
 			}
 			start.Allow = &permission.Layer{Allow: s.allow, Deny: s.deny}
 		}
-		dir := filepath.Dir(file)
-		// Only the files beside the definition are read: a path that leaves
-		// their directory is refused.
-		load := func(name string) ([]byte, error) {
-			if clean := path.Clean(name); clean == ".." || strings.HasPrefix(clean, "../") || path.IsAbs(clean) {
-				return nil, fmt.Errorf("it is outside the directory the definition is in")
-			}
-			return os.ReadFile(filepath.Join(dir, filepath.FromSlash(name)))
+		context, rel, err := contextOf(file)
+		if err != nil {
+			return nil, start, err
 		}
-		draft, err = machine.Parse(src, load)
+		draft, _, err = client.ReadMachine(context, rel)
+		if err != nil {
+			return nil, start, err
+		}
+		start.Context = context
 	}
 	if err != nil {
 		return nil, start, err
@@ -145,6 +149,12 @@ func (s *starting) prepare(e *Env, file string) (*machine.Draft, client.Start, e
 	}
 	if start.Input, err = client.WithFiles(start.Input, files); err != nil {
 		return nil, start, err
+	}
+	if e.Given("key") {
+		if err := machine.CheckKey(s.key); err != nil {
+			return nil, start, Mistake("--key: %v", err)
+		}
+		start.Key = s.key
 	}
 	for _, label := range s.labels {
 		name, value, _ := strings.Cut(label, "=")
@@ -237,14 +247,40 @@ func cmdTest(e *Env, args []string) error {
 
 func cmdSubmit(e *Env, args []string) error {
 	var s starting
+	var check bool
+	var again list
 	s.flags(e)
 	e.Flags.BoolVar(&s.wait, "wait", false, "")
+	e.Flags.BoolVar(&check, "check", false, "")
+	e.Flags.Var(&again, "again", "")
 	files, err := e.Parse(args)
 	if err != nil {
 		return err
 	}
-	if len(files) != 1 {
-		return Mistake("name one definition, or one script file")
+	dirs := 0
+	for _, name := range files {
+		if info, err := os.Stat(name); err == nil && info.IsDir() {
+			dirs++
+		}
+	}
+	switch {
+	case dirs > 0 && dirs < len(files):
+		return Mistake("name directories, or one definition, or one script file; not both")
+	case dirs > 0:
+		given := []string{}
+		e.Flags.Visit(func(f *flag.Flag) {
+			if slices.Contains(startOnly, f.Name) {
+				given = append(given, "--"+f.Name)
+			}
+		})
+		if len(given) > 0 {
+			return Mistake("%s applies to one definition; a directory takes only --check and --again", strings.Join(given, ", "))
+		}
+		return e.submitDirectories(files, again, check)
+	case check || len(again) > 0:
+		return Mistake("--check and --again apply to directories, and %s is not one", strings.Join(files, ", "))
+	case len(files) != 1:
+		return Mistake("name directories, or one definition, or one script file")
 	}
 	if s.wait && s.watch {
 		return Mistake("--wait and --watch are two ways of staying; give one")
@@ -270,6 +306,129 @@ func cmdSubmit(e *Env, args []string) error {
 	}
 	e.Say("%s", id)
 	return e.await(c, id, s.watch, strings.HasSuffix(files[0], ".js"))
+}
+
+// submitDirectories brings the runs of directories of the context into line
+// with their files.
+func (e *Env) submitDirectories(dirs []string, again []string, check bool) error {
+	context, err := os.Getwd()
+	if err != nil {
+		return err
+	}
+	from := func(name string) (string, error) {
+		rel, inside, err := within(context, name)
+		if err != nil {
+			return "", err
+		}
+		if !inside {
+			return "", Mistake("%s is outside the context, %s: run this from a directory that holds it", name, context)
+		}
+		return rel, nil
+	}
+	for i, dir := range dirs {
+		if dirs[i], err = from(dir); err != nil {
+			return err
+		}
+	}
+	for i, file := range again {
+		if again[i], err = from(file); err != nil {
+			return err
+		}
+	}
+	if check {
+		return e.checkMachines(context, dirs)
+	}
+	c, err := e.Client()
+	if err != nil {
+		return err
+	}
+	s := &client.Submit{Client: c, Context: context, Dirs: dirs, Again: again, Interval: interval, Say: e.Say}
+	return s.Run(e.ctx)
+}
+
+// contextOf gives the context of a file and its path from there: the current
+// directory, or the file's own directory for a file outside it.
+func contextOf(file string) (context, rel string, err error) {
+	if context, err = os.Getwd(); err != nil {
+		return "", "", err
+	}
+	rel, inside, err := within(context, file)
+	if err != nil {
+		return "", "", err
+	}
+	if inside {
+		return context, rel, nil
+	}
+	full, err := filepath.Abs(file)
+	if err != nil {
+		return "", "", err
+	}
+	return filepath.Dir(full), filepath.Base(full), nil
+}
+
+// within gives a file's path from a directory, and says whether it is inside
+// it. Their real paths are compared, since a directory can be reached by a link.
+func within(dir, name string) (string, bool, error) {
+	full, err := filepath.Abs(name)
+	if err != nil {
+		return "", false, err
+	}
+	root, err := filepath.EvalSymlinks(dir)
+	if err != nil {
+		return "", false, err
+	}
+	// A directory is followed. A file's own name stays as it is: a link is the
+	// file, which its reader refuses or takes.
+	real, base := full, ""
+	if info, err := os.Stat(full); err != nil || !info.IsDir() {
+		real, base = filepath.Dir(full), filepath.Base(full)
+	}
+	if real, err = filepath.EvalSymlinks(real); err != nil {
+		return "", false, err
+	}
+	rel, err := filepath.Rel(root, filepath.Join(real, base))
+	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return "", false, nil
+	}
+	return filepath.ToSlash(rel), true, nil
+}
+
+// checkMachines prints each machine of a directory ok or its problems, and
+// fails if any has one.
+func (e *Env) checkMachines(dir string, under []string) error {
+	found, err := client.ReadMachines(dir, under...)
+	if err != nil {
+		return err
+	}
+	bad := 0
+	report := map[string]string{}
+	width := 0
+	for _, m := range found {
+		width = max(width, len(m.Path))
+		report[m.Path] = "ok"
+		if m.Problem != nil {
+			bad++
+			report[m.Path] = m.Problem.Error()
+		}
+	}
+	err = e.Print(report, func() string {
+		var b strings.Builder
+		for _, m := range found {
+			if m.Problem == nil {
+				fmt.Fprintf(&b, "%-*s  ok\n", width, m.Path)
+				continue
+			}
+			fmt.Fprintf(&b, "%s\n", m.Path)
+			for _, line := range strings.Split(m.Problem.Error(), "\n") {
+				fmt.Fprintf(&b, "    %s\n", line)
+			}
+		}
+		return b.String()
+	})
+	if err == nil && bad > 0 {
+		return fmt.Errorf("%d of %d files have problems", bad, len(found))
+	}
+	return err
 }
 
 // await stays until a run ends and prints it, following its record on the
@@ -318,6 +477,12 @@ func runText(run *client.Run, script bool) string {
 	b.WriteString("\n")
 	if waits := waitingOn(run); waits != "" && !run.HasEnded() {
 		fmt.Fprintf(&b, "  waiting on %s\n", waits)
+	}
+	if run.Key != "" {
+		fmt.Fprintf(&b, "  key: %q\n", run.Key)
+	}
+	if run.StartedBy != "" {
+		fmt.Fprintf(&b, "  started by: %s\n", run.StartedBy)
 	}
 	if len(run.Labels) > 0 {
 		fmt.Fprintf(&b, "  labels: %s\n", labelsOf(run))
@@ -439,8 +604,13 @@ func (e *Env) entry(entry client.Entry) {
 			if ask.Name != "" {
 				to = ask.Name
 			}
+			if ask.Key != "" || ask.Text != "" {
+				to = fmt.Sprintf("the key %q", ask.Key)
+			}
 			line = fmt.Sprintf("send %s to %s", ask.Event.Name, to)
-			if ask.Undelivered {
+			if ask.Undelivered && ask.Text != "" {
+				line += " (undelivered: " + ask.Text + ")"
+			} else if ask.Undelivered {
 				line += " (undelivered: it is not running)"
 			}
 		case instance.AskFail:
@@ -506,6 +676,9 @@ func cmdLs(e *Env, args []string) error {
 		}
 		if run.Parent != "" {
 			line += "  under " + run.Parent
+		}
+		if run.Key != "" {
+			line += fmt.Sprintf("  key %q", run.Key)
 		}
 		if len(run.Labels) > 0 {
 			line += "  labels: " + labelsOf(run)
@@ -755,10 +928,19 @@ func cmdCancel(e *Env, args []string) error {
 }
 
 func cmdSend(e *Env, args []string) error {
-	return e.answered(args, "name a run, an event, and optionally its data", func(n int) bool { return n == 2 || n == 3 },
-		func(c *client.Client, rest []string, life time.Duration) (string, error) {
-			return c.Send(e.ctx, rest[0], rest[1], value(rest, 2), life)
-		})
+	var key string
+	e.Flags.StringVar(&key, "key", "", "")
+	return e.answered(args, "name a run, or give --key; then an event, and optionally its data", func(n int) bool {
+		if e.Given("key") {
+			return n == 1 || n == 2
+		}
+		return n == 2 || n == 3
+	}, func(c *client.Client, rest []string, life time.Duration) (string, error) {
+		if e.Given("key") {
+			return c.SendToKey(e.ctx, key, rest[0], value(rest, 1), life)
+		}
+		return c.Send(e.ctx, rest[0], rest[1], value(rest, 2), life)
+	})
 }
 
 func cmdReply(e *Env, args []string) error {

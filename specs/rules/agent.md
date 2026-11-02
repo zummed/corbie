@@ -28,8 +28,8 @@ The detailed rules behind the [Agent overview](../agent.md). Area code: `agent`.
 **R-agent-16** An agent's result always carries the conversation and a count of the tokens its own turns used, and so does its error if it fails.
 *Accept:* parity case 84: the result carries the conversation. Parity case 91: the lead's count is the sum of its own two turns and leaves out its helper's. Parity case 90: the agent that fails at its turn limit hands its parent the conversation and the count beside the error.
 
-**R-agent-19** An agent may be started with the conversation of an earlier agent's result, its turns and the blobs they name, and carries on from it.
-*Accept:* one agent ends, and a second is started with the first one's conversation and a new prompt; the second's first turn is shown the first one's turns followed by the new prompt, and the second's conversation begins with them.
+**R-agent-19** An agent may be started with the conversation of an earlier agent's result, its turns and the blobs they name, and carries on from it. A conversation opens no part.
+*Accept:* one agent ends, and a second is started with the first one's conversation and a new prompt; the second's first turn is shown the first one's turns followed by the new prompt, and the second's conversation begins with them. An agent that opened the set `net`, and a second run started with its conversation: the second's first turn is shown the first's call of `net`'s tool, is not offered `net`'s tools, and `open` names `net`. A conversation with a field `sets` naming `net` is the same.
 
 **R-agent-20** A turn that fails fails the agent, as a failure a machine has no rule for does (see Machines).
 *Accept:* parity case 86: the second agent's first turn fails, and the agent fails with an error that names the turn.
@@ -44,9 +44,6 @@ The detailed rules behind the [Agent overview](../agent.md). Area code: `agent`.
 
 **R-agent-22** A tool is a named job, a script or a machine, with a description, the shape of its arguments, and its own permissions; its job reads the agent's input and the arguments the model supplied.
 *Accept:* parity case 85: one tool that is a script, one that is a flow and one that is a chart. The librarian is started with the directory `/srv/library` and its model calls `shelf` with the shelf `B`; the tool's job is given that directory and that shelf as its input, and may read under `/srv/library` and nowhere else.
-
-**R-agent-25** A definition may name files of tools shared with other agents, one or several, and each file is filled in when the definition is sent.
-*Accept:* two agents name one file of tools; the model of each is offered the file's tools beside the agent's own. The stored definition of such an agent holds the file's tools written out, and changing the file afterwards changes nothing for a run already started. The package starts an agent from the directory `a/` that names `../shared/tools.yaml`, whose tools name `./wait.yaml` and `./run.js`: its stored definition names them by their paths from `a/`, `../shared/wait.yaml` and `../shared/run.js`. Two files of tools in different directories that each name `./run.js` each run their own.
 
 **R-agent-54** A tool whose job is an agent is shown to the model as what that agent replied. The sub-agent's conversation and its count of tokens stay in its own record.
 *Accept:* an agent calls a tool that is another agent; its next turn is shown that agent's reply as the tool's result, and neither its conversation nor its tokens.
@@ -75,7 +72,29 @@ The detailed rules behind the [Agent overview](../agent.md). Area code: `agent`.
 
 **C-agent-17** The `job:` of an entry with a `list:` reads `args` only whole; one that reads a field of it is refused when the definition is checked. The fields are not known until the run, so the value could be missing every time. *Test:* `agent_listed_job_reads_args_whole`
 
-**C-agent-07** A tool may not take the name of a job the agent itself makes: `turn`, `preview` or one of the blob tools. The record names a job by what asked for it, and two askers under one name cannot be told apart. *Test:* `agent_tool_cannot_take_an_agents_own_job_name`
+**C-agent-07** A tool may not take the name of a job the agent itself makes: `turn`, `preview`, `open` or one of the blob tools. The record names a job by what asked for it, and two askers under one name cannot be told apart. *Test:* `agent_tool_cannot_take_an_agents_own_job_name`
+
+## Sets
+
+**R-agent-59** An agent may name parts: groups of tools, each with what it is for. The model is shown a tool `open`, with the name and `does:` of each part not open; a call of it runs a job named `open`, and from the next turn the model is shown the part's tools, its own and those its lists give. `open` is not shown while no part can be opened.
+*Accept:* an agent with the parts `net` and `payments` is first offered its own tool, the blob tools and `open`, whose description names both parts with what each is for. The model opens `net`; the next turn is offered `net`'s tool `show` and the tool `files_read` that `net`'s list gives, and `open` names only `payments`. The record shows the jobs `files turn open turn#2 show turn#3 files_read turn#4`, and each of `net`'s tools runs its own script.
+
+**R-agent-60** A tool of a part that takes the name of another tool of the agent, of its own or of another part, is refused.
+*Accept:* an agent includes `parts/net/part.yaml` as a part, whose tool names `./show.js`; its stored definition holds the tool written out, naming `./parts/net/show.js`. A part whose tool is named as the agent's own `add`, and two parts with a tool `show` each, are each refused, naming the part's tool. A part with no `does:`, and a part with a field it does not take, are refused.
+
+**R-agent-62** A part marked `approve: true` holds its `open` job for the ask, which is shown the part's name as `part` and its `does:`; an open not approved goes back to the model as denied, with the ask's note, and opens nothing. The ask for a call of a part's tool, and for the list of an entry in a part, is shown the part's name as `part`. A part marked for approval needs an ask, as a job marked for it does, and is opened only by an open its ask approves.
+*Accept:* the ask approves the open of `net` only when shown `part: net` and `net`'s `does:`, and a call of `payments`' tool `pay`, marked for approval, only when shown `part: payments`; the model is shown neither as denied. An ask that approves nothing: the open goes back to the model as denied with the ask's note, and the next turn is not offered `net`'s tools. The same agent with no ask is refused when checked.
+
+**C-agent-19** A part's ask that cannot be filled in denies the jobs held for it, with an error that names the fault, and the agent carries on, as with an agent's own ask. One fault in an ask has one outcome, whichever ask it is. *Test:* `agent_part_ask_that_cannot_be_filled_denies`
+
+**R-agent-63** A part may name an ask: the ask for opening the part and for the jobs and lists of its tools, before the agent's own; and the nearest ask above every machine below those tools' jobs. Its expressions read the agent's input, and its permissions go into its own job and into no tool's. A part with an ask needs none from the agent for those jobs and machines, and a machine run as a part's ask takes none from above it.
+*Accept:* the part `net` names `./ask.js`, with the agent's question as its input and `env:HOME` allowed; the agent's own ask approves only the agent's tool. The open of `net` and a call of `net`'s tool `show`, both held, are approved by `net`'s ask, which reads `HOME` and is shown the question; `net`'s tool `sneak`, which reads `HOME`, is denied `env:HOME`. The agent with no ask of its own is accepted, and refused when `net`'s ask is a machine that marks a job for approval and has no ask, naming `open.net.ask`. A tool of `net` runs a flow that runs a flow whose stage is marked for approval: the agent with no ask of its own is accepted, and the stage goes to `net`'s ask, filled with the agent's question, and not to the agent's ask when it has one.
+
+**C-agent-20** A machine below the job of a part's tool takes the part's ask as the nearest ask above it, unless it or a machine between names an ask of its own; the ask has its own values, filled from the agent's input, and its own permissions. A job held below a part's tool would otherwise go to an ask the part's author did not choose. *Test:* `agent_part_ask_is_nearest_above_its_tools_machines`
+
+**C-agent-21** The list of an entry in a part, when it is held, goes to the part's ask and is shown the part's name as `part`, as a call of the part's tools is. The check counts the part's ask as covering the list, and a list held for the agent's ask would go to an ask the part's author did not choose, or to none. *Test:* `agent_part_list_goes_to_the_parts_ask`
+
+**C-agent-22** An error names the list of an entry in a part by where it is written, `open.<part>.tools.<entry>.list`, the place the check names it by. One place has one name, the one an author finds in the definition. *Test:* `agent_list_is_named_by_its_place`
 
 ## Shapes
 
@@ -143,11 +162,10 @@ Uses:
 
 - **Machines.** Values and expressions, jobs and their names, events, children, approval, failure and attempts, and limits. An agent adds `args` to what an expression in a tool's job reads, and `tool` in the job of an entry with a list.
 - **Models.** A turn is a call to a model through the `llm` plugin: the conversation, the tools on offer and the shape wanted go in, every shape in full form; what the model said, the tools it asked for, why it stopped and the tokens used come back. Why it stopped is how a reply cut short is told from one that was finished. What a turn is permitted, the connection and the key, is written by the client when the definition is sent (R-model-15).
-- **Controller.** Takes the agent's steps, starts each turn and each tool as a job, and holds the calls that need approval for the ask.
+- **Controller.** Takes the agent's steps, starts each turn and each tool as a job, and holds the calls that need approval for their ask.
 - **Runner.** Executes the jobs of turns, lists, tools, the blob tools and previews.
 - **Blobs.** A reference stands for a blob everywhere but in front of the model, where a handle stands for it; a large result is a blob in the agent's record, and a preview is in the turn that first shows its handle.
 - **Plugins.** The supplied turn script and the blob tools are libraries that come with Corbie.
-- **Client.** Fills in a shared file of tools when the definition is sent.
 
 Used by:
 

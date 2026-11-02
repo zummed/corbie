@@ -3,6 +3,7 @@ package controller_test
 import (
 	"context"
 	"fmt"
+	"os"
 	"strings"
 	"sync"
 	"testing"
@@ -14,6 +15,7 @@ import (
 	"github.com/zummed/corbie/instance"
 	"github.com/zummed/corbie/machine"
 	"github.com/zummed/corbie/permission"
+	"github.com/zummed/corbie/runner"
 	"github.com/zummed/corbie/store"
 
 	_ "github.com/zummed/corbie/statechart"
@@ -260,4 +262,26 @@ func (w *world) of(inst string) []string {
 		}
 	}
 	return names
+}
+
+// The test binary stands in for the process of a step of a machine made
+// while running.
+func TestMain(m *testing.M) {
+	if len(os.Args) > 1 && os.Args[1] == runner.JobArg {
+		runner.JobMain()
+		return
+	}
+	if len(os.Args) > 2 && os.Args[1] == stepThatHangs {
+		hangs(os.Args[2])
+		return
+	}
+	if len(os.Args) > 1 && os.Args[1] == stepThatSaysTooMuch {
+		saysTooMuch()
+		return
+	}
+	if len(os.Args) > 2 && os.Args[1] == stepThatLies {
+		lying(os.Args[2], os.Args[3:])
+		return
+	}
+	os.Exit(m.Run())
 }

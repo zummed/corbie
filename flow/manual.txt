@@ -52,7 +52,7 @@ A stage has these fields.
   follows          stages it runs after without reading them: [fetch]
   each             starts the job once for each item, read as `${item}`
 
-An expression reads `input` and these.
+An expression reads `input`, `run` and these.
 
   stages.<name>.output     what the stage's job returned
   stages.<name>.failed     true if the stage failed

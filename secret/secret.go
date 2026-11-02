@@ -5,7 +5,6 @@ package secret
 import (
 	"context"
 	"fmt"
-	"slices"
 	"strings"
 	"time"
 
@@ -75,13 +74,15 @@ func List(ctx context.Context, s store.Store, ctl string) ([]string, error) {
 // none.
 func Named(allow []string) []string {
 	var names []string
+	seen := map[string]bool{}
 	for _, entry := range allow {
 		rest, ok := strings.CutPrefix(entry, "secret:")
 		if !ok {
 			continue
 		}
 		name, _, _ := strings.Cut(rest, "@")
-		if name != "" && !strings.Contains(name, "*") && !slices.Contains(names, name) {
+		if name != "" && !strings.Contains(name, "*") && !seen[name] {
+			seen[name] = true
 			names = append(names, name)
 		}
 	}

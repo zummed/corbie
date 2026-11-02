@@ -98,6 +98,7 @@ func (p Party) grants() []grant {
 			{ActRead | ActList, c + "/running/" + n + "/**"},
 			{ActRead | ActList, c + "/finished/" + n + "/**"},
 			{ActRead | ActList, c + "/records/" + n + "/**"},
+			{ActRead, c + "/keys/" + n + "/*"},
 		}
 	case Viewer:
 		return []grant{

@@ -1,0 +1,9 @@
+# A send to a key no run has is noted in the sender's record, and fails nothing.
+statechart: lonely
+initial: asking
+states:
+  asking:
+    entry: { send: { to: { key: nobody }, event: hello } }
+    timers: { pause: 1s }
+    on: { pause: finished }
+  finished: { end: done, output: { fine: true } }

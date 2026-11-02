@@ -104,8 +104,18 @@ first one whose `when:` is true is taken.
   go      the state to go to; with none, the statechart stays and only sends
   when    a condition, one expression: "${event.data.ok}", in quotes
           between { }
-  send    one send or a list: { to, event, data }, where `to:` is parent, or
-          the state or named job whose job is a machine
+  send    one send or a list: { to, event, data }, where `to:` is parent,
+          the state or named job whose job is a machine, or { key, machine }
+
+A send to a key names the run that has the key, as in `corbie manual
+definitions`.
+
+  to: { key: "chat:${event.data.id}" }                         the run with the key
+  to: { machine: ./chat.yaml, key: "chat:${event.data.id}" }   that run, or a new run of the machine
+
+  key      the key of the run
+  machine  a file or a definition written in place, with no expression; a new
+           run gets the event's data as its input
 
 - An event that the active state has no transition for goes to the state it
   is inside, and so on outward.
@@ -117,6 +127,8 @@ first one whose `when:` is true is taken.
 - When a client started the run, a send to parent is only written to the
   record. That client sends an event with `corbie run send <id> <event> <data>`.
 - A ticket's name is used once in a statechart.
+- A send cannot be named start, done, failed or timer.
+- `to: { key }` naming no running run is noted in the record as undelivered.
 
 A timer's time is one of these.
 
@@ -130,6 +142,7 @@ What an expression reads
 ------------------------
 
   input                   the statechart's input
+  run                     the run's id and key
   states.<name>.output    the state's last output
   tickets.<name>          a ticket of this state, or of a state it is inside
   event                   the event that caused the transition:
@@ -144,6 +157,7 @@ What an expression reads
   an event from a child        its data                     the state or named job
   an event from the parent     its data                     "parent"
   an event from the client     its data                     "client"
+  an event sent to the key     its data                     the sender's run ID
 
 The state that a transition enters reads the same `event` in its job's input,
 its `entry:` and its `output:`. A final state returns a ticket's answer with

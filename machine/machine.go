@@ -5,10 +5,14 @@ package machine
 
 import (
 	"encoding/json/jsontext"
+	"errors"
 	"fmt"
 	"sort"
 	"strings"
 	"time"
+	"unicode/utf8"
+
+	"github.com/zummed/corbie/blob"
 )
 
 // An Event is anything that reaches a machine: a name, where it came from,
@@ -29,6 +33,12 @@ const (
 	Failed = "failed"
 	Timer  = "timer"
 )
+
+// Reserved says whether a name is one Corbie gives a machine itself, which no
+// client, machine or script can send.
+func Reserved(name string) bool {
+	return name == Start || name == Done || name == Failed || name == Timer
+}
 
 // The ways a job fails.
 const (
@@ -92,37 +102,85 @@ type Job struct {
 	Machine string   `json:"machine,omitzero"` // a machine of the definition, by its name
 	// Stored is a stored definition or script the job's own expression gave.
 	Stored any `json:"stored,omitzero"`
+	// Found is where the script or the machine is, worked out when the job
+	// is asked for: what carries it out reads no definition.
+	Found *Found `json:"found,omitzero"`
 
-	Input    any      `json:"input,omitzero"`
-	Allow    []string `json:"allow,omitzero"`
-	Deny     []string `json:"deny,omitzero"`
-	Timeout  Duration `json:"timeout,omitzero"`
-	Attempts int      `json:"attempts,omitzero"`
-	Memory   int64    `json:"memory,omitzero"`
-	Tags     []string `json:"tags,omitzero"`
-	Approve  bool     `json:"approve,omitzero"`
+	// RunKey is the key a machine is started with.
+	RunKey *string `json:"key,omitzero"`
+
+	Input   any      `json:"input,omitzero"`
+	Allow   []string `json:"allow,omitzero"`
+	Deny    []string `json:"deny,omitzero"`
+	Timeout Duration `json:"timeout,omitzero"`
+	Restart *Restart `json:"restart,omitzero"`
+	Memory  int64    `json:"memory,omitzero"`
+	Tags    []string `json:"tags,omitzero"`
+	Approve bool     `json:"approve,omitzero"`
 	// Alone says the job has only its own permissions, and none of the
 	// lists written for the whole definition.
 	Alone bool `json:"alone,omitzero"`
 	// Shown is what the ask is shown about the job, beside its name and
 	// its input, where the job is held for approval.
 	Shown any `json:"shown,omitzero"`
+	// AskAt is where the ask the job goes to when it is held is written,
+	// where one is nearer than its machine's. Only that comes from a step.
+	// Ask is what is written there, which the controller reads from the
+	// definition and fills from the machine's input, once for the held
+	// jobs of a step that name the same place.
+	AskAt string   `json:"ask_at,omitzero"`
+	Ask   *JobSpec `json:"ask,omitzero"`
+	// Above says the job is an ask taken from a machine above, whose
+	// script or machine is in that machine's definition. Only the controller
+	// sets it.
+	Above bool `json:"above,omitzero"`
 	// Wants names the emitted values the machine acts on.
 	Wants []string `json:"wants,omitzero"`
+}
+
+// Found is where a job's script or machine is: the blob, the files the
+// script loads, and the name of the definition that holds the job.
+type Found struct {
+	Blob  blob.Ref            `json:"blob"`
+	Files map[string]blob.Ref `json:"files,omitzero"`
+	In    string              `json:"in"`
 }
 
 // IsMachine says whether the job is a machine, started as a child.
 func (r *Job) IsMachine() bool { return r.Machine != "" || isDefinition(r.Stored) }
 
-// A Send is a request to send a named event to the parent or to a child.
+// A Send is a request to send a named event to the parent, to a child, or
+// to the run a key names.
 type Send struct {
-	To    string `json:"to"` // "parent", or the name of the job that started the child
-	Event string `json:"event"`
-	Data  any    `json:"data,omitzero"`
+	To string `json:"to,omitzero"` // "parent", or the name of the job that started the child
+	// Key names the run it is sent to, in place of To, and Machine is the
+	// machine started with that key when no run has it, by its name in the
+	// definition.
+	Key     *string `json:"key,omitzero"`
+	Machine string  `json:"machine,omitzero"`
+	Event   string  `json:"event"`
+	Data    any     `json:"data,omitzero"`
 }
 
 // Parent is where a send to the machine's parent is addressed.
 const Parent = "parent"
+
+// KeyLimit is how long a key may be, in characters.
+const KeyLimit = 256
+
+// CheckKey says what is wrong with a key. A key is any text of at most
+// KeyLimit characters that is not empty, and no name in the store holds it.
+func CheckKey(key string) error {
+	switch {
+	case key == "":
+		return errors.New("a key is not empty")
+	case !utf8.ValidString(key):
+		return errors.New("a key is text, and this is not")
+	case utf8.RuneCountInString(key) > KeyLimit:
+		return fmt.Errorf("a key is at most %d characters, and this one starts %.40q", KeyLimit, key)
+	}
+	return nil
+}
 
 // A Request is one thing a step asks for. Exactly one field is set.
 type Request struct {
@@ -164,6 +222,7 @@ type StepIn struct {
 	State      jsontext.Value // the state the machine was left in; nil at the start
 	Events     []Event
 	Input      any       // what the machine was started with
+	Run        Run       // the run it is
 	Time       time.Time // the time of the step
 	Seed       []byte    // the step's own secret, for tickets and random numbers
 }
@@ -203,6 +262,43 @@ type Limiter interface {
 	Limits() []Field
 }
 
+// A Reader is a type with a part of its definitions that the controller
+// needs. It reads them as plain JSON, and compiles and evaluates nothing.
+type Reader interface {
+	// Lists says the definition takes shapes from outside as it runs.
+	Lists(def *Definition) bool
+	// Asks gives the asks the definition writes, by place. It is never nil.
+	Asks(def *Definition) map[string]*JobSpec
+}
+
+// Lists says a definition takes shapes from outside as it runs.
+func Lists(def *Definition) bool {
+	t, _ := TypeOf(def.Type)
+	r, ok := t.(Reader)
+	return ok && r.Lists(def)
+}
+
+// A KeySender is a type whose definitions can send an event to a key.
+type KeySender interface {
+	SendsToKeys()
+}
+
+// SendsToKeys says a definition's type can send an event to a key.
+func SendsToKeys(def *Definition) bool {
+	t, _ := TypeOf(def.Type)
+	_, ok := t.(KeySender)
+	return ok
+}
+
+// Asks gives the asks a definition writes, by place.
+func Asks(def *Definition) map[string]*JobSpec {
+	t, _ := TypeOf(def.Type)
+	if r, ok := t.(Reader); ok {
+		return r.Asks(def)
+	}
+	return nil
+}
+
 var types = map[string]Type{}
 
 // Register adds a machine type.
@@ -223,6 +319,52 @@ func Types() []string {
 	sort.Strings(names)
 	return names
 }
+
+// A Restart says what happens when a job ends. With no policy it runs once.
+type Restart struct {
+	// Always restarts the job after it ends well too, and not only after an
+	// error or a timeout.
+	Always bool `json:"always,omitzero"`
+	// Limit is how many restarts are allowed, in the last Within if it is
+	// given, and with no Limit there is no end to them.
+	Limit  int      `json:"limit,omitzero"`
+	Within Duration `json:"within,omitzero"`
+	// Delay is the first wait before a restart, which doubles up to Longest.
+	Delay   Duration `json:"delay"`
+	Longest Duration `json:"longest"`
+}
+
+// Wait gives how long a restart waits, and how many times the delay has doubled
+// after it, from how many times it had before and how long the attempt that
+// ended stayed up. A delay starts again once an attempt has stayed up for twice
+// its longest wait. A step's process can write any values here, so nothing in
+// them is taken on trust: a wait is always more than nothing, and cannot overflow.
+func (r *Restart) Wait(doubled int, up time.Duration) (time.Duration, int) {
+	first, longest := time.Duration(r.Delay), time.Duration(r.Longest)
+	if first <= 0 {
+		first = time.Duration(DefaultDelay)
+	}
+	longest = max(longest, first)
+	if up/2 >= longest {
+		doubled = 0
+	}
+	wait := first
+	for range doubled {
+		if wait > longest/2 {
+			return longest, doubled
+		}
+		wait *= 2
+	}
+	return wait, doubled + 1
+}
+
+// What a restart's when: says, and the delay of a policy that gives none.
+const (
+	RestartFailure = "failure"
+	RestartAlways  = "always"
+	DefaultDelay   = Duration(time.Second)
+	DefaultLongest = Duration(5 * time.Minute)
+)
 
 // A Duration is a length of time as definitions write it: 90s, 5m, 48h, 7d.
 type Duration time.Duration

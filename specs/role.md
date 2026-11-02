@@ -18,6 +18,19 @@ On a **computer** `corbie start` runs passes in a loop, sleeping until the next 
 
 **`corbie test`** is the same loop with every role in one process and the store in memory. It is not a separate way of running a machine.
 
+## A process of its own
+
+A runner's job, and a controller's step taken apart from it (see Controller), each run in a process of their own. It is the binary, started with nothing of the role's environment, in a group of its own, with a channel to the role that nothing it prints can reach. The process ends when that channel closes.
+
+```
+  on Linux          the system refuses a step's process memory past its limit
+  on Windows        the job object the process makes of itself does the same
+  on every system   the process ends itself past that limit, read every 100 ms
+  on every system   the role kills the process at its time limit
+```
+
+A serverless host runs a process as a computer does. A made step there costs a pass about 15 ms for the process and, beside what any step costs, two or three reads and one write of the store. It reads its definition, its note and, when a job goes to an ask above, the definition that declares that ask, and it writes its note. The list of runners is read once in a pass, for a pass that sends a job. A host can stop a whole copy for its memory. The step is then taken once more, and its machine fails (see Controller).
+
 ## Several copies
 
 Any number of copies of a role may run against one store, and any of them may be stopped at any instant. Three rules make that safe, and they are the whole of it.

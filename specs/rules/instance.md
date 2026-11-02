@@ -7,7 +7,7 @@ The detailed rules behind the [Instances overview](../instance.md).
 **R-inst-01** The head is signed by the controller, and anyone who can read it can check the signature with the controller's card.
 *Accept:* read a head straight from the store and check it against the controller's card: it passes. Change one byte of it: the check fails and no viewer shows it.
 
-**R-inst-02** The head says what the instance is called, what type of machine it is, when it started, which instance is its parent, whether it is running, done, failed or cancelled, and which step it has reached.
+**R-inst-02** The head says what the instance is called, what type of machine it is, when it started, which instance is its parent, its key and the run whose send started it if it has them, whether it is running, done, failed or cancelled, and which step it has reached.
 *Accept:* the head of a flow started as a child by a statechart gives the flow's name, says it is a flow, gives a start time, names the statechart's instance as its parent, says `running` and gives the step the controller last wrote; a root's head names no parent. The heads of four ended runs show `done`, `failed` and `cancelled` as each ended.
 
 **R-inst-05** The head says what the instance is waiting for: how many jobs on runners, how many timers, and the names of any tickets.

@@ -14,6 +14,7 @@ Fields every type takes
   deny: [exec]                 what no script job in the definition may do
   ask_about: [disk]            permissions that hold a job for approval
   ask: { script: ./ask.js }    the job that approves held jobs
+  meta: { owner: alice }        data Corbie keeps and never reads; no expression in it is filled in
 
 `limits:` takes these.
 
@@ -23,6 +24,27 @@ Fields every type takes
   turns: 20      an agent's turns, as in `corbie manual agent`
 
 A length of time is written `30s`, `5m`, `48h` or `7d`.
+
+Include
+-------
+
+Any mapping of fields, or of names such as `tools:` or `stages:`, can take
+fields from other files.
+
+  agent: family
+  include: ./base.yaml            one file
+  tools: { include: [./a.yaml, ./b.yaml], own: { … } }    or a list
+
+1. The client reads each file when it sends the definition. A file holds any
+   fields, and has no type.
+2. A field the mapping writes stands before a file's, a file's before those of
+   the files it includes, and an earlier file's before a later one's.
+3. The stored definition holds the fields written out.
+
+- A path in a file is read from the file's directory.
+- What is a value, such as `input:` or `meta:`, stays as it is written.
+- A problem in a file names the file.
+- More than 1,000 files included by one definition are refused.
 
 Input
 -----
@@ -68,6 +90,9 @@ A shape written with `type: object` is JSON Schema, which can give a `default`.
   `items` lead to. A `default` elsewhere, such as under `anyOf` or behind a
   `$ref`, is refused.
 - A `$ref` resolves only within its own shape.
+- A shape may lead back to itself with `$ref`, and so describe a tree. A value
+  checked against a `$ref` that leads back with no part of the value between
+  fails.
 
 Values and expressions
 ----------------------
@@ -83,6 +108,7 @@ contain one.
 An expression reads these names.
 
   input                     the run's input, in every type
+  run                       the run's `id` and `key`, in every type
   stages, item              in a flow
   states, event, tickets    in a statechart
   args                      in an agent's tool
@@ -97,7 +123,8 @@ It may use JavaScript's operators, `? :`, arrow functions, methods such as
   network connection.
 - `Date` gives the time of the step, and `Math.random` gives the same numbers
   each time the step is taken.
-- An expression may run for one second.
+- An expression may run for one second. That limit stops its own code, and
+  not a call to something built in that is under way.
 - In a permission's scope an expression reads `input` and nothing else.
 - Put a value that contains `${...}` in quotes when it is inside `{ }` or `[ ]`,
   or when the expression has a colon followed by a space.
@@ -110,15 +137,16 @@ Jobs
 A machine contains jobs. A job is a script, which a runner executes, or a
 machine, which the controller starts as a child run.
 
-  script: ./fetch.js           a script file; its path starts with ./ or ../
+  script: ./fetch.js           a script file
   machine: ./child.yaml        a definition file, or a definition written in place
+  key: "chat:${input.id}"      machine only: the key the child run is started with
   input: { url: "${item}" }    the input of the script or of the child run
   allow: [net:example.com]     for a script, what the job may do, with the definition's `allow:`;
                                for a machine, a limit on everything the child run does
   deny: [fs.write:/etc/**]     what the job may not do
   timeout: 5m                  for a script, how long it may run, default 5m;
                                for a machine, the child run's timeout
-  attempts: 3                  how many times the job is tried; default 1
+  restart: { limit: 2 }        what happens when the job ends, as below; with none it runs once
   approve: true                the job waits until the definition's ask approves it
   files: [./lib.js]            script only: files the script loads with require("./lib.js")
   memory: 256MB                script only: the most memory it may use, in B, KB, MB or GB
@@ -127,16 +155,108 @@ machine, which the controller starts as a child run.
   job: ./fetch.js                                         short for job: { script: ./fetch.js }
   job: { machine: "${stages.make.output.definition}" }    exactly one expression in place of a path
 
-- A relative path is read from the directory of the file it is written in:
-  a definition, a machine kept in its own file, a file of tools, or a script
-  that loads another with `require`.
-- Every file is in the directory of the definition that is submitted, or below
-  it. A path starting `../` works only from a file in a subdirectory.
+- The context is the directory you submit from, or a file's own directory for a
+  file outside it. Every file is in the context, or below it.
+- A path is read from the context, and a path starting `./` from the directory
+  of the file it is written in: a definition, a machine kept in its own file,
+  or an included file. `../` is refused.
+- A script that loads another with `require` names it from its own directory,
+  with `./` or `../`.
+- A machine file or an included file that names a file already being read is
+  refused: no file leads back to itself.
+- A machine as it is stored is at most 4 MiB.
+- A YAML alias cannot contain itself. A file whose aliases make more than about
+  100 times what it writes, past 1000 values, is refused.
 - A child run whose job has no `allow:` has what its own definition allows.
-- A job is retried only after an error or a timeout. It waits 1s before the
-  second attempt, 2s before the third and 4s before the fourth.
 - An expression in place of a path evaluates to a blob that contains a
   script, or to a definition that a script made with `machines.define`.
+- Each step of a machine made while running, and of everything below it, runs
+  in a process of its own and may use 10 seconds and 1 GiB of memory. Past
+  either, that machine fails with an error and nothing else does.
+
+Restart
+-------
+
+A job with `restart:` runs again when it ends. With none it runs once.
+
+  job:
+    script: ./fetch.js
+    restart: { when: always, limit: 5 in 1h, delay: 1s to 5m }
+
+  when: failure        restarts after an error or a timeout; the default
+  when: always         restarts after the job ends well too
+  limit: 3             at most three restarts; no limit by default
+  limit: 5 in 1h       at most five in any hour
+  delay: 1s to 5m      doubles from the first to the second; the default
+  delay: 30s           the same each time
+
+- The job restarts with the input it was first given, and a machine as a new
+  child run, from its start.
+- A denial and a cancel are never restarted, so a job cancelled by hand stays
+  stopped.
+- A delay that doubles starts again once an attempt has stayed up for twice its
+  longest wait.
+- The machine sees only the final outcome: the last attempt's, past the limit.
+  The run's record shows each attempt.
+- Every value an attempt emits is delivered, so a job that repeats itself
+  delivers its values again.
+- With `when: always` and no limit, the machine sees no outcome, so a stage
+  waiting on the job never ends.
+- A restart after a failure is the same job, under a yes it was already given.
+- A restart after a job ended well is a new job: it is held again if it needs
+  approval, has a new `job.request`, and counts against `limits: { jobs: }`.
+- An ask that ends well is final, whatever its policy says.
+- A job's key is free between attempts. An event sent to it then is
+  undelivered, and an attempt whose key has been taken fails.
+
+Keys
+----
+
+A key names a run. Give a run a key, then send to that key. Send with
+`machine` too and a run is started if none has the key.
+
+1. A client gives a key with `corbie run submit --key`, a job with `key:`, and
+   a statechart's send with `to:`.
+2. Among one client's running runs, a key names at most one run. It is free
+   again once its run ends.
+3. `to: { key }` delivers the event to the run with the key. `to: { machine,
+   key }` delivers it, or starts the machine with that key when no run has it.
+4. A run reads its key as `${run.key}`, its ID as `${run.id}`, and the absolute
+   path of the context it was submitted from as `${run.context}`.
+
+  send: { to: { key: "chat:${event.data.id}" }, event: said }                 a statechart's send
+  send: { to: { machine: ./chat.yaml, key: "chat:1" }, event: said }          the same, starting a run
+  job: { machine: ./ask-person.yaml, key: "question:${run.id}" }              a job in any type of machine
+
+  started by    when the key is in use                  the run is
+  a client      the start is refused in its receipt     a root
+  a job         the job fails, with a reason            a child of the job
+  a send        the event is delivered to that run      a root; ending the sender does not cancel it
+
+- A key is any text of 1 to 256 characters. A client's keys name only that
+  client's runs.
+- Anyone who can list runs can read a run's key. Put no secret in a key.
+- Text from outside can name any of your runs, so write the start of a key
+  yourself, as in `chat:${event.data.id}`.
+- A run a send starts gets the event's data as its input, and then the event.
+  It has the permissions and the ask a child of the sender would have.
+- A send that cannot be made fails nothing, and the sender's record says why.
+- Events from one run to one key arrive once each, in the order sent. An event
+  sent with `machine` starts a new run when its run ends first.
+- A machine made while running fails if it sends to a key or gives a job a key,
+  so it talks only to its parent and its children. A job above it may start it
+  with a key.
+
+A statechart a send starts takes the event in its first state, so the first
+event goes the same way as every later one. Do not act on `input` as well.
+
+  initial: waiting
+  states:
+    waiting: { on: { said: answering } }
+    answering: { job: { script: ./answer.js, input: "${event.data}" }, on: { done: waiting } }
+
+`corbie manual machines-together` has an example, and `corbie manual
+statechart` has the fields of a send.
 
 Events
 ------
@@ -147,8 +267,11 @@ The controller sends events to a machine. An event has a name, a source and data
   done      a job ended well; data is its output
   failed    a job failed; data is { status, error, output }
   <name>    a timer that is due, a ticket's answer, an event from the parent run,
-            a child run or the client (`corbie run send`), or a value a job
-            emitted with emit(name, value)
+            a child run, the client (`corbie run send`) or a send to the run's
+            key, or a value a job emitted with emit(name, value)
+
+No client, machine or script can send an event named `start`, `done`, `failed`
+or `timer`.
 
 A failed job's status is `error`, `timeout`, `denied` or `cancelled`, and
 `denied` adds `refused`, `layer` and `fix` to the data. Each type's page lists
@@ -174,16 +297,27 @@ The ask is a job, and the controller adds two fields to its input.
   input.jobs      [{ name, input, allow, script or machine, asked }]: each held job
 
 - A held job has `asked: { does, args, said }` only for an agent's tool call,
-  with `entry` and `tool` too for a tool from a `list:`.
+  with `entry` and `tool` too for a tool from a `list:`, and `part`, the part's
+  name, for a tool of a part or for `open`. The list of an entry in a part has
+  `asked: { part }`.
 
 The ask returns `{ approve: [names of jobs], note: "..." }`.
 
   a job the ask names            starts, with no permission it did not have
   a job the ask does not name    fails with status `denied`; its error has the note
 
-An ask that fails, or that returns any other value, approves nothing.
+An ask that fails, whose values cannot be filled in, or that returns any other
+value, approves nothing.
 
 - A machine with no `ask:` uses the nearest `ask:` above it.
+- A machine made while running has no ask of its own, and one that writes an
+  `ask:` fails as it starts, saying so. Its held jobs go to the nearest `ask:`
+  above it that was not made while running, and with none they fail with
+  status `denied`.
+- The jobs of an agent's set, and the machines below them, use the `ask:`
+  of the set, or of the nearest set it is inside that has one, before the
+  agent's. The controller starts each ask once for the jobs of one step that
+  use it.
 - A machine run as an ask uses no `ask:` and no `ask_about:` from above it.
 - `corbie run submit` refuses a definition that can hold a job and has no
   `ask:` in it or above it.

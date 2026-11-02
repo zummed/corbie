@@ -9,7 +9,6 @@ import (
 	"github.com/zummed/corbie/blob"
 	"github.com/zummed/corbie/identity"
 	"github.com/zummed/corbie/instance"
-	"github.com/zummed/corbie/machine"
 	"github.com/zummed/corbie/store"
 )
 
@@ -25,16 +24,6 @@ const (
 	wakeTrim   = "trim"
 	wakeRemove = "remove"
 )
-
-// keepOf is how long an instance is kept: what its definition says, or a
-// week. An instance whose definition cannot be used is kept a week.
-func (p *pass) keepOf(st *instance.State) (time.Duration, error) {
-	def, err := p.definition(st)
-	if err != nil && !errorsIs(err, machine.ErrDefinition) {
-		return 0, err
-	}
-	return p.keepFor(def, &st.Above), nil
-}
 
 // keepBatch is how many of the instances' wakes for housekeeping one pass
 // acts on.

@@ -3,37 +3,45 @@ package runner
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
-	"runtime"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/zummed/corbie/blob"
+	"github.com/zummed/corbie/controller"
 	"github.com/zummed/corbie/instance"
 	"github.com/zummed/corbie/machine"
 	"github.com/zummed/corbie/permission"
 	"github.com/zummed/corbie/plugin"
+	"github.com/zummed/corbie/role"
 )
 
 // JobArg is the argument that makes the binary run one job, as the process
 // a runner starts for it.
-const JobArg = "run-one-job"
+const JobArg = role.Arg
 
 // JobMain is the whole of a job's process. It is given the job on the
-// channel from its runner, runs the script, and says how it ended.
+// channel from its runner, runs the script, and says how it ended. The same
+// argument starts the process of a controller's step, so that a program
+// built on Corbie needs no more than this.
 func JobMain() {
+	if len(os.Args) > 2 && os.Args[2] == controller.StepArg {
+		controller.StepMain()
+		return
+	}
 	// The channel is the job's own: no program the job starts is handed it.
-	from, to := takeChannel()
-	w := &wire{r: from, w: to}
-	// Everything the job starts is in its group, and goes when the group
-	// is ended.
-	if err := startGroup(); err != nil {
-		fmt.Fprintln(os.Stderr, "the job's process could not make a group of its own:", err)
+	// Everything the job starts is in its group, and goes when the group is
+	// ended.
+	opened, err := role.Open()
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "the job's process:", err)
 		os.Exit(2)
 	}
+	w := wire{opened}
 	first, err := w.receive()
 	if err != nil || first.Op != opBegin || first.Begin == nil {
 		os.Exit(2)
@@ -59,7 +67,10 @@ func JobMain() {
 			Error: fmt.Sprintf("the script ran past its time limit of %s", b.Job.Timeout)})
 	})
 	if b.Job.Memory > 0 {
-		go watchMemory(ctx, b.Job.Memory, stop)
+		go role.WatchOwn(ctx, b.Job.Memory, func() {
+			stop(&machine.Error{Status: machine.StatusError,
+				Error: fmt.Sprintf("the script went past its memory limit of %d bytes", b.Job.Memory)})
+		})
 	}
 	result := e.run()
 	limit.Stop()
@@ -69,48 +80,13 @@ func JobMain() {
 	os.Exit(0)
 }
 
-// watchMemory stops the script when what the process holds passes the
-// job's limit.
-func watchMemory(ctx context.Context, limit int64, stop func(why *machine.Error)) {
-	tick := time.NewTicker(100 * time.Millisecond)
-	defer tick.Stop()
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case <-tick.C:
-			var m runtime.MemStats
-			runtime.ReadMemStats(&m)
-			if int64(m.HeapAlloc) > limit {
-				// The count includes what is no longer held and has not
-				// been collected yet, so that is collected before the
-				// count is judged.
-				runtime.GC()
-				runtime.ReadMemStats(&m)
-			}
-			if int64(m.HeapAlloc) > limit {
-				stop(&machine.Error{Status: machine.StatusError,
-					Error: fmt.Sprintf("the script went past its memory limit of %d bytes", limit)})
-				return
-			}
-		}
-	}
-}
-
 // channel is the job's end of its own channel to the runner. A script
 // waits for each answer, so one thing is asked at a time.
 type channel struct {
-	*wire
+	wire
 	answers chan *piece
 	stop    func(why *machine.Error)
 	ask     sync.Mutex
-}
-
-// lost ends the job's process, and everything it started with it: its
-// runner has gone away, and nothing else would stop them.
-func lost() {
-	endGroup()
-	os.Exit(3)
 }
 
 // listen reads what the runner says: answers, and the order to stop. When
@@ -120,7 +96,7 @@ func (c *channel) listen() {
 	for {
 		p, err := c.receive()
 		if err != nil {
-			lost()
+			role.Lost()
 		}
 		switch p.Op {
 		case opStop:
@@ -128,8 +104,8 @@ func (c *channel) listen() {
 		case opAnswer:
 			if p.Size > 0 {
 				data := make([]byte, p.Size)
-				if _, err := io.ReadFull(c.r, data); err != nil {
-					lost()
+				if _, err := io.ReadFull(c.R, data); err != nil {
+					role.Lost()
 				}
 				p.Data = data
 			}
@@ -198,15 +174,23 @@ func (c *channel) WriteBlob(typ string, size int64, contents io.Reader) (blob.Re
 	return *answer.Ref, nil
 }
 
+// Define fills out, checks and stores a definition the script made. It does
+// this in the job's process, under the job's limits, so that what reading a
+// definition costs falls on this job alone. What it stores goes to the
+// runner as blobs the job makes, and the controller checks it again when a
+// job starts it.
 func (c *channel) Define(source string, files map[string]string) (blob.Ref, error) {
-	answer, err := c.asks(&piece{Op: opDefine, Source: source, Files: files}, nil)
+	draft, err := machine.ParseMade([]byte(source), machine.Given(files))
 	if err != nil {
+		var problems machine.Problems
+		if errors.As(err, &problems) {
+			return blob.Ref{}, plugin.Errorf(plugin.BadInput, "the definition does not pass its check: %s", strings.ReplaceAll(problems.Error(), "\n", "; "))
+		}
 		return blob.Ref{}, err
 	}
-	if len(answer.Problems) > 0 {
-		return blob.Ref{}, plugin.Errorf(plugin.BadInput, "the definition does not pass its check: %s", strings.ReplaceAll(answer.Problems.Error(), "\n", "; "))
-	}
-	return *answer.Ref, nil
+	return draft.Write(context.Background(), func(typ string, contents []byte) (blob.Ref, error) {
+		return c.WriteBlob(typ, int64(len(contents)), bytes.NewReader(contents))
+	})
 }
 
 // failed makes the result of a job that failed.

@@ -45,7 +45,7 @@ A state's `on:` says where to go on each event, by the event's name.
 - `failed` is a job failing.
 - A timer's name is the timer being due.
 - A ticket's name is the ticket's answer.
-- Any other name is an event sent by the parent or by a child, or a value a job emitted.
+- Any other name is an event sent by the parent, by a child or to the run's key, or a value a job emitted.
 
 A transition names the state to go to, and may have a condition and may send events. Where several are listed, the first whose condition holds is taken. A transition that names no state stays where it is and only sends.
 
@@ -59,11 +59,20 @@ A chart has no variables. Each state's latest output is remembered and can be re
 
 ## Sending
 
-The only action a chart has is to send an event, to its parent or to one of its children, named by the state or the job that started it. A send can sit on a transition, on entering a state or on leaving one.
+The only action a chart has is to send an event: to its parent, to one of its children, named by the state or the job that started it, or to the run a key names. A send can sit on a transition, on entering a state or on leaving one.
 
 A send made on entering a state to that state's own child is delivered once the child has started. A send on leaving a state cannot address that state's own child, which is already being stopped, and a definition that tries is refused. A chart that is cancelled takes no further step, so it sends nothing and its leaving actions do not run.
 
 An event sent to a chart goes to the chart and to nothing below it. A child hears only what its parent chooses to send on.
+
+`to:` is `parent`, a state or a named job, or a mapping that names a key (see Machines):
+
+```yaml
+to: { key: "${event.data.key}" }                                    # the run with the key
+to: { machine: ./conversation.yaml, key: "chat:${event.data.id}" }  # the run with the key, or a new run of the machine
+```
+
+`machine:` is a definition's file or a definition written in place, and holds no expression. An event sent to a key cannot be named `start`, `done`, `failed` or `timer`. `event.from` in the run that takes the event is the sender's run ID. Only a chart acts on events, so only a chart sends to a key.
 
 ## Waiting
 

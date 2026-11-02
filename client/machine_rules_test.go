@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -419,5 +420,224 @@ func TestMisplacedDefaultIsRefused(t *testing.T) {
 	good := "flow: one\ninput: { type: object, properties: { n: { type: number, default: 2 }, all: { type: array, items: { properties: { m: { default: [] } } } } } }\nstages:\n  it: { job: ./echo.js }\n"
 	if _, err := machineParse(good, map[string]string{"echo.js": "return input"}); err != nil {
 		t.Errorf("defaults under properties and items are refused: %v", err)
+	}
+}
+
+// A definition of any type, and a machine written in place, may carry
+// meta: with any value. It is kept with the stored definition as written,
+// an expression in it is neither checked nor filled in, and the run goes
+// on as if it were not there.
+func TestMetaIsKeptAndNeverRead(t *testing.T) {
+	const meta = `meta: { on: { at: "02:00 Europe/London" }, says: "${not an expression", n: [1, two] }`
+	flow := `
+		flow: backup-check
+		` + meta + `
+		stages:
+		  check: { job: { script: ./add.js, input: { n: 1 } } }
+		  inner:
+		    job:
+		      machine:
+		        flow: inner
+		        meta: "${input.anything}"
+		        stages: { s: { job: { script: ./add.js, input: { n: 2 } } } }
+		        output: ${stages.s.output}
+		output: ${stages.check.output}
+	`
+	d := draft(t, flow, scripts)
+	if kept := jsonOf(d.Definition.Meta); kept != `{"n":[1,"two"],"on":{"at":"02:00 Europe/London"},"says":"${not an expression"}` {
+		t.Fatalf("the stored definition keeps meta as %s", kept)
+	}
+	for _, child := range d.Children {
+		if child.Definition.Meta != "${input.anything}" {
+			t.Fatalf("the machine written in place keeps meta as %v", child.Definition.Meta)
+		}
+	}
+	r := run(t, local(t, "all"), flow, scripts, nil)
+	check(t, r.Status, r.Output, "done", `{"n": 2}`)
+	for _, def := range []string{
+		"statechart: s\n" + meta + "\ninitial: a\nstates: { a: { end: done } }\n",
+		"agent: a\n" + meta + "\nmodel: { name: claude-sonnet-5-5, secret: KEY }\nprompt: hello\n",
+	} {
+		d, err := machineParse(def, nil)
+		if err != nil || d.Definition.Meta == nil {
+			t.Errorf("a definition with meta: was refused or lost it: %v\n%s", err, def)
+		}
+	}
+}
+
+// growModel is the model of each agent the growing definitions write.
+const growModel = "model: { name: test-model, service: anthropic, address: http://127.0.0.1:1, secret: K }"
+
+// inPlaceAgent is a job running an agent written in place, with one more
+// field of its own.
+func inPlaceAgent(field string) string {
+	return "{ machine: { agent: inner, " + growModel + ", prompt: hi, " + field + " } }"
+}
+
+// No file a definition reads leads back to itself: a machine file or an
+// included file, with machines written in place between. Each is refused,
+// naming the chain, at once.
+func Test_mach_file_leading_back_to_itself_is_refused(t *testing.T) {
+	agent := "agent: a\n" + growModel + "\nprompt: hi\n"
+	for _, c := range []struct {
+		name, def string
+		files     map[string]string
+		want      string
+	}{
+		{"a file that includes itself", agent + "include: ./t.yaml\n",
+			map[string]string{"t.yaml": "include: ./t.yaml\n"},
+			"include: the definition leads back to itself: t.yaml -> t.yaml"},
+		{"two files that include each other", agent + "tools: { include: ./a.yaml }\n",
+			map[string]string{"a.yaml": "include: ./b.yaml\n", "b.yaml": "include: ./a.yaml\n"},
+			"tools.include: the definition leads back to itself: a.yaml -> b.yaml -> a.yaml"},
+		{"a file included below itself", agent + "tools: { include: ./t.yaml }\n",
+			map[string]string{"t.yaml": "t: { does: x, job: " + inPlaceAgent("tools: { include: ./t.yaml }") + " }\n"},
+			"the definition leads back to itself: t.yaml -> t.yaml"},
+		{"a part's file", agent + "open:\n  s: { include: ./s.yaml }\n",
+			map[string]string{"s.yaml": "does: Loop.\ntools:\n  t: { does: x, job: " + inPlaceAgent("open: { s: { include: ./s.yaml } }") + " }\n"},
+			"the definition leads back to itself: s.yaml -> s.yaml"},
+		{"a machine file", "flow: f\nstages:\n  one: { job: { machine: ./f.yaml } }\n",
+			map[string]string{"f.yaml": "flow: g\nstages:\n  one: { job: { machine: { flow: inner, stages: { two: { job: { machine: ./f.yaml } } } } } }\n"},
+			"f.yaml: stages.two.job.machine: the definition leads back to itself: f.yaml -> f.yaml"},
+		{"two machine files", "flow: f\nstages:\n  one: { job: { machine: ./a.yaml } }\n",
+			map[string]string{"a.yaml": "flow: a\nstages:\n  one: { job: { machine: ./b.yaml } }\n", "b.yaml": "flow: b\nstages:\n  one: { job: { machine: ./a.yaml } }\n"},
+			"b.yaml: stages.one.job.machine: the definition leads back to itself: a.yaml -> b.yaml -> a.yaml"},
+		{"an included file and a machine file", agent + "open:\n  s: { include: ./s.yaml }\n",
+			map[string]string{"s.yaml": "does: Loop.\ntools:\n  t: { does: x, job: { machine: ./b.yaml } }\n", "b.yaml": agent + "open:\n  s: { include: ./s.yaml }\n"},
+			"the definition leads back to itself: s.yaml -> b.yaml -> s.yaml"},
+	} {
+		began := time.Now()
+		_, err := machineParse(c.def, c.files)
+		if err == nil || !strings.Contains(err.Error(), c.want) {
+			t.Errorf("%s: want a refusal holding %q, got: %v", c.name, c.want, err)
+		}
+		if took := time.Since(began); took > time.Second {
+			t.Errorf("%s: refusing it took %s", c.name, took)
+		}
+	}
+}
+
+// A machine a script defines that leads back to itself fails the job that
+// defined it, saying so, and the runner goes on to run the next job.
+func Test_mach_made_definition_leading_back_to_itself_fails_its_job(t *testing.T) {
+	files := map[string]string{"make.js": `
+		return machines.define("agent: a\n` + growModel + `\nprompt: hi\nopen:\n  s: { include: ./s.yaml }\n",
+			{ files: { "./s.yaml": "does: Loop.\ntools:\n  t: { does: x, job: ` + inPlaceAgent("open: { s: { include: ./s.yaml } }") + ` }\n" } })
+	`}
+	l := local(t)
+	r := run(t, l, "flow: maker\nstages:\n  make: { job: ./make.js }\n", files, nil)
+	if r.Status != "failed" || !strings.Contains(r.Error, "make: ") || !strings.Contains(r.Error, "the definition leads back to itself: s.yaml -> s.yaml") {
+		t.Fatalf("the job that defined a machine leading back to itself ended %s: %s", r.Status, r.Error)
+	}
+	r = run(t, l, "flow: next\nstages:\n  add: { job: { script: ./add.js, input: { n: 1 } } }\noutput: ${stages.add.output}\n", map[string]string{"add.js": scripts["add.js"]}, nil)
+	check(t, r.Status, r.Output, "done", `{"n": 2}`)
+}
+
+// definingFails runs each script, which defines a machine, and checks that
+// its job fails saying what is wrong, at once; then the same runner runs
+// the next job to done.
+func definingFails(t *testing.T, cases map[string]struct{ script, want string }) {
+	t.Helper()
+	l := local(t)
+	for name, c := range cases {
+		began := time.Now()
+		r := run(t, l, "flow: maker\nstages:\n  make: { job: ./make.js }\n", map[string]string{"make.js": c.script}, nil)
+		if r.Status != "failed" || !strings.Contains(r.Error, "make: ") || !strings.Contains(r.Error, c.want) {
+			t.Errorf("%s: the job that defined it ended %s: %.500s", name, r.Status, r.Error)
+		}
+		if took := time.Since(began); took > 5*time.Second {
+			t.Errorf("%s: the run took %s", name, took)
+		}
+	}
+	r := run(t, l, "flow: next\nstages:\n  add: { job: { script: ./add.js, input: { n: 1 } } }\noutput: ${stages.add.output}\n", map[string]string{"add.js": scripts["add.js"]}, nil)
+	check(t, r.Status, r.Output, "done", `{"n": 2}`)
+}
+
+// A machine a script defines that is past 4 MiB as it is stored fails the job
+// that defined it, at once, and the runner goes on to run the next job. So
+// does one a client sends, before anything is stored.
+func Test_mach_made_definition_past_the_most_fails_its_job(t *testing.T) {
+	definingFails(t, map[string]struct{ script, want string }{
+		"30,000 stages each naming a script of its own": {`
+			const stages = [], files = {}
+			for (let i = 0; i < 30000; i++) {
+				stages.push("  s" + i + ": { job: ./f" + i + ".js }\n")
+				files["./f" + i + ".js"] = ""
+			}
+			return machines.define("flow: f\nstages:\n" + stages.join(""), { files })
+		`, "the machine as it is stored is"},
+		"a few lines of aliases": {`
+			let text = "flow: f\nmeta:\n  a0: &a0 [ x ]\n"
+			for (let i = 1; i < 30; i++) text += "  a" + i + ": &a" + i + " [" + ("*a" + (i - 1) + ",").repeat(9) + "]\n"
+			return machines.define(text + "stages:\n  a: { job: ./add.js }\n", { files: { "./add.js": "return 1" } })
+		`, "document contains excessive aliasing"},
+	})
+	big := "flow: f\nmeta: " + strconv.Quote(strings.Repeat("x", 5<<20)) + "\nstages:\n  a: { job: ./add.js }\n"
+	if _, err := machineParse(big, map[string]string{"add.js": scripts["add.js"]}); err == nil || !strings.Contains(err.Error(), "and a machine may be at most 4 MiB") {
+		t.Errorf("a client's definition past 4 MiB: %.300v", err)
+	}
+}
+
+// aliasBomb is the fields of a mapping whose aliases make 135,795 values
+// from 230 bytes. A file that adds meta: *b4 makes 258,017.
+const aliasBomb = "b0: &b0 [1,1,1,1,1,1,1,1,1,1]\nb1: &b1 [*b0,*b0,*b0,*b0,*b0,*b0,*b0,*b0,*b0,*b0]\nb2: &b2 [*b1,*b1,*b1,*b1,*b1,*b1,*b1,*b1,*b1,*b1]\n" +
+	"b3: &b3 [*b2,*b2,*b2,*b2,*b2,*b2,*b2,*b2,*b2,*b2]\nb4: &b4 [*b3,*b3,*b3,*b3,*b3,*b3,*b3,*b3,*b3,*b3]\n"
+
+// A run reads its own ID in every expression of every type of machine, and
+// a permission's scope stays filled from the input and from nothing else.
+func Test_mach_run_is_read_in_every_type(t *testing.T) {
+	l := local(t)
+	echo := map[string]string{"echo.js": `return input`}
+	for name, def := range map[string]string{
+		"a flow's output": `
+			flow: f
+			stages:
+			  a: { job: { script: ./echo.js, input: { id: "${run.id}" } } }
+			output: { id: "${stages.a.output.id}", same: "${run.id}", key: "${run.key}" }
+		`,
+		"a statechart's job and final state": `
+			statechart: s
+			initial: a
+			states:
+			  a: { job: { script: ./echo.js, input: { id: "${run.id}" } }, on: { done: b } }
+			  b: { end: done, output: { id: "${states.a.output.id}", same: "${run.id}", key: "${run.key}" } }
+		`,
+		"an agent's prompt": `
+			agent: g
+			model: { name: scripted, service: anthropic }
+			turn: ./turn.js
+			prompt: "${run.id}"
+			reply: { id: string, same: string, key: string }
+		`,
+		"a timeout read from the run": `
+			flow: f
+			limits: { timeout: "${run.id ? '1m' : '1s'}" }
+			stages:
+			  a: { job: { script: ./echo.js, input: { id: "${run.id}" }, timeout: "${run.id ? '1m' : '1s'}" } }
+			output: { id: "${stages.a.output.id}", same: "${run.id}", key: "${run.key}" }
+		`,
+	} {
+		files := map[string]string{"echo.js": echo["echo.js"], "turn.js": `
+			const said = require("agents").conversation(input)
+			const id = said[said.length - 1].content
+			const answer = { role: "assistant", content: JSON.stringify({ id, same: id, key: "" }), calls: [] }
+			return { turn: blobs.make([answer], { type: "application/json" }), text: answer.content, calls: [], stop: "end", usage: { input: 1, output: 1 } }
+		`}
+		r := run(t, l, def, files, nil)
+		out, _ := r.Output.(map[string]any)
+		if reply, ok := out["reply"].(map[string]any); ok {
+			out = reply
+		}
+		if r.Status != "done" || out["id"] != r.ID || out["same"] != r.ID || out["key"] != "" {
+			t.Fatalf("%s: the run %s ended %s and read %v: %s", name, r.ID, r.Status, r.Output, r.Error)
+		}
+	}
+	_, err := machineParse(`
+		flow: f
+		stages:
+		  a: { job: { script: ./echo.js, allow: ["fs.read:${run.id}/**"] } }
+	`, echo)
+	if err == nil || !strings.Contains(err.Error(), "from the machine's input and from nothing else") {
+		t.Fatalf("a permission's scope read the run: %v", err)
 	}
 }

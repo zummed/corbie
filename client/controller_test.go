@@ -9,19 +9,19 @@ import (
 	"github.com/zummed/corbie/store"
 )
 
-// The controller makes the attempts a job asks for and gives the machine
+// The controller makes the restarts a job asks for and gives the machine
 // only the final outcome; each attempt after the first is made a little
 // later.
-func TestAttempts(t *testing.T) {
+func TestRestartAfterAFailure(t *testing.T) {
 	l := local(t)
 	started := time.Now()
 	r := run(t, l, `
 		flow: retry
 		stages:
 		  flaky:
-		    job: { script: ./flaky.js, attempts: 3 }
+		    job: { script: ./flaky.js, restart: { limit: 2 } }
 		  never:
-		    job: { script: ./never.js, attempts: 2 }
+		    job: { script: ./never.js, restart: { limit: 1 } }
 		  note:
 		    when: ${stages.never.failed}
 		    job: { script: ./echo.js, input: { why: "${stages.never.error}" } }
@@ -47,29 +47,29 @@ func TestAttempts(t *testing.T) {
 	}
 }
 
-// Values a failed attempt emitted stand, and the same values from a later
-// attempt are not delivered twice.
-func Test_ctl_later_attempt_emits_not_delivered_twice(t *testing.T) {
+// Values an attempt emitted stand, and every value of the next attempt is
+// delivered, so a job that hears something new after a restart loses nothing.
+func Test_ctl_a_restart_delivers_all_it_emits(t *testing.T) {
 	l := local(t)
 	r := run(t, l, `
 		flow: emits-twice
 		stages:
 		  source:
-		    job: { script: ./source.js, attempts: 2 }
+		    job: { script: ./source.js, restart: { limit: 1 } }
 		  each_one:
 		    each: { emitted: source }
 		    job: { script: ./echo.js, input: { item: "${item}" } }
 		output: ${stages.each_one.output.map(r => r.output.item)}
 	`, map[string]string{
 		"source.js": `
-			emit("item", "a"); emit("item", "b")
+			emit("item", "a" + job.attempt); emit("item", "b" + job.attempt)
 			if (job.attempt === 1) throw new Error("after two")
-			emit("item", "c")
+			emit("item", "c" + job.attempt)
 			return 3
 		`,
 		"echo.js": scripts["echo.js"],
 	}, nil)
-	check(t, r.Status, r.Output, "done", `["a", "b", "c"]`)
+	check(t, r.Status, r.Output, "done", `["a1", "b1", "a2", "b2", "c2"]`)
 }
 
 func TestLimits(t *testing.T) {
@@ -82,7 +82,7 @@ func TestLimits(t *testing.T) {
 		  a: { job: { script: ./add.js, input: { n: 0 } } }
 		  b: { job: { script: ./add.js, input: { n: "${stages.a.output.n}" } } }
 		  c: { job: { script: ./add.js, input: { n: "${stages.b.output.n}" } } }
-		  d: { job: { script: ./add.js, input: { n: "${stages.c.output.n}" }, attempts: 3 } }
+		  d: { job: { script: ./add.js, input: { n: "${stages.c.output.n}" }, restart: { limit: 2 } } }
 	`, scripts, nil)
 	if r.Status != "failed" || !strings.Contains(r.Error, "d: job limit reached") {
 		t.Fatalf("the run ended %s: %s", r.Status, r.Error)
@@ -270,4 +270,262 @@ func TestJobCannotAnswerItsStatesTicket(t *testing.T) {
 	`, map[string]string{"say.js": `emit("verdict", "the job answered")
 return 1`}, nil)
 	check(t, r.Status, r.Output, "done", `"not answered"`)
+}
+
+// The record names an attempt's end as that attempt, and not the one after it.
+func Test_ctl_the_record_names_each_attempt(t *testing.T) {
+	l := local(t)
+	r := run(t, l, `
+		flow: named
+		stages:
+		  flaky:
+		    job: { script: ./never.js, restart: { limit: 1, delay: 1ms } }
+		  note:
+		    when: ${stages.flaky.failed}
+		    job: { script: ./never.js, restart: { when: always, limit: 1, delay: 1ms }, input: { fine: true } }
+	`, map[string]string{"never.js": `if (input && input.fine) return 1; throw new Error("no")`}, nil)
+	if r.Status != "done" {
+		t.Fatalf("the run ended %s: %s", r.Status, r.Error)
+	}
+	var seen []string
+	if _, err := l.Record(ctx, r.ID, func(e client.Entry) {
+		for _, event := range e.Events {
+			if event.Name == "failed" || event.Name == "done" {
+				seen = append(seen, event.Name+":"+event.From)
+			}
+		}
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if got, want := strings.Join(seen, " "), "failed:flaky failed:flaky done:note done:note"; got != want {
+		t.Fatalf("the record names %s, and not %s", got, want)
+	}
+}
+
+// A job with no restart: runs once, whatever happens to it.
+func Test_ctl_a_job_with_no_restart_runs_once(t *testing.T) {
+	l := local(t)
+	r := run(t, l, `
+		flow: once
+		stages:
+		  never:
+		    job: { script: ./never.js }
+		  note:
+		    when: ${stages.never.failed}
+		    job: { script: ./echo.js, input: { why: "${stages.never.error}" } }
+		output: ${stages.note.output.why}
+	`, map[string]string{"never.js": `throw new Error("attempt " + job.attempt)`, "echo.js": scripts["echo.js"]}, nil)
+	if r.Status != "done" || !strings.Contains(r.Output.(string), "attempt 1") {
+		t.Fatalf("the run ended %s with %v", r.Status, r.Output)
+	}
+}
+
+// A policy with no limit goes on until the job ends well, and a job that ends
+// well under when: failure is final.
+func Test_ctl_no_limit_goes_on_until_it_works(t *testing.T) {
+	l := local(t)
+	r := run(t, l, `
+		flow: until
+		stages:
+		  flaky:
+		    job: { script: ./flaky.js, restart: { delay: 1ms } }
+		output: ${stages.flaky.output}
+	`, map[string]string{"flaky.js": `if (job.attempt < 12) throw new Error("not yet"); return job.attempt`}, nil)
+	if r.Status != "done" || r.Output != 12.0 {
+		t.Fatalf("the run ended %s with %v: %s", r.Status, r.Output, r.Error)
+	}
+}
+
+// when: always runs a job that ended well again, as a new job with a new request
+// name. The limit's last run gives the machine its outcome, and the record shows
+// the rest.
+func Test_ctl_when_always_runs_again_after_it_ends_well(t *testing.T) {
+	l := local(t)
+	r := run(t, l, `
+		flow: again
+		stages:
+		  count:
+		    job: { script: ./count.js, restart: { when: always, limit: 2, delay: 1ms } }
+		output: ${stages.count.output}
+	`, map[string]string{"count.js": `return job.request`}, nil)
+	if r.Status != "done" {
+		t.Fatalf("the run ended %s: %s", r.Status, r.Error)
+	}
+	if got := r.Output.(string); !strings.HasSuffix(got, "/count#3") {
+		t.Fatalf("the last run had the request name %s", got)
+	}
+}
+
+// A limit in a length of time counts only the restarts in it, so a job that fails
+// rarely is never out of them.
+func Test_ctl_a_limit_in_a_length_of_time_forgets_old_restarts(t *testing.T) {
+	l := local(t)
+	r := run(t, l, `
+		flow: window
+		stages:
+		  slow:
+		    job: { script: ./fail.js, restart: { limit: 1 in 200ms, delay: 250ms } }
+		output: ${stages.slow.output}
+	`, map[string]string{"fail.js": `if (job.attempt < 5) throw new Error("not yet"); return job.attempt`}, nil)
+	if r.Status != "done" || r.Output != 5.0 {
+		t.Fatalf("the run ended %s with %v: %s", r.Status, r.Output, r.Error)
+	}
+	r = run(t, l, `
+		flow: window
+		stages:
+		  fast:
+		    job: { script: ./fail.js, restart: { limit: 1 in 1h, delay: 1ms } }
+		output: ${stages.fast.output}
+	`, map[string]string{"fail.js": `if (job.attempt < 5) throw new Error("attempt " + job.attempt); return job.attempt`}, nil)
+	if r.Status != "failed" || !strings.Contains(r.Error, "attempt 2") {
+		t.Fatalf("the run ended %s: %s", r.Status, r.Error)
+	}
+}
+
+// A restart after a job ended well is a new job, so it counts against the limit
+// of jobs, and that limit ends it.
+func Test_ctl_a_new_job_counts_against_the_limit_of_jobs(t *testing.T) {
+	l := local(t)
+	r := run(t, l, `
+		flow: limited
+		limits: { jobs: 3 }
+		stages:
+		  count:
+		    job: { script: ./count.js, restart: { when: always, delay: 1ms } }
+	`, map[string]string{"count.js": `return 1`}, nil)
+	if r.Status != "failed" || !strings.Contains(r.Error, "job limit reached") {
+		t.Fatalf("the run ended %s: %s", r.Status, r.Error)
+	}
+}
+
+// A restart after a failure is the same job, and does not count.
+func Test_ctl_a_restart_after_a_failure_is_the_same_job(t *testing.T) {
+	l := local(t)
+	r := run(t, l, `
+		flow: limited
+		limits: { jobs: 1 }
+		stages:
+		  flaky:
+		    job: { script: ./flaky.js, restart: { limit: 4, delay: 1ms } }
+		output: ${stages.flaky.output}
+	`, map[string]string{"flaky.js": `if (job.attempt < 4) throw new Error("not yet"); return job.attempt`}, nil)
+	if r.Status != "done" || r.Output != 4.0 {
+		t.Fatalf("the run ended %s with %v: %s", r.Status, r.Output, r.Error)
+	}
+}
+
+// A yes covers a job until it ends well: a failure is not asked about again, and
+// a job that ended well is.
+func Test_ctl_a_restart_is_held_only_after_a_job_ended_well(t *testing.T) {
+	l := local(t)
+	askFile := `flow: ask
+stages:
+  yes: { job: { script: ./yes.js, input: { jobs: "${input.jobs}" } } }
+output: ${stages.yes.output}
+`
+	yes := `return { approve: input.jobs.map((j) => j.name) }`
+	failing := run(t, l, `
+		flow: held
+		ask: { machine: ./ask.yaml }
+		stages:
+		  flaky:
+		    job: { script: ./flaky.js, approve: true, restart: { limit: 2, delay: 1ms } }
+	`, map[string]string{"ask.yaml": askFile, "yes.js": yes, "flaky.js": `if (job.attempt < 3) throw new Error("not yet"); return 1`}, nil)
+	if failing.Status != "done" {
+		t.Fatalf("the run ended %s: %s", failing.Status, failing.Error)
+	}
+	if got := countAsks(t, l, failing.ID); got != 1 {
+		t.Fatalf("a failure was asked about again: %d asks", got)
+	}
+	well := run(t, l, `
+		flow: held
+		ask: { machine: ./ask.yaml }
+		stages:
+		  count:
+		    job: { script: ./one.js, approve: true, restart: { when: always, limit: 2, delay: 1ms } }
+	`, map[string]string{"ask.yaml": askFile, "yes.js": yes, "one.js": `return 1`}, nil)
+	if well.Status != "done" {
+		t.Fatalf("the run ended %s: %s", well.Status, well.Error)
+	}
+	if got := countAsks(t, l, well.ID); got != 3 {
+		t.Fatalf("a job that ended well was asked about %d times", got)
+	}
+}
+
+// countAsks gives how many times a run's ask was started.
+func countAsks(t *testing.T, l *client.Local, id string) int {
+	t.Helper()
+	runs, err := l.List(ctx, client.Filter{Finished: true, Parent: id})
+	if err != nil {
+		t.Fatal(err)
+	}
+	asks := 0
+	for _, run := range runs {
+		if run.Machine == "ask" {
+			asks++
+		}
+	}
+	return asks
+}
+
+// A cancel is never restarted, so a child cancelled by hand stays stopped.
+func Test_ctl_a_cancelled_job_is_not_restarted(t *testing.T) {
+	l := local(t)
+	id, err := l.Start(ctx, draft(t, `
+		flow: parent
+		stages:
+		  kid:
+		    job: { machine: ./kid.yaml, restart: { when: always, delay: 1ms } }
+		  after:
+		    when: ${stages.kid.failed}
+		    job: { script: ./one.js }
+		output: { stopped: "${stages.kid.failed}" }
+	`, map[string]string{
+		"kid.yaml": "statechart: kid\ninitial: waiting\nstates:\n  waiting: { on: { end: over } }\n  over: { end: done }\n",
+		"one.js":   "return 1",
+	}), client.Start{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	child := ""
+	for deadline := time.Now().Add(10 * time.Second); child == "" && time.Now().Before(deadline); time.Sleep(10 * time.Millisecond) {
+		runs, err := l.List(ctx, client.Filter{Parent: id})
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, run := range runs {
+			if run.Machine == "kid" {
+				child = run.ID
+			}
+		}
+	}
+	if child == "" {
+		t.Fatal("no child started")
+	}
+	if _, err := l.Cancel(ctx, child, 0); err != nil {
+		t.Fatal(err)
+	}
+	r, err := l.Wait(ctx, id, 20*time.Millisecond)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if r.Status != "done" || r.Output.(map[string]any)["stopped"] != true {
+		t.Fatalf("the run ended %s with %v: %s", r.Status, r.Output, r.Error)
+	}
+}
+
+// An ask that ends well is final, whatever its policy says, so a job held for it
+// is not left waiting.
+func Test_ctl_an_ask_ends_when_it_ends_well(t *testing.T) {
+	l := local(t)
+	r := run(t, l, `
+		flow: asked
+		ask: { script: ./yes.js, restart: { when: always, delay: 1ms } }
+		stages:
+		  held: { job: { script: ./one.js, approve: true } }
+		output: ${stages.held.output}
+	`, map[string]string{"yes.js": `return { approve: input.jobs.map((j) => j.name) }`, "one.js": "return 1"}, nil)
+	if r.Status != "done" || r.Output != 1.0 {
+		t.Fatalf("the run ended %s with %v: %s", r.Status, r.Output, r.Error)
+	}
 }

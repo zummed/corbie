@@ -80,8 +80,16 @@ The detailed rules behind the [Statechart overview](../statechart.md). Area code
 
 ## Sending
 
-**R-chart-45** The only action a chart has is to send an event, to its parent or to one of its children, named by the state or the named job that started it; a send to anything else is refused when the definition is checked.
+**R-chart-45** The only action a chart has is to send an event, to its parent, to one of its children, named by the state or the named job that started it, or to a key; a send to anything else is refused when the definition is checked.
 *Accept:* a chart whose entry, exit or transition holds anything but sends is refused when checked. Parity case 33: the child's send reaches its parent, and the parent's send reaches the child named by its state. A state has the named jobs `a` and `b`, both charts; a send addressed to `b` arrives at `b` and not at `a`. A send to a state whose job is a script, a send to a state with no job and a send to a name the chart does not have are each refused.
+
+**R-chart-74** A send `to: { key }` delivers its event to the run with that key, and one that names no running run is noted in the sender's record as undelivered and fails nothing. `event.from` in the run that takes the event is the sender's run ID.
+*Accept:* a chart sends `said` to `chat:1`, which no run has: its record notes the event as undelivered and it goes on. A run with the key then starts, and the next send is given to it, from the sender's ID. Parity cases 108 and 109. *Test:* `chart_send_to_a_key_no_run_has_is_undelivered`
+
+**R-chart-75** A send `to: { machine, key }` delivers its event to the run with that key, or starts the machine with that key when no run has it. `machine:` is a file or a definition written in place, and holds no expression.
+*Accept:* a chart sends to `chat:1` with `machine: ./talk.yaml` twice: the first starts a run and the second is delivered to it. `to: { machine: "${input.m}", key: k }` and a `to:` that holds a machine and no key are refused when checked. Parity case 108. *Test:* `chart_send_to_a_key_starts_a_run_then_delivers` and `chart_send_to_is_checked`
+
+**C-chart-14** No send can be named `start`, `done`, `failed` or `timer`. Those are the events Corbie gives a machine, and `start` sent by another run would enter a chart's first state again. *Test:* `chart_send_to_a_key_cannot_take_an_events_own_name`
 
 **R-chart-51** A send made on entering a state to that state's own child is delivered once the child has started.
 *Accept:* parity case 36's chart is run with its send on leaving removed; the child receives `hello` after its `start` and finishes on it.

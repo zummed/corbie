@@ -35,6 +35,8 @@ The detailed rules behind the [Runner overview](../runner.md).
 
 **C-run-57** A write a job makes for the controller, an emit, a note of one or its result, whose answer was lost is sent again under the same name, a few times. The name is that job's alone, so finding the value there means the first one arrived; left unsent, a job that ran and finished waits out its time and is reported as a timeout. *Test:* `run_write_whose_answer_was_lost_is_sent_again`
 
+**C-run-58** A job's process reads a machine its script defines, and sends what it stores to the runner as blobs the job makes. The runner reads no definition: it checks each such blob as it checks any blob, by the size of the piece that announces it, and writes its bytes to the store as they arrive. Read in the runner, a define takes the runner's own memory and runs past its job's time limit, and whatever else it costs falls on every job of that runner. *Test:* `run_define_stops_at_its_jobs_time_limit` and `run_define_past_its_jobs_memory_is_killed`
+
 **C-run-07** Nothing of a job runs past the end of its copy's pass: a job still running then is stopped, and answered with a result that says why. A copy frozen with a job half run carries on with it whenever the host next thaws it. *Test:* `run_job_running_at_pass_end_is_stopped_and_answered`
 
 ## Running it
@@ -101,6 +103,8 @@ The detailed rules behind the [Runner overview](../runner.md).
 
 **C-run-30** A job whose cancel is already waiting is not started: the copy that would take it marks it and answers it as cancelled. Inbox order is the order of names, so a cancel can sort ahead of the job it is for, and a job started and then stopped has already begun what it does to the outside. *Test:* `run_job_with_cancel_waiting_is_not_started`
 
+**C-run-59** A cancel stops only a job of the instance it names, whatever job it names, and any other cancel goes and changes nothing. One instance's name for a job says nothing of another's, and a job that an owner's machine waits on would otherwise end for a message about another machine. *Test:* `run_cancel_stops_only_a_job_of_its_instance`
+
 **C-run-32** A cancel stops a script that is waiting inside a call. Calls wait for their answer, and a cancel that is only noticed between calls waits with them. *Test:* `run_cancel_stops_script_waiting_in_a_call`
 
 ## What a script is
@@ -111,8 +115,8 @@ The detailed rules behind the [Runner overview](../runner.md).
 **R-run-37** `emit(name, value)` sends a named value up while the script runs; `log(text)` and `progress(done, total)` are emits for a watcher's benefit.
 *Accept:* a script emits `a`, logs `half way`, reports `progress(5, 10)` and then waits a minute inside a call: a watcher of the record sees the value, the log line and the note of progress in that order while the job is still running, and no message goes to the controller for the log or the progress.
 
-**R-run-41** `job` says which request this is, and every attempt at one job is told the same request name.
-*Accept:* a script returns what `job` says, in a job that takes two attempts: both attempts see the same request name, and another job sees a different one.
+**R-run-41** `job` says which request this is, and every attempt at one job is told the same request name. A restart after a job ended well is a new job, and has a new one.
+*Accept:* a script returns what `job` says, in a job that takes two attempts: both attempts see the same request name, and another job sees a different one. A job with `{ when: always, limit: 2 }` sees a new name each time.
 
 **R-run-42** `require` of a bare name gives a plugin or a library that comes with the binary; of a path starting `./` or `../`, the file at that path from the directory of the file that calls it, among the files the job lists; and nothing else.
 *Accept:* `require("http").get` is the same call as `http.get`, and the bare name of a library that comes with the binary gives that library. A job names `./lib/fetch.js` and lists `./lib/util.js` and `./top.js`: `require("./util.js")` in `fetch.js` gives what `lib/util.js` offers, and `require("../top.js")` in `util.js` gives `top.js`. A path to a file the job does not list, a path that starts with `/` and a bare name that is neither a plugin nor a bundled library each fail the call with an error that says what was asked for, and none reads the runner's disk.
@@ -123,6 +127,9 @@ The detailed rules behind the [Runner overview](../runner.md).
 **C-run-33** A batch of emits is written when it is full or a short time after its first emit, whichever comes first. Written one at a time, a model's reply is hundreds of writes; held until full, a single line of progress is not seen until the job ends. *Test:* `run_emits_batched_by_count_or_short_time`
 
 **C-run-34** A job's emit entries are numbered from one with none left out, an entry may carry several emits in the order they were made, and each attempt, being sent to a runner separately, begins again at one. A watcher and the controller tell what they have seen, and what they have missed, by the number alone. *Test:* `run_emit_entries_numbered_from_one_without_gaps`
+
+**R-run-54** `require` of one of the job's files whose path ends in `.yaml`, `.yml` or `.json` gives the file's data, read as the `yaml` plugin reads a document, and needs no permission.
+*Accept:* a job allowed nothing names `./bridge/who.js` and lists `./people.yaml` and `./bridge/groups.json`: `require("../people.yaml")` gives its data, with a date left as the text written, `require("./groups.json")` gives its list, and two requires of one file give the same value. A listed `.yml` file that is not YAML fails the call with an error naming the file and the line.
 
 **C-run-35** `require` looks a path up only among the files the job lists, and never on the runner's disk. A path that reaches the disk is a file read outside every permission check. *Test:* `run_require_reads_only_listed_files`
 
@@ -175,11 +182,12 @@ The detailed rules behind the [Runner overview](../runner.md).
 Uses:
 
 - **Store**: lists and reads its own inbox, writes and removes its marks, deletes jobs and cancels it has dealt with, adds emits and blobs to records only-if-new, reads blobs in records, and writes results into the controller's inbox.
-- **Role**: is run as passes, and is told how long its host will let a pass run.
+- **Role**: is run as passes, and is told how long its host will let a pass run; starts each job's process.
+- **Controller**: the process that runs a job also takes a step of a machine made while running, by the same argument (C-role-18).
 - **Identity**: opens jobs and cancels from controllers it trusts, signs what it adds to a record, seals results, and takes the ceiling it gave the controller that signed a job.
 - **Permission**: checks every call that reaches outside against each layer in the job and the runner's own ceiling, and notes what was used for the result (R-perm-50); the scratch directory needs an entry like any path (R-perm-12).
 - **Secret**: gets the values a job carries, hands scripts handles to them, and has what comes back to a script, and what a job's process prints, searched for them (C-sec-25).
-- **Plugin**: supplies the calls a script makes and the libraries a bare name loads; a program is started through the one way out that the exec wrapper is put in front of; what a script leaves open is closed by its plugin when the job ends (C-plug-07).
+- **Plugin**: supplies the calls a script makes, the libraries a bare name loads and the reading of a document of YAML or JSON that `require` of a data file gives; a program is started through the one way out that the exec wrapper is put in front of; what a script leaves open is closed by its plugin when the job ends (C-plug-07).
 - **Blob**: reads the script, its files and the input, and writes blobs that leave a job into the instance's record; a blob stays on the runner until its reference leaves the job (C-blob-06).
 - **Instance**: an emit entry is signed by the runner, tied to its job and sealed to the controller and the root's client (R-store-44, R-inst-32); an emit the machine wants is also told to the controller (R-inst-29).
 

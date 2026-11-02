@@ -52,6 +52,10 @@ The detailed rules behind the [Roles overview](../role.md).
 
 **C-role-17** A copy of a newer build works beside a copy of an older one on one store, for as long as both know the layout's version. A host replaces a role's code while calls of the earlier code are still running. *Test:* none; it needs two builds, and is checked from the second release on against a store written by the release before.
 
+## A process of its own
+
+**C-role-18** A job and a step in a process of its own are each started the one way, on every host: the same binary, with nothing of the role's environment, in a group of its own, over a channel of their own. A program built on Corbie that runs a job's process therefore runs a step's. Where the system can, it refuses a step's process memory past its limit, so that a request for more ends the process and fills nothing. *Test:* `role_made_step_on_a_host` and `role_system_refuses_memory_past_the_limit`
+
 ## Several copies
 
 **R-role-21** Any number of copies of a role may run against one store, and any copy may be stopped at any instant.

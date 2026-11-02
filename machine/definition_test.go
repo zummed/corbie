@@ -1,12 +1,17 @@
 package machine
 
 import (
+	"context"
 	"encoding/json/jsontext"
 	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"strings"
 	"testing"
+	"time"
+
+	"github.com/zummed/corbie/blob"
+	"github.com/zummed/corbie/store"
 )
 
 // probe is a machine type for these tests: it has jobs and a value, and
@@ -53,7 +58,7 @@ func (probe) Step(in *StepIn) (*StepOut, error) {
 	var body probeBody
 	json.Unmarshal(in.Definition.Body, &body)
 	out := &StepOut{State: map[string]any{}}
-	eval := NewEvaluator(in.Time, in.Seed)
+	eval := NewEvaluator(in.Time, in.Seed, in.Run)
 	for _, name := range sortedKeys(body.Jobs) {
 		job, err := body.Jobs[name].Fill(eval, Scope{"input": in.Input}, "work."+name, name)
 		if err != nil {
@@ -178,10 +183,90 @@ func Test_mach_problem_is_one_line(t *testing.T) {
 	}
 }
 
+// An alias that contains itself is refused, and so is a document whose
+// aliases make far more than it writes, at once. Aliases as people write
+// them are read.
 func Test_mach_alias_growth_is_refused(t *testing.T) {
-	bomb := "probe: p\nvalue:\n  a: &a [x,x,x,x,x,x,x,x,x,x]\n  b: &b [*a,*a,*a,*a,*a,*a,*a,*a,*a,*a]\n  c: &c [*b,*b,*b,*b,*b,*b,*b,*b,*b,*b]\n  d: &d [*c,*c,*c,*c,*c,*c,*c,*c,*c,*c]\n  e: &e [*d,*d,*d,*d,*d,*d,*d,*d,*d,*d]\n  f: [*e,*e,*e,*e,*e,*e,*e,*e,*e,*e]\n"
-	if got := problems(t, bomb, nil); !strings.Contains(got, "alias") {
-		t.Fatalf("aliases that grow a definition: %s", got)
+	bomb := func(levels int) string {
+		text := "probe: p\nvalue:\n  l0: &l0 [x,x,x,x,x,x,x,x,x,x]\n"
+		for i := 1; i < levels; i++ {
+			text += fmt.Sprintf("  l%d: &l%d [%s]\n", i, i, strings.TrimSuffix(strings.Repeat(fmt.Sprintf("*l%d,", i-1), 10), ","))
+		}
+		return text
+	}
+	if _, err := Parse([]byte(bomb(2)), files(nil)); err != nil {
+		t.Errorf("two levels of aliases: %v", err)
+	}
+	began := time.Now()
+	for _, levels := range []int{7, 30} {
+		if got := problems(t, bomb(levels), nil); !strings.Contains(got, "document contains excessive aliasing") {
+			t.Errorf("%d levels of aliases: %s", levels, got)
+		}
+	}
+	if _, err := Written([]byte(bomb(30))); err == nil || !strings.Contains(err.Error(), "document contains excessive aliasing") {
+		t.Errorf("30 levels of aliases shown to a person: %v", err)
+	}
+	if took := time.Since(began); took > time.Second {
+		t.Errorf("refusing them took %s", took)
+	}
+	for _, src := range []string{"probe: p\nvalue: &a [1, *a]\n", "probe: p\nvalue: &a { x: *a }\n"} {
+		if got := problems(t, src, nil); !strings.Contains(got, "value contains itself") {
+			t.Errorf("%q: %s", src, got)
+		}
+	}
+}
+
+// What a definition holds is counted as it is stored: the size counted for
+// each machine is the size of the definition Store writes, its files and
+// child definitions named by their references.
+func Test_mach_definition_counted_as_stored(t *testing.T) {
+	contents := map[string]string{"a.js": "return 1", "b.js": strings.Repeat("x", 3000), "lib/c.js": "", "kid.yaml": "probe: kid\nwork:\n  one: ./a.js\n"}
+	draft, err := Parse([]byte("probe: p\nmeta: { owner: alice }\nwork:\n  a: { script: ./a.js, files: [./lib/c.js] }\n  b: ./b.js\n  kid: { machine: ./kid.yaml }\n  here: { machine: { probe: here, work: { one: ./b.js } } }\n"), files(contents))
+	if err != nil {
+		t.Fatal(err)
+	}
+	st, err := store.OpenDirectory(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	ref, err := draft.Store(context.Background(), st, "ctl", store.NewInstance("c", time.Now()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var sizes func(d *Draft, ref blob.Ref)
+	sizes = func(d *Draft, ref blob.Ref) {
+		if ref.Size != int64(d.size) {
+			t.Errorf("%s: stored %d bytes, counted %d", d.Definition.Name, ref.Size, d.size)
+		}
+		def, err := Load(context.Background(), st, ref)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for name, child := range d.Children {
+			sizes(child, ref.Beside(def.Machines[name]))
+		}
+	}
+	sizes(draft, ref)
+	if len(draft.Children) != 2 {
+		t.Errorf("the draft has %d children", len(draft.Children))
+	}
+
+	// 30,000 jobs, each naming an empty script of its own, are a text of
+	// 0.6 MiB whose stored form, with a reference for each script, is past
+	// 4 MiB: refused before anything is stored.
+	var src strings.Builder
+	scripts := map[string]string{}
+	src.WriteString("probe: p\nwork:\n")
+	for i := range 30000 {
+		fmt.Fprintf(&src, "  j%d: ./s%d.js\n", i, i)
+		scripts[fmt.Sprintf("s%d.js", i)] = ""
+	}
+	began := time.Now()
+	if got := problems(t, src.String(), scripts); !strings.Contains(got, "the machine as it is stored is") {
+		t.Errorf("30,000 scripts: %.500s", got)
+	}
+	if took := time.Since(began); took > 2*time.Second {
+		t.Errorf("refusing 30,000 scripts took %s", took)
 	}
 }
 
@@ -225,17 +310,6 @@ func Test_mach_check_compiles_every_expression(t *testing.T) {
 		if got := problems(t, src, nil); !strings.Contains(got, want) {
 			t.Errorf("%q: %s", src, got)
 		}
-	}
-}
-
-func Test_mach_definition_including_itself_is_refused(t *testing.T) {
-	contents := map[string]string{
-		"a.yaml": "probe: a\nwork:\n  kid: { machine: ./b.yaml }\n",
-		"b.yaml": "probe: b\nwork:\n  kid: { machine: ./a.yaml }\n",
-	}
-	got := problems(t, "probe: root\nwork:\n  kid: { machine: ./a.yaml }\n", contents)
-	if !strings.Contains(got, "leads back to itself") || !strings.Contains(got, "a.yaml") || !strings.Contains(got, "b.yaml") {
-		t.Fatalf("a definition that includes itself: %s", got)
 	}
 }
 
@@ -320,8 +394,8 @@ func TestJobsAreWrittenTheSameForBoth(t *testing.T) {
 	draft, err := Parse([]byte(`probe: p
 allow: ["net:${input.host}"]
 work:
-  job: { script: ./a.js, files: [./lib.js], input: { n: "${input.n}" }, allow: [exec:git], timeout: 90s, attempts: 3, memory: 256MB, tags: [gpu] }
-  kid: { machine: ./child.yaml, input: { n: 1 }, timeout: 1h, attempts: 2 }
+  job: { script: ./a.js, files: [./lib.js], input: { n: "${input.n}" }, allow: [exec:git], timeout: 90s, restart: { limit: 2 }, memory: 256MB, tags: [gpu] }
+  kid: { machine: ./child.yaml, input: { n: 1 }, timeout: 1h, restart: { limit: 1 } }
   short: ./a.js
   inline:
     machine:
@@ -334,7 +408,7 @@ work:
 	var body probeBody
 	json.Unmarshal(draft.Definition.Body, &body)
 	job := body.Jobs["job"]
-	if job.Script != "./a.js" || job.Memory != 256<<20 || job.Timeout != "90s" || job.Attempts != 3 || len(job.Files) != 1 {
+	if job.Script != "./a.js" || job.Memory != 256<<20 || job.Timeout != "90s" || job.Restart == nil || job.Restart.Limit != 2 || len(job.Files) != 1 {
 		t.Fatalf("the job is %+v", job)
 	}
 	if body.Jobs["short"].Script != "./a.js" || !body.Jobs["kid"].IsMachine() {
@@ -346,7 +420,7 @@ work:
 	if got := problems(t, "probe: p\nwork:\n  kid: { machine: ./child.yaml, memory: 1GB }\n", contents); !strings.Contains(got, "belong to a script") {
 		t.Fatalf("a machine job with memory: %s", got)
 	}
-	if got := problems(t, "probe: p\nwork:\n  a: { script: /etc/passwd }\n", contents); !strings.Contains(got, "starts with ./") {
+	if got := problems(t, "probe: p\nwork:\n  a: { script: /etc/passwd }\n", contents); !strings.Contains(got, "has no ../") {
 		t.Fatalf("a script path outside the set: %s", got)
 	}
 }

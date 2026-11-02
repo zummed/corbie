@@ -1,0 +1,11 @@
+{
+  "status": "done",
+  "output": { "fine": true },
+  "record": [
+    {
+      "machine": "lonely",
+      "ask": { "kind": "event", "key": "nobody", "undelivered": true, "event": { "name": "hello" } }
+    }
+  ],
+  "note": "R-chart-74: a send to a key no run has is noted as undelivered."
+}

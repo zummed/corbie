@@ -32,6 +32,16 @@ return { blob, items, preview }
 `
 )
 
+// The tool that opens a part: the step shows it the parts the model may
+// open, and from the next turn shows the part's tools.
+const (
+	openTool   = "open"
+	openScript = "corbie:open.js"
+	openSource = `return { opened: input.part }
+`
+	openDoes = "Open a part of your tools. Its tools are shown to you from your next turn. The parts you can open:"
+)
+
 // large is how a blob tool gives back an answer too large to be a result:
 // as a blob, which the model is then shown as a handle.
 const large = `

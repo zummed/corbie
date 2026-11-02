@@ -31,34 +31,34 @@ func code(err error) string {
 	return ""
 }
 
-const hub = `# a hub
+const part = `# a part
 does: The firewall and the switch.
 base: &base { timeout: 20s }
 tools:
-  junos_show:
+  show_status:
     does: >-
       Run one show
       command.
     args: { device: string, n: 3, ok: true, none: ~ }
     job:
       <<: *base
-      script: ./tools/junos-show.js
-      files: [./tools/junos.js]
+      script: ./tools/show-status.js
+      files: [./tools/status.js]
 when: 2026-10-29
 `
 
 func Test_yaml_document_as_data(t *testing.T) {
-	doc, err := call(t, "parse", hub)
+	doc, err := call(t, "parse", part)
 	if err != nil {
 		t.Fatal(err)
 	}
 	want := map[string]any{
 		"does": "The firewall and the switch.",
 		"base": map[string]any{"timeout": "20s"},
-		"tools": map[string]any{"junos_show": map[string]any{
+		"tools": map[string]any{"show_status": map[string]any{
 			"does": "Run one show command.",
 			"args": map[string]any{"device": "string", "n": 3.0, "ok": true, "none": nil},
-			"job":  map[string]any{"<<": map[string]any{"timeout": "20s"}, "script": "./tools/junos-show.js", "files": []any{"./tools/junos.js"}},
+			"job":  map[string]any{"<<": map[string]any{"timeout": "20s"}, "script": "./tools/show-status.js", "files": []any{"./tools/status.js"}},
 		}},
 		"when": "2026-10-29",
 	}

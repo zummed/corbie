@@ -36,9 +36,7 @@ Fields
   system          the system prompt, which may hold `${input...}`
   prompt          the first message to the model, an expression of the input
   tools           the tools, by name
-  tools_file      a YAML file of tools shared between agents, or a list of
-                  files; a tool in the definition replaces one of its name,
-                  and a path in a file is read from the file's directory
+  open            parts: groups of tools the model opens, as under Parts
   reply           a shape, as under Tools: the reply is data in this shape
   conversation    the `conversation` of an earlier agent's result: this agent
                   continues it, and each blob keeps its name
@@ -86,7 +84,7 @@ The result
   reply           the model's last reply, as text or in the shape of `reply:`
   tokens          { input, output }, counted over the agent's own turns
   conversation    { turns, blobs }: a blob for each turn, and each blob the
-                  model was shown, by its handle's name
+                  model was shown by its handle's name
 
 A reply that does not fit `reply:` is returned to the model, which takes
 another turn. A failed agent's output has `conversation` and `tokens`.
@@ -117,7 +115,7 @@ any depth.
 - A tool whose job is an agent is a sub-agent. The model gets the sub-agent's
   reply, and the sub-agent's conversation stays in its own record.
 - A tool called twice in one turn has jobs named `shelf` and `shelf.1`.
-- No tool is named turn, preview, blob_read, blob_search or blob_code.
+- No tool is named turn, preview, open, blob_read, blob_search or blob_code.
 
 An entry with `list:` gives tools that come from elsewhere, such as the tools
 of an MCP server (`corbie manual mcp`), which change without the definition
@@ -134,6 +132,49 @@ changing.
 - The agent fails if the list fails, or gives a tool with no name, args that
   are not JSON Schema with type: object, args that mark a blob, or a name
   that is longer than 64 characters or that another tool has.
+
+Parts
+-----
+
+A part is a group of tools that the model is not shown until it opens the
+part. An agent with many tools shows the model the ones it has opened.
+
+1. The model is shown a tool `open`, with the name and `does:` of each part
+   it has not opened.
+2. The model calls `open` with a part's name, and a job named `open` runs.
+3. From the next turn, the model is shown the part's tools as well.
+
+  open:
+    net: { does: The firewall and the switch., tools: { … } }
+
+A part is often kept in its own file, which `include:` reads, as
+`corbie manual definitions` says.
+
+  open:
+    net: { include: ./net.yaml }
+    pay: { include: ./pay.yaml, approve: true }    its open waits for the ask
+
+A part has these fields.
+
+  does     what the part is for, which the model reads before it opens it
+  tools    the part's tools, written as under Tools
+  ask      the ask for opening the part, for its tools' jobs and lists and for
+           the machines below them, before the agent's own; its expressions
+           read the agent's input
+  approve  `true` holds the part's open for the ask
+  meta     data Corbie keeps and never reads
+
+- No tool of a part has the name of another tool of the agent.
+- The list of an entry with `list:` in a part runs before the first turn. An
+  error names it as `open.net.tools.files.list`.
+- The ask for `open` gets `asked: { part, does, args, said }`, where `does` is
+  the part's. An open that is not approved opens nothing.
+- The ask for a call of a part's tool gets `part` in `asked`, and so does the
+  ask for the list of an entry in a part.
+- A part that has an `ask:` needs no `ask:` of the agent's. The permissions of
+  the part's `ask:` are its own, as any ask's are.
+- An agent given a `conversation` opens no part: the model calls `open` for
+  each part it needs, and a part marked `approve: true` waits for the ask again.
 
 Blobs
 -----

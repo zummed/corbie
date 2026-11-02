@@ -1,4 +1,4 @@
-# A stage that runs a child flow, with attempts. The child fails on the
+# A stage that runs a child flow, with restarts. The child fails on the
 # first attempt and works on the second, a second later. Each attempt is a
 # new instance of the child.
 flow: parent
@@ -7,6 +7,6 @@ stages:
     job:
       machine: ./child.yaml
       input: { ok_after: "${Date.now() + 600}" }
-      attempts: 3
+      restart: { limit: 2 }
 output:
   kid: ${stages.kid.output}

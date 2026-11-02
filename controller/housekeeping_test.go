@@ -712,10 +712,9 @@ func (s noBlobs) ReadPart(ctx context.Context, name string, from, length int64) 
 	return s.Store.ReadPart(ctx, name, from, length)
 }
 
-// A pass that cannot read an instance's definition for how long it is kept
-// ends there: it does not write a head that says a week for an instance
-// whose definition says a day.
-func TestHeadIsNotWrittenWithAKeepThatCouldNotBeRead(t *testing.T) {
+// How long an instance is kept is in its record: a pass that cannot read
+// its definition writes a head that says what the definition says.
+func Test_ctl_keep_is_in_the_record(t *testing.T) {
 	w := newWorld(t)
 	run := w.submit(kept, nil, nil)
 	// The first pass is stopped once the step is written: its head is not.
@@ -727,11 +726,9 @@ func TestHeadIsNotWrittenWithAKeepThatCouldNotBeRead(t *testing.T) {
 		t.Fatalf("the pass that was stopped: %v, with %d steps and the head %+v", err, len(w.steps(run)), w.head(run))
 	}
 	w.afresh(noBlobs{good})
-	if _, err := w.ctrl.Pass(ctx); err == nil || w.head(run) != nil {
-		t.Fatalf("with the definition out of reach the pass ended with %v and wrote the head %+v", err, w.head(run))
+	if _, err := w.ctrl.Pass(ctx); err != nil {
+		t.Fatalf("with the definition out of reach the pass ended with %v", err)
 	}
-	w.afresh(good)
-	w.settle()
 	if head := w.head(run); head == nil || head.Keep.String() != "24h0m0s" {
 		t.Fatalf("the head is %+v", head)
 	}

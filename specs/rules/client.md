@@ -70,6 +70,9 @@ The detailed rules behind [the Client overview](../client.md).
 
 **C-client-04** Preparing reads only the set of files it was given, and a definition that names a path outside the set is refused. Where the set arrives from another computer, anything else would read the disk of the process doing the preparing. *Test:* `client_definition_path_outside_set_refused`
 
+**R-client-139** A start may carry a key, and a client may send to a key: the package reads the key's file and sends to the run it names, and a key no run has is an error. `corbie run submit --key` and `corbie run send --key` do the same, and `corbie run ls` and `corbie run show` print a run's key.
+*Accept:* `corbie run submit door.yaml --key "front door"` starts a run that `run ls` and `run show` list with the key. `corbie run send --key "front door" open` is taken and acted on. The same send once the run has ended, a key no run has, and `--key ""` each fail, saying so. *Test:* `client_a_key_on_the_command_line` and `client_start_and_send_hold_a_key_to_its_bound`
+
 **C-client-08** A listing reads the running heads before the finished ones. A head is written among the finished before it leaves the running, so read in the other order a run ending in between is in neither. *Test:* `client_listing_never_misses_a_run_that_ends`
 
 **C-client-09** A follow of a record reads the record once more after it sees the run has ended, before it closes. An emit written just before the last step can be listed just after it. *Test:* `client_follow_reads_once_more_after_end`
@@ -173,6 +176,20 @@ The detailed rules behind [the Client overview](../client.md).
 
 **C-client-53** A model's `--allow` takes only commands of the table, and a program on PATH is never run for a model. Anything on the owner's PATH would otherwise be a model's to run. *Test:* `client_model_runs_no_program`
 
+## A directory of machines
+
+**R-client-146** `corbie run submit` given directories reads every machine in them and those below them, and reads no `.git`. It takes no flag of a start but `--check` and `--again`. A run of a machine has the key `file:<path>` and the labels `machine` and `hash`, and the command keeps nothing else, so running it again starts nothing new. *Test:* `TestDirectoryStartsItsMachines`, `TestSecondSubmitStartsNothing`
+
+**R-client-147** It starts a machine with no run, or whose latest run is at another hash, cancelling that run first, and cancels the run of a file gone from a directory it was given. A run at the machine's hash stays as it is, running or ended, and `--again <file>` starts one that ended. *Test:* `TestChangedMachineStartedAgain`, `TestFilePutBackStartsAgain`, `TestRemovedMachineIsCancelled`, `TestOtherDirectoriesAreLeftAlone`, `TestRunThatEndedStaysEnded`, `TestRunCancelledByHandStaysStopped`, `TestAgainStartsARunThatEnded`
+
+**R-client-148** A file with a problem, or a file with a run that no longer reads as a machine, is reported and leaves its run as it is, and the rest are still done. A run that cannot be cancelled, or has not ended by the time the message is no longer good, is reported, and its machine is not started. The command then fails. *Test:* `TestFileWithAProblemKeepsItsRun`, `TestFileThatIsNoLongerAMachineKeepsItsRun`
+
+**R-client-149** A start carries the context, and every expression of the run and of what it starts reads it as `run.context`. A directory's machines are given no input. *Test:* `TestContextIsReadByARunAndItsChildren`
+
+**R-client-150** `--check` reads every machine, prints each one ok or its problems, and starts and cancels nothing.
+
+**C-client-55** A path in a machine may name a file of the context and none outside it, by a link or otherwise, so a directory's machines are what its files say. Tests: `TestPathsReadFromTheContext`, `TestLinksStayInTheContext`.
+
 ## The gateway
 
 **R-client-109** The gateway has a route for each thing the package reads: a listing, narrowed and widened as a listing can be; one run; a run's record so far; a run's definition; and a listing and a record are each served with `?watch` as a stream that follows them, a listing's with the end of the first listing marked, a record's with the children's entries included.
@@ -227,7 +244,7 @@ Uses:
 - **Instances.** The head and the entries of a record are what it reads, by the one way of watching, with its narrowings (R-inst-43 to R-inst-49); a receipt is what it gets back for a message; the three levels of watching set what it shows, and a head that is not the controller's is not shown (R-inst-01); the run's name is chosen before anything is sent (R-inst-65).
 - **Blobs.** Makes a blob for each uploaded file, reads a blob through its reference, copies a blob from one record to another (R-blob-25), and shows a blob as its type, size and path with no key (R-blob-06).
 - **Identity.** The client's own identity and its controller's card: it signs and seals each message, opens receipts and records sealed to it, and checks the controller's signature on a head. `corbie init` and the `controller`, `runner` and `client` commands that enrol and trust are Identity's (R-id-12 to R-id-22).
-- **Machines, Flow, Statechart, Agent.** The filling-out of short forms and the check of a definition, which the controller runs again with the same code (R-mach-12, R-mach-17, C-mach-11); what a watcher is shown of each type's state.
+- **Machines, Flow, Statechart, Agent.** The filling-out of short forms and the check of a definition, which the controller runs again with the same code (R-mach-12, R-mach-17, C-mach-25, C-mach-26); what a watcher is shown of each type's state.
 - **Models.** What an agent's turn needs, the connection and the key, written into the definition as it is sent (R-model-15).
 - **Permissions.** The form of a narrowing list and of the permissions given with a script file; the three parts of a refusal.
 - **Secrets.** Run secrets, sealed into the start.

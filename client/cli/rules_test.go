@@ -124,6 +124,7 @@ func Test_client_definition_path_outside_set_refused(t *testing.T) {
 		`{ script: ` + filepath.Join(root, "outside.js") + ` }`,
 		`{ machine: ../outside.yaml }`,
 		`{ script: ./.. }`,
+		`{ script: ./sub/../in.js }`,
 	} {
 		file := filepath.Join(inside, "flow.yaml")
 		os.WriteFile(file, []byte("flow: reads\nstages:\n  it: { job: "+job+" }\n"), 0o644)
@@ -138,7 +139,7 @@ func Test_client_definition_path_outside_set_refused(t *testing.T) {
 		t.Fatalf("a refused definition left something in the store: %v", after)
 	}
 	// One inside the directory is read.
-	os.WriteFile(filepath.Join(inside, "flow.yaml"), []byte("flow: reads\nstages:\n  it: { job: { script: ./sub/../in.js } }\n"), 0o644)
+	os.WriteFile(filepath.Join(inside, "flow.yaml"), []byte("flow: reads\nstages:\n  it: { job: { script: ./in.js } }\n"), 0o644)
 	if out := m.ok("", "test", filepath.Join(inside, "flow.yaml")); !strings.Contains(out, "done") {
 		t.Fatalf("a definition naming a file beside it printed %s", out)
 	}

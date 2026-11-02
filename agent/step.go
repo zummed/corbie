@@ -48,6 +48,8 @@ type state struct {
 	Lists []*listing `json:"lists,omitzero"`
 	// Listed are the tools the lists gave, by the name the model is shown.
 	Listed map[string]*listed `json:"listed,omitzero"`
+	// Open are the parts the model has opened, in the order it opened them.
+	Open []string `json:"open,omitzero"`
 }
 
 // listing is the job that lists one entry's tools.
@@ -107,7 +109,7 @@ func (agentType) Step(in *machine.StepIn) (*machine.StepOut, error) {
 	if err := json.Unmarshal(in.Definition.Body, &a); err != nil {
 		return nil, err
 	}
-	s := &stepper{a: &a, in: in, st: &state{}, out: &machine.StepOut{}, eval: machine.NewEvaluator(in.Time, in.Seed)}
+	s := &stepper{a: &a, in: in, st: &state{}, out: &machine.StepOut{}, eval: machine.NewEvaluator(in.Time, in.Seed, in.Run)}
 	if in.State != nil {
 		if err := json.Unmarshal(in.State, s.st); err != nil {
 			return nil, err
@@ -150,6 +152,7 @@ func (s *stepper) arrive(event machine.Event) (bool, error) {
 			}
 			c.Done = true
 			if event.Name == machine.Done {
+				s.opened(c)
 				c.Result = s.shown(s.said(c, event.Data))
 				text, _ := json.Marshal(c.Result)
 				c.Large = len(text) > showLimit
@@ -173,7 +176,7 @@ func (s *stepper) arrive(event machine.Event) (bool, error) {
 			l.Done = true
 			// A list that fails fails the agent, as a turn does.
 			if event.Name == machine.Failed {
-				s.fail(event, "tools."+l.Entry+".list")
+				s.fail(event, s.a.Tools[l.Entry].place(l.Entry)+".list")
 				return true, nil
 			}
 			if err := s.take(l.Entry, event.Data); err != nil {
@@ -371,7 +374,8 @@ func (s *stepper) begin() error {
 	}
 	if so != nil {
 		// A conversation carried on brings its turns and the blobs they
-		// name, so each name goes on meaning the blob it meant.
+		// name, so each name goes on meaning the blob it meant. It is input,
+		// and opens no part: the model opens what it needs again.
 		carried, _ := so.(map[string]any)
 		turns, isTurns := carried["turns"].([]any)
 		blobs, isBlobs := carried["blobs"].(map[string]any)
@@ -399,9 +403,14 @@ func (s *stepper) begin() error {
 		if tool.List == nil {
 			continue
 		}
-		job, err := tool.List.Fill(s.eval, scope, "tools."+name+".list", name)
+		job, err := tool.List.Fill(s.eval, scope, tool.place(name)+".list", name)
 		if err != nil {
 			return err
+		}
+		if tool.Part != "" {
+			shown := map[string]any{}
+			s.inPart(job, tool.Part, shown)
+			job.Shown = shown
 		}
 		s.st.Lists = append(s.st.Lists, &listing{Entry: name})
 		s.request(machine.Request{Job: job})
@@ -409,10 +418,54 @@ func (s *stepper) begin() error {
 	return s.preview()
 }
 
+// inPart gives a job of a part, or the open of one, what it needs to go to
+// the part's ask: the ask is shown the part's name, and the job names where
+// the part's ask is written, where it has one.
+func (s *stepper) inPart(job *machine.Job, part string, shown map[string]any) {
+	shown["part"] = part
+	_, job.AskAt = s.a.askOf(part)
+}
+
+// opened notes the part an open call opened: its tools are shown from the
+// next turn.
+func (s *stepper) opened(c *call) {
+	args, _ := c.Args.(map[string]any)
+	if part, _ := args["part"].(string); c.Tool == openTool && !slices.Contains(s.st.Open, part) {
+		s.st.Open = append(s.st.Open, part)
+	}
+}
+
+// opener gives the tool that opens a part as the model is shown it: with
+// the name and what it is for of each part not yet open. With none left,
+// there is no such tool.
+func (s *stepper) opener() *Tool {
+	own := s.a.Tools[openTool]
+	var lines []string
+	var names []any
+	for _, name := range sortedNames(s.a.Parts) {
+		if !slices.Contains(s.st.Open, name) {
+			lines = append(lines, "- "+name+": "+s.a.Parts[name].Does)
+			names = append(names, name)
+		}
+	}
+	if own == nil || len(names) == 0 {
+		return nil
+	}
+	return &Tool{Does: own.Does + "\n" + strings.Join(lines, "\n"), Job: own.Job,
+		Args: map[string]any{"type": "object", "properties": map[string]any{"part": map[string]any{"type": "string", "enum": names}},
+			"required": []any{"part"}, "additionalProperties": false}}
+}
+
+// shows says whether the model is shown the tools of a part: those of no
+// part, and those of a part it has opened.
+func (s *stepper) shows(part string) bool {
+	return part == "" || slices.Contains(s.st.Open, part)
+}
+
 // take keeps the tools one entry's list gave, each under the entry's name
 // and its own, or says what is wrong with the list.
 func (s *stepper) take(entry string, data any) error {
-	place := "tools." + entry + ".list"
+	place := s.a.Tools[entry].place(entry) + ".list"
 	items, ok := data.([]any)
 	if !ok {
 		return fmt.Errorf("%s: the list gave no list of tools; it returns [{ name, does, args }, ...]", place)
@@ -482,18 +535,26 @@ func marksBlob(v any) bool {
 // own, or one a list gave, which its entry's job runs. For a listed tool it
 // also gives the name the list gave, which the job reads as tool.
 func (s *stepper) tool(name string) (*Tool, string) {
+	if name == openTool {
+		return s.opener(), ""
+	}
 	if tool, ok := s.a.Tools[name]; ok && tool.List == nil {
+		if !s.shows(tool.Part) {
+			return nil, ""
+		}
 		return tool, ""
 	}
 	l, ok := s.st.Listed[name]
-	if !ok {
+	if !ok || !s.shows(s.a.Tools[l.Entry].Part) {
 		return nil, ""
 	}
 	entry := s.a.Tools[l.Entry]
-	return &Tool{Does: l.Does, Args: l.Args, Job: entry.Job, Agent: entry.Agent}, l.Name
+	return &Tool{Does: l.Does, Args: l.Args, Job: entry.Job, Agent: entry.Agent, Part: entry.Part}, l.Name
 }
 
-// offered gives the names of the tools the model is offered.
+// offered gives the names of the tools the model is offered: those of
+// no part and of each part it has opened, and the tool that opens a part
+// while one is left to open.
 func (s *stepper) offered() []string {
 	var names []string
 	for name, tool := range s.a.Tools {
@@ -502,6 +563,10 @@ func (s *stepper) offered() []string {
 		}
 	}
 	names = append(names, slices.Collect(maps.Keys(s.st.Listed))...)
+	names = slices.DeleteFunc(names, func(name string) bool {
+		tool, _ := s.tool(name)
+		return tool == nil
+	})
 	slices.Sort(names)
 	return names
 }
@@ -625,17 +690,28 @@ func (s *stepper) replied(data any) error {
 		// model said, and for a listed tool its entry and its own name.
 		shown := map[string]any{"does": tool.Does, "args": one.Args, "said": text}
 		scope["args"] = args
-		place := "tools." + one.Tool + ".job"
+		entry := one.Tool
 		delete(scope, "tool")
 		if listedAs != "" {
-			entry := s.st.Listed[one.Tool].Entry
+			entry = s.st.Listed[one.Tool].Entry
 			scope["tool"] = listedAs
-			place = "tools." + entry + ".job"
 			shown["entry"], shown["tool"] = entry, listedAs
 		}
+		place := s.a.Tools[entry].place(entry) + ".job"
 		job, err := tool.Job.Fill(s.eval, scope, place, one.Job)
 		if err != nil {
 			return err
+		}
+		// Opening a part marked for approval waits for the ask, which is
+		// shown the part's name and what it is for.
+		in := tool.Part
+		if one.Tool == openTool {
+			in, _ = args["part"].(string)
+			job.Approve = s.a.Parts[in].Approve
+			shown["does"] = s.a.Parts[in].Does
+		}
+		if in != "" {
+			s.inPart(job, in, shown)
 		}
 		job.Shown = shown
 		s.request(machine.Request{Job: job})

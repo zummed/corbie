@@ -16,7 +16,7 @@ A value is deleted by the first or the third. A value appears whole or not at al
 
 These three are all the coordination Corbie has. There are no locks, no leases and no transactions across names.
 
-Almost everything is written only-if-new and never changed afterwards. Very few values are ever rewritten: an instance's head, its note of how far a large step has been carried out, and the controller's lists of who it trusts and which secrets it holds. This makes the store easy to reason about and cheap to watch: a value read once is read again only when a listing shows it has changed.
+Almost everything is written only-if-new and never changed afterwards. Very few values are ever rewritten: an instance's head, its note of how far a large step has been carried out, a key's file whose run has ended, an event sent to a key that moves on to the run with the key, and the controller's lists of who it trusts and which secrets it holds. This makes the store easy to reason about and cheap to watch: a value read once is read again only when a listing shows it has changed.
 
 ## Layout
 
@@ -36,6 +36,7 @@ version                                  the layout's version
       blobs/<name>                       written by whoever made the blob
       carried                            how far a large step has been carried out
   wakes/<time>/<instance>/<name>         when an instance is next due attention
+  keys/<client>/<hash>                   which run a key names, by the SHA-256 of the key
   trust/<party>                          who the controller trusts
   secrets/<name>                         the secrets it holds
 

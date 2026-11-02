@@ -8,6 +8,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"slices"
 	"strings"
 	"sync"
@@ -17,6 +18,7 @@ import (
 	"github.com/zummed/corbie/identity"
 	"github.com/zummed/corbie/instance"
 	"github.com/zummed/corbie/machine"
+	"github.com/zummed/corbie/role"
 	"github.com/zummed/corbie/store"
 )
 
@@ -33,11 +35,18 @@ type Controller struct {
 	// AnyRunner has a job carried out whatever tags it names, as under
 	// corbie test.
 	AnyRunner bool
+	// Command starts the process of a step taken in a process of its own;
+	// by default, this binary.
+	Command []string
+	// StepTime is how long that process may run.
+	StepTime time.Duration
 }
 
 // New makes a controller on a store.
 func New(id *identity.Identity, s store.Store) *Controller {
-	return &Controller{ID: id, Store: s, Now: time.Now, SideBySide: store.SideBySide}
+	exe, _ := os.Executable()
+	return &Controller{ID: id, Store: s, Now: time.Now, SideBySide: store.SideBySide,
+		Command: []string{exe, role.Arg, StepArg}, StepTime: StepTime}
 }
 
 // wakeBatch is how many wakes a pass reads at once.
@@ -63,6 +72,12 @@ type pass struct {
 	defs   map[string]*machine.Definition
 	next   time.Time // when the next thing is due, if anything is
 	more   bool      // more is due already than this pass has acted on
+	// steps holds a place for each step in a process of its own that this
+	// pass is taking.
+	steps chan struct{}
+	// whole is how long the host gave this pass as it began; none where the
+	// host sets no limit.
+	whole time.Duration
 }
 
 // An arrival is a message in the inbox or a wake that has come due.
@@ -70,6 +85,7 @@ type arrival struct {
 	name string // its name in the store
 
 	// For a message.
+	mark   store.Mark
 	msg    *instance.Message
 	sender string
 	kind   identity.Kind // what the sender is
@@ -93,7 +109,11 @@ func (a *arrival) good(now time.Time) bool { return a.wake || a.value.Good(now) 
 func (c *Controller) Pass(ctx context.Context) (next time.Time, err error) {
 	p := &pass{c: c, ctx: ctx, now: c.Now().UTC(), ctl: c.ID.Name,
 		store: store.Bounded(c.Store, c.SideBySide),
-		trust: map[string]*identity.Trust{}, defs: map[string]*machine.Definition{}}
+		trust: map[string]*identity.Trust{}, defs: map[string]*machine.Definition{},
+		steps: make(chan struct{}, stepsAtOnce)}
+	if deadline, ok := ctx.Deadline(); ok {
+		p.whole = time.Until(deadline)
+	}
 
 	// The inbox is read before any wake is acted on: a result that has
 	// arrived wins over its own due time.
@@ -127,6 +147,7 @@ func (c *Controller) Pass(ctx context.Context) (next time.Time, err error) {
 		return next, err
 	}
 	waiting := map[string][]*arrival{}
+	sending := map[sendingTo]string{}
 	var order, house []string
 	var kept []*arrival // the instances' own wakes for housekeeping, soonest first
 	add := func(inst string, a *arrival) {
@@ -136,7 +157,7 @@ func (c *Controller) Pass(ctx context.Context) (next time.Time, err error) {
 		waiting[inst] = append(waiting[inst], a)
 	}
 	for _, a := range messages {
-		if a != nil {
+		if a != nil && !p.behind(a, sending) {
 			add(a.msg.Instance, a)
 		}
 	}
@@ -205,6 +226,7 @@ func (p *pass) open(name string) (*arrival, error) {
 		_, err := p.store.Delete(p.ctx, name, store.Overwrite)
 		return nil, err
 	}
+	a.mark = mark
 	return a, nil
 }
 
@@ -251,7 +273,7 @@ func whole(msg *instance.Message) bool {
 	switch msg.Kind {
 	case instance.KindStart:
 		return msg.Start != nil
-	case instance.KindEvent:
+	case instance.KindEvent, instance.KindKeyed:
 		return msg.Event != nil && msg.Event.Name != ""
 	case instance.KindAnswer:
 		return msg.Answer != nil
@@ -259,7 +281,7 @@ func whole(msg *instance.Message) bool {
 		return msg.Result != nil
 	case instance.KindEmit:
 		return msg.Emit != nil
-	case instance.KindCancel:
+	case instance.KindCancel, instance.KindNote:
 		return true
 	}
 	return false

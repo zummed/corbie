@@ -1,0 +1,7 @@
+statechart: room
+input: { by: string }
+initial: closed
+states:
+  closed:
+    on: { knock: { go: opened, send: { to: { key: "${input.by}" }, event: open, data: { key: "${run.key}", by: "${event.data.by}" } } } }
+  opened: { end: done }

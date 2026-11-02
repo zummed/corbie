@@ -31,7 +31,7 @@ A flow's `output:` is its result, filled in once every stage has settled. It rea
 
 ## Failure
 
-A stage fails when its job fails after whatever attempts it was given.
+A stage fails when its job fails after whatever restarts it was given.
 
 A stage handles another's failure when its `when:` reads whether that stage failed, or its error. A failure counts as handled only when such a stage actually runs, or when the flow's `output:` reads it. If neither reads a failure, the flow fails the moment it arrives, and if only a stage does and it is then skipped, the flow fails then.
 

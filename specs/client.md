@@ -8,7 +8,7 @@ The client is a public Go package in the Corbie repository. An application writt
 
 It does two kinds of thing.
 
-It **sends**: start a run, cancel one, send an event to one, answer a ticket. To start a run it takes a definition and the files it names, fills out the short forms, checks the whole and reports everything wrong at once, uploads the definition, its files and any file in the input side by side, a bounded number at a time, and sends the start once every one is in the store. A start may carry input, labels, run secrets, a list that narrows what the run may do, and a timeout. Any value in the input may be a file.
+It **sends**: start a run, cancel one, send an event to one or to a key, answer a ticket. To start a run it takes a definition and the files it names, fills out the short forms, checks the whole and reports everything wrong at once, uploads the definition, its files and any file in the input side by side, a bounded number at a time, and sends the start once every one is in the store. A start may carry input, labels, a key, run secrets, a list that narrows what the run may do, and a timeout. Any value in the input may be a file.
 
 It **reads**: list runs and follow the list as it changes; show one run, where it stands and how it ended; read a run's record so far, children included, and follow it as it grows; fetch a file from a result; show the definition a run was started from.
 
@@ -93,6 +93,8 @@ Following from a terminal is one flag, `--watch`. It prints what the command pri
 
 - `run ls --watch` prints the listing, then each run that appears or changes.
 - `run show --watch` prints the record, then each entry as it is written, until the run ends.
+
+`run submit --key <key>` starts a run with a key, and the receipt refuses it if a running run has the key. `run send --key <key> <event> [data]` reads the key's file and sends to the run it names. `run ls` and `run show` print a run's key.
 
 `run show` can also print one step, one job's input and output, or the definition, can save a result's files to a directory, and with `--wait` stays until the run ends and prints its result. `run submit` sends a start; `run submit --wait` waits for the run it started and `run submit --watch` follows it.
 
@@ -183,6 +185,33 @@ A program's word that is itself a role's or a program's name begins the next nam
 - On a serverless host, `corbie start` refuses a program before anything starts.
 
 `corbie test` is an ordinary run: the same roles, in one process, on a store in memory, with ceilings that allow everything.
+
+## A directory of machines
+
+`corbie run submit` takes directories as well as a file. It brings the runs of those directories into line with their files, and exits when each run it cancelled has ended and each start has been taken.
+
+```
+cd my-project
+corbie run submit bridges schedules
+```
+
+It reads every `*.yaml` in each directory and those below it, but for `.git`, whose first key gives a type of machine. Any other holds data, or fields to include.
+
+| What it finds | What it does |
+|---|---|
+| a machine with no run, or whose latest run is at another hash | cancels that run, and starts one under the key `file:<path>`, labelled `machine` and `hash` |
+| a machine whose latest run is at its hash, running or ended | leaves it as it is |
+| a run whose file has gone from a directory it was given | cancels it |
+| a file with a problem, or one with a run that no longer reads as a machine | reports it, and leaves its run as it is |
+
+`hash` is the SHA-256 of every file the machine was read from. The command keeps nothing of its own, so running it twice starts nothing new.
+
+- A run that ended, failed or was cancelled stays that way until its files change, and `--again <file>` starts it before then. A machine that should come back by itself runs as a job with `restart:`.
+- A run that cannot be cancelled is reported, and its machine is not started. A problem with one machine leaves the rest done.
+- A run is found from its record, which lasts as long as its `keep:` says. Once the record has gone, the next submit starts the machine again.
+- Every machine in a directory it is given is started, so a machine that only another machine runs is kept elsewhere.
+- A machine is given no input, and one that needs some is refused, and reported. It reads the context's absolute path as `${run.context}`.
+- `--check` prints each machine ok or its problems, and starts and cancels nothing.
 
 ## The gateway
 

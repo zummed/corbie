@@ -1,6 +1,7 @@
 package machine
 
 import (
+	"bytes"
 	"context"
 	"encoding/json/jsontext"
 	"encoding/json/v2"
@@ -30,6 +31,9 @@ type Definition struct {
 	// AskAbout lists the permissions that must be asked about.
 	AskAbout []string `json:"ask_about,omitzero"`
 	Ask      *JobSpec `json:"ask,omitzero"`
+	// Meta is data Corbie keeps with the definition and never reads: no
+	// expression in it is filled in.
+	Meta any `json:"meta,omitzero"`
 	// Body is the type's own part.
 	Body jsontext.Value `json:"body"`
 	// Scripts and Machines are the files and child definitions the
@@ -48,17 +52,18 @@ const (
 // A JobSpec is a job as a definition writes it, its values not yet filled
 // in.
 type JobSpec struct {
-	Script   string   `json:"script,omitzero"`  // a path, or exactly one expression that gives a stored script
-	Files    []string `json:"files,omitzero"`   // the files the script loads
-	Machine  string   `json:"machine,omitzero"` // a name in Machines, or exactly one expression that gives a stored definition
-	Input    any      `json:"input,omitzero"`
-	Allow    []string `json:"allow,omitzero"`
-	Deny     []string `json:"deny,omitzero"`
-	Timeout  string   `json:"timeout,omitzero"` // a length of time, or an expression that gives one
-	Attempts int      `json:"attempts,omitzero"`
-	Memory   int64    `json:"memory,omitzero"`
-	Tags     []string `json:"tags,omitzero"`
-	Approve  bool     `json:"approve,omitzero"`
+	Script  string   `json:"script,omitzero"`  // a path, or exactly one expression that gives a stored script
+	Files   []string `json:"files,omitzero"`   // the files the script loads
+	Machine string   `json:"machine,omitzero"` // a name in Machines, or exactly one expression that gives a stored definition
+	Key     string   `json:"key,omitzero"`     // the key a machine is started with: text, or expressions
+	Input   any      `json:"input,omitzero"`
+	Allow   []string `json:"allow,omitzero"`
+	Deny    []string `json:"deny,omitzero"`
+	Timeout string   `json:"timeout,omitzero"` // a length of time, or an expression that gives one
+	Restart *Restart `json:"restart,omitzero"`
+	Memory  int64    `json:"memory,omitzero"`
+	Tags    []string `json:"tags,omitzero"`
+	Approve bool     `json:"approve,omitzero"`
 	// Alone says the job has only its own permissions.
 	Alone bool `json:"alone,omitzero"`
 }
@@ -68,7 +73,7 @@ func (s *JobSpec) IsMachine() bool { return s.Machine != "" }
 
 // Fill gives the job with its values filled in from a scope.
 func (s *JobSpec) Fill(e *Evaluator, scope Scope, place, name string) (*Job, error) {
-	job := &Job{Name: name, Files: s.Files, Deny: s.Deny, Attempts: s.Attempts,
+	job := &Job{Name: name, Files: s.Files, Deny: s.Deny, Restart: s.Restart,
 		Memory: s.Memory, Tags: s.Tags, Approve: s.Approve, Alone: s.Alone}
 	var err error
 	if job.Input, err = e.Fill(s.Input, scope, place+".input"); err != nil {
@@ -76,6 +81,13 @@ func (s *JobSpec) Fill(e *Evaluator, scope Scope, place, name string) (*Job, err
 	}
 	if job.Timeout, err = e.Duration(s.Timeout, scope, place+".timeout"); err != nil {
 		return nil, err
+	}
+	if s.Key != "" {
+		key, err := e.Key(s.Key, scope, place+".key")
+		if err != nil {
+			return nil, err
+		}
+		job.RunKey = &key
 	}
 	for i, entry := range s.Allow {
 		filled, err := e.Entry(entry, Scope{"input": scope["input"]}, fmt.Sprintf("%s.allow[%d]", place, i))
@@ -176,11 +188,29 @@ func (c *Checker) Name(place, name string) {
 	}
 }
 
+// Approves notes that the definition holds something for approval other
+// than a job marked for it, which needs an ask as such a job does.
+func (c *Checker) Approves() { c.approves = true }
+
+// Asked checks jobs that go to an ask of their own when they are held, an
+// ask nearer than the definition's: they need no ask from the definition
+// or above it. With no ask of their own they go to the definition's.
+func (c *Checker) Asked(ask *JobSpec, check func()) {
+	before := c.approves
+	check()
+	if ask != nil {
+		c.approves = before
+	}
+}
+
+// reading adds to the names a place gives what every expression reads.
+func reading(names []string) []string { return append(slices.Clip(names), RunName) }
+
 // Value checks the expressions in a value, which may read the names.
 func (c *Checker) Value(place string, value any, names ...string) {
 	switch v := value.(type) {
 	case string:
-		if err := CheckText(v, names); err != nil {
+		if err := CheckText(v, reading(names)); err != nil {
 			c.Problem(place, "%v", err)
 		}
 	case map[string]any:
@@ -209,8 +239,8 @@ func (c *Checker) Duration(place, text string, names ...string) {
 
 // Cond checks a condition, which is a bare expression.
 func (c *Checker) Cond(place, src string, names ...string) {
-	if err := CheckExpr(src, names); err != nil {
-		c.Problem(place, "%s: %v", oneLine(src), err)
+	if err := CheckExpr(src, reading(names)); err != nil {
+		c.Problem(place, "%s: %v", shown(src), err)
 	}
 }
 
@@ -235,8 +265,12 @@ func (c *Checker) Job(place string, s *JobSpec, names ...string) {
 		for i, file := range s.Files {
 			c.named(fmt.Sprintf("%s.files[%d]", place, i), file, "file", c.def.Scripts, nil)
 		}
+		if s.Key != "" {
+			c.Problem(place+".key", "a key names a run, and only a machine is one")
+		}
 	}
 	c.Value(place+".input", s.Input, names...)
+	c.Value(place+".key", s.Key, names...)
 	c.Duration(place+".timeout", s.Timeout, names...)
 	c.permissions(place, s.Allow, s.Deny)
 	for i, tag := range s.Tags {
@@ -244,10 +278,23 @@ func (c *Checker) Job(place string, s *JobSpec, names ...string) {
 			c.Problem(fmt.Sprintf("%s.tags[%d]", place, i), "%q is a tag, and a tag is written out", tag)
 		}
 	}
-	if s.Attempts < 0 || s.Memory < 0 {
-		c.Problem(place, "attempts and memory cannot be less than nothing")
+	if s.Memory < 0 {
+		c.Problem(place, "memory cannot be less than nothing")
+	}
+	if r := s.Restart; r != nil && (r.Limit < 0 || r.Within < 0 || r.Delay <= 0 || r.Longest < r.Delay || r.Within > 0 && r.Limit == 0) {
+		c.Problem(place+".restart", "a restart's limit and its time cannot be less than nothing, its time needs a limit, and its delay is more than nothing and doubles to a longer one")
 	}
 	c.approves = c.approves || s.Approve
+}
+
+// Machine checks a machine a send names, which is written out: only a job
+// takes a stored one.
+func (c *Checker) Machine(place, name string) {
+	if HasExpr(name) {
+		c.Problem(place, "%q: a send names a machine of the definition, written out", name)
+		return
+	}
+	c.named(place, name, "machine", c.def.Machines, nil)
 }
 
 // named checks the path of a script or the name of a machine: a name of the
@@ -256,7 +303,7 @@ func (c *Checker) named(place, name, what string, table map[string]blob.Ref, nam
 	if HasExpr(name) {
 		if names == nil || !IsOneExpr(name) {
 			c.Problem(place, "%q: the %s of a job is a name; it may be exactly one expression that gives a stored one, and nothing else", name, what)
-		} else if err := CheckText(name, names); err != nil {
+		} else if err := CheckText(name, reading(names)); err != nil {
 			c.Problem(place, "%v", err)
 		}
 		return
@@ -365,17 +412,18 @@ func Decode(contents []byte) (*Definition, error) {
 // there, is not a definition, or cannot be read.
 var ErrDefinition = errors.New("the stored definition cannot be used")
 
-// Load reads a stored definition from the store. An error that is not
-// ErrDefinition is the store's.
+// Load reads a stored definition from the store, as plain JSON: nothing in
+// it is compiled or evaluated. An error that is not ErrDefinition is the
+// store's.
 func Load(ctx context.Context, s store.Store, ref blob.Ref) (*Definition, error) {
 	if ref.Type != blob.Definition {
 		return nil, fmt.Errorf("%w: it is not a stored definition", ErrDefinition)
 	}
 	contents, err := blob.ReadAll(ctx, s, ref, blob.StepLimit)
-	switch {
-	case blob.Unusable(err):
+	if blob.Unusable(err) {
 		return nil, fmt.Errorf("%w: %w", ErrDefinition, err)
-	case err != nil:
+	}
+	if err != nil {
 		return nil, err
 	}
 	def, err := Decode(contents)
@@ -394,27 +442,52 @@ type Draft struct {
 	Children   map[string]*Draft
 	// needsAsk says a job in it is held for approval and it has no ask.
 	needsAsk bool
+	// asks are the machines it runs as an ask, each with its place.
+	asks map[string]string
+	// nearer says, of each machine it runs, whether only jobs that go to
+	// an ask nearer than its own run it.
+	nearer map[string]bool
+	// size is the size of the definition as it is stored.
+	size int
 }
 
-// Store writes a draft into an instance's record: its files and its child
-// definitions side by side, and then the definition itself, which names
-// them. It gives the stored definition's reference. What bounds how many
-// requests are open at once is a store from store.Bounded.
+// Store writes a draft into an instance's record, and gives the stored
+// definition's reference. What bounds how many requests are open at once is
+// a store from store.Bounded.
 func (d *Draft) Store(ctx context.Context, s store.Store, ctl, instance string) (blob.Ref, error) {
+	return d.Write(ctx, func(typ string, contents []byte) (blob.Ref, error) {
+		return blob.Write(ctx, s, store.Blob(ctl, instance, blob.NewName()), typ, blob.NewKey(), bytes.NewReader(contents))
+	})
+}
+
+// Write writes a draft a blob at a time: its files and its child
+// definitions side by side, and then the definition itself, which names
+// them. write stores one blob of a type and gives its reference.
+func (d *Draft) Write(ctx context.Context, write func(typ string, contents []byte) (blob.Ref, error)) (blob.Ref, error) {
 	paths, names := sortedKeys(d.Files), sortedKeys(d.Children)
 	refs := make([]blob.Ref, len(paths)+len(names))
 	err := store.Each(ctx, store.SideBySide, len(refs), func(i int) (err error) {
 		if i < len(paths) {
-			refs[i], err = blob.Write(ctx, s, store.Blob(ctl, instance, blob.NewName()), blob.TypeOf(paths[i]), blob.NewKey(),
-				strings.NewReader(string(d.Files[paths[i]])))
+			refs[i], err = write(blob.TypeOf(paths[i]), d.Files[paths[i]])
 		} else {
-			refs[i], err = d.Children[names[i-len(paths)]].Store(ctx, s, ctl, instance)
+			refs[i], err = d.Children[names[i-len(paths)]].Write(ctx, write)
 		}
 		return err
 	})
 	if err != nil {
 		return blob.Ref{}, err
 	}
+	contents, err := d.stored(refs)
+	if err != nil {
+		return blob.Ref{}, err
+	}
+	return write(blob.Definition, contents)
+}
+
+// stored gives the definition as it is stored, naming its files and then
+// its child definitions, each in the order of its name, by refs.
+func (d *Draft) stored(refs []blob.Ref) ([]byte, error) {
+	paths, names := sortedKeys(d.Files), sortedKeys(d.Children)
 	def := *d.Definition
 	def.Scripts, def.Machines = map[string]blob.Ref{}, map[string]blob.Ref{}
 	for i, path := range paths {
@@ -423,12 +496,23 @@ func (d *Draft) Store(ctx context.Context, s store.Store, ctl, instance string) 
 	for i, name := range names {
 		def.Machines[name] = refs[len(paths)+i].Local()
 	}
-	contents, err := json.Marshal(&def, json.Deterministic(true))
-	if err != nil {
-		return blob.Ref{}, err
+	return json.Marshal(&def, json.Deterministic(true))
+}
+
+// storedSize gives the size of the definition as Store stores it, before
+// anything is stored: each reference is one as long as Store makes, of a
+// file or a child definition of the size it has.
+func (d *Draft) storedSize() (int, error) {
+	paths, names := sortedKeys(d.Files), sortedKeys(d.Children)
+	refs := make([]blob.Ref, 0, len(paths)+len(names))
+	for _, path := range paths {
+		refs = append(refs, blob.Ref{At: blob.NewName(), Type: blob.TypeOf(path), Size: int64(len(d.Files[path])), Key: blob.NewKey()})
 	}
-	return blob.Write(ctx, s, store.Blob(ctl, instance, blob.NewName()), blob.Definition, blob.NewKey(),
-		strings.NewReader(string(contents)))
+	for _, name := range names {
+		refs = append(refs, blob.Ref{At: blob.NewName(), Type: blob.Definition, Size: int64(d.Children[name].size), Key: blob.NewKey()})
+	}
+	contents, err := d.stored(refs)
+	return len(contents), err
 }
 
 func sortedKeys[V any](m map[string]V) []string {

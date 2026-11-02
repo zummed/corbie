@@ -49,11 +49,15 @@ type Transition struct {
 	Send []Send `json:"send,omitzero"`
 }
 
-// Send is the chart's one action: a named event to the parent or a child.
+// Send is the chart's one action: a named event to the parent, to a child,
+// or to the run a key names. Machine is the machine started with that key
+// when no run has it.
 type Send struct {
-	To    string `json:"to"`
-	Event string `json:"event"`
-	Data  any    `json:"data,omitzero"`
+	To      string `json:"to,omitzero"`
+	Key     string `json:"key,omitzero"`
+	Machine string `json:"machine,omitzero"`
+	Event   string `json:"event"`
+	Data    any    `json:"data,omitzero"`
 }
 
 // names are what an expression of a chart reads.
@@ -65,11 +69,19 @@ func init() { machine.Register(chartType{}) }
 
 func (chartType) Name() string { return "statechart" }
 
+// SendsToKeys says a chart can send an event to a key: of the types, only a
+// chart acts on events.
+func (chartType) SendsToKeys() {}
+
 // What a chart's definition holds of its own. A state may hold states, so
 // its shape holds itself.
 var (
+	toShape = &machine.Shape{Name: "to", What: "the run a send goes to, by its key", Fields: []machine.Field{
+		{Name: "key", Kind: machine.KindWord, Like: "chat:${event.data.chat}", Does: "the key of the run"},
+		{Name: "machine", Kind: machine.KindValue, Path: true, Like: "./chat.yaml", Does: "the machine started with the key when no run has it, given the event's data as its input"},
+	}}
 	sendShape = &machine.Shape{Name: "send", What: "a send", Fields: []machine.Field{
-		{Name: "to", Kind: machine.KindWord, Like: "parent", Does: "who it is sent to: parent, or a state or a named job of the chart"},
+		{Name: "to", Kind: machine.KindValue, Of: toShape, Like: "parent", Does: "who it is sent to: parent, a state or a named job of the chart, or { key, machine }"},
 		{Name: "event", Kind: machine.KindWord, Like: "review_wanted", Does: "the event's name"},
 		{Name: "data", Kind: machine.KindValue, Like: `{ ticket: "${tickets.verdict}" }`, Does: "what the event carries"},
 	}}
@@ -233,12 +245,37 @@ func fillSends(p *machine.Parser, place string, f *machine.Fields, name string) 
 		if sf == nil {
 			continue
 		}
-		send := Send{To: sf.Text("to"), Event: sf.Text("event")}
+		send := fillTo(p, at+".to", sf)
+		send.Event = sf.Text("event")
 		send.Data, _ = sf.Value("data")
 		sf.Done()
 		sends = append(sends, send)
 	}
 	return sends
+}
+
+// fillTo reads who a send goes to: a word, or a mapping that names a key.
+func fillTo(p *machine.Parser, place string, sf *machine.Fields) Send {
+	v, _ := sf.Value("to")
+	if word, ok := v.(string); ok {
+		return Send{To: word}
+	}
+	if v == nil {
+		return Send{}
+	}
+	tf := p.Fields(place, v, sf.Of("to"))
+	if tf == nil {
+		return Send{}
+	}
+	send := Send{Key: tf.Text("key")}
+	if written, ok := tf.Value("machine"); ok {
+		send.Machine = p.Machine(place+".machine", written)
+	}
+	tf.Done()
+	if send.Key == "" {
+		p.Problem(place+".key", "a send written with a mapping names a key")
+	}
+	return send
 }
 
 // node is a state with where it sits.
@@ -348,6 +385,7 @@ func (chartType) Check(c *machine.Checker, def *machine.Definition) {
 		}
 		for _, send := range append(slices.Clone(s.Entry), s.Exit...) {
 			eventParts(n.place, machine.ReadsIn(send.Data, "event"))
+			eventParts(n.place, machine.ReadsIn(send.Key, "event"))
 		}
 		for _, rule := range rulesOf(s) {
 			for _, t := range rule {
@@ -356,6 +394,7 @@ func (chartType) Check(c *machine.Checker, def *machine.Definition) {
 				}
 				for _, send := range t.Send {
 					eventParts(n.place, machine.ReadsIn(send.Data, "event"))
+					eventParts(n.place, machine.ReadsIn(send.Key, "event"))
 				}
 			}
 		}
@@ -383,7 +422,7 @@ func (chartType) Check(c *machine.Checker, def *machine.Definition) {
 		}
 		if s.Ticket != "" {
 			c.Name(n.place+".ticket", s.Ticket)
-			if reserved(s.Ticket) {
+			if machine.Reserved(s.Ticket) {
 				c.Problem(n.place+".ticket", "a ticket cannot be named %q, which is the name of an event of its own", s.Ticket)
 			}
 			if other, dup := issued[s.Ticket]; dup {
@@ -395,7 +434,7 @@ func (chartType) Check(c *machine.Checker, def *machine.Definition) {
 			at := n.place + ".timers." + timer
 			c.Name(at, timer)
 			switch {
-			case reserved(timer):
+			case machine.Reserved(timer):
 				c.Problem(at, "a timer cannot be named %q, which is the name of an event of its own", timer)
 			case ticketOf(all, timer) != "":
 				c.Problem(at, "%q is the name of the ticket of the state %q, and a timer cannot take a ticket's name", timer, ticketOf(all, timer))
@@ -412,7 +451,7 @@ func (chartType) Check(c *machine.Checker, def *machine.Definition) {
 			at := fmt.Sprintf("%s.defer[%d]", n.place, i)
 			_, _, owners := ownersOf(all, event)
 			switch {
-			case machine.HasExpr(event) || reserved(event) || len(owners) > 0:
+			case machine.HasExpr(event) || machine.Reserved(event) || len(owners) > 0:
 				c.Problem(at, "%q cannot be deferred: a state defers an event's own name, written out, and not done, failed, a ticket's name or a timer's name", event)
 			case !ruled(all, event):
 				c.Problem(at, "no state has a rule for %q, so a kept one would only be dropped: give it a rule under on:", event)
@@ -425,8 +464,16 @@ func (chartType) Check(c *machine.Checker, def *machine.Definition) {
 				if machine.HasExpr(send.Event) || send.Event == "" {
 					c.Problem(at+".event", "%q: the event a send sends has a name, written out", send.Event)
 				}
+				if machine.Reserved(send.Event) {
+					c.Problem(at+".event", "no event can be sent under the name %q, which Corbie gives a machine itself", send.Event)
+				}
 				c.Value(at+".data", send.Data, names...)
 				switch {
+				case send.Key != "":
+					c.Value(at+".to.key", send.Key, names...)
+					if send.Machine != "" {
+						c.Machine(at+".to.machine", send.Machine)
+					}
 				case send.To == machine.Parent:
 				case scripts[send.To]:
 					c.Problem(at+".to", "%q runs a script, and only a machine can be sent an event", send.To)
@@ -474,12 +521,6 @@ func (chartType) Check(c *machine.Checker, def *machine.Definition) {
 			}
 		}
 	}
-}
-
-// reserved says whether a name is an event's that a timer or a ticket cannot
-// take.
-func reserved(name string) bool {
-	return slices.Contains([]string{machine.Start, machine.Done, machine.Failed, machine.Timer}, name)
 }
 
 // ownersOf gives, for a name that is a ticket's or a timer's, which it is,

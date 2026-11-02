@@ -1,0 +1,7 @@
+statechart: clerk
+initial: waiting
+states:
+  waiting:
+    entry: { send: { to: { machine: ./room.yaml, key: room }, event: knock, data: { by: "${run.key}" } } }
+    on: { open: finished }
+  finished: { end: done, output: "${event.data}" }

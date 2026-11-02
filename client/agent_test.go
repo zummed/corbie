@@ -317,6 +317,7 @@ func Test_agent_tool_cannot_take_an_agents_own_job_name(t *testing.T) {
 		"turn":      `the tool "turn" has the name of a job the agent itself makes`,
 		"blob_read": `the tool "blob_read" has the name of one of the tools every agent has for blobs`,
 		"ask":       `the name "ask" is taken by the definition's ask`,
+		"open":      `the tool "open" has the name of the tool every agent with parts has for opening them`,
 	} {
 		agentRefused(t, strings.Replace(agentDef("http://127.0.0.1:1", ""), "  add:\n", "  "+name+":\n", 1), want)
 	}
@@ -680,13 +681,13 @@ func TestModelIsSentTheFilesItsServiceTakes(t *testing.T) {
 	}
 }
 
-func TestAgentSharedToolFiles(t *testing.T) {
+func TestAgentIncludesFilesOfTools(t *testing.T) {
 	// An agent names two files of tools; the model is offered the tools of
 	// both beside the agent's own, and one of the agent's own stands before
 	// a file's of the same name.
 	m := newModel(t, calls("c1", "twice", `{"n": 4}`), calls("c2", "add", `{"n": 8}`), says("done"))
 	l := local(t, "all")
-	r := runAgent(t, l, agentDef(m.URL, "tools_file: [./first.yaml, ./second.yaml]"), map[string]string{
+	r := runAgent(t, l, strings.Replace(agentDef(m.URL, ""), "tools:\n", "tools:\n\t\t  include: [./first.yaml, ./second.yaml]\n", 1), map[string]string{
 		"add.js":      scripts["add.js"],
 		"twice.js":    `return { n: input.n * 2 }`,
 		"first.yaml":  "half:\n  does: Halve a number\n  args: { n: number }\n  job: { script: ./twice.js, input: { n: \"${args.n}\" } }\n",
@@ -709,21 +710,21 @@ func TestAgentSharedToolFiles(t *testing.T) {
 	}
 }
 
-func TestAgentToolsFileReadFromItsDirectory(t *testing.T) {
-	// An agent names ../shared/tools.yaml and ./own/tools.yaml. A path in
+func TestAgentIncludedToolsAreReadFromTheirDirectory(t *testing.T) {
+	// An agent names shared/tools.yaml and ./own/tools.yaml. A path in
 	// each is read from that file's directory, so both can name ./run.js.
 	m := newModel(t, calls("c1", "run", `{}`), calls("c2", "wait", `{}`), calls("c3", "mine", `{}`), says("done"))
 	l := local(t, "all")
-	def := agentDef(m.URL, "tools_file: [../shared/tools.yaml, ./own/tools.yaml]")
+	def := strings.Replace(agentDef(m.URL, ""), "tools:\n", "tools:\n\t\t  include: [shared/tools.yaml, ./own/tools.yaml]\n", 1)
 	files := map[string]string{
 		"add.js": scripts["add.js"],
-		"../shared/tools.yaml": "run:\n  does: Run\n  job: ./run.js\n" +
+		"shared/tools.yaml": "run:\n  does: Run\n  job: ./run.js\n" +
 			"wait:\n  does: Wait\n  job: { machine: ./wait.yaml }\n",
-		"../shared/run.js":    `return "shared run"`,
-		"../shared/wait.yaml": "flow: wait\nstages:\n  w: { job: ./w.js }\noutput: ${stages.w.output}\n",
-		"../shared/w.js":      `return "shared wait"`,
-		"own/tools.yaml":      "mine:\n  does: Mine\n  job: ./run.js\n",
-		"own/run.js":          `return "own run"`,
+		"shared/run.js":    `return "shared run"`,
+		"shared/wait.yaml": "flow: wait\nstages:\n  w: { job: ./w.js }\noutput: ${stages.w.output}\n",
+		"shared/w.js":      `return "shared wait"`,
+		"own/tools.yaml":   "mine:\n  does: Mine\n  job: ./run.js\n",
+		"own/run.js":       `return "own run"`,
 	}
 	r := runAgent(t, l, def, files)
 	if r.Status != "done" {
@@ -734,12 +735,12 @@ func TestAgentToolsFileReadFromItsDirectory(t *testing.T) {
 	}
 	// The stored definition names each path from the agent's directory.
 	d := draft(t, def, files)
-	for _, name := range []string{"../shared/run.js", "./own/run.js"} {
+	for _, name := range []string{"./shared/run.js", "./own/run.js"} {
 		if _, ok := d.Definition.Scripts[name]; !ok || !strings.Contains(string(d.Definition.Body), strconv.Quote(name)) {
 			t.Errorf("the definition does not name %s: %s", name, d.Definition.Body)
 		}
 	}
-	if _, ok := d.Definition.Machines["../shared/wait.yaml"]; !ok {
+	if _, ok := d.Definition.Machines["./shared/wait.yaml"]; !ok {
 		t.Errorf("the definition's machines are %v", d.Definition.Machines)
 	}
 }
@@ -872,6 +873,44 @@ func TestAgentAskIsShownAListedCallsEntryAndTool(t *testing.T) {
 	shown := jsonOf(m.Calls[1])
 	if !strings.Contains(shown, `"is_error":false,"tool_use_id":"issue"`) || !strings.Contains(shown, `"is_error":false,"tool_use_id":"sum"`) {
 		t.Fatalf("the second turn was shown: %s", shown)
+	}
+}
+
+// A listed tool's arguments, and an agent's reply and its tools', may have a
+// shape that leads back to itself.
+func Test_agent_tree_shaped_tools_and_reply(t *testing.T) {
+	const tree = `{ type: object, properties: { name: { type: string }, kids: { type: array, items: { $ref: "#" } } }, required: [name] }`
+	m := newModel(t, calls("c1", "files_tree", `{"name": "a", "kids": [{"name": "b", "kids": [{"name": "c"}]}]}`), says("It is done."))
+	r := runAgent(t, local(t, "all"), listed(m.URL, `[ { name: tree, does: Takes a tree, args: `+tree+` } ]`), listedScripts)
+	if r.Status != "done" {
+		t.Fatalf("a tool with a tree for its arguments: %s %s", r.Status, r.Error)
+	}
+	if !strings.Contains(jsonOf(m.Calls[0]), `"$ref":"#"`) {
+		t.Fatalf("the model was offered: %s", jsonOf(m.Calls[0]))
+	}
+	// A shaped reply and a written tool's arguments are read the same way.
+	m = newModel(t, calls("c1", "add", `{"name": "a", "kids": [{"name": "b"}]}`), says(`{"name": "a", "kids": [{"name": "b", "kids": []}]}`))
+	def := strings.ReplaceAll(strings.ReplaceAll(`
+		agent: trees
+		input: { question: any }
+		model: { name: test-model, service: anthropic, address: ADDRESS, secret: TEST_KEY }
+		prompt: ${input.question}
+		reply: TREE
+		tools:
+		  add:
+		    does: Takes a tree
+		    args: TREE
+		    job: { script: ./add.js, input: { n: 1 } }
+	`, "ADDRESS", m.URL), "TREE", tree)
+	r = runAgent(t, local(t, "all"), def, scripts)
+	if r.Status != "done" {
+		t.Fatalf("a tree for a reply and for a tool's arguments: %s %s", r.Status, r.Error)
+	}
+	// A model's arguments are checked as the shape says, at each level.
+	m = newModel(t, calls("c1", "files_tree", `{"name": "a", "kids": [{"kids": []}]}`), says("It is done."))
+	r = runAgent(t, local(t, "all"), listed(m.URL, `[ { name: tree, does: Takes a tree, args: `+tree+` } ]`), listedScripts)
+	if r.Status != "done" || !strings.Contains(jsonOf(m.Calls[1]), "/kids/0") {
+		t.Fatalf("a tree with a part missing: %s %s: %s", r.Status, r.Error, jsonOf(m.Calls[1]))
 	}
 }
 

@@ -39,6 +39,7 @@ func Record(ctl, instance string) string           { return ctl + "/records/" + 
 func Steps(ctl, instance string) string            { return ctl + "/records/" + instance + "/steps" }
 func Emits(ctl, instance string) string            { return ctl + "/records/" + instance + "/emits" }
 func Carried(ctl, instance string) string          { return ctl + "/records/" + instance + "/carried" }
+func Tried(ctl, instance string) string            { return ctl + "/records/" + instance + "/tried" }
 func Blobs(ctl, instance string) string            { return ctl + "/records/" + instance + "/blobs" }
 func Blob(ctl, instance, name string) string       { return ctl + "/records/" + instance + "/blobs/" + name }
 func Wakes(ctl string) string                      { return ctl + "/wakes" }
@@ -47,6 +48,13 @@ func Trust(ctl, party string) string               { return ctl + "/trust/" + pa
 func Secrets(ctl string) string                    { return ctl + "/secrets" }
 func Secret(ctl, name string) string               { return ctl + "/secrets/" + name }
 func TakenList(runner string) string               { return runner + "/taken" }
+
+// Key is the name of a key's file among a client's. A key is any text, so
+// the name holds its hash and never the key itself.
+func Key(ctl, client, key string) string {
+	sum := sha256.Sum256([]byte(key))
+	return ctl + "/keys/" + client + "/" + hex.EncodeToString(sum[:])
+}
 
 // Taken is the name of the mark a runner leaves for a job it has taken. The
 // name carries the job's due time, so the marks whose time has passed are

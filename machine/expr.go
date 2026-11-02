@@ -7,11 +7,11 @@ import (
 	"encoding/json/v2"
 	"errors"
 	"fmt"
+	"maps"
 	"reflect"
 	"slices"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/dop251/goja"
@@ -110,22 +110,14 @@ func init() {
 	}
 }
 
-// compiled holds expressions already compiled, by their source.
-var compiled sync.Map
-
 // compile checks an expression and gives it as a program that makes a
-// function of the scope's names. It is compiled, not only parsed, and an
+// function of the scope's names. It is compiled, not only parsed. An
 // expression that names anything outside the language and its scope is
 // refused.
 func compile(src string, names []string) (*goja.Program, error) {
-	key := strings.Join(names, ",") + "\x00" + src
-	if p, ok := compiled.Load(key); ok {
-		return p.(*goja.Program), nil
-	}
-	wrapped := "(function(" + strings.Join(names, ",") + "){\"use strict\";return (\n" + src + "\n)})"
-	tree, err := parser.ParseFile(nil, "", wrapped, 0)
+	tree, err := readExpr("(function("+strings.Join(names, ",")+"){\"use strict\";return (\n", src, "\n)})")
 	if err != nil {
-		return nil, mistake(err)
+		return nil, err
 	}
 	declared, used := map[string]bool{}, map[string]bool{}
 	names2(reflect.ValueOf(tree.Body), declared, used, false)
@@ -139,8 +131,17 @@ func compile(src string, names []string) (*goja.Program, error) {
 	if err != nil {
 		return nil, mistake(err)
 	}
-	compiled.Store(key, program)
 	return program, nil
+}
+
+// readExpr reads the syntax of an expression written between before and
+// after.
+func readExpr(before, src, after string) (*ast.Program, error) {
+	tree, err := parser.ParseFile(nil, "", before+src+after, 0)
+	if err != nil {
+		return nil, mistake(err)
+	}
+	return tree, nil
 }
 
 // mistake says what is wrong with how an expression is written, without
@@ -248,7 +249,7 @@ func CheckText(text string, names []string) error {
 	for _, p := range parts {
 		if p.expr {
 			if err := CheckExpr(p.text, names); err != nil {
-				return fmt.Errorf("in ${%s}: %w", oneLine(p.text), err)
+				return fmt.Errorf("in ${%s}: %w", shown(p.text), err)
 			}
 		}
 	}
@@ -258,21 +259,36 @@ func CheckText(text string, names []string) error {
 // A Scope is what the expressions of one place read, by name.
 type Scope map[string]any
 
+// RunName is the name every expression of every type reads its run by.
+const RunName = "run"
+
+// A Run is what an expression reads of the run it is in: its ID, its key if it
+// has one, and the context its client submitted from.
+type Run struct {
+	ID      string
+	Key     string
+	Context string
+}
+
 // An Evaluator fills in the expressions of one step. The time expressions
 // see is the time of the step, and their random numbers follow from the
 // step's seed: taken again, the step sees the same.
 type Evaluator struct {
 	time  time.Time
 	seed  []byte
+	of    Run
 	count uint64
 	vm    *goja.Runtime
 	once  map[string]goja.Value // scope values already given to the engine
 	prep  goja.Callable
+	// programs are the expressions the step has compiled, by their scope's
+	// names and their source.
+	programs map[string]*goja.Program
 }
 
 // NewEvaluator makes the evaluator of a step.
-func NewEvaluator(at time.Time, seed []byte) *Evaluator {
-	return &Evaluator{time: at, seed: seed}
+func NewEvaluator(at time.Time, seed []byte, run Run) *Evaluator {
+	return &Evaluator{time: at, seed: seed, of: run, programs: map[string]*goja.Program{}}
 }
 
 // freeze makes the engine's own objects, and a value given to it, unable to
@@ -351,10 +367,17 @@ func (e *Evaluator) give(name string, v any) (goja.Value, error) {
 
 // Eval gives the value of one expression in a scope.
 func (e *Evaluator) Eval(src string, scope Scope) (any, error) {
+	scope = maps.Clone(scope)
+	scope[RunName] = map[string]any{"id": e.of.ID, "key": e.of.Key, "context": e.of.Context}
 	names := scopeNames(scope)
-	program, err := compile(src, names)
-	if err != nil {
-		return nil, err
+	key := strings.Join(names, ",") + "\x00" + src
+	program := e.programs[key]
+	var err error
+	if program == nil {
+		if program, err = compile(src, names); err != nil {
+			return nil, err
+		}
+		e.programs[key] = program
 	}
 	if err := e.start(); err != nil {
 		return nil, err
@@ -479,7 +502,7 @@ func (e *Evaluator) Text(text string, scope Scope, place string) (any, error) {
 		}
 		v, err := e.Eval(p.text, scope)
 		if err != nil {
-			return nil, fmt.Errorf("%s: ${%s}: %w", place, oneLine(p.text), err)
+			return nil, fmt.Errorf("%s: ${%s}: %w", place, shown(p.text), err)
 		}
 		if len(parts) == 1 {
 			return v, nil
@@ -498,7 +521,7 @@ func (e *Evaluator) Text(text string, scope Scope, place string) (any, error) {
 func (e *Evaluator) Cond(src string, scope Scope, place string) (bool, error) {
 	v, err := e.Eval(src, scope)
 	if err != nil {
-		return false, fmt.Errorf("%s: %s: %w", place, oneLine(src), err)
+		return false, fmt.Errorf("%s: %s: %w", place, shown(src), err)
 	}
 	return truthy(v), nil
 }
@@ -518,6 +541,15 @@ func truthy(v any) bool {
 }
 
 // oneLine makes a text fit on one line.
+// shown gives an expression as an error shows it: on one line, and only
+// the start of a long one.
+func shown(src string) string {
+	if len(src) > 1000 {
+		src = string([]rune(src)[:40]) + "…"
+	}
+	return oneLine(src)
+}
+
 func oneLine(text string) string {
 	return strings.Join(strings.Fields(text), " ")
 }
@@ -549,7 +581,7 @@ func Reads(text, root string) []Read {
 
 // ReadsOf is Reads for one bare expression.
 func ReadsOf(src, root string) []Read {
-	tree, err := parser.ParseFile(nil, "", "("+src+"\n)", 0)
+	tree, err := readExpr("(", src, "\n)")
 	if err != nil {
 		return nil
 	}
@@ -655,6 +687,22 @@ func ReadsIn(value any, root string) []Read {
 	return reads
 }
 
+// Key fills in a key: text, or text with expressions in it. A value that is
+// neither text nor a number gives empty text, which is no key.
+func (e *Evaluator) Key(text string, scope Scope, place string) (string, error) {
+	v, err := e.Text(text, scope, place)
+	if err != nil {
+		return "", err
+	}
+	switch v := v.(type) {
+	case string:
+		return v, nil
+	case float64:
+		return strconv.FormatFloat(v, 'f', -1, 64), nil
+	}
+	return "", nil
+}
+
 // Duration fills in a length of time from a scope's names. Empty text
 // gives none.
 func (e *Evaluator) Duration(text string, scope Scope, place string) (Duration, error) {
@@ -696,7 +744,7 @@ func (e *Evaluator) Entry(entry string, scope Scope, place string) (string, erro
 		}
 		v, err := e.Eval(p.text, scope)
 		if err != nil {
-			return "", fmt.Errorf("%s: ${%s}: %w", place, oneLine(p.text), err)
+			return "", fmt.Errorf("%s: ${%s}: %w", place, shown(p.text), err)
 		}
 		text := ""
 		switch v := v.(type) {
@@ -705,10 +753,10 @@ func (e *Evaluator) Entry(entry string, scope Scope, place string) (string, erro
 		case float64:
 			text = strconv.FormatFloat(v, 'f', -1, 64)
 		default:
-			return "", fmt.Errorf("%s: the permission %s cannot be filled: ${%s} is not text or a number", place, entry, oneLine(p.text))
+			return "", fmt.Errorf("%s: the permission %s cannot be filled: ${%s} is not text or a number", place, entry, shown(p.text))
 		}
 		if text == "" || HasExpr(text) {
-			return "", fmt.Errorf("%s: the permission %s cannot be filled: ${%s} is empty, or itself holds an expression", place, entry, oneLine(p.text))
+			return "", fmt.Errorf("%s: the permission %s cannot be filled: ${%s} is empty, or itself holds an expression", place, entry, shown(p.text))
 		}
 		b.WriteString(text)
 	}

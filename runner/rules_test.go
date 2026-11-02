@@ -315,6 +315,16 @@ func Test_run_job_no_call_could_finish_fails_at_once(t *testing.T) {
 	}
 }
 
+func Test_run_emit_cannot_take_a_name_of_corbies(t *testing.T) {
+	w := newWorld(t)
+	w.job(w.ctl, "work", `emit("done", 1); return "ran"`, nil)
+	pass(t, w.runner("all"))
+	got := w.results()["work"]
+	if got == nil || got.Status != machine.StatusError || !strings.Contains(got.Error.Error, "no event can be emitted") {
+		t.Fatalf("the result is %+v", got)
+	}
+}
+
 func Test_run_result_written_after_all_emits(t *testing.T) {
 	w := newWorld(t)
 	// More than one batch, the last of them not full when the script
@@ -420,6 +430,38 @@ func Test_run_cancel_reaches_the_copy_that_runs_the_job(t *testing.T) {
 		_, mk, _ := w.owner.Read(ctx, cancel)
 		return mk == store.None
 	})
+}
+
+// A cancel for another instance stops nothing: a job is stopped only by a
+// cancel for its own instance, whatever the cancel names.
+func Test_run_cancel_stops_only_a_job_of_its_instance(t *testing.T) {
+	w := newWorld(t)
+	other := func(message string) {
+		at := store.Message("r1", "ctl", message+".cancel")
+		data, _ := w.ctl.Write(at, time.Now(), time.Now().Add(time.Minute),
+			&instance.Message{Kind: instance.KindCancel, Instance: "c1/20260101T000000.000Z-aa", Cancel: message}, w.run.Card)
+		w.owner.Write(ctx, at, data, store.OnlyIfNew)
+	}
+	// A job that is waiting, with the cancel there before it is taken.
+	waiting := w.job(w.ctl, "waiting", `return 1`, nil)
+	other(waiting)
+	pass(t, w.runner("all"))
+	if got := w.results()["waiting"]; got == nil || got.Status != instance.Done {
+		t.Fatalf("the waiting job: %+v", got)
+	}
+	// A job that is running, with the cancel left while it runs.
+	marker := filepath.Join(t.TempDir(), "running")
+	long := w.job(w.ctl, "long", running, func(j *instance.Job) {
+		j.Input, j.Timeout = map[string]any{"marker": marker}, machine.Duration(3*time.Second)
+	})
+	end := passing(w.runner("all"))
+	defer end()
+	soon(t, "the job to start", marked(marker))
+	other(long)
+	soon(t, "the job to be answered", func() bool { return w.results()["long"] != nil })
+	if got := w.results()["long"]; got.Status == machine.StatusCancelled {
+		t.Fatalf("the running job: %+v", got)
+	}
 }
 
 func Test_run_cancel_for_job_this_copy_finished_is_deleted(t *testing.T) {

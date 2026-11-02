@@ -24,8 +24,8 @@ A secret's permission says where it may go.
 allow:
   - net:api.github.com
   - secret:GITHUB_TOKEN@net:api.github.com       # into a connection to that host
-  - net:10.0.30.8:8123
-  - secret:HOME_TOKEN@net.unencrypted:10.0.30.8:8123   # to that host, encrypted or not
+  - net:192.0.2.8:8123
+  - secret:HOME_TOKEN@net.unencrypted:192.0.2.8:8123   # to that host, encrypted or not
   - exec:deploy
   - secret:DEPLOY_TOKEN@exec:deploy              # to that program
   - secret:APP_KEY@fs.write:/etc/app/key         # into that file

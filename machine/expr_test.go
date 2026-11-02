@@ -9,7 +9,7 @@ import (
 
 var stepTime = time.Date(2026, 10, 10, 12, 0, 0, 0, time.UTC)
 
-func eval(t *testing.T) *Evaluator { return NewEvaluator(stepTime, []byte("seed")) }
+func eval(t *testing.T) *Evaluator { return NewEvaluator(stepTime, []byte("seed"), Run{}) }
 
 func TestValues(t *testing.T) {
 	e := eval(t)

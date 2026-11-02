@@ -304,3 +304,27 @@ func TestAJobStartsWithNothingOfTheRunners(t *testing.T) {
 		t.Fatalf("env.get gave %v and %v", out["allowed"], out["missing"])
 	}
 }
+
+// require of one of the job's files of YAML or JSON gives its data, read
+// as the yaml plugin reads a document, with no permission.
+func TestRequireOfADataFileGivesItsData(t *testing.T) {
+	l := local(t)
+	def := `
+		flow: who
+		stages:
+		  it: { job: { script: ./bridge/who.js, files: [./people.yaml, ./bridge/groups.json, ./bridge/bad.yml] } }
+		output: ${stages.it.output}
+	`
+	files := map[string]string{
+		"bridge/who.js": `
+			const { people } = require("../people.yaml")
+			return { first: people[0], groups: require("./groups.json").groups, same: require("../people.yaml") === require("../people.yaml") }`,
+		"people.yaml":        "people:\n  - { name: alice, since: 2026-01-02 }\n",
+		"bridge/groups.json": `{"groups": ["net", "house"]}`,
+		"bridge/bad.yml":     "a: [\n",
+	}
+	r := run(t, l, def, files, nil)
+	check(t, r.Status, r.Output, "done", `{"first": {"name": "alice", "since": "2026-01-02"}, "groups": ["net", "house"], "same": true}`)
+	files["bridge/who.js"] = `return require("./bad.yml")`
+	wantError(t, run(t, l, def, files, nil), "error", `the file "./bridge/bad.yml" cannot be read: the document cannot be read: line`)
+}

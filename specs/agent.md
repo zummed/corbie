@@ -38,7 +38,7 @@ An agent may be started with the conversation of an earlier agent's result, and 
 
 A tool is a named job, a script or a machine, with a description, the shape of its arguments, and its own permissions. The job reads the agent's input and the arguments the model supplied. A tool whose job is an agent is how an agent has sub-agents: the model is shown what the sub-agent replied, and the sub-agent's conversation stays in its own record.
 
-A definition may name files of tools shared with other agents. Each file is filled in when the definition is sent, and a path in it is read from the file's directory.
+Agents share tools with `include:` under `tools:`, as any mapping takes fields from a file (see [Machines](machine.md#definitions)).
 
 A tool that needs approval goes to the agent's ask like any job. The calls from one turn that need it go together, and the ask is shown the arguments, what the tool does and what the model said. A call that needs no approval runs at once, and the next turn waits for the ask as well as for the tools. A call that is not approved goes back to the model as denied, with the ask's note.
 
@@ -71,6 +71,7 @@ return input?.tool ? server.call(input.tool, { args: input.args }) : server.tool
 3. A call runs the entry's `job:`, where `${tool}` is the tool's own name, `create_issue`.
 
 - The list is made once in a run, kept in the agent's record, and is the same for every turn.
+- Every step of the agent after its first is taken in a process of its own, since a list's shapes come from outside the definition (see Controller).
 - Every listed tool has the entry's permissions and, if the entry's job is marked for approval, its approval. The ask is shown the name the model used, the arguments, the entry's name as `entry` and the tool's own name as `tool`.
 - The model can call every tool the list gives. The `list:` script narrows that by returning fewer.
 - What a tool does and its shape are shown to the model as the list gives them.
@@ -78,6 +79,52 @@ return input?.tool ? server.call(input.tool, { args: input.args }) : server.tool
 - The entry's `job:` reads `${args}` only whole, since its fields are not known until the run.
 
 A list that fails fails the agent, and so does a list in which a tool has no name, a shape that is not a JSON Schema of an object, a shape that marks a blob, or a name the model is shown that another tool has or that is longer than 64 characters.
+
+## Parts
+
+A part is a group of tools the model is not shown until it opens the part. An agent with many tools shows the model the ones it has opened.
+
+```yaml
+agent: helper
+input: { said: string }
+model: { name: claude-sonnet-5-5, secret: ANTHROPIC_KEY }
+prompt: ${input.said}
+open:
+  net: { include: parts/net/part.yaml }
+  payments: { include: parts/payments/part.yaml, approve: true }
+```
+
+```yaml
+# parts/net/part.yaml
+does: The firewall and the switch, and the network's docs.
+ask: { machine: ./approval.yaml }
+tools:
+  show_status:
+    does: Run one read-only status command.
+    args: { device: string, command: string }
+    job: { script: ./show-status.js, input: { device: "${args.device}", command: "${args.command}" }, allow: [net:192.0.2.1:22] }
+```
+
+1. The model is shown one more tool, `open`, with the name and `does:` of each part not yet open.
+2. The model calls `open` with a part's name, and a job named `open` runs.
+3. From the next turn, the model is shown that part's tools as well.
+
+| Field | What it is |
+|---|---|
+| `does:` | what the part is for, which the model reads before it opens it |
+| `tools:` | the part's tools, written as an agent's are |
+| `ask:` | the ask for the part's tools and for opening it |
+| `approve:` | `true` holds the part's open for the ask |
+| `meta:` | data Corbie keeps and never reads |
+
+- A part's tools have their own permissions, as every tool has. Opening a part gives the model names and nothing else.
+- A tool of a part may not take the name of another tool of the agent.
+- `open` is supplied by Corbie, as the blob tools are, and no tool may take its name. It is not shown while no part can be opened.
+- The list of an entry with `list:` in a part is made before the first turn, as any list is. An error names it by where it is written, as `open.net.tools.files.list`.
+- A part marked `approve: true` holds its `open` job for the ask, which is shown the part's name as `part` and the part's `does:`. An open that is not approved goes back to the model as denied, with the ask's note, and opens nothing. Only an approved open opens such a part.
+- For a call of a part's tool, and for the list of an entry in a part, the ask is shown the part's name as `part`.
+- A part of an agent made while running cannot name an ask (see Machines).
+- A part may name an ask. It is the ask for the jobs and lists of the part's tools and for opening the part, before the agent's own, and the nearest ask above every machine below those tools' jobs. Its permissions are its own, as any ask's are, and its expressions read the agent's input. Like any ask, it is filled in and started once for the held calls of one turn, and one that cannot be filled in denies them.
 
 ## Shapes
 
@@ -110,13 +157,13 @@ An agent has a number of turns, twenty by default, and the model is told when fe
 
 The conversation is everything the model has been shown and has said: the prompt, each reply and tool call, and each call's result, error or denial. It is kept as its turns, each written once as the turn ends. Nothing is rewritten as the conversation grows.
 
-In a result the conversation is one value: its turns, and the blobs the model was shown, each under the name the model knows it by.
+In a result the conversation is one value: its turns and the blobs the model was shown, each under the name the model knows it by.
 
 ```
 conversation: { turns: [ turn 1, turn 2, … ], blobs: { blob1: …, blob2: … } }
 ```
 
-An agent started with it carries on where the other stopped. Every name goes on meaning the blob it meant, and a blob the conversation has not shown takes a name it has not used.
+An agent started with it carries on where the other stopped. Every name goes on meaning the blob it meant, and a blob the conversation has not shown takes a name it has not used. It opens no part: the model calls `open` for each part it needs, and a part marked `approve: true` waits for the ask again.
 
 ## Blobs and the model
 

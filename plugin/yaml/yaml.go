@@ -25,6 +25,12 @@ func parse(job *plugin.Job, first any, opt plugin.Options) (any, error) {
 	if err != nil {
 		return nil, err
 	}
+	return Data(data)
+}
+
+// Data reads one YAML document into plain data: maps, lists, text,
+// numbers, true or false, and null.
+func Data(data []byte) (any, error) {
 	d := yaml.NewDecoder(bytes.NewReader(data))
 	var doc yaml.Node
 	if err := d.Decode(&doc); err != nil && err != io.EOF {
@@ -181,9 +187,9 @@ Needs nothing.
 
 This script reads a document and writes another.
 
-    const hub = yaml.parse("does: The bins.\ntools:\n  bin_days: { args: {} }\n")
-    hub.does                    // gives "The bins."
-    Object.keys(hub.tools)      // gives ["bin_days"]
+    const part = yaml.parse("does: The weather.\ntools:\n  forecast: { args: {} }\n")
+    part.does                    // gives "The weather."
+    Object.keys(part.tools)      // gives ["forecast"]
 
     yaml.write({ name: "tea", sizes: [1, 2], hot: "true" })
     // gives "hot: \"true\"\nname: tea\nsizes:\n  - 1\n  - 2\n"

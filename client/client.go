@@ -62,6 +62,11 @@ type Start struct {
 	// input.
 	Input  any
 	Labels map[string]string
+	// Key names the run among this client's running runs.
+	Key string
+	// Context is the directory the run was submitted from, which its machines
+	// read as run.context.
+	Context string
 	// Allow narrows what the run, and everything below it, may do.
 	Allow *permission.Layer
 	// Timeout is how long the run may take.
@@ -138,6 +143,11 @@ func (c *Client) Start(ctx context.Context, draft *machine.Draft, start Start) (
 	if err := store.CheckInstance(run); err != nil || store.InstanceClient(run) != c.ID.Name {
 		return "", fmt.Errorf("%w: %q is not a name this client can give a run", ErrStart, run)
 	}
+	if start.Key != "" {
+		if err := machine.CheckKey(start.Key); err != nil {
+			return "", fmt.Errorf("%w: %w", ErrStart, err)
+		}
+	}
 	for name := range start.Secrets {
 		if err := permission.CheckSecretName(name); err != nil {
 			return "", fmt.Errorf("%w: %w", ErrStart, err)
@@ -210,7 +220,7 @@ func (c *Client) Start(ctx context.Context, draft *machine.Draft, start Start) (
 	seed := make([]byte, 32)
 	rand.Read(seed)
 	msg := &instance.Message{Kind: instance.KindStart, Instance: run, Start: &instance.Start{
-		Definition: ref, Input: input, Labels: start.Labels, Allow: start.Allow,
+		Definition: ref, Input: input, Labels: start.Labels, Key: start.Key, Context: start.Context, Allow: start.Allow,
 		Timeout: machine.Duration(start.Timeout), Secrets: start.Secrets, Seed: seed}}
 	return run, c.send(ctx, startMessage(run), start.Life, msg)
 }
@@ -305,6 +315,27 @@ func (c *Client) Cancel(ctx context.Context, run string, life time.Duration) (st
 func (c *Client) Send(ctx context.Context, run, event string, data any, life time.Duration) (string, error) {
 	return c.sendNext(ctx, life, &instance.Message{Kind: instance.KindEvent, Instance: run,
 		Event: &machine.Event{Name: event, Data: data}})
+}
+
+// ErrNoKey is a key that names no run of this client's.
+var ErrNoKey = errors.New("no run has the key")
+
+// SendToKey sends a named event to the run with a key.
+func (c *Client) SendToKey(ctx context.Context, key, event string, data any, life time.Duration) (string, error) {
+	if err := c.identity(); err != nil {
+		return "", err
+	}
+	if err := machine.CheckKey(key); err != nil {
+		return "", err
+	}
+	entry, _, err := instance.ReadKey(ctx, c.Store, c.Controller, c.ID, c.ID.Name, key)
+	if err != nil {
+		return "", err
+	}
+	if entry == nil {
+		return "", fmt.Errorf("%w: %q", ErrNoKey, key)
+	}
+	return c.Send(ctx, entry.Run, event, data, life)
 }
 
 // Reply answers a ticket of a run. The ticket is the authority: any client

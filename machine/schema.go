@@ -131,6 +131,7 @@ func wrong(err error) error {
 		return err
 	}
 	var said []string
+	noted := map[string]bool{}
 	var leaves func(u jsonschema.OutputUnit)
 	leaves = func(u jsonschema.OutputUnit) {
 		for _, e := range u.Errors {
@@ -143,7 +144,8 @@ func wrong(err error) error {
 		if u.InstanceLocation != "" {
 			line = "at " + u.InstanceLocation + ": " + line
 		}
-		if !slices.Contains(said, line) {
+		if !noted[line] {
+			noted[line] = true
 			said = append(said, line)
 		}
 	}
@@ -263,8 +265,10 @@ func misplacedDefaults(root *jsonschema.Schema) []string {
 		case s.Default == nil:
 		case !filled[s]:
 			problems = append(problems, fmt.Sprintf("at %s: a default is filled in only where properties and items lead from the top of the shape", place))
-		case s.Validate(*s.Default) != nil:
-			problems = append(problems, fmt.Sprintf("at %s: the default does not fit its own place: %v", place, wrong(s.Validate(*s.Default))))
+		default:
+			if err := s.Validate(*s.Default); err != nil {
+				problems = append(problems, fmt.Sprintf("at %s: the default does not fit its own place: %v", place, wrong(err)))
+			}
 		}
 		for _, sub := range subschemas(s) {
 			walk(sub)
@@ -277,11 +281,8 @@ func misplacedDefaults(root *jsonschema.Schema) []string {
 
 // subschemas gives every schema a schema holds.
 func subschemas(s *jsonschema.Schema) []*jsonschema.Schema {
-	subs := []*jsonschema.Schema{s.Ref, s.RecursiveRef, s.Not, s.If, s.Then, s.Else, s.PropertyNames,
+	subs := []*jsonschema.Schema{s.Ref, s.Not, s.If, s.Then, s.Else, s.PropertyNames,
 		s.UnevaluatedProperties, s.Contains, s.Items2020, s.UnevaluatedItems, s.ContentSchema}
-	if s.DynamicRef != nil {
-		subs = append(subs, s.DynamicRef.Ref)
-	}
 	subs = append(subs, s.AllOf...)
 	subs = append(subs, s.AnyOf...)
 	subs = append(subs, s.OneOf...)

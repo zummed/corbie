@@ -34,7 +34,8 @@ func init() {
 const page = `machines: a script uses this plugin to define a machine while its job runs.
 
 1. A script calls machines.define with a definition as YAML text.
-2. The runner checks the definition as a submitted one is checked, and stores it.
+2. The job's process checks the definition as a submitted one is checked, and
+   stores it, under the job's time and memory limits.
 3. The script returns the stored definition in its output.
 4. A later job's machine: is one expression that gives that output, and the
    controller starts the machine as a child run.

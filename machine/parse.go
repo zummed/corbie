@@ -2,6 +2,7 @@ package machine
 
 import (
 	"encoding/json/v2"
+	"errors"
 	"fmt"
 	"math"
 	"path"
@@ -18,31 +19,41 @@ import (
 // wrong is gathered and reported together.
 type Parser struct {
 	problems Problems
+	noted    map[Problem]bool // every problem in problems, each once
 	load     func(path string) ([]byte, error)
-	dir      string   // where the definition's paths start from
-	in       string   // the directory of the file being read, from dir
-	chain    []string // the machine files being read, outermost first
+	dir      string            // where the definition's paths start from
+	source   string            // the machine file being read, which a problem names
+	chain    []string          // every file being read, outermost first
+	includes *int              // how many files have been included
+	from     map[string]string // the file an included field came from, by its place
 	draft    *Draft
 	inline   int
 	limits   *Fields // the definition's limits, for a type to read its own
+	nearer   bool    // the jobs being read go to an ask nearer than the definition's
 }
 
 // Parse reads a written definition, fills it out, and checks it. load gives
 // the contents of a file the definition names, by its path. A definition
 // that holds a job for approval and has no ask for it to go to is refused.
 func Parse(src []byte, load func(path string) ([]byte, error)) (*Draft, error) {
-	return parse(src, load, true)
+	return parse(src, "", load, true)
+}
+
+// ParseIn is Parse for a definition in a directory of the context. load
+// gives a file by its path from the context.
+func ParseIn(dir string, src []byte, load func(path string) ([]byte, error)) (*Draft, error) {
+	return parse(src, dir, load, true)
 }
 
 // ParseMade is Parse for a definition made while a machine runs. Whether
-// its approvals have an ask to go to is left open: it is settled when the
-// definition is started, under whatever ask is above it then.
+// its approvals have an ask to go to is left open: that is settled by what
+// is above it when a job is held.
 func ParseMade(src []byte, load func(path string) ([]byte, error)) (*Draft, error) {
-	return parse(src, load, false)
+	return parse(src, "", load, false)
 }
 
-func parse(src []byte, load func(path string) ([]byte, error), root bool) (*Draft, error) {
-	p := &Parser{load: load}
+func parse(src []byte, dir string, load func(path string) ([]byte, error), root bool) (*Draft, error) {
+	p := &Parser{load: load, dir: dir, noted: map[Problem]bool{}, includes: new(int)}
 	draft, needsAsk := p.parse(src, "")
 	if draft != nil && needsAsk && root {
 		p.Problem("", "a job is marked for approval, or a permission is listed to be asked about, and there is no ask for it to go to: give the definition an ask")
@@ -55,11 +66,9 @@ func parse(src []byte, load func(path string) ([]byte, error), root bool) (*Draf
 
 // Problem notes one thing wrong, at a place in the file being read.
 func (p *Parser) Problem(place, format string, args ...any) {
-	problem := Problem{Place: place, Text: fmt.Sprintf(format, args...)}
-	if len(p.chain) > 0 {
-		problem.File = p.chain[len(p.chain)-1]
-	}
-	if !slices.Contains(p.problems, problem) {
+	problem := Problem{File: p.fileAt(place), Place: place, Text: fmt.Sprintf(format, args...)}
+	if !p.noted[problem] {
+		p.noted[problem] = true
 		p.problems = append(p.problems, problem)
 	}
 }
@@ -90,7 +99,7 @@ func (p *Parser) fill(written map[string]any, first, place string) (draft *Draft
 	defer func() { p.draft = outer }()
 	def := p.draft.Definition
 
-	f := p.Fields("", written, definitionShape(t))
+	f := p.Fields("", p.included("", written, whole(t).field), definitionShape(t))
 	def.Name = f.Text(t.Name())
 	if input, _ := f.Map("input"); input != nil {
 		if full, err := InputForm.Full(input); err != nil {
@@ -112,7 +121,9 @@ func (p *Parser) fill(written map[string]any, first, place string) (draft *Draft
 	def.AskAbout = f.Strings("ask_about")
 	if ask, ok := f.Value("ask"); ok {
 		def.Ask = p.Job("ask", ask)
+		p.Ask("ask", def.Ask)
 	}
+	def.Meta, _ = f.Value("meta")
 	// What is left is the type's own, read by the type's own shape. A
 	// field neither names is one that does not belong.
 	f.read()
@@ -128,6 +139,15 @@ func (p *Parser) fill(written map[string]any, first, place string) (draft *Draft
 	if err != nil {
 		p.Problem("", "%v", err)
 	}
+	// A step reads a stored definition up to its limit, and one past it
+	// could be stored and never read.
+	if p.draft.size, err = p.draft.storedSize(); err != nil {
+		p.Problem("", "%v", err)
+	}
+	if p.draft.size > blob.StepLimit {
+		p.Problem(place, "the machine as it is stored is %d bytes, and a machine may be at most %d MiB", p.draft.size, blob.StepLimit>>20)
+		return nil, false
+	}
 	// The whole is checked whatever the filling-out found, so that
 	// everything wrong is reported together.
 	problems, approves := Check(def)
@@ -137,16 +157,51 @@ func (p *Parser) fill(written map[string]any, first, place string) (draft *Draft
 	// A child with no ask of its own takes its parent's. A machine run as
 	// an ask takes none from above it.
 	for name, child := range p.draft.Children {
-		if def.Ask != nil && def.Ask.Machine == name {
+		if place, isAsk := p.draft.asks[name]; isAsk {
 			if child.needsAsk {
-				p.Problem("ask", "the machine run as the ask marks a job for approval, or lists a permission to be asked about, and has no ask of its own: a machine run as an ask takes no ask from above it")
+				p.Problem(place, "the machine run as the ask marks a job for approval, or lists a permission to be asked about, and has no ask of its own: a machine run as an ask takes no ask from above it")
 			}
 			continue
 		}
-		approves = approves || child.needsAsk
+		approves = approves || child.needsAsk && !p.draft.nearer[name]
 	}
 	p.draft.needsAsk = approves && def.Ask == nil
 	return p.draft, p.draft.needsAsk
+}
+
+// Ask notes a job the definition holds as an ask, at its place: a machine
+// run as it takes no ask from above it.
+func (p *Parser) Ask(place string, s *JobSpec) {
+	if s == nil || s.Machine == "" {
+		return
+	}
+	if p.draft.asks == nil {
+		p.draft.asks = map[string]string{}
+	}
+	p.draft.asks[s.Machine] = place
+}
+
+// Nearer reads jobs that go to an ask nearer than the definition's. A
+// machine that only such jobs run takes that ask as the nearest above it,
+// and needs none from the definition.
+func (p *Parser) Nearer(read func()) {
+	outer := p.nearer
+	p.nearer = true
+	read()
+	p.nearer = outer
+}
+
+// runs notes a machine a job runs, and whether every job that runs it goes
+// to a nearer ask.
+func (p *Parser) runs(name string) {
+	if name == "" {
+		return
+	}
+	if p.draft.nearer == nil {
+		p.draft.nearer = map[string]bool{}
+	}
+	nearer, seen := p.draft.nearer[name]
+	p.draft.nearer[name] = p.nearer && (nearer || !seen)
 }
 
 // Limits gives the definition's limits, for a type to read those it adds.
@@ -163,16 +218,17 @@ func (p *Parser) Job(place string, written any) *JobSpec {
 	if f == nil {
 		return s
 	}
-	s.Script = p.path(f.Text("script"))
+	s.Script = p.cleanPath(f.Text("script"))
 	for _, file := range f.Strings("files") {
-		s.Files = append(s.Files, p.path(file))
+		s.Files = append(s.Files, p.cleanPath(file))
 	}
 	machine, hasMachine := f.Value("machine")
+	s.Key = f.Text("key")
 	s.Input, _ = f.Value("input")
 	s.Allow = f.Strings("allow")
 	s.Deny = f.Strings("deny")
 	s.Timeout = f.text("timeout", KindDuration)
-	s.Attempts = f.Int("attempts")
+	s.Restart = p.restart(f.at("restart"), f.Fields("restart"))
 	s.Memory = f.Size("memory")
 	s.Tags = f.Strings("tags")
 	s.Approve = f.Bool("approve")
@@ -184,30 +240,43 @@ func (p *Parser) Job(place string, written any) *JobSpec {
 		}
 	}
 	if hasMachine {
-		switch m := machine.(type) {
-		case string:
-			s.Machine = p.path(m)
-			if !HasExpr(m) {
-				p.machineFile(place+".machine", s.Machine)
-			}
-		case map[string]any:
-			// A machine written in place.
-			p.inline++
-			s.Machine = fmt.Sprintf("in-place-%d", p.inline)
-			first := ""
-			for _, name := range Types() {
-				if _, ok := m[name]; ok {
-					first = name
-				}
-			}
-			p.child(place+".machine", s.Machine, func(sub *Parser) (*Draft, bool) {
-				return sub.fill(m, first, place+".machine")
-			}, path.Join(p.dir, p.in), "")
-		default:
-			p.Problem(place+".machine", "a machine is the path of a definition, or a definition written in place")
-		}
+		s.Machine = p.Machine(place+".machine", machine)
 	}
 	return s
+}
+
+// Machine reads a machine a definition runs, as it is written: the path of a
+// definition, or a definition written in place. It loads it, and gives the
+// name the definition has for it.
+func (p *Parser) Machine(place string, written any) (name string) {
+	defer func() { p.runs(name) }()
+	switch m := written.(type) {
+	case string:
+		name = p.cleanPath(m)
+		if !HasExpr(m) {
+			p.machineFile(place, name)
+		}
+	case map[string]any:
+		// A machine written in place.
+		p.inline++
+		name = fmt.Sprintf("in-place-%d", p.inline)
+		first := ""
+		for _, kind := range Types() {
+			if _, ok := m[kind]; ok {
+				first = kind
+			}
+		}
+		if first == "" {
+			p.Problem(place, "a machine written in place writes its type and its name itself, such as flow: digest (the types are: %s)", strings.Join(Types(), ", "))
+			return name
+		}
+		p.child(place, name, func(sub *Parser) (*Draft, bool) {
+			return sub.fill(m, first, place)
+		}, p.dir, "")
+	default:
+		p.Problem(place, "a machine is the path of a definition, or a definition written in place")
+	}
+	return name
 }
 
 // Builtin adds a script that comes with Corbie to the definition's files,
@@ -241,40 +310,104 @@ func (p *Parser) MachineType(name string) string {
 	return ""
 }
 
-// Load reads a file by its path from the directory of the file being read.
-func (p *Parser) Load(name string) ([]byte, error) {
-	if !relative(name) {
-		return nil, fmt.Errorf("the path starts with ./ or ../")
-	}
-	return p.load(path.Join(p.dir, p.in, name))
-}
-
-// In fills what is written in another file, named by its path from the
-// directory of the file being read: a path written there is read from
-// that file's directory.
-func (p *Parser) In(file string, fill func()) {
-	outer := p.in
-	p.in = path.Dir(path.Join(p.in, file))
-	defer func() { p.in = outer }()
-	fill()
-}
-
-// path gives a relative path written in the file being read as a clean
-// path from the directory of the definition, starting with ./ or ../.
-// Anything else is given as it is.
-func (p *Parser) path(name string) string {
-	if !relative(name) || HasExpr(name) {
+// cleanPath gives a path as a definition keeps it: from the context, starting
+// with ./, however it was written. A path that leaves the context, an
+// expression and one of Corbie's own scripts are given as they are.
+func (p *Parser) cleanPath(name string) string {
+	switch {
+	case name == "", HasExpr(name), strings.HasPrefix(name, "corbie:"), !inContext(name):
 		return name
+	case fromFile(name):
+		return "./" + path.Join(p.dir, name)
 	}
-	joined := path.Join(p.in, name)
-	if joined == ".." || strings.HasPrefix(joined, "../") {
-		return joined
-	}
-	return "./" + joined
+	return "./" + path.Clean(name)
 }
 
-func relative(name string) bool {
-	return strings.HasPrefix(name, "./") || strings.HasPrefix(name, "../")
+// fromFile says a path is read from the directory of the file it is in.
+func fromFile(name string) bool { return strings.HasPrefix(name, "./") }
+
+// inContext says a path can stay in the context: one that climbs out of a
+// directory, or starts at the top of the disk, cannot.
+func inContext(name string) bool {
+	return !path.IsAbs(name) && !slices.Contains(strings.Split(name, "/"), "..")
+}
+
+// kept gives the path from the context of a path as a definition keeps it,
+// which is what load is given.
+func kept(name string) string { return strings.TrimPrefix(name, "./") }
+
+// outside is what is said of a path that leaves the context.
+const outside = "a path is read from the context, or from this file's directory with ./, and has no ../"
+
+// restart reads a job's restart policy.
+func (p *Parser) restart(place string, f *Fields) *Restart {
+	if f == nil {
+		return nil
+	}
+	r := &Restart{Delay: DefaultDelay, Longest: DefaultLongest}
+	switch when := f.Text("when"); when {
+	case "", RestartFailure:
+	case RestartAlways:
+		r.Always = true
+	default:
+		p.Problem(placeOf(place, "when"), "%q: when is %s or %s", when, RestartFailure, RestartAlways)
+	}
+	if limit, ok := f.Value("limit"); ok {
+		var err error
+		if r.Limit, r.Within, err = parseLimit(limit); err != nil {
+			p.Problem(placeOf(place, "limit"), "%v", err)
+		}
+	}
+	if delay := f.Text("delay"); delay != "" {
+		var err error
+		if r.Delay, r.Longest, err = parseDelay(delay); err != nil {
+			p.Problem(placeOf(place, "delay"), "%v", err)
+		}
+	}
+	f.Done()
+	return r
+}
+
+// parseLimit reads a limit: a number, or a number in a length of time.
+func parseLimit(written any) (int, Duration, error) {
+	if n, ok := written.(float64); ok && n == math.Trunc(n) && n >= 1 && n <= math.MaxInt32 {
+		return int(n), 0, nil
+	}
+	text, ok := written.(string)
+	if !ok {
+		return 0, 0, fmt.Errorf("a limit is a number of at least 1, such as 3, or a number in a length of time, such as 5 in 1h")
+	}
+	count, span, ok := strings.Cut(text, " in ")
+	n, err := strconv.Atoi(strings.TrimSpace(count))
+	if !ok || err != nil || n < 1 {
+		return 0, 0, fmt.Errorf("%q: a limit is a number of at least 1, such as 3, or a number in a length of time, such as 5 in 1h", text)
+	}
+	within, err := ParseDuration(strings.TrimSpace(span))
+	if err != nil {
+		return 0, 0, err
+	}
+	if within <= 0 {
+		return 0, 0, fmt.Errorf("%q: the length of time of a limit is more than nothing", text)
+	}
+	return n, within, nil
+}
+
+// parseDelay reads a delay: a length of time, or two with to between them.
+func parseDelay(text string) (first, longest Duration, err error) {
+	from, to, grows := strings.Cut(text, " to ")
+	if !grows {
+		to = from
+	}
+	if first, err = ParseDuration(strings.TrimSpace(from)); err != nil {
+		return 0, 0, err
+	}
+	if longest, err = ParseDuration(strings.TrimSpace(to)); err != nil {
+		return 0, 0, err
+	}
+	if first <= 0 || longest < first {
+		return 0, 0, fmt.Errorf("%q: a delay is more than nothing, and doubles to a longer one", text)
+	}
+	return first, longest, nil
 }
 
 // file loads a script or a file a script loads.
@@ -285,20 +418,17 @@ func (p *Parser) file(place, name string) {
 	if strings.HasPrefix(name, "corbie:") {
 		return // one of Corbie's own, added by the type that uses it
 	}
-	if !relative(name) {
+	if !fromFile(name) || !inContext(name) {
 		p.draft.Definition.Scripts[name] = blob.Ref{}
-		p.Problem(place, "%q: the path of a script starts with ./ or ../", name)
+		p.Problem(place, "%q: %s", name, outside)
 		return
 	}
 	// Named once, it is in the definition's table, read or not: what is
 	// wrong with it is said here and not again by the check.
 	p.draft.Definition.Scripts[name] = blob.Ref{}
-	contents, err := p.load(path.Join(p.dir, name))
-	if err != nil {
-		p.Problem(place, "%q cannot be read: %v", name, err)
-		return
+	if contents, ok := p.read(place, name, kept(name)); ok {
+		p.draft.Files[name] = contents
 	}
-	p.draft.Files[name] = contents
 }
 
 // machineFile loads a child definition kept in its own file.
@@ -306,31 +436,49 @@ func (p *Parser) machineFile(place, name string) {
 	if _, ok := p.draft.Children[name]; ok {
 		return
 	}
-	full := path.Join(p.dir, name)
-	for _, above := range p.chain {
-		if above == full {
-			p.Problem(place, "the definition leads back to itself: %s -> %s", strings.Join(p.chain, " -> "), full)
-			p.draft.Definition.Machines[name] = blob.Ref{}
-			return
-		}
-	}
-	src, err := p.load(full)
-	if err != nil {
+	if !fromFile(name) || !inContext(name) {
 		p.draft.Definition.Machines[name] = blob.Ref{}
-		p.Problem(place, "%q cannot be read: %v", name, err)
+		p.Problem(place, "%q: %s", name, outside)
+		return
+	}
+	full := kept(name)
+	src, ok := p.open(place, name, full)
+	if !ok {
+		p.draft.Definition.Machines[name] = blob.Ref{}
 		return
 	}
 	p.child(place, name, func(sub *Parser) (*Draft, bool) { return sub.parse(src, "") }, path.Dir(full), full)
 }
 
+// open reads a file of the definition, by its full path, that is filled
+// in as part of it. A file already being read would lead back to itself.
+func (p *Parser) open(place, name, full string) ([]byte, bool) {
+	if chain := p.reading(place); slices.Contains(chain, full) {
+		p.Problem(place, "the definition leads back to itself: %s -> %s", strings.Join(chain, " -> "), full)
+		return nil, false
+	}
+	return p.read(place, name, full)
+}
+
+// read reads a file, by its full path.
+func (p *Parser) read(place, name, full string) ([]byte, bool) {
+	contents, err := p.load(full)
+	if err != nil {
+		p.Problem(place, "%q cannot be read: %v", name, err)
+		return nil, false
+	}
+	return contents, true
+}
+
 func (p *Parser) child(place, name string, read func(*Parser) (*Draft, bool), dir, file string) {
-	sub := &Parser{load: p.load, dir: dir, chain: p.chain, problems: p.problems, inline: p.inline * 100}
+	p.draft.Definition.Machines[name] = blob.Ref{}
+	chain := p.reading(place)
+	sub := &Parser{load: p.load, dir: dir, source: p.source, chain: chain, includes: p.includes, problems: p.problems, noted: p.noted, inline: p.inline * 100}
 	if file != "" {
-		sub.chain = append(append([]string{}, p.chain...), file)
+		sub.source, sub.chain = file, append(chain, file)
 	}
 	child, _ := read(sub)
 	p.problems = sub.problems
-	p.draft.Definition.Machines[name] = blob.Ref{}
 	if child != nil {
 		p.draft.Children[name] = child
 	}
@@ -356,7 +504,7 @@ func (p *Parser) Fields(place string, v any, shape *Shape) *Fields {
 		p.Problem(place, "this should be a mapping of fields, and is %s", describe(v))
 		return nil
 	}
-	return &Fields{p: p, place: place, shape: shape, m: m, taken: map[string]bool{}, asked: map[string]bool{}}
+	return &Fields{p: p, place: place, shape: shape, m: p.included(place, m, shape.field), taken: map[string]bool{}, asked: map[string]bool{}}
 }
 
 // named gives the shape's field of a name, for a reader that reads it as
@@ -407,12 +555,7 @@ func (f *Fields) Of(name string) *Shape {
 	return field.Holds()
 }
 
-func (f *Fields) at(name string) string {
-	if f.place == "" {
-		return name
-	}
-	return f.place + "." + name
-}
+func (f *Fields) at(name string) string { return placeOf(f.place, name) }
 
 // Place is where in the definition the mapping is.
 func (f *Fields) Place() string { return f.place }
@@ -576,6 +719,10 @@ func (f *Fields) Map(name string) (map[string]any, []string) {
 		f.p.Problem(f.at(name), "this should be a mapping, and is %s", describe(v))
 		return nil, nil
 	}
+	if field := f.shape.field(name); field != nil && field.Kind == KindNamed {
+		entry := field.entry()
+		m = f.p.included(f.at(name), m, func(string) *Field { return entry })
+	}
 	return m, sortedKeys(m)
 }
 
@@ -635,26 +782,30 @@ func describe(v any) string {
 	return fmt.Sprintf("%T", v)
 }
 
-// readYAML reads a written definition into plain values: mappings, lists,
-// text, numbers, true and false. It gives the top mapping and the name on
-// its first line.
-func readYAML(src []byte) (map[string]any, string, error) {
-	var doc yaml.Node
-	if err := yaml.Unmarshal(src, &doc); err != nil {
-		text := oneLine(strings.TrimPrefix(err.Error(), "yaml: "))
-		if strings.Contains(string(src), "${") {
-			text += ` (if a value starts with ${ or holds one beside a colon or a brace, put it in quotes: "${…}")`
-		}
-		return nil, "", fmt.Errorf("this is not YAML that can be read: %s", text)
-	}
-	if doc.Kind == 0 || len(doc.Content) == 0 {
-		return nil, "", fmt.Errorf("the definition is empty")
-	}
-	top := doc.Content[0]
-	budget := 200000
-	v, err := fromYAML(top, &budget, map[*yaml.Node]bool{})
+// readMapping reads a YAML file a definition includes into plain values, as
+// a definition is read: a date stays the text written.
+func readMapping(src []byte) (map[string]any, error) {
+	v, _, err := plainYAML(src)
 	if err != nil {
+		return nil, err
+	}
+	m, ok := v.(map[string]any)
+	if !ok {
+		return nil, fmt.Errorf("it should be a mapping, and is %s", describe(v))
+	}
+	return m, nil
+}
+
+// readYAML reads a written definition into plain values: mappings, lists,
+// text, numbers, true and false. It gives the top mapping and the name on its
+// first line.
+func readYAML(src []byte) (map[string]any, string, error) {
+	v, top, err := plainYAML(src)
+	switch {
+	case err != nil:
 		return nil, "", err
+	case top == nil:
+		return nil, "", fmt.Errorf("the definition is empty")
 	}
 	m, ok := v.(map[string]any)
 	if !ok || len(top.Content) == 0 {
@@ -663,20 +814,47 @@ func readYAML(src []byte) (map[string]any, string, error) {
 	return m, top.Content[0].Value, nil
 }
 
-// fromYAML turns a node into a plain value. Aliases may not grow a
-// definition far beyond what was written, nor contain themselves.
-func fromYAML(n *yaml.Node, budget *int, inside map[*yaml.Node]bool) (any, error) {
-	if *budget--; *budget < 0 {
-		return nil, fmt.Errorf("the definition's aliases make it far larger than what is written")
+// plainYAML reads one YAML document into plain values, and gives its top
+// node, or nothing for an empty document. The YAML reader refuses an alias
+// that contains itself, or a document whose aliases make far more than it
+// writes, only when it decodes: a tree of nodes holds each alias once. So a
+// document with an alias is decoded first. Only then, since decoding compares
+// every two names of a mapping. A type that does not fit is no fault here, and
+// is said of the plain values.
+func plainYAML(src []byte) (any, *yaml.Node, error) {
+	var doc yaml.Node
+	if err := yaml.Unmarshal(src, &doc); err != nil {
+		text := oneLine(strings.TrimPrefix(err.Error(), "yaml: "))
+		if strings.Contains(string(src), "${") {
+			text += ` (if a value starts with ${ or holds one beside a colon or a brace, put it in quotes: "${…}")`
+		}
+		return nil, nil, fmt.Errorf("this is not YAML that can be read: %s", text)
 	}
+	if doc.Kind == 0 || len(doc.Content) == 0 {
+		return nil, nil, nil
+	}
+	top := doc.Content[0]
+	if aliased(top) {
+		var decoded any
+		var wrongType *yaml.TypeError
+		if err := top.Decode(&decoded); err != nil && !errors.As(err, &wrongType) {
+			return nil, nil, fmt.Errorf("this is not YAML that can be read: %s", oneLine(strings.TrimPrefix(err.Error(), "yaml: ")))
+		}
+	}
+	v, err := fromYAML(top)
+	return v, top, err
+}
+
+// aliased says whether a node is an alias or holds one.
+func aliased(n *yaml.Node) bool {
+	return n.Kind == yaml.AliasNode || slices.ContainsFunc(n.Content, aliased)
+}
+
+// fromYAML turns a node into a plain value.
+func fromYAML(n *yaml.Node) (any, error) {
 	switch n.Kind {
 	case yaml.AliasNode:
-		if inside[n.Alias] {
-			return nil, fmt.Errorf("line %d: an alias contains itself", n.Line)
-		}
-		inside[n.Alias] = true
-		defer delete(inside, n.Alias)
-		return fromYAML(n.Alias, budget, inside)
+		return fromYAML(n.Alias)
 	case yaml.MappingNode:
 		m := map[string]any{}
 		for i := 0; i+1 < len(n.Content); i += 2 {
@@ -687,7 +865,7 @@ func fromYAML(n *yaml.Node, budget *int, inside map[*yaml.Node]bool) (any, error
 			if _, dup := m[k.Value]; dup {
 				return nil, fmt.Errorf("line %d: the field %q is written twice", k.Line, k.Value)
 			}
-			v, err := fromYAML(n.Content[i+1], budget, inside)
+			v, err := fromYAML(n.Content[i+1])
 			if err != nil {
 				return nil, err
 			}
@@ -697,7 +875,7 @@ func fromYAML(n *yaml.Node, budget *int, inside map[*yaml.Node]bool) (any, error
 	case yaml.SequenceNode:
 		list := make([]any, 0, len(n.Content))
 		for _, item := range n.Content {
-			v, err := fromYAML(item, budget, inside)
+			v, err := fromYAML(item)
 			if err != nil {
 				return nil, err
 			}

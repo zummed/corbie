@@ -649,6 +649,11 @@ func stepEntry(name string, step *instance.Step) (Entry, error) {
 	entry := Entry{ID: name, Time: step.Time, Step: step.Number, Events: step.Events, Status: step.State.Status}
 	for _, ask := range step.Asks {
 		ask.Card = identity.Card{}
+		if ask.Job != nil {
+			job := *ask.Job
+			job.Found = nil
+			ask.Job = &job
+		}
 		entry.Asks = append(entry.Asks, ask)
 	}
 	if t, ok := machine.TypeOf(step.State.Type); ok {

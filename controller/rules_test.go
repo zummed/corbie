@@ -527,7 +527,7 @@ func TestControllerSecret(t *testing.T) {
 			initial: s
 			states:
 			  s:
-			    job: { script: ./work.js, allow: ["secret:K@net:api.example"], attempts: 3 }
+			    job: { script: ./work.js, allow: ["secret:K@net:api.example"], restart: { limit: 2 } }
 			    on: { done: end }
 			  end: { end: done }
 		`, map[string]string{"work.js": "return 1"}, nil)

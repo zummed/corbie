@@ -4,9 +4,9 @@ An instance is one run of a machine. It is two things in the store: a head, whic
 
 ## The head
 
-The head is a small signed summary that the controller rewrites as the instance moves. It says what the instance is called and what type of machine it is, whether it is running, done, failed or cancelled, which step it has reached, when it started, which instance is its parent, and what it is waiting for: how many jobs on runners, how many timers, and the names of any tickets. It also carries the labels its client gave it at the start.
+The head is a small signed summary that the controller rewrites as the instance moves. It says what the instance is called and what type of machine it is, whether it is running, done, failed or cancelled, which step it has reached, when it started, which instance is its parent, and what it is waiting for: how many jobs on runners, how many timers, and the names of any tickets. It also carries the labels its client gave it at the start, its key, and the run whose send started it.
 
-The head is sealed to nobody. Anyone the store lets read it can read it and can check the controller's signature. For that reason it holds nothing the instance was given or produced: no input, no output, no error text, no log line, no value of a ticket. Labels are the one exception. They are the client's own words about the run, chosen knowing they are public, and a child carries its parent's.
+The head is sealed to nobody. Anyone the store lets read it can read it and can check the controller's signature. For that reason it holds nothing the instance was given or produced: no input, no output, no error text, no log line, no value of a ticket. Labels and a key are the exceptions. A label is the client's own words about the run, chosen knowing they are public, and a child carries its parent's. A key is written by the definition or the client that gives it, on the same terms.
 
 The head is a summary and may be a moment behind. The record is the truth, and the controller brings the head up to date after each step.
 

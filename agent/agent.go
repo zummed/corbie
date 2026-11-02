@@ -7,14 +7,11 @@ import (
 	"encoding/json/jsontext"
 	"encoding/json/v2"
 	"fmt"
-	"maps"
 	"net"
 	"net/url"
 	"slices"
 	"sort"
 	"strings"
-
-	"go.yaml.in/yaml/v3"
 
 	"github.com/zummed/corbie/machine"
 	"github.com/zummed/corbie/plugin/llm"
@@ -26,6 +23,9 @@ type Agent struct {
 	System string           `json:"system,omitzero"`
 	Prompt any              `json:"prompt,omitzero"`
 	Tools  map[string]*Tool `json:"tools,omitzero"`
+	// Parts are groups of tools the model is shown once it opens them. A
+	// part's tools are among Tools, each naming its part.
+	Parts map[string]*Part `json:"open,omitzero"`
 	// Turns is how many turns the agent has; twenty if it says nothing.
 	Turns int `json:"turns,omitzero"`
 	// Reply is the shape of the reply in the agent's result, where it is
@@ -68,6 +68,70 @@ type Tool struct {
 	// List is a job that lists tools, each with what it does and the shape
 	// of its arguments, in place of Does and Args: Job runs each of them.
 	List *machine.JobSpec `json:"list,omitzero"`
+	// Part names the part the tool is in, if it is in one.
+	Part string `json:"part,omitzero"`
+}
+
+// Part is a group of tools the model is shown once it opens it.
+type Part struct {
+	Does string `json:"does"`
+	// Approve holds the part's opening for the ask.
+	Approve bool `json:"approve,omitzero"`
+	// Ask is the ask for the jobs of the part's tools and for opening it,
+	// before the agent's own.
+	Ask *machine.JobSpec `json:"ask,omitzero"`
+	// Meta is data Corbie keeps and never reads.
+	Meta any `json:"meta,omitzero"`
+}
+
+// place is where a tool of a name is in the definition.
+func (t *Tool) place(name string) string {
+	if t.Part != "" {
+		return partPlace(t.Part) + ".tools." + name
+	}
+	return "tools." + name
+}
+
+// partPlace is where a part is in the definition.
+func partPlace(name string) string { return "open." + name }
+
+// askOf gives a part's ask and where it is written. With none, its jobs go
+// to the agent's.
+func (a *Agent) askOf(part string) (*machine.JobSpec, string) {
+	if p := a.Parts[part]; p != nil && p.Ask != nil {
+		return p.Ask, partPlace(part) + ".ask"
+	}
+	return nil, ""
+}
+
+// Lists says an entry of the agent's tools has a list, whose job gives shapes
+// from outside the definition.
+func (agentType) Lists(def *machine.Definition) bool {
+	var a Agent
+	if json.Unmarshal(def.Body, &a) != nil {
+		return false
+	}
+	for _, tool := range a.Tools {
+		if tool != nil && tool.List != nil {
+			return true
+		}
+	}
+	return false
+}
+
+// Asks gives the ask of each part, by the place it is written.
+func (agentType) Asks(def *machine.Definition) map[string]*machine.JobSpec {
+	asks := map[string]*machine.JobSpec{}
+	var a Agent
+	if json.Unmarshal(def.Body, &a) != nil {
+		return asks
+	}
+	for name, part := range a.Parts {
+		if part != nil && part.Ask != nil {
+			asks[partPlace(name)+".ask"] = part.Ask
+		}
+	}
+	return asks
 }
 
 // DefaultTurns is how many turns an agent has unless it says otherwise.
@@ -267,12 +331,20 @@ func (agentType) Shape() *machine.Shape {
 		{Name: "list", Kind: machine.KindJob, Like: "{ script: ./github.js }",
 			Does: "a job that lists tools, in place of does and args; job runs each of them, and reads tool, the name the list gave"},
 	}}
+	part := &machine.Shape{Name: "part", What: "a part", Fields: []machine.Field{
+		{Name: "does", Kind: machine.KindText, Like: "The firewall and the switch", Does: "what the part is for, which the model reads before it opens it"},
+		{Name: "tools", Kind: machine.KindNamed, Of: tool, Does: "the part's tools, each a named job"},
+		{Name: "ask", Kind: machine.KindJob, Like: "{ machine: ./approval.yaml }",
+			Does: "the ask for the jobs of the part's tools and for opening it, before the agent's own; it reads the agent's input"},
+		{Name: "approve", Kind: machine.KindFlag, Like: "true", Does: "opening the part waits for the ask to approve it"},
+		{Name: "meta", Kind: machine.KindValue, Like: "{ people: [alice] }", Does: "data of any kind, which Corbie keeps and never reads"},
+	}}
 	return &machine.Shape{Name: "agent", What: "an agent", Fields: []machine.Field{
 		{Name: "model", Kind: machine.KindFields, Of: model, Like: "{ name: claude-sonnet-5-5, secret: ANTHROPIC_KEY }", Does: "the model its turns are sent to"},
 		{Name: "system", Kind: machine.KindText, Like: "You answer questions about a library of files.", Does: "the system text"},
 		{Name: "prompt", Kind: machine.KindValue, Like: "${input.question}", Does: "what the agent is asked; an expression of its input"},
 		{Name: "tools", Kind: machine.KindNamed, Of: tool, Does: "the tools the model may pick, each a named job"},
-		{Name: "tools_file", Kind: machine.KindList, Like: "[./tools.yaml]", Does: "a file of tools shared with other agents, or a list of them"},
+		{Name: "open", Kind: machine.KindNamed, Of: part, Like: "{ net: { include: ./net.yaml } }", Does: "parts: groups of tools the model is shown once it opens them"},
 		{Name: "reply", Kind: machine.KindTypes, Like: "{ outcome: string }", Does: "the shape of its reply where it is data: each name with the type of its value, or a JSON Schema with type: object"},
 		{Name: "conversation", Kind: machine.KindValue, Like: "${input.conversation}",
 			Does: "a conversation to carry on from: the conversation of an earlier agent's result, given whole"},
@@ -280,12 +352,48 @@ func (agentType) Shape() *machine.Shape {
 	}}
 }
 
+// fillPart reads one part as written. A tool of a part may not take the name
+// of any other tool.
+func fillPart(p *machine.Parser, a *Agent, shape *machine.Shape, name string, written any) {
+	place := partPlace(name)
+	ff := p.Fields(place, written, shape)
+	if ff == nil {
+		return
+	}
+	part := &Part{Does: ff.Text("does"), Approve: ff.Bool("approve")}
+	a.Parts[name] = part
+	part.Meta, _ = ff.Value("meta")
+	if ask, ok := ff.Value("ask"); ok {
+		part.Ask = p.Job(place+".ask", ask)
+		p.Ask(place+".ask", part.Ask)
+	}
+	tools, order := ff.Map("tools")
+	read := func() {
+		for _, toolName := range order {
+			if _, taken := a.Tools[toolName]; taken {
+				p.Problem(place+".tools."+toolName, "the tool %q has the name of another tool of the agent", toolName)
+				continue
+			}
+			if t := fillTool(p, a, ff.Of("tools"), place+".tools."+toolName, toolName, tools[toolName]); t != nil {
+				t.Part = name
+			}
+		}
+	}
+	// A machine a tool of the part runs takes the part's ask as the nearest
+	// above it.
+	if part.Ask != nil {
+		p.Nearer(read)
+	} else {
+		read()
+	}
+	ff.Done()
+}
+
 // fillTool reads one tool as written and adds it to the agent's tools.
-func fillTool(p *machine.Parser, a *Agent, shape *machine.Shape, name string, written any) {
-	place := "tools." + name
+func fillTool(p *machine.Parser, a *Agent, shape *machine.Shape, place, name string, written any) *Tool {
 	tf := p.Fields(place, written, shape)
 	if tf == nil {
-		return
+		return nil
 	}
 	tool := &Tool{Does: tf.Text("does")}
 	if list, ok := tf.Value("list"); ok {
@@ -300,6 +408,7 @@ func fillTool(p *machine.Parser, a *Agent, shape *machine.Shape, name string, wr
 	}
 	tf.Done()
 	a.Tools[name] = tool
+	return tool
 }
 
 // Fill reads an agent as written and gives its full form.
@@ -319,36 +428,30 @@ func (agentType) Fill(p *machine.Parser, f *machine.Fields) any {
 	a.Tools = map[string]*Tool{}
 	tools, order := f.Map("tools")
 	for _, name := range order {
-		fillTool(p, a, f.Of("tools"), name, tools[name])
+		fillTool(p, a, f.Of("tools"), "tools."+name, name, tools[name])
 	}
-	// Files of tools shared with other agents are filled in here, each
-	// read from its own directory. A tool of the definition's own stands
-	// before one a file gives the same name, and an earlier file's before
-	// a later one's.
-	for _, file := range f.Strings("tools_file") {
-		shared, err := p.Load(file)
-		if err != nil {
-			p.Problem("tools_file", "%q cannot be read: %v", file, err)
-			continue
-		}
-		var more map[string]any
-		if err := yaml.Unmarshal(shared, &more); err != nil {
-			p.Problem("tools_file", "%q is not YAML that can be read: %v", file, err)
-		}
-		p.In(file, func() {
-			for _, name := range slices.Sorted(maps.Keys(more)) {
-				if _, own := a.Tools[name]; !own {
-					fillTool(p, a, f.Of("tools"), name, more[name])
-				}
-			}
-		})
+	// Parts are filled in after every other tool, so that a tool of a part
+	// is checked against all of them.
+	a.Parts = map[string]*Part{}
+	parts, order := f.Map("open")
+	for _, name := range order {
+		fillPart(p, a, f.Of("open"), name, parts[name])
+	}
+	// The tool that opens a part is Corbie's, as the blob tools are. It
+	// needs no permission and gets nothing from the definition's lists.
+	if _, taken := a.Tools[openTool]; taken {
+		p.Problem(a.Tools[openTool].place(openTool), "the tool %q has the name of the tool every agent with parts has for opening them", openTool)
+	} else if len(a.Parts) > 0 {
+		p.Builtin(openScript, openSource)
+		a.Tools[openTool] = &Tool{Does: openDoes, Args: filled(p, "tools."+openTool+".args", map[string]any{"part": "string"}),
+			Job: &machine.JobSpec{Script: openScript, Input: map[string]any{"part": "${args.part}"}, Alone: true}}
 	}
 	// The blob tools every agent has are ordinary scripts. They need no
 	// permission, and the code tool runs what the model wrote, so they get
 	// nothing from the definition's lists.
 	for name, tool := range blobTools {
 		if _, own := a.Tools[name]; own {
-			p.Problem("tools."+name, "the tool %q has the name of one of the tools every agent has for blobs", name)
+			p.Problem(a.Tools[name].place(name), "the tool %q has the name of one of the tools every agent has for blobs", name)
 			continue
 		}
 		p.Builtin("corbie:"+name+".js", tool.source)
@@ -408,44 +511,75 @@ func (agentType) Check(c *machine.Checker, def *machine.Definition) {
 		c.Problem("turn", "an agent needs the job that makes its turns")
 	}
 	c.Job("turn", a.Turn, "input")
-	for _, name := range sortedNames(a.Tools) {
-		tool, place := a.Tools[name], "tools."+name
+	for _, name := range sortedNames(a.Parts) {
+		part, place := a.Parts[name], partPlace(name)
 		c.Name(place, name)
-		if name == turnJob || name == previewJob {
-			c.Problem(place, "the tool %q has the name of a job the agent itself makes", name)
-		}
-		if tool == nil || tool.Job == nil {
-			c.Problem(place, "a tool needs a job")
+		if part == nil || part.Does == "" {
+			c.Problem(place+".does", "a part says what it is for, for the model to choose by")
 			continue
 		}
-		if tool.List != nil {
-			if tool.Does != "" || tool.Args != nil {
-				c.Problem(place, "a tool with list: is given what each tool does and its args by the list, and has no does: or args: of its own")
+		// A part's own ask is the ask for opening it and for the jobs of its
+		// tools: they need none from the agent.
+		ask, _ := a.askOf(name)
+		c.Asked(ask, func() {
+			c.Job(place+".ask", part.Ask, "input")
+			if part.Approve {
+				c.Approves()
 			}
-			c.Job(place+".list", tool.List, "input")
-			c.Job(place+".job", tool.Job, "args", "input", "tool")
-			// The arguments' fields are not known until the list is made, so
-			// one read here could be missing every time.
-			for _, read := range machine.ReadsIn(tool.Job.Input, "args") {
-				c.Problem(place+".job", "it reads \"args.%s\"; with list:, the job reads ${args} only whole, since its fields are not known until the run", read.Name)
-			}
+		})
+	}
+	for _, name := range sortedNames(a.Tools) {
+		tool := a.Tools[name]
+		if tool == nil {
+			c.Problem("tools."+name, "a tool needs a job")
 			continue
 		}
-		if tool.Does == "" {
-			c.Problem(place+".does", "a tool says what it does, for the model to choose by")
+		ask, _ := a.askOf(tool.Part)
+		c.Asked(ask, func() { checkTool(c, &a, name, tool) })
+	}
+}
+
+// checkTool reports what is wrong with one tool.
+func checkTool(c *machine.Checker, a *Agent, name string, tool *Tool) {
+	place := tool.place(name)
+	c.Name(place, name)
+	if _, ok := a.Parts[tool.Part]; tool.Part != "" && !ok {
+		c.Problem(place, "the tool is in the part %q, which the agent does not have", tool.Part)
+	}
+	if name == turnJob || name == previewJob {
+		c.Problem(place, "the tool %q has the name of a job the agent itself makes", name)
+	}
+	if tool.Job == nil {
+		c.Problem(place, "a tool needs a job")
+		return
+	}
+	if tool.List != nil {
+		if tool.Does != "" || tool.Args != nil {
+			c.Problem(place, "a tool with list: is given what each tool does and its args by the list, and has no does: or args: of its own")
 		}
-		if _, err := machine.CompileShape(tool.Args); err != nil {
-			c.Problem(place+".args", "%v", err)
-		}
-		c.Job(place+".job", tool.Job, "args", "input")
-		// A job that reads an argument the shape does not name would always
-		// find it missing: the model is never told of it, whatever else the
-		// shape allows.
-		properties, _ := tool.Args["properties"].(map[string]any)
+		c.Job(place+".list", tool.List, "input")
+		c.Job(place+".job", tool.Job, "args", "input", "tool")
+		// The arguments' fields are not known until the list is made, so
+		// one read here could be missing every time.
 		for _, read := range machine.ReadsIn(tool.Job.Input, "args") {
-			if _, named := properties[read.Name]; !named {
-				c.Problem(place+".job", "it reads \"args.%s\", which the tool's args do not name", read.Name)
-			}
+			c.Problem(place+".job", "it reads \"args.%s\"; with list:, the job reads ${args} only whole, since its fields are not known until the run", read.Name)
+		}
+		return
+	}
+	if tool.Does == "" {
+		c.Problem(place+".does", "a tool says what it does, for the model to choose by")
+	}
+	if _, err := machine.CompileShape(tool.Args); err != nil {
+		c.Problem(place+".args", "%v", err)
+	}
+	c.Job(place+".job", tool.Job, "args", "input")
+	// A job that reads an argument the shape does not name would always
+	// find it missing: the model is never told of it, whatever else the
+	// shape allows.
+	properties, _ := tool.Args["properties"].(map[string]any)
+	for _, read := range machine.ReadsIn(tool.Job.Input, "args") {
+		if _, named := properties[read.Name]; !named {
+			c.Problem(place+".job", "it reads \"args.%s\", which the tool's args do not name", read.Name)
 		}
 	}
 }

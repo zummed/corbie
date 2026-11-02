@@ -75,7 +75,7 @@ The detailed rules behind the [Permissions overview](../permission.md). Requirem
 
 **C-perm-12** A job carries its layers apart, each under its name, and the runner adds its own. Nothing is merged or narrowed before the script runs. A merged list cannot say which layer refused, and narrowing one list of patterns by another is where mistakes are made. *Test:* `perm_layers_travel_apart`
 
-**C-perm-23** A machine made while running is always narrowed by the lists on the job that starts it, and with none it is allowed nothing. A script or a model wrote it, and a job allowed nothing could otherwise write a definition that allows everything and have it run. *Test:* `perm_made_machine_gets_only_its_jobs_list`
+**C-perm-23** A machine made while running is always narrowed by the lists on the job that starts it, and with none it is allowed nothing. A script or a model wrote it, and a job allowed nothing could otherwise write a definition that allows everything and have it run. *Test:* `perm_made_machine_gets_only_its_jobs_list` and `perm_definition_stored_as_a_blob_is_checked_and_narrowed`
 
 **C-perm-13** A deny entry that cannot be read refuses everything in its layer. It could have been meant to deny anything. *Test:* `perm_unreadable_deny_refuses_all`
 

@@ -69,5 +69,43 @@ called the tool `title`, whose job is the flow, and in the second it answered.
 As a job the flow keeps its own `allow:` list: the script may still connect
 only to `example.com`.
 
+A statechart sends to a run by its key
+--------------------------------------
+
+    # room.yaml
+    statechart: room
+    initial: open
+    states:
+      open:
+        on:
+          knock: open
+          leave: closed
+      closed: { end: done, output: "${run.key}" }
+
+    # desk.yaml
+    statechart: desk
+    initial: first
+    states:
+      first:
+        entry:
+          send:
+            - { to: { machine: ./room.yaml, key: "room:1" }, event: knock, data: { by: ana } }
+            - { to: { key: "room:1" }, event: leave }
+            - { to: { key: "room:2" }, event: knock }
+        timers: { pause: 1s }
+        on: { pause: last }
+      last: { end: done }
+
+    corbie test desk.yaml --watch
+      step 1  <- start
+      step 1  -> send knock to the key "room:1"
+      step 1  -> send leave to the key "room:1"
+      step 1  -> send knock to the key "room:2" (undelivered: it is not running)
+      step 2  done
+
+The first send finds no run with the key `room:1`, so it starts `room.yaml` with
+that key. The second is delivered to that run. No run has `room:2`, and the
+sender's record says so.
+
 Next: `corbie manual a-real-run` runs `title.yaml` on a controller and a
 runner.

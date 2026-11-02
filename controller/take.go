@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/zummed/corbie/blob"
 	"github.com/zummed/corbie/identity"
 	"github.com/zummed/corbie/instance"
 	"github.com/zummed/corbie/machine"
@@ -36,6 +37,9 @@ type taken struct {
 type dropped struct {
 	a       *arrival
 	receipt *instance.Receipt
+	// move says it is an event sent to a key, which goes on to the run that
+	// has the key.
+	move bool
 }
 
 // The names of what a wake is for.
@@ -57,10 +61,13 @@ type build struct {
 	time time.Time
 
 	out     taken
-	events  []machine.Event   // those for the machine
-	sources []*arrival        // where each came from
-	index   int               // how many messages the step has named
-	held    []*instance.Going // the jobs of this step that wait for the ask
+	events  []machine.Event             // those for the machine
+	sources []*arrival                  // where each came from
+	index   int                         // how many messages the step has named
+	held    []*instance.Going           // the jobs of this step that wait for the ask
+	read    *stepOut                    // what the step read of the definition
+	asks    map[string]*machine.JobSpec // the asks the definition writes, read once a step
+	keys    map[string]string           // the run each key a step sent to goes to
 	// err is the store failing while the step was worked out: the step is
 	// not one that failed, and nothing is written for it.
 	err error
@@ -95,13 +102,16 @@ func (p *pass) take(inst string, latest *instance.Step, waiting []*arrival) (*ta
 
 	if st.Status != instance.Running {
 		for _, a := range waiting {
-			b.refuse(a, "the run has ended (it is %s)", st.Status)
+			switch {
+			case a.isKeyed() && (heard(&st, a) || a.starts(inst)):
+				b.drop(a)
+			case a.isKeyed():
+				b.move(a)
+			default:
+				b.refuse(a, "the run has ended (it is %s)", st.Status)
+			}
 		}
 		return &b.out, nil
-	}
-	var err error
-	if b.def, err = p.definition(b.st); err != nil {
-		return nil, err
 	}
 	for _, a := range waiting {
 		if at := a.time(); a.good(p.now) && at.After(b.time) {
@@ -126,7 +136,13 @@ func (p *pass) take(inst string, latest *instance.Step, waiting []*arrival) (*ta
 		b.out.rest = append(slices.Clone(waiting[:i]), waiting[i+1:]...)
 		return b.done()
 	}
-	for _, a := range waiting {
+	// An event sent to a key is first in its step: nothing before it can end
+	// the run with the event given and not acted on.
+	for i, a := range waiting {
+		if a.isKeyed() && len(b.out.used) > 0 {
+			b.out.rest = waiting[i:]
+			break
+		}
 		if err := b.arrive(a); err != nil {
 			return nil, err
 		}
@@ -264,6 +280,20 @@ func (b *build) arrive(a *arrival) error {
 		}
 	case instance.KindEmit:
 		b.emit(a)
+	case instance.KindKeyed:
+		if a.isKeyed() {
+			b.keyed(a)
+		} else {
+			b.drop(a)
+		}
+	case instance.KindNote:
+		if a.kind != identity.Controller {
+			b.drop(a)
+			return nil
+		}
+		b.use(a)
+		b.record(machine.Event{Name: a.label(), Data: msg.Note}, a, true)
+		b.ask(instance.Ask{Kind: instance.AskNote, Text: msg.Note})
 	default:
 		// A start for an instance that exists, or a kind that is not for a
 		// controller.
@@ -278,6 +308,10 @@ func (b *build) eventFrom(a *arrival) {
 	msg := a.msg
 	if msg.Event == nil || msg.Event.Name == "" {
 		b.refuse(a, "the event has no name")
+		return
+	}
+	if machine.Reserved(msg.Event.Name) {
+		b.refuse(a, "no event can be sent under the name %q, which Corbie gives a machine itself", msg.Event.Name)
 		return
 	}
 	from := ""
@@ -298,18 +332,38 @@ func (b *build) eventFrom(a *arrival) {
 	case a.kind == identity.Controller && msg.From != "" && msg.From == b.st.Above.Parent:
 		// From the parent: the controller may write one of these again
 		// when it repeats a carry-out, and it arrives once.
-		name := a.name[strings.LastIndexByte(a.name, '/')+1:]
-		if name <= b.st.Taken {
+		if !b.hear(a) {
 			b.drop(a)
 			return
 		}
-		b.st.Taken = name
 		from = machine.Parent
 	default:
 		b.refuse(a, "only the client that started a run may send it events")
 		return
 	}
 	b.give(machine.Event{Name: msg.Event.Name, From: from, Data: msg.Event.Data}, a)
+}
+
+// hear says whether a message the controller wrote on behalf of a run is one
+// not taken yet, and notes it: the controller may write one again when it
+// repeats a carry-out, and it arrives once.
+func (b *build) hear(a *arrival) bool {
+	if heard(b.st, a) {
+		return false
+	}
+	b.st.Heard = slices.DeleteFunc(b.st.Heard, func(last instance.Heard) bool { return last.From == a.msg.From })
+	b.st.Heard = append(b.st.Heard, instance.Heard{From: a.msg.From, Message: a.name[strings.LastIndexByte(a.name, '/')+1:]})
+	if len(b.st.Heard) > instance.MaxHeard {
+		b.st.Heard = b.st.Heard[1:]
+	}
+	return true
+}
+
+// heard says whether a message does not sort after the last one taken from
+// its sender.
+func heard(st *instance.State, a *arrival) bool {
+	name := a.name[strings.LastIndexByte(a.name, '/')+1:]
+	return slices.ContainsFunc(st.Heard, func(last instance.Heard) bool { return last.From == a.msg.From && name <= last.Message })
 }
 
 // answer takes an answer to a ticket. The ticket is the authority: any
@@ -380,7 +434,14 @@ func (b *build) result(a *arrival, job *instance.Going, res *instance.Result) {
 	}
 	slices.Sort(b.st.Used)
 	if res.Status == instance.Done {
-		b.settle(job, machine.Event{Name: machine.Done, From: job.Name, Data: res.Output}, a)
+		event := machine.Event{Name: machine.Done, From: job.Name, Data: res.Output}
+		if job.Restart == nil || !job.Restart.Always || job.Name == instance.AskName || !b.mayRestart(job) {
+			b.settle(job, event, a)
+			return
+		}
+		event.From = job.Full()
+		job.Anew = true
+		b.restart(job, event, a)
 		return
 	}
 	e := res.Error
@@ -390,21 +451,81 @@ func (b *build) result(a *arrival, job *instance.Going, res *instance.Result) {
 	if e.Output == nil {
 		e.Output = res.Output
 	}
-	retry := (e.Status == machine.StatusError || e.Status == machine.StatusTimeout) && job.Attempt < job.Attempts && !res.Final
-	if !retry {
+	// Only an error or a timeout restarts a job.
+	again := (e.Status == machine.StatusError || e.Status == machine.StatusTimeout) && job.Restart != nil && !res.Final && b.mayRestart(job)
+	if !again {
 		b.settle(job, machine.Event{Name: machine.Failed, From: job.Name, Data: e.Value()}, a)
 		return
 	}
-	// Only an error or a timeout is tried again, each attempt a little
-	// later than the last.
+	b.restart(job, machine.Event{Name: machine.Failed, From: job.Full(), Data: e.Value()}, a)
+}
+
+// mayRestart says whether a job's limit leaves it a restart.
+func (b *build) mayRestart(job *instance.Going) bool {
+	r := job.Restart
+	if r.Limit == 0 {
+		return true
+	}
+	if r.Within == 0 {
+		return job.Restarts < r.Limit
+	}
+	job.Restarted = slices.DeleteFunc(job.Restarted, func(at time.Time) bool { return b.time.Sub(at) >= time.Duration(r.Within) })
+	return len(job.Restarted) < r.Limit
+}
+
+// restart takes the end of a job that runs again. The machine is not
+// consulted: the step is the controller's own, and the event is only recorded.
+func (b *build) restart(job *instance.Going, event machine.Event, a *arrival) {
 	b.use(a)
-	b.record(machine.Event{Name: machine.Failed, From: job.Full(), Data: e.Value()}, a, true)
+	b.record(event, a, true)
 	b.unwakeJob(job)
-	job.Attempt++
+	b.forgetEmitted(job)
+	if !job.Anew {
+		job.Attempt++
+	}
+	job.Restarts++
+	if job.Restart.Within > 0 {
+		job.Restarted = append(job.Restarted, b.time)
+	}
+	var wait time.Duration
+	wait, job.Doubled = job.Restart.Wait(job.Doubled, b.time.Sub(job.Began))
 	job.Runner, job.Child, job.Due = "", "", noEnd
-	job.Again = b.time.Add(time.Second << min(job.Attempt-2, 8))
+	job.Again = b.time.Add(wait)
 	job.Wake = b.wakeFor(wakeAgain, job.Key())
 	b.ask(instance.Ask{Kind: instance.AskWake, At: job.Again, What: job.Wake})
+}
+
+// renew starts a job that ended well as a new job. The machine takes no step
+// here, so what a step would have read is read for it. An expression of a
+// machine made while running is never evaluated in the controller, and such a
+// machine's jobs go only to an ask above it, which needs none of this.
+func (b *build) renew(job *instance.Going) {
+	var err error
+	if b.def == nil {
+		if b.def, err = b.p.definition(b.st); err != nil {
+			if !errorsIs(err, machine.ErrDefinition) {
+				b.err = err
+				return
+			}
+			b.breach(nil, b.p.failf("%v", err))
+			return
+		}
+	}
+	if b.read == nil {
+		b.read = &stepOut{}
+		if !b.st.Above.Made {
+			if b.read.Allow, err = b.definitionAllow(); err != nil {
+				b.read.Unfilled = err.Error()
+			}
+		}
+	}
+	if err = b.begin(&job.Job, job); err != nil {
+		b.err = err
+		return
+	}
+	if len(b.held) > 0 && b.st.Status == instance.Running {
+		b.startAsk()
+	}
 }
 
 // settle gives the machine a job's final outcome. The outcome of the ask
@@ -422,6 +543,12 @@ func (b *build) settle(job *instance.Going, event machine.Event, a *arrival) {
 // forget takes a job out of what the instance waits on.
 func (b *build) forget(job *instance.Going) {
 	delete(b.st.Jobs, job.Key())
+	b.forgetEmitted(job)
+}
+
+// forgetEmitted lets the next attempt's values count from the start, so each
+// is delivered.
+func (b *build) forgetEmitted(job *instance.Going) {
 	for key := range b.st.Emitted {
 		if strings.HasPrefix(key, job.Name+"\x00") {
 			delete(b.st.Emitted, key)
@@ -470,6 +597,10 @@ func (b *build) emit(a *arrival) {
 		b.refuse(a, "an emitted value comes from the runner its job was sent to")
 		return
 	}
+	if machine.Reserved(note.Name) {
+		b.drop(a)
+		return
+	}
 	key := job.Name + "\x00" + note.Name
 	if note.Index <= b.st.Emitted[key] {
 		b.drop(a)
@@ -510,7 +641,11 @@ func (b *build) wake(a *arrival) {
 			b.use(a)
 			b.record(machine.Event{Name: "again", From: job.Full()}, a, true)
 			job.Again, job.Wake = noEnd, ""
-			b.launch(job)
+			if job.Anew {
+				b.renew(job)
+			} else {
+				b.launch(job)
+			}
 			return
 		}
 	}
@@ -530,44 +665,182 @@ func timeout(job *instance.Going) machine.Duration {
 	return machine.DefaultTimeout
 }
 
-// machine gives the machine its events and applies what it asks for. If
-// the step itself fails, the instance fails.
+// machine gives the machine its events. Each client's event is then
+// answered: the machine acted on it, or had no rule for it. Its receipt
+// stands before what the step asked for.
 func (b *build) machine() error {
-	t, ok := machine.TypeOf(b.def.Type)
-	if !ok {
-		b.end(instance.Failed, nil, b.p.failf("%q is not a type of machine this controller knows", b.def.Type))
-		return nil
-	}
-	out, err := t.Step(&machine.StepIn{Definition: b.def, State: b.st.Inner, Events: b.events, Input: b.st.Input,
-		Time: b.time, Seed: b.seed("step", fmt.Sprint(b.step.Number))})
+	at := len(b.step.Asks)
+	ignored, stepped, err := b.consult()
 	if err != nil {
-		b.end(instance.Failed, nil, b.p.failf("%v", err))
-		return nil
-	}
-	if b.st.Inner, err = json.Marshal(out.State, json.Deterministic(true)); err != nil {
 		return err
 	}
-	// Each client's event is answered: the machine acted on it, or had no
-	// rule for it.
+	var receipts []instance.Ask
 	for i, a := range b.sources {
 		if a.wake || a.kind != identity.Client {
 			continue
 		}
 		receipt := &instance.Receipt{Taken: true}
-		if a.msg.Kind == instance.KindEvent {
-			acted := !slices.Contains(out.Ignored, i)
+		if a.msg.Kind == instance.KindEvent && stepped {
+			acted := !slices.Contains(ignored, i)
 			receipt.Acted = &acted
 		}
-		b.ask(instance.Ask{Kind: instance.AskReceipt, Sender: a.sender, Message: a.name, Receipt: receipt})
+		receipts = append(receipts, instance.Ask{Kind: instance.AskReceipt, Sender: a.sender, Message: a.name, Receipt: receipt})
 	}
-	if err := b.apply(out.Requests); err != nil {
-		return err
+	b.step.Asks = slices.Insert(b.step.Asks, min(at, len(b.step.Asks)), receipts...)
+	return nil
+}
+
+// consult gives the machine its events and applies what it asks for. If
+// the step itself fails, the instance fails, and stepped is false. ignored
+// lists the events the machine had no rule for.
+func (b *build) consult() (ignored []int, stepped bool, err error) {
+	if b.def == nil {
+		if b.def, err = b.p.definition(b.st); err != nil {
+			if !errorsIs(err, machine.ErrDefinition) {
+				return nil, false, err
+			}
+			b.breach(nil, b.p.failf("%v", err))
+			return nil, false, nil
+		}
+	}
+	read, err := b.readStep(nil, nil)
+	if err != nil || read == nil {
+		return nil, false, err
+	}
+	return b.follow(read)
+}
+
+// readStep gives what a step reads of a definition: in a process of its own
+// for a machine made while running and, after its first step, which holds
+// nothing from outside, for one that takes shapes from outside; here for any
+// other. s and start are the start of an instance's first step. It gives
+// nothing where the machine ended instead.
+func (b *build) readStep(s *instance.Start, start *arrival) (*stepOut, error) {
+	if b.st.Above.Made || s == nil && machine.Lists(b.def) {
+		return b.apart(s, start)
+	}
+	return b.readDefinition(s), nil
+}
+
+// readDefinition is the part of a step that reads the definition: everything
+// that compiles or evaluates. What it gives is a function of the definition,
+// the state and the events. s is the start of an instance's first step.
+func (b *build) readDefinition(s *instance.Start) *stepOut {
+	st, read := b.st, &stepOut{}
+	if s != nil {
+		problems, needsAsk := machine.Check(b.def)
+		// A machine made while running has no ask of its own, and its author
+		// is told so. Nothing it wrote of one is kept either way.
+		if st.Above.Made && (b.def.Ask != nil || len(machine.Asks(b.def)) > 0) {
+			problems = append(problems, machine.Problem{Text: "a machine made while running has no ask of its own: take out its `ask:`, and what it holds goes to the ask above it"})
+		}
+		// What a machine made while running holds is denied when it is held:
+		// its definition's ask is not one that applies.
+		if len(problems) == 0 && needsAsk && !st.Above.Made && st.Ask == nil && st.Above.Ask == nil {
+			problems = machine.Problems{{Text: "a job is marked for approval, or a permission is listed to be asked about, and no ask applies: neither this definition nor any machine above it has one"}}
+		}
+		if read.Problems = problems; len(problems) > 0 {
+			return read
+		}
+		// The input the machine is started with has its defaults filled in.
+		var err error
+		st.Input, err = machine.Input(b.def, s.Input)
+		read.Input = st.Input
+		if err != nil {
+			read.Failure = err.Error()
+			return read
+		}
+		read.Limit, err = machine.NewEvaluator(b.time, b.seed("timeout"), b.run()).Duration(b.def.Timeout, machine.Scope{"input": st.Input}, "limits.timeout")
+		if err != nil {
+			read.Failure = err.Error()
+			return read
+		}
+		b.events = append([]machine.Event{{Name: machine.Start, Data: st.Input}}, b.events...)
+	}
+	t, ok := machine.TypeOf(b.def.Type)
+	if !ok {
+		read.Failure = fmt.Sprintf("%q is not a type of machine this controller knows", b.def.Type)
+		return read
+	}
+	out, err := t.Step(&machine.StepIn{Definition: b.def, State: st.Inner, Events: b.events, Input: st.Input,
+		Run: b.run(), Time: b.time, Seed: b.seed("step", fmt.Sprint(b.step.Number))})
+	if err != nil {
+		read.Failure = err.Error()
+		return read
+	}
+	if read.Inner, err = json.Marshal(out.State, json.Deterministic(true)); err != nil {
+		read.Failure = err.Error()
+		return read
+	}
+	read.Requests, read.Ignored = out.Requests, out.Ignored
+	b.readAllow(read)
+	return read
+}
+
+// run is what an expression reads of the instance.
+func (b *build) run() machine.Run {
+	return machine.Run{ID: b.inst, Key: b.st.Key, Context: b.st.Above.Context}
+}
+
+// readAllow fills in the allow list written for the whole definition, for
+// the scripts of a step and for an ask of the machine's own.
+func (b *build) readAllow(read *stepOut) {
+	if !slices.ContainsFunc(read.Requests, func(r machine.Request) bool { return r.Job != nil }) {
+		return
+	}
+	var err error
+	if read.Allow, err = b.definitionAllow(); err != nil {
+		read.Unfilled = err.Error()
+	}
+}
+
+// fill fills in an ask, here, from the input of the machine that declares it.
+func (b *build) fill(spec *machine.JobSpec, input any, at string) (*machine.Job, error) {
+	eval := machine.NewEvaluator(b.time, b.seed("ask", fmt.Sprint(b.step.Number), at), b.run())
+	return spec.Fill(eval, machine.Scope{"input": input}, at, instance.AskName)
+}
+
+// askOf says which ask a held job goes to: the ask it carries or, with none,
+// the machine's own or the nearest one above it. above says it is one above.
+func (b *build) askOf(job *machine.Job) (spec *machine.JobSpec, input any, at string, above bool) {
+	spec, input, at = job.Ask, b.st.Input, job.AskAt
+	if spec == nil {
+		spec, at = b.st.Ask, instance.AskName
+	}
+	if spec == nil && b.st.Above.Ask != nil {
+		spec, input, at, above = b.st.Above.Ask.Spec, b.st.Above.Ask.Input, b.st.Above.Ask.At, true
+	}
+	return spec, input, at, above
+}
+
+// askAt gives the ask a definition writes at a place. A machine made while
+// running has none of its own, and nothing of its definition is read for one.
+func (b *build) askAt(at string) *machine.JobSpec {
+	if at == "" || b.st.Above.Made {
+		return nil
+	}
+	if b.asks == nil {
+		b.asks = machine.Asks(b.def)
+	}
+	return b.asks[at]
+}
+
+// follow does what a step read: the machine's state is the one it read, and
+// what the machine asked for is taken as any machine's is.
+func (b *build) follow(read *stepOut) (ignored []int, stepped bool, err error) {
+	if read.Failure != "" {
+		b.end(instance.Failed, nil, b.p.failf("%s", read.Failure))
+		return nil, false, nil
+	}
+	b.read, b.st.Inner = read, read.Inner
+	if err := b.apply(read.Requests); err != nil {
+		return nil, false, err
 	}
 	// The jobs of one step that need approval go to the ask together.
 	if len(b.held) > 0 && b.st.Status == instance.Running {
-		return b.startAsk()
+		b.startAsk()
 	}
-	return nil
+	return read.Ignored, true, nil
 }
 
 // seed gives a secret that follows from the instance's own and from what
@@ -594,6 +867,13 @@ func (b *build) message(what string) string {
 
 // apply turns what a machine asked for into what the controller will do.
 func (b *build) apply(requests []machine.Request) error {
+	if b.st.Above.Made && slices.ContainsFunc(requests, usesKey) {
+		b.end(instance.Failed, nil, b.p.failf("a machine made while running sends to no key and gives no job a key"))
+		return nil
+	}
+	if err := b.readKeys(requests); err != nil {
+		return err
+	}
 	// A send to a child waits until the step's jobs have been taken: one
 	// made on entering a state, to that state's own child, is for the child
 	// the same step starts.
@@ -663,7 +943,12 @@ func (b *build) apply(requests []machine.Request) error {
 
 // start takes a machine's request for a job: it is counted against the
 // instance's limits and then launched.
-func (b *build) start(req *machine.Job) error {
+func (b *build) start(req *machine.Job) error { return b.begin(req, nil) }
+
+// begin starts a job. earlier is the job it follows, for one restarted after it
+// ended well: the job is new, with what its limit and its delay have counted so
+// far, and its lists were joined to the definition's when it first started.
+func (b *build) begin(req *machine.Job, earlier *instance.Going) error {
 	if old, ok := b.st.Jobs[req.Name]; ok {
 		b.cancel(old)
 		b.unwakeJob(old)
@@ -674,7 +959,12 @@ func (b *build) start(req *machine.Job) error {
 	}
 	b.st.Asked[req.Name]++
 	job := &instance.Going{Job: *req, Asked: b.st.Asked[req.Name], Attempt: 1}
-	job.Attempts = max(job.Attempts, 1)
+	if earlier != nil {
+		job.Restarts, job.Restarted, job.Doubled = earlier.Restarts, earlier.Restarted, earlier.Doubled
+	}
+	// Where a job is, whether it is an ask from above, and what is written
+	// at the place its ask is, the controller says.
+	job.Found, job.Above, job.Ask = nil, false, b.askAt(job.AskAt)
 	// The job's permissions are the lists written for the whole definition
 	// and, with them, those written for the job.
 	if b.st.Jobs == nil {
@@ -682,18 +972,22 @@ func (b *build) start(req *machine.Job) error {
 	}
 	b.st.Jobs[job.Name] = job
 	b.st.JobsStarted++
-	if !job.Alone && !job.IsMachine() {
+	if !job.Alone && !job.IsMachine() && earlier == nil {
 		// The lists written for the whole definition are for the scripts
 		// it runs. A machine it starts has its own.
-		allow, err := b.definitionAllow()
-		if err != nil {
+		if b.read.Unfilled != "" {
 			// A scope that cannot be filled fails the job before anything
 			// is sent.
-			b.fail(job, "%v", err)
+			b.fail(job, "%s", b.read.Unfilled)
 			return nil
 		}
-		job.Allow = append(allow, job.Allow...)
+		job.Allow = append(slices.Clone(b.read.Allow), job.Allow...)
 		job.Deny = append(slices.Clone(b.def.Deny), job.Deny...)
+	}
+	var err error
+	if job.Found, err = found(&job.Job, b.def, b.st.Definition); err != nil {
+		b.fail(job, "%v", err)
+		return nil
 	}
 	switch {
 	case b.def.Jobs > 0 && b.st.JobsStarted > b.def.Jobs:
@@ -712,11 +1006,45 @@ func (b *build) start(req *machine.Job) error {
 	return nil
 }
 
+// found says where a job's script or machine is, in the definition that
+// holds the job or in the store where the job's expression gave it.
+func found(job *machine.Job, def *machine.Definition, beside blob.Ref) (*machine.Found, error) {
+	at := &machine.Found{In: def.Name}
+	if stored, ok := blob.AsRef(job.Stored); ok {
+		at.Blob = stored
+		return at, nil
+	}
+	if job.Machine != "" {
+		ref, ok := def.Machines[job.Machine]
+		if !ok {
+			return nil, fmt.Errorf("the machine %q is not among those the definition holds", job.Machine)
+		}
+		at.Blob = beside.Beside(ref)
+		return at, nil
+	}
+	ref, ok := def.Scripts[job.Script]
+	if !ok {
+		return nil, fmt.Errorf("the script %s is not among those the definition holds", job.Script)
+	}
+	at.Blob = beside.Beside(ref)
+	for _, file := range job.Files {
+		ref, ok := def.Scripts[file]
+		if !ok {
+			return nil, fmt.Errorf("the file %q is not among those the definition holds", file)
+		}
+		if at.Files == nil {
+			at.Files = map[string]blob.Ref{}
+		}
+		at.Files[file] = beside.Beside(ref)
+	}
+	return at, nil
+}
+
 // definitionAllow gives the allow list written for the whole definition,
 // its scopes filled from the instance's input.
 func (b *build) definitionAllow() ([]string, error) {
 	var allow []string
-	eval := machine.NewEvaluator(b.time, b.seed("allow"))
+	eval := machine.NewEvaluator(b.time, b.seed("allow"), b.run())
 	for i, entry := range b.def.Allow {
 		filled, err := eval.Entry(entry, machine.Scope{"input": b.st.Input}, fmt.Sprintf("allow[%d]", i))
 		if err != nil {
@@ -739,7 +1067,14 @@ func (b *build) fail(job *instance.Going, format string, args ...any) {
 // child of the controller's.
 func (b *build) launch(job *instance.Going) {
 	full := job.Full()
+	job.Began = b.time
 	if job.IsMachine() {
+		if key := job.RunKey; key != nil {
+			if err := machine.CheckKey(*key); err != nil {
+				b.fail(job, "%v", err)
+				return
+			}
+		}
 		job.Child = store.ChildInstance(b.inst, b.time, full)
 		b.ask(instance.Ask{Kind: instance.AskChild, Name: full, Job: &job.Job, Attempt: job.Attempt, Child: job.Child,
 			Message: b.message("start")})
@@ -799,17 +1134,21 @@ func (b *build) cancel(job *instance.Going) {
 	switch {
 	case job.Runner != "":
 		b.ask(instance.Ask{Kind: instance.AskCancel, Name: job.Full(), Runner: job.Runner, At: job.Due,
-			Message: store.JobMessage(b.inst, job.Full()) + ".cancel"})
+			Message: store.JobMessage(b.inst, job.Full()) + cancelSuffix})
 	case job.Child != "":
 		b.ask(instance.Ask{Kind: instance.AskCancel, Name: job.Full(), Child: job.Child, Message: b.message("cancel")})
 	}
 }
 
-// send takes a machine's request to send an event: up to its parent, or
-// down to a child. A root's parent is its client, and what a root sends up
-// is only written in its record. An event for a child that is not running
-// is noted as undelivered and fails nothing.
+// send takes a machine's request to send an event: up to its parent, down
+// to a child, or to a key. A root's parent is its client, and what a root
+// sends up is only written in its record. An event for a child that is not
+// running is noted as undelivered and fails nothing.
 func (b *build) send(s *machine.Send) {
+	if s.Key != nil {
+		b.sendToKey(s)
+		return
+	}
 	event := &machine.Event{Name: s.Event, Data: s.Data}
 	if s.To == machine.Parent {
 		ask := instance.Ask{Kind: instance.AskEvent, Event: event}
@@ -846,11 +1185,17 @@ func (b *build) end(status string, output any, e *machine.Error) {
 	st.Jobs, st.Timers, st.Tickets, st.Emitted = nil, nil, nil, nil
 	// When its keep has passed, the instance is due to be removed: a moment
 	// sooner for each machine above it, so that what is below is due first.
-	gone := b.time.Add(b.p.keepFor(b.def, &b.st.Above) - time.Duration(st.Above.Depth)*time.Millisecond)
+	gone := b.time.Add(time.Duration(st.Keep) - time.Duration(st.Above.Depth)*time.Millisecond)
 	b.ask(instance.Ask{Kind: instance.AskWake, At: gone, What: wakeRemove})
 	if st.Above.Parent != "" {
 		b.ask(instance.Ask{Kind: instance.AskEnd, To: st.Above.Parent, Name: st.Above.Job, Output: output, Error: e,
 			Message: b.message("result")})
+	}
+	// A run that a send started and that fails as it starts is that send's
+	// failure.
+	if st.Above.StartedBy != "" && status == instance.Failed && b.step.Number == 1 {
+		b.ask(instance.Ask{Kind: instance.AskTell, To: st.Above.StartedBy, Message: b.message("tell"),
+			Text: fmt.Sprintf("the run %s, started for the key %q, failed as it started: %s", b.inst, st.Key, e.Error)})
 	}
 }
 
@@ -882,7 +1227,7 @@ func (p *pass) begin(inst string, waiting []*arrival) (*taken, error) {
 	b := &build{p: p, inst: inst, st: &instance.State{}, step: &instance.Step{Number: 1}}
 	var start *arrival
 	for _, a := range waiting {
-		if !a.wake && a.msg.Kind == instance.KindStart && a.msg.Start != nil && start == nil {
+		if a.starts(inst) && start == nil {
 			start = a
 			continue
 		}
@@ -890,14 +1235,22 @@ func (p *pass) begin(inst string, waiting []*arrival) (*taken, error) {
 	}
 	if start == nil {
 		// Nothing will ever take a message or a wake for an instance that
-		// does not exist.
+		// does not exist, but an event sent to a key goes on.
 		b.out.rest = nil
 		for _, a := range waiting {
-			b.refuse(a, "there is no such run")
+			if a.isKeyed() {
+				b.move(a)
+			} else {
+				b.refuse(a, "there is no such run")
+			}
 		}
 		return &b.out, nil
 	}
 	s, above := start.msg.Start, instance.Above{}
+	badKey := error(nil)
+	if s.Key != "" {
+		badKey = machine.CheckKey(s.Key)
+	}
 	switch {
 	case !start.good(p.now):
 		b.refuse(start, "the start came too late: it was good until %s, and the run was never taken up", start.until.Format(time.RFC3339))
@@ -905,49 +1258,108 @@ func (p *pass) begin(inst string, waiting []*arrival) (*taken, error) {
 	case start.kind == identity.Client && (start.sender != store.InstanceClient(inst) || s.Above != nil):
 		b.refuse(start, "a run's name begins with the name of the client that starts it")
 		return &b.out, nil
+	case start.kind == identity.Client && !strings.HasPrefix(s.Definition.At, store.Blob(p.ctl, inst, "")):
+		b.refuse(start, "a client starts a run from a definition in that run's own record")
+		return &b.out, nil
+	case start.kind == identity.Client && badKey != nil:
+		b.refuse(start, "%v", badKey)
+		return &b.out, nil
 	case start.kind == identity.Controller && s.Above != nil:
 		above = *s.Above
 	case start.kind != identity.Client:
 		b.drop(start)
 		return &b.out, nil
 	}
+	if start.kind == identity.Client {
+		// Set here, since the first step's expressions read it.
+		above.Context = s.Context
+	}
 	b.time = start.sent
 	b.step.Time = b.time
 	st := b.st
-	st.Status, st.Started, st.Definition, st.Input, st.Labels, st.Seed, st.Above = instance.Running, b.time, s.Definition, s.Input, s.Labels, s.Seed, above
+	st.Status, st.Started, st.Definition, st.Input, st.Labels, st.Seed, st.Above, st.Key = instance.Running, b.time, s.Definition, s.Input, s.Labels, s.Seed, above, s.Key
+	if start.isKeyed() {
+		// The data of the event is the run's input, and the event its first
+		// after its start.
+		copied := *s
+		s, copied.Input = &copied, start.msg.Event.Data
+		st.Input = s.Input
+		b.events = []machine.Event{{Name: start.msg.Event.Name, From: start.msg.From, Data: start.msg.Event.Data}}
+		b.hear(start)
+	}
+	refused, err := b.first(s, start)
+	if err != nil {
+		return nil, err
+	}
+	if refused {
+		return &b.out, nil
+	}
+	return b.done()
+}
+
+// first takes the first step of an instance from the point where its
+// definition is read, and says whether a client's start was refused before
+// any instance exists.
+func (b *build) first(s *instance.Start, start *arrival) (refused bool, err error) {
+	p, st := b.p, b.st
 
 	// The controller checks the definition again with the same code as the
 	// client: it does not take a client's word.
-	def, err := machine.Load(p.ctx, p.store, s.Definition)
-	var problems machine.Problems
-	needsAsk := false
+	def, err := p.definitionAt(s.Definition)
+	read := &stepOut{}
 	switch {
 	case err == nil:
-		problems, needsAsk = machine.Check(def)
 	case errorsIs(err, machine.ErrDefinition):
-		problems = machine.Problems{{Text: err.Error()}}
+		read.Problems = machine.Problems{{Text: err.Error()}}
 		def = &machine.Definition{}
 	default:
-		return nil, err
+		return false, err
 	}
 	b.def = def
 	st.Machine, st.Type = def.Name, def.Type
-	if len(problems) == 0 && needsAsk && def.Ask == nil && above.Ask == nil {
-		problems = machine.Problems{{Text: "a job is marked for approval, or a permission is listed to be asked about, and no ask applies: neither this definition nor any machine above it has one"}}
+	// A machine made while running has no ask of its own, and what it wrote
+	// of one is not kept.
+	if !st.Above.Made {
+		st.Ask = def.Ask
 	}
+	st.Keep = machine.Duration(p.keepFor(def, &st.Above))
+	st.Above.AskAbout = append(slices.Clone(st.Above.AskAbout), def.AskAbout...)
+	if len(read.Problems) == 0 {
+		if read, err = b.readStep(s, start); err != nil || read == nil {
+			return false, err
+		}
+	}
+	problems := read.Problems
 	if len(problems) > 0 && start.kind == identity.Client {
 		// Refused before any instance exists.
 		b.out.dropped = append(b.out.dropped, dropped{a: start, receipt: &instance.Receipt{
 			Refused: "the definition did not pass its check", Problems: problems}})
-		return &b.out, nil
+		return true, nil
 	}
-	// The input the machine is started with has its defaults filled in.
-	var inputErr error
 	if len(problems) == 0 {
-		st.Input, inputErr = machine.Input(def, s.Input)
+		st.Input = read.Input
+	}
+	// The key is taken before the step is written, so a run that loses it
+	// has done nothing.
+	inUse := ""
+	if s.Key != "" {
+		if inUse, err = p.claim(b.inst, s.Key, start.name); err != nil {
+			return false, err
+		}
+	}
+	switch {
+	case inUse != "" && start.kind == identity.Client:
+		b.refuse(start, "the key %q is in use by the run %s", s.Key, inUse)
+		return true, nil
+	case inUse != "" && start.isKeyed():
+		b.move(start)
+		return true, nil
 	}
 	b.use(start)
 	b.record(machine.Event{Name: machine.Start, Data: st.Input}, start, false)
+	if start.isKeyed() {
+		b.record(machine.Event{Name: start.msg.Event.Name, From: start.msg.From, Data: start.msg.Event.Data}, start, false)
+	}
 	if start.kind == identity.Client {
 		b.ask(instance.Ask{Kind: instance.AskReceipt, Sender: start.sender, Message: start.name, Receipt: &instance.Receipt{Taken: true}})
 		st.Above.MaxDepth = machine.DefaultDepth
@@ -962,22 +1374,21 @@ func (p *pass) begin(inst string, waiting []*arrival) (*taken, error) {
 		}
 		st.Above.Secrets = s.Secrets
 	}
-	st.Above.AskAbout = append(slices.Clone(st.Above.AskAbout), def.AskAbout...)
 	if len(problems) > 0 {
 		b.end(instance.Failed, nil, b.p.failf("the definition did not pass its check: %s", strings.ReplaceAll(problems.Error(), "\n", "; ")))
-		return b.done()
+		return false, nil
 	}
-	if inputErr != nil {
-		b.end(instance.Failed, nil, b.p.failf("%v", inputErr))
-		return b.done()
+	if inUse != "" {
+		b.end(instance.Failed, nil, b.p.failf("the key %q is in use by the run %s", s.Key, inUse))
+		return false, nil
+	}
+	if read.Failure != "" {
+		_, _, err = b.follow(read)
+		return false, err
 	}
 	// Its older history is trimmed as it runs, a keep at a time.
-	b.ask(instance.Ask{Kind: instance.AskWake, At: b.time.Add(p.keepFor(def, &st.Above)), What: wakeTrim})
-	limit, err := machine.NewEvaluator(b.time, b.seed("timeout")).Duration(def.Timeout, machine.Scope{"input": st.Input}, "limits.timeout")
-	if err != nil {
-		b.end(instance.Failed, nil, b.p.failf("%v", err))
-		return b.done()
-	}
+	b.ask(instance.Ask{Kind: instance.AskWake, At: b.time.Add(time.Duration(st.Keep)), What: wakeTrim})
+	limit := read.Limit
 	if s.Timeout > 0 && (limit == 0 || s.Timeout < limit) {
 		limit = s.Timeout
 	}
@@ -985,12 +1396,8 @@ func (p *pass) begin(inst string, waiting []*arrival) (*taken, error) {
 		st.TimeoutAt = b.time.Add(time.Duration(limit))
 		b.ask(instance.Ask{Kind: instance.AskWake, At: st.TimeoutAt, What: wakeTimeout})
 	}
-	b.events = []machine.Event{{Name: machine.Start, Data: st.Input}}
-	b.sources = []*arrival{{wake: true}}
-	if err := b.machine(); err != nil {
-		return nil, err
-	}
-	return b.done()
+	_, _, err = b.follow(read)
+	return false, err
 }
 
 // holds says whether a job waits for a yes before it starts: it is marked
@@ -1001,12 +1408,29 @@ func (b *build) holds(job *instance.Going) bool {
 	return job.Approve || permission.Declares(job.Allow, b.st.Above.AskAbout)
 }
 
-// startAsk starts the ask once for the jobs this step held. The ask is
-// the machine's own, or the nearest one above it; its values are filled
-// from the input of the machine that declares it.
-func (b *build) startAsk() error {
-	held := b.held
+// startAsk starts each ask once for the jobs this step held that go to
+// it. The asks start in the order their first job was held.
+func (b *build) startAsk() {
+	var places []string
+	held := map[string][]*instance.Going{}
+	for _, job := range b.held {
+		_, _, at, _ := b.askOf(&job.Job)
+		if _, seen := held[at]; !seen {
+			places = append(places, at)
+		}
+		held[at] = append(held[at], job)
+	}
 	b.held = nil
+	for _, at := range places {
+		b.startOneAsk(held[at])
+	}
+}
+
+// startOneAsk starts an ask for the jobs that go to it: the ask they carry
+// or, with none, the machine's own or the nearest one above it. It is
+// filled once, from the input of the machine that declares it. An ask that
+// cannot be filled denies the jobs, with a note that names the fault.
+func (b *build) startOneAsk(held []*instance.Going) {
 	deny := func(format string, args ...any) {
 		for _, job := range held {
 			job.Held = false
@@ -1014,23 +1438,37 @@ func (b *build) startAsk() error {
 				Error: &machine.Error{Status: machine.StatusDenied, Error: fmt.Sprintf(format, args...)}})
 		}
 	}
-	spec, input := b.def.Ask, b.st.Input
-	if spec == nil && b.st.Above.Ask != nil {
-		above, err := b.p.definitionAt(b.st.Above.Ask.Definition)
-		if err != nil {
-			return err
-		}
-		spec, input = above.Ask, b.st.Above.Ask.Input
-	}
-	if spec == nil {
+	spec, input, at, above := b.askOf(&held[0].Job)
+	switch {
+	case spec == nil && b.st.Above.Made:
+		deny("the job needs approval and no ask applies: a machine made while running uses only an ask above it, and none is above it")
+		return
+	case spec == nil:
 		deny("the job needs approval and no ask applies: neither this machine nor any above it has one")
-		return nil
+		return
 	}
-	eval := machine.NewEvaluator(b.time, b.seed("ask", fmt.Sprint(b.step.Number)))
-	filled, err := spec.Fill(eval, machine.Scope{"input": input}, instance.AskName, instance.AskName)
+	filled, err := b.fill(spec, input, at)
 	if err != nil {
 		deny("the ask could not be started: %v", err)
-		return nil
+		return
+	}
+	filled.Name, filled.Above = instance.AskName, above
+	// An ask taken from above is held in the definition that declares it.
+	def, beside := b.def, b.st.Definition
+	if above {
+		beside = b.st.Above.Ask.Definition
+		if def, err = b.p.definitionAt(beside); err != nil {
+			if !errorsIs(err, machine.ErrDefinition) {
+				b.err = err
+				return
+			}
+			deny("the ask could not be started: %v", err)
+			return
+		}
+	}
+	if filled.Found, err = found(filled, def, beside); err != nil {
+		deny("the ask could not be started: %v", err)
+		return
 	}
 	// The ask is told which machine is asking and, for each job, what it
 	// is and what input it would get.
@@ -1055,14 +1493,13 @@ func (b *build) startAsk() error {
 		jobs = append(jobs, what)
 		names = append(names, job.Key())
 	}
-	if b.def.Ask != nil && !filled.IsMachine() {
+	if !above && !filled.IsMachine() {
 		// A script of the definition has the lists written for the whole of it.
-		allow, err := b.definitionAllow()
-		if err != nil {
-			deny("the ask could not be started: %v", err)
-			return nil
+		if b.read.Unfilled != "" {
+			deny("the ask could not be started: %s", b.read.Unfilled)
+			return
 		}
-		filled.Allow = append(allow, filled.Allow...)
+		filled.Allow = append(slices.Clone(b.read.Allow), filled.Allow...)
 		filled.Deny = append(slices.Clone(b.def.Deny), filled.Deny...)
 	}
 	told["asking"] = map[string]any{"machine": b.st.Machine, "instance": b.inst}
@@ -1070,14 +1507,12 @@ func (b *build) startAsk() error {
 	filled.Input = told
 	b.st.Asked[instance.AskName]++
 	ask := &instance.Going{Job: *filled, Asked: b.st.Asked[instance.AskName], Attempt: 1, ForAsk: names}
-	ask.Attempts = max(ask.Attempts, 1)
 	b.st.Jobs[ask.Key()] = ask
 	if ask.IsMachine() && b.st.Above.Depth+1 > b.st.Above.MaxDepth {
 		b.fail(ask, "depth limit reached: a root may have %d levels of machines below it", b.st.Above.MaxDepth)
-		return nil
+		return
 	}
 	b.launch(ask)
-	return nil
 }
 
 func toList(texts []string) []any {

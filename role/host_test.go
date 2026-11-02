@@ -430,6 +430,35 @@ func Test_role_minute_call_takes_waiting_messages(t *testing.T) {
 	}
 }
 
+// A step of a machine made while running is taken in a process the copy
+// starts, as a job is: on a host, a machine goes on as any other, and one
+// past a limit fails with nothing left running.
+func Test_role_made_step_on_a_host(t *testing.T) {
+	const maker = `
+		flow: maker
+		input: { text: any }
+		stages:
+		  make: { job: { script: ./make.js, input: { text: "${input.text}" } } }
+		  go: { job: { machine: "${stages.make.output}" } }
+		output: ${stages.go.output}
+	`
+	files := map[string]string{"make.js": `return machines.define(input.text, { files: { "./step.js": "return 7" } })`}
+	for output, status := range map[string]string{"${stages.a.output}": "done", "${'a'.repeat(2**40)}": "failed"} {
+		w := newWorld(t)
+		run := w.submit(maker, files, map[string]any{"text": "flow: m\nstages:\n  a: { job: ./step.js }\noutput: " + output + "\n"})
+		for range 6 {
+			w.h.call("ctl", w.controller)
+			w.h.call("r1", w.runner)
+		}
+		if head := w.head(run); head == nil || head.Status != status {
+			t.Fatalf("with the output %s the run is %+v", output, head)
+		}
+		if left := w.waiting(); len(left) != 0 || w.h.worked() != 0 || w.h.killed() != 0 {
+			t.Fatalf("left waiting: %v; %d copies worked on after answering, and %d were killed", left, w.h.worked(), w.h.killed())
+		}
+	}
+}
+
 // oneJob is a run of one job, whose script notes on the test's disk each
 // time it runs, and emits a value.
 const oneJob = `

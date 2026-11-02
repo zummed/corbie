@@ -36,15 +36,18 @@ type Head struct {
 	Type    string `json:"type"`
 	Status  string `json:"status"`
 	// Failure says how a failed instance failed: error, timeout or denied.
-	Failure string            `json:"failure,omitzero"`
-	Step    int               `json:"step"`
-	Started time.Time         `json:"started"`
-	Ended   time.Time         `json:"ended,omitzero"`
-	Parent  string            `json:"parent,omitzero"`
-	Jobs    int               `json:"jobs,omitzero"`
-	Timers  int               `json:"timers,omitzero"`
-	Tickets []string          `json:"tickets,omitzero"`
-	Labels  map[string]string `json:"labels,omitzero"`
+	Failure string    `json:"failure,omitzero"`
+	Step    int       `json:"step"`
+	Started time.Time `json:"started"`
+	Ended   time.Time `json:"ended,omitzero"`
+	Parent  string    `json:"parent,omitzero"`
+	// Key is the run's key, and StartedBy the run whose send started it.
+	Key       string            `json:"key,omitzero"`
+	StartedBy string            `json:"started_by,omitzero"`
+	Jobs      int               `json:"jobs,omitzero"`
+	Timers    int               `json:"timers,omitzero"`
+	Tickets   []string          `json:"tickets,omitzero"`
+	Labels    map[string]string `json:"labels,omitzero"`
 	// Keep is how long the instance is kept after it ends.
 	Keep machine.Duration `json:"keep,omitzero"`
 }
@@ -90,9 +93,15 @@ type State struct {
 	Definition blob.Ref          `json:"definition"`
 	Input      any               `json:"input,omitzero"`
 	Labels     map[string]string `json:"labels,omitzero"`
+	// Key is the key that names the instance, while it runs.
+	Key string `json:"key,omitzero"`
 	// Seed is the instance's own secret: its keys and random numbers follow
 	// from it.
 	Seed []byte `json:"seed"`
+	// Keep is how long the instance is kept after it ends.
+	Keep machine.Duration `json:"keep,omitzero"`
+	// Ask is the ask its definition names, for what it starts.
+	Ask *machine.JobSpec `json:"ask,omitzero"`
 
 	// Above is what the instance was started under.
 	Above Above `json:"above"`
@@ -112,11 +121,13 @@ type State struct {
 	Asked map[string]int `json:"asked,omitzero"`
 	// JobsStarted counts the jobs the instance has started.
 	JobsStarted int `json:"jobs_started,omitzero"`
-	// Taken is the name of the last message taken from the instance's
-	// parent. The controller writes those under names that sort in the
-	// order sent, and may write one again when it repeats a carry-out: one
-	// that does not sort after the last taken has been taken already.
-	Taken string `json:"taken,omitzero"`
+	// Heard is the name of the last message taken from each of the most
+	// recent MaxHeard senders, oldest first: the instance's parent and each
+	// run that sent to its key. The controller writes those under names that
+	// sort in the order sent, and may write one again when it repeats a
+	// carry-out: one that does not sort after the last taken from its sender
+	// has been taken already.
+	Heard []Heard `json:"heard,omitzero"`
 	// Emitted counts, for each job and name, the values given to the
 	// machine, so a later attempt's are not given twice.
 	Emitted map[string]int `json:"emitted,omitzero"`
@@ -148,17 +159,38 @@ type Above struct {
 	Ask *AskAbove `json:"ask,omitzero"`
 	// IsAsk says the instance is itself run as an ask.
 	IsAsk bool `json:"is_ask,omitzero"`
+	// Made says a machine above it, or the instance itself, was made while
+	// running: its job gave a stored definition. The controller sets it when
+	// it starts a child, and a definition has no say in it.
+	Made bool `json:"made,omitzero"`
 	// Secrets are the run's own secrets, sent with the root's start.
 	Secrets map[string]string `json:"secrets,omitzero"`
+	// Context is the directory the root's client submitted from.
+	Context string `json:"context,omitzero"`
 	// Keep is the longest the instance may be kept after it ends: no
 	// longer than what started it, so a child's record goes no later than
 	// its parent's.
 	Keep machine.Duration `json:"keep,omitzero"`
+	// StartedBy is the run whose send started the instance. It is a root of
+	// the sender's client, and no parent of it: nothing ends with the sender.
+	StartedBy string `json:"started_by,omitzero"`
 }
 
-// AskAbove is an ask a machine takes from above: the definition that
-// declares it and the input its values are filled from.
+// MaxHeard is how many senders an instance remembers the last message of.
+const MaxHeard = 64
+
+// Heard is the last message taken from one sender.
+type Heard struct {
+	From    string `json:"from"`
+	Message string `json:"message"`
+}
+
+// AskAbove is an ask a machine takes from above: the ask as written, where
+// it is written, the definition that declares it and the input its values
+// are filled from. No machine made while running declares one.
 type AskAbove struct {
+	Spec       *machine.JobSpec   `json:"spec"`
+	At         string             `json:"at"`
 	Definition blob.Ref           `json:"definition"`
 	Input      any                `json:"input,omitzero"`
 	Layers     []permission.Layer `json:"layers,omitzero"`
@@ -175,8 +207,18 @@ type Going struct {
 	Child string `json:"child,omitzero"`
 	// Due is when a job's result is due.
 	Due time.Time `json:"due,omitzero"`
-	// Again is when the next attempt is due, after one has failed.
+	// Began is when this attempt was sent on its way.
+	Began time.Time `json:"began,omitzero"`
+	// Again is when the job restarts.
 	Again time.Time `json:"again,omitzero"`
+	// Anew says the job ended well and restarts as a new job.
+	Anew bool `json:"anew,omitzero"`
+	// Restarts is how many times the job has restarted, and Restarted when,
+	// for a limit in a length of time.
+	Restarts  int         `json:"restarts,omitzero"`
+	Restarted []time.Time `json:"restarted,omitzero"`
+	// Doubled is how many times its delay has doubled.
+	Doubled int `json:"doubled,omitzero"`
 	// Wake is what the job's wake, for its due time or its next attempt,
 	// is called.
 	Wake string `json:"wake,omitzero"`
@@ -231,6 +273,7 @@ const (
 	AskFail    = "fail"    // a job failed before anything was sent
 	AskHold    = "hold"    // a job is held for the ask
 	AskNote    = "note"    // something to be seen in the record
+	AskTell    = "tell"    // a note for the record of the run that started this one
 )
 
 // An Ask is one thing a step asked for.
@@ -250,7 +293,12 @@ type Ask struct {
 	// sends up, which is only written here.
 	To    string         `json:"to,omitzero"`
 	Event *machine.Event `json:"event,omitzero"`
-	// Undelivered says the event was for a child that is not running.
+	// Key is the key an event is sent to, and Run the run it is started as
+	// when no run has the key.
+	Key string `json:"key,omitzero"`
+	Run string `json:"run,omitzero"`
+	// Undelivered says the event was for a child that is not running, or
+	// for a key that names no running run.
 	Undelivered bool `json:"undelivered,omitzero"`
 	// At is a wake's time, or a job's due time.
 	At   time.Time `json:"at,omitzero"`
@@ -325,6 +373,31 @@ func ReadHead(ctx context.Context, s store.Store, ctl identity.Card, name string
 		return &head, mark, nil
 	}
 	return nil, store.None, nil
+}
+
+// A KeyFile says which run a key names, and which message starts that run.
+type KeyFile struct {
+	Key   string `json:"key"`
+	Run   string `json:"run"`
+	Start string `json:"start"`
+}
+
+// ReadKey reads a key's file among a client's. It gives nil where there is
+// none. An file that does not check gives an error, and its mark.
+func ReadKey(ctx context.Context, s store.Store, ctl identity.Card, id *identity.Identity, client, key string) (*KeyFile, store.Mark, error) {
+	at := store.Key(ctl.Name, client, key)
+	data, mark, err := s.Read(ctx, at)
+	if err != nil || mark == store.None {
+		return nil, mark, err
+	}
+	var file KeyFile
+	if _, err := identity.Read(data, at, ctl, id, &file); err != nil {
+		return nil, mark, fmt.Errorf("the file of a key: %w", err)
+	}
+	if file.Key != key {
+		return nil, mark, fmt.Errorf("the file of a key: %w", identity.ErrAltered)
+	}
+	return &file, mark, nil
 }
 
 // ReadStep reads one step entry of a record. It gives nil where there is

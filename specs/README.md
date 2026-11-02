@@ -23,7 +23,7 @@ Parties know each other by exchanging cards, which hold public keys. Messages ar
 
 Corbie is built for hosts that run a function when something happens and then stop it. On such a host each role runs as one pass over the store per call. On a computer the same pass runs in a loop.
 
-When something goes wrong, the layer that notices passes the error up untouched, and one outermost place for each step, job or command reports everything that went wrong together. Nothing in between catches, retries or rewords.
+When something goes wrong, the layer that notices passes the error up untouched, and one outermost place for each step, job or command reports everything that went wrong together. Nothing in between catches, restarts or rewords.
 
 ## Reading these specs
 
@@ -41,7 +41,7 @@ Each area below has an overview in this directory, written to be read. The detai
 
 **[Identity](identity.md).** Parties, cards, signing and sealing, and how two parties come to trust each other.
 
-**[Controller](controller.md).** What a controller's pass does with a message: finding the instance, running the step, carrying out what the step asked for, and the things it owns on every machine's behalf: child runs, timers, tickets, retries, depth and approval.
+**[Controller](controller.md).** What a controller's pass does with a message: finding the instance, running the step, carrying out what the step asked for, and the things it owns on every machine's behalf: child runs, timers, tickets, restarts, depth and approval.
 
 **[Machines](machine.md).** What every machine type shares: the definition, values filled in from input, the events a machine receives, the requests it makes, and the contract a type keeps with the controller.
 

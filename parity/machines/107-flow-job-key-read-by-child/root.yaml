@@ -1,0 +1,6 @@
+# A job gives its machine a key, and the machine reads its own key and ID.
+flow: asker
+stages:
+  question:
+    job: { machine: ./child.yaml, key: "question:${run.id}", input: { said: hello } }
+output: { same: "${stages.question.output.key == 'question:' + run.id}", child: "${stages.question.output.id != run.id}" }

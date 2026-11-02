@@ -24,6 +24,9 @@ The detailed rules behind the [Machines overview](../machine.md). Area code: `ma
 **R-mach-09** A definition's first line gives its type and its name.
 *Accept:* a definition beginning `flow: digest` is a flow named `digest`; one whose first line names no known type is refused, and the refusal names the line.
 
+**R-mach-139** A definition of any type may carry `meta:`, with any value; Corbie keeps it with the stored definition, never reads it, and fills in no expression in it.
+*Accept:* a flow, a statechart and an agent each carry `meta:` holding text that begins `${` and does not compile, and each is accepted. The flow's stored definition holds its `meta:` as written, a machine written in place keeps its own, and the flow runs to its end as it does without it.
+
 **R-mach-10** The controller fills in each missing name of an instance's input that has a `default` in the definition's `input:`, in the input and in each object that `properties` and `items` lead to, and checks the filled input against `input:`; an input that does not fit fails the instance at its first step, naming each place, and starts nothing. The filled input is the data of the `start` event.
 *Accept:* parity case 14. Parity case 105: a flow started with `{urls: [a], fetch: {timeout: 5}, pages: [{}, {size: 3}]}` gives its stage `depth: 2`, `fetch: {retries: 3, timeout: 5}` and `pages: [{size: 10}, {size: 3}]` from the defaults of its `input:`.
 
@@ -52,21 +55,23 @@ The detailed rules behind the [Machines overview](../machine.md). Area code: `ma
 
 **C-mach-04** A field its type does not know, a field written twice or a name in the wrong case is refused, in a written definition and in a stored one alike. A field quietly ignored is a mistake nobody is told about, and the controller does not take a client's word for what it stores. *Test:* `mach_unknown_or_repeated_field_is_refused`
 
-**C-mach-06** YAML aliases may not grow a definition far beyond what was written, nor contain themselves. A few lines of YAML can otherwise fill memory. *Test:* `mach_alias_growth_is_refused`
+**C-mach-06** A YAML alias may not contain itself, and a file whose aliases make more than about 100 times what it writes, past 1000 values, is refused. The YAML reader does this only when it decodes, and a tree of its nodes holds each alias once, so a file with an alias is decoded first. 491 bytes of aliases otherwise ended a process capped at 4 GB in 5 seconds, and neither a client nor a job has a limit on its memory by default. *Test:* `mach_alias_growth_is_refused`
 
 **C-mach-08** A plain value that YAML would read as a date or a time stays the text that was written. An unquoted `2026-10-01` is otherwise changed before any expression sees it. *Test:* `mach_date_like_value_stays_text`
 
 **C-mach-10** An expression is compiled when the definition is checked, not only parsed. Some mistakes pass a parse and would otherwise first show when a step runs. *Test:* `mach_check_compiles_every_expression`
 
-**C-mach-11** A definition whose machine files lead back to itself is refused, and the refusal names the chain. Writing such a definition out in full never ends. *Test:* `mach_definition_including_itself_is_refused`
+**C-mach-25** No file a definition reads leads back to itself: a machine file or an included file that names a file already being read, with machines written in place between them as well, is refused, and the refusal names the chain. Such a definition is read without end. *Test:* `mach_file_leading_back_to_itself_is_refused` and `mach_made_definition_leading_back_to_itself_fails_its_job`
+
+**C-mach-26** A machine as it is stored is at most 4 MiB, with a reference for each of its files and child definitions. One past it is refused at its place, by the client and by a job's `define`, and nothing is stored. A step reads no more of a stored definition, and one larger would be stored and then never read. *Test:* `mach_definition_counted_as_stored` and `mach_made_definition_past_the_most_fails_its_job`
 
 ## Values
 
 **R-mach-21** A value that is exactly one expression takes the expression's value, whatever its type; text with expressions inside it is text with the values filled in; everything else is literal.
 *Accept:* `count: "${input.n}"` with the input `{ n: 3 }` gives the number 3, and with `{ n: [1, 2] }` gives the list. `"Look into ${input.topic}."` with the topic `the disk` gives `Look into the disk.` `n: 3`, `title: hello` and a nested map reach a job's input exactly as written.
 
-**R-mach-24** Expressions are JavaScript, and an expression reads `input` and what its machine's type adds, and nothing else.
-*Accept:* `${input.urls.filter(u => u.startsWith("https")).length}` gives the number of matching items. A flow's expression that reads `states`, and an expression that names something outside the language itself such as `require` or `process`, are each refused when the definition is checked.
+**R-mach-24** Expressions are JavaScript, and an expression reads `input`, `run` and what its machine's type adds, and nothing else. `run` holds the run's `id` and its `key`, which is empty text for a run with none.
+*Accept:* `${input.urls.filter(u => u.startsWith("https")).length}` gives the number of matching items. A flow's expression that reads `states`, and an expression that names something outside the language itself such as `require` or `process`, are each refused when the definition is checked. `${run.id}` gives the run's ID in a flow's output, a statechart's final state, an agent's prompt and a limit's `timeout`. *Test:* `mach_run_is_read_in_every_type`
 
 **R-mach-27** An expression in a field that is a name is refused: a thing's name, a type, a permission's kind, a deny entry, a secret's name, a tag, a ticket's name. The path of a script or a machine is a name too, except that it may be exactly one expression that gives a stored definition or script.
 *Accept:* seven definitions, each with `${input.x}` in one of these fields, are each refused when checked, and each refusal names the field. `machine: "${input.definition}"`, given a stored definition, runs it as a child; `script: "./${input.name}.js"` is refused when checked.
@@ -93,8 +98,8 @@ The detailed rules behind the [Machines overview](../machine.md). Area code: `ma
 **R-mach-33** A job that is a script is executed by a runner; a job that is a machine is started by the controller as a child run.
 *Accept:* a flow with a script stage and a machine stage: the record shows one job sent to a runner and its result arriving as the first stage's `done`, and a new instance whose head names the flow as its parent, with nothing sent to a runner for the second stage itself.
 
-**R-mach-35** A job of either kind has an input, the permissions it may use, a limit on time, and optionally a number of attempts, written the same way for both; a script also has a limit on memory and tags that choose its runners.
-*Accept:* a script job written with all six is sent, carrying that input, those permissions and both limits, to a runner holding the tags; a machine job written with an input, a time limit and attempts behaves as parity cases 30, 98 and 62 show, and a machine job written with memory or tags is refused when checked.
+**R-mach-35** A job of either kind has an input, the permissions it may use, a limit on time, and optionally a restart policy, written the same way for both; a script also has a limit on memory and tags that choose its runners.
+*Accept:* a script job written with all six is sent, carrying that input, those permissions and both limits, to a runner holding the tags; a machine job written with an input, a time limit and a restart policy behaves as parity cases 30, 98 and 62 show, and a machine job written with memory or tags is refused when checked.
 
 **R-mach-136** A program using Corbie as a library can list a definition's jobs, each with its place.
 *Accept:* a flow of the two stages `a` and `b` gives `stages.a.job` and `stages.b.job`, in that order. An agent with the one tool `add` gives `turn`, `tools.add.job`, and the jobs of the tools for working with blobs that every agent has.
@@ -102,11 +107,14 @@ The detailed rules behind the [Machines overview](../machine.md). Area code: `ma
 **R-mach-135** A `timeout:` with an expression is filled in when its job is asked for, and `limits: { timeout: }` when the run starts; a filled value that is not a length of time fails the machine.
 *Accept:* a flow whose stage `it` has a job with `timeout: "${input.t}"` is started with `{t: "2s"}`, and its script is stopped after 2s; started with `{t: "soon"}`, the run fails, and the error names `stages.it.job.timeout`. A flow with `limits: { timeout: "${input.t}" }` started with `{t: "1s"}` fails as out of time after 1s; started with `{t: "soon"}`, it fails, and the error names `limits.timeout`.
 
-**R-mach-36** A job may be written where it is used or kept in its own file; a script is a file named by its path, its job lists the files the script loads, and a client sends them along with the definition. A relative path is read from the directory of the file it is written in: a definition, a machine kept in its own file, a file of tools, or a script that loads another with `require`.
-*Accept:* a stage whose child flow is written in place, and one that names the same flow in a file, produce records of the same shape and the same output. A job names `./fetch.js` and lists `./lib.js`: both are in the run's record before the first step is taken, and the script loads `./lib.js` and runs. A flow names the child `./kids/kid.yaml`, whose stage names `./kid.js`: the child runs `kids/kid.js`.
+**R-mach-146** A job's `restart:` says what happens when it ends: `when:` is `failure`, its default, or `always`; `limit:` is a number, or a number in a length of time, with no limit by default; `delay:` is one length of time, or two with `to` between them, `1s to 5m` by default. A policy that cannot be read is refused at its place. A job with no policy runs once.
+*Accept:* `{ limit: 5 in 1h, delay: 2s to 1m }` reads as written, and `{ limit: 0 }`, `{ when: never }` and `{ delay: 1m to 1s }` are each refused. *Test:* `Test_mach_a_restart_reads_as_written`, `Test_mach_a_restart_is_checked`
+
+**R-mach-36** A job may be written where it is used or kept in its own file; a script is a file named by its path, its job lists the files the script loads, and a client sends them along with the definition. A path in a definition reads from the context, or from the directory of the file it is written in when it starts `./`. A definition keeps every path from the context.
+*Accept:* a stage whose child flow is written in place, and one that names the same flow in a file, produce records of the same shape and the same output. A job names `./fetch.js` and lists `./lib.js`: both are in the run's record before the first step is taken, and the script loads `./lib.js` and runs. A flow names the child `./kids/kid.yaml`, whose stage names `./kid.js`: the child runs `kids/kid.js`. A machine in `deep/down/` that names `lib/s.js` reads the file at the top of the context, and one that names `../s.js`, or a path from the top of the disk, is refused. *Test:* `TestPathsReadFromTheContext`, `TestRequireFindsWhatAJobNames`
 
 **R-mach-39** Every job has a name that says what asked for it: a stage, a state, a tool, an agent's `turn`, or the `ask`. Jobs asked for in one step under one name add `.` and a number: an item of a list its position from 0, and an agent's second call of one tool in a turn, or its second preview, `.1`. A name that asks again in the run adds `#` and the count of times it has asked, and a later attempt adds `@` and its number.
-*Accept:* parity cases 01, 16, 85, 84 and 63, one for each: the record names the job after the stage, the state, the tool, `turn` and `ask`. `each:` over three items gives three jobs named for the stage and the positions 0, 1 and 2, and parity case 10's error names the second item as item 1. A stage given two attempts whose first fails has its second attempt's job named with `@2`. Parity case 89 calls `guarded_add` twice in one turn and names the jobs `guarded_add` and `guarded_add.1`. Parity case 16 enters the state `working` four times and names its jobs `working`, `working#2`, `working#3` and `working#4`, and parity case 90 names an agent's second turn `turn#2`.
+*Accept:* parity cases 01, 16, 85, 84 and 63, one for each: the record names the job after the stage, the state, the tool, `turn` and `ask`. `each:` over three items gives three jobs named for the stage and the positions 0, 1 and 2, and parity case 10's error names the second item as item 1. A stage with `restart: { limit: 1 }` whose first fails has its second attempt's job named with `@2`. Parity case 89 calls `guarded_add` twice in one turn and names the jobs `guarded_add` and `guarded_add.1`. Parity case 16 enters the state `working` four times and names its jobs `working`, `working#2`, `working#3` and `working#4`, and parity case 90 names an agent's second turn `turn#2`.
 
 ## Events
 
@@ -125,8 +133,8 @@ The detailed rules behind the [Machines overview](../machine.md). Area code: `ma
 **R-mach-51** A script sends an event up while it runs by emitting a named value, and a child machine by sending to its parent; the two arrive the same way, as an event with that name from that job.
 *Accept:* parity case 26 with the emitted value's own name in `on:`. A parent chart has a rule for `page` on a state with a job; once with the job a script that emits `page`, and once with the job a child chart that sends `page` to its parent, the parent's record shows an event of the same shape and the same transition taken.
 
-**R-mach-53** A parent can send a named event down to a child machine, and a machine talks only to its parent and its own children; siblings go through the parent.
-*Accept:* parity case 33. Parity case 38: the bottom chart's event reaches the top only because the middle chart passes it on, and the answer comes down the same way.
+**R-mach-53** A parent can send a named event down to a child machine, and a machine talks only to its parent, its own children and a run it knows by its key; siblings go through the parent. No client, machine or script can send an event named `start`, `done`, `failed` or `timer`.
+*Accept:* parity case 33. Parity case 38: the bottom chart's event reaches the top only because the middle chart passes it on, and the answer comes down the same way. *Test:* `mach_no_event_takes_a_name_of_corbies`, `mach_emitted_value_takes_no_name_of_corbies` and `run_emit_cannot_take_a_name_of_corbies`
 
 **R-mach-55** A value a script emits goes to the machine that asked for the script, and to no machine above it unless that machine sends it on.
 *Accept:* parity case 37: the child chart's script emits two values, and the parent, which has a rule for them on the state that runs the child, never takes it.
@@ -149,6 +157,35 @@ The detailed rules behind the [Machines overview](../machine.md). Area code: `ma
 **C-mach-17** An event sent down before the child has taken its first step waits for the child; it is not counted as undelivered. A parent may send in the very step that starts the child, and the start and the event travel separately. *Test:* `mach_event_sent_before_child_starts_is_kept`
 
 **C-mach-18** An emitted value the machine has been given is not given to it again, however many times the message about it arrives. Messages may arrive more than once, and an item started twice is work done twice. *Test:* `mach_emit_delivered_twice_is_taken_once`
+
+## Keys
+
+**R-mach-140** A key names a run. A run may be started with a key by a client, by a job that starts a machine, in any type, or by a send, and among one client's running runs a key names at most one run. A key is free again once its run ends.
+*Accept:* a client starts a chart with the key `k`: the entry for `k` names it, its head says `k`, and `${run.key}` gives `k`. A flow's job, an agent's tool and a chart's state each start a machine with a key the same way. When the run ends the entry is gone, and a new start with `k` is taken. Parity cases 107 and 108. *Test:* `chart_send_to_a_key_starts_a_run_then_delivers`, `ctl_key_is_free_once_its_run_ends`, `ctl_client_start_with_a_key_in_use_is_refused` and `ctl_job_with_a_key_in_use_fails`
+
+**R-mach-141** A client's start with a key in use is refused in its receipt, a job with a key in use fails with a reason, and only a send with `machine` joins a running run.
+*Accept:* a second client start with `k` has a receipt that names the run with `k`, and no head. A flow whose job gives `k` fails, its error naming the run with `k`. A send with `machine` to `k` is delivered to the run with `k`, and no run starts. Parity case 110. *Test:* `ctl_client_start_with_a_key_in_use_is_refused` and `ctl_job_with_a_key_in_use_fails`
+
+**R-mach-142** A run started by a send is a root of the sender's client that records the sender, gets the event's data as its input and is then given the event, whatever its type, and ending the sender does not cancel it. A run started by a job with a key is an ordinary child of that job, cancelled with it.
+*Accept:* a chart sends to `chat:1` with a statechart's definition and with a flow's: each run has no parent in its head, names the sender, has the event's data as its input, and is given the event. Data that does not fit the machine's input fails the send in the sender's record. The sender ends, and the run goes on. A job's child with a key is cancelled when its parent is. *Test:* `chart_send_to_a_key_starts_a_run_then_delivers`, `ctl_send_starts_a_machine_of_any_type`, `ctl_send_whose_data_does_not_fit_fails_in_the_senders_record` and `ctl_job_with_a_key_in_use_fails`
+
+**R-mach-143** A key names only runs of the client whose run sends.
+*Accept:* clients `c1` and `c2` each hold `k`. A run of `c1` that sends to `k` is delivered to `c1`'s run, and `c2`'s run takes no step. *Test:* `ctl_a_key_names_only_runs_of_its_client`
+
+**R-mach-144** A mapping read by a shape, or a mapping of names, may name files with `include:`, one or a list, and takes their fields. A field the mapping writes stands before a file's, a file's fields before those of the files it includes, and an earlier file's before a later one's. The stored definition holds the fields written out. What a shape gives as a value is not read for `include:`.
+*Accept:* `stages:` includes `./first.yaml` and `./second.yaml` and writes `own`; `first.yaml` writes `a` and `own` and includes `./inner.yaml`, which writes `a` and `b`; `second.yaml` writes `b` and `c`. The flow runs its own `own`, `first.yaml`'s `a`, `inner.yaml`'s `b` and `second.yaml`'s `c`. A flow, a chart, an agent, a part and an agent written in place each take fields from a file, and no stored definition names `include`. `include:` under a job's `input:`, in `meta:` and as a field of an input's shape stays as written.
+
+**R-mach-145** A path in an included file is read from that file's directory, and only a field a shape gives as a path is a path.
+*Accept:* an agent in the top directory includes `./kit/base.yaml` and `./kit/tools.yaml`. Its stored definition names `./kit/ask.js`, `./kit/turn.js`, each tool's script, list and files, `./top.js` for a tool's `top.js`, and `./kit/lib/child.yaml`, whether written as a job's `machine:` or below a machine written in place. A chart's states included through two files name their script, a named job and a send's `machine:` from the last file's directory. Under `input:`, `script: ./x.js`, `files: [./y.js]` and `machine: ./z.yaml` stay as written, and a tool named `script` keeps its job's path right.
+
+**C-mach-33** An included file is read as a definition is: a number is a number, a plain value YAML would read as a date or a time stays the text written, and an empty file is refused, as an empty definition is. Read otherwise, `restart: { limit: 2 }` in a job is refused and an unquoted `2026-01-02` changes before any expression sees it. *Test:* `mach_included_file_is_read_as_a_definition_is`
+
+**C-mach-34** A definition and what is below it include at most 1,000 files, and the rest are refused. Files that each include the next twice grow past what a process can hold from a few bytes each, and they do not lead back to themselves. *Test:* `mach_includes_are_limited`
+
+**C-mach-35** A problem in an included file names that file, and a problem in what a definition writes itself does not. A place alone would send an author to the wrong file. *Test:* `mach_include_problems_name_the_file`
+
+
+**C-mach-32** A key is any text of 1 to 256 characters. Past that, or empty, the send or the job fails with a reason in the sender's record, and nothing is written to the store. A key comes from outside, so one that is wrong fails the send and not the machine. *Test:* `mach_key_past_its_bound_writes_nothing`
 
 ## Children
 
@@ -182,8 +219,8 @@ The detailed rules behind the [Machines overview](../machine.md). Area code: `ma
 **R-mach-79** A definition may limit how many jobs its instance starts, and a job past the limit fails. The limit counts the jobs the instance itself starts, not the tree below it.
 *Accept:* a flow limited to three jobs has four stages in a chain; the first three run and the fourth stage's job fails with `job limit reached`. Parity cases 80, 81, 82, 83, 99 and 101: every job they ask for starts and none fails for the limit.
 
-**R-mach-81** A job past the depth limit or the job limit is not tried again.
-*Accept:* a stage with three attempts whose child would be a ninth level; the record shows the job refused once with `depth limit reached` and no later attempt.
+**R-mach-81** A job past the depth limit or the job limit is not restarted.
+*Accept:* a stage with `restart: { limit: 2 }` whose child would be a ninth level; the record shows the job refused once with `depth limit reached` and no later attempt.
 
 ## Waiting on the outside
 
@@ -209,11 +246,13 @@ The detailed rules behind the [Machines overview](../machine.md). Area code: `ma
 **R-mach-95** What gives the yes is the machine's ask: a job of its own, a script or a machine, named at the top of the definition. That job is called `ask`, and nothing else in a definition may take the name.
 *Accept:* parity case 63 (a script) and parity case 74 (a machine). A flow with a stage named `ask`, a chart with a state named `ask` and an agent with a tool named `ask` are each refused when checked.
 
-**R-mach-97** A machine with an ask of its own uses it; a machine with none uses the nearest one above it.
+**R-mach-97** A machine with an ask of its own uses it; a machine with none uses the nearest one above it. A machine made while running has none of its own (see Controller, C-ctl-64).
 *Accept:* parity case 73 (own ask wins); parity case 70 (one level up, approved), parity case 71 (one level up, refused) and parity case 72 (two levels up, through a machine that marks nothing).
 
-**R-mach-99** The jobs from one step that need approval go to the ask together, and the ask is started once for them.
-*Accept:* parity case 66.
+**R-mach-99** The jobs from one step that need approval go to their ask together, and each ask is filled in and started once for them. A job may go to an ask nearer than its machine's, which a type gives it.
+*Accept:* parity case 66. An agent's turn calls `open` for a part that has an ask of its own and a tool of the agent's own, each marked for approval; the step starts the part's ask with the open and the agent's ask with the call, once each.
+
+**C-mach-24** The held jobs of one step go to one run of an ask by where the ask is written, never by what filling it in gave. An expression in an ask's values need not give the same value twice, as `${Math.random()}` does not, and one ask would otherwise start as several. *Test:* `mach_one_run_of_each_ask_for_a_step`
 
 **R-mach-100** The ask is told which machine is asking and, for each job, what it is and what input it would get.
 *Accept:* parity case 70: each child is named as the machine asking. Parity case 63: the ask is given the job and its input.
@@ -221,8 +260,8 @@ The detailed rules behind the [Machines overview](../machine.md). Area code: `ma
 **R-mach-102** The ask's result names the jobs it approves and may add a note. Approved jobs start; a job not approved never starts, and its machine sees it as a failed job with the status denied and the note.
 *Accept:* parity case 66: the two approved items run, the other two appear with an error, and nothing was ever sent to a runner for them. Parity case 65: the note is in the error.
 
-**R-mach-106** An ask that fails, or whose result does not list the jobs it approves, approves nothing.
-*Accept:* parity case 76: the first child's ask fails, the second's result lists no jobs, and neither held job starts.
+**R-mach-106** An ask that cannot be filled in, that fails, or whose result does not list the jobs it approves, approves nothing.
+*Accept:* parity case 76: the first child's ask fails, the second's result lists no jobs, and neither held job starts. An agent's part whose ask's input reads a field its input does not have: the held call is denied with an error naming `open.net.ask.input`, and the agent carries on.
 
 **R-mach-109** An approval has no time limit of its own; the ask's timeout is how long it may take.
 *Accept:* an ask that is a chart with a timeout of one second waits on a ticket nobody answers; it fails as out of time and the held job is denied. The same ask with no timeout holds the job for as long as the test waits.

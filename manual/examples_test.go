@@ -771,6 +771,10 @@ func ran() ([]outcome, error) {
 				return
 			}
 			for name, text := range carried {
+				if err := os.MkdirAll(filepath.Dir(filepath.Join(s.dir, name)), 0o755); err != nil {
+					went.err = err
+					return
+				}
 				if err := os.WriteFile(filepath.Join(s.dir, name), []byte(text), 0o644); err != nil {
 					went.err = err
 					return

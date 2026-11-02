@@ -1,0 +1,69 @@
+A directory of machines: one command brings the runs of directories into line with their files.
+
+    # schedules/evening.yaml
+    statechart: evening
+    initial: waiting
+    states:
+      waiting:
+        timers: { due: "18:00 Europe/London" }
+        on: { due: working }
+      working:
+        job: { script: ./work.js }
+        on:
+          done: waiting
+          failed: waiting
+
+    // schedules/work.js
+    log("the evening work")
+
+    corbie init --ceiling all
+    corbie start &
+    corbie run submit schedules
+    corbie run ls
+
+Submit again after a change: nothing else watches the files.
+
+Reference
+---------
+
+  corbie run submit <directory>...                 brings their runs into line
+  corbie run submit <directory>... --check         reads every machine, and starts nothing
+  corbie run submit <directory>... --again <file>  starts a machine whose run has ended
+
+It reads every *.yaml in the directories and those below them, but for .git, whose first key gives a type of machine. Any other holds data, or fields to include.
+
+  a machine with no run                        is started
+  its latest run is at another hash            that run is cancelled, and another started
+  its latest run is at its hash                is left as it is, running or ended
+  its file has gone                            its run is cancelled
+  its file has a problem                       the problem is reported, and its run is left as it is
+  its file is empty, or holds no machine now   the same
+
+- The current directory is the context: `corbie manual definitions` says how paths read from it. A directory given is in the context.
+- A run has the key file:<path>, and the labels machine and hash. The hash is the SHA-256 of every file the machine was read from. Submitting twice starts nothing new.
+- A run that ended, failed or was cancelled stays that way until its files change, so a stop holds. To stop a machine for good, move its file out of the directory.
+- A run is found from its record, which lasts as long as its keep: says. Once the record has gone, the next submit starts the machine again.
+- Every machine in a directory given is started, so keep a machine that only another machine runs elsewhere.
+- A machine is given no input, and one that needs some is refused, and reported. It reads the context's absolute path as ${run.context}.
+- A file named on its own starts a run each time, as `corbie run submit` always does.
+- --check cannot tell a mistyped first key from a file of data, which it does not list. A submit reports it once the file reads as a machine.
+
+To have a machine come back when it ends, run it as a job with restart:. `corbie manual definitions` gives the fields.
+
+    # keep.yaml
+    flow: keep
+    stages:
+      hearing:
+        job:
+          machine: ./hear.yaml
+          restart: { when: always, limit: 1, delay: 1s }
+
+    # hear.yaml
+    flow: hear
+    stages:
+      one: { job: { script: ./one.js } }
+
+    // one.js
+    return 1
+
+Keep hear.yaml outside the directories you submit, since a submit starts every machine it finds in them.

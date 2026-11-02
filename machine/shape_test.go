@@ -5,6 +5,7 @@ import (
 	"encoding/json/v2"
 	"strings"
 	"testing"
+	"time"
 )
 
 // astray is a machine type whose reader and whose shape do not agree, in
@@ -68,10 +69,10 @@ func Test_mach_a_type_is_described_by_what_its_reader_reads(t *testing.T) {
 			names = append(names, f.Name)
 		}
 	}
-	if got := strings.Join(names, " "); got != "probe input keep limits allow deny ask_about ask work value" {
+	if got := strings.Join(names, " "); got != "probe input keep limits allow deny ask_about ask meta work value" {
 		t.Errorf("a probe's definition holds: %s", got)
 	}
-	if d.Shapes["job"] != JobShape || d.Shapes["limits"] == nil || len(d.Shapes) != 4 {
+	if d.Shapes["job"] != JobShape || d.Shapes["limits"] == nil || len(d.Shapes) != 5 {
 		t.Errorf("its shapes are %v", d.Shapes)
 	}
 	sent, err := json.Marshal(d)
@@ -85,5 +86,75 @@ func Test_mach_a_type_is_described_by_what_its_reader_reads(t *testing.T) {
 	}
 	if _, ok := Describe("nothing"); ok {
 		t.Error("a type that is not there was described")
+	}
+}
+
+// A shape may lead back to itself.
+func TestShapeMayLeadBackToItself(t *testing.T) {
+	const tree = `{"type":"object","properties":{"child":{"anyOf":[{"type":"null"},{"$ref":"#"}]}}}`
+	for _, text := range []string{
+		`{"type":"object","properties":{"child":{"$ref":"#"}}}`,
+		tree,
+		`{"type":"object","properties":{"left":{"$ref":"#"},"right":{"$ref":"#"}}}`,
+		`{"type":"object","properties":{"kids":{"type":"array","items":{"$ref":"#"}}}}`,
+		`{"type":"object","additionalProperties":{"$ref":"#"}}`,
+		`{"type":"object","properties":{"a":{"$ref":"#"}},"additionalProperties":{"$ref":"#"}}`,
+		`{"type":"object","properties":{"a":{"$ref":"#"}},"patternProperties":{"^b":{"$ref":"#"}}}`,
+		`{"type":"object","properties":{"list":{"prefixItems":[{"$ref":"#"}],"items":{"$ref":"#"}}}}`,
+		// Two branches that lead back by different names.
+		`{"type":"object","anyOf":[{"properties":{"and":{"type":"array","items":{"$ref":"#"}}}},{"properties":{"or":{"type":"array","items":{"$ref":"#"}}}}]}`,
+		// One value goes down the then or the else.
+		`{"type":"object","if":{"properties":{"kind":{"const":"a"}}},"then":{"properties":{"c":{"$ref":"#"}}},"else":{"properties":{"c":{"$ref":"#"}}}}`,
+		// Two parts that go down one value and never meet: each level is
+		// checked twice, and no more.
+		`{"type":"object","allOf":[{"$ref":"#/$defs/a"},{"$ref":"#/$defs/b"}],"$defs":{"a":{"properties":{"c":{"$ref":"#/$defs/a"}}},"b":{"properties":{"c":{"$ref":"#/$defs/b"}}}}}`,
+		`{"type":"object","allOf":[{"$ref":"#/$defs/a"},{"$ref":"#/$defs/a"}],"$defs":{"a":{"properties":{"c":{"$ref":"#/$defs/a"}}}}}`,
+	} {
+		var shape map[string]any
+		if err := json.Unmarshal([]byte(text), &shape); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := CompileShape(shape); err != nil {
+			t.Errorf("%s: %v", text, err)
+		}
+	}
+	var shape map[string]any
+	json.Unmarshal([]byte(tree), &shape)
+	schema, err := CompileShape(shape)
+	if err != nil {
+		t.Fatal(err)
+	}
+	chain := func(depth int, leaf any) any {
+		for range depth {
+			leaf = map[string]any{"child": leaf}
+		}
+		return leaf
+	}
+	if err := Fits(schema, chain(3, nil)); err != nil {
+		t.Errorf("a chain ending in null: %v", err)
+	}
+	if err := Fits(schema, chain(3, 1.0)); err == nil || !strings.Contains(err.Error(), "at /child/child/child: ") {
+		t.Errorf("a chain ending in a number: %v", err)
+	}
+}
+
+// A value wrong at many places says each one, in time that grows with how
+// many there are.
+func TestAValueWrongAtManyPlacesIsSaidQuickly(t *testing.T) {
+	schema, err := CompileShape(map[string]any{"type": "object", "properties": map[string]any{"list": map[string]any{"type": "array", "items": map[string]any{"type": "number"}}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	list := make([]any, 100000)
+	for i := range list {
+		list[i] = "text"
+	}
+	began := time.Now()
+	err = Fits(schema, map[string]any{"list": list})
+	if err == nil || !strings.Contains(err.Error(), "at /list/99999: ") {
+		t.Fatalf("%.300v", err)
+	}
+	if took := time.Since(began); took > 5*time.Second {
+		t.Errorf("it took %s", took)
 	}
 }

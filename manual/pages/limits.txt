@@ -24,6 +24,64 @@ does not defend against the following.
 - Jobs on one runner are not isolated from each other. Send jobs that must be
   isolated to different runners, which a job selects with `tags:`.
 
+These are true of definitions.
+
+- An expression in an owner's definition runs in the controller's own process.
+  Nothing limits its memory, and its one second stops its own code and not a
+  call to something built in, so `'a'.repeat(2**40)` ends the controller and a
+  regular expression that backtracks holds a step without end. An owner can do
+  this to a controller that takes their definitions. A client starts a run
+  only from a definition in that run's own record, so a definition a job stored
+  reaches this process only if a client copies it there.
+- An owner's expression is read and compiled in the controller's own process,
+  and nothing stops that. Reading `=>` nested in what stands before another
+  takes twice as long with each, and so does compiling a chain of `&&`, `||` or
+  `??` whose left sides are fixed, so forty of either never finish. 4 MB of
+  brackets ended a client for want of stack, and the controller reads an
+  expression with the same code.
+- Nothing limits what reading a definition costs the process that reads it. An
+  owner's definition costs this to their own client, gateway and controller. A
+  job's definition costs that job, and past its limits the job fails.
+
+  400 KB of brackets in one expression          2 seconds, 1 GiB
+  4 MiB of YAML that writes [1,1,...]           2.3 seconds, 660 MiB
+  14 levels of files that name the next twice   3.9 seconds, 230 MiB
+
+- A gateway takes a definition of up to 64 MiB from whoever holds its token.
+- Each step of a machine made while running, and each step after the first of
+  an agent with a `list:` tool, is taken in a process of its own, and may use
+  10 seconds and 1 GiB of memory. Past either, that machine fails and nothing
+  else does. Machines that each use a step's whole time delay other
+  runs, because the controller waits for four such steps at a time, and a run
+  waits like that each time the controller acts for it. Beside four such
+  machines, a run of 20 ms took 10 seconds.
+- A step in a process of its own gives back at most 4 MiB and 1024 sends, and
+  comes to at most 4 MiB with its state. Past that, that machine fails.
+- On a host with less memory than four such steps hold, the host stops a step
+  or the whole controller. The step is taken once more and its machine fails.
+- A value is checked against a shape in time and memory that grow with the size
+  of both, and nothing limits a shape. An owner's shape costs this to the
+  controller. A made machine's shape, and a shape a `list:` gives, stop at the
+  step's limits.
+
+  a list of texts against items: { type: string }    0.07 microseconds a character
+  256 KiB of numbers against 1800 types                119 seconds
+  forty $refs that each name the next twice            never ends
+
+These are true of keys.
+
+- A key is any text of at most 256 characters, and anyone who can list runs can
+  read it.
+- A run a send starts counts as one level below its sender, so a chain of
+  sends that each start a run ends at `limits: { depth: }`, 8 by default.
+- A run remembers the last message of each of its 64 most recent senders. A
+  controller stopped while it sends, with 64 others heard before it resumes,
+  can deliver an event twice.
+- An event sent with `machine` to a run that ends before taking it is lost if
+  the sender's record has been removed, since that record holds the definition.
+- A controller stopped as it deletes an event no run has writes no note of it
+  in the sender's record.
+
 These are true of the store.
 
 - A directory store keeps no process out. Every user of the computer who can

@@ -1,0 +1,10 @@
+# Two machines start with one key: one of the jobs fails, with a reason.
+statechart: twins
+initial: both
+states:
+  both:
+    jobs:
+      a: { machine: ./wait.yaml, key: k }
+      b: { machine: ./wait.yaml, key: k }
+    on: { failed: finished }
+  finished: { end: done, output: { why: "${event.data.error}" } }

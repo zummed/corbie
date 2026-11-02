@@ -59,7 +59,7 @@ parent                       the child's job may
   job: { machine: ${stages.plan.output}, allow: [net:a.example] }    what the made machine allows, within a.example
 ```
 
-A machine made while running is not its parent's author's words: a script or a model wrote it. It is always narrowed by the job that starts it, and with no list it is allowed nothing.
+A machine made while running is not its parent's author's words: a script or a model wrote it. It is always narrowed by the job that starts it, and with no list it is allowed nothing. Everything below it is made while running too, and its steps are taken in a process of their own (see Controller). It has no ask of its own, so what it holds goes to an ask its author did not write (see Machines). It sends to no key and gives no job a key, so it talks only to its parent and its children: a forged event sent to a keyed run would look like any other. A job above it may start it with a key.
 
 The scope of a definition's allow entry may be filled from the machine's input, as in `fs.read:${input.dir}/**`. It reads nothing but the input, and since every layer above still applies, an input can choose a place within a limit and never move the limit.
 
@@ -85,7 +85,15 @@ Every job's result lists the permissions it used. That gives a way to go from lo
 
 ## A job allowed nothing
 
-A job with no permissions still has its input and its result, plain computation, making and reading blobs in its own instance's record, what it emits, and defining machines.
+A job with no permissions still has its input and its result, plain computation, making and reading blobs in its own instance's record, what it emits, and defining machines. Its own process reads a machine it defines, under the job's time and memory limits, so what that costs falls on that job alone (see Runner). The limits every definition has also apply (see Machines):
+
+- No file leads back to itself.
+- A machine as it is stored is at most 4 MiB.
+- A YAML alias may not contain itself, and a file whose aliases make more than about 100 times what it writes, past 1000 values, is refused.
+
+A machine a job made runs only when a job starts it, which takes `machine: ${…}` in a running machine's definition. A script cannot start a machine. Each of its steps is then taken in a process of its own, with a limit on its memory and its time, and a step past either fails that machine and nothing else (see Controller). That process checks the definition again and takes nothing a job's process said on trust. A bug in what it runs gets that process and no more: the controller takes from it only what a definition could say, and works out every name, runner and flag itself.
+
+A shape a `list:` job gives is read the same way: every step of that agent after its first is taken in a process of its own, with the same limits, and past either the agent fails with the reason and nothing else does.
 
 ## What Corbie does not defend against
 
@@ -101,5 +109,31 @@ A script cannot reach outside itself except through the six kinds above, and tho
 - Whether a connection is encrypted is known to Corbie when Corbie does the encrypting. Where a service's own protocol does it, that is the plugin's word.
 - A job cannot listen for connections. Nothing a job opens outlives the job.
 - A served directory's wire is private to the two computers. Someone on the network between them can see that they talk and how much, and can hold work up or cut it off, and nothing else (see Store).
+- A step of an agent with a `list:` tool runs in a process of its own and its answer is the agent's word, so a bug in what that process runs can ask for any job of the agent's definition, with any lists and no approval the definition's jobs would have marked, and can send a job to another ask that definition writes. It can also give those jobs any key that is free. A permission the layers above refuse stays refused, `ask_about:` still holds what it lists, and an ask stays the definition's. Such an agent's step cannot send to a key: no agent's definition can.
+- An owner's expression runs in the controller's own process. Nothing limits its memory, and its one second stops its own code and not a call to something built in, so `'a'.repeat(2**40)` ends the controller and a regular expression that backtracks holds a step without end. An owner can do this to a controller that takes their definitions. A client starts a run only from a definition in that run's own record, so a definition a job stored reaches this process only if a client copies it there.
+- An owner's expression is read and compiled in the controller's own process, and nothing stops that. Reading `=>` nested in what stands before another takes twice as long with each, and so does compiling a chain of `&&`, `||` or `??` whose left sides are fixed, so forty of either never finish. 4 MB of brackets ended a client for want of stack in 2.4 seconds, and the controller reads an expression with the same code.
+- Nothing limits what reading a definition costs the process that reads it. An owner's definition costs this to their own client, gateway and controller. A job's costs that job, and past its limits the job fails and the runner goes on: 4 MB of brackets in a define ended the job's process, and 20 levels of files that each name the next twice ran to its time limit. These were measured reading and checking each:
+
+```
+  400 KB of brackets in one expression               2 seconds     1 GiB
+  4 MiB of YAML that writes [1,1,…]                  2.3 seconds   660 MiB
+  4 MiB of YAML that writes [{a},{a},…]              2 seconds     1 GiB
+  14 levels of files that each name the next twice   3.9 seconds   230 MiB, twice that with each level
+```
+
+- A gateway takes a definition of up to 64 MiB from whoever holds its token, and reads it as a client does.
+- Machines made while running that each use a step's whole time delay other machines: a pass waits for four of those steps at a time, up to 10 seconds, and every other run pays that in each pass it needs. Beside four such machines, a run of 20 ms took 10 seconds.
+- A step that asks for as much as fits in its 4 MiB delays other machines for as long as carrying it out takes.
+- A host with less memory than four steps' 4 GiB stops a step's process or the whole controller. The step is then taken once more, and its machine fails.
+- A stored definition is read as plain JSON by the controller, to keep or copy what it names and, for a made machine, for what its answer may not say. Each is at most 4 MiB, is read once in a pass, and nothing in it is compiled or evaluated.
+- A value is checked against a shape in time and memory that grow with the size of both, and nothing limits a shape. An owner's shape costs this to the controller. A made machine's shape, and a shape a list gives, stop at the step's limits. These were measured, with a value of 256 KiB unless it says otherwise:
+
+```
+  a list of texts against items: { type: string }    0.07 µs for each character
+  the same list with every item wrong                0.3 seconds, and an error of 4.8 MiB
+  numbers against nine $refs of 200 types each       119 seconds
+  3000 such numbers, every one wrong                 ended a process at 2.8 GiB
+  forty $refs that each name the next twice          never ends
+```
 
 Jobs that must be kept apart go to different runners.

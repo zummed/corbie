@@ -2,6 +2,7 @@ package cli_test
 
 import (
 	"encoding/json"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -93,6 +94,17 @@ states:
 	if err := json.Unmarshal([]byte(asked(m, "", true, "run", "show", id, "--save", into)), &saved); err != nil || len(saved) != 1 || saved[0] != filepath.Join(into, "report") {
 		t.Errorf("corbie run show --save --json printed %v (%v)", saved, err)
 	}
+	func() {
+		from, err := os.Getwd()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Chdir(filepath.Dir(dir)); err != nil {
+			t.Fatal(err)
+		}
+		defer os.Chdir(from)
+		asked(m, "", true, "run", "submit", "--check", filepath.Base(dir))
+	}()
 	asked(m, "", true, "run", "ls")
 	asked(m, "", true, "run", "ls", "--all")
 	if found := object(asked(m, "", true, "check")); found["ok"] != true || len(found["legs"].([]any)) != 4 {

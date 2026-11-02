@@ -389,7 +389,7 @@ func (flowType) Step(in *machine.StepIn) (*machine.StepOut, error) {
 		return nil, err
 	}
 	s := &stepper{flow: &flow, in: in, st: &state{Stages: map[string]*stageState{}}, out: &machine.StepOut{},
-		eval: machine.NewEvaluator(in.Time, in.Seed), need: map[string]needs{}}
+		eval: machine.NewEvaluator(in.Time, in.Seed, in.Run), need: map[string]needs{}}
 	if in.State != nil {
 		if err := json.Unmarshal(in.State, s.st); err != nil {
 			return nil, err

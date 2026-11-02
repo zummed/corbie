@@ -19,7 +19,7 @@ What a script has
 -----------------
 
   input                    the job's input
-  job.name                 the job's name; a retry adds its attempt, as in get_title@2
+  job.name                 the job's name; a restart adds its attempt, as in get_title@2
   job.attempt              the number of this attempt, from 1
   job.request              the run's ID and the job's name, the same in every attempt
   job.instance             the run's ID
@@ -29,6 +29,7 @@ What a script has
   http, fs, html, ...      every plugin and library is a global name
   require("http")          the same plugin or library, by name
   require("./lib.js")      one of the job's `files:`, which assigns to `exports`
+  require("./data.yaml")   the data of one of the job's `files:` of YAML or JSON
 
     # double.yaml
     flow: double
@@ -49,6 +50,9 @@ What a script has
 A path given to `require` is read from the directory of the file that calls
 it. A loaded file has the plugins and `require`, and not `input`, `job`,
 `emit`, `log` or `progress`.
+
+A file whose path ends in `.yaml`, `.yml` or `.json` gives its data, read as
+`corbie manual yaml` says. It needs no permission.
 
 A script cannot start a script or a machine: only a machine starts jobs.
 
@@ -105,7 +109,7 @@ Limits
 
   time         the job's `timeout:`, default 5m; past it the job fails with status `timeout`
   memory       the job's `memory:`, default no limit; past it the job fails with status `error`
-  size         16 MiB for a script and for each of its `files:`
+  size         4 MiB for a definition as it is stored; 16 MiB for a script in a blob
   process      each job runs in its own process
   directory    each job has its own scratch directory, removed when the job ends;
                a path with no leading / is in it

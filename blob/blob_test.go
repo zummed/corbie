@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/zummed/corbie/store"
 )
@@ -369,5 +370,34 @@ func TestReferencesWrittenInAText(t *testing.T) {
 	// Where blobs are followed, kept or copied, a text is only a text.
 	if refs := Refs(value); len(refs) != 0 {
 		t.Fatalf("references were taken from inside texts: %v", refs)
+	}
+}
+
+// A stored definition is text a job may have written. Definitions that each
+// name the one before twice take as many reads as there are definitions.
+func Test_blob_named_reads_each_definition_once(t *testing.T) {
+	s, _ := store.Open(t.TempDir())
+	write := func(text string) Ref {
+		ref, err := Write(ctx, s, store.Blob("ctl", "c-run", NewName()), Definition, NewKey(), strings.NewReader(text))
+		if err != nil {
+			t.Fatal(err)
+		}
+		return ref
+	}
+	ref := write("{}")
+	for range 40 {
+		named, err := json.Marshal(ref.Value())
+		if err != nil {
+			t.Fatal(err)
+		}
+		ref = write(fmt.Sprintf(`{"machines":{"a":%s,"b":%s}}`, named, named))
+	}
+	began := time.Now()
+	named, err := Named(ctx, s, ref)
+	if err != nil || len(named) != 40 {
+		t.Fatalf("it names %d blobs: %v", len(named), err)
+	}
+	if took := time.Since(began); took > 5*time.Second {
+		t.Fatalf("it took %s", took)
 	}
 }

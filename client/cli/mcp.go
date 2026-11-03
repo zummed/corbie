@@ -269,5 +269,18 @@ server's config and store, and the model can name no other.
 
   --allow <command>   a command the model may run, by its whole name;
                       repeatable; default none`, name)},
+		{Name: "version", Usage: "", Summary: "print the version of the program and of the Corbie it is built with", Run: cmdProgramVersion},
 	}
+}
+
+// cmdProgramVersion prints a program's version and its Corbie's.
+func cmdProgramVersion(e *Env, args []string) error {
+	if _, err := e.Parse(args); err != nil {
+		return err
+	}
+	program := strings.ReplaceAll(e.table.name, " ", "-")
+	holds := map[string]any{"version": version(), "corbie": corbieVersion()}
+	return e.Print(holds, func() string {
+		return fmt.Sprintf("%s %s\ncorbie %s\n", program, version(), corbieVersion())
+	})
 }

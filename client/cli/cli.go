@@ -45,8 +45,9 @@ type Command struct {
 	Run func(e *Env, args []string) error
 }
 
-// Version is which Corbie this is. A release build is given it; any other
-// build reads it from the module's build information.
+// Version is which build of this binary this is: of Corbie, or of a
+// program read with Program. A release build is given it; any other build
+// reads it from the main module's build information.
 var Version string
 
 func version() string {
@@ -55,6 +56,27 @@ func version() string {
 	}
 	if info, ok := debug.ReadBuildInfo(); ok && info.Main.Version != "" && info.Main.Version != "(devel)" {
 		return strings.TrimPrefix(info.Main.Version, "v")
+	}
+	return "dev"
+}
+
+// corbieVersion is which Corbie this binary is built with: its version
+// for Corbie itself, and the version of the module it depends on for a
+// program.
+func corbieVersion() string {
+	info, ok := debug.ReadBuildInfo()
+	if !ok || info.Main.Path == "github.com/zummed/corbie" {
+		return version()
+	}
+	for _, m := range info.Deps {
+		if m.Path == "github.com/zummed/corbie" {
+			if m.Replace != nil {
+				m = m.Replace
+			}
+			if m.Version != "" && m.Version != "(devel)" {
+				return strings.TrimPrefix(m.Version, "v")
+			}
+		}
 	}
 	return "dev"
 }

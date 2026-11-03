@@ -478,10 +478,11 @@ say a word
 
 The commands of corbie frob:
 
-  check    check a folder
-  ls       list runs
-  manual   print a page of the manual, or list the pages
-  mcp      serve the manual and the commands to a model, as an MCP server
+  check     check a folder
+  ls        list runs
+  manual    print a page of the manual, or list the pages
+  mcp       serve the manual and the commands to a model, as an MCP server
+  version   print the version of the program and of the Corbie it is built with
 
 corbie frob <command> --help prints a command's help.
 `
@@ -570,5 +571,18 @@ func TestStartRunsWhatTheConfigHolds(t *testing.T) {
 	none := machine{t, filepath.Join(t.TempDir(), "none")}
 	if status, _, said := none.run("", "start"); status != 1 || !strings.Contains(said, "corbie init") {
 		t.Fatalf("corbie start on an empty config ended %d and said %q", status, said)
+	}
+}
+
+// A program read with cli.Program prints its version and its Corbie's.
+func TestAProgramPrintsItsVersion(t *testing.T) {
+	was := cli.Version
+	defer func() { cli.Version = was }()
+	cli.Version = "1.2.3"
+	if status, out, said := program("version"); status != 0 || out != "corbie-frob 1.2.3\ncorbie 1.2.3\n" || said != "" {
+		t.Fatalf("corbie frob version ended %d, printed %q and said %q", status, out, said)
+	}
+	if status, out, _ := program("version", "--json"); status != 0 || !strings.Contains(out, `"version":"1.2.3"`) || !strings.Contains(out, `"corbie":"1.2.3"`) {
+		t.Fatalf("corbie frob version --json ended %d and printed %q", status, out)
 	}
 }

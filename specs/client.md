@@ -152,12 +152,18 @@ corbie bulldog check: it takes one folder, and 0 are named
 usage: corbie bulldog check <folder>
 ```
 
-The program is given `manual` and `mcp` beside its own commands, as Corbie has them. Its manual is Corbie's, with a page for each of its commands and any pages it adds to the manual. Its model server runs its commands, under a tool named after the program, each giving back what it prints on the command line, and tells a model the manual's page named after the program when it connects:
+The program is given `manual`, `mcp` and `version` beside its own commands. `version` prints the program's version and the version of the Corbie it is built with. Its manual is Corbie's, with a page for each of its commands and any pages it adds to the manual. Its model server runs its commands, under a tool named after the program, each giving back what it prints on the command line, and tells a model the manual's page named after the program when it connects:
 
 ```
 corbie bulldog manual                    Corbie's pages, the program's pages and its commands
 corbie bulldog manual office             a page the program added
 corbie bulldog mcp --allow check         a model may run corbie bulldog check, and no other
+```
+
+```
+$ corbie bulldog version
+corbie-bulldog 0.3.0
+corbie 0.12.0
 ```
 
 `corbie start` with nothing named runs the roles the config holds: its controller, its runner, and the store's server when `corbie init store` set it up. A name means exactly what is named:

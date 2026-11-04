@@ -3,13 +3,11 @@ package cli_test
 import (
 	"bytes"
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
-	"slices"
 	"strings"
 	"testing"
 
@@ -381,7 +379,7 @@ func programReading(stdin string, args ...string) (int, string, string) {
 	return status, out.String(), said.String()
 }
 
-// frob's page in the manual, which a model is told when it connects.
+// frob's page in the manual, which corbie mcp tells a model.
 const frobPage = "Frob says words.\n\nRead the page flow before frob check.\n"
 
 func init() {
@@ -391,11 +389,10 @@ func init() {
 }
 
 // A program read with cli.Program has corbie's manual, with its commands'
-// pages among Corbie's, and a model server that runs its commands and
-// tells a model the page named after it.
-func TestAProgramHasTheManualAndTheModelServer(t *testing.T) {
+// pages among Corbie's.
+func TestAProgramHasTheManual(t *testing.T) {
 	status, out, _ := program("manual")
-	for _, page := range []string{"frob", "flow", "corbie run submit", "corbie frob check", "corbie frob mcp"} {
+	for _, page := range []string{"frob", "flow", "corbie run submit", "corbie frob check"} {
 		if status != 0 || !strings.Contains(out, "  "+page+" ") {
 			t.Fatalf("corbie frob manual ended %d and lists no page %s:\n%s", status, page, out)
 		}
@@ -408,63 +405,6 @@ func TestAProgramHasTheManualAndTheModelServer(t *testing.T) {
 	}
 	if status, _, said := program("manual", "nosuch"); status != 2 || !strings.Contains(said, "corbie frob manual lists them") {
 		t.Fatalf("corbie frob manual nosuch ended %d and said %q", status, said)
-	}
-	if status, _, said := program("mcp", "--allow", "run submit"); status != 2 || !strings.Contains(said, "corbie frob --help lists them") {
-		t.Fatalf("corbie frob mcp allowed a command of corbie's: ended %d and said %q", status, said)
-	}
-
-	calls := strings.Join([]string{
-		`{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}`,
-		`{"jsonrpc":"2.0","id":2,"method":"tools/list"}`,
-		`{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"manual","arguments":{"page":"frob check"}}}`,
-		`{"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"frob","arguments":{"args":["check","here"]}}}`,
-		`{"jsonrpc":"2.0","id":5,"method":"tools/call","params":{"name":"frob","arguments":{"args":["ls"]}}}`,
-		`{"jsonrpc":"2.0","id":6,"method":"tools/call","params":{"name":"corbie","arguments":{"args":["check","here"]}}}`,
-		`{"jsonrpc":"2.0","id":7,"method":"tools/call","params":{"name":"frob","arguments":{"args":["hello"]}}}`,
-	}, "\n") + "\n"
-	// A config the environment names reaches the command as it is, and is
-	// not added to its line.
-	t.Setenv("CORBIE_CONFIG", t.TempDir())
-	status, out, said := programReading(calls, "mcp", "--allow", "check", "--allow", "")
-	answers := strings.Split(strings.TrimSpace(out), "\n")
-	slices.Sort(answers)
-	if status != 0 || len(answers) != 7 {
-		t.Fatalf("corbie frob mcp ended %d, said %q and answered seven calls with:\n%s", status, said, out)
-	}
-	var started struct {
-		Result struct {
-			Instructions string
-			ServerInfo   struct{ Name string }
-		}
-	}
-	if err := json.Unmarshal([]byte(answers[0]), &started); err != nil || started.Result.Instructions != frobPage || started.Result.ServerInfo.Name != "corbie-frob" {
-		t.Fatalf("a model connecting was told %s", answers[0])
-	}
-	var listed struct {
-		Result struct {
-			Tools []struct{ Name, Description string }
-		}
-	}
-	if err := json.Unmarshal([]byte(answers[1]), &listed); err != nil || len(listed.Result.Tools) != 2 || listed.Result.Tools[0].Name != "manual" || listed.Result.Tools[1].Name != "frob" ||
-		!strings.Contains(listed.Result.Tools[1].Description, "corbie frob check <folder> — check a folder") || strings.Contains(listed.Result.Tools[1].Description, "corbie frob ls") {
-		t.Fatalf("the tools were listed as %s", answers[1])
-	}
-	if !strings.Contains(answers[2], `"text":"corbie frob check \u003cfolder\u003e`) && !strings.Contains(answers[2], `"text":"corbie frob check <folder>`) {
-		t.Fatalf("the manual tool gave %s", answers[2])
-	}
-	if !strings.Contains(answers[3], `\"ended\":1`) || !strings.Contains(answers[3], `\"result\":\"\"`) || !strings.Contains(answers[3], "nothing is in here") {
-		t.Fatalf("frob check was answered %s", answers[3])
-	}
-	if !strings.Contains(answers[4], "not one this server was started with permission for") {
-		t.Fatalf("frob ls, not allowed, was answered %s", answers[4])
-	}
-	if !strings.Contains(answers[5], `there is no tool named \"corbie\"`) {
-		t.Fatalf("the tool corbie was answered %s", answers[5])
-	}
-	// A program's command prints as it does on the command line: no
-	// --json is added to it.
-	if !strings.Contains(answers[6], `\"result\":\"hello\\n\"`) {
-		t.Fatalf("frob hello was answered %s", answers[6])
 	}
 }
 
@@ -481,7 +421,6 @@ The commands of corbie frob:
   check     check a folder
   ls        list runs
   manual    print a page of the manual, or list the pages
-  mcp       serve the manual and the commands to a model, as an MCP server
   version   print the version of the program and of the Corbie it is built with
 
 corbie frob <command> --help prints a command's help.

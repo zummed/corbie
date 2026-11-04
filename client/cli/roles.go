@@ -324,13 +324,7 @@ func cmdStart(e *Env, args []string) error {
 	for _, p := range programs {
 		cmd := exec.CommandContext(ctx, p.path, p.args...)
 		cmd.Stdout, cmd.Stderr = e.Out, e.Err
-		cmd.Env = os.Environ()
-		if e.Given("config") {
-			cmd.Env = append(cmd.Env, "CORBIE_CONFIG="+e.config)
-		}
-		if e.Given("store") {
-			cmd.Env = append(cmd.Env, "CORBIE_STORE="+e.store)
-		}
+		cmd.Env = e.programEnv()
 		interruptible(cmd)
 		if err := cmd.Start(); err != nil {
 			return err
@@ -358,6 +352,19 @@ func cmdStart(e *Env, args []string) error {
 	default:
 		return nil
 	}
+}
+
+// programEnv is the environment a program corbie starts is given: this
+// process's, with the config and the store the command line named.
+func (e *Env) programEnv() []string {
+	env := os.Environ()
+	if e.Given("config") {
+		env = append(env, "CORBIE_CONFIG="+e.config)
+	}
+	if e.Given("store") {
+		env = append(env, "CORBIE_STORE="+e.store)
+	}
+	return env
 }
 
 func cmdManual(e *Env, args []string) error {

@@ -130,13 +130,14 @@ func Main(args []string, in io.Reader, out, errOut io.Writer) int {
 // Program runs the command line of a program that corbie <name> runs,
 // from the program's own table of commands, and gives its exit status as
 // Main does. A command named "" is the one run when no other is named.
-// The program is given corbie's manual and mcp beside its own commands:
-// its manual has its commands' pages among Corbie's, and a model is told
-// the manual's page named after it when it connects.
+// The program is given corbie's manual and version beside its own
+// commands, and its manual has its commands' pages among Corbie's. corbie
+// mcp reads that manual to give a model the program's commands, and tells
+// the model the page named after the program.
 func Program(name string, commands []Command, args []string, in io.Reader, out, errOut io.Writer) int {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
-	t := table{"corbie " + name, append(slices.Clip(commands), forPrograms(name)...), ""}
+	t := table{name: "corbie " + name, commands: append(slices.Clip(commands), forPrograms(name)...)}
 	if cmd, rest := t.find(args); cmd != nil {
 		return t.do(ctx, cmd, rest, in, out, errOut)
 	}
@@ -176,7 +177,7 @@ func Run(ctx context.Context, args []string, in io.Reader, out, errOut io.Writer
 		// A word that begins no command runs the program of that name on
 		// PATH, with the rest of the line.
 		if path, err := exec.LookPath("corbie-" + args[0]); err == nil {
-			return runProgram(ctx, path, args[1:], in, out, errOut)
+			return runProgram(ctx, path, args[1:], nil, in, out, errOut)
 		}
 		fmt.Fprintf(errOut, "corbie: %q is not a command, and no program corbie-%s is on PATH.\n\ncorbie --help lists the commands.\n", strings.Join(group, " "), args[0])
 		return 2
@@ -185,12 +186,13 @@ func Run(ctx context.Context, args []string, in io.Reader, out, errOut io.Writer
 }
 
 // runProgram runs a program on PATH with the arguments after its name,
-// this process's standard input, output and error, and its environment,
-// and gives the program's exit status, also when corbie was stopped and
-// the program ended well. A program a signal ended gives 1.
-func runProgram(ctx context.Context, path string, args []string, in io.Reader, out, errOut io.Writer) int {
+// standard input, output and error, and an environment, this process's
+// when it is nil, and gives the program's exit status, also when corbie
+// was stopped and the program ended well. A program a signal ended gives
+// 1.
+func runProgram(ctx context.Context, path string, args, env []string, in io.Reader, out, errOut io.Writer) int {
 	cmd := exec.CommandContext(ctx, path, args...)
-	cmd.Stdin, cmd.Stdout, cmd.Stderr = in, out, errOut
+	cmd.Stdin, cmd.Stdout, cmd.Stderr, cmd.Env = in, out, errOut, env
 	interruptible(cmd)
 	err := cmd.Run()
 	switch {
@@ -260,11 +262,12 @@ func taken(word string) bool {
 type table struct {
 	name     string // "corbie", or "corbie <name>" for a program
 	commands []Command
-	ends     string // the line that ends every command's help
+	ends     string  // the line that ends every command's help
+	guests   []guest // the programs corbie mcp allows commands of
 }
 
 // own is corbie's own table.
-func own() table { return table{"corbie", Commands, everywhere} }
+func own() table { return table{name: "corbie", commands: Commands, ends: everywhere} }
 
 // word is the last word of the table's name: corbie, or a program's name.
 func (t table) word() string { return t.name[strings.LastIndex(t.name, " ")+1:] }
@@ -273,10 +276,22 @@ func (t table) word() string { return t.name[strings.LastIndex(t.name, " ")+1:] 
 func (t table) own() bool { return t.name == own().name }
 
 // pages are the manual's pages, with a program's commands among them:
-// corbie's own are in the manual already.
+// corbie's own are in the manual already. A guest's pages go after the
+// last page of their group.
 func (t table) pages() []manual.Page {
 	pages := manual.Pages()
 	if t.own() {
+		for _, g := range t.guests {
+			for _, page := range g.pages {
+				at := len(pages)
+				for i, p := range pages {
+					if p.Group == page.Group {
+						at = i + 1
+					}
+				}
+				pages = slices.Insert(pages, at, page)
+			}
+		}
 		return pages
 	}
 	for i := range t.commands {

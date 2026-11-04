@@ -159,7 +159,7 @@ The check reads only the store, so it is the same wherever Corbie runs.
                   default 90s
 
   corbie manual functions   the calls a serverless host must make`},
-		{Name: "test", Usage: "<definition or script> [--input <json>] [--watch]", Summary: "run a definition or a script in this process, with no setup", Stays: true, Run: cmdTest, Help: `
+		{Name: "test", Usage: "<definition or script> [--input <json>] [--watch] | <directory>...", Summary: "run a definition or a script in this process, with no setup", Stays: true, Run: cmdTest, Help: `
 It runs a controller, a runner and a client in this process with the store in
 memory, waits until the run ends and prints it. It reads no config and keeps
 nothing. It fails unless the run ends with status done.
@@ -167,8 +167,13 @@ nothing. It fails unless the run ends with status done.
 The ceilings allow everything. Each job's own allow: list still applies.
 ` + starts + `
   --watch                  print each entry of the run's record as it is
-                           written` + scripts},
-		{Name: "run submit", Usage: "<definition or script> [--input <json>] [--wait | --watch] | <directory>... [--check] [--again <file>]", Summary: "start a run and print its ID", Run: cmdSubmit, Help: `
+                           written
+
+Given directories, it reads every machine in them as corbie run submit does,
+prints each one ok or its problems, and starts nothing. It fails when a
+machine has a problem.
+` + scripts},
+		{Name: "run submit", Usage: "<definition or script> [--input <json>] [--wait | --watch] | <directory>... [--again <file>]", Summary: "start a run and print its ID", Run: cmdSubmit, Help: `
 It reads the definition and the files it names, reports every fault in them
 together, uploads the files and sends the start message. It prints the run's
 ID and exits, unless --wait or --watch is given.
@@ -188,8 +193,6 @@ run is left as it is. Each run has the key file:<path>, from the current
 directory, which is the context. A machine whose input: names dir is given the
 context's absolute path there.
 
-  --check          read every machine and print each one ok or its problems,
-                   and start and cancel nothing
   --again <file>   start this machine though its run has ended; repeatable
 
   corbie manual a-directory   a directory of machines

@@ -32,7 +32,7 @@ A blob in any value is shown as its type, its size and the path to ask for it by
 corbie init                             create a controller, a runner and a client on this computer; by default the store is in the config, and corbie init store sets up the store's server alone
 corbie start [<name> [<its flags>]]…    run the controller, a runner, the gateway, the store's server or a program, until stopped
 corbie check                            start one small run, and report which part of a setup did not respond
-corbie test flow.yaml                   run a definition or a script in this process, with no setup
+corbie test flow.yaml                   run a definition or a script in this process, with no setup; given directories, read every machine in them
 
 corbie run submit flow.yaml             start a run and print its ID
 corbie run ls                           list runs
@@ -216,7 +216,7 @@ It reads every `*.yaml` in each directory and those below it, but for `.git`, wh
 - A run is found from its record, which lasts as long as its `keep:` says. Once the record has gone, the next submit starts the machine again.
 - Every machine in a directory it is given is started, so a machine that only another machine runs is kept elsewhere.
 - A machine is given no input, and one that needs some is refused, and reported. It reads the context's absolute path as `${run.context}`.
-- `--check` prints each machine ok or its problems, and starts and cancels nothing.
+- `corbie test` given directories reads their machines as this command does, prints each one ok or its problems, and starts and cancels nothing. It reads no config and no store, so it changes nothing wherever it runs.
 
 ## The gateway
 

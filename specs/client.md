@@ -51,7 +51,7 @@ corbie mcp                              serve the manual and the commands to a m
 corbie version                          print the version, the machine types and the plugins
 ```
 
-The commands form a tree. A word at the top is a command, or begins several commands, as `run` begins the six that act on runs. `corbie help` prints the top, each word with its summary or the words that follow it, then the names of the programs on PATH. With `corbie-ui` and `corbie-bulldog` on PATH it prints:
+The commands form a tree. A word at the top is a command, or begins several commands, as `run` begins the six that act on runs. `corbie help` prints the top, each word with its summary or the words that follow it, then the names of the programs on PATH. With `corbie-ui` and `corbie-rook` on PATH it prints:
 
 ```
   init         create a controller, a runner and a client on this computer
@@ -68,7 +68,7 @@ The commands form a tree. A word at the top is a command, or begins several comm
   mcp          serve the manual and the commands to a model, as an MCP server
   version      print the version, the machine types and the plugins
 
-Programs on PATH, which corbie <name> runs: bulldog, ui.
+Programs on PATH, which corbie <name> runs: rook, ui.
 ```
 
 - `corbie run` and `corbie run --help` list the commands of `corbie run` in the same rows, and the same holds for `controller`, `controller secret`, `runner` and `client`.
@@ -136,34 +136,33 @@ When no program `corbie-<word>` is on PATH, `corbie` names the program it looked
 
 `corbie help` lists the programs `corbie <word>` runs by their names, and starts none of them. A command, the words that begin commands, and a program each print their help with `--help`.
 
-A program written in Go reads its command line with the package's `cli.Program`, from a table of commands as Corbie's own is made. It then reads as one of Corbie's commands: the same `--help`, `--json`, `--config` and `--store`, flags anywhere among its arguments, and the same mistakes, failures and exit statuses. Its help says which of the three flags it takes. The command named `""` is the one run when no other is named:
+A program written in Go reads its command line with the package's `cli.Program`, from a table of commands as Corbie's own is made. It then reads as one of Corbie's commands: the same `--help`, `--json`, `--config` and `--store`, flags anywhere among its arguments, and the same mistakes, failures and exit statuses. Its help says which of the three flags it takes. The command named `""` is the one run when no other is named. Rook has one command:
 
 ```go
-os.Exit(cli.Program("bulldog", []cli.Command{
-	{Name: "", Usage: "[<folder>]", Summary: "serve an office until stopped", Run: serve},
-	{Name: "check", Usage: "<folder>", Summary: "read an office, and print everything wrong with it", Run: check},
+os.Exit(cli.Program("rook", []cli.Command{
+	{Name: "init", Usage: "<directory> [--bridges <names>]", Summary: "make a directory a project, or bring its ready-made machines up to date", Run: cmdInit},
 }, os.Args[1:], os.Stdin, os.Stdout, os.Stderr))
 ```
 
 ```
-$ corbie bulldog check
-corbie bulldog check: it takes one folder, and 0 are named
+$ corbie rook init
+corbie rook init: name one directory
 
-usage: corbie bulldog check <folder>
+usage: corbie rook init <directory> [--bridges <names>]
 ```
 
 The program is given `manual`, `mcp` and `version` beside its own commands. `version` prints the program's version and the version of the Corbie it is built with. Its manual is Corbie's, with a page for each of its commands and any pages it adds to the manual. Its model server runs its commands, under a tool named after the program, each giving back what it prints on the command line, and tells a model the manual's page named after the program when it connects:
 
 ```
-corbie bulldog manual                    Corbie's pages, the program's pages and its commands
-corbie bulldog manual office             a page the program added
-corbie bulldog mcp --allow check         a model may run corbie bulldog check, and no other
+corbie rook manual                       Corbie's pages, the program's pages and its commands
+corbie rook manual rook-project          a page the program added
+corbie rook mcp --allow init             a model may run corbie rook init, and no other
 ```
 
 ```
-$ corbie bulldog version
-corbie-bulldog 0.3.0
-corbie 0.12.0
+$ corbie rook version
+corbie-rook 0.7.0
+corbie 0.15.0
 ```
 
 `corbie start` with nothing named runs the roles the config holds: its controller, its runner, and the store's server when `corbie init store` set it up. A name means exactly what is named:
@@ -171,7 +170,7 @@ corbie 0.12.0
 ```
 corbie start                      the controller and the runner, after corbie init
 corbie start runner               the runner alone
-corbie start bulldog              Bulldog alone, beside roles that systemd runs
+corbie start ui                   the UI alone, beside roles that systemd runs
 ```
 
 The words after a name, up to the next name, are its own: a role's flags, or a program's arguments. `--config`, `--store`, `--json` and `--help` are `corbie start`'s wherever they are written.

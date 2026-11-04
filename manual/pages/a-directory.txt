@@ -27,7 +27,7 @@ Reference
 ---------
 
   corbie run submit <directory>...                 brings their runs into line
-  corbie run submit <directory>... --check         reads every machine, and starts nothing
+  corbie test <directory>...                       reads every machine, and starts nothing
   corbie run submit <directory>... --again <file>  starts a machine whose run has ended
 
 It reads every *.yaml in the directories and those below them, but for .git, whose first key gives a type of machine. Any other holds data, or fields to include.
@@ -46,7 +46,7 @@ It reads every *.yaml in the directories and those below them, but for .git, who
 - Every machine in a directory given is started, so keep a machine that only another machine runs elsewhere.
 - A machine is given no input, and one that needs some is refused, and reported. It reads the context's absolute path as ${run.context}.
 - A file named on its own starts a run each time, as `corbie run submit` always does.
-- --check cannot tell a mistyped first key from a file of data, which it does not list. A submit reports it once the file reads as a machine.
+- corbie test cannot tell a mistyped first key from a file of data, which it does not list. A submit reports it once the file reads as a machine.
 
 To have a machine come back when it ends, run it as a job with restart:. `corbie manual definitions` gives the fields.
 

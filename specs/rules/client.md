@@ -181,7 +181,7 @@ The detailed rules behind [the Client overview](../client.md).
 
 ## A directory of machines
 
-**R-client-146** `corbie run submit` given directories reads every machine in them and those below them, and reads no `.git`. It takes no flag of a start but `--check` and `--again`. A run of a machine has the key `file:<path>` and the labels `machine` and `hash`, and the command keeps nothing else, so running it again starts nothing new. *Test:* `TestDirectoryStartsItsMachines`, `TestSecondSubmitStartsNothing`
+**R-client-146** `corbie run submit` given directories reads every machine in them and those below them, and reads no `.git`. It takes no flag of a start but `--again`. A run of a machine has the key `file:<path>` and the labels `machine` and `hash`, and the command keeps nothing else, so running it again starts nothing new. *Test:* `TestDirectoryStartsItsMachines`, `TestSecondSubmitStartsNothing`
 
 **R-client-147** It starts a machine with no run, or whose latest run is at another hash, cancelling that run first, and cancels the run of a file gone from a directory it was given. A run at the machine's hash stays as it is, running or ended, and `--again <file>` starts one that ended. *Test:* `TestChangedMachineStartedAgain`, `TestFilePutBackStartsAgain`, `TestRemovedMachineIsCancelled`, `TestOtherDirectoriesAreLeftAlone`, `TestRunThatEndedStaysEnded`, `TestRunCancelledByHandStaysStopped`, `TestAgainStartsARunThatEnded`
 
@@ -189,7 +189,7 @@ The detailed rules behind [the Client overview](../client.md).
 
 **R-client-149** A start carries the context, and every expression of the run and of what it starts reads it as `run.context`. A directory's machines are given no input. *Test:* `TestContextIsReadByARunAndItsChildren`
 
-**R-client-150** `--check` reads every machine, prints each one ok or its problems, and starts and cancels nothing.
+**R-client-150** `corbie test` given directories reads every machine in them as `corbie run submit` does, prints each one ok or its problems, takes no flag of a start, reads no config and no store, and starts and cancels nothing. It fails when a machine has a problem. *Test:* `TestTestReadsADirectory`
 
 **C-client-55** A path in a machine may name a file of the context and none outside it, by a link or otherwise, so a directory's machines are what its files say. Tests: `TestPathsReadFromTheContext`, `TestLinksStayInTheContext`.
 

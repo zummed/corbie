@@ -219,8 +219,31 @@ func cmdTest(e *Env, args []string) error {
 	if err != nil {
 		return err
 	}
+	dirs, err := directories(files)
+	if err != nil {
+		return err
+	}
+	if dirs {
+		given := []string{}
+		e.Flags.Visit(func(f *flag.Flag) {
+			if slices.Contains(startOnly, f.Name) {
+				given = append(given, "--"+f.Name)
+			}
+		})
+		if len(given) > 0 {
+			return Mistake("%s applies to one definition; a directory takes no flag of a start", strings.Join(given, ", "))
+		}
+		context, err := os.Getwd()
+		if err != nil {
+			return err
+		}
+		if err := inContext(context, files); err != nil {
+			return err
+		}
+		return e.checkMachines(context, files)
+	}
 	if len(files) != 1 {
-		return Mistake("name one definition, or one script file")
+		return Mistake("name directories, or one definition, or one script file")
 	}
 	defer s.close()
 	draft, start, err := s.prepare(e, files[0])
@@ -247,26 +270,19 @@ func cmdTest(e *Env, args []string) error {
 
 func cmdSubmit(e *Env, args []string) error {
 	var s starting
-	var check bool
 	var again list
 	s.flags(e)
 	e.Flags.BoolVar(&s.wait, "wait", false, "")
-	e.Flags.BoolVar(&check, "check", false, "")
 	e.Flags.Var(&again, "again", "")
 	files, err := e.Parse(args)
 	if err != nil {
 		return err
 	}
-	dirs := 0
-	for _, name := range files {
-		if info, err := os.Stat(name); err == nil && info.IsDir() {
-			dirs++
-		}
-	}
+	dirs, err := directories(files)
 	switch {
-	case dirs > 0 && dirs < len(files):
-		return Mistake("name directories, or one definition, or one script file; not both")
-	case dirs > 0:
+	case err != nil:
+		return err
+	case dirs:
 		given := []string{}
 		e.Flags.Visit(func(f *flag.Flag) {
 			if slices.Contains(startOnly, f.Name) {
@@ -274,11 +290,11 @@ func cmdSubmit(e *Env, args []string) error {
 			}
 		})
 		if len(given) > 0 {
-			return Mistake("%s applies to one definition; a directory takes only --check and --again", strings.Join(given, ", "))
+			return Mistake("%s applies to one definition; a directory takes only --again", strings.Join(given, ", "))
 		}
-		return e.submitDirectories(files, again, check)
-	case check || len(again) > 0:
-		return Mistake("--check and --again apply to directories, and %s is not one", strings.Join(files, ", "))
+		return e.submitDirectories(files, again)
+	case len(again) > 0:
+		return Mistake("--again applies to directories, and %s is not one", strings.Join(files, ", "))
 	case len(files) != 1:
 		return Mistake("name directories, or one definition, or one script file")
 	}
@@ -308,35 +324,49 @@ func cmdSubmit(e *Env, args []string) error {
 	return e.await(c, id, s.watch, strings.HasSuffix(files[0], ".js"))
 }
 
+// directories tells whether the names are all directories, and refuses
+// directories named beside a file.
+func directories(names []string) (bool, error) {
+	dirs := 0
+	for _, name := range names {
+		if info, err := os.Stat(name); err == nil && info.IsDir() {
+			dirs++
+		}
+	}
+	if dirs > 0 && dirs < len(names) {
+		return false, Mistake("name directories, or one definition, or one script file; not both")
+	}
+	return dirs > 0, nil
+}
+
+// inContext makes each name a path from the context, and refuses a name
+// outside it.
+func inContext(context string, names []string) error {
+	for i, name := range names {
+		rel, inside, err := within(context, name)
+		if err != nil {
+			return err
+		}
+		if !inside {
+			return Mistake("%s is outside the context, %s: run this from a directory that holds it", name, context)
+		}
+		names[i] = rel
+	}
+	return nil
+}
+
 // submitDirectories brings the runs of directories of the context into line
 // with their files.
-func (e *Env) submitDirectories(dirs []string, again []string, check bool) error {
+func (e *Env) submitDirectories(dirs []string, again []string) error {
 	context, err := os.Getwd()
 	if err != nil {
 		return err
 	}
-	from := func(name string) (string, error) {
-		rel, inside, err := within(context, name)
-		if err != nil {
-			return "", err
-		}
-		if !inside {
-			return "", Mistake("%s is outside the context, %s: run this from a directory that holds it", name, context)
-		}
-		return rel, nil
+	if err := inContext(context, dirs); err != nil {
+		return err
 	}
-	for i, dir := range dirs {
-		if dirs[i], err = from(dir); err != nil {
-			return err
-		}
-	}
-	for i, file := range again {
-		if again[i], err = from(file); err != nil {
-			return err
-		}
-	}
-	if check {
-		return e.checkMachines(context, dirs)
+	if err := inContext(context, again); err != nil {
+		return err
 	}
 	c, err := e.Client()
 	if err != nil {

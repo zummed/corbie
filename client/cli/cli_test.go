@@ -466,3 +466,36 @@ func TestViewerNeedsNoIdentity(t *testing.T) {
 		t.Fatal("a viewer was given a run's definition")
 	}
 }
+
+func TestTestReadsADirectory(t *testing.T) {
+	m := machine{t, t.TempDir()}
+	dir := t.TempDir()
+	os.MkdirAll(filepath.Join(dir, "on"), 0o755)
+	os.WriteFile(filepath.Join(dir, "on", "hello.yaml"), []byte(hello), 0o644)
+	os.WriteFile(filepath.Join(dir, "on", "greet.js"), []byte(`return input`), 0o644)
+	from, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chdir(dir); err != nil {
+		t.Fatal(err)
+	}
+	defer os.Chdir(from)
+	if out := m.ok("", "test", "on"); out != "on/hello.yaml  ok\n" {
+		t.Fatalf("corbie test on printed %q", out)
+	}
+	if entries, _ := os.ReadDir(m.config); len(entries) != 0 {
+		t.Fatal("corbie test on a directory left a config behind")
+	}
+	if status, _, said := m.run("", "test", "on", "--input", "{}"); status != 2 || !strings.Contains(said, "--input applies to one definition") {
+		t.Fatalf("corbie test on --input ended %d and said %q", status, said)
+	}
+	if status, _, _ := m.run("", "run", "submit", "on", "--check"); status != 2 {
+		t.Fatalf("corbie run submit --check ended %d", status)
+	}
+	os.Remove(filepath.Join(dir, "on", "greet.js"))
+	status, out, _ := m.run("", "test", "on")
+	if status != 1 || !strings.Contains(out, "on/hello.yaml\n    ") {
+		t.Fatalf("with its script gone, corbie test on ended %d and printed %q", status, out)
+	}
+}

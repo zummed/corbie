@@ -103,7 +103,7 @@ states:
 			t.Fatal(err)
 		}
 		defer os.Chdir(from)
-		asked(m, "", true, "run", "submit", "--check", filepath.Base(dir))
+		asked(m, "", true, "test", filepath.Base(dir))
 	}()
 	asked(m, "", true, "run", "ls")
 	asked(m, "", true, "run", "ls", "--all")

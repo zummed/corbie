@@ -151,12 +151,12 @@ corbie rook init: name one directory
 usage: corbie rook init <directory> [--bridges <names>]
 ```
 
-The program is given `manual`, `mcp` and `version` beside its own commands. `version` prints the program's version and the version of the Corbie it is built with. Its manual is Corbie's, with a page for each of its commands and any pages it adds to the manual. Its model server runs its commands, under a tool named after the program, each giving back what it prints on the command line, and tells a model the manual's page named after the program when it connects:
+The program is given `manual` and `version` beside its own commands, and no `mcp`. `version` prints the program's version and the version of the Corbie it is built with. Its manual is Corbie's, with a page for each of its commands and any pages it adds to the manual. A model runs its commands through `corbie mcp`, as For a model says:
 
 ```
 corbie rook manual                       Corbie's pages, the program's pages and its commands
 corbie rook manual rook-project          a page the program added
-corbie rook mcp --allow init             a model may run corbie rook init, and no other
+corbie mcp --allow "rook init"           a model may run corbie rook init, and no other
 ```
 
 ```

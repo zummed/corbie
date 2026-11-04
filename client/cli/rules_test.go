@@ -894,29 +894,99 @@ func quote(text string) string {
 	return string(data)
 }
 
-// A model's --allow takes only commands of the table, and a program on
-// PATH is never run for a model.
-func Test_client_model_runs_no_program(t *testing.T) {
+// A model runs a program on PATH only for a command the server's line
+// allows by its whole name, and corbie start never starts a program for a
+// model.
+func Test_client_model_runs_a_program_only_as_allowed(t *testing.T) {
 	m := machine{t, t.TempDir()}
-	dir := standIn(t, "frob", `echo "the program ran"`)
-	if status, out, said := m.run("", "mcp", "--allow", "frob"); status != 2 || out != "" || !strings.Contains(said, `--allow "frob": that is not a command`) {
-		t.Fatalf("corbie mcp --allow frob ended %d, printed %q and said %q", status, out, said)
-	}
+	frob := standIn(t, "frob", `echo "the program ran"`)
 	answers := m.model([]string{"run ls"}, []string{"frob"}, []string{"frob", "--help"})
 	for i, answer := range answers {
 		if !answer.Failed || !strings.Contains(answer.Text, "is not a command") || strings.Contains(answer.Text, "the program ran") {
-			t.Errorf("call %d, of a program, was answered %+v", i+1, answer)
+			t.Errorf("call %d, of a program not allowed, was answered %+v", i+1, answer)
 		}
 	}
 	// corbie start names programs beside roles, and a model allowed it is
 	// still refused a program.
 	for i, answer := range m.model([]string{"start"}, []string{"start", "frob"}, []string{"start", "controller", "frob", "--loud"}) {
-		if !answer.Failed || !strings.Contains(answer.Text, "never run for a model") || strings.Contains(answer.Text, "the program ran") {
+		if !answer.Failed || !strings.Contains(answer.Text, "never starts a program for a model") || strings.Contains(answer.Text, "the program ran") {
 			t.Errorf("call %d, of corbie start with a program, was answered %+v", i+1, answer)
 		}
 	}
-	if _, err := os.Stat(filepath.Join(dir, "args")); err == nil {
-		t.Fatal("the program was run for the model")
+	if _, err := os.Stat(filepath.Join(frob, "args")); err == nil {
+		t.Fatal("a program not allowed was run for the model")
+	}
+	if status, out, said := m.run("", "mcp", "--allow", "nothere go"); status != 2 || out != "" || !strings.Contains(said, `--allow "nothere go": that is neither a command nor a program corbie-nothere on PATH`) {
+		t.Fatalf("corbie mcp --allow \"nothere go\" ended %d, printed %q and said %q", status, out, said)
+	}
+
+	// A program's manual names its commands, and the server reads it when
+	// it starts.
+	zap := standIn(t, "zap", `case "$1" in
+manual) cat <<'PAGES'
+[{"name":"zap","group":"Zap","summary":"Zap, for a model.","text":"Zap: read the page zap-more.\n"},
+ {"name":"zap-more","group":"Zap","summary":"More of zap.","text":"More.\n"},
+ {"name":"corbie zap go","group":"Commands","summary":"go somewhere","text":"corbie zap go <where>\n\ngo somewhere\n"},
+ {"name":"corbie zap stop","group":"Commands","summary":"stop","text":"corbie zap stop\n\nstop\n"},
+ {"name":"corbie zap manual","group":"Commands","summary":"print a page","text":"corbie zap manual [page]\n"},
+ {"name":"corbie test","group":"Commands","summary":"an older corbie test","text":"old\n"}]
+PAGES
+;;
+*) echo "zap ran $*"; echo "zap said" >&2; exit 3;;
+esac`)
+	if status, _, said := m.run("", "mcp", "--allow", "zap fly"); status != 2 || !strings.Contains(said, `--allow "zap fly": that is not a command of corbie zap`) {
+		t.Fatalf("corbie mcp --allow \"zap fly\" ended %d and said %q", status, said)
+	}
+	answers = m.model([]string{"zap go"}, []string{"zap", "go", "home"}, []string{"zap", "stop"}, []string{"zap", "go", "--config", "elsewhere"}, []string{"frob"})
+	if answers[0].Ended != 3 || answers[0].Result != "zap ran go home\n" || answers[0].Said != "zap said\n" {
+		t.Errorf("allowed zap go, a model's zap go home was answered %+v", answers[0])
+	}
+	if env := kept(t, zap, "env"); !strings.Contains(env, "CORBIE_CONFIG="+m.config+"\n") {
+		t.Errorf("zap ran without the server's config:\n%s", env)
+	}
+	if !answers[1].Failed || !strings.Contains(answers[1].Text, `the command "zap stop" is not one this server was started with permission for`) {
+		t.Errorf("allowed zap go, a model's zap stop was answered %+v", answers[1])
+	}
+	if !answers[2].Failed || !strings.Contains(answers[2].Text, "may not name a config") {
+		t.Errorf("a model's zap go --config was answered %+v", answers[2])
+	}
+	if !answers[3].Failed || !strings.Contains(answers[3].Text, "is not a command") {
+		t.Errorf("allowed zap go, a model's frob was answered %+v", answers[3])
+	}
+	if _, err := os.Stat(filepath.Join(frob, "args")); err == nil {
+		t.Fatal("a program not allowed was run for the model")
+	}
+
+	// The model is told Corbie's briefing and the program's page, and the
+	// manual has the program's pages, but not its older copy of Corbie's.
+	var input strings.Builder
+	for i, call := range []map[string]any{
+		{"method": "initialize"},
+		{"method": "tools/list"},
+		{"method": "tools/call", "params": map[string]any{"name": "manual", "arguments": map[string]any{}}},
+		{"method": "tools/call", "params": map[string]any{"name": "manual", "arguments": map[string]any{"page": "zap-more"}}},
+		{"method": "tools/call", "params": map[string]any{"name": "manual", "arguments": map[string]any{"page": "test"}}},
+	} {
+		call["jsonrpc"], call["id"] = "2.0", i+1
+		line, _ := json.Marshal(call)
+		input.Write(append(line, '\n'))
+	}
+	got := map[int]string{}
+	for _, answer := range lines(t, m.ok(input.String(), "mcp", "--allow", "zap go", "--allow", "test")) {
+		text, _ := json.Marshal(answer["result"])
+		got[int(answer["id"].(float64))] = string(text)
+	}
+	if !strings.Contains(got[1], "Corbie runs machines.") || !strings.Contains(got[1], "Zap: read the page zap-more.") {
+		t.Errorf("the model was told %s", got[1])
+	}
+	if !strings.Contains(got[2], `corbie zap go \u003cwhere\u003e — go somewhere`) || strings.Contains(got[2], "zap stop") || !strings.Contains(got[2], "a program's are as the program prints them") {
+		t.Errorf("the tools were described as %s", got[2])
+	}
+	if !strings.Contains(got[3], "zap-more") || !strings.Contains(got[3], "corbie zap go") || strings.Contains(got[3], "corbie zap manual") {
+		t.Errorf("the manual listed %s", got[3])
+	}
+	if !strings.Contains(got[4], "More.") || strings.Contains(got[5], "an older corbie test") || strings.Contains(got[5], "old\\n") {
+		t.Errorf("the manual gave %s and %s", got[4], got[5])
 	}
 }
 

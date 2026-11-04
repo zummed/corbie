@@ -177,7 +177,7 @@ The detailed rules behind [the Client overview](../client.md).
 
 **C-client-51** A line that took more than twenty seconds is `late` and fails the check, the timer excepted. On a serverless host the once-a-minute call does whatever the bucket's own call should have, so a call that is missing shows only as slowness, and a check that passed a slow line would pass it; a timer there waits for that call and is not at fault for it. *Test:* `client_check_slow_leg_is_late`
 
-**C-client-53** A model's `--allow` takes only commands of the table, and a program on PATH is never run for a model. Anything on the owner's PATH would otherwise be a model's to run. *Test:* `client_model_runs_no_program`
+**C-client-53** A model runs a program on PATH only for a command the server's `--allow` names by its whole name, and `corbie start` never starts a program for a model. Anything on the owner's PATH would otherwise be a model's to run. *Test:* `client_model_runs_a_program_only_as_allowed`
 
 ## A directory of machines
 

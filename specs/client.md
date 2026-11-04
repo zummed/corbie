@@ -130,7 +130,7 @@ The config and the store may be named by environment variables. No other flag is
 
 The commands, their help, the manual's pages about them and the names by which a model is allowed to run them all come from one table.
 
-`corbie <word>`, where the word begins no command, runs the program `corbie-<word>` from PATH with the rest of the line, this process's standard input, output, error and environment, and ends with the program's exit status. A command in the table always wins. A model through `corbie mcp` runs no program.
+`corbie <word>`, where the word begins no command, runs the program `corbie-<word>` from PATH with the rest of the line, this process's standard input, output, error and environment, and ends with the program's exit status. A command in the table always wins. A model through `corbie mcp` runs a program only for a command the server was started with permission for.
 
 When no program `corbie-<word>` is on PATH, `corbie` names the program it looked for, prints `corbie --help lists the commands.` and ends with status 2.
 
@@ -229,6 +229,14 @@ It keeps nothing itself. It runs wherever a process can stay up, and is not offe
 
 ## For a model
 
-`corbie mcp` serves two tools to a model: the manual, and the command line. The model may run only the commands it was started with permission for, each named by its whole name, as in `--allow "run submit"`, with the config the server was started on. It needs nothing running and keeps nothing. A program read with `cli.Program` serves the same two tools with its own `mcp`, and its model runs only the program's commands.
+`corbie mcp` serves two tools to a model: the manual, and the command line. The model may run only the commands it was started with permission for, each named by its whole name, as in `--allow "run submit"`, with the config the server was started on. It needs nothing running and keeps nothing.
+
+A permission may name a program's command, as in `--allow "rook init"`. When the server starts, it runs `corbie rook manual --json` once:
+
+1. The program's pages join the manual, and its commands' pages name its commands.
+2. The model is told the program's page named after it, `rook`, after Corbie's briefing.
+3. The model runs `rook init` with the command tool, as `corbie rook init` runs it, with the server's config and store, and gets back what the program printed.
+
+A model never runs a program the server's line does not name, and `corbie start` never starts a program for a model.
 
 Each call runs by itself. A call that stays until a run ends keeps no other call from being answered, and it ends when the model's host stops it.

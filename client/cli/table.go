@@ -384,7 +384,11 @@ server's config and store, and the model can name no other. The server needs
 no controller or runner running, and keeps no state.
 
   --allow <command>   a command the model may run, by its whole name, such as
-                      test or "run submit"; repeatable; default none
+                      test, "run submit" or a program's "rook init";
+                      repeatable; default none
+
+A program's command adds the program's pages to the manual, and the model is
+told the program's page named after it.
 
   corbie mcp --allow test --allow "run submit" --allow "run show"
 

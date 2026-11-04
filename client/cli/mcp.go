@@ -7,16 +7,22 @@ import (
 	"encoding/json/v2"
 	"fmt"
 	"io"
+	"os/exec"
 	"slices"
 	"strings"
 	"sync"
+	"time"
+
+	"github.com/zummed/corbie/manual"
 )
 
 // cmdMCP serves two tools to a model over standard input and output: the
-// manual, and the command line of the table it was found in, corbie's or a
-// program's. The model may run only the commands the server was started
-// with permission for, with the config the server was started on. The
-// server needs nothing running and keeps nothing.
+// manual, and corbie's command line. The model may run only the commands
+// the server was started with permission for, with the config the server
+// was started on. A command allowed may be a program's, as in --allow
+// "rook init": the program's pages join the manual, and its commands are
+// run as corbie <name> runs them. The server needs nothing running and
+// keeps nothing.
 func cmdMCP(e *Env, args []string) error {
 	var allow list
 	e.Flags.Var(&allow, "allow", "")
@@ -28,10 +34,8 @@ func cmdMCP(e *Env, args []string) error {
 		return Mistake("mcp takes only flags: --allow <command>, as many times as there are commands to allow")
 	}
 	t := e.table
-	for _, name := range allow {
-		if !slices.ContainsFunc(t.commands, func(c Command) bool { return c.Name == name }) {
-			return Mistake("--allow %q: that is not a command (%s --help lists them)", name, t.name)
-		}
+	if t.guests, err = e.guests(allow); err != nil {
+		return err
 	}
 	type request struct {
 		ID     any            `json:"id,omitzero"`
@@ -62,7 +66,7 @@ func cmdMCP(e *Env, args []string) error {
 		switch req.Method {
 		case "initialize":
 			result = map[string]any{"protocolVersion": "2025-06-18", "capabilities": map[string]any{"tools": map[string]any{}},
-				"serverInfo": map[string]any{"name": strings.ReplaceAll(t.name, " ", "-"), "version": version()}, "instructions": t.briefing()}
+				"serverInfo": map[string]any{"name": "corbie", "version": version()}, "instructions": t.briefing()}
 		case "tools/list":
 			result = map[string]any{"tools": t.tools(allow)}
 		case "tools/call":
@@ -123,18 +127,16 @@ const briefing = `Corbie runs machines. A machine is a YAML definition of type f
 5. Tell the person what the run printed.`
 
 // briefing is what a model is told when it connects: corbie's briefing,
-// or the text of the manual's page named after the program, if there is
-// one.
+// then the page named after each program it may run a command of, if the
+// program has one.
 func (t table) briefing() string {
-	if t.own() {
-		return briefing
-	}
-	for _, page := range t.pages() {
-		if page.Name == t.word() {
-			return page.Text
+	text := briefing
+	for _, g := range t.guests {
+		if at := slices.IndexFunc(g.pages, func(p manual.Page) bool { return p.Name == g.name }); at >= 0 {
+			text += "\n\n" + strings.TrimRight(g.pages[at].Text, "\n")
 		}
 	}
-	return ""
+	return text
 }
 
 func (e *Env) respond(v any) {
@@ -143,7 +145,7 @@ func (e *Env) respond(v any) {
 }
 
 // tools describes the two tools to the model: the manual, and the command
-// line, named as the table is.
+// line.
 func (t table) tools(allow []string) []any {
 	var commands []string
 	for i := range t.commands {
@@ -158,23 +160,31 @@ func (t table) tools(allow []string) []any {
 		}
 		commands = append(commands, line)
 	}
-	results := "Results are as the command prints them."
-	if t.own() {
-		results = "Results are JSON."
+	// A program's command is described by its page, whose first line is
+	// the command as it is typed.
+	for _, g := range t.guests {
+		for _, page := range g.commands() {
+			if slices.Contains(allow, strings.TrimPrefix(page.Name, "corbie ")) {
+				usage, _, _ := strings.Cut(page.Text, "\n")
+				commands = append(commands, fmt.Sprintf("%s — %s", usage, page.Summary))
+			}
+		}
+	}
+	results := "Results are JSON."
+	if len(t.guests) > 0 {
+		results = "Corbie's results are JSON, and a program's are as the program prints them."
 	}
 	allowed := "No commands are allowed to you."
 	if len(commands) > 0 {
-		allowed = "The commands allowed to you:\n" + strings.Join(commands, "\n")
-		if t.own() {
-			allowed += "\nrun show and run submit also stay until the run ends when given --wait or --watch, and run ls --watch stays until it is stopped."
-		}
+		allowed = "The commands allowed to you:\n" + strings.Join(commands, "\n") +
+			"\nrun show and run submit also stay until the run ends when given --wait or --watch, and run ls --watch stays until it is stopped."
 	}
 	return []any{
 		map[string]any{"name": "manual",
-			"description": "The manual of " + t.name + ", which holds Corbie's. With no page it lists the pages; with a page it gives that page. Read a plugin's or a machine type's page before writing a script or a definition that uses it.",
+			"description": "The manual of corbie, with the pages of each program a command is allowed of. With no page it lists the pages; with a page it gives that page. Read a plugin's or a machine type's page before writing a script or a definition that uses it.",
 			"inputSchema": map[string]any{"type": "object", "properties": map[string]any{"page": map[string]any{"type": "string"}}}},
-		map[string]any{"name": t.word(),
-			"description": "Runs one command of " + t.name + " and gives back its result, what it said along the way, and which of three ways it ended: 0 success, 1 failure, 2 a mistake in how it was written. Give the arguments as a list, without the words " + t.name + ". " + results + "\n" + allowed,
+		map[string]any{"name": "corbie",
+			"description": "Runs one command of corbie and gives back its result, what it said along the way, and which of three ways it ended: 0 success, 1 failure, 2 a mistake in how it was written. Give the arguments as a list, without the word corbie. " + results + "\n" + allowed,
 			"inputSchema": map[string]any{"type": "object", "required": []any{"args"},
 				"properties": map[string]any{"args": map[string]any{"type": "array", "items": map[string]any{"type": "string"}}}}},
 	}
@@ -195,7 +205,7 @@ func (e *Env) call(ctx context.Context, t table, name string, arguments map[stri
 		var out, errOut bytes.Buffer
 		status := t.do(ctx, cmd, strings.Fields(page), strings.NewReader(""), &out, &errOut)
 		return out.String() + errOut.String(), status != 0
-	case t.word():
+	case "corbie":
 		given, _ := arguments["args"].([]any)
 		var args []string
 		for _, arg := range given {
@@ -204,6 +214,25 @@ func (e *Env) call(ctx context.Context, t table, name string, arguments map[stri
 				return "args is a list of texts", true
 			}
 			args = append(args, text)
+		}
+		// A program's command is found by its whole name among the
+		// program's pages, and runs as corbie <name> runs it, with the
+		// server's config and store.
+		if at := slices.IndexFunc(t.guests, func(g guest) bool { return len(args) > 0 && g.name == args[0] }); at >= 0 {
+			g := t.guests[at]
+			whole := g.find(args)
+			if whole == "" {
+				return fmt.Sprintf("%q is not a command", strings.Join(args, " ")), true
+			}
+			if !slices.Contains(allow, whole) {
+				return fmt.Sprintf("the command %q is not one this server was started with permission for", whole), true
+			}
+			if namesConfigOrStore(args) {
+				return "a call may not name a config or a store: the server's own are used", true
+			}
+			var out, errOut bytes.Buffer
+			status := runProgram(ctx, g.path, args[1:], e.programEnv(), strings.NewReader(""), &out, &errOut)
+			return ran(status, out, errOut)
 		}
 		// The name a command is allowed by and the command that then runs
 		// are found by one reading of the command line, and a command that
@@ -215,30 +244,22 @@ func (e *Env) call(ctx context.Context, t table, name string, arguments map[stri
 		if !slices.Contains(allow, cmd.Name) {
 			return fmt.Sprintf("the command %q is not one this server was started with permission for", cmd.Name), true
 		}
-		// A program on PATH is never run for a model, and corbie start's
-		// line names programs beside roles: it is read as corbie start
-		// reads it, and a program in it is refused.
-		if t.own() && cmd.Name == "start" {
+		// corbie start's line names programs beside roles: it is read as
+		// corbie start reads it, and a program in it is refused.
+		if cmd.Name == "start" {
 			_, named, _ := items(cmd.env(ctx, nil, io.Discard, io.Discard), rest)
 			for _, it := range named {
 				if !slices.Contains(roles, it.name) {
-					return fmt.Sprintf("%q is a program on PATH, and a program is never run for a model", it.name), true
+					return fmt.Sprintf("%q is a program on PATH, and corbie start never starts a program for a model", it.name), true
 				}
 			}
 		}
-		for _, arg := range rest {
-			flag := strings.TrimLeft(strings.SplitN(arg, "=", 2)[0], "-")
-			if strings.HasPrefix(arg, "-") && (flag == "config" || flag == "store") {
-				return "a call may not name a config or a store: the server's own are used", true
-			}
-		}
-		// Corbie's results are JSON; a program's are as it prints them.
-		var full []string
-		if t.own() {
-			full = append(full, "--json")
+		if namesConfigOrStore(rest) {
+			return "a call may not name a config or a store: the server's own are used", true
 		}
 		// A config or a store the server's line named is given to the
 		// command; one the environment names reaches it as it is.
+		full := []string{"--json"}
 		if e.Given("config") {
 			full = append(full, "--config", e.config)
 		}
@@ -247,28 +268,123 @@ func (e *Env) call(ctx context.Context, t table, name string, arguments map[stri
 		}
 		var out, errOut bytes.Buffer
 		status := t.do(ctx, cmd, append(full, rest...), strings.NewReader(""), &out, &errOut)
-		answer, _ := json.Marshal(map[string]any{"ended": status, "result": out.String(), "said": errOut.String()}, json.Deterministic(true))
-		return string(answer), status != 0
+		return ran(status, out, errOut)
 	}
 	return fmt.Sprintf("there is no tool named %q", name), true
 }
 
+// namesConfigOrStore says whether a command line names a config or a
+// store.
+func namesConfigOrStore(args []string) bool {
+	return slices.ContainsFunc(args, func(arg string) bool {
+		flag := strings.TrimLeft(strings.SplitN(arg, "=", 2)[0], "-")
+		return strings.HasPrefix(arg, "-") && (flag == "config" || flag == "store")
+	})
+}
+
+// ran is the answer to a call of a command: its result, what it said along
+// the way, and how it ended.
+func ran(status int, out, errOut bytes.Buffer) (string, bool) {
+	answer, _ := json.Marshal(map[string]any{"ended": status, "result": out.String(), "said": errOut.String()}, json.Deterministic(true))
+	return string(answer), status != 0
+}
+
+// A guest is a program on PATH, corbie-<name>, that the server's line
+// allows a command of. The server reads its manual once, when it starts:
+// the owner's line runs it, never a model.
+type guest struct {
+	name, path string
+	pages      []manual.Page // the program's pages that Corbie's manual lacks
+}
+
+// guests are the programs the allowed commands name, each with its pages.
+// A command allowed is Corbie's or a program's, as the program's manual
+// names it.
+func (e *Env) guests(allow []string) ([]guest, error) {
+	var out []guest
+	for _, name := range allow {
+		if slices.ContainsFunc(e.table.commands, func(c Command) bool { return c.Name == name }) {
+			continue
+		}
+		word, _, _ := strings.Cut(name, " ")
+		path, err := exec.LookPath("corbie-" + word)
+		if word == "" || taken(word) || err != nil {
+			return nil, Mistake("--allow %q: that is neither a command nor a program corbie-%s on PATH (corbie --help lists them)", name, word)
+		}
+		at := slices.IndexFunc(out, func(g guest) bool { return g.name == word })
+		if at < 0 {
+			g, err := e.readGuest(word, path)
+			if err != nil {
+				return nil, err
+			}
+			out, at = append(out, g), len(out)
+		}
+		if out[at].find(strings.Fields(name)) != name {
+			return nil, Mistake("--allow %q: that is not a command of corbie %s (corbie %s --help lists them)", name, word, word)
+		}
+	}
+	return out, nil
+}
+
+// readGuest reads a program's manual, as corbie <name> manual --json
+// prints it, and keeps the pages Corbie's manual lacks, leaving out the
+// commands every program is given.
+func (e *Env) readGuest(name, path string) (guest, error) {
+	ctx, stop := context.WithTimeout(e.ctx, 30*time.Second)
+	defer stop()
+	var out, errOut bytes.Buffer
+	if status := runProgram(ctx, path, []string{"manual", "--json"}, e.programEnv(), strings.NewReader(""), &out, &errOut); status != 0 {
+		return guest{}, fmt.Errorf("corbie %s manual --json ended %d: %s", name, status, strings.TrimSpace(errOut.String()))
+	}
+	var pages []manual.Page
+	if err := json.Unmarshal(out.Bytes(), &pages); err != nil {
+		return guest{}, fmt.Errorf("corbie %s manual --json printed no manual: %v", name, err)
+	}
+	own := manual.Pages()
+	g := guest{name: name, path: path}
+	for _, page := range pages {
+		given := slices.ContainsFunc(forPrograms(name), func(c Command) bool { return page.Name == "corbie "+name+" "+c.Name })
+		if !given && !slices.ContainsFunc(own, func(p manual.Page) bool { return p.Name == page.Name }) {
+			g.pages = append(g.pages, page)
+		}
+	}
+	return g, nil
+}
+
+// commands are the pages of the program's commands, each named as it is
+// typed: corbie rook init.
+func (g guest) commands() []manual.Page {
+	var out []manual.Page
+	for _, page := range g.pages {
+		if page.Group == "Commands" && (page.Name == "corbie "+g.name || strings.HasPrefix(page.Name, "corbie "+g.name+" ")) {
+			out = append(out, page)
+		}
+	}
+	return out
+}
+
+// find gives the whole name of the program's command a command line
+// begins with, as rook init, or "" if it begins none: the longest name
+// that matches.
+func (g guest) find(args []string) string {
+	found := ""
+	for _, page := range g.commands() {
+		words := strings.Fields(strings.TrimPrefix(page.Name, "corbie "))
+		if len(words) <= len(args) && slices.Equal(words, args[:len(words)]) && len(words) > len(strings.Fields(found)) {
+			found = strings.Join(words, " ")
+		}
+	}
+	return found
+}
+
 // forPrograms are the commands every program cli.Program reads is given
 // beside its own: the manual, with the program's commands among Corbie's
-// pages, and the model server, which runs the program's commands.
+// pages, and the version.
 func forPrograms(name string) []Command {
 	return []Command{
 		{Name: "manual", Usage: "[page]", Summary: "print a page of the manual, or list the pages", Run: cmdManual, Help: `
 With no page it lists the pages: Corbie's, and this program's. It reads no
 config and no store.`},
-		{Name: "mcp", Usage: "[--allow <command>]…", Summary: "serve the manual and the commands to a model, as an MCP server", Stays: true, Run: cmdMCP, Help: fmt.Sprintf(`
-It is an MCP server on standard input and output, with two tools: manual,
-which prints a page, and %[1]s, which runs a command of corbie %[1]s. A model
-is told the manual's page %[1]s when it connects. Commands run with this
-server's config and store, and the model can name no other.
-
-  --allow <command>   a command the model may run, by its whole name;
-                      repeatable; default none`, name)},
 		{Name: "version", Usage: "", Summary: "print the version of the program and of the Corbie it is built with", Run: cmdProgramVersion},
 	}
 }

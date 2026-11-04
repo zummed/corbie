@@ -14,7 +14,18 @@ Fields every type takes
   deny: [exec]                 what no script job in the definition may do
   ask_about: [disk]            permissions that hold a job for approval
   ask: { script: ./ask.js }    the job that approves held jobs
+  title: "${input.topic}"      a run's title, filled in when it starts, as below
   meta: { owner: alice }        data Corbie keeps and never reads; no expression in it is filled in
+
+`title:` names a run to a person, and `corbie run show` prints it. Its
+expressions read `input` and `run`.
+
+- A title is one line of at most 200 characters. A line break becomes a space,
+  and a longer title is cut.
+- Only the client that started the run sees its title. `corbie run ls` does
+  not print it.
+- A title that cannot be filled in fails the run, as an input that does not
+  fit does.
 
 `limits:` takes these.
 

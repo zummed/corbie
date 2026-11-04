@@ -95,6 +95,9 @@ type State struct {
 	Labels     map[string]string `json:"labels,omitzero"`
 	// Key is the key that names the instance, while it runs.
 	Key string `json:"key,omitzero"`
+	// Title is what the definition's title filled in to when the instance
+	// started.
+	Title string `json:"title,omitzero"`
 	// Seed is the instance's own secret: its keys and random numbers follow
 	// from it.
 	Seed []byte `json:"seed"`

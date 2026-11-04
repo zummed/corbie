@@ -5,7 +5,7 @@ Each directory of `machines/` is a case: a machine, alone or with machines insid
     mise exec -- go test ./parity/
     mise exec -- go test ./parity/ -v -run 'TestParity/36'
 
-There are 110 cases. Cases 36 and 92 are written a second way, in a directory inside the case, so the test has 112 runs.
+There are 111 cases. Cases 36 and 92 are written a second way, in a directory inside the case, so the test has 113 runs.
 
 ## What is in a case
 

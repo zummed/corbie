@@ -1,0 +1,6 @@
+# A flow whose title reads a part of its input it is not given.
+flow: untitled
+title: "${input.ticket.text}"
+stages:
+  a:
+    job: { script: ./echo.js, input: { n: 1 } }

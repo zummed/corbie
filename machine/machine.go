@@ -168,6 +168,9 @@ const Parent = "parent"
 // KeyLimit is how long a key may be, in characters.
 const KeyLimit = 256
 
+// TitleLimit is how long a title may be, in characters.
+const TitleLimit = 200
+
 // CheckKey says what is wrong with a key. A key is any text of at most
 // KeyLimit characters that is not empty, and no name in the store holds it.
 func CheckKey(key string) error {

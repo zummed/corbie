@@ -475,6 +475,9 @@ func runText(run *client.Run, script bool) string {
 		fmt.Fprintf(&b, "  step %d", run.Step)
 	}
 	b.WriteString("\n")
+	if run.Title != "" {
+		fmt.Fprintf(&b, "  title: %s\n", run.Title)
+	}
 	if waits := waitingOn(run); waits != "" && !run.HasEnded() {
 		fmt.Fprintf(&b, "  waiting on %s\n", waits)
 	}

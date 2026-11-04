@@ -24,6 +24,7 @@ type Definition struct {
 	Input   map[string]any `json:"input,omitzero"`   // the shape of its input
 	Keep    Duration       `json:"keep,omitzero"`    // how long its instances are kept
 	Timeout string         `json:"timeout,omitzero"` // how long an instance may run: a length of time, or an expression
+	Title   string         `json:"title,omitzero"`   // what a run is called: text, or text with expressions
 	Depth   *int           `json:"depth,omitzero"`   // how many levels of machines may be below it; eight if not said
 	Jobs    int            `json:"jobs,omitzero"`    // how many jobs an instance may start
 	Allow   []string       `json:"allow,omitzero"`
@@ -371,6 +372,7 @@ func check(def *Definition) *Checker {
 		}
 	}
 	c.Duration("limits.timeout", def.Timeout, "input")
+	c.Value("title", def.Title, "input")
 	if (def.Depth != nil && *def.Depth < 0) || def.Jobs < 0 {
 		c.Problem("", "depth and jobs cannot be less than nothing")
 	}

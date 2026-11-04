@@ -11,6 +11,7 @@ import (
 
 const door = `
 	statechart: door
+	title: "door ${input.greeting}"
 	initial: closed
 	states:
 	  closed:

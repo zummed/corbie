@@ -704,14 +704,14 @@ func (e *Evaluator) Key(text string, scope Scope, place string) (string, error) 
 }
 
 // Title fills in a title as a key is filled in, and makes it one line of at
-// most TitleLimit characters: a line break becomes a space, and the rest is
-// cut.
+// most TitleLimit characters: each run of white space becomes one space, and
+// the rest is cut.
 func (e *Evaluator) Title(text string, scope Scope, place string) (string, error) {
 	title, err := e.Key(text, scope, place)
 	if err != nil {
 		return "", err
 	}
-	title = strings.NewReplacer("\r\n", " ", "\n", " ", "\r", " ").Replace(title)
+	title = strings.Join(strings.Fields(title), " ")
 	if runes := []rune(title); len(runes) > TitleLimit {
 		title = string(runes[:TitleLimit])
 	}

@@ -153,6 +153,27 @@ func wait(t *testing.T, l *client.Local, id string) *client.Run {
 	return r
 }
 
+// waitForFinished waits until a run of the machine named has ended, and
+// gives its id.
+func waitForFinished(t *testing.T, l *client.Local, name string) string {
+	t.Helper()
+	deadline := time.Now().Add(20 * time.Second)
+	for time.Now().Before(deadline) {
+		runs, err := l.List(ctx, client.Filter{Finished: true})
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, r := range runs {
+			if r.Machine == name && r.Status != "running" {
+				return r.ID
+			}
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	t.Fatalf("no run of %s ended", name)
+	return ""
+}
+
 // waitForTicket waits until a run below the one named waits on a ticket, and
 // gives that instance and the ticket's value, read from its record.
 func waitForTicket(t *testing.T, l *client.Local, root string) (string, string) {

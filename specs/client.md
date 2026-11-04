@@ -22,7 +22,7 @@ Wherever a run is shown, it has the same shape and the same words.
 
 A run is `waiting` to start, `running`, `done`, `failed` or `cancelled`. A failed run says why: an `error`, a `timeout`, or `denied` with the refusal. A finished run has its output, and a list of the permissions it used, which for a machine are those of every job in it and below it.
 
-A run waiting on a ticket shows the ticket's name. The ticket's value is in the record, which only the client that started the run can read. Only that client is shown the run's input, its output, the failure's text and the permissions it used.
+A run waiting on a ticket shows the ticket's name. The ticket's value is in the record, which only the client that started the run can read. Only that client is shown the run's title, its input, its output, the failure's text and the permissions it used.
 
 A blob in any value is shown as its type, its size and the path to ask for it by. Its key is never shown, at the command line, over HTTP or to a model.
 
@@ -94,7 +94,7 @@ Following from a terminal is one flag, `--watch`. It prints what the command pri
 - `run ls --watch` prints the listing, then each run that appears or changes.
 - `run show --watch` prints the record, then each entry as it is written, until the run ends.
 
-`run submit --key <key>` starts a run with a key, and the receipt refuses it if a running run has the key. `run send --key <key> <event> [data]` reads the key's file and sends to the run it names. `run ls` and `run show` print a run's key.
+`run submit --key <key>` starts a run with a key, and the receipt refuses it if a running run has the key. `run send --key <key> <event> [data]` reads the key's file and sends to the run it names. `run ls` and `run show` print a run's key. `run show` prints a run's title, and `run ls` does not, since a listing reads only the heads.
 
 `run show` can also print one step, one job's input and output, or the definition, can save a result's files to a directory, and with `--wait` stays until the run ends and prints its result. `run submit` sends a start; `run submit --wait` waits for the run it started and `run submit --watch` follows it.
 

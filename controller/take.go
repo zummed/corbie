@@ -755,6 +755,11 @@ func (b *build) readDefinition(s *instance.Start) *stepOut {
 			read.Failure = err.Error()
 			return read
 		}
+		read.Title, err = machine.NewEvaluator(b.time, b.seed("title"), b.run()).Title(b.def.Title, machine.Scope{"input": st.Input}, "title")
+		if err != nil {
+			read.Failure = err.Error()
+			return read
+		}
 		b.events = append([]machine.Event{{Name: machine.Start, Data: st.Input}}, b.events...)
 	}
 	t, ok := machine.TypeOf(b.def.Type)
@@ -1337,7 +1342,7 @@ func (b *build) first(s *instance.Start, start *arrival) (refused bool, err erro
 		return true, nil
 	}
 	if len(problems) == 0 {
-		st.Input = read.Input
+		st.Input, st.Title = read.Input, read.Title
 	}
 	// The key is taken before the step is written, so a run that loses it
 	// has done nothing.

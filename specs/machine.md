@@ -16,6 +16,14 @@ A definition is data, written in YAML. Its first line gives its type and its nam
 
 A definition may carry `meta:`, with any value. Corbie keeps it with the stored definition, never reads it, and fills in no expression in it. An application keeps its own data there, such as when to start the machine.
 
+A definition may give `title:`, which names a run to a person. Its expressions read `input` and `run`, and the controller fills it in when the run starts and keeps it in the run's record, never in its head, so only the client that started the run sees it. A title is one line of at most 200 characters: a line break becomes a space, and a longer title is cut.
+
+```yaml
+title: "${input.channel}: ${input.said}"     # a run's title: "#testing: give me a release card for 4.2"
+```
+
+A title that cannot be filled in fails the run at its first step, as an input that does not fit does.
+
 Definitions are meant to be written by people and by models, so each type offers short forms where they read better. Each short form has one meaning and one place it can be written. When a client sends a definition, every short form is filled out into one full form, and only the full form is stored and run. The same filling-out is how a type offers a convenience over something Corbie already does: where a feature can be expressed as a short form over an existing mechanism it is, and the machine that runs never learns of it.
 
 What a definition may hold is said once. Each mapping in it has a shape: the definition itself, a job, an agent's model, a state. A shape is the mapping's fields, with the kind of value each takes and what each is for.

@@ -88,10 +88,12 @@ type stepIn struct {
 type stepOut struct {
 	// Problems are what is wrong with the definition; a first step checks.
 	Problems machine.Problems `json:"problems,omitzero"`
-	// Input and Limit are the start's input, with its defaults filled in,
-	// and the time limit the definition gives, for a first step.
+	// Input, Limit and Title are the start's input, with its defaults
+	// filled in, and the time limit and the title the definition gives, for
+	// a first step.
 	Input any              `json:"input,omitzero"`
 	Limit machine.Duration `json:"limit,omitzero"`
+	Title string           `json:"title,omitzero"`
 	// Inner is the machine's own state, which nothing here reads.
 	Inner    jsontext.Value    `json:"inner,omitzero"`
 	Requests []machine.Request `json:"requests,omitzero"`

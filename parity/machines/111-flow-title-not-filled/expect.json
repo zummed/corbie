@@ -1,0 +1,16 @@
+{
+  "status": "failed",
+  "failure": "error",
+  "error_contains": ["title: ${input.ticket.text}", "undefined"],
+  "record": [
+    {
+      "machine": "untitled",
+      "ask": {
+        "kind": "script",
+        "name": "a"
+      },
+      "absent": true
+    }
+  ],
+  "note": "R-mach-147: a title whose expressions cannot be filled in fails the run at its first step, as an input that does not fit does, and nothing starts."
+}

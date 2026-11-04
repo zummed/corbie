@@ -123,6 +123,7 @@ func (p *Parser) fill(written map[string]any, first, place string) (draft *Draft
 		def.Ask = p.Job("ask", ask)
 		p.Ask("ask", def.Ask)
 	}
+	def.Title = f.Text("title")
 	def.Meta, _ = f.Value("meta")
 	// What is left is the type's own, read by the type's own shape. A
 	// field neither names is one that does not belong.

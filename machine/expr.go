@@ -703,6 +703,21 @@ func (e *Evaluator) Key(text string, scope Scope, place string) (string, error) 
 	return "", nil
 }
 
+// Title fills in a title as a key is filled in, and makes it one line of at
+// most TitleLimit characters: a line break becomes a space, and the rest is
+// cut.
+func (e *Evaluator) Title(text string, scope Scope, place string) (string, error) {
+	title, err := e.Key(text, scope, place)
+	if err != nil {
+		return "", err
+	}
+	title = strings.NewReplacer("\r\n", " ", "\n", " ", "\r", " ").Replace(title)
+	if runes := []rune(title); len(runes) > TitleLimit {
+		title = string(runes[:TitleLimit])
+	}
+	return title, nil
+}
+
 // Duration fills in a length of time from a scope's names. Empty text
 // gives none.
 func (e *Evaluator) Duration(text string, scope Scope, place string) (Duration, error) {

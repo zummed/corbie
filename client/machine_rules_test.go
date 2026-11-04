@@ -465,6 +465,67 @@ func TestMetaIsKeptAndNeverRead(t *testing.T) {
 	}
 }
 
+// A definition of any type may give title:, filled in from the input and
+// the run when the run starts, as one line of at most 200 characters. Only
+// the client that started the run is shown it; a viewer, who reads the
+// head, is not.
+func TestTitleIsFilledInWhenTheRunStarts(t *testing.T) {
+	l := local(t, "all")
+	flow := `
+		flow: release
+		title: "${input.channel}: ${input.said}"
+		stages:
+		  check: { job: { script: ./add.js, input: { n: 1 } } }
+		  inner:
+		    job:
+		      machine:
+		        flow: inner
+		        title: "${run.key} ${input.n}"
+		        stages: { s: { job: { script: ./add.js, input: { n: 2 } } } }
+		      key: inner-key
+		      input: { n: 3 }
+		output: ${stages.check.output}
+	`
+	r := run(t, l, flow, scripts, map[string]any{"channel": "#testing", "said": "give me\na release card\r\nfor 4.2"})
+	if r.Status != "done" || r.Title != "#testing: give me a release card for 4.2" {
+		t.Fatalf("the run ended %s with the title %q", r.Status, r.Title)
+	}
+	children, err := l.List(ctx, client.Filter{Parent: r.ID, Finished: true})
+	if err != nil || len(children) != 1 {
+		t.Fatalf("the run's children are %v: %v", children, err)
+	}
+	if child, err := l.Show(ctx, children[0].ID); err != nil || child.Title != "inner-key 3" {
+		t.Fatalf("the child's title is %q: %v", child.Title, err)
+	}
+	if children[0].Title != "" {
+		t.Errorf("a listing, which reads heads, gives the title %q", children[0].Title)
+	}
+	viewer := client.New(nil, l.Client.Controller, l.Client.Store)
+	if seen, err := viewer.Show(ctx, r.ID); err != nil || seen.Title != "" {
+		t.Errorf("a viewer is shown the title %q: %v", seen.Title, err)
+	}
+
+	long := run(t, l, "flow: long\ntitle: \"${'x'.repeat(300)}é\"\nstages: { s: { job: ./echo.js } }\n", scripts, nil)
+	if len([]rune(long.Title)) != 200 || long.Title != strings.Repeat("x", 200) {
+		t.Errorf("a title of 301 characters is shown as %d: %q", len([]rune(long.Title)), long.Title)
+	}
+	for _, def := range []string{
+		"statechart: s\ntitle: \"door ${input.n}\"\ninitial: a\nstates: { a: { end: done } }\n",
+		"agent: a\ntitle: hello\nmodel: { name: claude-sonnet-5-5, secret: KEY }\nprompt: hello\n",
+	} {
+		if d, err := machineParse(def, nil); err != nil || d.Definition.Title == "" {
+			t.Errorf("a definition with title: was refused or lost it: %v\n%s", err, def)
+		}
+	}
+	if _, err := machineParse("flow: f\ntitle: \"${stages.s.output}\"\nstages: { s: { job: ./echo.js } }\n", scripts); err == nil || !strings.Contains(err.Error(), "title") {
+		t.Errorf("a title that reads stages is not refused at its place: %v", err)
+	}
+	failed := run(t, l, "flow: f\ntitle: \"${input.x.y}\"\nstages: { s: { job: ./echo.js } }\n", scripts, map[string]any{})
+	if failed.Status != "failed" || !strings.Contains(failed.Error, "title: ${input.x.y}") {
+		t.Errorf("a title that cannot be filled in ended %s with %q", failed.Status, failed.Error)
+	}
+}
+
 // growModel is the model of each agent the growing definitions write.
 const growModel = "model: { name: test-model, service: anthropic, address: http://127.0.0.1:1, secret: K }"
 

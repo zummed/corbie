@@ -99,6 +99,9 @@ The detailed rules behind [the Client overview](../client.md).
 **R-client-63** A row of a listing is the same shape with only what a head holds, under the same names and words.
 *Accept:* every field of a listing's row for a run is found, with the same name and value, in the same run shown by itself.
 
+**R-client-151** A run whose definition gives `title:` is shown with its title, and only to the client that started the run. `corbie run show` prints it as `title:`, and in JSON it is `title`. A row of a listing has none.
+*Accept:* a run started with a title is shown by its client with the title, and by a viewer without it. `corbie run show` prints the line `title: #testing: give me a release card`, `run show --json` gives `"title"`, and `run ls --json` gives no title. *Test:* `Test_client_run_show_prints_a_title`, `TestTitleIsFilledInWhenTheRunStarts`
+
 **C-client-14** The status `waiting` means only that a run has been sent and not yet taken up. A run that has started and waits on a job, a timer or a ticket is `running`, and what it waits for is given beside its status. One word with two meanings makes a filter on it wrong half the time. *Test:* `client_waiting_status_only_before_taken_up`
 
 **C-client-15** A run's name is given under one word, its ID, in every command, in JSON and over HTTP. A second word for the same thing makes callers handle both. *Test:* `client_run_name_is_one_field_everywhere`

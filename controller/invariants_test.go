@@ -47,6 +47,9 @@ func TestWhatEveryRunKeepsTo(t *testing.T) {
 			t.Fatalf("the run %s ended as %+v", run, head)
 		}
 	}
+	if title := w.latest(door).State.Title; title != "door "+marker {
+		t.Fatalf("the door's title is %q", title)
+	}
 	w.mu.Lock()
 	ops := w.ops
 	w.mu.Unlock()
@@ -77,8 +80,8 @@ func TestWhatEveryRunKeepsTo(t *testing.T) {
 		isHead := strings.HasPrefix(op.Name, "ctl/running/") || strings.HasPrefix(op.Name, "ctl/finished/")
 		if isHead && op.Act != store.ActDelete {
 			heads[op.Name] = true
-			// The head holds nothing the instance was given or produced, and
-			// no ticket's value.
+			// The head holds nothing the instance was given or produced, no
+			// title and no ticket's value.
 			if strings.Contains(string(op.Value), marker) || strings.Contains(string(op.Value), ticket) {
 				t.Errorf("a version of the head %s holds a value of the run's", op.Name)
 			}

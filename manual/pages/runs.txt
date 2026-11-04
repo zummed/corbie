@@ -29,6 +29,7 @@ here.
 
   id                    the name of the client that started it, a slash, the time and a random part
   machine, type         the definition's name, and flow, statechart or agent
+  title                 the definition's `title:`, filled in when the run started
   status                waiting until a controller starts it, then running, done, failed or cancelled
   failure               for a failed run: denied, timeout or error
   error                 the failure's text; `cancelled` for a cancelled run
@@ -47,8 +48,8 @@ here.
   timeout   the run's timeout passed; a job that timed out fails its run with `error`
   error     anything else, such as a failed job the machine has no rule for, or a start the controller refused
 
-A field with no value is left out. A run in a list has no `output`, `error`,
-`refused`, `layer`, `fix` or `used`.
+A field with no value is left out. A run in a list has no `title`, `output`,
+`error`, `refused`, `layer`, `fix` or `used`.
 
 Files
 -----

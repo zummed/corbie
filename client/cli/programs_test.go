@@ -408,6 +408,15 @@ func TestAProgramHasTheManual(t *testing.T) {
 	}
 }
 
+// A program has no mcp of its own: a model runs its commands through corbie
+// mcp.
+func TestAProgramServesNoModel(t *testing.T) {
+	status, out, _ := program("--help")
+	if status != 0 || !strings.Contains(out, "  manual ") || strings.Contains(out, "  mcp ") {
+		t.Fatalf("corbie frob --help ended %d and lists mcp, or no manual:\n%s", status, out)
+	}
+}
+
 // A program read with cli.Program has Corbie's help, flags, mistakes,
 // failures and exit statuses, and finds its client and store as corbie run
 // ls does.

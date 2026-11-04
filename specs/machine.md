@@ -16,7 +16,7 @@ A definition is data, written in YAML. Its first line gives its type and its nam
 
 A definition may carry `meta:`, with any value. Corbie keeps it with the stored definition, never reads it, and fills in no expression in it. An application keeps its own data there, such as when to start the machine.
 
-A definition may give `title:`, which names a run to a person. Its expressions read `input` and `run`, and the controller fills it in when the run starts and keeps it in the run's record, never in its head, so only the client that started the run sees it. A title is one line of at most 200 characters: a line break becomes a space, and a longer title is cut.
+A definition may give `title:`, which names a run to a person. Its expressions read `input` and `run`, and the controller fills it in when the run starts and keeps it in the run's record, never in its head, so only the client that started the run sees it. A title is one line of at most 200 characters: each run of white space, line breaks among it, becomes one space, and a longer title is cut.
 
 ```yaml
 title: "${input.channel}: ${input.said}"     # a run's title: "#testing: give me a release card for 4.2"

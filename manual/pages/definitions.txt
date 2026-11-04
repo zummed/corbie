@@ -20,8 +20,8 @@ Fields every type takes
 `title:` names a run to a person, and `corbie run show` prints it. Its
 expressions read `input` and `run`.
 
-- A title is one line of at most 200 characters. A line break becomes a space,
-  and a longer title is cut.
+- A title is one line of at most 200 characters. Each run of white space,
+  line breaks among it, becomes one space, and a longer title is cut.
 - Only the client that started the run sees its title. `corbie run ls` does
   not print it.
 - A title that cannot be filled in fails the run, as an input that does not

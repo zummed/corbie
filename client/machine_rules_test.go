@@ -486,7 +486,7 @@ func TestTitleIsFilledInWhenTheRunStarts(t *testing.T) {
 		      input: { n: 3 }
 		output: ${stages.check.output}
 	`
-	r := run(t, l, flow, scripts, map[string]any{"channel": "#testing", "said": "give me\na release card\r\nfor 4.2"})
+	r := run(t, l, flow, scripts, map[string]any{"channel": "#testing", "said": "give me\n\na release card\r\n\tfor\u2028 4.2 "})
 	if r.Status != "done" || r.Title != "#testing: give me a release card for 4.2" {
 		t.Fatalf("the run ended %s with the title %q", r.Status, r.Title)
 	}
@@ -503,6 +503,22 @@ func TestTitleIsFilledInWhenTheRunStarts(t *testing.T) {
 	viewer := client.New(nil, l.Client.Controller, l.Client.Store)
 	if seen, err := viewer.Show(ctx, r.ID); err != nil || seen.Title != "" {
 		t.Errorf("a viewer is shown the title %q: %v", seen.Title, err)
+	}
+
+	sender := `
+		statechart: sender
+		initial: a
+		states:
+		  a:
+		    job: ./echo.js
+		    on: { done: { go: z, send: { to: { machine: ./keyed.yaml, key: keyed-1 }, event: hello, data: { x: "a\n\n b" } } } }
+		  z: { end: done }
+	`
+	files := map[string]string{"echo.js": scripts["echo.js"], "keyed.yaml": "flow: keyed\ntitle: \"${run.key} ${input.x}\"\nstages: { s: { job: ./echo.js } }\n"}
+	run(t, l, sender, files, nil)
+	keyed := waitForFinished(t, l, "keyed")
+	if got, err := l.Show(ctx, keyed); err != nil || got.Title != "keyed-1 a b" {
+		t.Errorf("a run a send started has the title %q: %v", got.Title, err)
 	}
 
 	long := run(t, l, "flow: long\ntitle: \"${'x'.repeat(300)}é\"\nstages: { s: { job: ./echo.js } }\n", scripts, nil)

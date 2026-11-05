@@ -103,7 +103,7 @@ A send or a call is checked on both sides:
 
 - A statechart's send action is checked against the chart's layers.
 - The runner's ceiling takes no part, since no runner sends.
-- A client sends to and calls the runs of a tree it owns with no `send:` entry, since it can cancel and submit them already.
+- A client sends to and calls the runs of a tree it owns with no `send:` entry, whatever their `receive:` says, since it can cancel and submit them already.
 - A parent run and its children send to each other with no `send:` or `receive:` entry.
 
 `receive:` is written in the receiver's file:
@@ -114,7 +114,7 @@ A send or a call is checked on both sides:
 | `[thermostats/*, client:panel]` | those senders, for every event |
 | `{ set: [thermostats/*, client:panel], stop: [client:panel] }` | each event from its own list only |
 
-An entry is a location, read as in a definition, or `client:<name>`. It matches the sender's location or the client that sent, never a run's ID. A written `receive:` replaces the default whole, so an event a mapping does not name is accepted from nobody.
+An entry is a location, read as in a definition, or `client:<name>`. It matches the sender's location or the client that sent, never a run's ID. A written `receive:` replaces the default whole, so an event a mapping does not name is accepted from no sender but the tree's client.
 
 ```yaml
 # work/services/lookup.yaml             location /work/services/lookup

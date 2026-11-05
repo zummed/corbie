@@ -311,7 +311,7 @@ receive: { set: [thermostats/*, client:panel], stop: [client:panel] }  # by even
 ```
 
 - With no `receive:`, a file accepts from every location of its own tree and from its tree's client.
-- A written `receive:` replaces that with exactly its list.
+- A written `receive:` replaces that with exactly its list. The tree's own client is accepted whatever the list says.
 - An entry is a location pattern or `client:<name>`.
 
 The controller writes the sender into `event.from`: `{ at, run }`, with `key` for a keyed run, or `{ client }`. Anything about the sender in the data is only the sender's claim.

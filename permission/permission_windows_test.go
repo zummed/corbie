@@ -90,3 +90,18 @@ func TestProgramFiles(t *testing.T) {
 		}
 	}
 }
+
+// A location is a name in the store and not a path on the disk: on Windows
+// too, case counts and no drive is read into it.
+func Test_perm_location_is_not_a_path(t *testing.T) {
+	s := windowsSet(Layer{Name: "the layer", Allow: []string{"all"}, Deny: []string{"send:/home/boiler"}})
+	if s.Check(Send, "/home/boiler") == nil {
+		t.Fatal("a denied location passed")
+	}
+	if s.Check(Send, "/home/Boiler") != nil || s.Check(Send, "/HOME/boiler") != nil {
+		t.Fatal("a location was matched in another case")
+	}
+	if MatchLocation("/home/**", "C:/home/a") || MatchLocation("C:/home/**", "/home/a") {
+		t.Fatal("a drive was read into a location")
+	}
+}

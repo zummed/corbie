@@ -1,8 +1,8 @@
 What Corbie does not defend against: Corbie makes no check and gives no protection in these cases.
 
 A script uses files, the network, other programs, environment variables and
-secrets only through six kinds of permission, and Corbie checks every use. It
-does not defend against the following.
+secrets only through permissions, and Corbie checks every use. It does not
+defend against the following.
 
 - A program that a job starts reads files, writes files and opens connections
   as the runner's user. Permissions are checked when it is started and not

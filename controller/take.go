@@ -1410,7 +1410,7 @@ func (b *build) first(s *instance.Start, start *arrival) (refused bool, err erro
 // above it, lists as one to be asked about. Whether it is held depends on
 // what it declares alone, before anything is sent.
 func (b *build) holds(job *instance.Going) bool {
-	return job.Approve || permission.Declares(job.Allow, b.st.Above.AskAbout)
+	return job.Approve || permission.Declares(job.Allow, b.st.Above.AskAbout, "")
 }
 
 // startAsk starts each ask once for the jobs this step held that go to

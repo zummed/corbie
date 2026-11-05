@@ -65,6 +65,122 @@ func TestScopes(t *testing.T) {
 	}
 }
 
+func TestLocationScopes(t *testing.T) {
+	home := &Set{Prefix: "/home"}
+	for _, c := range []struct {
+		entry, kind, value string
+		want               bool
+	}{
+		{"send:thermostats/*", Send, "/home/thermostats/kitchen", true},
+		{"send:thermostats/*", Send, "/home/thermostats/a/b", false},
+		{"send:thermostats/*", Send, "/work/thermostats/kitchen", false},
+		{"send:/work/**", Send, "/work/a/b", true},
+		{"send:/work/**", Send, "/workshop/a", false},
+		{"send:/work/services/lookup", Send, "/work/services/lookup", true},
+		{"send:/work/services/lookup", At, "/work/services/lookup", false},
+		{"at:/home", At, "/home", true},
+		{"at:/home", At, "/home2", false},
+		{"at:/home", At, "/home/a", false},
+		{"at:/**", At, "/home", true},
+		{"at:/home/**", At, "/home/a/b", true},
+		{"all", Send, "/work/a", true},
+		{"all", At, "/home", true},
+		{"network", Send, "/work/a", false},
+		{"disk", Send, "/work/a", false},
+		{"exec", At, "/home", false},
+		{"env", At, "/home", false},
+	} {
+		if got := home.matches(c.entry, c.kind, c.value); got != c.want {
+			t.Errorf("%s against %s:%s is %v, want %v", c.entry, c.kind, c.value, got, c.want)
+		}
+	}
+	// With no tree, a location with no leading / names nothing.
+	if (&Set{}).matches("send:thermostats/*", Send, "/thermostats/kitchen") {
+		t.Error("a relative location matched with no tree's prefix")
+	}
+	if got, err := ReadLocation("/home", "thermostats/*"); err != nil || got != "/home/thermostats/*" {
+		t.Errorf("thermostats/* at /home reads as %q (%v)", got, err)
+	}
+	if got, err := ReadLocation("/home", "/work/a"); err != nil || got != "/work/a" {
+		t.Errorf("/work/a at /home reads as %q (%v)", got, err)
+	}
+	if _, err := ReadLocation("", "thermostats/*"); err == nil {
+		t.Error("a relative location was read with no tree's prefix")
+	}
+}
+
+func TestWhereLocationsAreWritten(t *testing.T) {
+	// In a definition: send relative or in full, and never at.
+	for _, entry := range []string{"send:thermostats/*", "send:/work/**", "send:${input.to}", "send:.rook/*"} {
+		if err := CheckWritten(entry); err != nil {
+			t.Errorf("%s in a definition: %v", entry, err)
+		}
+	}
+	for _, entry := range []string{"at:/home", "at:/**", "at:home"} {
+		if CheckWritten(entry) == nil {
+			t.Errorf("%s passed in a definition", entry)
+		}
+	}
+	// In a start's list or a runner's ceiling: send in full, and never at.
+	if err := CheckList([]string{"send:/work/**", "network"}); err != nil {
+		t.Errorf("a full send entry in a list: %v", err)
+	}
+	for _, entry := range []string{"send:thermostats/*", "at:/home"} {
+		if CheckList([]string{entry}) == nil {
+			t.Errorf("%s passed in a start's list", entry)
+		}
+	}
+	// In a client's ceiling: send and at, in full.
+	if err := CheckCeiling([]string{"at:/work", "send:/work/**", "network", "secret:*@*"}); err != nil {
+		t.Errorf("a client's ceiling: %v", err)
+	}
+	for _, entry := range []string{"at:work", "send:work/**", "at:/${input.x}"} {
+		if CheckCeiling([]string{entry}) == nil {
+			t.Errorf("%s passed in a client's ceiling", entry)
+		}
+	}
+	// An at entry in a ceiling's deny list is read, and refuses only itself.
+	s := &Set{Layers: []Layer{{Name: "ceiling", Allow: []string{"all"}, Deny: []string{"at:/work"}}}}
+	if s.Check(At, "/work") == nil || s.Check(At, "/home") != nil || s.Check(Env, "HOME") != nil {
+		t.Error("an at deny entry was not read as one")
+	}
+}
+
+func Test_perm_location_is_not_a_path(t *testing.T) {
+	dir, _ := filepath.EvalSymlinks(t.TempDir())
+	os.MkdirAll(filepath.Join(dir, "real"), 0o755)
+	os.Symlink(filepath.Join(dir, "real"), filepath.Join(dir, "link"))
+	// A location is a name, compared as it is written: no link on the disk
+	// is followed, and case counts.
+	s := &Set{Layers: []Layer{allow("send:" + filepath.ToSlash(dir) + "/link/*")}}
+	if s.Check(Send, filepath.ToSlash(dir)+"/real/a") == nil {
+		t.Fatal("a location was matched through a link on the disk")
+	}
+	if s.Check(Send, filepath.ToSlash(dir)+"/link/a") != nil {
+		t.Fatal("a location was not matched as written")
+	}
+	if MatchLocation("/home/Boiler", "/home/boiler") || !MatchLocation("/home/boiler", "/home/boiler") {
+		t.Fatal("a location was matched in another case")
+	}
+}
+
+func Test_perm_location_climbs_nowhere(t *testing.T) {
+	for _, entry := range []string{"send:../x", "send:a/../b", "send:./x", "send:", "send:a//b", "send:a/", "send:/", "send:a/+/b", "send:/work/..", "at:/home/../work", "at:/"} {
+		if readable(entry) == nil {
+			t.Errorf("%q passed", entry)
+		}
+	}
+	for _, written := range []string{"../x", "a/../b", "/work/../shop", "+", ".rook/../x"} {
+		if got, err := ReadLocation("/home", written); err == nil {
+			t.Errorf("%q read as %q", written, got)
+		}
+	}
+	// A dot that leads a part is part of its name.
+	if got, err := ReadLocation("/home", ".rook/agents/x"); err != nil || got != "/home/.rook/agents/x" {
+		t.Errorf(".rook/agents/x read as %q (%v)", got, err)
+	}
+}
+
 func TestLayers(t *testing.T) {
 	// What the deny list matches is refused whatever the allow list says;
 	// what the allow list matches passes; anything else is refused.
@@ -272,7 +388,7 @@ func Test_perm_scratch_needs_an_entry(t *testing.T) {
 
 func Test_perm_refusal_line_pastes(t *testing.T) {
 	s := set(allow())
-	for kind, value := range map[string]string{Read: "/srv/a b/c", Net: "api.github.com:443", Exec: "git", Env: "HOME"} {
+	for kind, value := range map[string]string{Read: "/srv/a b/c", Net: "api.github.com:443", Exec: "git", Env: "HOME", Send: "/home/thermostats/kitchen"} {
 		r := s.Check(kind, value)
 		if r == nil || CheckWritten(r.What) != nil {
 			t.Fatalf("the line %v cannot be written in a list", r)
@@ -280,6 +396,14 @@ func Test_perm_refusal_line_pastes(t *testing.T) {
 		if set(allow(r.What)).Check(kind, value) != nil {
 			t.Fatalf("the line %s, pasted, does not allow what it was refused for", r.What)
 		}
+	}
+	// A location is written in full, so the line pastes into a ceiling as
+	// well as into a definition.
+	if r := s.Check(Send, "/home/thermostats/kitchen"); r == nil || CheckCeiling([]string{r.What}) != nil {
+		t.Fatalf("the line %v cannot be written in a ceiling", r)
+	}
+	if r := (&Set{Layers: []Layer{allow()}}).Check(At, "/home"); r == nil || r.What != "at:/home" || CheckCeiling([]string{r.What}) != nil {
+		t.Fatalf("the line %v cannot be written in a ceiling", r)
 	}
 }
 
@@ -300,12 +424,24 @@ func TestDeclares(t *testing.T) {
 	listed := []string{"fs.write:/srv/out/**"}
 	for entry, want := range map[string]bool{"fs.write:/srv/out/a.md": true, "fs.write:/srv/**": true, "disk": true, "all": true,
 		"fs.read:/srv/**": false, "network": false} {
-		if got := Declares([]string{entry}, listed); got != want {
+		if got := Declares([]string{entry}, listed, ""); got != want {
 			t.Errorf("%s declares %v: %v, want %v", entry, listed, got, want)
 		}
 	}
-	if !Declares([]string{"exec:git"}, []string{"exec"}) || Declares([]string{"net:x"}, []string{"exec"}) {
+	if !Declares([]string{"exec:git"}, []string{"exec"}, "") || Declares([]string{"net:x"}, []string{"exec"}, "") {
 		t.Error("a listed group stands for every scope of its kinds")
+	}
+	// A location in either list is read from the tree's prefix.
+	listed = []string{"send:/work/**"}
+	for entry, want := range map[string]bool{"send:/work/services/lookup": true, "send:services/lookup": true, "all": true,
+		"send:/shop/helper": false, "send:/**": true, "network": false} {
+		if got := Declares([]string{entry}, listed, "/work"); got != want {
+			t.Errorf("%s declares %v: %v, want %v", entry, listed, got, want)
+		}
+	}
+	if !Declares([]string{"send:/work/services/lookup"}, []string{"send:services/*"}, "/work") ||
+		Declares([]string{"send:/shop/services/lookup"}, []string{"send:services/*"}, "/work") {
+		t.Error("a listed relative location is read from the tree's prefix")
 	}
 }
 

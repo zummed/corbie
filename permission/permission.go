@@ -30,7 +30,7 @@ type Layer struct {
 	Fix string `json:"fix,omitzero"`
 }
 
-// The six kinds of permission.
+// The eight kinds of permission.
 const (
 	Read   = "fs.read"
 	Write  = "fs.write"
@@ -38,34 +38,54 @@ const (
 	Exec   = "exec"
 	Env    = "env"
 	Secret = "secret"
+	Send   = "send"
+	At     = "at"
 )
 
 // Unencrypted is a destination of a secret and not a kind: a connection to
 // a host, whether it is encrypted or not.
 const Unencrypted = "net.unencrypted"
 
-var kinds = map[string]bool{Read: true, Write: true, Net: true, Exec: true, Env: true, Secret: true}
+var kinds = map[string]bool{Read: true, Write: true, Net: true, Exec: true, Env: true, Secret: true, Send: true, At: true}
 
 // The groups, each standing for every scope of its kinds. "all" allows
-// everything, secrets included, and means the same in every layer.
+// everything, secrets, send and at included, and means the same in every
+// layer. send and at are in no other group.
 var groups = map[string][]string{
 	"network": {Net}, "disk": {Read, Write}, "exec": {Exec}, "env": {Env},
-	"all": {Read, Write, Net, Exec, Env, Secret},
+	"all": {Read, Write, Net, Exec, Env, Secret, Send, At},
 }
 
-// CheckWritten says what is wrong with an entry as it is written in a list:
-// a group, or a kind and a scope. The kind is written out; the scope may
-// still hold an expression to be filled in.
+// CheckWritten says what is wrong with an entry as it is written in a list
+// of a definition: a group, or a kind and a scope. The kind is written out;
+// the scope may still hold an expression to be filled in. An at entry is
+// written in a client's ceiling only (see CheckCeiling).
 func CheckWritten(entry string) error {
+	if kind, _, _ := strings.Cut(entry, ":"); kind == At {
+		return fmt.Errorf("%q: an at entry is written in a client's ceiling only", entry)
+	}
+	return readable(entry)
+}
+
+// readable says what is wrong with an entry wherever it is written.
+func readable(entry string) error {
 	if _, ok := groups[entry]; ok {
 		return nil
 	}
 	kind, scope, ok := strings.Cut(entry, ":")
 	if !ok || !kinds[kind] {
-		return fmt.Errorf("%q is not a permission: write a kind and a scope, such as net:api.github.com (the kinds are fs.read, fs.write, net, exec, env and secret; the groups are network, disk, exec, env and all)", entry)
+		return fmt.Errorf("%q is not a permission: write a kind and a scope, such as net:api.github.com (the kinds are fs.read, fs.write, net, exec, env, secret, send and at; the groups are network, disk, exec, env and all)", entry)
 	}
 	if scope == "" {
 		return fmt.Errorf("%q has no scope", entry)
+	}
+	if kind == At && !strings.HasPrefix(scope, "/") {
+		return fmt.Errorf("%q: an at entry is a prefix starting with /, as in at:/home", entry)
+	}
+	if (kind == Send || kind == At) && !strings.Contains(scope, "${") {
+		if err := checkLocation(scope); err != nil {
+			return fmt.Errorf("%q: %w", entry, err)
+		}
 	}
 	if kind == Net && !strings.Contains(scope, "${") && (strings.Contains(scope, "://") || strings.ContainsAny(scope, "/?#@")) {
 		return fmt.Errorf("%q: a net scope is a host alone, with a port if it matters, as in net:api.github.com or net:db.internal:5432; leave out the scheme and the path", entry)
@@ -88,9 +108,9 @@ func CheckWritten(entry string) error {
 	}
 	switch to, rest, _ := strings.Cut(destination, ":"); to {
 	case Net, Exec, Write:
-		return CheckWritten(destination)
+		return readable(destination)
 	case Unencrypted:
-		return CheckWritten(Net + ":" + rest)
+		return readable(Net + ":" + rest)
 	}
 	return fmt.Errorf("%q: a secret may go to net:host, net.unencrypted:host, exec:program, fs.write:path or *", entry)
 }
@@ -119,17 +139,79 @@ func secretName(name string, pattern bool) bool {
 }
 
 // CheckList says what is wrong with a list of entries written out in full,
-// as a ceiling or a start's list is.
+// as a runner's ceiling or a start's list is.
 func CheckList(entries []string) error {
+	return checkList(entries, CheckWritten)
+}
+
+// CheckCeiling says what is wrong with a client's ceiling, the one list in
+// which at entries are written.
+func CheckCeiling(entries []string) error {
+	return checkList(entries, readable)
+}
+
+func checkList(entries []string, check func(string) error) error {
 	for _, entry := range entries {
 		if strings.Contains(entry, "${") {
 			return fmt.Errorf("%q: an entry here is written out in full, with no expression", entry)
 		}
-		if err := CheckWritten(entry); err != nil {
+		if err := check(entry); err != nil {
 			return err
+		}
+		if kind, scope, _ := strings.Cut(entry, ":"); kind == Send && !strings.HasPrefix(scope, "/") {
+			return fmt.Errorf("%q: a location here is a full path, starting with /", entry)
 		}
 	}
 	return nil
+}
+
+// checkLocation says what is wrong with a location or a pattern of
+// locations, whole or read from a tree's prefix: every part is named, and
+// none is ., .. or +.
+func checkLocation(written string) error {
+	for _, part := range strings.Split(strings.TrimPrefix(written, "/"), "/") {
+		switch part {
+		case "":
+			return fmt.Errorf("a location has no empty part and does not end with /")
+		case ".", "..", "+":
+			return fmt.Errorf("a location has no part that is %s", part)
+		}
+	}
+	return nil
+}
+
+// ReadLocation gives a location, or a pattern of locations, as it is
+// written in a definition, in full: read from the tree's prefix, or as it
+// is when it starts with /.
+func ReadLocation(prefix, written string) (string, error) {
+	if err := checkLocation(written); err != nil {
+		return "", fmt.Errorf("%q: %w", written, err)
+	}
+	switch {
+	case strings.HasPrefix(written, "/"):
+		return written, nil
+	case prefix == "":
+		return "", fmt.Errorf("%q is read from a tree's prefix, and there is none here: write the location in full, starting with /", written)
+	}
+	return strings.TrimSuffix(prefix, "/") + "/" + written, nil
+}
+
+// MatchLocation says whether a pattern of locations, in full, matches a
+// location: * stands for any characters in one part, and ** for any number
+// of parts. A location is a name in the store and never a path on a disk:
+// no link is followed and case always counts.
+func MatchLocation(pattern, location string) bool {
+	if !strings.HasPrefix(pattern, "/") || !strings.HasPrefix(location, "/") {
+		return false
+	}
+	return matchParts(locationParts(pattern), locationParts(location))
+}
+
+func locationParts(location string) []string {
+	if location == "/" {
+		return nil
+	}
+	return strings.Split(location[1:], "/")
 }
 
 // A Refusal says three things: what was tried, which layer refused it, and
@@ -151,6 +233,10 @@ type Set struct {
 	// Scratch is the job's scratch directory: a path scope with no leading
 	// slash names a place in it.
 	Scratch string
+	// Prefix is the prefix of the run's tree: a location scope with no
+	// leading slash is read from it. With none, such a scope matches
+	// nothing.
+	Prefix string
 
 	mu     sync.Mutex
 	used   []string
@@ -247,7 +333,7 @@ func (s *Set) CheckGroup(group string) *Refusal {
 		}
 		for _, entry := range layer.Deny {
 			kind, _, _ := strings.Cut(entry, ":")
-			if slices.Contains(groups[group], kind) || CheckWritten(entry) != nil {
+			if slices.Contains(groups[group], kind) || readable(entry) != nil {
 				passes = false
 			}
 			for _, in := range groups[entry] {
@@ -276,7 +362,7 @@ func (s *Set) CheckGroup(group string) *Refusal {
 func (s *Set) passes(layer Layer, kind string, values []string) (bool, string) {
 	for _, entry := range layer.Deny {
 		// A deny entry that cannot be read refuses everything in its layer.
-		if CheckWritten(entry) != nil || strings.Contains(entry, "${") {
+		if readable(entry) != nil || strings.Contains(entry, "${") {
 			return false, entry
 		}
 		for _, value := range values {
@@ -321,6 +407,9 @@ func (s *Set) matches(entry, kind, value string) bool {
 		return matchHost(scope, value)
 	case Secret:
 		return s.matchSecret(scope, value)
+	case Send, At:
+		full, err := ReadLocation(s.Prefix, scope)
+		return err == nil && MatchLocation(full, value)
 	}
 	return matchPart(scope, value)
 }
@@ -566,9 +655,10 @@ func AllowsSecret(layers []Layer, name string) bool {
 
 // Declares says whether a job's allow list declares a permission that is
 // listed to be asked about: an entry of the same kind where either scope
-// covers the other, or a group that contains it, or all.
-func Declares(allow []string, listed []string) bool {
-	set := &Set{}
+// covers the other, or a group that contains it, or all. A location in
+// either list is read from the tree's prefix.
+func Declares(allow []string, listed []string, prefix string) bool {
+	set := &Set{Prefix: prefix}
 	for _, want := range listed {
 		wantKinds, wantGroup := groups[want]
 		wantKind, wantScope, _ := strings.Cut(want, ":")
@@ -588,6 +678,13 @@ func Declares(allow []string, listed []string) bool {
 				}
 			case wantGroup:
 				if slices.Contains(wantKinds, kind) {
+					return true
+				}
+			case kind == wantKind && (kind == Send || kind == At):
+				entryFull, err := ReadLocation(prefix, scope)
+				wantFull, wantErr := ReadLocation(prefix, wantScope)
+				if err == nil && wantErr == nil && (MatchLocation(wantFull, entryFull) || MatchLocation(entryFull, wantFull) ||
+					covers(wantFull, entryFull) || covers(entryFull, wantFull)) {
 					return true
 				}
 			case kind == wantKind:
@@ -615,7 +712,7 @@ func covers(wide, narrow string) bool {
 func (s *Set) Denied(kind, value string) *Refusal {
 	for _, layer := range s.Layers {
 		for _, entry := range layer.Deny {
-			if CheckWritten(entry) != nil || s.matches(entry, kind, value) {
+			if readable(entry) != nil || s.matches(entry, kind, value) {
 				return &Refusal{What: kind + ":" + value, Layer: layer.Name,
 					Fix: fmt.Sprintf("take the deny entry %s out of %s", entry, layer.Name)}
 			}

@@ -57,4 +57,26 @@ A flow keeps every item's result in its state, so `each:` suits lists of hundred
 
 What a stage's job sends up while it works, a script's emits or a child machine's events, is available to later stages as that stage's emitted items, as they arrive. A flow's `emit:` can name one stage whose emitted items it emits to its own parent as they arrive, which is how a flow gives partial results.
 
-A flow does not wait on tickets or timers, and ignores events sent down to it.
+A flow does not wait on tickets or timers, and ignores events sent down to it. A send to a flow run by its address is noted as undelivered in the sender's record.
+
+## Sending and calling
+
+A stage's job may send an event to a run, or call a location and wait for its result. The address in `to:` is written as machine.md says.
+
+```yaml
+# house/schedules/away.yaml             location /home/schedules/away
+flow: away
+allow: [send:devices/boiler, send:services/weather]
+stages:
+  forecast:
+    job: { call: { at: services/weather }, input: { days: 2 } }        # gives { target: 12 }
+  lower:
+    job: { send: { to: { at: devices/boiler }, event: set, data: { target: "${stages.forecast.output.target}" } } }
+```
+
+- `job: { send: … }` ends `done` once the message is written. A send the receiver refuses, or that finds no run able to take it, is noted as undelivered in the flow's record and fails nothing.
+- `job: { call: { at }, input }` starts a run of a `transient` location and waits. The job's output is that run's result.
+- A call fails if the receiver refuses it, if the location is not `transient`, or if the called run fails.
+- The called run is a root of its own tree's client and counts one level below the flow. It is cancelled when the calling job is cancelled.
+- Both need `send:` in every layer of the flow, and the receiver's `receive:` must accept the flow (see permission.md). A refused `send:` stops the job with the status `denied`.
+- Both are jobs, so `ask_about: [send:…]` holds them.

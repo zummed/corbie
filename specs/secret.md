@@ -4,17 +4,44 @@ A secret is a value a job must be able to use and must not be able to read. Corb
 
 ## Where secrets come from
 
-A **controller secret** is kept by the controller in the store, sealed so only the controller can read it. Its owner sets it, sets it again, or removes it.
+The controller's owner sets a secret at a location. The controller keeps it in the store, sealed so only the controller can read it. No `--at` means `/`, which covers every tree.
 
-A **run secret** is sent with a start, for that run and everything below it. It overrides a controller secret of the same name. It is kept, sealed, in the root's record for as long as the root runs.
+```
+corbie controller secret set ANTHROPIC_KEY                    every tree
+corbie controller secret set ANTHROPIC_KEY --at /work         runs at /work and below
+corbie controller secret set BOILER_PASSWORD --at /home/devices/boiler
+```
 
-A machine only ever holds a secret's name.
+- A run uses the secrets set at its location or above, and the one set nearest its location wins. A run at `/work/agents/support` gets the second `ANTHROPIC_KEY`, and a run at `/home/devices/boiler` gets the first.
+- A secret can be set before any tree is submitted at its location.
+- The owner sets it again with the same command, removes it with `corbie controller secret remove NAME --at <location>`, and lists the names and locations with `corbie controller secret list`.
+
+A machine only ever holds a secret's name. A file brought in by `include:` is part of the machine that includes it, so its secret names are looked up at that machine's location.
 
 ## Getting to a job
 
 A definition names each secret a job uses. When the controller builds a job, it puts in the values of the secrets the job names, and no others. If a layer the controller knows of does not allow one of them, the job is denied before anything is sent, and the refusal names the layer. An entry that covers secrets by a pattern permits and sends nothing. The job is sealed to its runner, whose own ceiling is applied when the script acts.
 
-Each attempt at a job is built afresh, so it gets the value current at that time. A job that names a secret that is not set fails before anything is sent.
+Each attempt at a job is built afresh, so it gets the value current at that time. A job that names a secret not set at its run's location or above fails before anything is sent, naming the name and the location:
+
+```
+BOILER_PASSWORD is not set at /home/thermostats/kitchen or above
+```
+
+## Values
+
+A value is plain text, set at a location as a secret is. It is not a secret and is not masked.
+
+```
+corbie controller value set HUB 192.0.2.8:8123 --at /home
+corbie controller value list
+```
+
+- An expression reads it as `${values.HUB}`. The nearest one wins, as for a secret.
+- A run reads its values once, at its first step. A run keeps those values when a value is set again.
+- A value may fill an allow scope, as in `net:${values.HUB}`.
+- A job that names a value not set at its run's location or above fails before anything is sent, as for a secret.
+- The owner removes it with `corbie controller value remove NAME --at <location>`.
 
 ## Binding
 
@@ -32,7 +59,7 @@ allow:
   - secret:TG_BOT@*                              # anywhere the job may go
 ```
 
-The destination is written as another permission, and the secret's entry opens nothing by itself. It lets the value travel there, and the connection, the program or the file needs its own entry. A secret's name is always written out. It holds no `@`, `:`, `=`, `*`, `$`, `{`, `}`, slash, backslash or blank, and does not start with `-` or `.`; in an entry, a `*` stands for any part of a name. Its destination is a scope like any other and may be filled from the machine's input.
+The destination is written as another permission, and the secret's entry opens nothing by itself. It lets the value travel there, and the connection, the program or the file needs its own entry. A secret's name is always written out. It holds no `@`, `:`, `=`, `*`, `$`, `{`, `}`, slash, backslash or blank, and does not start with `-` or `.`; in an entry, a `*` stands for any part of a name. Its destination is a scope like any other and may be filled from the machine's input or a value.
 
 A secret bound to a host goes only over an encrypted connection. Many things on an owner's own network speak no other way than plain, and for one of those the entry says so: `net.unencrypted` in place of `net` lets the secret go to that host over a connection that is not encrypted as well, and to no other host. Anybody on the way there can read it. A secret bound to anywhere goes over either. The host is the one the script names: a secret bound to a name does not go to a connection asked for by address, nor the other way.
 

@@ -20,7 +20,7 @@ On one computer it is one command:
 corbie init --ceiling all
 ```
 
-This makes a controller, a runner and a client in the config, has each trust the others, and prints what it did. The store is the one `--store` names, a directory or a bucket, or else the one the config records; a new config has the directory `store` in it. `--ceiling` says what jobs on this computer may do: without it they may do nothing outside themselves, and the first refusal names the command that changes that.
+This makes a controller, a runner and a client in the config, has each trust the others, and prints what it did. The store is the one `--store` names, a directory or a bucket, or else the one the config records; a new config has the directory `store` in it. `--ceiling` says what jobs on this computer may do: without it they may do nothing outside themselves, and the first refusal names the command that changes that. The client's ceiling holds `at:/**` beside what `--ceiling` names, so it may submit a tree at any prefix.
 
 Across computers it is three steps, which join into one line because each reads the last one's output:
 
@@ -40,7 +40,7 @@ A controller's identity is made together with the address of its store, by `corb
 
 Trust is always given with a limit.
 
-A controller gives each **client** a ceiling: the most any run that client starts may be allowed. A runner gives each **controller** it serves a ceiling: the most it will let that controller's jobs do on its computer. A party trusted with no ceiling may do nothing outside the job itself.
+A controller gives each **client** a ceiling: the most any run in that client's trees may be allowed, and in its `at:` entries the prefixes it may submit trees at. A runner gives each **controller** it serves a ceiling: the most it will let that controller's jobs do on its computer. A party trusted with no ceiling may do nothing outside the job itself.
 
 A controller also gives each runner its **tags**, which are how jobs choose runners.
 
@@ -52,7 +52,7 @@ Someone who only wants to see where runs stand needs no identity at all: the con
 
 The same commands change what was given: a ceiling or tags can be set again at any time. A command that names neither leaves both as they are, and `none` in place of a ceiling or of tags takes them away. Either side can remove the other's card, and from then on nothing from that party is accepted.
 
-A name stays tied to the key it was enrolled with, and the controller's name to its own. A different key under a name already used is refused unless the person enrolling says it replaces the old one, and this holds after the party has been removed too. A replacement takes over the old key's runs: it can cancel them and send them events, though it cannot read what was sealed to the old key.
+A name stays tied to the key it was enrolled with, and the controller's name to its own. A different key under a name already used is refused unless the person enrolling says it replaces the old one, and this holds after the party has been removed too. A replacement takes over the old key's trees: it can submit there, cancel their runs and send them events, though it cannot read what was sealed to the old key.
 
 ## Messages
 

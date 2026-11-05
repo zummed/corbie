@@ -36,11 +36,71 @@ An agent may be started with the conversation of an earlier agent's result, and 
 
 ## Tools
 
-A tool is a named job, a script or a machine, with a description, the shape of its arguments, and its own permissions. The job reads the agent's input and the arguments the model supplied. A tool whose job is an agent is how an agent has sub-agents: the model is shown what the sub-agent replied, and the sub-agent's conversation stays in its own record.
+A tool is a named job, a script, a machine, a call or a send, with a description, the shape of its arguments, and its own permissions. The job reads the agent's input and the arguments the model supplied. A tool whose job is an agent is how an agent has sub-agents: the model is shown what the sub-agent replied, and the sub-agent's conversation stays in its own record.
 
-Agents share tools with `include:` under `tools:`, as any mapping takes fields from a file (see [Machines](machine.md#definitions)).
+A call or a send names a location read from the agent's tree, and needs `send:` for it (see [Permissions](permission.md)).
 
-A tool that needs approval goes to the agent's ask like any job. The calls from one turn that need it go together, and the ask is shown the arguments, what the tool does and what the model said. A call that needs no approval runs at once, and the next turn waits for the ask as well as for the tools. A call that is not approved goes back to the model as denied, with the ask's note.
+```yaml
+tools:
+  customer:
+    does: Look a customer up by their number.
+    args: { customer: string }
+    job:
+      call: { at: services/lookup }
+      input: { customer: "${args.customer}" }
+      allow: [send:services/lookup]
+  heating:
+    does: Set the temperature of one room.
+    args: { room: string, celsius: number }
+    job:
+      send: { to: { at: rooms/thermostat, key: "${args.room}" }, event: set, data: { celsius: "${args.celsius}" } }
+      allow: [send:rooms/thermostat]
+```
+
+- A call starts a run of the transient location and waits. The model is shown that run's result, or its error.
+- The called run's record belongs to its own tree's client. Cancelling the call cancels the run.
+- A send ends `done` once the message is written. A send the receiver does not take is noted in the agent's record, and the model is not told.
+
+A tool that needs approval goes to the agent's ask like any job. A `call:` or `send:` job is held when `ask_about:` names its `send:` entry. The tool calls from one turn that need it go together, and the ask is shown the arguments, what the tool does and what the model said. A tool call that needs no approval runs at once, and the next turn waits for the ask as well as for the tools. A tool call that is not approved goes back to the model as denied, with the ask's note.
+
+## Shared definitions
+
+Agents share a model, tools and text with `include:`, as any machine does (see [Machines](machine.md#definitions)). A base file with no type line is a piece: it has no location and runs nothing.
+
+```yaml
+# agents/base.yaml
+input: { dir: string, said: string }
+model: { name: claude-sonnet-5-5, secret: ANTHROPIC_KEY }
+system: { include: ./base.md }
+prompt: ${input.said}
+tools:
+  read_file: { include: ./tools/read_file.yaml }
+
+# agents/operator.yaml
+agent: operator
+include: ./base.yaml
+tools:
+  run_tests: { include: ./tools/run_tests.yaml }
+
+# agents/teacher.yaml
+agent: teacher
+include: ./base.yaml
+system:
+  - { include: ./base.md }
+  - The person asking is new to this code. Explain each step before you give the change.
+```
+
+`agents/base.md` holds the shared text:
+
+```
+You answer questions about the Go project in ${input.dir}.
+Read before you answer, and name the file and the line you mean.
+```
+
+- `tools:` is a mapping, so it merges by name: the operator has `read_file` and `run_tests`.
+- `system:` is a text, so the teacher's replaces the base's whole. Its pieces are joined by one empty line.
+- `${input.dir}` in `base.md` is an expression, and reads the input of the agent that includes it.
+- `corbie test agents/operator.yaml --definition` prints the operator written out, each value with its file and line.
 
 ## Listed tools
 
@@ -185,4 +245,4 @@ Every agent has tools for working with blobs without reading them whole: one to 
 
 ## Events
 
-An agent acts on the results of its turns, its tools and its ask, and on nothing else. Events sent down to it, and events its tools send up while they run, are ignored; a watcher still sees them in the record.
+An agent acts on the results of its turns, its tools and its ask, and on nothing else. A send to an agent run by its address is noted as undelivered in the sender's record. Events sent down to it, and events its tools send up while they run, are ignored; a watcher still sees them in the record.

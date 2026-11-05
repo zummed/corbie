@@ -52,6 +52,8 @@ Words:
   - **machine**: a YAML definition of type flow, statechart or agent. Never a computer.
   - **job**: the `job:` block of a stage, a state, a tool or an ask. A job is a script, which a runner executes, or another machine, which the controller starts as a child run.
   - **run**: one execution of a machine, which a client starts, lists and shows.
+  - **tree**: a directory a client submitted at a prefix. It belongs to that client.
+  - **location**: where a machine lives: its file's path under its tree's prefix, without `.yaml`.
   - **directory**, never "folder". **computer**, never "machine".
   - **controller**, **runner**, **client**: the three kinds of process. **store**: the directory or bucket they share.
 - The manual does not use words that only the code needs: pass, wake, mark, head, receipt, party. It says what happens instead.

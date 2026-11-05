@@ -48,14 +48,14 @@ Watching holds no state anywhere and asks nothing of the controller. In a direct
 
 A client acts by writing a message into the controller's inbox: submit a tree, start a run, cancel one, send it an event, answer a ticket. A client has no inbox of its own.
 
-For every message a client sends, the controller writes a receipt under the same name, saying that the message was taken or why it was refused. This is how a client learns that a start was refused before any instance existed, and how a client that answers a ticket for a run it did not start learns that its answer was taken. The receipt for an event also says whether the machine acted on it or had no rule for it. A receipt is sealed to the client that sent the message and is kept for a day. A message sent twice gets the same answer twice. Everything else a client learns, it learns from heads, records and the results of its calls.
+For every message a client sends, the controller writes a receipt under the same name, saying that the message was taken or why it was refused. This is how a client learns that a start was refused before any instance existed, and how a client that answers a ticket for a run it did not start learns that its answer was taken. The receipt for an event also says whether the machine acted on it or had no rule for it. A receipt is sealed to the client that sent the message and is kept for a day. A message sent twice gets the same answer twice. Everything else a client learns, it learns from heads and records.
 
 A client chooses a run's name before starting it, because files it sends along go into the run's record first. An application that must survive its own restart notes the name before it sends.
 
 A client that calls a location in a tree it does not own cannot read the run's record:
 
 1. It uploads the input's files under the call's name, and the controller copies them into the new run's record.
-2. The receipt for the call names the run it started, or says why it was refused.
-3. When the run ends, the controller writes the call's result: the run's status and its output or error, with the blobs the output names. The result is sealed to the caller and kept for a day.
+2. A refused call's receipt is written at once and says why.
+3. A call that is taken has its receipt written when the run ends: the run's status, and its output or error, with the blobs the output names.
 
 A message is good for as long as its sender says, a few minutes unless it says otherwise. Until the controller has taken it there is no receipt and no head, and a client that asks is told the run is waiting to start. Once a start is past its time with no receipt, the run is no longer waiting: it was never taken up.

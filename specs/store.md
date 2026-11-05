@@ -27,10 +27,9 @@ version                                  the layout's version
 
 <controller>/
   inbox/<sender>/<message>               messages to the controller
-  receipts/<sender>/<message>            what became of each message a client sent
-  results/<client>/<message>/            the end of a run a client called in a tree it does not own
-      result                             the run's status, and its output or error
-      blobs/<name>                       the blobs its output names
+  receipts/<sender>/<message>/           what became of each message a client sent
+      receipt                            taken or refused; for a call, the run's status and its output or error
+      blobs/<name>                       the blobs a call's output names
   running/<client>/<instance>            heads of instances that are running
   finished/<client>/<instance>           heads of instances that have ended
   records/<client>/<instance>/
@@ -81,7 +80,7 @@ The layout is drawn so that the right to read or write is only ever a matter of 
 |---|---|---|
 | Controller | everything in its own area; jobs into runners' inboxes | everything in its own area |
 | Runner | results into the controller's inbox; new emits and blobs in records; its own inbox and marks | its own inbox and marks; blobs in records |
-| Client | messages into the controller's inbox; its own uploads; new blobs in the records of its own runs | its own receipts, results, heads and records |
+| Client | messages into the controller's inbox; its own uploads; new blobs in the records of its own runs | its own receipts, heads and records |
 | A viewer given heads only | nothing | every head |
 
 Every party can read the layout's version. A runner or a client adds to a record only-if-new: it can never change or remove what is there. A runner is not limited to the records of the jobs it holds, so a runner can add junk to any record. What it adds is signed by it and tied to a job, and readers ignore an entry from a runner that had no such job.

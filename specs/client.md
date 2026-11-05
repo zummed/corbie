@@ -22,7 +22,7 @@ Wherever a run is shown, it has the same shape and the same words.
 
 A run shows its location, and its key at a keyed location. A run is `waiting` to start, `running`, `done`, `failed` or `cancelled`. A failed run says why: an `error`, a `timeout`, or `denied` with the refusal. A finished run has its output, and a list of the permissions it used, which for a machine are those of every job in it and below it.
 
-A run waiting on a ticket shows the ticket's name. The ticket's value is in the record, which only the client of the run's tree can read. Only that client is shown the run's title, its input, its output, the failure's text and the permissions it used. A client that called the run from outside the tree is shown its status and its output or error, from the call's result (see instance.md).
+A run waiting on a ticket shows the ticket's name. The ticket's value is in the record, which only the client of the run's tree can read. Only that client is shown the run's title, its input, its output, the failure's text and the permissions it used. A client that called the run from outside the tree is shown its status and its output or error, from the call's receipt (see instance.md).
 
 A blob in any value is shown as its type, its size and the path to ask for it by. Its key is never shown, at the command line, over HTTP or to a model.
 
@@ -108,7 +108,7 @@ Following from a terminal is one flag, `--watch`. It prints what the command pri
 
 `run show` prints a run's title, and `run ls` does not, since a listing reads only the heads. `run show` can also print one step, one job's input and output, or the definition, can save a result's files to a directory, and with `--wait` stays until the run ends and prints its result.
 
-`run submit <location>` sends a start; `run submit --wait` waits for the run it started and `run submit --watch` follows it. The tree's client starts a transient location with no `send:` entry. Another client starts one as a call: its ceiling needs `send:` for the location, the file's `receive:` must list `client:<its name>`, and it is shown the call's result only.
+`run submit <location>` sends a start; `run submit --wait` waits for the run it started and `run submit --watch` follows it. The tree's client starts a transient location with no `send:` entry. Another client starts one as a call: its ceiling needs `send:` for the location, the file's `receive:` must list `client:<its name>`, and it is shown only the call's receipt: the run's status and its output or error.
 
 A secret's value is never on the command line. It is read only from the source the command names, and a value not found there is a mistake that sends nothing:
 

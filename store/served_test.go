@@ -132,7 +132,7 @@ func Test_store_served_directory_holds_each_party_to_its_row(t *testing.T) {
 	put("ctl/running/cli/i1", "head")
 	put("ctl/records/cli/i1/steps/1", "step")
 	put("run/inbox/ctl/job1", "job")
-	put("ctl/secrets/TOKEN", "sealed")
+	put("ctl/locations/+/secrets/TOKEN", "sealed")
 
 	// A client reads its own heads and records, and nobody else's.
 	if v, _ := read(t, client, "ctl/running/cli/i1"); v != "head" {
@@ -144,7 +144,7 @@ func Test_store_served_directory_holds_each_party_to_its_row(t *testing.T) {
 	if _, err := Names(other.List(ctx, "ctl/records/cli")); !errors.Is(err, ErrRefused) {
 		t.Errorf("a client listed another client's records: %v", err)
 	}
-	if v, _ := read(t, client, "ctl/secrets/TOKEN"); v != "" {
+	if v, _ := read(t, client, "ctl/locations/+/secrets/TOKEN"); v != "" {
 		t.Errorf("a client read a secret: %q", v)
 	}
 	// A client sends a message, and can neither change nor remove it.

@@ -174,7 +174,7 @@ func lying(kind string, args []string) {
 			{Job: &machine.Job{Name: "x", Script: "./step.js", Allow: strange, Deny: strange, Timeout: long, Restart: &machine.Restart{Limit: -1}, Memory: -1,
 				Input: bad("../..", "text/plain"), Wants: strange, Shown: bad("", ""), Files: strange}},
 			{Job: &machine.Job{Name: "y", Stored: bad("../../secrets/x", blob.Definition), Allow: strange, Timeout: long, Input: bad("", blob.Definition)}},
-			{Job: &machine.Job{Name: "z", Stored: bad("ctl/secrets/x", blob.Definition)}},
+			{Job: &machine.Job{Name: "z", Stored: bad("ctl/locations/+/secrets/x", blob.Definition)}},
 			{Job: &machine.Job{Name: "w", Stored: bad("../x", "text/javascript")}},
 			{Send: &machine.Send{To: machine.Parent, Event: "e", Data: bad("../..", blob.Definition)}},
 			{Timer: &machine.TimerAt{Name: "t", At: time.Date(9999, 12, 31, 23, 59, 59, 0, time.UTC)}},
@@ -341,7 +341,7 @@ func Test_ctl_answer_of_a_made_machine_uses_no_key(t *testing.T) {
 			t.Fatalf("%s: the run with the key took %d steps", lie[0], len(steps))
 		}
 		for _, op := range w.noted() {
-			if strings.HasPrefix(op.Name, "ctl/keys") {
+			if strings.Contains(op.Name, "/+/keys/") {
 				t.Fatalf("%s: the answer led to a look at %s", lie[0], op.Name)
 			}
 		}
@@ -497,7 +497,7 @@ func Test_ctl_answer_says_nothing_of_what_a_step_used(t *testing.T) {
 	w := newWorld(t)
 	owner := w.submit(family, nil, nil)
 	w.settle()
-	secret := store.Secret("ctl", "token")
+	secret := store.Secret("ctl", "/", "token")
 	if _, err := w.owner.Write(ctx, secret, []byte("sealed"), store.OnlyIfNew); err != nil {
 		t.Fatal(err)
 	}

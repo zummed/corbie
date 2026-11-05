@@ -302,16 +302,32 @@ removed.`},
 		{Name: "controller parties", Usage: "", Summary: "list the runners and clients the controller trusts", Run: cmdParties, Help: `
 Each line gives a runner's or a client's kind, name and card fingerprint, then
 its ceiling, deny list and tags if set, then removed if it was removed.`},
-		{Name: "controller secret set", Usage: "<NAME> [-]", Summary: "set a controller secret", Run: cmdSecretSet, Help: `
+		{Name: "controller secret set", Usage: "<NAME> [-] [--at <location>]", Summary: "set a secret for the runs at a location and below", Run: cmdSecretSet, Help: `
 The value is typed at the terminal and not shown. It is never given on the
-command line.
+command line. A run uses the secret set nearest its location.
 
-  -       the value is read from standard input, to the end
-  --env   the value is read from the environment variable NAME
+  -                the value is read from standard input, to the end
+  --env            the value is read from the environment variable NAME
+  --at <location>  where the secret is set; by default /, for every tree
 
   corbie manual using-secrets   how a job uses a secret`},
-		{Name: "controller secret remove", Usage: "<NAME>", Summary: "remove a controller secret", Run: cmdSecretRemove},
-		{Name: "controller secret list", Usage: "", Summary: "list the names of the controller's secrets", Run: cmdSecretList},
+		{Name: "controller secret remove", Usage: "<NAME> [--at <location>]", Summary: "remove a secret set at a location", Run: cmdSecretRemove, Help: `
+A secret of the name set above the location is then the one used.
+
+  --at <location>  where the secret is set; by default /`},
+		{Name: "controller secret list", Usage: "", Summary: "list the names of the secrets and where each is set", Run: cmdSecretList},
+		{Name: "controller value set", Usage: "<NAME> <VALUE> [--at <location>]", Summary: "set a value for the runs at a location and below", Run: cmdValueSet, Help: `
+A value is plain text, not secret. An expression reads it as ${values.NAME},
+and a run uses the value set nearest its location.
+
+  --at <location>  where the value is set; by default /, for every tree
+
+  corbie manual using-secrets   secrets and values`},
+		{Name: "controller value remove", Usage: "<NAME> [--at <location>]", Summary: "remove a value set at a location", Run: cmdValueRemove, Help: `
+A value of the name set above the location is then the one used.
+
+  --at <location>  where the value is set; by default /`},
+		{Name: "controller value list", Usage: "", Summary: "list the values and where each is set", Run: cmdValueList},
 		{Name: "controller policy", Usage: "<name> | --viewer", Summary: "print the bucket policy for one controller, runner or client", Run: cmdPolicy, Help: `
 On an S3 bucket each controller, runner and client has its own access key.
 The command prints the IAM policy that limits one key to the objects its

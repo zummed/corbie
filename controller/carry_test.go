@@ -436,7 +436,7 @@ func Test_ctl_job_that_cannot_be_sent_fails_though_controller_stops(t *testing.T
 		// Decided when the step is taken: no runner has the tag.
 		`{ script: ./work.js, tags: [gpu] }`: "no runner has the tags the job names: gpu",
 		// Found when the entry is carried out: the secret is not set.
-		`{ script: ./work.js, allow: ["secret:NONE@net:api.example"] }`: `the secret "NONE" is not set`,
+		`{ script: ./work.js, allow: ["secret:NONE@net:api.example"] }`: `NONE is not set at / or above`,
 	} {
 		var id string
 		begin := func() *world {

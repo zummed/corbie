@@ -65,9 +65,17 @@ func Test_store_no_name_is_a_path_above_another(t *testing.T) {
 		VersionName, Message("ctl", "c1", "m1"), Receipt("ctl", "c1", "m1"),
 		RunningHead("ctl", i), FinishedHead("ctl", i), RunningHead("ctl", child),
 		Step("ctl", i, 1), Emit("ctl", i, "fetch", 1), Blob("ctl", i, "b1"), Step("ctl", child, 1),
-		Wake("ctl", now, i, "timer.x"), Trust("ctl", "r1"), Secret("ctl", "KEY"),
+		Wake("ctl", now, i, "timer.x"), Trust("ctl", "r1"),
 		Message("r1", "ctl", JobMessage(i, "fetch")), Taken("r1", now, JobMessage(i, "fetch")),
 		Message("ctl", "ctl", LinkMessage(i, 3, 0, "start")),
+		ReceiptBlob("ctl", "c1", "m1", "b1"), Upload("ctl", "c1", "m2", "f1"),
+		Tree("ctl", "/home"), LocationFile("ctl", "/home/boiler"), LocationBlob("ctl", "/home/boiler", "b1"),
+		Key("ctl", "/home/boiler", ""), Key("ctl", "/home/rooms", "k"),
+		Secret("ctl", "/", "KEY"), Secret("ctl", "/home", "KEY"), Secret("ctl", "/home", "+"),
+		Value("ctl", "/", "HUB"), Value("ctl", "/home/boiler", "HUB"),
+		// A location may be named as an entry's kind is, under a prefix
+		// that holds entries.
+		LocationFile("ctl", "/home/secrets"), LocationFile("ctl", "/home/tree"), LocationFile("ctl", "/file"),
 	}
 	for _, a := range names {
 		if err := checkName(a); err != nil {
@@ -90,5 +98,43 @@ func Test_store_no_name_is_a_path_above_another(t *testing.T) {
 	}
 	if ChildInstance(i, now, "fetch.0") != child || ChildInstance(i, now, "fetch.1") == child {
 		t.Fatal("a child's name does not follow from what asked for it")
+	}
+}
+
+// A location's entries are under "+", and no part of a location is "+": so
+// no location's entries are a path above another's.
+func Test_store_location_part_cannot_be_plus(t *testing.T) {
+	for _, location := range []string{"/", "/home", "/home/devices/boiler", "/a-b_c/d:e"} {
+		if err := CheckLocation(location); err != nil {
+			t.Errorf("%s: %v", location, err)
+		}
+	}
+	for _, location := range []string{"", "home", "home/x", "/home/", "//home", "/home//x", "/+", "/home/+",
+		"/home/+/secrets", "/home/.", "/home/..", "/home/../x", "/.rook", "/a#b", "/home/a\\b", "/a\nb"} {
+		if err := CheckLocation(location); err == nil {
+			t.Errorf("%q was taken as a location", location)
+		}
+	}
+	for _, location := range []string{"/", "/home", "/home/devices/boiler"} {
+		for _, name := range []string{LocationFile("ctl", location), Secret("ctl", location, "K"), Key("ctl", location, "k")} {
+			if at, _, ok := ParseLocation("ctl", name); !ok || at != location {
+				t.Errorf("%s is read as at %q", name, at)
+			}
+		}
+	}
+	if at, entry, ok := ParseLocation("ctl", Secret("ctl", "/home", "+")); !ok || at != "/home" || entry != "secrets/+" {
+		t.Errorf("a secret named + is read as %q %q", at, entry)
+	}
+	if got := Above("/home/devices/boiler"); !slices.Equal(got, []string{"/home/devices/boiler", "/home/devices", "/home", "/"}) {
+		t.Errorf("above /home/devices/boiler is %v", got)
+	}
+	if got := Above("/"); !slices.Equal(got, []string{"/"}) {
+		t.Errorf("above / is %v", got)
+	}
+	if Secret("ctl", "/", "K") != "ctl/locations/+/secrets/K" || Secret("ctl", "/home", "K") != "ctl/locations/home/+/secrets/K" {
+		t.Error("secrets are not where the layout draws them")
+	}
+	if message, ok := ReceiptMessage("ctl", ReceiptBlob("ctl", "c1", "m1", "b")); !ok || message != "m1" {
+		t.Errorf("a receipt's blob is read as of %q", message)
 	}
 }

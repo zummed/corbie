@@ -194,7 +194,7 @@ or agent, and each of its jobs is a script or another machine.
                respond
   test         run a definition or a script in this process, with no setup
   run          submit, ls, show, cancel, send, reply
-  controller   card, enrol, remove, parties, secret, policy, cancel
+  controller   card, enrol, remove, parties, secret, value, policy, cancel
   runner       card, trust, remove
   client       card, trust, remove
   manual       print a page of the manual, or list the pages; web

@@ -317,11 +317,11 @@ func TestFaultsOfABlobAreItsOwn(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	s.Write(ctx, "ctl/secrets/KEY", []byte("sealed"), store.OnlyIfNew)
+	s.Write(ctx, "ctl/locations/+/secrets/KEY", []byte("sealed"), store.OnlyIfNew)
 	for what, ref := range map[string]Ref{
 		"a name that holds nothing":      {At: "ctl/records/c1/i1/blobs/none", Size: 4, Key: NewKey()},
 		"a name no store can hold":       {At: "../../etc/passwd", Size: 4, Key: NewKey()},
-		"a value that is not a blob":     {At: "ctl/secrets/KEY", Size: 4, Key: NewKey()},
+		"a value that is not a blob":     {At: "ctl/locations/+/secrets/KEY", Size: 4, Key: NewKey()},
 		"a key that is not a key":        {At: "ctl/records/c1/i1/blobs/none", Type: Definition, Size: 4, Key: "x"},
 		"a definition that is not one":   real,
 		"a definition that is not there": {At: "ctl/records/c1/i1/blobs/none", Type: Definition, Size: 4, Key: NewKey()},

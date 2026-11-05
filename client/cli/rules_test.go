@@ -451,12 +451,44 @@ func Test_client_secret_value_never_on_command_line(t *testing.T) {
 	m.ok("", "run", "submit", definition, "--input", `{"name": "x"}`, "--secret-env", "CORBIE_TEST_TOKEN")
 	m.ok("", append(set, "CORBIE_TEST_TOKEN", "--env")...)
 	m.ok("hunter2-on-standard-input\n", append(set, "CORBIE_TEST_OTHER", "-")...)
-	if listed := m.ok("", "controller", "secret", "list"); listed != "CORBIE_TEST_OTHER\nCORBIE_TEST_TOKEN\n" {
-		t.Errorf("the controller's secrets are listed as %q", listed)
+	// A secret is set at a location, before any tree is there, and the
+	// list says where each is set.
+	refused("hunter2-on-standard-input\n", `--at "home"`, append(set, "CORBIE_TEST_OTHER", "-", "--at", "home")...)
+	m.ok("hunter2-at-home\n", append(set, "CORBIE_TEST_OTHER", "-", "--at", "/home/devices")...)
+	want := "CORBIE_TEST_OTHER  /\nCORBIE_TEST_TOKEN  /\nCORBIE_TEST_OTHER  /home/devices\n"
+	if listed := m.ok("", "controller", "secret", "list"); listed != want {
+		t.Errorf("the controller's secrets are listed as %q, want %q", listed, want)
+	}
+	m.ok("", "controller", "secret", "remove", "CORBIE_TEST_OTHER", "--at", "/home/devices")
+	if listed := m.ok("", "controller", "secret", "list"); listed != "CORBIE_TEST_OTHER  /\nCORBIE_TEST_TOKEN  /\n" {
+		t.Errorf("after a remove the controller's secrets are listed as %q", listed)
 	}
 	for _, name := range stored(t, storeDir) {
 		if value, _ := os.ReadFile(name); strings.Contains(string(value), "hunter2") {
 			t.Fatalf("%s holds the secret's value in the clear", name)
+		}
+	}
+}
+
+// A value is given on the command line and set at a location, by default
+// "/". The list gives each value, where it is set and its text.
+func Test_client_value_set_at_a_location(t *testing.T) {
+	m := machine{t, filepath.Join(t.TempDir(), "config")}
+	m.ok("", "init", "--store", filepath.Join(t.TempDir(), "store"), "--name", "box")
+	m.ok("", "controller", "value", "set", "HUB", "hub.lan")
+	m.ok("", "controller", "value", "set", "HUB", "192.0.2.8:8123", "--at", "/home")
+	m.ok("", "controller", "value", "set", "ZONE", "eu")
+	want := "HUB   /      hub.lan\nZONE  /      eu\nHUB   /home  192.0.2.8:8123\n"
+	if listed := m.ok("", "controller", "value", "list"); listed != want {
+		t.Errorf("the values are listed as %q, want %q", listed, want)
+	}
+	m.ok("", "controller", "value", "remove", "HUB", "--at", "/home")
+	if listed := m.ok("", "controller", "value", "list"); listed != "HUB   /  hub.lan\nZONE  /  eu\n" {
+		t.Errorf("after a remove the values are listed as %q", listed)
+	}
+	for _, args := range [][]string{{"HUB"}, {"HUB", "a", "b"}, {"HUB", "x", "--at", "/home/"}, {"HUB=x", "y"}, {".HUB", "x"}} {
+		if status, out, said := m.run("", append([]string{"controller", "value", "set"}, args...)...); status != 2 || out != "" || said == "" {
+			t.Errorf("corbie controller value set %v ended %d: %s%s", args, status, out, said)
 		}
 	}
 }

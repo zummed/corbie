@@ -104,18 +104,21 @@ func TestPolicyIsTheTable(t *testing.T) {
 	names := []string{
 		"version", "elsewhere",
 		"ctl/inbox/c1/m1", "ctl/inbox/c2/m1", "ctl/inbox/r1/m1", "ctl/inbox/r2/m1",
-		"ctl/receipts/c1/m1", "ctl/receipts/c2/m1",
+		"ctl/receipts/c1/m1/receipt", "ctl/receipts/c1/m1/blobs/b1", "ctl/receipts/c2/m1/receipt",
 		"ctl/running/c1/i1", "ctl/running/c2/i2", "ctl/finished/c1/i0", "ctl/finished/c2/i9",
 		"ctl/records/c1/i1/steps/1", "ctl/records/c1/i1/emits/j1/1", "ctl/records/c1/i1/blobs/b1",
 		"ctl/records/c2/i2/steps/1", "ctl/records/c2/i2/emits/j1/1", "ctl/records/c2/i2/blobs/b1",
-		"ctl/wakes/t/c1/i1/w", "ctl/trust/r1", "ctl/secrets/s1",
+		"ctl/wakes/t/c1/i1/w", "ctl/trust/r1", "ctl/locations/+/secrets/s1",
+		"ctl/locations/home/+/tree", "ctl/locations/home/boiler/+/file", "ctl/locations/home/boiler/+/blobs/b1",
+		"ctl/locations/home/boiler/+/values/v1", "ctl/locations/home/rooms/+/keys/k1", "ctl/locations/c1/+/keys/k1",
+		"ctl/locations/c2/+/keys/k1", "ctl/uploads/c1/m1/f1", "ctl/uploads/c2/m1/f1",
 		"r1/inbox/ctl/j1", "r1/inbox/c1/x", "r1/taken/j1", "r2/inbox/ctl/j2", "r2/inbox/r1/x", "r2/taken/j2",
 	}
 	paths := []string{
 		"", "ctl", "ctl/inbox", "ctl/inbox/c1", "ctl/inbox/r1", "ctl/receipts", "ctl/receipts/c1", "ctl/receipts/c2",
 		"ctl/running", "ctl/running/c1", "ctl/running/c2", "ctl/finished", "ctl/finished/c1", "ctl/finished/c2",
 		"ctl/records", "ctl/records/c1", "ctl/records/c1/i1", "ctl/records/c1/i1/steps", "ctl/records/c1/i1/blobs",
-		"ctl/records/c2", "ctl/records/c2/i2/blobs", "ctl/wakes", "ctl/trust", "ctl/secrets",
+		"ctl/records/c2", "ctl/records/c2/i2/blobs", "ctl/wakes", "ctl/trust", "ctl/locations", "ctl/locations/c1", "ctl/uploads", "ctl/uploads/c1", "ctl/receipts/c1/m1",
 		"r1", "r1/inbox", "r1/inbox/ctl", "r1/taken", "r2", "r2/inbox", "r2/taken",
 	}
 	for who, p := range policyParties {

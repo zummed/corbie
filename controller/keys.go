@@ -166,7 +166,7 @@ func (b *build) move(a *arrival) { b.out.dropped = append(b.out.dropped, dropped
 // replaced.
 func (p *pass) claim(inst, key, start string) (string, error) {
 	client := store.InstanceClient(inst)
-	at := store.Key(p.ctl, client, key)
+	at := store.Key(p.ctl, "/"+client, key)
 	for {
 		file, mark, err := instance.ReadKey(p.ctx, p.store, p.c.ID.Card, p.c.ID, client, key)
 		if err != nil && !isAltered(err) {
@@ -224,7 +224,7 @@ func (p *pass) free(inst, key string) error {
 	if err != nil && !isAltered(err) || mark == store.None || file != nil && file.Run != inst {
 		return err
 	}
-	_, err = p.store.Delete(p.ctx, store.Key(p.ctl, client, key), store.OnlyIfUnchanged(mark))
+	_, err = p.store.Delete(p.ctx, store.Key(p.ctl, "/"+client, key), store.OnlyIfUnchanged(mark))
 	return err
 }
 

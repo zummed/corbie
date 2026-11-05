@@ -13,14 +13,15 @@ import (
 var layout = []*regexp.Regexp{
 	regexp.MustCompile(`^version$`),
 	regexp.MustCompile(`^ctl/inbox/[^/]+/[^/]+$`),
-	regexp.MustCompile(`^ctl/receipts/[^/]+/[^/]+$`),
+	regexp.MustCompile(`^ctl/receipts/[^/]+/[^/]+/(receipt|blobs/[^/]+)$`),
 	regexp.MustCompile(`^ctl/(running|finished)/[^/]+/[^/]+$`),
 	regexp.MustCompile(`^ctl/records/[^/]+/[^/]+/steps/\d{8}$`),
 	regexp.MustCompile(`^ctl/records/[^/]+/[^/]+/emits/[^/]+/\d{8}$`),
 	regexp.MustCompile(`^ctl/records/[^/]+/[^/]+/blobs/[^/]+$`),
 	regexp.MustCompile(`^ctl/wakes/\d{8}T\d{6}\.\d{3}Z/[^/]+/[^/]+/[^/]+$`),
 	regexp.MustCompile(`^ctl/trust/[^/]+$`),
-	regexp.MustCompile(`^ctl/secrets/[^/]+$`),
+	regexp.MustCompile(`^ctl/locations(/[^/+]+)*/\+/(tree|file|blobs/[^/]+|keys/[0-9a-f]{64}|secrets/[^/]+|values/[^/]+)$`),
+	regexp.MustCompile(`^ctl/uploads/[^/]+/[^/]+/[^/]+$`),
 }
 
 // A whole run, with children, events, a ticket, a timer and receipts, keeps
@@ -67,9 +68,11 @@ func TestWhatEveryRunKeepsTo(t *testing.T) {
 		if !drawn {
 			t.Errorf("a name the layout does not draw was written: %s", op.Name)
 		}
-		// Only the head of a running instance, a trust entry and a secret
-		// are ever rewritten.
-		rewritable := strings.HasPrefix(op.Name, "ctl/running/") || strings.HasPrefix(op.Name, "ctl/trust/") || strings.HasPrefix(op.Name, "ctl/secrets/")
+		// Only the head of a running instance, a trust entry, and a tree,
+		// a file, a key's file, a secret and a value at a location are
+		// ever rewritten.
+		rewritable := strings.HasPrefix(op.Name, "ctl/running/") || strings.HasPrefix(op.Name, "ctl/trust/") ||
+			strings.HasPrefix(op.Name, "ctl/locations/") && !strings.Contains(op.Name, "/+/blobs/")
 		if op.Act == store.ActRewrite && !rewritable {
 			t.Errorf("%s was rewritten (%s)", op.Name, op.How)
 		}
@@ -87,7 +90,8 @@ func TestWhatEveryRunKeepsTo(t *testing.T) {
 			}
 		}
 		// What is sealed cannot be read by whoever runs the store.
-		sealed := strings.HasPrefix(op.Name, "ctl/inbox/") || strings.HasPrefix(op.Name, "ctl/receipts/") || strings.HasPrefix(op.Name, "ctl/records/")
+		sealed := strings.HasPrefix(op.Name, "ctl/inbox/") || strings.HasPrefix(op.Name, "ctl/receipts/") || strings.HasPrefix(op.Name, "ctl/records/") ||
+			strings.HasPrefix(op.Name, "ctl/locations/")
 		if sealed && op.Value != nil && (strings.Contains(string(op.Value), marker) || strings.Contains(string(op.Value), ticket)) {
 			t.Errorf("%s shows a value of the run's to whoever reads the store", op.Name)
 		}

@@ -122,6 +122,11 @@ states:
 	asked(m, "the value\n", false, "controller", "secret", "set", "A_SECRET_OF_THIS_TEST", "-")
 	asked(m, "", true, "controller", "secret", "list")
 	asked(m, "", false, "controller", "secret", "remove", "A_SECRET_OF_THIS_TEST")
+	asked(m, "", false, "controller", "value", "set", "HUB", "hub.lan", "--at", "/home")
+	if listed := asked(m, "", true, "controller", "value", "list"); listed != `[{"name":"HUB","at":"/home","value":"hub.lan"}]`+"\n" {
+		t.Errorf("corbie controller value list --json printed %s", listed)
+	}
+	asked(m, "", false, "controller", "value", "remove", "HUB", "--at", "/home")
 	asked(m, "", true, "controller", "policy", "--viewer", "--store", "s3://bucket/prefix?region=eu-west-2")
 	asked(m, "", true, "manual")
 	asked(m, "", true, "manual", "runs")

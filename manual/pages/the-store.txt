@@ -8,7 +8,9 @@ Layout
   version                         the layout's version, written when the store is set up
   <controller>/
     inbox/<sender>/<message>      messages from clients and runners, and its own for child runs
-    receipts/<sender>/<message>   its answer to each message from a client
+    receipts/<sender>/<message>/
+        receipt                   its answer to a message from a client
+        blobs/<name>              each file the answer names
     running/<client>/<run>        the status of each run in progress
     finished/<client>/<run>       the status of each run that has ended
     records/<client>/<run>/
@@ -18,13 +20,22 @@ Layout
         carried                   how much of a large step the controller has acted on
     wakes/<time>/<run>/<name>     an empty file per timer, job timeout, run timeout, restart and deletion
     trust/<name>                  the card of each runner and client it trusts, with tags or ceiling
-    secrets/<name>                its secrets
+    locations/<location>/+/
+        tree                      at a tree's prefix: the client that owns it, and its directory
+        file                      the machine file recorded at the location
+        blobs/<name>              the scripts and machines that file names
+        keys/<hash>               which run a key names
+        secrets/<name>            a secret set at the location
+        values/<name>             a value set at the location
+    uploads/<client>/<message>/
+        <name>                    a file a client sends with a message
   <runner>/
     inbox/<sender>/<message>      jobs for the runner
     taken/<due time>/<job>        one file for each job it has taken
 
 `<client>/<run>` is a run's ID. `<run>` begins with the time the run was
-named, and a child run has the `<client>` of its parent.
+named, and a child run has the `<client>` of its parent. What is set at `/`
+is under `locations/+/`.
 
 Who may read and write
 ----------------------
@@ -33,11 +44,12 @@ Who may read and write
   version                     reads        reads         reads                 reads
   <controller>/inbox/         all          adds          adds                  -
   receipts/                   all          -             reads its own         -
+  uploads/                    all          -             adds its own          -
   running/, finished/         all          -             reads its own         reads
   records: steps/, carried    all          -             reads its own         -
   records: emits/             all          adds          reads its own         -
   records: blobs/             all          reads, adds   reads, adds its own   -
-  wakes/, trust/, secrets/    all          -             -                     -
+  wakes/, trust/, locations/  all          -             -                     -
   <runner>/inbox/             adds         all           -                     -
   <runner>/taken/             -            all           -                     -
 
@@ -76,7 +88,7 @@ signed by another writer.
   a message in an inbox           encrypted for the process whose inbox it is in
   a step, an emit                 encrypted for the controller and the client in the run's ID
   an answer under receipts/       encrypted for the client that sent the message
-  a controller's secret           encrypted for the controller
+  a secret, a value               encrypted for the controller
   a blob                          encrypted under its own key, and not signed
   a status, a trust entry,        signed and not encrypted
     a file under taken/

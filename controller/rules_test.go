@@ -204,7 +204,7 @@ func Test_ctl_refusal_receipt_written_before_message_deleted(t *testing.T) {
 	receiptAt, deleteAt := -1, -1
 	w.mu.Lock()
 	for i, op := range w.ops {
-		if op.Done && op.Act == store.ActAdd && strings.HasSuffix(op.Name, "/receipts/c1/"+message) {
+		if op.Done && op.Act == store.ActAdd && op.Name == store.Receipt("ctl", "c1", message) {
 			receiptAt = i
 		}
 		if op.Done && op.Act == store.ActDelete && strings.HasSuffix(op.Name, "/inbox/c1/"+message) {
@@ -443,7 +443,7 @@ func TestJobThatCannotBeBuiltFails(t *testing.T) {
 		  end: { end: done }
 	`
 	for job, want := range map[string]string{
-		`{ script: ./work.js, allow: ["secret:NONE@net:api.example"] }`:                                  `the secret "NONE" is not set`,
+		`{ script: ./work.js, allow: ["secret:NONE@net:api.example"] }`:                                  `NONE is not set at / or above`,
 		`{ machine: { statechart: kid, states: { k: { end: done } } }, input: "${'x'.repeat(300000)}" }`: "pass large values as blobs",
 	} {
 		id := w.submit(strings.Replace(chart, "JOB", job, 1), map[string]string{"work.js": "return 1"}, nil)
@@ -546,26 +546,26 @@ func TestControllerSecret(t *testing.T) {
 		}
 		return failure, sent
 	}
-	if failure, sent := uses(); !strings.Contains(failure, `the secret "K" is not set`) || len(sent) != 0 {
+	if failure, sent := uses(); !strings.Contains(failure, `K is not set at / or above`) || len(sent) != 0 {
 		t.Fatalf("with the secret not set: %q, %d jobs sent", failure, len(sent))
 	}
 	for _, value := range []string{"the first value", "the second"} {
-		if err := secret.Set(ctx, w.ctrl.Store, w.ctl, "K", value); err != nil {
+		if err := secret.Set(ctx, w.ctrl.Store, w.ctl, "/", "K", value); err != nil {
 			t.Fatal(err)
 		}
 		if failure, sent := uses(); failure != "" || !slices.Equal(sent, []string{value}) {
 			t.Fatalf("with the secret set to %q: %q, and the job was sent %q", value, failure, sent)
 		}
 	}
-	kept, _, _ := w.owner.Read(ctx, store.Secret("ctl", "K"))
+	kept, _, _ := w.owner.Read(ctx, store.Secret("ctl", "/", "K"))
 	var value string
-	if _, err := identity.Read(kept, store.Secret("ctl", "K"), w.ctl.Card, r1, &value); bytes.Contains(kept, []byte("the second")) || err == nil {
+	if _, err := identity.Read(kept, store.Secret("ctl", "/", "K"), w.ctl.Card, r1, &value); bytes.Contains(kept, []byte("the second")) || err == nil {
 		t.Fatalf("the secret is kept in the clear, or a runner's key opens it (%v)", err)
 	}
-	if err := secret.Remove(ctx, w.ctrl.Store, w.ctl, "K"); err != nil {
+	if err := secret.Remove(ctx, w.ctrl.Store, w.ctl, "/", "K"); err != nil {
 		t.Fatal(err)
 	}
-	if failure, sent := uses(); !strings.Contains(failure, `the secret "K" is not set`) || len(sent) != 0 {
+	if failure, sent := uses(); !strings.Contains(failure, `K is not set at / or above`) || len(sent) != 0 {
 		t.Fatalf("with the secret removed: %q, %d jobs sent", failure, len(sent))
 	}
 }
@@ -802,7 +802,7 @@ func TestSecretALayerDoesNotAllowIsNotSentAndItsJobIsDenied(t *testing.T) {
 		r1 := w.party("r1", identity.Runner)
 		w.enrol(r1, permission.Layer{Allow: all}, nil)
 		w.enrol(w.c1, permission.Layer{Allow: c.ceiling, Deny: c.denied}, nil)
-		if err := secret.Set(ctx, w.ctrl.Store, w.ctl, "K", "the value"); err != nil {
+		if err := secret.Set(ctx, w.ctrl.Store, w.ctl, "/", "K", "the value"); err != nil {
 			t.Fatal(err)
 		}
 		start := client.Start{}

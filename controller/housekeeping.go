@@ -367,7 +367,7 @@ func (p *pass) pastReceipts() (gone []string, more bool, err error) {
 		}
 		past := 0
 		for _, name := range names {
-			message := name[strings.LastIndexByte(name, '/')+1:]
+			message, _ := store.ReceiptMessage(p.ctl, name)
 			at, err := time.Parse("20060102T150405", message[:min(15, len(message))])
 			if err != nil {
 				// A client may name a message as it likes. Where the name

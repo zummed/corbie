@@ -385,10 +385,10 @@ type KeyFile struct {
 	Start string `json:"start"`
 }
 
-// ReadKey reads a key's file among a client's. It gives nil where there is
-// none. An file that does not check gives an error, and its mark.
+// ReadKey reads a key's file among a client's, which are kept at the
+// location "/<client>". It gives nil where there is none. An file that does not check gives an error, and its mark.
 func ReadKey(ctx context.Context, s store.Store, ctl identity.Card, id *identity.Identity, client, key string) (*KeyFile, store.Mark, error) {
-	at := store.Key(ctl.Name, client, key)
+	at := store.Key(ctl.Name, "/"+client, key)
 	data, mark, err := s.Read(ctx, at)
 	if err != nil || mark == store.None {
 		return nil, mark, err

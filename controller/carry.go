@@ -417,6 +417,9 @@ func (p *pass) job(inst string, step *instance.Step, ask *instance.Ask) (*instan
 	ceiling.Fix = fmt.Sprintf("the controller's owner runs: corbie controller enrol %s --allow %%s", client.Card.Name)
 	job.Layers = append(job.Layers, ceiling)
 
+	// Every run is at "/" until runs are started at their locations.
+	location := "/"
+
 	// The values of the secrets the job names, and no others. A run secret
 	// overrides a controller secret of the same name. One that a layer does
 	// not let travel at all is not sent, and the job is refused as its
@@ -427,13 +430,13 @@ func (p *pass) job(inst string, step *instance.Step, ask *instance.Ask) (*instan
 		}
 		value, ok := st.Above.Secrets[name]
 		if !ok {
-			kept, found, err := secret.Get(p.ctx, p.store, p.c.ID, name)
+			kept, found, err := secret.Get(p.ctx, p.store, p.c.ID, location, name)
 			if err != nil && !isAltered(err) {
 				return nil, none, nil, err
 			}
 			value = kept
 			if !found {
-				return nil, none, p.failf("the secret %q is not set (the controller's owner sets it with: corbie controller secret set %s)", name, name), nil
+				return nil, none, p.failf("%s is not set at %s or above (the controller's owner sets it with: corbie controller secret set %s%s)", name, location, name, atFlag(location)), nil
 			}
 		}
 		if job.Secrets == nil {
@@ -442,6 +445,15 @@ func (p *pass) job(inst string, step *instance.Step, ask *instance.Ask) (*instan
 		job.Secrets[name] = value
 	}
 	return &instance.Message{Kind: instance.KindJob, Instance: inst, Job: job}, runner.Card, nil, nil
+}
+
+// atFlag is the flag that names a location on the command line: none for
+// "/", which is the default.
+func atFlag(location string) string {
+	if location == "/" {
+		return ""
+	}
+	return " --at " + location
 }
 
 // refusedSecret says which layers do not let a secret the job names travel

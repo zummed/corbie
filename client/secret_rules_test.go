@@ -266,7 +266,7 @@ func Test_sec_name_splits_one_way(t *testing.T) {
 		if err := permission.CheckSecretName(name); err == nil {
 			t.Errorf("%q was taken as a secret's name", name)
 		}
-		if err := secret.Set(ctx, l.Memory.As(ownerOf()), l.Controller.ID, name, "value"); err == nil {
+		if err := secret.Set(ctx, l.Memory.As(ownerOf()), l.Controller.ID, "/", name, "value"); err == nil {
 			t.Errorf("a controller secret was set under the name %q", name)
 		}
 		if err := permission.CheckWritten("secret:" + name + "@*"); err == nil {

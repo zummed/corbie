@@ -1012,8 +1012,8 @@ func TestBrowserIsGivenThePagesAsPrinted(t *testing.T) {
 	if _, runs := get("/runs"); !strings.Contains(runs, `<a class="to" href="run%20show">corbie run show</a>`) {
 		t.Errorf("the page runs does not lead a browser to the page of corbie run show")
 	}
-	if _, secrets := get("/using-secrets"); !strings.Contains(secrets, `<li><a class="to" href="run%20submit">corbie run submit</a>`) {
-		t.Errorf("the page using-secrets does not list the page of corbie run submit among its pages")
+	if _, secrets := get("/using-secrets"); !strings.Contains(secrets, `<li><a class="to" href="controller%20secret%20set">corbie controller secret set</a>`) {
+		t.Errorf("the page using-secrets does not list the page of corbie controller secret set among its pages")
 	}
 	if status, _ := get("/nosuchpage"); status != 404 {
 		t.Errorf("a browser asking for a page that is none is answered %d", status)

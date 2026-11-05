@@ -38,8 +38,8 @@ version                                  the layout's version
       blobs/<name>                       written by whoever made the blob
       carried                            how far a large step has been carried out
   wakes/<time>/<instance>/<name>         when an instance is next due attention
-  trees/<prefix>                         the client that owns the tree, and the directory last submitted there
   locations/<location>/+/
+      tree                               at a tree's prefix: the client that owns the tree, and the directory last submitted there
       file                               the file recorded at the location, written out
       blobs/<name>                       the scripts and machines that file names
       keys/<hash>                        which run a key names, by the SHA-256 of the key; a singleton's is the empty key
@@ -55,7 +55,7 @@ version                                  the layout's version
 
 The version is written once, when the store is first set up, and a Corbie that does not know it refuses to use the store. An instance's name begins with the client that owns its root's tree and carries the time it was named, so anything that names an instance says where its head and record are and how old it is.
 
-A location's entries are under `+` after its path. Secrets and values may be set at a path above a location as well, and those set at `/` are under `locations/+/`. For example, these commands:
+A location's entries are under `+` after its path, and `+` is never a part of a location. A tree's entry is at its prefix. Secrets and values may be set at a path above a location as well, and those set at `/` are under `locations/+/`. For example, these commands:
 
 ```
 corbie run submit house --at /home
@@ -66,7 +66,7 @@ corbie controller secret set ANTHROPIC_KEY
 write these values, and each file's scripts and machines under `blobs/`:
 
 ```
-<controller>/trees/home
+<controller>/locations/home/+/tree
 <controller>/locations/home/devices/boiler/+/file
 <controller>/locations/home/devices/boiler/+/secrets/BOILER_PASSWORD
 <controller>/locations/+/secrets/ANTHROPIC_KEY

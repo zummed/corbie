@@ -23,11 +23,12 @@ import (
 // ceiling reads a ceiling as it is given on a command line. --ceiling sets
 // its allow list, entries with commas between them; --allow and --deny each
 // add one entry, and with no --ceiling they are added to the ceiling the
-// party has.
+// party has. check is what each list is checked with: a client's ceiling
+// takes at entries, and no other list does.
 // none is what --ceiling and --tags are given to take away what was set.
 const none = "none"
 
-func ceiling(text string, allow, deny []string, has permission.Layer) (permission.Layer, error) {
+func ceiling(text string, allow, deny []string, has permission.Layer, check func([]string) error) (permission.Layer, error) {
 	var set []string
 	for _, entry := range strings.Split(text, ",") {
 		if entry = strings.TrimSpace(entry); entry != "" && text != none {
@@ -38,7 +39,7 @@ func ceiling(text string, allow, deny []string, has permission.Layer) (permissio
 		flag    string
 		entries []string
 	}{{"--ceiling", set}, {"--allow", allow}, {"--deny", deny}} {
-		if err := permission.CheckList(given.entries); err != nil {
+		if err := check(given.entries); err != nil {
 			return permission.Layer{}, Mistake("%s: %v", given.flag, err)
 		}
 	}
@@ -216,7 +217,7 @@ func cmdInit(e *Env, args []string) error {
 	if e.store == "" {
 		e.store = filepath.Join(cfg.Dir, "store")
 	}
-	limit, err := ceiling(ceilingText, nil, deny, permission.Layer{})
+	limit, err := ceiling(ceilingText, nil, deny, permission.Layer{}, permission.CheckList)
 	if err != nil {
 		return err
 	}
@@ -456,7 +457,11 @@ func cmdEnrol(e *Env, args []string) error {
 	if err != nil {
 		return err
 	}
-	if trust.Ceiling, err = ceiling(ceilingText, allow, deny, has(old, card)); err != nil {
+	check := permission.CheckList
+	if card.Kind == identity.Client {
+		check = permission.CheckCeiling
+	}
+	if trust.Ceiling, err = ceiling(ceilingText, allow, deny, has(old, card), check); err != nil {
 		return err
 	}
 	for _, tag := range strings.Split(tags, ",") {
@@ -564,7 +569,7 @@ func cmdTrust(kind identity.Kind) func(e *Env, args []string) error {
 				}
 			}
 		}
-		if trust.Ceiling, err = ceiling(ceilingText, allow, deny, has(old, card)); err != nil {
+		if trust.Ceiling, err = ceiling(ceilingText, allow, deny, has(old, card), permission.CheckList); err != nil {
 			return err
 		}
 		trust.Store = address

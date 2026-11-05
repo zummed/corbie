@@ -165,12 +165,20 @@ func Test_perm_location_is_not_a_path(t *testing.T) {
 }
 
 func Test_perm_location_climbs_nowhere(t *testing.T) {
-	for _, entry := range []string{"send:../x", "send:a/../b", "send:./x", "send:", "send:a//b", "send:a/", "send:/", "send:a/+/b", "send:/work/..", "at:/home/../work", "at:/"} {
+	for _, entry := range []string{"send:../x", "send:a/../b", "send:./x", "send:", "send:a//b", "send:a/", "send:/", "send:a/+/b", "send:/work/..", "at:/home/../work", "at:/",
+		"send:/a#b", "send:../${input.x}", "send:a/../${input.x}", "send:${input.x}/", "send:${input.x}/../b"} {
 		if readable(entry) == nil {
 			t.Errorf("%q passed", entry)
 		}
 	}
-	for _, written := range []string{"../x", "a/../b", "/work/../shop", "+", ".rook/../x"} {
+	// The parts around an expression are checked, and the expression is
+	// checked once it is filled.
+	for _, entry := range []string{"send:${input.x}", "send:/work/${input.to}/inbox", "send:${input.a / 2}"} {
+		if err := readable(entry); err != nil {
+			t.Errorf("%q: %v", entry, err)
+		}
+	}
+	for _, written := range []string{"../x", "a/../b", "/work/../shop", "+", ".rook/../x", "a#b"} {
 		if got, err := ReadLocation("/home", written); err == nil {
 			t.Errorf("%q read as %q", written, got)
 		}
@@ -178,6 +186,31 @@ func Test_perm_location_climbs_nowhere(t *testing.T) {
 	// A dot that leads a part is part of its name.
 	if got, err := ReadLocation("/home", ".rook/agents/x"); err != nil || got != "/home/.rook/agents/x" {
 		t.Errorf(".rook/agents/x read as %q (%v)", got, err)
+	}
+	// A tree's prefix is a location in full with no *, so that what is read
+	// from it is never wider than it is written.
+	for _, prefix := range []string{"/h*", "/home/*", "home", "/home/", "/home/../work", "/home//x", "/a#b"} {
+		if got, err := ReadLocation(prefix, "boiler"); err == nil {
+			t.Errorf("the prefix %q read boiler as %q", prefix, got)
+		}
+	}
+	if got, err := ReadLocation("/", "boiler"); err != nil || got != "/boiler" {
+		t.Errorf("boiler at / reads as %q (%v)", got, err)
+	}
+	// What is sent to is a location in full, and anything else matches
+	// nothing, a pattern included.
+	for _, c := range [][2]string{{"/home/**", "/home/../work/x"}, {"/home/*", "/home/"}, {"/home/*/b", "/home//b"},
+		{"/home/**", "/home/*"}, {"/**", "home/a"}, {"/home/**", "/home/./a"}, {"/home/*", "/home/+"}} {
+		if MatchLocation(c[0], c[1]) {
+			t.Errorf("%s matched %q", c[0], c[1])
+		}
+	}
+	if !MatchLocation("/**", "/") || !MatchLocation("/home/*", "/home/.rook") {
+		t.Error("a location in full was not matched")
+	}
+	s := &Set{Prefix: "/home", Layers: []Layer{allow("send:thermostats/**")}}
+	if s.Check(Send, "/home/thermostats/../../work/x") == nil {
+		t.Error("a send climbed out of the tree")
 	}
 }
 
@@ -223,6 +256,15 @@ func Test_perm_unreadable_deny_refuses_all(t *testing.T) {
 	s := set(Layer{Name: "one", Allow: []string{"all"}, Deny: []string{"fs.raed:/x"}})
 	if s.Check(Net, "x.example:1") == nil || s.Check(Env, "HOME") == nil {
 		t.Fatal("a layer with a deny entry that cannot be read let something through")
+	}
+	// A location read from a prefix, with no prefix to read it from, cannot
+	// be read.
+	s = &Set{Layers: []Layer{{Name: "one", Allow: []string{"send:/home/**", "network"}, Deny: []string{"send:thermostats/*"}}}}
+	if s.Check(Send, "/home/thermostats/kitchen") == nil || s.Check(Send, "/home/a") == nil || s.Check(Net, "x.example:1") == nil {
+		t.Fatal("a send deny entry read from no prefix let something through")
+	}
+	if s.Denied(Net, "x.example:1") == nil {
+		t.Fatal("a send deny entry read from no prefix was not denied by Denied")
 	}
 }
 

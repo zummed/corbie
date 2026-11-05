@@ -82,8 +82,10 @@ func readable(entry string) error {
 	if kind == At && !strings.HasPrefix(scope, "/") {
 		return fmt.Errorf("%q: an at entry is a prefix starting with /, as in at:/home", entry)
 	}
-	if (kind == Send || kind == At) && !strings.Contains(scope, "${") {
-		if err := checkLocation(scope); err != nil {
+	if kind == Send || kind == At {
+		// An expression is filled in later, and the parts around it are
+		// checked now.
+		if err := checkLocation(withoutExpressions(scope)); err != nil {
 			return fmt.Errorf("%q: %w", entry, err)
 		}
 	}
@@ -166,18 +168,63 @@ func checkList(entries []string, check func(string) error) error {
 }
 
 // checkLocation says what is wrong with a location or a pattern of
-// locations, whole or read from a tree's prefix: every part is named, and
-// none is ., .. or +.
+// locations, whole or read from a tree's prefix: every part is named, none
+// is ., .. or +, and none holds #.
 func checkLocation(written string) error {
 	for _, part := range strings.Split(strings.TrimPrefix(written, "/"), "/") {
-		switch part {
-		case "":
+		switch {
+		case part == "":
 			return fmt.Errorf("a location has no empty part and does not end with /")
-		case ".", "..", "+":
+		case part == "." || part == ".." || part == "+":
 			return fmt.Errorf("a location has no part that is %s", part)
+		case strings.Contains(part, "#"):
+			return fmt.Errorf("a location has no part that holds #")
 		}
 	}
 	return nil
+}
+
+// checkFull says what is wrong with a location in full, as a tree's prefix
+// or a place sent to is: "/", or a location starting with / that holds no
+// *, so that it is never a pattern.
+func checkFull(location string) error {
+	switch {
+	case location == "/":
+		return nil
+	case !strings.HasPrefix(location, "/"):
+		return fmt.Errorf("%q: a location in full starts with /", location)
+	case strings.Contains(location, "*"):
+		return fmt.Errorf("%q: a location holds no *", location)
+	}
+	if err := checkLocation(location); err != nil {
+		return fmt.Errorf("%q: %w", location, err)
+	}
+	return nil
+}
+
+// withoutExpressions gives a scope with each ${...} in it put as one
+// letter, so that the parts around an expression can be checked.
+func withoutExpressions(scope string) string {
+	var b strings.Builder
+	for {
+		start := strings.Index(scope, "${")
+		if start < 0 {
+			return b.String() + scope
+		}
+		b.WriteString(scope[:start] + "x")
+		depth, end := 0, len(scope)
+		for i := start + 1; i < len(scope); i++ {
+			if scope[i] == '{' {
+				depth++
+			} else if scope[i] == '}' {
+				if depth--; depth == 0 {
+					end = i + 1
+					break
+				}
+			}
+		}
+		scope = scope[end:]
+	}
 }
 
 // ReadLocation gives a location, or a pattern of locations, as it is
@@ -186,6 +233,11 @@ func checkLocation(written string) error {
 func ReadLocation(prefix, written string) (string, error) {
 	if err := checkLocation(written); err != nil {
 		return "", fmt.Errorf("%q: %w", written, err)
+	}
+	if prefix != "" {
+		if err := checkFull(prefix); err != nil {
+			return "", fmt.Errorf("the tree's prefix %w", err)
+		}
 	}
 	switch {
 	case strings.HasPrefix(written, "/"):
@@ -197,10 +249,17 @@ func ReadLocation(prefix, written string) (string, error) {
 }
 
 // MatchLocation says whether a pattern of locations, in full, matches a
-// location: * stands for any characters in one part, and ** for any number
-// of parts. A location is a name in the store and never a path on a disk:
-// no link is followed and case always counts.
+// location in full: * stands for any characters in one part, and ** for
+// any number of parts. A location is a name in the store and never a path
+// on a disk: no link is followed and case always counts. What is not a
+// location in full matches nothing.
 func MatchLocation(pattern, location string) bool {
+	return checkFull(location) == nil && matchLocation(pattern, location)
+}
+
+// matchLocation matches a pattern of locations against a location, or
+// against another pattern as if it were one.
+func matchLocation(pattern, location string) bool {
 	if !strings.HasPrefix(pattern, "/") || !strings.HasPrefix(location, "/") {
 		return false
 	}
@@ -361,8 +420,7 @@ func (s *Set) CheckGroup(group string) *Refusal {
 // what refused it, that entry is given.
 func (s *Set) passes(layer Layer, kind string, values []string) (bool, string) {
 	for _, entry := range layer.Deny {
-		// A deny entry that cannot be read refuses everything in its layer.
-		if readable(entry) != nil || strings.Contains(entry, "${") {
+		if !s.readsDeny(entry) {
 			return false, entry
 		}
 		for _, value := range values {
@@ -379,6 +437,19 @@ func (s *Set) passes(layer Layer, kind string, values []string) (bool, string) {
 		}
 	}
 	return false, ""
+}
+
+// readsDeny says whether a deny entry can be read. One that cannot refuses
+// everything in its layer: it could have been meant to deny anything.
+func (s *Set) readsDeny(entry string) bool {
+	if readable(entry) != nil || strings.Contains(entry, "${") {
+		return false
+	}
+	if kind, scope, _ := strings.Cut(entry, ":"); kind == Send || kind == At {
+		_, err := ReadLocation(s.Prefix, scope)
+		return err == nil
+	}
+	return true
 }
 
 // matches says whether an entry covers a kind and a value.
@@ -683,7 +754,7 @@ func Declares(allow []string, listed []string, prefix string) bool {
 			case kind == wantKind && (kind == Send || kind == At):
 				entryFull, err := ReadLocation(prefix, scope)
 				wantFull, wantErr := ReadLocation(prefix, wantScope)
-				if err == nil && wantErr == nil && (MatchLocation(wantFull, entryFull) || MatchLocation(entryFull, wantFull) ||
+				if err == nil && wantErr == nil && (matchLocation(wantFull, entryFull) || matchLocation(entryFull, wantFull) ||
 					covers(wantFull, entryFull) || covers(entryFull, wantFull)) {
 					return true
 				}
@@ -712,7 +783,7 @@ func covers(wide, narrow string) bool {
 func (s *Set) Denied(kind, value string) *Refusal {
 	for _, layer := range s.Layers {
 		for _, entry := range layer.Deny {
-			if readable(entry) != nil || s.matches(entry, kind, value) {
+			if !s.readsDeny(entry) || s.matches(entry, kind, value) {
 				return &Refusal{What: kind + ":" + value, Layer: layer.Name,
 					Fix: fmt.Sprintf("take the deny entry %s out of %s", entry, layer.Name)}
 			}

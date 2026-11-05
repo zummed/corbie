@@ -50,7 +50,7 @@ The detailed rules behind the [Permissions overview](../permission.md). Requirem
 
 **C-perm-30** A location is matched as a name in the store, never as a path on the disk: no link is followed, and case counts on every system. Two spellings a disk takes for one place are two locations, and a location matched through the disk would match differently on each computer. *Test:* `perm_location_is_not_a_path`
 
-**C-perm-31** No part of a location, or of a pattern of locations, is empty, `.`, `..` or `+`, where it is written and when it is read from a prefix. `..` would let a location read from one tree's prefix name another tree's, and `+` names a location's own entries in the store. *Test:* `perm_location_climbs_nowhere`
+**C-perm-31** No part of a location, or of a pattern of locations, is empty, `.`, `..` or `+` or holds `#`, where it is written, when it is read from a prefix and when it is sent to; a tree's prefix and a location sent to hold no `*`. `..` would let a location read from one tree's prefix name another tree's, `+` names a location's own entries in the store and `#` separates a key from its location, and a prefix holding `*` would make every location read from it a pattern over other trees. *Test:* `perm_location_climbs_nowhere`
 
 **C-perm-10** Everything is allowed in one way, by `all` in a list. No flag or setting does the same. A second way is a second place to look when asking what a job may do. *Test:* `perm_all_only_in_a_list`
 

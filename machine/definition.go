@@ -41,6 +41,9 @@ type Definition struct {
 	// definition names, each a blob beside the stored definition.
 	Scripts  map[string]blob.Ref `json:"scripts,omitzero"`
 	Machines map[string]blob.Ref `json:"machines,omitzero"`
+	// Lines gives the file and the line each value is written at, by its
+	// place, such as model.name or allow[1]: base.yaml:3.
+	Lines map[string]string `json:"lines,omitzero"`
 }
 
 // The defaults of a definition that says nothing.
@@ -451,6 +454,9 @@ type Draft struct {
 	nearer map[string]bool
 	// size is the size of the definition as it is stored.
 	size int
+	// written is the definition as it is written out, with what it
+	// includes in place.
+	written *node
 }
 
 // Store writes a draft into an instance's record, and gives the stored

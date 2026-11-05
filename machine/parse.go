@@ -21,11 +21,13 @@ type Parser struct {
 	problems Problems
 	noted    map[Problem]bool // every problem in problems, each once
 	load     func(path string) ([]byte, error)
-	dir      string            // where the definition's paths start from
-	source   string            // the machine file being read, which a problem names
-	chain    []string          // every file being read, outermost first
-	includes *int              // how many files have been included
-	from     map[string]string // the file an included field came from, by its place
+	dir      string           // where the definition's paths start from
+	top      string           // the outermost definition's file, which a problem does not name
+	source   string           // the machine file being read, which a problem names
+	chain    []string         // every file being read, outermost first
+	includes *int             // how many files have been included
+	reads    map[string]*read // the files included, by their paths from the context
+	at       map[string]*node // each value written out, by its place
 	draft    *Draft
 	inline   int
 	limits   *Fields // the definition's limits, for a type to read its own
@@ -39,10 +41,10 @@ func Parse(src []byte, load func(path string) ([]byte, error)) (*Draft, error) {
 	return parse(src, "", load, true)
 }
 
-// ParseIn is Parse for a definition in a directory of the context. load
-// gives a file by its path from the context.
-func ParseIn(dir string, src []byte, load func(path string) ([]byte, error)) (*Draft, error) {
-	return parse(src, dir, load, true)
+// ParseIn is Parse for a definition kept in a file of the context, by its
+// path from the context. load gives a file by its path from the context.
+func ParseIn(file string, src []byte, load func(path string) ([]byte, error)) (*Draft, error) {
+	return parse(src, file, load, true)
 }
 
 // ParseMade is Parse for a definition made while a machine runs. Whether
@@ -52,8 +54,13 @@ func ParseMade(src []byte, load func(path string) ([]byte, error)) (*Draft, erro
 	return parse(src, "", load, false)
 }
 
-func parse(src []byte, dir string, load func(path string) ([]byte, error), root bool) (*Draft, error) {
-	p := &Parser{load: load, dir: dir, noted: map[Problem]bool{}, includes: new(int)}
+func parse(src []byte, file string, load func(path string) ([]byte, error), root bool) (*Draft, error) {
+	p := &Parser{load: load, dir: path.Dir(file), top: file, source: file, noted: map[Problem]bool{}, includes: new(int), reads: map[string]*read{}}
+	if file == "" {
+		p.dir = ""
+	} else {
+		p.chain = []string{file}
+	}
 	draft, needsAsk := p.parse(src, "")
 	if draft != nil && needsAsk && root {
 		p.Problem("", "a job is marked for approval, or a permission is listed to be asked about, and there is no ask for it to go to: give the definition an ask")
@@ -66,7 +73,18 @@ func parse(src []byte, dir string, load func(path string) ([]byte, error), root 
 
 // Problem notes one thing wrong, at a place in the file being read.
 func (p *Parser) Problem(place, format string, args ...any) {
-	problem := Problem{File: p.fileAt(place), Place: place, Text: fmt.Sprintf(format, args...)}
+	p.note(Problem{File: p.fileAt(place), Place: place, Text: fmt.Sprintf(format, args...)})
+}
+
+// problemIn notes one thing wrong, at a place in a file.
+func (p *Parser) problemIn(file, place, format string, args ...any) {
+	if file == p.top {
+		file = ""
+	}
+	p.note(Problem{File: file, Place: place, Text: fmt.Sprintf(format, args...)})
+}
+
+func (p *Parser) note(problem Problem) {
 	if !p.noted[problem] {
 		p.noted[problem] = true
 		p.problems = append(p.problems, problem)
@@ -76,12 +94,17 @@ func (p *Parser) Problem(place, format string, args ...any) {
 // parse reads one written definition. needsAsk says whether it, or a child
 // that takes its ask from it, holds a job for approval with no ask to go to.
 func (p *Parser) parse(src []byte, place string) (draft *Draft, needsAsk bool) {
-	written, first, err := readYAML(src)
+	n, first, err := readYAML(src, p.source)
 	if err != nil {
 		p.Problem(place, "%v", err)
 		return nil, false
 	}
-	return p.fill(written, first, place)
+	if t, ok := TypeOf(first); ok {
+		n = p.mapping(n, whole(t).field, "", p.chain)
+	}
+	p.at = map[string]*node{}
+	p.index(n, "")
+	return p.fill(plain(n).(map[string]any), first, place)
 }
 
 // fill fills out one definition, read into plain values, whose type is the
@@ -99,7 +122,9 @@ func (p *Parser) fill(written map[string]any, first, place string) (draft *Draft
 	defer func() { p.draft = outer }()
 	def := p.draft.Definition
 
-	f := p.Fields("", p.included("", written, whole(t).field), definitionShape(t))
+	p.draft.written = p.at[""]
+	def.Lines = p.lines()
+	f := p.Fields("", written, definitionShape(t))
 	def.Name = f.Text(t.Name())
 	if input, _ := f.Map("input"); input != nil {
 		if full, err := InputForm.Full(input); err != nil {
@@ -272,6 +297,7 @@ func (p *Parser) Machine(place string, written any) (name string) {
 			return name
 		}
 		p.child(place, name, func(sub *Parser) (*Draft, bool) {
+			sub.at = below(p.at, place)
 			return sub.fill(m, first, place)
 		}, p.dir, "")
 	default:
@@ -474,7 +500,8 @@ func (p *Parser) read(place, name, full string) ([]byte, bool) {
 func (p *Parser) child(place, name string, read func(*Parser) (*Draft, bool), dir, file string) {
 	p.draft.Definition.Machines[name] = blob.Ref{}
 	chain := p.reading(place)
-	sub := &Parser{load: p.load, dir: dir, source: p.source, chain: chain, includes: p.includes, problems: p.problems, noted: p.noted, inline: p.inline * 100}
+	sub := &Parser{load: p.load, dir: dir, top: p.top, source: p.source, chain: chain, includes: p.includes, reads: p.reads,
+		problems: p.problems, noted: p.noted, inline: p.inline * 100}
 	if file != "" {
 		sub.source, sub.chain = file, append(chain, file)
 	}
@@ -505,7 +532,7 @@ func (p *Parser) Fields(place string, v any, shape *Shape) *Fields {
 		p.Problem(place, "this should be a mapping of fields, and is %s", describe(v))
 		return nil
 	}
-	return &Fields{p: p, place: place, shape: shape, m: p.included(place, m, shape.field), taken: map[string]bool{}, asked: map[string]bool{}}
+	return &Fields{p: p, place: place, shape: shape, m: m, taken: map[string]bool{}, asked: map[string]bool{}}
 }
 
 // named gives the shape's field of a name, for a reader that reads it as
@@ -720,10 +747,6 @@ func (f *Fields) Map(name string) (map[string]any, []string) {
 		f.p.Problem(f.at(name), "this should be a mapping, and is %s", describe(v))
 		return nil, nil
 	}
-	if field := f.shape.field(name); field != nil && field.Kind == KindNamed {
-		entry := field.entry()
-		m = f.p.included(f.at(name), m, func(string) *Field { return entry })
-	}
 	return m, sortedKeys(m)
 }
 
@@ -783,46 +806,31 @@ func describe(v any) string {
 	return fmt.Sprintf("%T", v)
 }
 
-// readMapping reads a YAML file a definition includes into plain values, as
-// a definition is read: a date stays the text written.
-func readMapping(src []byte) (map[string]any, error) {
-	v, _, err := plainYAML(src)
-	if err != nil {
-		return nil, err
-	}
-	m, ok := v.(map[string]any)
-	if !ok {
-		return nil, fmt.Errorf("it should be a mapping, and is %s", describe(v))
-	}
-	return m, nil
-}
-
-// readYAML reads a written definition into plain values: mappings, lists,
-// text, numbers, true and false. It gives the top mapping and the name on its
-// first line.
-func readYAML(src []byte) (map[string]any, string, error) {
-	v, top, err := plainYAML(src)
+// readYAML reads a written definition, from a file, into its values: mappings,
+// lists, text, numbers, true and false. It gives the top mapping and the name
+// on its first line.
+func readYAML(src []byte, file string) (*node, string, error) {
+	n, top, err := nodeYAML(src, file)
 	switch {
 	case err != nil:
 		return nil, "", err
 	case top == nil:
 		return nil, "", fmt.Errorf("the definition is empty")
-	}
-	m, ok := v.(map[string]any)
-	if !ok || len(top.Content) == 0 {
+	case !n.isMap() || len(n.keys) == 0:
 		return nil, "", fmt.Errorf("a definition is a mapping that begins with its type and its name")
 	}
-	return m, top.Content[0].Value, nil
+	return n, n.keys[0], nil
 }
 
-// plainYAML reads one YAML document into plain values, and gives its top
-// node, or nothing for an empty document. The YAML reader refuses an alias
+// nodeYAML reads one YAML document of a file into its values, as a
+// definition is read: a date stays the text written. It gives its top node,
+// or nothing for an empty document. The YAML reader refuses an alias
 // that contains itself, or a document whose aliases make far more than it
 // writes, only when it decodes: a tree of nodes holds each alias once. So a
 // document with an alias is decoded first. Only then, since decoding compares
 // every two names of a mapping. A type that does not fit is no fault here, and
-// is said of the plain values.
-func plainYAML(src []byte) (any, *yaml.Node, error) {
+// is said of the values.
+func nodeYAML(src []byte, file string) (*node, *yaml.Node, error) {
 	var doc yaml.Node
 	if err := yaml.Unmarshal(src, &doc); err != nil {
 		text := oneLine(strings.TrimPrefix(err.Error(), "yaml: "))
@@ -842,8 +850,8 @@ func plainYAML(src []byte) (any, *yaml.Node, error) {
 			return nil, nil, fmt.Errorf("this is not YAML that can be read: %s", oneLine(strings.TrimPrefix(err.Error(), "yaml: ")))
 		}
 	}
-	v, err := fromYAML(top)
-	return v, top, err
+	n, err := fromYAML(top, file)
+	return n, top, err
 }
 
 // aliased says whether a node is an alias or holds one.
@@ -851,52 +859,54 @@ func aliased(n *yaml.Node) bool {
 	return n.Kind == yaml.AliasNode || slices.ContainsFunc(n.Content, aliased)
 }
 
-// fromYAML turns a node into a plain value.
-func fromYAML(n *yaml.Node) (any, error) {
+// fromYAML turns a YAML node of a file into a value.
+func fromYAML(n *yaml.Node, file string) (*node, error) {
+	out := &node{file: file, line: n.Line}
 	switch n.Kind {
 	case yaml.AliasNode:
-		return fromYAML(n.Alias)
+		return fromYAML(n.Alias, file)
 	case yaml.MappingNode:
-		m := map[string]any{}
+		out.m = map[string]*node{}
 		for i := 0; i+1 < len(n.Content); i += 2 {
 			k := n.Content[i]
 			if k.Kind != yaml.ScalarNode {
 				return nil, fmt.Errorf("line %d: the name of a field is plain text", k.Line)
 			}
-			if _, dup := m[k.Value]; dup {
+			if _, dup := out.m[k.Value]; dup {
 				return nil, fmt.Errorf("line %d: the field %q is written twice", k.Line, k.Value)
 			}
-			v, err := fromYAML(n.Content[i+1])
+			v, err := fromYAML(n.Content[i+1], file)
 			if err != nil {
 				return nil, err
 			}
-			m[k.Value] = v
+			out.set(k.Value, v)
 		}
-		return m, nil
+		return out, nil
 	case yaml.SequenceNode:
-		list := make([]any, 0, len(n.Content))
+		out.list, out.items = true, make([]*node, 0, len(n.Content))
 		for _, item := range n.Content {
-			v, err := fromYAML(item)
+			v, err := fromYAML(item, file)
 			if err != nil {
 				return nil, err
 			}
-			list = append(list, v)
+			out.items = append(out.items, v)
 		}
-		return list, nil
+		return out, nil
 	case yaml.ScalarNode:
 		// A plain value YAML would read as a date stays the text written.
+		out.value = n.Value
 		switch n.ShortTag() {
 		case "!!null":
-			return nil, nil
+			out.value = nil
 		case "!!bool":
-			return n.Value == "true" || n.Value == "True" || n.Value == "TRUE", nil
+			out.value = n.Value == "true" || n.Value == "True" || n.Value == "TRUE"
 		case "!!int", "!!float":
 			var f float64
 			if err := n.Decode(&f); err == nil {
-				return f, nil
+				out.value = f
 			}
 		}
-		return n.Value, nil
+		return out, nil
 	}
 	return nil, fmt.Errorf("line %d: this part of the definition cannot be read", n.Line)
 }

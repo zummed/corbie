@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"io/fs"
 	"os"
-	"path"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -155,7 +154,7 @@ func ReadMachine(dir, rel string) (*machine.Draft, string, error) {
 	if err != nil {
 		return nil, "", err
 	}
-	draft, err := machine.ParseIn(path.Dir(rel), src, load)
+	draft, err := machine.ParseIn(rel, src, load)
 	if err != nil {
 		return nil, "", err
 	}

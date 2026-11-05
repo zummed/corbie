@@ -69,6 +69,9 @@ type Field struct {
 	// Path says what the field holds is a path, or a list of them, read
 	// from the file it is written in; a mapping there is a machine.
 	Path bool `json:"-"`
+	// Many says a value of the field may be a list of what it holds, each
+	// read by its shape: a list there is no data.
+	Many bool `json:"-"`
 	// Values are the values it takes, where they are known. With Open any
 	// other may be written too: these are then the known ones, and no
 	// more than that.
@@ -258,6 +261,9 @@ func (k Kind) reads(as []Kind) bool {
 // client that shows a person what a definition has written, field by
 // field, as it will be read.
 func Written(src []byte) (map[string]any, error) {
-	written, _, err := readYAML(src)
-	return written, err
+	n, _, err := readYAML(src, "")
+	if err != nil {
+		return nil, err
+	}
+	return plain(n).(map[string]any), nil
 }

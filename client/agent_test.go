@@ -228,8 +228,8 @@ func TestShapeIsJSONSchema(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if a, b := jsonOf(short.Definition), jsonOf(written.Definition); a != b {
-		t.Fatalf("the short form and the full form were stored differently:\n%s\n%s", a, b)
+	if short.Hash() != written.Hash() {
+		t.Fatalf("the short form and the full form were stored differently:\n%s\n%s", jsonOf(short.Definition), jsonOf(written.Definition))
 	}
 
 	m := newModel(t, calls("c1", "file", `{"labels": ["urgent"], "assign": {"user": "sam"}}`), says("done"))

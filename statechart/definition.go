@@ -85,7 +85,7 @@ var (
 		{Name: "event", Kind: machine.KindWord, Like: "review_wanted", Does: "the event's name"},
 		{Name: "data", Kind: machine.KindValue, Like: `{ ticket: "${tickets.verdict}" }`, Does: "what the event carries"},
 	}}
-	sends = machine.Field{Name: "send", Kind: machine.KindValue, Of: sendShape, Like: "{ to: parent, event: review_wanted }",
+	sends = machine.Field{Name: "send", Kind: machine.KindValue, Of: sendShape, Many: true, Like: "{ to: parent, event: review_wanted }",
 		Does: "an event to send: one, or a list"}
 	actionShape     = &machine.Shape{Name: "action", What: "what a state does on entering or leaving", Fields: []machine.Field{sends}}
 	transitionShape = &machine.Shape{Name: "transition", What: "a transition", Fields: []machine.Field{

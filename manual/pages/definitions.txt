@@ -39,19 +39,32 @@ A length of time is written `30s`, `5m`, `48h` or `7d`.
 Include
 -------
 
-Any mapping of fields, or of names such as `tools:` or `stages:`, can take
-fields from other files.
+A definition can take values from other files with `include:`, which names a
+file or a list. A name may end in `#path` to take one part of a file.
 
   agent: family
-  include: ./base.yaml            one file
-  tools: { include: [./a.yaml, ./b.yaml], own: { … } }    or a list
+  include: ./base.yaml                       merges in base.yaml's fields
+  model: { effort: high }                    merged with base.yaml's model
+  system:
+    - { include: ./style.md }                a text of pieces, joined by one empty line
+    - You look after one house.
+  allow:
+    - { include: ./base.yaml#allow }         base.yaml's allow: list, item by item
+    - net:devices.lan
 
-1. The client reads each file when it sends the definition. A file holds any
-   fields, and has no type.
-2. A field the mapping writes stands before a file's, a file's before those of
-   the files it includes, and an earlier file's before a later one's.
-3. The stored definition holds the fields written out.
+1. The client reads each file when it sends the definition.
+2. In a mapping, it merges in the included fields at every depth.
+3. In a list or a text, it replaces `{ include: <file> }` with the file's list
+   or text, and `{ include: <file>#<path> }` with the value at that path.
+4. The stored definition holds no `include:`, and keeps each value's file and
+   line.
 
+- A value the file writes wins over an included one. A list or a text it
+  writes replaces the included one whole.
+- A file's values win over those of the files it includes, and an earlier
+  file's over a later one's.
+- `${…}` in an included text is an expression. A literal `${` is written
+  `${'${'}`.
 - A path in a file is read from the file's directory.
 - What is a value, such as `input:` or `meta:`, stays as it is written.
 - A problem in a file names the file.

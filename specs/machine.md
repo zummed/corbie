@@ -138,6 +138,7 @@ A run keeps the definition it started with, and a submit changes what new runs g
 | `restart` | are cancelled; a singleton starts again on the new definition, and a keyed run starts fresh on the next send to its key |
 | `drain` | finish on the definition they started with; the default for keyed and transient |
 
+- A file is changed when the machine written out from it differs. Where its values are written takes no part, so moving a line changes nothing.
 - A singleton always restarts, and `update: drain` on one is refused.
 - Removing a file from a tree, by deleting or renaming it and submitting, cancels every run at its location.
 - After a submit, `corbie run cancel <location>` ends a `drain` file's runs, so the next ones start on the new definition.

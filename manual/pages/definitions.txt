@@ -2,7 +2,8 @@ Definitions: every type of machine shares these fields, expressions, jobs, event
 
 A definition is a YAML file. Its first line is the machine's type and name:
 `flow: digest`, `statechart: review` or `agent: librarian`. A name is letters,
-digits, `_` and `-`, and starts with a letter.
+digits, `_` and `-`, and starts with a letter. No machine, stage, state, tool
+or job is named `ask`, the name of the definition's ask.
 
 Fields every type takes
 -----------------------
@@ -71,7 +72,8 @@ file or a list. A name may end in `#path` to take one part of a file.
   `${'${'}`.
 - A path in a file is read from the context, and a path starting `./` from
   that file's directory, as for a job.
-- What is a value, such as `input:` or `meta:`, stays as it is written.
+- `input:` and `meta:` stay as they are written: an `include:` in them is not
+  read. A script reads a file with `require`, as `corbie manual scripts` shows.
 - A problem in a file names the file.
 - More than 1,000 includes written out by one definition are refused. A file
   reached by two routes counts each time, though its values are merged once.
@@ -290,13 +292,16 @@ for the result.
   `data`, `approve`, `allow` and `deny`, and nothing else.
 - A call job's output is the called run's result. It fails if the receiver
   refuses it, if the location is not transient, or if the run fails.
+- A call job takes `call`, `input`, `timeout`, `restart`, `approve`, `allow`
+  and `deny`. Its `timeout` is the called run's, and each restart calls again.
 - The called run belongs to its own tree's client. Cancelling the call job
   cancels it.
 - A key is any text of 1 to 256 characters. Anyone who can list runs can read
   it, so put no secret in a key.
 
-A send or a call needs the sender's permissions to hold `send:<location>`,
-and the receiver's `receive:` to accept the sender.
+A send or a call needs the sender's permissions, a send or call job's own
+`allow:` and `deny:` included, to hold `send:<location>`, and the receiver's
+`receive:` to accept the sender.
 
   receive: [thermostats/*, client:panel]                                 for every event
   receive: { set: [thermostats/*, client:panel], stop: [client:panel] }   by event name

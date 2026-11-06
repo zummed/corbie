@@ -611,3 +611,21 @@ func Test_ctl_call_stopped_after_every_write(t *testing.T) {
 		}
 	}
 }
+
+// A call job's restart: calls again when the called run fails, and each
+// attempt starts a run of its own.
+func Test_ctl_call_restarts(t *testing.T) {
+	w := newWorld(t)
+	run := w.calls(map[string]string{
+		"/t/caller": strings.Replace(caller, `input: "${input}" }`, `input: "${input}", restart: { limit: 1 } }`, 1),
+		"/t/lookup": strings.Replace(lookup, "end: done", "end: failed", 1),
+	}, nil)
+	w.tick(time.Hour)
+	w.settle()
+	if head := w.head(run); head.Status != instance.Failed {
+		t.Fatalf("the caller is %s", head.Status)
+	}
+	if callee := w.called(run); len(callee) != 2 || callee[0] == callee[1] {
+		t.Fatalf("the caller called %v", callee)
+	}
+}

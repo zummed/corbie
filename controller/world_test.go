@@ -16,6 +16,7 @@ import (
 	"github.com/zummed/corbie/machine"
 	"github.com/zummed/corbie/permission"
 	"github.com/zummed/corbie/runner"
+	"github.com/zummed/corbie/secret"
 	"github.com/zummed/corbie/store"
 
 	_ "github.com/zummed/corbie/statechart"
@@ -38,6 +39,8 @@ type world struct {
 	now    time.Time
 	writes int
 	ops    []store.Op
+	// placed counts the trees submitted, so that each has a prefix of its own.
+	placed int
 }
 
 func newWorld(t *testing.T) *world {
@@ -112,14 +115,70 @@ func (w *world) draft(src string, files map[string]string) *machine.Draft {
 	return draft
 }
 
-// submit starts a run and gives its name.
+// submit submits a definition as a tree of one file, at a prefix of its
+// own, and gives the run there: the one the submit starts for a singleton,
+// and otherwise one started at the location with the input.
 func (w *world) submit(src string, files map[string]string, input any) string {
 	w.t.Helper()
-	run, err := w.client.Start(ctx, w.draft(src, files), client.Start{Input: input})
+	at, run := w.place(w.client, src, files)
+	if run != "" {
+		return run
+	}
+	return w.startAt(w.client, at, client.Start{Input: input})
+}
+
+// place has a client submit a definition as a tree of one file, at a prefix
+// no other test of the world uses, and runs the controller until the submit
+// is taken. It gives the file's location, which is the prefix, and the run
+// the submit started there, if it started one.
+func (w *world) place(c *client.Client, src string, files map[string]string) (at, run string) {
+	w.t.Helper()
+	draft := w.draft(src, files)
+	w.mu.Lock()
+	w.placed++
+	at = fmt.Sprintf("/%s-%d", draft.Definition.Name, w.placed)
+	w.mu.Unlock()
+	message, err := c.Submit(ctx, &client.Tree{Prefix: at, Machines: []*client.Machine{{Path: draft.Definition.Name + ".yaml", Location: at, Draft: draft}}}, 0)
+	if err != nil {
+		w.t.Fatal(err)
+	}
+	for range 10 {
+		w.pass()
+		r, err := c.Receipt(ctx, message)
+		switch {
+		case err != nil:
+			w.t.Fatal(err)
+		case r == nil:
+			continue
+		case !r.Taken:
+			w.t.Fatalf("the submit of %s was refused: %s", at, r.Refused)
+		}
+		for _, done := range r.Tree.Locations {
+			run = done.Run
+		}
+		return at, run
+	}
+	w.t.Fatalf("the submit of %s has no receipt", at)
+	return "", ""
+}
+
+// startAt has a client start a run at a location, and gives its name.
+func (w *world) startAt(c *client.Client, at string, start client.Start) string {
+	w.t.Helper()
+	start.At = at
+	run, err := c.Start(ctx, nil, start)
 	if err != nil {
 		w.t.Fatal(err)
 	}
 	return run
+}
+
+// secret sets a secret at a location, as the controller's owner does.
+func (w *world) secret(name, value, at string) {
+	w.t.Helper()
+	if err := secret.Set(ctx, w.ctrl.Store, w.ctl, at, name, value); err != nil {
+		w.t.Fatal(err)
+	}
 }
 
 // pass runs one pass of the controller.

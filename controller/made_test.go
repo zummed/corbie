@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/zummed/corbie/client"
 	"github.com/zummed/corbie/controller"
 	_ "github.com/zummed/corbie/flow"
 	"github.com/zummed/corbie/identity"
@@ -247,6 +248,7 @@ func Test_ctl_made_steps_at_once_are_bounded(t *testing.T) {
 	w := newWorld(t)
 	r1 := w.party("r1", identity.Runner)
 	w.enrol(r1, permission.Layer{}, nil)
+	familyAt, _ := w.place(w.client, family, nil)
 	var runs []string
 	for range 7 {
 		runs = append(runs, w.holder(r1))
@@ -256,7 +258,7 @@ func Test_ctl_made_steps_at_once_are_bounded(t *testing.T) {
 		w.tick(time.Millisecond)
 	}
 	w.pass() // each machine above asks for the machine below
-	owner := w.submit(family, nil, nil)
+	owner := w.startAt(w.client, familyAt, client.Start{})
 	file := filepath.Join(t.TempDir(), "started")
 	w.ctrl.Command = []string{os.Args[0], stepThatHangs, file}
 	w.ctrl.StepTime = time.Second

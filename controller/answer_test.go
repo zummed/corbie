@@ -320,11 +320,7 @@ func Test_ctl_answer_of_a_made_machine_uses_no_key(t *testing.T) {
 		{"many keys", "1000"},
 	} {
 		w := newWorld(t)
-		target, err := w.client.Start(ctx, w.draft(waits, nil), client.Start{Key: "k"})
-		if err != nil {
-			t.Fatal(err)
-		}
-		w.settle()
+		target := w.holding(w.client, "k")
 		files := map[string]string{"make.js": "return 1"}
 		r1 := w.newRunner()
 		run := w.submit(liesUnder, files, nil)
@@ -373,10 +369,8 @@ func Test_ctl_answer_with_strange_keys_ends_no_controller(t *testing.T) {
 	for name, text := range listerFiles {
 		files[name] = text
 	}
-	run, err := w.client.Start(ctx, w.draft(strings.Replace(lister, "  t:\n", "  m: { does: M, job: { machine: ./kid.yaml } }\n\t  t:\n", 1), files), client.Start{Secrets: map[string]string{"KEY": "k"}})
-	if err != nil {
-		t.Fatal(err)
-	}
+	w.secret("KEY", "k", "/")
+	run := w.submit(strings.Replace(lister, "  t:\n", "  m: { does: M, job: { machine: ./kid.yaml } }\n\t  t:\n", 1), files, nil)
 	w.settle()
 	w.lieNext("after a list", "strange job keys", "./kid.yaml")
 	w.result(r1, run, "t", oneTool)
@@ -393,11 +387,7 @@ func Test_ctl_answer_with_strange_keys_ends_no_controller(t *testing.T) {
 func Test_ctl_answer_of_a_listed_agent_cannot_send_to_a_key(t *testing.T) {
 	w := newWorld(t)
 	run, r1 := w.listed()
-	target, err := w.client.Start(ctx, w.draft(waits, nil), client.Start{Key: "k"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	w.settle()
+	target := w.holding(w.client, "k")
 	w.lieNext("after a list", "key send", "k")
 	w.result(r1, run, "t", oneTool)
 	w.settle()
@@ -1012,29 +1002,44 @@ func (c *askCounter) Asks(def *machine.Definition) map[string]*machine.JobSpec {
 	return c.Type.(machine.Reader).Asks(def)
 }
 
-// A definition a job stored is in the record of the run that stored it. A
-// client that names it starts nothing: it is not read, and the controller is
-// not given it to read as an owner's.
-func Test_ctl_client_start_names_a_definition_in_its_own_record(t *testing.T) {
+// A client starts a run at a location: the run's definition is the file
+// recorded there, copied into the run's own record, whatever else the start
+// names. A start that names a definition in another run's record, and no
+// location, starts nothing: the definition is not read, and the controller
+// is not given it to read as an owner's.
+func Test_ctl_client_start_names_a_location(t *testing.T) {
 	w := newWorld(t)
 	w.ctrl.Command = []string{"/nonexistent/no-step-process"}
 	w.newRunner()
-	holder := w.submit(kept, nil, nil)
+	at, _ := w.place(w.client, kept, nil)
+	holder := w.startAt(w.client, at, client.Start{})
 	w.settle()
 	ref, err := w.draft(plain, map[string]string{"step.js": "return 1"}).Store(ctx, w.ctrl.Store, "ctl", holder)
 	if err != nil {
 		t.Fatal(err)
 	}
-	run, err := w.client.NewRun()
-	if err != nil {
-		t.Fatal(err)
+	start := func(s *instance.Start) (string, *instance.Receipt) {
+		t.Helper()
+		run, err := w.client.NewRun()
+		if err != nil {
+			t.Fatal(err)
+		}
+		_, id, _ := strings.Cut(run, "/")
+		s.Seed = make([]byte, 32)
+		w.leave(w.c1, id, &instance.Message{Kind: instance.KindStart, Instance: run, Start: s})
+		w.settle()
+		return run, w.receipt(id)
 	}
-	_, id, _ := strings.Cut(run, "/")
-	w.leave(w.c1, id, &instance.Message{Kind: instance.KindStart, Instance: run,
-		Start: &instance.Start{Definition: ref, Seed: make([]byte, 32)}})
-	w.settle()
-	if r := w.receipt(id); w.head(run) != nil || r == nil || r.Taken || !strings.Contains(r.Refused, "own record") {
-		t.Fatalf("the start has the head %+v and the receipt %+v", w.head(run), r)
+	run, r := start(&instance.Start{Location: at, Definition: ref})
+	if r == nil || !r.Taken || w.head(run) == nil {
+		t.Fatalf("the start of %s has the head %+v and the receipt %+v", at, w.head(run), r)
+	}
+	if st := w.latest(run).State; st.Machine != "kept" || st.Location != at || !strings.HasPrefix(st.Definition.At, store.Blobs("ctl", run)+"/") {
+		t.Fatalf("the run at %s is of %q at %s, from the definition %s", at, st.Machine, st.Location, st.Definition.At)
+	}
+	run, r = start(&instance.Start{Definition: ref})
+	if w.head(run) != nil || r == nil || r.Taken || r.Refused == "" {
+		t.Fatalf("the start of a definition in another record has the head %+v and the receipt %+v", w.head(run), r)
 	}
 }
 
@@ -1060,10 +1065,8 @@ var listerFiles = map[string]string{"step.js": "return 1", "ok.js": "return {}",
 func (w *world) listed() (run string, r1 *identity.Identity) {
 	w.t.Helper()
 	r1 = w.newRunner()
-	run, err := w.client.Start(ctx, w.draft(lister, listerFiles), client.Start{Secrets: map[string]string{"KEY": "k"}})
-	if err != nil {
-		w.t.Fatal(err)
-	}
+	w.secret("KEY", "k", "/")
+	run = w.submit(lister, listerFiles, nil)
 	w.settle()
 	return run, r1
 }

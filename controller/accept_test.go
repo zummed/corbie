@@ -17,16 +17,12 @@ import (
 	"github.com/zummed/corbie/store"
 )
 
-// start makes the start of a new run of a client's, with its definition in
-// the run's record, and gives the run and the message.
-func (w *world) start(client string) (string, *instance.Message) {
+// start makes the start of a new run of a client's at a location, and gives
+// the run and the message.
+func (w *world) start(client, at string) (string, *instance.Message) {
 	w.t.Helper()
 	run := store.NewInstance(client, w.clock())
-	ref, err := w.draft(kept, nil).Store(ctx, w.owner, "ctl", run)
-	if err != nil {
-		w.t.Fatal(err)
-	}
-	return run, &instance.Message{Kind: instance.KindStart, Instance: run, Start: &instance.Start{Definition: ref, Seed: []byte("seed")}}
+	return run, &instance.Message{Kind: instance.KindStart, Instance: run, Start: &instance.Start{Location: at, Seed: []byte("seed")}}
 }
 
 // put writes a message into the controller's inbox, signed by one party
@@ -49,7 +45,8 @@ func Test_id_message_checked_before_contents_read(t *testing.T) {
 	good := w.clock().Add(time.Hour)
 	// A start as c1 would send it is taken: what follows differs from it in
 	// one thing each.
-	run, msg := w.start("c1")
+	keptAt, _ := w.place(w.client, kept, nil)
+	run, msg := w.start("c1", keptAt)
 	w.put(w.c1, "a-start", msg, w.ctl.Card, good)
 	w.settle()
 	if w.head(run) == nil {
@@ -68,17 +65,17 @@ func Test_id_message_checked_before_contents_read(t *testing.T) {
 	}
 	// Signed by a party that was never enrolled.
 	stranger := w.party("stranger", identity.Client)
-	run, msg = w.start("stranger")
+	run, msg = w.start("stranger", keptAt)
 	add("from a party never enrolled", run, w.put(stranger, "b-start", msg, w.ctl.Card, good))
 	// Signed with another key under the name of a client that is trusted.
 	forger := w.party("c1", identity.Client)
-	run, msg = w.start("c1")
+	run, msg = w.start("c1", keptAt)
 	add("signed with a key that is not c1's, under c1's name", run, w.put(forger, "c-start", msg, w.ctl.Card, good))
 	// The same, and past its time as well: it is not c1's to be answered.
-	run, msg = w.start("c1")
+	run, msg = w.start("c1", keptAt)
 	add("not c1's, and past its time", run, w.put(forger, "d-start", msg, w.ctl.Card, w.clock().Add(-time.Hour)))
 	// Signed by c1, and one byte of it changed afterwards.
-	run, msg = w.start("c1")
+	run, msg = w.start("c1", keptAt)
 	at := w.put(w.c1, "e-start", msg, w.ctl.Card, good)
 	raw, _, _ := w.owner.Read(ctx, at)
 	lines := bytes.Split(raw, []byte("\n"))
@@ -86,7 +83,7 @@ func Test_id_message_checked_before_contents_read(t *testing.T) {
 	w.owner.Write(ctx, at, bytes.Join(lines, []byte("\n")), store.Overwrite)
 	add("altered after it was signed", run, at)
 	// Signed by c1 for one name in the inbox, and found under another.
-	run, msg = w.start("c1")
+	run, msg = w.start("c1", keptAt)
 	at = w.put(w.c1, "f-start", msg, w.ctl.Card, good)
 	raw, _, _ = w.owner.Read(ctx, at)
 	w.owner.Delete(ctx, at, store.Overwrite)
@@ -95,7 +92,7 @@ func Test_id_message_checked_before_contents_read(t *testing.T) {
 	add("moved to another name", run, moved)
 	// Signed by c1, and sealed to another controller.
 	elsewhere := w.party("ctl2", identity.Controller)
-	run, msg = w.start("c1")
+	run, msg = w.start("c1", keptAt)
 	add("sealed to another controller", run, w.put(w.c1, "h-start", msg, elsewhere.Card, good))
 
 	w.settle()
@@ -113,7 +110,7 @@ func Test_id_message_checked_before_contents_read(t *testing.T) {
 	// One that is c1's own, sealed to the controller and past its time, is
 	// not acted on either; that it came too late is the last thing asked,
 	// and c1 is told.
-	run, msg = w.start("c1")
+	run, msg = w.start("c1", keptAt)
 	late := w.put(w.c1, "i-start", msg, w.ctl.Card, w.clock().Add(-time.Hour))
 	w.settle()
 	if r := w.receipt("i-start"); w.head(run) != nil || r == nil || r.Taken || !strings.Contains(r.Refused, "too late") {
@@ -163,6 +160,7 @@ func Test_id_removal_holds_in_every_copy_at_next_pass(t *testing.T) {
 		}
 		waiting = append(waiting, run)
 	}
+	keptAt, _ := w.place(w.client, kept, nil)
 	// The client and the runner are removed. They stay on record, marked.
 	for _, id := range []*identity.Identity{w.c1, r1} {
 		if err := identity.WriteTrust(ctx, w.ctrl.Store, w.ctl, identity.Trust{Card: id.Card, Removed: true}); err != nil {
@@ -171,7 +169,7 @@ func Test_id_removal_holds_in_every_copy_at_next_pass(t *testing.T) {
 	}
 	for i, c := range copies {
 		before := len(w.list(store.Running("ctl"))) + len(w.list(store.Finished("ctl")))
-		started := w.submit(kept, nil, nil)
+		started := w.startAt(w.client, keptAt, client.Start{})
 		w.client.Send(ctx, waiting[i], "tick", nil, 0)
 		w.result(r1, waiting[i], "working", instance.Result{Attempt: 1, Status: instance.Done, Output: "from a runner that was removed"})
 		if _, err := c.Pass(ctx); err != nil {
@@ -190,12 +188,10 @@ func Test_id_removal_holds_in_every_copy_at_next_pass(t *testing.T) {
 	// Nothing is sent to a runner that has been removed: a run started by
 	// a client that is still trusted finds no runner, with either copy.
 	c2 := w.party("c2", identity.Client)
-	w.enrol(c2, permission.Layer{}, nil)
+	w.enrol(c2, permission.Layer{Allow: []string{"at:/**"}}, nil)
+	oneJobAt, _ := w.place(w.clientOf(c2), oneJob, map[string]string{"work.js": "return 1"})
 	for i, c := range copies {
-		run, err := w.clientOf(c2).Start(ctx, w.draft(oneJob, map[string]string{"work.js": "return 1"}), client.Start{})
-		if err != nil {
-			t.Fatal(err)
-		}
+		run := w.startAt(w.clientOf(c2), oneJobAt, client.Start{})
 		for range 3 {
 			if _, err := c.Pass(ctx); err != nil {
 				t.Fatal(err)

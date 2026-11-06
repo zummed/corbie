@@ -176,8 +176,9 @@ func Test_ctl_housekeeping_gets_through_all_across_fresh_starts(t *testing.T) {
 	w := newWorld(t)
 	// Fifty runs that have ended, with their receipts, and an upload for a
 	// run that never started.
+	at, _ := w.place(w.client, kept, nil)
 	for range 50 {
-		run := w.submit(kept, nil, nil)
+		run := w.startAt(w.client, at, client.Start{})
 		w.settle()
 		w.client.Send(ctx, run, "stop", nil, 0)
 		w.settle()
@@ -186,7 +187,7 @@ func Test_ctl_housekeeping_gets_through_all_across_fresh_starts(t *testing.T) {
 	orphan, _ := w.client.NewRun()
 	w.blob(orphan, w.clock(), "left behind")
 	w.tick(26 * time.Hour) // every one of them is past keeping
-	late := w.submit(kept, nil, nil)
+	late := w.startAt(w.client, at, client.Start{})
 	past := func() (names []string) {
 		for _, under := range []string{store.Finished("ctl"), store.Records("ctl"), "ctl/receipts", store.Wakes("ctl")} {
 			for _, name := range w.list(under) {
@@ -500,9 +501,8 @@ func Test_inst_trim_spares_blob_of_a_recent_entry(t *testing.T) {
 	// The run's input holds a file for as long as it runs.
 	run, _ := w.client.NewRun()
 	held := w.blob(run, started, "held by the current state")
-	if _, err := w.client.Start(ctx, w.draft(kept, nil), client.Start{Run: run, Input: map[string]any{"file": held.Value()}}); err != nil {
-		t.Fatal(err)
-	}
+	at, _ := w.place(w.client, kept, nil)
+	w.startAt(w.client, at, client.Start{Run: run, Input: map[string]any{"file": held.Value()}})
 	w.settle()
 	// Two files no state refers to: one made as the run began, and one made
 	// twenty hours before the trim, which a step or an emit of those twenty
@@ -717,10 +717,11 @@ func (s noBlobs) ReadPart(ctx context.Context, name string, from, length int64) 
 func Test_ctl_keep_is_in_the_record(t *testing.T) {
 	w := newWorld(t)
 	run := w.submit(kept, nil, nil)
-	// The first pass is stopped once the step is written: its head is not.
+	// The first pass is stopped once the location's file is copied into
+	// the record and the step is written: its head is not.
 	good := w.ctrl.Store
 	stop := &stopping{Store: good}
-	stop.left.Store(1)
+	stop.left.Store(2)
 	w.afresh(stop)
 	if _, err := w.ctrl.Pass(ctx); err == nil || len(w.steps(run)) != 1 || w.head(run) != nil {
 		t.Fatalf("the pass that was stopped: %v, with %d steps and the head %+v", err, len(w.steps(run)), w.head(run))

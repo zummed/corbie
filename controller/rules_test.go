@@ -124,7 +124,7 @@ func Test_ctl_message_past_its_time_named_by_step_still_finishes_it(t *testing.T
 	run := w.submit(kept, nil, nil)
 	inner := w.ctrl.Store
 	s := &stopping{Store: inner}
-	s.left.Store(1) // the step's entry, and nothing after
+	s.left.Store(2) // the copy of the location's file, the step's entry, and nothing after
 	w.ctrl = controller.New(w.ctl, s)
 	w.ctrl.Now = w.clock
 	w.ctrl.Pass(ctx)
@@ -229,7 +229,7 @@ func Test_ctl_repeated_message_recognised_by_fresh_controller(t *testing.T) {
 	w.ctrl.Now = w.clock
 	w.leave(w.c1, message, &instance.Message{Kind: instance.KindEvent, Instance: run, Event: &machine.Event{Name: "tick"}})
 	w.leave(w.c1, run[strings.IndexByte(run, '/')+1:], &instance.Message{Kind: instance.KindStart, Instance: run,
-		Start: &instance.Start{Definition: w.latest(run).State.Definition, Seed: []byte("another")}})
+		Start: &instance.Start{Location: w.latest(run).State.Location, Seed: []byte("another")}})
 	w.settle()
 	if head := w.head(run); head.Step != 2 {
 		t.Fatalf("a repeated message led to another step: %+v", head)
@@ -443,7 +443,7 @@ func TestJobThatCannotBeBuiltFails(t *testing.T) {
 		  end: { end: done }
 	`
 	for job, want := range map[string]string{
-		`{ script: ./work.js, allow: ["secret:NONE@net:api.example"] }`:                                  `NONE is not set at / or above`,
+		`{ script: ./work.js, allow: ["secret:NONE@net:api.example"] }`:                                  `NONE is not set at /unbuilt-`,
 		`{ machine: { statechart: kid, states: { k: { end: done } } }, input: "${'x'.repeat(300000)}" }`: "pass large values as blobs",
 		`{ send: { to: { at: devices/boiler }, event: set } }`:                                           "a send or a call is not carried out yet",
 		`{ call: { at: services/weather }, input: { days: 2 } }`:                                         "a send or a call is not carried out yet",
@@ -464,7 +464,7 @@ func Test_perm_layers_travel_apart(t *testing.T) {
 	w := newWorld(t)
 	r1 := w.party("r1", identity.Runner)
 	w.enrol(r1, permission.Layer{Allow: []string{"all"}}, nil)
-	_, err := w.client.Start(ctx, w.draft(`
+	at, _ := w.place(w.client, `
 		statechart: parent
 		initial: s
 		states:
@@ -481,10 +481,8 @@ func Test_perm_layers_travel_apart(t *testing.T) {
 		          end: { end: done }
 		    on: { done: end }
 		  end: { end: done }
-	`, map[string]string{"work.js": "return 1"}), client.Start{Allow: &permission.Layer{Allow: []string{"disk"}}})
-	if err != nil {
-		t.Fatal(err)
-	}
+	`, map[string]string{"work.js": "return 1"})
+	w.startAt(w.client, at, client.Start{Allow: &permission.Layer{Allow: []string{"disk"}}})
 	w.settle()
 	jobs := w.list(store.Inbox("r1"))
 	if len(jobs) != 1 {
@@ -516,23 +514,25 @@ func Test_perm_layers_travel_apart(t *testing.T) {
 	}
 }
 
-// A controller secret is kept sealed, and the value set last is the one a
-// job that names it is sent. One that is not set fails the job before
-// anything is sent.
+// A controller secret is kept sealed, and a job that names it is sent the
+// value set last at the run's location or the nearest above it. One that is
+// not set there or above fails the job before anything is sent, naming the
+// location.
 func TestControllerSecret(t *testing.T) {
 	w := newWorld(t)
 	r1 := w.party("r1", identity.Runner)
 	w.enrol(r1, permission.Layer{Allow: []string{"all"}}, nil)
+	at, _ := w.place(w.client, `
+		statechart: uses
+		initial: s
+		states:
+		  s:
+		    job: { script: ./work.js, allow: ["secret:K@net:api.example"], restart: { limit: 2 } }
+		    on: { done: end }
+		  end: { end: done }
+	`, map[string]string{"work.js": "return 1"})
 	uses := func() (failure string, sent []string) {
-		run := w.submit(`
-			statechart: uses
-			initial: s
-			states:
-			  s:
-			    job: { script: ./work.js, allow: ["secret:K@net:api.example"], restart: { limit: 2 } }
-			    on: { done: end }
-			  end: { end: done }
-		`, map[string]string{"work.js": "return 1"}, nil)
+		run := w.startAt(w.client, at, client.Start{})
 		w.settle()
 		if e := w.latest(run).State.Error; e != nil {
 			failure = e.Error
@@ -548,26 +548,36 @@ func TestControllerSecret(t *testing.T) {
 		}
 		return failure, sent
 	}
-	if failure, sent := uses(); !strings.Contains(failure, `K is not set at / or above`) || len(sent) != 0 {
+	unset := "K is not set at " + at + " or above"
+	if failure, sent := uses(); !strings.Contains(failure, unset) || len(sent) != 0 {
 		t.Fatalf("with the secret not set: %q, %d jobs sent", failure, len(sent))
 	}
 	for _, value := range []string{"the first value", "the second"} {
-		if err := secret.Set(ctx, w.ctrl.Store, w.ctl, "/", "K", value); err != nil {
-			t.Fatal(err)
-		}
+		w.secret("K", value, "/")
 		if failure, sent := uses(); failure != "" || !slices.Equal(sent, []string{value}) {
 			t.Fatalf("with the secret set to %q: %q, and the job was sent %q", value, failure, sent)
 		}
+	}
+	// Set at the run's own location, the nearer value is the one sent.
+	w.secret("K", "the nearest", at)
+	if failure, sent := uses(); failure != "" || !slices.Equal(sent, []string{"the nearest"}) {
+		t.Fatalf("with the secret set at %s too: %q, and the job was sent %q", at, failure, sent)
 	}
 	kept, _, _ := w.owner.Read(ctx, store.Secret("ctl", "/", "K"))
 	var value string
 	if _, err := identity.Read(kept, store.Secret("ctl", "/", "K"), w.ctl.Card, r1, &value); bytes.Contains(kept, []byte("the second")) || err == nil {
 		t.Fatalf("the secret is kept in the clear, or a runner's key opens it (%v)", err)
 	}
+	if err := secret.Remove(ctx, w.ctrl.Store, w.ctl, at, "K"); err != nil {
+		t.Fatal(err)
+	}
+	if failure, sent := uses(); failure != "" || !slices.Equal(sent, []string{"the second"}) {
+		t.Fatalf("with the nearer secret removed: %q, and the job was sent %q", failure, sent)
+	}
 	if err := secret.Remove(ctx, w.ctrl.Store, w.ctl, "/", "K"); err != nil {
 		t.Fatal(err)
 	}
-	if failure, sent := uses(); !strings.Contains(failure, `K is not set at / or above`) || len(sent) != 0 {
+	if failure, sent := uses(); !strings.Contains(failure, unset) || len(sent) != 0 {
 		t.Fatalf("with the secret removed: %q, %d jobs sent", failure, len(sent))
 	}
 }
@@ -608,7 +618,7 @@ func Test_ctl_wake_time_fixed_by_entry(t *testing.T) {
 	w.tick(10 * time.Minute)
 	w.afresh(w.ctrl.Store)
 	w.leave(w.c1, run[strings.IndexByte(run, '/')+1:], &instance.Message{Kind: instance.KindStart, Instance: run,
-		Start: &instance.Start{Definition: w.latest(run).State.Definition}})
+		Start: &instance.Start{Location: w.latest(run).State.Location}})
 	w.settle()
 	if again := w.list(store.Wakes("ctl")); !slices.Equal(again, first) {
 		t.Fatalf("carried out again later, the wakes are\n%v\nand were\n%v", again, first)
@@ -803,19 +813,17 @@ func TestSecretALayerDoesNotAllowIsNotSentAndItsJobIsDenied(t *testing.T) {
 		w := newWorld(t)
 		r1 := w.party("r1", identity.Runner)
 		w.enrol(r1, permission.Layer{Allow: all}, nil)
-		w.enrol(w.c1, permission.Layer{Allow: c.ceiling, Deny: c.denied}, nil)
-		if err := secret.Set(ctx, w.ctrl.Store, w.ctl, "/", "K", "the value"); err != nil {
-			t.Fatal(err)
-		}
+		w.secret("K", "the value", "/")
 		start := client.Start{}
 		if c.start != nil {
 			start.Allow = &permission.Layer{Allow: c.start}
 		}
 		chart := strings.NewReplacer("SECRET", c.entry, "DENY", c.deny).Replace(c.chart)
-		run, err := w.client.Start(ctx, w.draft(chart, map[string]string{"work.js": "return 1"}), start)
-		if err != nil {
-			t.Fatal(err)
-		}
+		// The tree is submitted while the client may submit anywhere; the
+		// ceiling under test is the one the run starts under.
+		at, _ := w.place(w.client, chart, map[string]string{"work.js": "return 1"})
+		w.enrol(w.c1, permission.Layer{Allow: c.ceiling, Deny: c.denied}, nil)
+		run := w.startAt(w.client, at, start)
 		w.settle()
 		if c.chart == below {
 			run = w.below(run)

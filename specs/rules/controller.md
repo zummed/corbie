@@ -228,8 +228,8 @@ The detailed rules behind the [Controller overview](../controller.md). What the 
 
 ## Sending and calling
 
-**R-ctl-119** A send to an address names the run it goes to while the sender's step is worked out, and the controller writes the event when it carries out the step, with the sender's address in `event.from`: `{ at, run }`, with `key` for a keyed run, or `{ client }`. The sender's record names the run the step named, or the run it started, and the receiving run's record names the sender. An event that goes to another run, as when another send took the key first, adds a note naming that run to the sender's record.
-*Accept:* parity cases 108 and 114. `Test_chart_send_to_a_key_starts_a_run_then_delivers` and `Test_ctl_event_from_is_the_senders_address`.
+**R-ctl-119** A send to an address names the run it goes to while the sender's step is worked out, and the controller writes the event when it carries out the step, with the sender's address in `event.from`: `{ at, run }`, with `key` for a keyed run, or `{ client }`. The sender's record names the run the step named, or the run it started, and the receiving run's record names the sender. An event that goes to another run, as when another send took the key first, adds a note naming that run to the sender's record, one for each move.
+*Accept:* parity cases 108 and 114. `Test_chart_send_to_a_key_starts_a_run_then_delivers`, `Test_ctl_event_from_is_the_senders_address` and `Test_ctl_event_moved_twice_is_noted_twice`.
 
 **R-ctl-120** A run takes an event sent to it by address only if its `receive:` lists the sender, by default every location and the client of its own tree. The tree's own client is always listed. A run checks the definition it started with, and a run about to start checks its location's file.
 *Accept:* parity cases 116 and 117. `Test_ctl_receive_default_is_own_tree_and_owner`, `Test_ctl_receive_list_names_who_may_send` and `Test_ctl_receive_mapping_is_by_event`.

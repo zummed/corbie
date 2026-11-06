@@ -172,7 +172,7 @@ Addresses and `receive:` are written as machine.md says.
 3. The receiving run takes the message only if its `receive:` lists the sender, by default every location and the client of its own tree. A run checks the definition it started with, and a run about to start checks its location's file.
 4. The controller writes the sender into `event.from`: `{ at, run }`, with `key` for a keyed run, or `{ client }`, whatever a client wrote.
 
-The sender's record names the run the step named, or the run the send started. A run that ended first passes the event on, and the receiving run's record names the sender. When the event goes to another run than the one the step named, as when another send took the key first, a note in the sender's record names the run that took it. A client's send is routed the same way, and its receipt names the run that took it. The tree's client names a run of its own by its ID alone.
+The sender's record names the run the step named, or the run the send started. A run that ended first passes the event on, and the receiving run's record names the sender. When the event goes to another run than the one the step named, as when another send took the key first, a note in the sender's record names the run that took it, one note for each move. A client's send is routed the same way, and its receipt names the run that took it. The tree's client names a run of its own by its ID alone.
 
 These sends are noted as undelivered in the sender's record and fail nothing:
 

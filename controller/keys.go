@@ -745,12 +745,13 @@ func (p *pass) redirect(a *arrival) error {
 		return err
 	}
 	// The sender's record names the run the event was aimed at: it is told
-	// the run the event went to. A client's receipt names that run itself.
+	// the run the event went to, in a note named for that run, so an event
+	// moved twice is noted twice. A client's receipt names that run itself.
 	if _, _, ok := a.client(); ok || run == before {
 		return nil
 	}
-	base := a.name[strings.LastIndexByte(a.name, '/')+1:]
-	return p.tell(msg.From, run, base+".moved", fmt.Sprintf("the event %s sent to %s went to the run %s, not %s", msg.Event.Name, addressText(msg.To), run, before))
+	base, tail := a.name[strings.LastIndexByte(a.name, '/')+1:], run[strings.LastIndexByte(run, '/')+1:]
+	return p.tell(msg.From, run, base+".moved."+tail, fmt.Sprintf("the event %s sent to %s went to the run %s, not %s", msg.Event.Name, addressText(msg.To), run, before))
 }
 
 // holder gives the run that has a key, whose file is named at: none where

@@ -705,6 +705,46 @@ func Test_ctl_direct_send_waits_behind_a_moved_send(t *testing.T) {
 	}
 }
 
+// An event moved twice is noted twice in its sender's record, and the last
+// note names the run that took it.
+func Test_ctl_event_moved_twice_is_noted_twice(t *testing.T) {
+	w := newWorld(t)
+	sender := w.rooms(nil)
+	w.say(sender, "say", 1, "one")
+	w.say(sender, "say", 2, "two")
+	w.say(sender, "say", 3, "three")
+	w.settle()
+	w.say(sender, "say", 1, "bye")
+	w.settle()
+	runs := map[string]string{}
+	for _, run := range w.runsOf("talk") {
+		runs[w.told(run)[0]] = run
+	}
+	gone, first, last := runs["one"], runs["two"], runs["three"]
+	// The file of chat:1 names the run that has ended when the sender sends
+	// to the key, and then a run that is running.
+	w.writeEntry("/t/room", "chat:1", gone, "ctl/inbox/ctl/gone")
+	w.say(sender, "say", 1, "moved")
+	w.pass() // routed
+	w.pass() // the sender names the run that has ended
+	w.writeEntry("/t/room", "chat:1", first, "ctl/inbox/ctl/first")
+	w.pass() // moved to the first run
+	// The first run is cancelled before it takes the event, and the file
+	// names another.
+	if _, err := w.client.Cancel(ctx, first, time.Hour); err != nil {
+		t.Fatal(err)
+	}
+	w.writeEntry("/t/room", "chat:1", last, "ctl/inbox/ctl/last")
+	w.settle()
+	if got := w.told(last); !slices.Equal(got, []string{"three", "moved"}) {
+		t.Fatalf("the last run was told %v", got)
+	}
+	notes := w.keyNotes(sender)
+	if len(notes) != 2 || !strings.Contains(notes[0], "went to the run "+first+", not "+gone) || !strings.Contains(notes[1], "went to the run "+last+", not "+first) {
+		t.Fatalf("the record says %v", notes)
+	}
+}
+
 // A file a crash left, naming a run that has ended or that never began,
 // blocks nothing.
 func Test_ctl_stale_key_file_blocks_no_key(t *testing.T) {

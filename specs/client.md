@@ -258,7 +258,7 @@ not set at its location or above: secret BOILER_PASSWORD for /home/devices/boile
 $ corbie run submit /home/schedules/away --wait
 ```
 
-A submit does this, and exits when each run it cancelled has ended and each start has been taken:
+A submit does this, and exits when each run it cancelled has ended and each start has been taken. The controller's start of a singleton is good until it is taken, so the submit waits for it with no limit:
 
 1. It reads every `*.yaml` in the directory and below it, but for `.git`, and writes out and checks each machine.
 2. It records every file at its location in the store, and removes the locations whose files have gone, cancelling every run there.

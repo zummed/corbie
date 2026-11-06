@@ -242,21 +242,33 @@ func (c *Client) Wait(ctx context.Context, id string, interval time.Duration) (*
 	}
 }
 
-// Taken stays until a run has been taken up: it is no longer waiting to
-// start. A run the controller starts, as a submit starts a singleton, has
-// nothing in its record until then. A run is waited for while a controller
-// may take its start: for the life it was sent with, a few minutes if none,
-// and the allowance for clocks.
+// Taken stays until a run this client started has been taken up: it is no
+// longer waiting to start. A run is waited for while a controller may take
+// its start: for the life it was sent with, a few minutes if none, and the
+// allowance for clocks.
 func (c *Client) Taken(ctx context.Context, id string, life, interval time.Duration) error {
+	return c.taken(ctx, id, c.Now().Add(taking(life)), interval)
+}
+
+// Started stays until a run a submit started has been taken up. The
+// controller's start of it is good for ever, as a singleton started again
+// waits for the runs it replaces to end, and so the wait has no limit.
+func (c *Client) Started(ctx context.Context, id string, interval time.Duration) error {
+	return c.taken(ctx, id, time.Time{}, interval)
+}
+
+// taken stays until a run is no longer waiting to start, and gives up once
+// its start is past a time, where it is given one. A run the controller
+// starts has nothing in its record until then.
+func (c *Client) taken(ctx context.Context, id string, until time.Time, interval time.Duration) error {
 	notice, stop := c.Store.Notice(c.ctl())
 	defer stop()
-	until := c.Now().Add(taking(life))
 	for {
 		run, err := c.Show(ctx, id)
 		switch {
 		case err == nil && run.Status != instance.Waiting:
 			return nil
-		case (err == nil || errors.Is(err, ErrNoRun)) && c.Now().After(until):
+		case (err == nil || errors.Is(err, ErrNoRun)) && !until.IsZero() && c.Now().After(until):
 			return ErrNeverTaken
 		case err != nil && !errors.Is(err, store.ErrUnreachable) && !errors.Is(err, ErrNoRun):
 			return err

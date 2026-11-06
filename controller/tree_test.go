@@ -2,6 +2,7 @@ package controller_test
 
 import (
 	"bytes"
+	"errors"
 	"context"
 	"fmt"
 	"path"
@@ -785,6 +786,15 @@ func Test_ctl_singleton_waits_for_every_run_it_replaces(t *testing.T) {
 	if r == nil || !r.Taken || len(r.Tree.Cancelled) != 2 {
 		t.Fatalf("the submit gave %+v", r)
 	}
+	// While a run it replaces is running, the start reads that run's head
+	// and lists no other.
+	w.noted()
+	w.pass()
+	for _, op := range w.noted() {
+		if op.Party.Kind == store.Controller && op.Act == store.ActList && strings.HasPrefix(op.Name, store.Running("ctl")) {
+			t.Fatalf("with a run it replaces running, the start listed %s", op.Name)
+		}
+	}
 	single := r.Tree.Locations[0].Run
 	if w.head(one).Status != instance.Cancelled || w.head(two).Status != instance.Running || w.head(single) != nil {
 		t.Fatalf("with one run still running the runs at /s are %v", w.at("/s"))
@@ -842,6 +852,24 @@ func Test_ctl_singleton_waits_for_the_children_of_the_run_it_replaces(t *testing
 	if w.head(old).Status != instance.Cancelled || w.head(child).Status != instance.Running || w.head(single) != nil {
 		t.Fatalf("with the child still running the new singleton is %+v", w.head(single))
 	}
+	// The controller's start of the singleton is good for ever: a client
+	// waiting for it to be taken up goes on waiting, however long the child
+	// takes to end.
+	looked := make(chan struct{})
+	var once sync.Once
+	own := w.client.Store
+	w.client.Store = &reading{Store: own, read: func() { once.Do(func() { close(looked) }) }}
+	within, cancel := context.WithTimeout(ctx, 500*time.Millisecond)
+	defer cancel()
+	ended := make(chan error, 1)
+	go func() { ended <- w.client.Started(within, single, time.Millisecond) }()
+	<-looked
+	w.tick(time.Hour)
+	w.pass()
+	if err := <-ended; !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("a wait for the singleton to be taken up, an hour on, gave %v", err)
+	}
+	w.client.Store = own
 	w.afresh(inner)
 	for range 4 {
 		w.settle()
@@ -850,6 +878,20 @@ func Test_ctl_singleton_waits_for_the_children_of_the_run_it_replaces(t *testing
 	if w.head(child).Status != instance.Cancelled || w.head(single) == nil || w.head(single).Status != instance.Running {
 		t.Fatalf("the runs at /s are %v", w.at("/s"))
 	}
+	if err := w.client.Started(ctx, single, time.Millisecond); err != nil {
+		t.Fatalf("a wait for the singleton to be taken up gave %v", err)
+	}
+}
+
+// reading calls read before each read of a store.
+type reading struct {
+	store.Store
+	read func()
+}
+
+func (r *reading) Read(ctx context.Context, name string) ([]byte, store.Mark, error) {
+	r.read()
+	return r.Store.Read(ctx, name)
 }
 
 // cancels says whether a message in the controller's inbox cancels a run.

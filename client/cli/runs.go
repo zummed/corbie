@@ -503,7 +503,7 @@ func (e *Env) submit(tree *client.Tree) error {
 	}
 	for _, row := range done.Locations {
 		if row.Run != "" {
-			if err := c.Taken(e.ctx, row.Run, 0, interval); err != nil {
+			if err := c.Started(e.ctx, row.Run, interval); err != nil {
 				return err
 			}
 		}

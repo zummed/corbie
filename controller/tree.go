@@ -478,6 +478,25 @@ func (p *pass) cancelAt(client, base string, locations []string, starts map[stri
 	return cancelled, nil
 }
 
+// replacing says whether a singleton started again still waits: while a
+// run it replaces is running, read by its head, and once those have ended,
+// while any other run of the tree's client is running at the location.
+func (p *pass) replacing(client, location, self string, replaces []string) (bool, error) {
+	running := make([]bool, len(replaces))
+	err := p.each(len(replaces), func(i int) error {
+		head, _, err := instance.ReadHead(p.ctx, p.store, p.c.ID.Card, replaces[i])
+		if isAltered(err) {
+			return nil
+		}
+		running[i] = head != nil && head.Status == instance.Running
+		return err
+	})
+	if err != nil || slices.Contains(running, true) {
+		return true, err
+	}
+	return p.runningAt(client, location, self)
+}
+
 // runningAt says whether a run of a client's other than one named is
 // running at a location, a child included.
 func (p *pass) runningAt(client, location, other string) (bool, error) {
@@ -681,7 +700,7 @@ func (b *build) located(start *arrival) (*instance.Start, error) {
 	// children included, and so does everything waiting for it: until no
 	// other run is running at its location.
 	if len(s.Replaces) > 0 {
-		running, err := p.runningAt(file.Client, s.Location, b.inst)
+		running, err := p.replacing(file.Client, s.Location, b.inst, s.Replaces)
 		if err != nil {
 			return nil, err
 		}

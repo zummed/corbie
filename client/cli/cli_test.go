@@ -87,6 +87,7 @@ func (m machine) recorded(file string, flags ...string) string {
 func files(t *testing.T, contents map[string]string) string {
 	dir := t.TempDir()
 	for name, text := range contents {
+		os.MkdirAll(filepath.Dir(filepath.Join(dir, name)), 0o755)
 		os.WriteFile(filepath.Join(dir, name), []byte(text), 0o644)
 	}
 	return dir
@@ -522,6 +523,60 @@ func TestTestReadsADirectory(t *testing.T) {
 	status, out, _ := m.run("", "test", "on")
 	if status != 1 || !strings.Contains(out, "on/hello.yaml\n    ") {
 		t.Fatalf("with its script gone, corbie test on ended %d and printed %q", status, out)
+	}
+}
+
+// corbie test given a directory checks each send and call to a location of
+// the tree against the file there and the sender's own lists, and names a
+// location with no machine without failing.
+func TestTestChecksTheSendsOfATree(t *testing.T) {
+	m := machine{t, t.TempDir()}
+	chart := func(head, entry string) string {
+		return "statechart: x\n" + head + "initial: a\nstates:\n  a:\n" + entry + "    on: { set: a }\n"
+	}
+	dir := files(t, map[string]string{
+		"rooms/room.yaml": chart("lifetime: keyed\n", ""),
+		"boiler.yaml":     chart("lifetime: singleton\nreceive: [panel]\n", ""),
+		"weather.yaml":    "flow: weather\nstages:\n  a: { job: ./a.js }\n",
+		"a.js":            "return 1",
+		"panel.yaml": chart(`allow: ["send:**"]`+"\n", "    entry:\n      send:\n"+
+			"        - { to: { at: rooms/room, key: k }, event: set }\n"+
+			"        - { to: { at: boiler }, event: set }\n"+
+			"        - { to: { at: \"rooms/${input.r}\" }, event: set }\n"+
+			"        - { to: { at: later }, event: set }\n"+
+			"    job: { call: { at: weather } }\n"),
+		"sensor.yaml": chart(`allow: ["send:rooms/**", "send:weather"]`+"\n", "    entry:\n      send:\n"+
+			"        - { to: { at: rooms/room }, event: set }\n"+
+			"        - { to: { at: boiler }, event: set }\n"+
+			"        - { to: { at: weather }, event: set }\n"+
+			"    job: { call: { at: rooms/room } }\n"),
+		"door.yaml": chart(`allow: ["send:**"]`+"\n", "    entry:\n      send:\n"+
+			"        - { to: { at: boiler }, event: set }\n"),
+	})
+	status, out, _ := m.run("", "test", dir)
+	out = strings.ReplaceAll(out, dir+"/", "")
+	name := filepath.Base(dir)
+	for _, want := range []string{
+		"panel.yaml       ok\n",
+		"sensor.yaml\n",
+		"    states.a.job.call: /" + name + "/rooms/room is keyed: a call starts a run only of a transient location\n",
+		"    states.a.entry.send[0].to: /" + name + "/rooms/room is keyed: a send to it names a key, as /" + name + "/rooms/room#<key>\n",
+		"    states.a.entry.send[1].to: send:/" + name + "/boiler was refused by the definition of \"x\"",
+		"    states.a.entry.send[2].to: /" + name + "/weather is a flow, which takes no sent event\n",
+		"door.yaml\n    states.a.entry.send[0].to: /" + name + "/boiler does not receive set from /" + name + "/door\n",
+		"nothing in the tree is at /" + name + "/later, named by panel.yaml states.a.entry.send[3].to\n",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("corbie test printed no %q:\n%s", want, out)
+		}
+	}
+	if status != 1 {
+		t.Errorf("corbie test ended %d", status)
+	}
+	os.Remove(filepath.Join(dir, "sensor.yaml"))
+	os.Remove(filepath.Join(dir, "door.yaml"))
+	if out := m.ok("", "test", dir); !strings.Contains(out, "nothing in the tree is at /"+name+"/later") {
+		t.Errorf("a location with no machine failed the test:\n%s", out)
 	}
 }
 

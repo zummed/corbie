@@ -276,6 +276,8 @@ type Checker struct {
 	jobs []PlacedJob
 	// values is every value an expression of the definition reads, by name.
 	values map[string]bool
+	// sends is every send and call the check visits, with its place.
+	sends []PlacedSend
 }
 
 // A PlacedJob is a job of a definition and its place, such as
@@ -409,6 +411,7 @@ func (c *Checker) Job(place string, s *JobSpec, names ...string) {
 		if s.Input != nil || s.Timeout != "" || s.Restart != nil || s.Memory != 0 || len(s.Tags) > 0 || len(s.Files) > 0 {
 			c.Problem(place, "a send takes to, event and data, and approve, allow and deny: it has no input, timeout, restart, memory, tags or files")
 		}
+		c.sends = append(c.sends, PlacedSend{Place: place + ".send.to", To: &s.Send.To, Event: s.Send.Event, Job: s})
 		c.Address(place+".send.to", &s.Send.To, names...)
 		switch e := s.Send.Event; {
 		case e == "" || HasExpr(e):
@@ -421,6 +424,7 @@ func (c *Checker) Job(place string, s *JobSpec, names ...string) {
 		if s.Memory != 0 || len(s.Tags) > 0 || len(s.Files) > 0 {
 			c.Problem(place, "memory, tags and files belong to a script; a call has none")
 		}
+		c.sends = append(c.sends, PlacedSend{Place: place + ".call", To: s.Call, Job: s})
 		c.Address(place+".call", s.Call, names...)
 		if s.Call.Key != "" || s.Call.Run != "" || s.Call.Expr != "" {
 			c.Problem(place+".call", "a call names a location with at, and nothing else")

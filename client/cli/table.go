@@ -181,7 +181,9 @@ each value with its file and line, and runs nothing.
 
 Given directories, it reads every machine in them as corbie run submit does,
 prints each one ok or its problems, and starts nothing. It fails when a
-machine has a problem.
+machine has a problem. Each directory is a tree: a send or a call to one of
+its locations is checked against the file there and the sender's own allow:
+and deny:, and a location with no machine is printed, which fails nothing.
 ` + scripts},
 		{Name: "run submit", Usage: "<directory or file> [--at <prefix>] | <location> [--input <json>] [--wait | --watch]", Summary: "record a tree, or start a run of a location and print its ID", Run: cmdSubmit, Help: `
 Given a location, it starts a run of the file recorded there: it uploads the

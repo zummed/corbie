@@ -279,6 +279,8 @@ A tree belongs to the client that first submitted it. Every run keeps the defini
 - When a client submits a different directory at a prefix it holds, the submit prints `/home: last submitted from /srv/old-house`.
 - `corbie run cancel <location>` after a submit cancels the runs there, so the next of each starts on the new definition.
 - `corbie test` given directories reads their machines as this command does, prints each one ok or its problems, and starts and cancels nothing. It reads no config and no store, so it changes nothing wherever it runs.
+- It reads each directory as a tree, and checks each send and call whose `at:` is written out and is in the tree as the controller would: that the lifetime of the file there fits the address, that its `receive:` lists the sender, and that the sender's own `allow:` and `deny:` hold `send:` for it. A machine is checked with the machines it starts, which send from its location, narrowed by the lists of the jobs that start them. A list with an expression in it is left out, as only a run fills it in. What fails is a problem of the sender's file.
+- A location of the tree that a send or a call names and that has no file is printed with where it is named, and fails nothing: the send may be one a condition leaves out.
 
 ## The gateway
 

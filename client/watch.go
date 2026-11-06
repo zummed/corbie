@@ -30,6 +30,8 @@ type Filter struct {
 	Parent string
 	// Location keeps the runs at a location.
 	Location string
+	// Key keeps the runs of a keyed location with this key.
+	Key string
 	// Finished takes in the runs that have ended and are still kept.
 	Finished bool
 }
@@ -46,6 +48,9 @@ func (f Filter) keeps(r *Run) bool {
 		return false
 	}
 	if f.Location != "" && r.Location != f.Location {
+		return false
+	}
+	if f.Key != "" && r.Key != f.Key {
 		return false
 	}
 	for name, want := range f.Labels {

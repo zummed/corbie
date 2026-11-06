@@ -369,23 +369,23 @@ func (p *pass) hourly(wakes []string, busy bool) error {
 
 // pastReceipts gives the receipts kept longer than a day, each with
 // everything in its directory: those last, the rest first, so a pass
-// stopped between the two leaves the receipt for the next. A receipt's name
-// is its message's, which carries the time it was sent, so each client's
-// list oldest first and a batch of them is read: the cost follows what is
-// due, not how many are kept. A taken call's receipt has no end of its own:
-// it stays while there is no result beside it, and the two go a day after
-// the result was written. more says a whole batch was due.
+// stopped between the two leaves the receipt for the next. A taken call's
+// receipt has no end of its own: it stays while there is no result beside
+// it, and the two go a day after the result was written. One round removes
+// at most a batch of directories, and more says there were more past
+// keeping.
 func (p *pass) pastReceipts() (beside, receipts []string, more bool, err error) {
 	parties, err := p.parties()
 	if err != nil {
 		return nil, nil, false, err
 	}
+	past := 0
 	for _, party := range parties {
 		if party.Card.Kind != identity.Client {
 			continue
 		}
 		client := party.Card.Name
-		names, err := store.Names(p.store.First(p.ctx, store.Receipts(p.ctl, client), wakeBatch))
+		names, err := store.Names(p.store.List(p.ctx, store.Receipts(p.ctl, client)))
 		if err != nil {
 			return nil, nil, false, err
 		}
@@ -401,11 +401,6 @@ func (p *pass) pastReceipts() (beside, receipts []string, more bool, err error) 
 			}
 			held[message] = append(held[message], name)
 		}
-		if full := len(names) == wakeBatch; full && len(order) > 1 {
-			// The batch may end part of the way into the last directory.
-			order = order[:len(order)-1]
-		}
-		past := 0
 		for _, message := range order {
 			gone, err := p.pastReceipt(client, message, held[message])
 			if err != nil {
@@ -413,6 +408,9 @@ func (p *pass) pastReceipts() (beside, receipts []string, more bool, err error) 
 			}
 			if !gone {
 				continue
+			}
+			if past == wakeBatch {
+				return beside, receipts, true, nil
 			}
 			past++
 			for _, name := range held[message] {
@@ -423,34 +421,28 @@ func (p *pass) pastReceipts() (beside, receipts []string, more bool, err error) 
 				}
 			}
 		}
-		more = more || past == len(order) && len(names) == wakeBatch
 	}
-	return beside, receipts, more, nil
+	return beside, receipts, false, nil
 }
 
 // pastReceipt says whether the directory of one message's receipt is past
-// keeping. Only one that is a day old by its name is read.
+// keeping. The receipt and the result are each aged from when they were
+// written, as their frames say. A message's name may carry the time it was
+// sent, and the receipt of one sent within the day is not read: it is
+// removed at most a day late.
 func (p *pass) pastReceipt(client, message string, names []string) (bool, error) {
-	at, err := time.Parse("20060102T150405", message[:min(15, len(message))])
-	receipt, result := store.Receipt(p.ctl, client, message), store.Result(p.ctl, client, message)
-	if err != nil {
-		// A client may name a message as it likes. Where the name carries
-		// no time, the receipt says when it was written.
-		if at, _, err = p.frame(receipt); err != nil {
-			return false, err
-		}
-	}
-	if at.IsZero() || !p.past(at) {
+	if sent, err := time.Parse("20060102T150405", message[:min(15, len(message))]); err == nil && !p.past(sent) && !sent.After(p.now) {
 		return false, nil
 	}
+	receipt, result := store.Receipt(p.ctl, client, message), store.Result(p.ctl, client, message)
 	switch {
 	case slices.Contains(names, result):
 		written, _, err := p.frame(result)
 		return !written.IsZero() && p.past(written), err
 	case slices.Contains(names, receipt):
-		_, until, err := p.frame(receipt)
+		written, until, err := p.frame(receipt)
 		// A taken call's receipt waits for its result.
-		return !until.IsZero(), err
+		return !written.IsZero() && !until.IsZero() && p.past(written), err
 	}
 	return true, nil // what is left of a directory whose receipt has gone
 }

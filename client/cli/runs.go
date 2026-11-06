@@ -1195,14 +1195,14 @@ func (e *Env) cancelAt(location, lifeText string) error {
 // runAt gives the one run of this client's running at a location, or with
 // the key given as /location#key.
 func (e *Env) runAt(c *client.Client, text string) (string, error) {
-	at, key, keyed := strings.Cut(text, "#")
-	runs, err := c.List(e.ctx, client.Filter{Location: at, Status: instance.Running})
+	at, key, _ := strings.Cut(text, "#")
+	runs, err := c.List(e.ctx, client.Filter{Location: at, Key: key, Status: instance.Running})
 	if err != nil {
 		return "", err
 	}
 	var ids []string
 	for _, run := range runs {
-		if run.Parent == "" && (!keyed || run.Key == key) {
+		if run.Parent == "" {
 			ids = append(ids, run.ID)
 		}
 	}

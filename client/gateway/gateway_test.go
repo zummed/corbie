@@ -228,6 +228,17 @@ func TestGateway(t *testing.T) {
 	if status, _, text := c.do("GET", "/runs?all&label=team=ops", ""); status != 200 || !strings.Contains(text, id) {
 		t.Fatalf("the listing was answered %d %s", status, text)
 	}
+	// A listing narrowed to a location, and to a key there, gives the runs
+	// and their IDs.
+	at, _ := run["location"].(string)
+	if status, _, text := c.do("GET", "/runs?all&at="+at, ""); status != 200 || at == "" || !strings.Contains(text, id) {
+		t.Fatalf("the listing at %q was answered %d %s", at, status, text)
+	}
+	for _, query := range []string{"?all&at=/elsewhere", "?all&at=" + at + "&key=alice"} {
+		if status, _, text := c.do("GET", "/runs"+query, ""); status != 200 || strings.TrimSpace(text) != "[]" {
+			t.Fatalf("the listing %s was answered %d %s", query, status, text)
+		}
+	}
 	if status, def, _ := c.do("GET", "/runs/"+id+"/definition", ""); status != 200 || def["name"] != "door" {
 		t.Fatalf("the definition was answered %d %v", status, def)
 	}

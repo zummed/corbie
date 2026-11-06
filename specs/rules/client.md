@@ -210,6 +210,9 @@ The detailed rules behind [the Client overview](../client.md).
 **R-client-162** A gateway's start of a location in a tree its client does not own is a call, and the run is answered from the call's result: its status, its output or error, and the files the output names, with a record that holds no entry.
 *Accept:* `Test_client_gateway_call_is_answered_from_its_result`: the gateway's client `gw` starts a location of another client's tree whose `receive:` lists `client:gw`, with a file in its input; `GET /runs/<id>?wait` gives `done`, the output and the run the call started, the file comes from `files/file`, and the record has no entries.
 
+**R-client-163** A gateway route names a run by its ID, and a listing narrowed with `?at=<location>` and `&key=<key>` gives the runs at a location, and with a key there.
+*Accept:* after a start at `/door-1`, `GET /runs?all&at=/door-1` lists the run under the ID the start gave; `?at=/elsewhere` and `?at=/door-1&key=alice` list nothing. *Test:* `TestGateway`
+
 **R-client-115** A stream of a record says when the run has ended and how, so its end is told apart from a connection that was lost.
 *Accept:* the stream of a run that finishes carries a last message giving the run as `done` before it closes; a stream cut by a failing network carries no such message.
 

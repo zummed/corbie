@@ -1,6 +1,7 @@
 package controller_test
 
 import (
+	"fmt"
 	"io"
 	"slices"
 	"strings"
@@ -9,8 +10,11 @@ import (
 
 	"github.com/zummed/corbie/blob"
 	"github.com/zummed/corbie/client"
+	"github.com/zummed/corbie/controller"
+	"github.com/zummed/corbie/identity"
 	"github.com/zummed/corbie/instance"
 	"github.com/zummed/corbie/machine"
+	"github.com/zummed/corbie/permission"
 	"github.com/zummed/corbie/store"
 )
 
@@ -366,7 +370,9 @@ func Test_ctl_client_call_is_refused(t *testing.T) {
 	w := newWorld(t)
 	tree := w.tree("/t", "/srv/t", map[string]string{
 		"/t/lookup": strings.Replace(lookup, "initial: a", "receive: [client:c2]\n\tinitial: a", 1),
-		"/t/s":      strings.Replace(lookup, "initial: a", "lifetime: singleton\n\treceive: [client:c2]\n\tinitial: a", 1)}, nil)
+		"/t/s":      strings.Replace(lookup, "initial: a", "lifetime: singleton\n\treceive: [client:c2]\n\tinitial: a", 1),
+		"/t/held":   "flow: held\nreceive: [client:c2]\nstages:\n  s: { job: { script: ./work.js, approve: true } }\n"},
+		map[string]string{"work.js": "return 1"})
 	if r := w.submitTree(w.client, tree); !r.Taken {
 		t.Fatalf("the tree was refused: %s", r.Refused)
 	}
@@ -392,7 +398,168 @@ func Test_ctl_client_call_is_refused(t *testing.T) {
 	if why := refused(c2, client.Start{At: "/t/lookup", Labels: map[string]string{"a": "b"}}); !strings.Contains(why, "labels and an allow list") {
 		t.Fatalf("a call with labels gave %q", why)
 	}
+	if why := refused(c2, client.Start{At: "/t/lookup", Allow: &permission.Layer{}}); !strings.Contains(why, "labels and an allow list") {
+		t.Fatalf("a call with an allow list gave %q", why)
+	}
+	// A run that is refused as it starts tells the client in the receipt.
+	if why := refused(c2, client.Start{At: "/t/held"}); !strings.Contains(why, "did not pass its check") {
+		t.Fatalf("a call of a location whose run is refused as it starts gave %q", why)
+	}
 	if why := refused(c2, client.Start{At: "/t/lookup"}); why != "" {
 		t.Fatalf("a call was refused: %s", why)
+	}
+}
+
+// A call's receipt goes when its client is removed from trust while the
+// run is running, or when the controller no longer holds the client at all:
+// a day after the result, or when the run ends with no one to write it to.
+func Test_ctl_taken_call_receipt_goes_when_its_client_is_gone(t *testing.T) {
+	for _, gone := range []string{"removed", "unknown"} {
+		t.Run(gone, func(t *testing.T) {
+			w := newWorld(t)
+			tree := w.tree("/t", "/srv/t", map[string]string{"/t/lookup": strings.Replace(waiter, "initial: w", "receive: [client:c2]\n\tinitial: w", 1)}, nil)
+			if r := w.submitTree(w.client, tree); !r.Taken {
+				t.Fatalf("the tree was refused: %s", r.Refused)
+			}
+			id := w.party("c2", identity.Client)
+			w.enrol(id, permission.Layer{Allow: []string{"send:/t/**"}}, nil)
+			c2 := w.clientOf(id)
+			call, err := c2.Start(ctx, client.Start{At: "/t/lookup", Input: map[string]any{"file": client.InputFile{Name: "a.txt", Contents: strings.NewReader("marker")}}})
+			if err != nil {
+				t.Fatal(err)
+			}
+			w.settle()
+			message := strings.SplitN(call, "/", 2)[1]
+			r, err := c2.Receipt(ctx, message)
+			if err != nil || r == nil || r.Run == "" {
+				t.Fatalf("the call's receipt is %+v, %v", r, err)
+			}
+			if gone == "removed" {
+				if err := identity.WriteTrust(ctx, w.ctrl.Store, w.ctl, identity.Trust{Card: id.Card, Removed: true}); err != nil {
+					t.Fatal(err)
+				}
+			} else if _, err := w.owner.Delete(ctx, store.Trust("ctl", "c2"), store.Overwrite); err != nil {
+				t.Fatal(err)
+			}
+			if w.clientSend(w.client, r.Run, "go", nil); w.head(r.Run).Status != instance.Done {
+				t.Fatalf("the called run is %s", w.head(r.Run).Status)
+			}
+			w.tick(50 * time.Hour)
+			w.settle()
+			if left := w.list(store.Receipts("ctl", "c2")); len(left) != 0 {
+				t.Fatalf("two days after the run ended there is still %v", left)
+			}
+		})
+	}
+}
+
+// callsStopped runs a call job and a client's call to their ends, with the
+// controller stopped after a number of writes and a fresh one carrying on.
+// It tells what came of both, and says whether the stop happened.
+func callsStopped(t *testing.T, stopAfter int64) (string, bool) {
+	w := newWorld(t)
+	all := map[string]string{"/t/caller": caller, "/t/lookup": strings.Replace(lookup, "initial: a", "receive: [caller, client:c2]\n\tinitial: a", 1)}
+	if r := w.submitTree(w.client, w.tree("/t", "/srv/t", all, nil)); !r.Taken {
+		t.Fatalf("the tree was refused: %s", r.Refused)
+	}
+	w.settle()
+	run := w.startAt(w.client, "/t/caller", client.Start{Input: map[string]any{"file": client.InputFile{Name: "a.txt", Contents: strings.NewReader("one")}}})
+	c2 := w.other("c2", "send:/t/**")
+	call, err := c2.Start(ctx, client.Start{At: "/t/lookup", Input: map[string]any{"file": client.InputFile{Name: "b.txt", Contents: strings.NewReader("two")}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	inner := w.ctrl.Store
+	s := &stopping{Store: inner}
+	s.left.Store(stopAfter)
+	w.ctrl = controller.New(w.ctl, s)
+	w.ctrl.Now = w.clock
+	for range 12 {
+		if _, err := w.ctrl.Pass(ctx); err != nil {
+			break
+		}
+		w.tick(400 * time.Millisecond)
+	}
+	w.ctrl = controller.New(w.ctl, inner)
+	w.ctrl.Now = w.clock
+	for range 8 {
+		w.settle()
+		w.tick(500 * time.Millisecond)
+	}
+	var b strings.Builder
+	read := func(ref blob.Ref) string {
+		data, err := blob.ReadAll(ctx, w.owner, ref, 1<<20)
+		if err != nil {
+			return err.Error()
+		}
+		return string(data)
+	}
+	head := w.head(run)
+	fmt.Fprintf(&b, "caller: %s %s\n", head.Status, w.failure(run))
+	for _, ref := range blob.Refs(w.latest(run).State.Output) {
+		fmt.Fprintf(&b, "  output file: %s\n", read(ref))
+	}
+	called := w.called(run)
+	runs := w.runsOf("lookup")
+	fmt.Fprintf(&b, "runs of lookup: %d, the caller's record names %d\n", len(runs), len(called))
+	var lines []string
+	for _, r := range runs {
+		lines = append(lines, fmt.Sprintf("  %s, steps %d, called by the job %v\n", w.head(r).Status, w.head(r).Step, slices.Contains(called, r)))
+	}
+	slices.Sort(lines)
+	b.WriteString(strings.Join(lines, ""))
+	message := strings.SplitN(call, "/", 2)[1]
+	r, err := c2.Receipt(ctx, message)
+	if err != nil || r == nil {
+		fmt.Fprintf(&b, "client's receipt: %+v %v\n", r, err)
+	} else {
+		fmt.Fprintf(&b, "client's receipt: taken %v, names one of the runs %v, refused %q\n", r.Taken, slices.Contains(runs, r.Run), r.Refused)
+	}
+	shown, err := c2.Show(ctx, call)
+	if err != nil {
+		fmt.Fprintf(&b, "client's call: %v\n", err)
+	} else {
+		fmt.Fprintf(&b, "client's call: %s\n", shown.Status)
+	}
+	beside := w.list(store.ReceiptBlobs("ctl", "c2", message))
+	fmt.Fprintf(&b, "beside the receipt: %d blobs\n", len(beside))
+	if data, _, err := c2.Fetch(ctx, call, "got.file"); err == nil {
+		got, _ := io.ReadAll(data)
+		fmt.Fprintf(&b, "  %s\n", got)
+	} else {
+		fmt.Fprintf(&b, "  %v\n", err)
+	}
+	failed := 0
+	for _, op := range w.noted() {
+		if strings.HasSuffix(op.Name, ".failed") && op.Act == store.ActAdd && op.Done {
+			failed++
+		}
+	}
+	left := append(w.list(store.Inbox("ctl")), w.wakes()...)
+	fmt.Fprintf(&b, "failed written: %d; left waiting: %d %v\n", failed, len(left), left)
+	return b.String(), s.stopped.Load()
+}
+
+// A controller stopped after any one write of a call job's or a client's
+// call carries on to the same end: one called run for each, one receipt,
+// one result, the files copied, and no failure written.
+func Test_ctl_call_stopped_after_every_write(t *testing.T) {
+	want, _ := callsStopped(t, 1<<40)
+	for _, line := range []string{"caller: done", "output file: one", "runs of lookup: 2, the caller's record names 1", "taken true, names one of the runs true", "client's call: done", "beside the receipt: 1 blobs", "  two\n", "failed written: 0; left waiting: 0"} {
+		if !strings.Contains(want, line) {
+			t.Fatalf("the calls never stopped did not end well (no %q):\n%s", line, want)
+		}
+	}
+	for n := int64(0); ; n++ {
+		got, stopped := callsStopped(t, n)
+		if !stopped {
+			if n < 10 {
+				t.Fatalf("the workload made only %d writes", n)
+			}
+			return
+		}
+		if got != want {
+			t.Fatalf("stopped after %d writes, the calls went otherwise.\nstopped:\n%s\nnever stopped:\n%s", n, got, want)
+		}
 	}
 }

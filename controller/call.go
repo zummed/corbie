@@ -212,10 +212,15 @@ func (p *pass) callFailed(a *arrival, why string) error {
 
 // result writes what became of a run a client called beside the call's
 // receipt: the blobs its output names first, and then the result, sealed
-// to the client.
+// to the client. A client the controller no longer has a card for is
+// written nothing, and the receipt kept for the result goes.
 func (p *pass) result(ask *instance.Ask) error {
 	to, err := p.trusted(ask.Sender)
-	if err != nil || to == nil {
+	if err != nil {
+		return err
+	}
+	if to == nil {
+		_, err := p.store.Delete(p.ctx, store.Receipt(p.ctl, ask.Sender, ask.Message), store.Overwrite)
 		return err
 	}
 	beside := store.ReceiptBlobs(p.ctl, ask.Sender, ask.Message)

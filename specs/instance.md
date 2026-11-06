@@ -58,6 +58,6 @@ A client's start of a location in a tree it does not own is a call. The client c
 2. The controller writes the call's receipt at once: taken, naming the run, or refused and why.
 3. When the run ends, the controller writes the call's result beside the receipt: the run's status, and its output or error, with the blobs the output names.
 
-The result is sealed to the client that called. The receipt of a taken call is kept while its run is running, and the receipt and the result are deleted together a day after the result is written.
+The result is sealed to the client that called. The receipt of a taken call is kept while its run is running, and the receipt and the result are deleted together a day after the result is written. When the controller holds no card for the client as the run ends, it writes no result and deletes the receipt.
 
 A message is good for as long as its sender says, a few minutes unless it says otherwise. Until the controller has taken it there is no receipt and no head, and a client that asks is told the run is waiting to start. Once a start is past its time with no receipt, the run is no longer waiting: it was never taken up.

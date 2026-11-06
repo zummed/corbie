@@ -794,3 +794,63 @@ func TestDueTimerDoesNotWaitBehindHousekeeping(t *testing.T) {
 		t.Fatalf("after the passes that followed, %d wakes for housekeeping are left", n)
 	}
 }
+
+// A receipt is aged from when it was written, whatever time its message's
+// name carries: one under a name a year old, written now, is kept a day.
+func Test_ctl_receipt_is_aged_from_its_own_write(t *testing.T) {
+	w := newWorld(t)
+	run := w.submit(kept, nil, nil)
+	w.settle()
+	old := "20251010T120000.000Z-0123456789"
+	w.leave(w.c1, old, &instance.Message{Kind: instance.KindEvent, Instance: run, Event: &machine.Event{Name: "tick"}})
+	w.settle()
+	if w.receipt(old) == nil {
+		t.Fatal("the message under an old name got no receipt")
+	}
+	w.tick(2 * time.Hour)
+	w.settle()
+	if w.receipt(old) == nil {
+		t.Fatal("a receipt written two hours ago went because its message's name is a year old")
+	}
+	w.tick(23 * time.Hour)
+	w.settle()
+	if w.receipt(old) != nil {
+		t.Fatal("the receipt is still there a day after it was written")
+	}
+}
+
+// A taken call's receipt that waits for its result is passed over, however
+// many there are: receipts past keeping that sort after a thousand of them
+// still go, a thousand in a round and the rest in the next.
+func Test_ctl_receipts_past_keeping_behind_running_calls_go(t *testing.T) {
+	w := newWorld(t)
+	w.submit(kept, nil, nil)
+	w.settle()
+	receipt := func(message string, until time.Time, r *instance.Receipt) {
+		at := store.Receipt("ctl", "c1", message)
+		data, err := w.ctl.Write(at, w.clock(), until, r, w.c1.Card)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := w.owner.Write(ctx, at, data, store.OnlyIfNew); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for i := range 1001 {
+		receipt(fmt.Sprintf("a-call-%04d", i), time.Time{}, &instance.Receipt{Taken: true, Run: "c1/20261010T120000.000Z-0123456789"})
+	}
+	for i := range 1001 {
+		receipt(fmt.Sprintf("b-refused-%04d", i), w.clock().Add(instance.ReceiptLife), &instance.Receipt{Refused: "no"})
+	}
+	w.tick(26 * time.Hour)
+	w.settle()
+	if r := w.receipt("b-refused-1000"); r != nil {
+		t.Fatal("a receipt past keeping behind a thousand running calls is still there")
+	}
+	if r := w.receipt("b-refused-0000"); r != nil {
+		t.Fatal("a receipt past keeping is still there")
+	}
+	if r := w.receipt("a-call-1000"); r == nil {
+		t.Fatal("the receipt of a call waiting for its result went")
+	}
+}

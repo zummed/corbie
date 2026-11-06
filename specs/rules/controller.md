@@ -261,7 +261,9 @@ The detailed rules behind the [Controller overview](../controller.md). What the 
 
 **C-ctl-82** A step names the run a call started by `Run`, never by `Child`, so removing the caller past keeping, and trimming what is below a running caller, never follows it. The called run is a root of another tree's client, and its record would otherwise go with its caller's. *Test:* `ctl_removing_a_caller_leaves_the_run_it_called`
 
-**C-ctl-83** A taken call's receipt is written with no end in its frame, and housekeeping reads only that frame to keep it until its result has been written a day. A receipt is sealed to its client alone, and a call that runs past a day would otherwise lose its receipt while its run is running. *Test:* `ctl_taken_call_receipt_waits_for_its_result`
+**C-ctl-83** A taken call's receipt is written with no end in its frame, and housekeeping reads only that frame to keep it until its result has been written a day. Housekeeping passes over such receipts, however many there are, to those past keeping, and when the run ends with no card held for the client the receipt is deleted. A receipt is sealed to its client alone, and a call that runs past a day would otherwise lose its receipt while its run is running. *Test:* `ctl_taken_call_receipt_waits_for_its_result`, `ctl_receipts_past_keeping_behind_running_calls_go` and `ctl_taken_call_receipt_goes_when_its_client_is_gone`
+
+**C-ctl-84** A call can be carried out again after a stop at any write and leaves what one never stopped leaves. The called run is named from the message that starts it; a client's call is written to the controller's own inbox before the client's start is deleted; a call whose run does not start writes its failure under a name that follows from the start's before the start is deleted; a result's blobs are copied before the result is written; and every write is only-if-new. A call carried out twice would start two runs and answer the caller twice. *Test:* `ctl_call_stopped_after_every_write`
 
 ## Keyed runs
 

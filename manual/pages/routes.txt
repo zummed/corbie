@@ -48,6 +48,8 @@ Query parameters
   GET /runs?status=failed       only that status: running, done, failed or cancelled
   GET /runs?parent=<id>         only the child runs of that run
   GET /runs?label=team=ops      only runs with that label; `label=team` matches any value; repeatable
+  GET /runs?at=<location>       only runs at that location
+  GET /runs?at=<loc>&key=<key>  only the run with that key at a keyed location
   GET /runs?watch               a stream of the list
   GET /runs/<id>?wait           answers when the run has ended
   GET /runs/<id>?wait=30s       answers after 30s at most, with the run as it is then

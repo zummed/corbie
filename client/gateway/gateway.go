@@ -104,10 +104,10 @@ func (g *Gateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			g.start(w, r)
 		}
 	case len(parts) == 1 && r.Method == http.MethodGet:
-		if !takes(w, query, "all", "status", "parent", "label", "watch") {
+		if !takes(w, query, "all", "status", "parent", "label", "at", "key", "watch") {
 			return
 		}
-		filter := client.Filter{Status: query.Get("status"), Parent: query.Get("parent"), Finished: query.Has("all")}
+		filter := client.Filter{Status: query.Get("status"), Parent: query.Get("parent"), Location: query.Get("at"), Key: query.Get("key"), Finished: query.Has("all")}
 		if filter.Status != "" && !slices.Contains(client.Statuses, filter.Status) {
 			fail(w, http.StatusBadRequest, fmt.Errorf("status is %s", strings.Join(client.Statuses, ", ")))
 			return

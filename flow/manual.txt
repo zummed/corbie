@@ -94,9 +94,9 @@ A failed stage fails the flow, unless a stage handles it: a stage whose
       step 2  done
       output: "the summary"
     corbie test report.yaml --input '{"fail": true}' --watch
-      step 2  <- failed from summarise {"error":"Error: no pages at line 2, column 23","status":"error"}
+      step 2  <- failed from summarise {"error":"no pages at line 2, column 23","status":"error"}
       step 2  -> job tell_someone: a script, on runner
-      step 3  <- done from tell_someone "told: Error: no pages at line 2, column 23"
+      step 3  <- done from tell_someone "told: no pages at line 2, column 23"
       step 3  done
 
 - When `summarise` works, `tell_someone` is skipped and the run is done.

@@ -62,8 +62,8 @@ The detailed rules behind the [Runner overview](../runner.md).
 **R-run-20** When the script returns, the runner writes any blobs in its output into the instance's record and then sends the output to the controller as the job's result, along with the permissions it used.
 *Accept:* a script returns `{ a: 1, f: <a file> }` having read one file and connected to one host: when the result is in the controller's inbox, the blob is already complete in the instance's record; the machine receives `done` with `a` as 1 and `f` as a reference; and the result lists that read and that connection and nothing else.
 
-**R-run-23** If the script throws, or is refused something, or runs out of time, the result says so.
-*Accept:* `throw new Error("no")` gives the machine `failed` with an error whose text holds `no`. A script allowed nothing reads a file: the result has the status denied and carries the refusal. A script that never returns, in a job with a one-second time limit: the result has the status timeout.
+**R-run-23** If the script throws, or is refused something, or runs out of time, the result says so. A thrown error's text is its message, then the line and column where it was thrown.
+*Accept:* `throw new Error("no")` gives the machine `failed` with the error `no at line 1, column 7`. A script allowed nothing reads a file: the result has the status denied and carries the refusal. A script that never returns, in a job with a one-second time limit: the result has the status timeout.
 
 **R-run-26** The runner deletes a job from its inbox only when the job's result is written.
 *Accept:* stop the runner after a script has returned and before its result is written: the job is still in the inbox. Let another job finish as usual: its result is in the controller's inbox, and the job is gone from the runner's.

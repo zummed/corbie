@@ -98,7 +98,7 @@ sent with `emit`.
   a Date                   text, such as 2026-10-13T20:00:00Z
   a function               the job fails with status `error`
   a handle to a secret     the job fails with status `error`
-  an error not caught      the job fails with status `error`, and the error names the line
+  an error not caught      the job fails with status `error`; the error is its message and line
 
 A blob is a large value, such as a file, a long text or an image. To a script
 it is an object with `type` and `size`, and the `blobs` plugin reads and makes

@@ -15,7 +15,7 @@
       },
       {
         "error": {
-          "<contains>": "low: work: Error: told to fail"
+          "<contains>": "low: work: told to fail"
         },
         "item": {
           "fail": true,

@@ -3,7 +3,7 @@
   "output": {
     "cleanup": {
       "error": {
-        "<contains>": "two: Error: told to fail"
+        "<contains>": "two: told to fail"
       }
     },
     "needs_kid_skipped": true

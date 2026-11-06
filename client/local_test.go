@@ -150,7 +150,7 @@ func TestScriptThrows(t *testing.T) {
 		"add.js": "const x = 1\nthrow new Error(\"told to fail\")\n",
 		"lib.js": ``,
 	}, map[string]any{"a": 1})
-	if r.Status != "failed" || r.Failure != "error" || !strings.Contains(r.Error, "adding: Error: told to fail at line 2, column 7") {
+	if r.Status != "failed" || r.Failure != "error" || !strings.Contains(r.Error, "adding: told to fail at line 2, column 7") {
 		t.Fatalf("the run ended %s/%s with %q", r.Status, r.Failure, r.Error)
 	}
 }

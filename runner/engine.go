@@ -191,9 +191,16 @@ func (e *engine) failure(err error) *instance.Result {
 				text = stack.String()
 			}
 		}
-		// The message is searched for secrets before anything is cut from
-		// it.
-		message := e.job.Mask(thrown.Value().String())
+		// An error gives its message, as Node's err.message has it, with
+		// no "Error: " before it. The message is searched for secrets
+		// before anything is cut from it.
+		message := thrown.Value().String()
+		if obj, ok := thrown.Value().(*goja.Object); ok {
+			if m, ok := obj.Get("message").(goja.String); ok && m.String() != "" {
+				message = m.String()
+			}
+		}
+		message = e.job.Mask(message)
 		if m := where.FindStringSubmatch(strings.TrimPrefix(text, thrown.Value().String())); m != nil {
 			message = e.position(message + " at script" + m[0])
 		}

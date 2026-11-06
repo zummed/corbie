@@ -547,7 +547,7 @@ func Test_agent_part_list_goes_to_the_parts_ask(t *testing.T) {
 // the place the check names it by.
 func Test_agent_list_is_named_by_its_place(t *testing.T) {
 	for list, want := range map[string]string{
-		`throw new Error("no server")`: "open.net.tools.files.list: Error: no server",
+		`throw new Error("no server")`: "open.net.tools.files.list: no server",
 		`return "nothing"`:             "open.net.tools.files.list: the list gave no list of tools",
 	} {
 		files := map[string]string{}

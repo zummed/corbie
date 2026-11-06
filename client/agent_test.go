@@ -931,7 +931,7 @@ func Test_agent_tree_shaped_tools_and_reply(t *testing.T) {
 func TestAgentListThatCannotBeUsedFails(t *testing.T) {
 	long := strings.Repeat("x", 60)
 	for list, want := range map[string]string{
-		`none`: "tools.files.list: Error: the server is away",
+		`none`: "tools.files.list: the server is away",
 		`[ { does: Nameless, args: { type: object } } ]`:                                     "a tool in the list has no name",
 		`[ { name: count, args: { type: string } } ]`:                                        `the tool "count"'s args`,
 		`[ { name: count } ]`:                                                                `the tool "count"'s args`,

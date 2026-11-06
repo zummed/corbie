@@ -90,6 +90,19 @@ func Test_run_error_position_matches_script_as_written(t *testing.T) {
 	wantError(t, script(t, l, "const a = 1\nconst b = = 2", "timeout: 5s"), "error", "line 2")
 }
 
+// A thrown error gives its message, with no "Error: " before it, so a
+// script that throws another job's error again gives it once.
+func TestThrownErrorGivesItsMessage(t *testing.T) {
+	l := local(t)
+	wantError(t, script(t, l, `try { throw new Error("first") } catch (e) { throw new Error("again: " + e.message) }`, "timeout: 5s"),
+		"error", "again: first at line 1, column 52")
+	r := script(t, l, `throw new TypeError("not a list")`, "timeout: 5s")
+	if r.Error != "it: not a list at line 1, column 7" {
+		t.Fatalf("the error is %q", r.Error)
+	}
+	wantError(t, script(t, l, `throw "plain text"`, "timeout: 5s"), "error", "plain text")
+}
+
 func Test_run_require_reads_only_listed_files(t *testing.T) {
 	l := local(t, "all")
 	dir := t.TempDir()

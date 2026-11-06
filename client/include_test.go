@@ -373,6 +373,19 @@ limits: { turns: 3 }
 	if len(d.Children) != 1 {
 		t.Errorf("the machine in place gave %v", d.Children)
 	}
+	// A null removes the value it wins over, and is refused where nothing is
+	// removed.
+	files["base.yaml"] = strings.TrimSuffix(files["base.yaml"], "colour: red\n")
+	files["family.yaml"] = strings.Replace(files["family.yaml"], "read: { does: Read one shelf }\n", "write: null\n", 1)
+	files["family.yaml"] = strings.Replace(files["family.yaml"], "limits: { turns: 3 }", "limits: { turns: 3, timeout: null }", 1)
+	out = string(parseFamily(t, files).WrittenOut())
+	if strings.Contains(out, "write") || strings.Contains(out, "timeout") || !strings.Contains(out, "does: Read") || !strings.Contains(out, "turns: 3") {
+		t.Errorf("a null did not remove what it won over:\n%s", out)
+	}
+	files["family.yaml"] = strings.Replace(files["family.yaml"], "write: null", "wrote: null", 1)
+	if _, err := machine.ParseIn("family.yaml", []byte(files["family.yaml"]), machine.Given(files)); err == nil || !strings.Contains(err.Error(), "tools.wrote") {
+		t.Errorf("a null that removes nothing gave %v", err)
+	}
 	// A value of another kind than the included one wins whole.
 	d = draft(t, "flow: f\ninclude: ./base.yaml\nstages:\n  one: { job: ./a.js }\n", map[string]string{"base.yaml": "stages: two\nkeep: 1d\n", "a.js": "return 1"})
 	if !strings.Contains(jsonOf(d.Definition), `"keep":"24h0m0s"`) || strings.Contains(string(d.WrittenOut()), "two") {

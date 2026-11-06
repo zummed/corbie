@@ -35,6 +35,9 @@ type node struct {
 
 func (n *node) isMap() bool { return n != nil && n.m != nil }
 
+// isNull says whether a node is null: written as null, ~ or nothing at all.
+func isNull(n *node) bool { return n != nil && n.m == nil && !n.list && n.value == nil }
+
 // set gives a mapping a value under a name, after those it has.
 func (n *node) set(name string, v *node) {
 	if _, ok := n.m[name]; !ok {
@@ -94,8 +97,9 @@ func asWritten(n *node, chain []string) *node {
 
 // merged gives two mappings merged at every depth. Where both hold a name
 // and the two values are not both mappings, the winner's value is taken
-// whole: first's if firstWins, then. The names keep the order they are met
-// in, first's before second's.
+// whole: first's if firstWins, then. A name both hold is left out when the
+// winner's value is null. The names keep the order they are met in, first's
+// before second's.
 func merged(first, second *node, firstWins bool) *node {
 	switch {
 	case first == nil:
@@ -114,6 +118,15 @@ func merged(first, second *node, firstWins bool) *node {
 	}
 	out.keys, out.m = nil, map[string]*node{}
 	for _, k := range first.keys {
+		if other, both := second.m[k]; both {
+			winner := first.m[k]
+			if !firstWins {
+				winner = other
+			}
+			if isNull(winner) {
+				continue
+			}
+		}
 		out.set(k, merged(first.m[k], second.m[k], firstWins))
 	}
 	for _, k := range second.keys {

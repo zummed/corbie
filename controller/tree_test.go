@@ -1,6 +1,7 @@
 package controller_test
 
 import (
+	"bytes"
 	"fmt"
 	"path"
 	"slices"
@@ -9,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/zummed/corbie/blob"
 	"github.com/zummed/corbie/client"
 	"github.com/zummed/corbie/controller"
 	"github.com/zummed/corbie/identity"
@@ -142,6 +144,41 @@ func Test_ctl_submit_is_refused_naming_the_tree(t *testing.T) {
 			t.Errorf("want %q, the submit gave %+v", refused, r)
 		}
 	}
+	// On a file system that ignores case, /Home's entry is /home's.
+	data, _, err := w.owner.Read(ctx, store.Tree("ctl", "/home"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := w.owner.Write(ctx, store.Tree("ctl", "/Home"), data, store.Overwrite); err != nil {
+		t.Fatal(err)
+	}
+	if r := w.submitTree(w.client, at("/Home")); r.Taken || !strings.Contains(r.Refused, "the tree /home is kept in the same file as /Home") {
+		t.Errorf("a tree of another case gave %+v", r)
+	}
+	// A submit taken after a later one of the same tree is refused.
+	var messages []string
+	for range 2 {
+		message, err := w.client.Submit(ctx, at("/home"), 0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		messages = append(messages, store.Message("ctl", "c1", message))
+	}
+	earlier, _, err := w.owner.Read(ctx, messages[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := w.owner.Delete(ctx, messages[0], store.Overwrite); err != nil {
+		t.Fatal(err)
+	}
+	w.settle()
+	if _, err := w.owner.Write(ctx, messages[0], earlier, store.OnlyIfNew); err != nil {
+		t.Fatal(err)
+	}
+	w.settle()
+	if r := w.receipt(path.Base(messages[0])); r == nil || r.Taken || !strings.Contains(r.Refused, "a later submit of the tree /home was taken before this one") {
+		t.Errorf("the earlier submit gave %+v", r)
+	}
 }
 
 // The receipt says what the submit did at each location, the directory
@@ -231,6 +268,67 @@ func Test_ctl_singleton_restart_has_no_overlap(t *testing.T) {
 	}
 	if runs := w.at("/s"); runs[first] != "cancelled" || runs[second] != "running" || w.latest(second).State.Title != "changed" {
 		t.Fatalf("the runs at /s are %v", runs)
+	}
+	// Started again twice before the running run has ended, the second
+	// start waits for that run too, and the first is left.
+	var messages []string
+	for _, title := range []string{"twice", "thrice"} {
+		message, err := w.client.Submit(ctx, w.tree("/s", "", map[string]string{"/s": strings.Replace(changed, "changed", title, 1)}, nil), 0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		messages = append(messages, message)
+	}
+	for range 6 {
+		w.settle()
+		w.tick(time.Second)
+	}
+	left, third := w.receipt(messages[0]).Tree.Locations[0].Run, w.receipt(messages[1]).Tree.Locations[0].Run
+	ended, began = -1, -1
+	for i, op := range w.noted() {
+		switch {
+		case op.Act == store.ActAdd && op.Done && op.Name == store.FinishedHead("ctl", second):
+			ended = i
+		case op.Act == store.ActAdd && op.Done && op.Name == store.Step("ctl", third, 1):
+			began = i
+		}
+	}
+	if ended < 0 || began < ended {
+		t.Fatalf("the running run ended at write %d and the third began at %d", ended, began)
+	}
+	if runs := w.at("/s"); len(runs) != 3 || runs[second] != "cancelled" || runs[third] != "running" || w.head(left) != nil {
+		t.Fatalf("the runs at /s are %v", runs)
+	}
+}
+
+// A file whose machine is the same, written on other lines, is recorded
+// with its new lines and leaves its runs as they were.
+func Test_ctl_a_moved_line_is_recorded(t *testing.T) {
+	w := newWorld(t)
+	transient := strings.Replace(waiting, "lifetime: singleton", "update: restart", 1)
+	w.submitTree(w.client, w.tree("/m", "", map[string]string{"/m": transient}, nil))
+	start := func() string {
+		run, err := w.client.Start(ctx, nil, client.Start{At: "/m"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		w.settle()
+		return run
+	}
+	line := func(run string) string {
+		def, err := machine.Load(ctx, w.owner, w.latest(run).State.Definition)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return def.Lines["initial"]
+	}
+	before := start()
+	done := w.submitTree(w.client, w.tree("/m", "", map[string]string{"/m": "# moved\n" + dedent(transient)}, nil)).Tree
+	if done.Locations[0].What != "recorded" || len(done.Cancelled) > 0 || w.head(before).Status != "running" {
+		t.Fatalf("the submit did %+v", done)
+	}
+	if after := start(); line(before) == line(after) {
+		t.Fatalf("both runs have initial: at %s", line(after))
 	}
 }
 
@@ -432,9 +530,9 @@ func (w *world) trees() string {
 
 // story submits a tree, then the same tree changed with a file gone, and
 // stops the controller after a number of writes in the second; a controller
-// that has never run before carries on. It gives what is left, the second
-// receipt, and whether the stop happened.
-func submitStory(t *testing.T, stopAfter int64) (string, *instance.Receipt, bool) {
+// that has never run before carries on, late by as much as is given. It
+// gives what is left, the second receipt, and whether the stop happened.
+func submitStory(t *testing.T, stopAfter int64, late time.Duration) (string, *instance.Receipt, bool) {
 	w := newWorld(t)
 	plain := "flow: plain\nstages:\n  s: { job: { script: ./one.js } }\n"
 	gone := strings.Replace(waiting, "statechart: waiting", "statechart: gone", 1)
@@ -455,6 +553,7 @@ func submitStory(t *testing.T, stopAfter int64) (string, *instance.Receipt, bool
 		}
 		w.tick(400 * time.Millisecond)
 	}
+	w.tick(late)
 	w.afresh(inner)
 	for range 6 {
 		w.settle()
@@ -466,30 +565,43 @@ func submitStory(t *testing.T, stopAfter int64) (string, *instance.Receipt, bool
 // A controller stopped after any single write of a submit leaves what a
 // controller never stopped leaves: one entry for the tree, each file at its
 // location, one singleton running on the changed file, the removed file's
-// run cancelled, and the same receipt.
+// run cancelled, and the same receipt. So does one that comes back after
+// the message would have been too late: the tree's entry, written first,
+// says the submit was taken.
 func Test_ctl_submit_stopped_after_every_write(t *testing.T) {
-	want, wantReceipt, _ := submitStory(t, 1<<40)
+	want, wantReceipt, _ := submitStory(t, 1<<40, 0)
 	if !strings.Contains(want, "/x/kept runs: [cancelled running]") || !strings.Contains(want, "/x/gone runs: [cancelled]") ||
 		!strings.Contains(want, "waiting: [] uploads: []") || strings.Contains(want, "/x/gone file") {
 		t.Fatalf("the submit never stopped left:\n%s", want)
 	}
-	for n := int64(0); ; n++ {
-		got, receipt, stopped := submitStory(t, n)
-		if !stopped {
-			if n < 10 {
-				t.Fatalf("the submit made only %d writes", n)
+	tooLate := instance.MessageLife + identity.ClockAllowance + time.Minute
+	for _, late := range []time.Duration{0, tooLate} {
+		for n := int64(0); ; n++ {
+			got, receipt, stopped := submitStory(t, n, late)
+			if !stopped {
+				if n < 10 {
+					t.Fatalf("the submit made only %d writes", n)
+				}
+				break
 			}
-			return
-		}
-		if got != want {
-			t.Fatalf("stopped after %d writes, the submit left:\n%s\nnever stopped:\n%s", n, got, want)
-		}
-		if receipt == nil || !receipt.Taken || len(receipt.Tree.Locations) != len(wantReceipt.Tree.Locations) {
-			t.Fatalf("stopped after %d writes, the receipt is %+v", n, receipt)
-		}
-		for i, done := range receipt.Tree.Locations {
-			if done.What != wantReceipt.Tree.Locations[i].What {
-				t.Fatalf("stopped after %d writes, the receipt says %+v", n, receipt.Tree.Locations)
+			if late > 0 && n == 0 {
+				// Stopped before its first write, the submit was never taken.
+				if receipt == nil || receipt.Taken || !strings.Contains(receipt.Refused, "the message came too late") {
+					t.Fatalf("taken late before any write, the receipt is %+v", receipt)
+				}
+				continue
+			}
+			if got != want {
+				t.Fatalf("stopped after %d writes and late by %s, the submit left:\n%s\nnever stopped:\n%s", n, late, got, want)
+			}
+			if receipt == nil || !receipt.Taken || len(receipt.Tree.Locations) != len(wantReceipt.Tree.Locations) ||
+				len(receipt.Tree.Cancelled) != len(wantReceipt.Tree.Cancelled) || len(receipt.Tree.Cancelled) != 2 {
+				t.Fatalf("stopped after %d writes and late by %s, the receipt is %+v", n, late, receipt)
+			}
+			for i, done := range receipt.Tree.Locations {
+				if done.What != wantReceipt.Tree.Locations[i].What {
+					t.Fatalf("stopped after %d writes and late by %s, the receipt says %+v", n, late, receipt.Tree.Locations)
+				}
 			}
 		}
 	}
@@ -527,6 +639,34 @@ func Test_ctl_submit_reads_only_its_own_uploads(t *testing.T) {
 	}
 	w.settle()
 	if r := w.receipt(name); r == nil || r.Taken || !strings.Contains(r.Refused, "the file at /o is not among the submit's uploads") {
+		t.Fatalf("the submit gave %+v", r)
+	}
+	// A definition among the uploads that names a script in that record.
+	name = "20261010T120000.000000Z-000002"
+	elsewhere := store.Blob("ctl", run, blob.NewName())
+	draft := w.tree("/o", "", map[string]string{"/o": "flow: plain\nstages:\n  s: { job: { script: ./one.js } }\n"},
+		map[string]string{"one.js": "return 1"}).Machines[0].Draft
+	def, err := draft.Write(ctx, func(typ string, contents []byte) (blob.Ref, error) {
+		if typ != blob.Definition {
+			return blob.Write(ctx, w.client.Store, elsewhere, typ, blob.NewKey(), bytes.NewReader(contents))
+		}
+		contents = bytes.Replace(contents, []byte(`"`+path.Base(elsewhere)+`"`), []byte(`"`+elsewhere+`"`), 1)
+		return blob.Write(ctx, w.client.Store, store.Upload("ctl", "c1", name, blob.NewName()), typ, blob.NewKey(), bytes.NewReader(contents))
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	msg = &instance.Message{Kind: instance.KindSubmit, Submit: &instance.Submit{Prefix: "/o",
+		Files: map[string]instance.SubmitFile{"/o": {Definition: def, Hash: "h"}}}}
+	at = store.Message("ctl", "c1", name)
+	if data, err = w.c1.Write(at, w.clock(), w.clock().Add(time.Minute), msg, w.ctl.Card); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := w.client.Store.Write(ctx, at, data, store.OnlyIfNew); err != nil {
+		t.Fatal(err)
+	}
+	w.settle()
+	if r := w.receipt(name); r == nil || r.Taken || !strings.Contains(r.Refused, "the file at /o names a blob that is not among the submit's uploads") {
 		t.Fatalf("the submit gave %+v", r)
 	}
 }

@@ -2,6 +2,7 @@ package controller
 
 import (
 	"crypto/rand"
+	"errors"
 	"fmt"
 	"path"
 	"slices"
@@ -21,9 +22,10 @@ import (
 // A submit is taken in this order, and every write in it can be made again:
 //
 //  1. The tree's entry is written, naming the submit and what it does. A
-//     submit taken again after a stop reads what it does from there.
-//  2. Each new or changed file is copied to its location, then the entry of
-//     the location is written, then the blobs it no longer names go.
+//     submit taken again after a stop reads what it does from there, and
+//     is carried out however late it is.
+//  2. Each file that reads is copied to its location, then the entry of the
+//     location is written, then the blobs it no longer names go.
 //  3. The runs to be cancelled are sent a cancel, and each singleton to be
 //     started is sent its start and then its key's file is written.
 //  4. The locations whose files have gone are removed.
@@ -51,8 +53,8 @@ type treeFile struct {
 type does struct {
 	// Done is what the receipt says of each location.
 	Done []instance.Recorded `json:"done,omitzero"`
-	// Copy are the locations whose files are new or changed, Cancel those
-	// whose runs are cancelled, and Remove those whose files have gone.
+	// Copy are the locations whose files are recorded, Cancel those whose
+	// runs are cancelled, and Remove those whose files have gone.
 	Copy   []string `json:"copy,omitzero"`
 	Cancel []string `json:"cancel,omitzero"`
 	Remove []string `json:"remove,omitzero"`
@@ -90,6 +92,25 @@ func (p *pass) submit(a *arrival) error {
 	if answered {
 		return p.submitted(a, base)
 	}
+	if err := store.CheckLocation(msg.Prefix); err != nil {
+		return p.refuseSubmit(a, base, err.Error())
+	}
+	if msg.Prefix == "/" {
+		return p.refuseSubmit(a, base, "/ is never a tree: it is where secrets and values every tree uses are set")
+	}
+	entry, mark, err := p.readTree(msg.Prefix)
+	var other otherCase
+	if errors.As(err, &other) {
+		return p.refuseSubmit(a, base, other.Error())
+	}
+	if err != nil {
+		return err
+	}
+	if entry != nil && entry.Client == a.sender && entry.Submit == base {
+		// The entry names this submit: it was taken when the entry was
+		// written, and is carried out however late it is now.
+		return p.carryTree(a, base, entry)
+	}
 	if !a.good(p.now) {
 		return p.refuseSubmit(a, base, fmt.Sprintf("the message came too late: it was good until %s", a.until.Format("2006-01-02T15:04:05Z07:00")))
 	}
@@ -100,54 +121,45 @@ func (p *pass) submit(a *arrival) error {
 	if refused != "" {
 		return p.refuseSubmit(a, base, refused)
 	}
-	entry, mark, err := p.readTree(msg.Prefix)
-	if err != nil {
-		return err
-	}
 	switch {
 	case entry != nil && entry.Client != a.sender:
 		return p.refuseSubmit(a, base, fmt.Sprintf("the tree %s belongs to the client %s", msg.Prefix, entry.Client))
 	case entry != nil && entry.Submit > base:
-		// A later submit of the same client's is recorded: this one was taken.
-		return p.submitted(a, base)
-	case entry == nil || entry.Submit != base:
-		fresh, err := p.plan(a, base, entry)
-		if err != nil {
-			return err
-		}
-		how := store.OnlyIfNew
-		if entry != nil {
-			how = store.OnlyIfUnchanged(mark)
-		}
-		at := store.Tree(p.ctl, msg.Prefix)
-		data, err := p.c.ID.Write(at, p.now, noEnd, fresh, p.c.ID.Card)
-		if err != nil {
-			return err
-		}
-		written, err := p.store.Write(p.ctx, at, data, how)
-		if err != nil || !written {
-			// Another copy wrote the entry first: the next pass reads it.
-			p.later()
-			return err
-		}
-		entry = fresh
+		return p.refuseSubmit(a, base, fmt.Sprintf("a later submit of the tree %s was taken before this one", msg.Prefix))
 	}
-	return p.carryTree(a, base, entry)
+	fresh, err := p.plan(a, base, entry)
+	if err != nil {
+		return err
+	}
+	how := store.OnlyIfNew
+	if entry != nil {
+		how = store.OnlyIfUnchanged(mark)
+	}
+	at := store.Tree(p.ctl, msg.Prefix)
+	data, err := p.c.ID.Write(at, p.now, noEnd, fresh, p.c.ID.Card)
+	if err != nil {
+		return err
+	}
+	written, err := p.store.Write(p.ctx, at, data, how)
+	if err != nil || !written {
+		// Another copy wrote the entry first: the next pass reads it.
+		p.later()
+		return err
+	}
+	return p.carryTree(a, base, fresh)
 }
 
 // checkTree says why a submit is refused, if it is: a prefix the client's
 // ceiling does not allow, a tree inside or above another, a location not
-// in the tree or below another's.
+// in the tree or below another's, a file or a blob it names that is not
+// among the submit's uploads.
 func (p *pass) checkTree(a *arrival, msg *instance.Submit) (string, error) {
-	if err := store.CheckLocation(msg.Prefix); err != nil {
-		return err.Error(), nil
-	}
-	if msg.Prefix == "/" {
-		return "/ is never a tree: it is where secrets and values every tree uses are set", nil
-	}
 	client, err := p.trusted(a.sender)
-	if err != nil || client == nil {
+	if err != nil {
 		return "", err
+	}
+	if !client.Trusted() {
+		return fmt.Sprintf("the client %s is not trusted", a.sender), nil
 	}
 	ceiling := client.Ceiling
 	ceiling.Name = "the ceiling of the client " + strconv.Quote(a.sender)
@@ -190,9 +202,23 @@ func (p *pass) checkTree(a *arrival, msg *instance.Submit) (string, error) {
 			return fmt.Sprintf("the location %s is below %s, and a location has nothing below it", location, locations[i-1]), nil
 		}
 	}
-	for location, file := range msg.Files {
-		if path.Dir(file.Definition.At) != store.Uploaded(p.ctl, a.sender, a.name[strings.LastIndexByte(a.name, '/')+1:]) {
+	uploads := store.Uploaded(p.ctl, a.sender, a.name[strings.LastIndexByte(a.name, '/')+1:])
+	for _, location := range sortedKeys(msg.Files) {
+		def := msg.Files[location].Definition
+		if path.Dir(def.At) != uploads {
 			return fmt.Sprintf("the file at %s is not among the submit's uploads", location), nil
+		}
+		named, err := blob.Named(p.ctx, p.store, def)
+		if blob.Unusable(err) {
+			continue // a file that does not read is a problem of its own
+		}
+		if err != nil {
+			return "", err
+		}
+		for _, ref := range named {
+			if path.Dir(ref.At) != uploads {
+				return fmt.Sprintf("the file at %s names a blob that is not among the submit's uploads", location), nil
+			}
 		}
 	}
 	return "", nil
@@ -228,11 +254,11 @@ func (p *pass) plan(a *arrival, base string, before *treeEntry) (*treeEntry, err
 			lifetime = machine.LifetimeTransient
 		}
 		entry.Files[location] = treeFile{Hash: file.Hash, Lifetime: lifetime}
+		// Every file is recorded, so its location has the lines it is
+		// written at; one whose machine is the same is not changed.
+		d.Copy = append(d.Copy, location)
 		was, recorded := old[location]
 		changed := !recorded || was.Hash != file.Hash || was.Lifetime != lifetime
-		if changed {
-			d.Copy = append(d.Copy, location)
-		}
 		// A file whose lifetime changed is one removed and one new.
 		restart := recorded && (was.Lifetime != lifetime || changed && (def.Update == machine.UpdateRestart || lifetime == machine.LifetimeSingleton))
 		done := instance.Recorded{Location: location, Lifetime: lifetime, What: didRecord}
@@ -309,13 +335,18 @@ func (p *pass) carryTree(a *arrival, base string, entry *treeEntry) error {
 			starts[done.Run] = true
 		}
 	}
-	cancelled, err := p.cancelAt(entry.Client, base, d.Cancel, starts)
+	running, err := p.cancelAt(entry.Client, base, d.Cancel, starts)
 	if err != nil {
 		return err
 	}
+	var cancelled []string
+	for _, runs := range running {
+		cancelled = append(cancelled, runs...)
+	}
+	slices.Sort(cancelled)
 	for _, done := range d.Done {
 		if done.Run != "" {
-			if err := p.startSingleton(base, done); err != nil {
+			if err := p.startSingleton(base, done, running[done.Location]); err != nil {
 				return err
 			}
 		}
@@ -336,13 +367,13 @@ func (p *pass) carryTree(a *arrival, base string, entry *treeEntry) error {
 // record copies a file a submit uploaded to its location, writes the
 // location's entry, and removes the blobs the location no longer names.
 func (p *pass) record(tree, client, location string, file instance.SubmitFile, lifetime string) error {
-	// A carry-out done again finds the file there already.
+	// A carry-out done again finds this upload recorded already.
 	recorded, err := p.readLocated(location)
 	if err != nil && !isAltered(err) {
 		return err
 	}
 	def := blob.Ref{}
-	if recorded != nil && recorded.Hash == file.Hash && recorded.Tree == tree && recorded.Lifetime == lifetime {
+	if recorded != nil && path.Base(recorded.Definition.At) == path.Base(file.Definition.At) {
 		def = recorded.Definition
 	} else {
 		if def, err = blob.CopyWhole(p.ctx, p.store, file.Definition, p.ctl, store.LocationBlobs(p.ctl, location)); err != nil {
@@ -385,8 +416,9 @@ func (p *pass) deleteAll(under string, gone func(name string) bool) error {
 }
 
 // cancelAt cancels every root run at the locations given, of the runs of the
-// tree's client, but for those the submit starts. It gives the runs.
-func (p *pass) cancelAt(client, base string, locations []string, starts map[string]bool) ([]string, error) {
+// tree's client, but for those the submit starts. It gives the runs by their
+// locations.
+func (p *pass) cancelAt(client, base string, locations []string, starts map[string]bool) (map[string][]string, error) {
 	if len(locations) == 0 {
 		return nil, nil
 	}
@@ -406,7 +438,7 @@ func (p *pass) cancelAt(client, base string, locations []string, starts map[stri
 	if err != nil {
 		return nil, err
 	}
-	var cancelled []string
+	cancelled := map[string][]string{}
 	for _, head := range heads {
 		if head == nil || head.Status != instance.Running || head.Parent != "" || starts[head.Name] || !slices.Contains(locations, head.Location) {
 			continue
@@ -415,15 +447,21 @@ func (p *pass) cancelAt(client, base string, locations []string, starts map[stri
 		if _, err := p.send(store.Message(p.ctl, p.ctl, store.JobMessage(head.Name, base+".cancel")), noEnd, msg, p.c.ID.Card); err != nil {
 			return nil, err
 		}
-		cancelled = append(cancelled, head.Name)
+		cancelled[head.Location] = append(cancelled[head.Location], head.Name)
 	}
-	slices.Sort(cancelled)
+	for _, runs := range cancelled {
+		slices.Sort(runs)
+	}
 	return cancelled, nil
 }
 
 // startSingleton starts a location's singleton: its start, which waits for
-// the run it replaces to end, and then its key's file, which names it.
-func (p *pass) startSingleton(base string, done instance.Recorded) error {
+// the run it replaces to end, and then its key's file, which names it. The
+// run it replaces is one running at the location, which the submit has
+// cancelled; with none, the run its key's file names, if that run has the
+// key. A start still waiting is never the one replaced: it waits itself, and
+// is left once the key's file names this one.
+func (p *pass) startSingleton(base string, done instance.Recorded, running []string) error {
 	at := store.Key(p.ctl, done.Location, "")
 	name := store.Message(p.ctl, p.ctl, store.JobMessage(done.Run, base+".start"))
 	for {
@@ -435,7 +473,9 @@ func (p *pass) startSingleton(base string, done instance.Recorded) error {
 			return nil
 		}
 		replaces := ""
-		if file != nil {
+		if len(running) > 0 {
+			replaces = running[0]
+		} else if file != nil {
 			live, err := p.live(file)
 			if err != nil {
 				return err
@@ -503,10 +543,23 @@ func (p *pass) readTree(prefix string) (*treeEntry, store.Mark, error) {
 		return nil, mark, err
 	}
 	var entry treeEntry
-	if _, err := identity.Read(data, at, p.c.ID.Card, p.c.ID, &entry); err != nil {
+	v, err := identity.Read(data, at, p.c.ID.Card, p.c.ID, &entry)
+	if err != nil && v.At != at && strings.EqualFold(v.At, at) {
+		other, _, _ := store.ParseLocation(p.ctl, v.At)
+		return nil, mark, otherCase{tree: other, prefix: prefix}
+	}
+	if err != nil {
 		return nil, mark, fmt.Errorf("the tree at %s: %w", prefix, err)
 	}
 	return &entry, mark, nil
+}
+
+// otherCase is the entry of a tree at a prefix of another case, read where
+// a file system that ignores case keeps both in one file.
+type otherCase struct{ tree, prefix string }
+
+func (o otherCase) Error() string {
+	return fmt.Sprintf("the tree %s is kept in the same file as %s, because this store's file system ignores case", o.tree, o.prefix)
 }
 
 // readLocated reads what is recorded at a location: nil where nothing is.

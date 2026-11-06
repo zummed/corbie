@@ -194,9 +194,9 @@ The detailed rules behind the [Controller overview](../controller.md). What the 
 **R-ctl-110** A file with a problem keeps what was recorded at its location before, and its runs, and the rest of the submit is done.
 *Accept:* a tree's singleton is running; its file is changed to one that does not read and another file is added: the new file's singleton starts, and the first runs on.
 
-**C-ctl-78** A submit can be taken again after a stop at any write and leaves what one never stopped leaves. The tree's entry is written first, naming the submit and what it does, and a submit taken again does exactly that; every later write is only-if-new, writes what is there already, or deletes. Worked out again after its first writes, a submit would find its own files recorded and do nothing to the runs it was to cancel or start. *Test:* `ctl_submit_stopped_after_every_write`
+**C-ctl-78** A submit can be taken again after a stop at any write and leaves what one never stopped leaves. The tree's entry is written first, naming the submit and what it does, and a submit taken again does exactly that, however late it is; every later write is only-if-new, writes what is there already, or deletes. Its receipt names as cancelled the runs still running when it is taken again, so a cancel another copy has carried out meanwhile is not named. Worked out again after its first writes, or refused as too late, a submit would find its own files recorded and do nothing to the runs it was to cancel or start. *Test:* `ctl_submit_stopped_after_every_write`
 
-**C-ctl-79** The controller reads a submit's files only from that submit's own uploads, and keeps a tree's entry and each location's file sealed to itself. A file named elsewhere could be another client's upload, and a location's file holds the keys of its blobs. *Test:* `ctl_submit_reads_only_its_own_uploads`
+**C-ctl-79** The controller reads a submit's files, and every blob they name, only from that submit's own uploads, and keeps a tree's entry and each location's file sealed to itself. A file named elsewhere could be another client's upload, and a location's file holds the keys of its blobs. *Test:* `ctl_submit_reads_only_its_own_uploads`
 
 ## Starting runs
 
@@ -220,7 +220,7 @@ The detailed rules behind the [Controller overview](../controller.md). What the 
 **R-ctl-116** A file gone from the tree has every root run at its location cancelled, and its location removed. A child running at the location ends with its parent.
 *Accept:* `Test_ctl_removal_cancels_only_root_runs`.
 
-**C-ctl-80** A singleton started again starts once the run it replaces has ended: the start names that run, and waits while it is running. A later submit's start of the same singleton takes its key's file, and an earlier start that finds it so is left. Two runs of one singleton would act on the same thing at once. *Test:* `ctl_singleton_restart_has_no_overlap`
+**C-ctl-80** A singleton started again starts once the run it replaces has ended: the start names the run running at its location, or with none the run its key's file names, and waits while that run is running. A later submit's start of the same singleton takes its key's file, and an earlier start that finds it so is left. Two runs of one singleton would act on the same thing at once. *Test:* `ctl_singleton_restart_has_no_overlap`
 
 **C-ctl-81** The runs a submit cancels are found among its tree client's running heads, by their location, and only roots are sent a cancel. A child runs at its parent's location, and a cancel of its own would end it while its parent waits on it. *Test:* `ctl_removal_cancels_only_root_runs`
 

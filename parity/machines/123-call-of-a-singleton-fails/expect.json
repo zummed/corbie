@@ -1,0 +1,6 @@
+{
+  "status": "failed",
+  "failure": "error",
+  "error_contains": "/case/lookup is singleton: a call starts a run only of a transient location",
+  "note": "R-ctl-128: a call of a location that is not transient fails its job."
+}

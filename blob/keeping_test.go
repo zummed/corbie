@@ -130,7 +130,18 @@ func (k *kept) start(run, src string, files map[string]string) {
 	if err != nil {
 		k.t.Fatalf("the definition does not pass:\n%v", err)
 	}
-	if _, err := k.client.Start(ctx, draft, client.Start{Run: run}); err != nil {
+	// The definition is submitted as a tree of one file, which the
+	// controller takes, and the run is started there.
+	at := "/" + draft.Definition.Name
+	message, err := k.client.Submit(ctx, &client.Tree{Prefix: at, Machines: []*client.Machine{{Path: draft.Definition.Name + ".yaml", Location: at, Draft: draft}}}, 0)
+	if err != nil {
+		k.t.Fatal(err)
+	}
+	k.later(0)
+	if r, err := k.client.Receipt(ctx, message); err != nil || r == nil || !r.Taken {
+		k.t.Fatalf("the submit has the receipt %+v: %v", r, err)
+	}
+	if _, err := k.client.Start(ctx, client.Start{At: at, Run: run}); err != nil {
 		k.t.Fatal(err)
 	}
 	k.later(0)
@@ -180,18 +191,19 @@ func Test_blob_trim_follows_references_inside_blobs(t *testing.T) {
 	}
 	k.start(run, waiting, waitingFiles)
 	before := k.blobs(run)
-	// The definition, and inside it two scripts and the child's definition,
-	// and inside that the child's script.
-	if len(before) != 6 {
+	// The start's input, the definition, and inside it two scripts and the
+	// child's definition, and inside that the child's script.
+	if len(before) != 7 {
 		t.Fatalf("the record holds %d blobs at the start: %v", len(before), before)
 	}
 	for range 5 {
 		k.later(13 * time.Hour)
-		k.client.Send(ctx, run, "tick", nil, 0)
+		to, _ := k.client.Address(ctx, run)
+		k.client.Send(ctx, to, "tick", nil, 0)
 		k.later(0)
 	}
-	// The older history has been trimmed, and the blob nothing refers to
-	// with it.
+	// The older history has been trimmed, and the blobs nothing refers to
+	// with it: the loose one and the start's input.
 	after := k.blobs(run)
 	if slices.Contains(after, loose.At) {
 		t.Fatal("after two days and a half with a keep of a day, a blob nothing refers to is still there: nothing was trimmed")

@@ -64,8 +64,8 @@ The model
   own             for claude-code: tools of the program that the model may use
 
 The key is a secret. `--secret-env ANTHROPIC_KEY` reads it from that
-environment variable for one run, and `corbie controller secret set
-ANTHROPIC_KEY` sets it for every run. Each turn's job gets `net:<host>` for the
+environment variable for `corbie test`, and `corbie controller secret set
+ANTHROPIC_KEY` sets it for every tree. Each turn's job gets `net:<host>` for the
 service and `secret:<secret>@net:<host>`, and nothing from the definition's
 `allow:`.
 
@@ -94,8 +94,9 @@ Tools
 
   does    what the tool does: the model chooses a tool by this text
   args    the shape of its arguments: { name: type }, or JSON Schema
-  job     a script or a machine, as in `corbie manual definitions`; it reads
-          `input`, the agent's input, and `args`, the model's arguments
+  job     a script, a machine, a call or a send, as in
+          `corbie manual definitions`; it reads `input`, the agent's input,
+          and `args`, the model's arguments
   list    a job that returns tools, [{ name, does, args }], in place of
           `does:` and `args:`; `job:` runs each, and reads `tool`, its name
 
@@ -114,6 +115,7 @@ any depth.
 - A tool whose job fails is returned to the model as an error.
 - A tool whose job is an agent is a sub-agent. The model gets the sub-agent's
   reply, and the sub-agent's conversation stays in its own record.
+- A tool whose job is a call gets the called run's whole result, or its error.
 - A tool called twice in one turn has jobs named `shelf` and `shelf.1`.
 - No tool is named turn, preview, open, blob_read, blob_search or blob_code.
 

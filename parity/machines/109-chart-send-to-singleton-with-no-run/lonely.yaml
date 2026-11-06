@@ -1,0 +1,4 @@
+statechart: lonely
+initial: open
+states:
+  open: { on: { hello: open } }

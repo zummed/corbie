@@ -66,7 +66,7 @@ func TestScriptIsWrappedInAFlowOfOneStage(t *testing.T) {
 		t.Fatal(err)
 	}
 	l := local(t)
-	id, err := l.Start(ctx, draft, client.Start{Input: 21})
+	id, err := l.Run(ctx, draft, client.Start{Input: 21})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -88,6 +88,19 @@ func Test_run_error_position_matches_script_as_written(t *testing.T) {
 	wantError(t, script(t, l, "throw new Error('first line')", "timeout: 5s"), "error", "first line at line 1, column 7")
 	wantError(t, script(t, l, "const a = 1\n\n  throw new Error('third line')", "timeout: 5s"), "error", "third line at line 3, column 9")
 	wantError(t, script(t, l, "const a = 1\nconst b = = 2", "timeout: 5s"), "error", "line 2")
+}
+
+// A thrown error gives its message, with no "Error: " before it, so a
+// script that throws another job's error again gives it once.
+func TestThrownErrorGivesItsMessage(t *testing.T) {
+	l := local(t)
+	wantError(t, script(t, l, `try { throw new Error("first") } catch (e) { throw new Error("again: " + e.message) }`, "timeout: 5s"),
+		"error", "again: first at line 1, column 52")
+	r := script(t, l, `throw new TypeError("not a list")`, "timeout: 5s")
+	if r.Error != "it: not a list at line 1, column 7" {
+		t.Fatalf("the error is %q", r.Error)
+	}
+	wantError(t, script(t, l, `throw "plain text"`, "timeout: 5s"), "error", "plain text")
 }
 
 func Test_run_require_reads_only_listed_files(t *testing.T) {
@@ -208,7 +221,7 @@ func Test_run_plugin_values_show_only_listed_calls(t *testing.T) {
 
 func Test_run_emit_entries_numbered_from_one_without_gaps(t *testing.T) {
 	l := local(t)
-	id, err := l.Start(ctx, draft(t, `
+	id, err := l.Run(ctx, draft(t, `
 		flow: emits
 		stages:
 		  it: { job: { script: ./it.js } }
@@ -327,4 +340,38 @@ func TestRequireOfADataFileGivesItsData(t *testing.T) {
 	check(t, r.Status, r.Output, "done", `{"first": {"name": "alice", "since": "2026-01-02"}, "groups": ["net", "house"], "same": true}`)
 	files["bridge/who.js"] = `return require("./bad.yml")`
 	wantError(t, run(t, l, def, files, nil), "error", `the file "./bridge/bad.yml" cannot be read: the document cannot be read: line`)
+}
+
+// A map read from YAML or JSON keeps its keys in the order they were
+// written, as Node's JSON.parse gives them.
+func TestDataReadKeepsTheOrderOfItsKeys(t *testing.T) {
+	l := local(t)
+	def := `
+		flow: order
+		stages:
+		  it: { job: { script: ./it.js, files: [./data.yaml, ./data.json] } }
+		output: ${stages.it.output}
+	`
+	files := map[string]string{
+		"it.js": `
+			const table = blobs.make("z,a\n1,2\n", { type: "text/csv" })
+			const list = blobs.make('[{"z": 1, "a": {"y": 2, "b": 3}}]', { type: "application/json" })
+			return {
+				required_yaml: Object.keys(require("./data.yaml")),
+				required_json: Object.keys(require("./data.json").m),
+				parsed: Object.keys(yaml.parse("z: 1\na: 2\nm: 3\n")),
+				json_parse: Object.keys(JSON.parse('{"z": 1, "a": 2}')),
+				json_blob: Object.keys(blobs.read(list, { as: "json" })[0].a),
+				json_items: Object.keys([...blobs.items(list)][0]),
+				csv_row: Object.keys([...blobs.items(table)][0]),
+			}`,
+		"data.yaml": "z: 1\na: { y: 2 }\nm: 3\n",
+		"data.json": `{"m": {"z": 1, "a": 2}}`,
+	}
+	r := run(t, l, def, files, nil)
+	if r.Status != "done" {
+		t.Fatalf("%s: %s", r.Status, r.Error)
+	}
+	check(t, r.Status, r.Output, "done", `{"required_yaml": ["z", "a", "m"], "required_json": ["z", "a"], "parsed": ["z", "a", "m"],
+		"json_parse": ["z", "a"], "json_blob": ["y", "b"], "json_items": ["z", "a"], "csv_row": ["z", "a"]}`)
 }

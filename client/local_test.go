@@ -45,6 +45,29 @@ func local(t *testing.T, ceiling ...string) *client.Local {
 	return l
 }
 
+// setSecret sets a secret at /, for every run of the controller.
+func setSecret(t *testing.T, l *client.Local, name, value string) {
+	t.Helper()
+	if err := l.SetSecret(ctx, "/", name, value); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// recorded submits a definition as a tree of one file at / and its name, and
+// gives its location.
+func recorded(t *testing.T, l *client.Local, d *machine.Draft) string {
+	t.Helper()
+	at := "/" + d.Definition.Name
+	message, err := l.Submit(ctx, &client.Tree{Prefix: at, Machines: []*client.Machine{{Path: d.Definition.Name + ".yaml", Location: at, Draft: d}}}, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if receipt, err := l.WaitReceipt(ctx, message, 0, 10*time.Millisecond); err != nil || !receipt.Taken {
+		t.Fatalf("the submit of %s gave %+v, %v", at, receipt, err)
+	}
+	return at
+}
+
 func draft(t *testing.T, src string, files map[string]string) *machine.Draft {
 	t.Helper()
 	d, err := machine.Parse([]byte(dedent(src)), func(path string) ([]byte, error) {
@@ -62,7 +85,7 @@ func draft(t *testing.T, src string, files map[string]string) *machine.Draft {
 // run starts a definition and waits for it to end.
 func run(t *testing.T, l *client.Local, src string, files map[string]string, input any) *client.Run {
 	t.Helper()
-	id, err := l.Start(ctx, draft(t, src, files), client.Start{Input: input})
+	id, err := l.Run(ctx, draft(t, src, files), client.Start{Input: input})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -127,7 +150,7 @@ func TestScriptThrows(t *testing.T) {
 		"add.js": "const x = 1\nthrow new Error(\"told to fail\")\n",
 		"lib.js": ``,
 	}, map[string]any{"a": 1})
-	if r.Status != "failed" || r.Failure != "error" || !strings.Contains(r.Error, "adding: Error: told to fail at line 2, column 7") {
+	if r.Status != "failed" || r.Failure != "error" || !strings.Contains(r.Error, "adding: told to fail at line 2, column 7") {
 		t.Fatalf("the run ended %s/%s with %q", r.Status, r.Failure, r.Error)
 	}
 }

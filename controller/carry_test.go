@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/zummed/corbie/blob"
+	"github.com/zummed/corbie/client"
 	"github.com/zummed/corbie/controller"
 	"github.com/zummed/corbie/identity"
 	"github.com/zummed/corbie/instance"
@@ -37,7 +38,7 @@ func (w *world) sent(r *identity.Identity, at string) (*instance.Message, identi
 func (w *world) again(run string) {
 	w.t.Helper()
 	w.leave(w.c1, run[strings.IndexByte(run, '/')+1:], &instance.Message{Kind: instance.KindStart, Instance: run,
-		Start: &instance.Start{Definition: w.latest(run).State.Definition}})
+		Start: &instance.Start{Location: w.latest(run).State.Location}})
 }
 
 // result leaves a job's result in the controller's inbox, as its runner.
@@ -348,7 +349,7 @@ func Test_ctl_stopped_between_last_events_and_ending_parent_sees_events_first(t 
 			  over: { end: done }
 		`, nil, nil)
 		w.settle()
-		w.client.Send(ctx, parent, "finish", nil, 0)
+		w.client.Send(ctx, w.to(parent), "finish", nil, 0)
 		return w
 	}
 	// What the parent was given, step by step.
@@ -436,7 +437,7 @@ func Test_ctl_job_that_cannot_be_sent_fails_though_controller_stops(t *testing.T
 		// Decided when the step is taken: no runner has the tag.
 		`{ script: ./work.js, tags: [gpu] }`: "no runner has the tags the job names: gpu",
 		// Found when the entry is carried out: the secret is not set.
-		`{ script: ./work.js, allow: ["secret:NONE@net:api.example"] }`: `the secret "NONE" is not set`,
+		`{ script: ./work.js, allow: ["secret:NONE@net:api.example"] }`: `NONE is not set at /unsent-1/unsent or above`,
 	} {
 		var id string
 		begin := func() *world {
@@ -497,9 +498,10 @@ func Test_ctl_attempt_goes_to_one_runner_when_runners_change(t *testing.T) {
 	w := newWorld(t)
 	w.enrol(w.party("r1", identity.Runner), permission.Layer{}, nil)
 	const runs = 8
+	at, _ := w.place(w.client, oneJob, map[string]string{"work.js": "return 1"})
 	var ids []string
 	for range runs {
-		ids = append(ids, w.submit(oneJob, map[string]string{"work.js": "return 1"}, nil))
+		ids = append(ids, w.startAt(w.client, at, client.Start{}))
 	}
 	// Every run's first step is written, with the one runner there is, and
 	// no job can be sent.
@@ -626,7 +628,7 @@ func TestEventTooLargeToSendFailsItsJob(t *testing.T) {
 		if w.head(run).Status != instance.Running || w.head(kid).Status != instance.Running {
 			t.Fatalf("%s: before the event the two are %s and %s", direction, w.head(run).Status, w.head(kid).Status)
 		}
-		w.client.Send(ctx, run, "poke", nil, 0)
+		w.client.Send(ctx, w.to(run), "poke", nil, 0)
 		w.settle()
 		last := w.latest(run)
 		if head := w.head(run); head.Status != instance.Failed || last.State.Error == nil ||

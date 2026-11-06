@@ -1,0 +1,9 @@
+{
+  "status": "done",
+  "output": { "target": 21 },
+  "record": [
+    { "machine": "boiler", "event": { "name": "set", "sender": { "at": "/case/root", "run": "<any>" } } },
+    { "machine": "boiler", "status": "running" }
+  ],
+  "note": "R-ctl-119, R-chart-77: a send to { at } goes to the singleton running at the location."
+}

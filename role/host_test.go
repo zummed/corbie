@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -411,18 +412,25 @@ func Test_role_minute_call_takes_waiting_messages(t *testing.T) {
 	// A start and an event are written, and the bucket's notice of each is
 	// lost: no call comes for them. The timer's time passes too.
 	second := w.submit(strings.Replace(waits, "timers: { too_long: 30s }", "", 1), nil, nil)
-	w.client.Send(ctx, first, "tick", nil, 0)
+	to, _ := w.client.Address(ctx, first)
+	w.client.Send(ctx, to, "tick", nil, 0)
 	w.h.tick(time.Minute)
 	w.h.call("ctl", w.controller) // the call once a minute
 	if head := w.head(second); head == nil || head.Step != 1 {
 		t.Fatalf("the call once a minute did not take the start that was waiting: %+v", head)
 	}
+	// The client's event is routed to the run as the controller's own
+	// message, and the bucket's notice of that write is a call.
+	w.h.call("ctl", w.controller)
 	steps := w.steps(first)
 	var given []string
-	for _, event := range steps[len(steps)-1].Events {
-		given = append(given, event.Name)
+	for _, step := range steps[1:] {
+		for _, event := range step.Events {
+			given = append(given, event.Name)
+		}
 	}
-	if len(steps) != 2 || strings.Join(given, " ") != "tick timer" {
+	slices.Sort(given)
+	if strings.Join(given, " ") != "tick timer" {
 		t.Fatalf("the call once a minute gave the waiting run %v in %d steps", given, len(steps))
 	}
 	if left := w.waiting(); len(left) != 0 || w.h.killed() != 0 {

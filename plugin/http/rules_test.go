@@ -348,7 +348,7 @@ func Test_plug_http_byte_order_mark_dropped(t *testing.T) {
 		t.Fatalf("read as text the body is %q (%v)", text["body"], err)
 	}
 	data, err := call(job, "get", server.URL, plugin.Options{"as": "json"})
-	if err != nil || data["body"].(map[string]any)["a"] != 1.0 {
+	if err != nil || data["body"].(*plugin.Ordered).Values["a"] != 1.0 {
 		t.Fatalf("read as data the body is %v (%v)", data["body"], err)
 	}
 	// Bytes are handed over as they are.

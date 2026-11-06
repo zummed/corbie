@@ -191,9 +191,16 @@ func (e *engine) failure(err error) *instance.Result {
 				text = stack.String()
 			}
 		}
-		// The message is searched for secrets before anything is cut from
-		// it.
-		message := e.job.Mask(thrown.Value().String())
+		// An error gives its message, as Node's err.message has it, with
+		// no "Error: " before it. The message is searched for secrets
+		// before anything is cut from it.
+		message := thrown.Value().String()
+		if obj, ok := thrown.Value().(*goja.Object); ok {
+			if m, ok := obj.Get("message").(goja.String); ok && m.String() != "" {
+				message = m.String()
+			}
+		}
+		message = e.job.Mask(message)
 		if m := where.FindStringSubmatch(strings.TrimPrefix(text, thrown.Value().String())); m != nil {
 			message = e.position(message + " at script" + m[0])
 		}
@@ -689,17 +696,19 @@ func (e *engine) toJS(v any, text func(string) string) (goja.Value, error) {
 		}
 		return e.vm.NewArray(items...), nil
 	case map[string]any:
-		if ref, ok := blob.AsRef(v); ok {
-			return e.toJS(plugin.StoredBlob(ref), text)
-		}
-		obj := e.vm.NewObject()
 		keys := make([]string, 0, len(v))
 		for k := range v {
 			keys = append(keys, k)
 		}
 		slices.Sort(keys)
-		for _, k := range keys {
-			value, err := e.toJS(v[k], text)
+		return e.toJS(&plugin.Ordered{Keys: keys, Values: v}, text)
+	case *plugin.Ordered:
+		if ref, ok := blob.AsRef(v.Values); ok {
+			return e.toJS(plugin.StoredBlob(ref), text)
+		}
+		obj := e.vm.NewObject()
+		for _, k := range v.Keys {
+			value, err := e.toJS(v.Values[k], text)
 			if err != nil {
 				return nil, err
 			}

@@ -32,11 +32,14 @@ func newTable(t *testing.T, open func(Party) Store) table {
 		viewer: as(Viewer, ""), nobody: as(Nobody, "")}
 	for _, name := range []string{
 		"version",
-		"ctl/inbox/c1/m1", "ctl/inbox/r1/m1", "ctl/receipts/c1/m1", "ctl/receipts/c2/m1",
+		"ctl/inbox/c1/m1", "ctl/inbox/r1/m1", "ctl/receipts/c1/m1/receipt", "ctl/receipts/c1/m1/blobs/b1",
+		"ctl/receipts/c2/m1/receipt",
 		"ctl/running/c1/i1", "ctl/running/c2/i2", "ctl/finished/c1/i0", "ctl/finished/c2/i9",
 		"ctl/records/c1/i1/steps/1", "ctl/records/c1/i1/emits/j1/1", "ctl/records/c1/i1/blobs/b1",
 		"ctl/records/c2/i2/steps/1", "ctl/records/c2/i2/blobs/b1",
-		"ctl/wakes/t/c1/i1/w", "ctl/trust/r1", "ctl/secrets/s1",
+		"ctl/wakes/t/c1/i1/w", "ctl/trust/r1", "ctl/locations/+/secrets/s1",
+		"ctl/locations/home/+/tree", "ctl/locations/home/boiler/+/file", "ctl/locations/home/boiler/+/blobs/b1",
+		"ctl/locations/home/boiler/+/values/v1", "ctl/locations/home/rooms/+/keys/k1", "ctl/uploads/c1/m1/f1", "ctl/uploads/c2/m1/f1",
 		"r1/inbox/ctl/j1", "r1/taken/j1", "r2/inbox/ctl/j2", "r2/taken/j2",
 	} {
 		if _, err := w.owner.Write(ctx, name, []byte("was"), Overwrite); err != nil {
@@ -118,8 +121,11 @@ func (w table) noList(s Store, paths ...string) {
 func TestControllerRow(t *testing.T) { eachTable(t, controllerRow) }
 
 func controllerRow(t *testing.T, w table) {
-	for _, name := range []string{"ctl/inbox/c1/x", "ctl/receipts/c1/x", "ctl/running/c1/x", "ctl/finished/c1/x",
-		"ctl/records/c1/x/steps/1", "ctl/wakes/t/c1/x/w", "ctl/trust/x", "ctl/secrets/x"} {
+	for _, name := range []string{"ctl/inbox/c1/x", "ctl/receipts/c1/x/receipt", "ctl/receipts/c1/x/blobs/b", "ctl/running/c1/x",
+		"ctl/finished/c1/x", "ctl/records/c1/x/steps/1", "ctl/wakes/t/c1/x/w", "ctl/trust/x",
+		"ctl/locations/work/+/tree", "ctl/locations/home/x/+/file", "ctl/locations/home/x/+/blobs/b",
+		"ctl/locations/home/x/+/keys/k", "ctl/locations/+/secrets/x", "ctl/locations/home/+/values/x",
+		"ctl/uploads/c1/m/f"} {
 		w.allowed(w.ctl, OnlyIfNew, name)
 		w.allowed(w.ctl, Overwrite, name)
 		w.reads(w.ctl, name)
@@ -127,7 +133,7 @@ func controllerRow(t *testing.T, w table) {
 			t.Errorf("delete %s: %v", name, err)
 		}
 	}
-	w.lists(w.ctl, "ctl", "ctl/inbox", "ctl/records/c1/i1")
+	w.lists(w.ctl, "ctl", "ctl/inbox", "ctl/records/c1/i1", "ctl/locations", "ctl/uploads")
 	w.allowed(w.ctl, OnlyIfNew, "r1/inbox/ctl/job", "r1/inbox/ctl/cancel")
 	w.refused(w.ctl, Overwrite, "r1/inbox/ctl/j1")
 	w.noDelete(w.ctl, "r1/inbox/ctl/j1")
@@ -169,9 +175,12 @@ func runnerRow(t *testing.T, w table) {
 
 	// Nothing else is given: no value and no name.
 	w.noRead(w.r1, "ctl/records/c1/i1/steps/1", "ctl/records/c1/i1/emits/j1/1", "ctl/running/c1/i1",
-		"ctl/receipts/c1/m1", "ctl/wakes/t/c1/i1/w", "ctl/trust/r1", "ctl/secrets/s1", "ctl/inbox/r1/m1")
+		"ctl/receipts/c1/m1/receipt", "ctl/receipts/c1/m1/blobs/b1", "ctl/wakes/t/c1/i1/w", "ctl/trust/r1",
+		"ctl/locations/+/secrets/s1", "ctl/locations/home/+/tree", "ctl/locations/home/boiler/+/file",
+		"ctl/locations/home/boiler/+/blobs/b1", "ctl/locations/home/boiler/+/values/v1", "ctl/uploads/c1/m1/f1", "ctl/inbox/r1/m1")
 	w.noList(w.r1, "ctl", "ctl/inbox", "ctl/inbox/r1", "ctl/records", "ctl/records/c1/i1/blobs",
-		"ctl/running", "ctl/wakes", "ctl/trust", "ctl/secrets", "")
+		"ctl/running", "ctl/wakes", "ctl/trust", "ctl/locations", "ctl/uploads", "ctl/receipts/c1", "")
+	w.refused(w.r1, OnlyIfNew, "ctl/locations/home/boiler/+/blobs/b2", "ctl/uploads/r1/m/f", "ctl/receipts/c1/m1/blobs/b2")
 }
 
 func TestClientRow(t *testing.T) { eachTable(t, clientRow) }
@@ -188,13 +197,22 @@ func clientRow(t *testing.T, w table) {
 	w.refused(w.c1, OnlyIfNew, "ctl/records/c1/new/steps/1", "ctl/records/c1/new/emits/j/1",
 		"ctl/records/c2/i2/blobs/x")
 
-	w.reads(w.c1, "ctl/receipts/c1/m1", "ctl/running/c1/i1", "ctl/finished/c1/i0",
+	// It adds the files it sends with a message to its own uploads, and
+	// changes nothing there.
+	w.allowed(w.c1, OnlyIfNew, "ctl/uploads/c1/m2/f1")
+	w.refused(w.c1, Overwrite, "ctl/uploads/c1/m1/f1")
+	w.noDelete(w.c1, "ctl/uploads/c1/m1/f1")
+	w.refused(w.c1, OnlyIfNew, "ctl/uploads/c2/m2/f1", "ctl/locations/home/x/+/file", "ctl/receipts/c1/m1/blobs/b2")
+
+	w.reads(w.c1, "ctl/receipts/c1/m1/receipt", "ctl/receipts/c1/m1/blobs/b1", "ctl/running/c1/i1", "ctl/finished/c1/i0",
 		"ctl/records/c1/i1/steps/1", "ctl/records/c1/i1/emits/j1/1", "ctl/records/c1/i1/blobs/b1")
-	w.lists(w.c1, "ctl/receipts/c1", "ctl/running/c1", "ctl/finished/c1", "ctl/records/c1", "ctl/records/c1/i1/steps")
-	w.noRead(w.c1, "ctl/receipts/c2/m1", "ctl/running/c2/i2", "ctl/finished/c2/i9", "ctl/records/c2/i2/steps/1",
-		"ctl/inbox/c1/m1", "ctl/wakes/t/c1/i1/w", "ctl/trust/r1", "ctl/secrets/s1", "r1/inbox/ctl/j1", "r1/taken/j1")
+	w.lists(w.c1, "ctl/receipts/c1", "ctl/receipts/c1/m1", "ctl/running/c1", "ctl/finished/c1", "ctl/records/c1", "ctl/records/c1/i1/steps")
+	w.noRead(w.c1, "ctl/receipts/c2/m1/receipt", "ctl/running/c2/i2", "ctl/finished/c2/i9", "ctl/records/c2/i2/steps/1",
+		"ctl/inbox/c1/m1", "ctl/wakes/t/c1/i1/w", "ctl/trust/r1", "ctl/locations/+/secrets/s1",
+		"ctl/locations/home/+/tree", "ctl/locations/home/boiler/+/file", "ctl/locations/home/boiler/+/blobs/b1",
+		"ctl/locations/home/boiler/+/values/v1", "ctl/locations/home/rooms/+/keys/k1", "ctl/uploads/c1/m1/f1", "ctl/uploads/c2/m1/f1", "r1/inbox/ctl/j1", "r1/taken/j1")
 	w.noList(w.c1, "ctl/receipts/c2", "ctl/running/c2", "ctl/running", "ctl/records/c2", "ctl/inbox/c1",
-		"ctl/wakes", "ctl/trust", "ctl/secrets", "r1", "r1/inbox")
+		"ctl/wakes", "ctl/trust", "ctl/locations", "ctl/locations/c1", "ctl/uploads", "ctl/uploads/c1", "r1", "r1/inbox")
 }
 
 func TestViewerRow(t *testing.T) { eachTable(t, viewerRow) }
@@ -202,8 +220,9 @@ func TestViewerRow(t *testing.T) { eachTable(t, viewerRow) }
 func viewerRow(t *testing.T, w table) {
 	w.lists(w.viewer, "ctl/running", "ctl/finished", "ctl/running/c2")
 	w.reads(w.viewer, "ctl/running/c1/i1", "ctl/running/c2/i2", "ctl/finished/c1/i0")
-	w.noRead(w.viewer, "ctl/records/c1/i1/steps/1", "ctl/inbox/c1/m1", "ctl/receipts/c1/m1", "ctl/trust/r1", "r1/taken/j1")
-	w.noList(w.viewer, "ctl", "ctl/records", "ctl/inbox", "ctl/receipts", "r1", "")
+	w.noRead(w.viewer, "ctl/records/c1/i1/steps/1", "ctl/inbox/c1/m1", "ctl/receipts/c1/m1/receipt", "ctl/trust/r1", "r1/taken/j1",
+		"ctl/locations/home/+/tree", "ctl/locations/home/boiler/+/file", "ctl/locations/+/secrets/s1", "ctl/uploads/c1/m1/f1")
+	w.noList(w.viewer, "ctl", "ctl/records", "ctl/inbox", "ctl/receipts", "ctl/locations", "ctl/uploads", "r1", "")
 	w.refused(w.viewer, OnlyIfNew, "ctl/running/c1/x", "ctl/inbox/c1/x", "ctl/finished/c1/x")
 	w.refused(w.viewer, Overwrite, "ctl/running/c1/i1")
 	w.noDelete(w.viewer, "ctl/running/c1/i1", "ctl/finished/c1/i0")

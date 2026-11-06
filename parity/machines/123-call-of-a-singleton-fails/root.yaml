@@ -1,0 +1,6 @@
+# A call starts a run only of a transient location: a call of a singleton
+# fails the job, and the flow with it.
+flow: caller
+allow: [send:lookup]
+stages:
+  look: { job: { call: { at: lookup }, input: { n: 1 } } }

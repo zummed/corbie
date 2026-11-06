@@ -194,7 +194,7 @@ or agent, and each of its jobs is a script or another machine.
                respond
   test         run a definition or a script in this process, with no setup
   run          submit, ls, show, cancel, send, reply
-  controller   card, enrol, remove, parties, secret, policy, cancel
+  controller   card, enrol, remove, parties, secret, value, policy, cancel
   runner       card, trust, remove
   client       card, trust, remove
   manual       print a page of the manual, or list the pages; web
@@ -291,11 +291,11 @@ func TestHelpIsAskedForWithTheFlag(t *testing.T) {
 	}
 	run := `The commands of corbie run:
 
-  submit   start a run and print its ID
+  submit   record a tree, or start a run of a location and print its ID
   ls       list runs
   show     show one run: its status and its result
-  cancel   cancel a run that this client started
-  send     send an event to a run that this client started
+  cancel   cancel a run in a tree of this client's
+  send     send an event to a run by its address
   reply    answer a ticket that a run waits on
 
 corbie run <command> --help prints a command's help.
@@ -532,5 +532,21 @@ func TestAProgramPrintsItsVersion(t *testing.T) {
 	}
 	if status, out, _ := program("version", "--json"); status != 0 || !strings.Contains(out, `"version":"1.2.3"`) || !strings.Contains(out, `"corbie":"1.2.3"`) {
 		t.Fatalf("corbie frob version --json ended %d and printed %q", status, out)
+	}
+}
+
+// The flags every command takes may be written before the command, and a
+// flag that no command follows is a mistake that names it.
+func TestFlagsBeforeTheCommand(t *testing.T) {
+	t.Setenv("PATH", t.TempDir())
+	for _, line := range [][]string{{"--json", "version"}, {"--config", t.TempDir(), "version", "--json"}} {
+		status, out, said := corbie("", line...)
+		if status != 0 || out == "" {
+			t.Errorf("corbie %v ended %d, printed %q and said %q", line, status, out, said)
+		}
+	}
+	status, out, said := corbie("", "--config")
+	if status != 2 || out != "" || said != "corbie: --config is a flag, and no command follows it.\n\ncorbie --help lists the commands.\n" {
+		t.Fatalf("corbie --config ended %d, printed %q and said %q", status, out, said)
 	}
 }

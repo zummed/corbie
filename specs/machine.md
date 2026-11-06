@@ -1,6 +1,6 @@
 # Machines
 
-A machine is a definition that Corbie runs. There are three types, flow, statechart and agent, and each has its own area. This area is what they all share: how a machine runs, how a definition is written, and what a machine can receive and ask for.
+A machine is a definition that Corbie runs. There are three types, flow, statechart and agent, and each has its own area. This area is what they all share: how a machine runs, how a definition is written, where it lives, and what a machine can receive and ask for.
 
 ## Steps
 
@@ -16,7 +16,7 @@ A definition is data, written in YAML. Its first line gives its type and its nam
 
 A definition may carry `meta:`, with any value. Corbie keeps it with the stored definition, never reads it, and fills in no expression in it. An application keeps its own data there, such as when to start the machine.
 
-A definition may give `title:`, which names a run to a person. Its expressions read `input` and `run`, and the controller fills it in when the run starts and keeps it in the run's record, never in its head, so only the client that started the run sees it. A title is one line of at most 200 characters: each run of white space, line breaks among it, becomes one space, and a longer title is cut.
+A definition may give `title:`, which names a run to a person. Its expressions read `input`, `values` and `run`, and the controller fills it in when the run starts and keeps it in the run's record, never in its head, so only the client that owns the run's tree sees it. A title is one line of at most 200 characters: each run of white space, line breaks among it, becomes one space, and a longer title is cut.
 
 ```yaml
 title: "${input.channel}: ${input.said}"     # a run's title: "#testing: give me a release card for 4.2"
@@ -45,12 +45,19 @@ A mapping may be one of several sorts of thing that hold different fields. Its s
 
 A field its sort does not hold is not offered to a person, and is refused if it is written.
 
-A mapping read by a shape, or a mapping of names such as `tools:` or `stages:`, may take fields from other files with `include:`, which names a file or a list of them.
+A definition may take values from other files with `include:`, which names a file or a list of them. A name may end in `#path` to take one part of a file: `base.yaml#allow`, `base.yaml#tools.read_file`.
 
 ```yaml
 # family.yaml
 agent: family
 include: ./base.yaml
+model: { effort: high }
+system:
+  - { include: ./style.md }
+  - You look after one house.
+allow:
+  - { include: ./base.yaml#allow }
+  - send:devices/*
 open:
   home: { include: ./parts/home/part.yaml, approve: true }
 ```
@@ -58,22 +65,84 @@ open:
 ```yaml
 # base.yaml
 model: { name: claude-sonnet-5-5, secret: ANTHROPIC_KEY }
-system: You look after one house.
 prompt: ${input.said}
+allow: ["fs.read:${input.dir}/**"]
 ```
 
-1. The client reads each file when it sends the definition. A file holds any fields, and has no type: a machine written in place writes its own.
-2. A field the mapping writes stands before a file's. A file's fields stand before those of the files it includes, and an earlier file's before a later one's.
-3. The stored definition holds the fields written out, so changing a file changes nothing for a run already started.
+The client writes the definition out before it sends it:
+
+1. It reads each file the definition names. A file holds any fields, and has no type: a machine written in place writes its own.
+2. In a mapping, it merges in the included fields at every depth. `family.yaml`'s `model:` gets `name` and `secret` from `base.yaml`, and keeps its own `effort`.
+3. In a list or a text, it replaces an item `{ include: <file> }` with that file's list or text, and `{ include: <file>#<path> }` with the value at that path.
+4. It sends the result, which holds no `include:` and keeps each value's file and line.
+
+- A value the including file writes wins over an included one, at every depth. A file's values win over those of the files it includes, and an earlier file's over a later one's. A file merged in whole by two routes is merged once; a `#path` item is always replaced.
+- A list or a text the including file writes replaces the included one whole. `family.yaml`'s `allow:` replaces `base.yaml`'s, so it takes the base's items back with `#allow`.
+- A text may be a list of pieces, each a text or `{ include: … }`, joined by one empty line. A single `{ include: file.md }` in a text field is a text of one piece.
+- `${…}` in an included text is an expression, filled in at run time like any text. A literal `${` is written `${'${'}`.
+- An included file is part of the machine that includes it. Its expressions read that machine's `input`, `values` and `run`, its secret names are looked up at that machine's location, and that machine's `allow:`, `deny:` and `ask_about:` cover its jobs.
+- The stored definition is the one written out, so changing a file changes nothing for a run already started.
+
+`corbie test family.yaml --definition` prints the machine written out, each value with its file and line. Part of it:
+
+```
+model:
+  name: claude-sonnet-5-5                    # base.yaml:1
+  secret: ANTHROPIC_KEY                      # base.yaml:1
+  effort: high                               # family.yaml:3
+allow:
+  - fs.read:${input.dir}/**                  # base.yaml:3
+  - send:devices/*                           # family.yaml:9
+```
 
 - A file is read as a definition is: a number is a number, and a value YAML would read as a date stays the text written. An empty file is refused.
 - A path in a file reads as any path does, and `./` from that file's own directory. What a shape gives as a value, such as `input:` or `meta:`, stays as it is written, whatever it holds.
 - A problem in an included file names that file: `parts/home/part.yaml: open.home.colour: …`.
-- More than 1,000 files included by one definition, and what is below it, are refused.
+- More than 1,000 includes written out by one definition, and what is below it, are refused. A file reached by two routes counts each time, though its values are merged once.
 
 A definition is checked as a whole, and everything wrong with it is reported together. Each problem names its place, and its file when the problem is in a child's file, as a path from the definition's directory: `kids/kid.yaml: value: …`. The client checks it before sending, so mistakes are found at once, and the controller checks it again with the same code, because it does not take a client's word.
 
 An instance never changes its definition. A machine that wants to change how it works changes a child's definition and starts the child again.
+
+## Locations
+
+A client submits a directory at a prefix, and the directory becomes a tree (see client.md). Each file in it with a type line has a location: its path under the prefix, without `.yaml`. A file without a type line is a piece: it has no location, runs nothing, and is read only by including it.
+
+`lifetime:` says how runs start at a location:
+
+| `lifetime:` | Runs at the location | Started by |
+|---|---|---|
+| `singleton` | one | the submit |
+| `keyed` | one per key, statecharts only | a send to a key with no running run (see statechart.md) |
+| `transient` | any number; the default | a call, or `corbie run submit <location>` by the tree's client |
+
+```
+$ corbie run submit house --at /home
+/home/devices/boiler     singleton   started <id>
+/home/rooms/thermostat   keyed       recorded
+/home/services/weather   transient   recorded
+```
+
+The submit starts the boiler's run. The thermostat starts a run for each room a send names, and the weather service one for each call. `house/base.yaml` has no type line: it is a piece, has no location and is not listed.
+
+Every run has a location, and its authority comes from it: its file's `allow:` and `ask:`, its tree client's ceiling, and the secrets and values set at its location or above (see permission.md and secret.md).
+
+- A child started by `machine:` runs at its parent's location.
+- A machine made while running has no file of its own. It runs at the location of the job that starts it, narrowed by that job's list.
+- `limits: { runs: N }` on a keyed file caps how many of its runs are running at once (see statechart.md). N is at least 1, and `runs` on a file that is not keyed is refused.
+- `lifetime:`, `update:`, `receive:` and `limits: { runs: }` belong to a file at a location, and are refused in a machine written in place or made while running.
+
+A run keeps the definition it started with, and a submit changes what new runs get. `update:` says what a changed file does to the runs already running at its location:
+
+| `update:` | Runs already running |
+|---|---|
+| `restart` | are cancelled; a singleton starts again on the new definition, and a keyed run starts fresh on the next send to its key |
+| `drain` | finish on the definition they started with; the default for keyed and transient |
+
+- A file is changed when the machine written out from it differs. Where its values are written takes no part, so moving a line changes nothing.
+- A singleton always restarts, and `update: drain` on one is refused.
+- Removing a file from a tree, by deleting or renaming it and submitting, cancels every run at its location.
+- After a submit, `corbie run cancel <location>` ends a `drain` file's runs, so the next ones start on the new definition.
 
 ## Values
 
@@ -81,7 +150,17 @@ Any value in a definition may be an expression, written `${…}`. A value that i
 
 A condition, such as `when:`, is exactly one expression. It holds unless its value is false, null, zero or empty text.
 
-Expressions are JavaScript. They read `input`, which is what the machine was started with, `run`, which is the run they are in, and whatever its type adds: a flow's stages, a statechart's states and current event, an agent tool's arguments. `run.id` is the run's ID, `run.key` its key, which is empty text for a run with none (see Keys), and `run.context` the absolute path of the context its client submitted from, which is empty text for a run started with none. Everything else that varies from one run of a definition to the next comes in through `input`.
+Expressions are JavaScript. They read `input`, which is what the machine was started with, `values`, the plain values set at the run's location or above (see secret.md), `run`, which is the run they are in, and whatever its type adds: a flow's stages, a statechart's states and current event, an agent tool's arguments.
+
+```
+  run.id         the run's ID
+  run.location   the run's location, such as /home/devices/boiler
+  run.context    the absolute path of the directory last submitted at the run's tree
+```
+
+Everything else that varies from one run of a definition to the next comes in through `input`, and from one tree to the next through `values`.
+
+A value is read by its name, as `values.HUB`. `values[name]` and `values` alone are refused, so the values a file reads can be listed. An expression that reads a value not set at the run's location or above fails, naming the value and the location.
 
 Some fields are names, not values, and an expression in them is refused: a thing's name, a type, a permission's kind, a deny entry, a secret's name, a tag, a ticket's name. The path of a script or a machine is a name too, with one exception: it may be exactly one expression that gives a stored definition or script.
 
@@ -103,7 +182,7 @@ input: { urls: list, depth: number? }
   ? after the type          the name may be left out
 ```
 
-A shape with `type: object` is the full form, and any other is the short form. The client fills out the short form when the definition is sent. The short form of `args:` and `reply:` refuses a name it does not give, and that of `input:` takes it.
+A shape with `type: object` is the full form, and any other is the short form. The client fills out the short form when the definition is submitted. The short form of `args:` and `reply:` refuses a name it does not give, and that of `input:` takes it.
 
 A `$ref` resolves only within its own shape. One that names a file or an address is refused when the definition is checked.
 
@@ -159,7 +238,7 @@ A `timeout:` with an expression is filled in when its job is asked for, and `lim
 
 A job may be written where it is used or kept in its own file. A script is a file named by its path, and its job lists the files the script loads; a client sends them along with the definition.
 
-The context is the directory a client submits from, or a file's own directory for a file submitted from outside it. Every file a definition names is in it or below it, and nothing outside it is read. A machine made while running has the files it was given as its context.
+The context is the directory a client submits as a tree. For a single file it is the directory the client submits from, or the file's own directory for a file outside it. Every file a definition names is in it or below it, and nothing outside it is read. A machine made while running has the files it was given as its context.
 
 | A path written as | Is read from |
 |---|---|
@@ -191,69 +270,93 @@ The record and every watcher use these names.
 
 Everything that reaches a machine is an event, and every event has the same shape: a name, where it came from, and its data. A machine is started by a `start` event carrying its input. A job that ends well arrives as `done`, and its data is its output. One that does not arrives as `failed`, and its data is its error together with whatever output it still gave. A timer arrives under the timer's name. An answer to a ticket arrives under the ticket's name, and is marked as an answer, which no other event can be.
 
-A job can also send events up while it is still going. A script does it by emitting a named value, and a child machine by sending an event to its parent. The two are the same thing and arrive the same way, as an event with that name from that job. A parent can send a named event down to a child machine. Machines talk only to their parent, their own children, and a run they know by its key (see Keys); siblings go through the parent. No client, machine or script can send an event named `start`, `done`, `failed` or `timer`, which Corbie gives a machine itself.
+A job can also send events up while it is still going. A script does it by emitting a named value, and a child machine by sending an event to its parent. The two are the same thing and arrive the same way, as an event with that name from that job.
 
-The client that started a root stands where a parent would. It can send the root named events, and what the root sends up is written in its record, where the client and any watcher can see it.
+A parent can send a named event down to a child machine. Any other run is sent to by its address (see Sending and calling).
 
-Events sent between a parent and a child arrive once each and in the order they were sent. An event sent to a child that is not running is noted in the record as undelivered and fails nothing.
+The client that owns a root's tree takes the place of its parent. It can send the root named events, and what the root sends up is written in its record, where the client and any watcher can see it.
+
+Events from one run to another arrive once each, in the order they were sent. Nothing is promised between two senders. An event sent to a child that is not running is noted in the record as undelivered and fails nothing.
 
 Each type handles an event in its own way, and its own area says which it acts on and which it ignores.
 
-## Keys
+## Sending and calling
 
-A key names a run. Give a run a key, then send to that key. Send with `machine` too and a run is started if none has the key.
+A machine sends an event to a run by its address, or calls a location and waits for the result.
+
+| Address | Sends to |
+|---|---|
+| `{ at: devices/boiler }` | the run of a `singleton` location |
+| `{ at: rooms/thermostat, key: kitchen }` | the run for that key at a `keyed` location, started if none is running |
+| `{ at: devices/boiler, run: <ID> }` | one run by its ID, a child run included |
 
 ```yaml
-# a statechart's transition
-message: { send: { to: { machine: ./conversation.yaml, key: "chat:${event.data.chat}" }, event: message, data: "${event.data}" } }
-answer: { send: { to: { key: "${event.data.key}" }, event: answer, data: "${event.data}" } }
-# a job in any machine type
-job: { machine: ./ask-person.yaml, key: "question:${run.id}", input: { path: "${input.path}" } }
+# a statechart's send action
+send: { to: { at: rooms/thermostat, key: "${event.data.room}" }, event: set, data: { celsius: 21 } }
+send: { to: "${event.from}", event: applied, data: "${event.data}" }    # a reply to the sender
+# a job of a flow stage or an agent tool
+job: { send: { to: { at: devices/boiler }, event: set, data: { target: 12 } } }
+job: { call: { at: services/weather }, input: { days: 2 } }
 ```
 
-1. A run may be started with a key: by a client, by a job that starts a machine, in any type, or by a send.
-2. Among one client's running runs, a key names at most one run. A key is free again once its run ends.
-3. `to: { key }` delivers the event to the run with that key. `to: { machine, key }` delivers it, or starts the machine with that key when no run has it.
-4. `${run.id}` and `${run.key}` can be read in every expression of every machine type.
+- A location in an address, a `send:` entry or a `receive:` entry is read from the tree's prefix, unless it starts with `/`, which is a full path into any tree. A name in it is not empty, `.`, `..` or `+`, and holds no `#`, backslash or control character.
+- `job: { send: … }` ends `done`, with no output, once the message is written. An event too large to write, past 256 KiB, fails the job, as any job's message does. Beside `send:` it takes `approve:`, `allow:` and `deny:`, and no other field of a job.
+- `at`, `key` and `run` may hold expressions, and `to` may be one expression that gives an address. An address is checked once it is filled in.
+- `job: { call: { at }, input }` starts a run of a `transient` location and waits. The job's output is that run's result. The job fails if the receiver refuses it, if the location is not `transient`, or if the run fails.
+- A key is any text of 1 to 256 characters. It is written in the run's head, as a label is, so anyone who can list runs can read it, and it holds no secret.
 
-A key is any text of 1 to 256 characters. A client's keys name only that client's runs. A key is written in the run's head, as a label is, so anyone who can list runs can read it, and it holds no secret.
+A send or a call needs two lists to agree:
 
-| Started by | When the key is in use | Where the run is |
-|---|---|---|
-| a client | the start is refused in its receipt | a root |
-| a job | the job fails, with a reason | a child of the job, cancelled with it |
-| a send with `machine` | the event is delivered to the run with the key | a root of the sender's client, which records the sender; ending the sender does not cancel it |
+1. Every permission layer of the sender, its tree client's ceiling included, holds `send:<location pattern>` (see permission.md). A tree's own client needs none for its own tree.
+2. The receiver's `receive:` accepts the sender.
 
-A run started by a send:
+```yaml
+receive: [thermostats/*, client:panel]                                # for every event
+receive: { set: [thermostats/*, client:panel], stop: [client:panel] }  # by event name
+```
 
-- It gets the event's data as its input and is then given the event, so a statechart acts on the event and a flow or an agent has its input.
-- It runs under the sender's layers and its definition's own `allow:`, as a child does, and takes the ask a child of the sender would.
-- It holds a copy of its definition, of what the definition names, and of the blobs the event names, so it needs nothing of the sender's record.
-- It counts as one level below its sender, so a chain of sends that each start a run ends at the root's depth limit.
-- It is kept as its definition says.
+- With no `receive:`, a file accepts from every location of its own tree and from its tree's client.
+- A written `receive:` replaces that with exactly its list. The tree's own client is accepted whatever the list says.
+- A call is checked against a list. A mapping names events, and takes a call only from the tree's client.
+- An entry is a location pattern or `client:<name>`.
 
-A send that cannot be made is noted in the sender's record, and the sender goes on. This covers a key that is empty or past 256 characters and a send past the depth limit, since a key can come from outside. A run that a send starts and that fails as it starts, such as one given data that does not fit its input, adds the reason to the sender's record while the sender runs. `to: { key }` naming no running run is noted as undelivered.
+The controller writes the sender into `event.from`: `{ at, run }`, with `key` for a keyed run, or `{ client }`. A send to it is a reply, and an address that names both a run and a key goes to the run. Anything about the sender in the data is only the sender's claim.
 
-A job's key is bounded the same way, and past it the job fails with a reason.
+| What happens to a send | Result |
+|---|---|
+| the sender's own layers refuse it | `denied` |
+| the receiver's `receive:` refuses it | noted as undelivered in the sender's record |
+| no running statechart can take it: it names a flow or an agent run, a run that has ended, or a key that is empty or past 256 characters | noted as undelivered |
+| a keyed location is at its `limits: { runs: }` and no run has the key | noted as undelivered |
+| a run kept it under `defer:` and was cancelled or restarted | noted as undelivered |
+| it is named `start`, `done`, `failed`, `timer`, a timer's name or a ticket's name | noted as undelivered |
 
-A machine made while running that sends to a key or gives a job a key fails. A job above it may start it with a key (see Permissions).
+An undelivered send fails nothing, and the sender goes on. Its note is written in the sender's record even after the sender has ended.
 
-Events from one run to one key arrive once each, in the order they were sent. An event sent with `machine` is delivered to the run with the key, or starts one, also when that run is ending as the event arrives. It is lost only when that run ends before taking it and the sender's record has been removed, since the record holds the definition. A run reads the sending run's ID as `event.from`.
+A run started by a send or a call:
+
+- It is a root of its own tree's client and no child of its sender. Ending the sender does not cancel it, but cancelling a calling job cancels the run it called.
+- It counts one level below its sender, and fails as it starts if that passes its own file's depth limit. A run that fails as it starts, such as one given data that does not fit its input, adds the reason to the sender's record.
+- Its authority is its location's. The sender adds nothing to it and takes nothing away, but the input it gives may fill an allow scope within the receiver's own patterns and every ceiling.
+- Its held jobs go only to its own file's `ask:` (see Approval).
+- It holds a copy of the blobs the event names, so it needs nothing of the sender's record.
+
+A machine made while running sends only to its parent and its children. A send to an address or a call in it fails that machine.
 
 ## Children
 
-Larger machines are built from smaller ones. A child is started by a job and its ending is one event to its parent. A child never outlives its parent: when a machine ends or is cancelled, every script job and every machine below it is cancelled too. A run started by a send is a root and no child of its sender.
+Larger machines are built from smaller ones. A child is started by a job and its ending is one event to its parent. A child never outlives its parent: when a machine ends or is cancelled, every script job and every machine below it is cancelled too. A run started by a send or a call is a root and no child of its sender.
 
 A definition can be made while a machine runs, by a script or by an agent, and run as a child. It is filled out, checked and stored exactly as one sent by a client is, in the process of the job that defines it (see Runner). It is checked again when a job starts it, as any definition is, and whether its approvals have an ask to go to, since that depends on what is above it. Each of its steps is taken in a process of its own (see Controller).
 
-A root may have eight levels of machines below it unless it says otherwise, and an ask that is a machine uses a level like any child. A definition may also limit how many jobs an instance starts. A job past either limit fails and is not restarted.
+A root may have sixteen levels of machines below it unless it says otherwise, and an ask that is a machine uses a level like any child. A definition may also limit how many jobs an instance starts. A job past either limit fails and is not restarted.
 
 ## Waiting on the outside
 
 A machine waits for a person or an outside system with a ticket: a random value that gives the right to answer one question, once.
 
 1. A state issues the ticket, and the step makes its value.
-2. The machine, or the client that started the run, hands the value to whoever should answer.
+2. The machine, or the client that owns the run's tree, hands the value to whoever should answer.
 3. That person or system answers with any client, naming the instance and the ticket and giving a value.
 4. The answer arrives as an event with the ticket's name. No other event is taken under that name.
 
@@ -266,6 +369,8 @@ Services that carry questions to people, such as a chat program, are clients at 
 A job can be made to wait for a yes before it starts. A job is held if it is marked for approval, or if a permission it asks for is one its machine, or a machine above it, has listed as needing to be asked about. Being approved gives a job nothing it was not already allowed; approval only ever holds. What gives the yes is the machine's ask: a job of its own, a script or a machine, named at the top of the definition. That job is called `ask`, and nothing else in a definition may take the name. A machine with no ask uses the nearest one above it. A type may give some of its jobs an ask nearer than the machine's, as an agent's set does, and that ask is the nearest above every machine below those jobs.
 
 A machine made while running has no ask of its own. What it holds goes to the nearest ask above it that was not made while running, and with none the job is denied. An ask it writes, at the top of its definition or in an agent's part, fails that machine as it starts, with the reason.
+
+A run started by a send or a call has no machine above it, so its held jobs go only to its own file's `ask:`, and are denied if it has none. A call or a `job: { send }` is a job, so the sender's `ask_about: [send:…]` holds it. A statechart's send action is never held.
 
 The controller does the holding. It gathers the jobs from one step that need approval, fills in each ask they go to once, and starts it once with them. The ask is told which machine is asking and, for each job, what it is and what input it would get. Its result names the jobs it approves and may add a note. Approved jobs start. A job not approved never starts, and its machine sees it as a failed job with the status denied, which it may handle like any other failure. An ask that cannot be filled in, that fails, or whose result does not list the jobs it approves, approves nothing, and the error of each job it denies says why.
 
@@ -302,7 +407,6 @@ job:
 - A restart after a failure is the same job, under a yes it was already given, and is not counted against `limits: { jobs: }`.
 - A restart after a job ended well is a new job. It is held again if it needs approval, has a new request name, and counts against `limits: { jobs: }`.
 - An ask that ends well is final, whatever its policy says.
-- A job's key is free between attempts. An event sent to it then is undelivered, and an attempt whose key has been taken fails.
 
 A machine reacts to a failure as to any event. A failure it has no rule for fails the machine, and its own failure is the event its parent receives. If a step itself fails, the instance fails.
 

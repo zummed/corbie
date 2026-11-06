@@ -1,5 +1,0 @@
-statechart: wait
-initial: open
-states:
-  open: { on: { go: over } }
-  over: { end: done }

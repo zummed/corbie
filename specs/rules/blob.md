@@ -44,11 +44,11 @@ The detailed rules behind the [Blobs overview](../blob.md).
 
 ## Where a blob lives and when it goes
 
-**R-blob-16** Every blob lives inside the record of one instance and goes when that record goes; nothing counts references and nothing extends a blob's life.
-*Accept:* after flows, statecharts and agents have run with uploads, job results and children, every blob in the store is under the `blobs/` of some instance's record. After an instance is removed as past keeping, none of its blobs is in the store, and a reference to one of them kept by an application outside Corbie opens nothing. No value in the store records how many references a blob has, or a time to keep it until.
+**R-blob-16** Every blob lives inside the record of one instance, with the file recorded at one location, or with a call's result, and goes when that record goes, that file is replaced or removed, or that result is a day old; nothing counts references and nothing extends a blob's life.
+*Accept:* after trees have been submitted and flows, statecharts and agents have run with uploads, calls, job results and children, every blob in the store is under the `blobs/` of an instance's record, of a location or of a receipt, or under `uploads/` for a message not yet taken. After an instance is removed as past keeping, none of its blobs is in the store, and a reference to one of them kept by an application outside Corbie opens nothing. After a file is removed from its tree and the tree submitted, none of the blobs of its location is in the store; after a call's result is removed, none of its blobs is. No value in the store records how many references a blob has, or a time to keep it until.
 
-**R-blob-19** A blob made by a job is written into the record of the instance the job is for, and a blob a client supplies with a start into the new instance's record.
-*Accept:* a job of a child instance returns a file: the blob is under the child's record, not its parent's and not the root's. `corbie run submit` with a file as input leaves the blob under `records/<client>/<the new run's name>/blobs/`.
+**R-blob-19** A blob made by a job is written into the record of the instance the job is for, and a blob a client supplies with a start into the new instance's record. The controller copies the files a client sends with a submit to their locations, a location's file into the record of each run it starts there, the input a client gives with a call into a tree it does not own into the called run's record, and the blobs that run's output names beside the call's result.
+*Accept:* a job of a child instance returns a file: the blob is under the child's record, not its parent's and not the root's. `corbie run submit` with a file as input leaves the blob under `records/<client>/<the new run's name>/blobs/`. `corbie run submit house --at /home`, where `house/report.yaml` names a script, leaves the definition and the script under `locations/home/report/+/blobs/`; a run started at `/home/report` reads both from its own record's `blobs/`, also after the location's have been replaced. Client `c2` calls `/home/report` with a file in its input and the run returns a file: the input's blob is in the run's record, and the output's under `receipts/c2/<the call's name>/blobs/`.
 
 **R-blob-21** A value handed down to a child is read where it is, and a parent keeps what its running children still use.
 *Accept:* a parent passes a file from its own record as input to a child machine, which passes it on to a job: no blob is written for either hand-down, the child's record holds no copy, and the job reads the bytes from the parent's record. A parent that has run for longer than its keep, and whose own state no longer mentions the file, still holds it while the child is running, and the child's next job reads it (R-inst-39).
@@ -62,8 +62,8 @@ The detailed rules behind the [Blobs overview](../blob.md).
 **R-blob-26** In a directory the copy is a link and costs nothing; in a bucket the bucket makes the copy itself and no data passes through Corbie.
 *Accept:* copy a large file up in a directory store: the two names are one file on disk, and the directory's use of disk has not grown by the file's size. Copy one up on a bucket stand-in that counts bytes: one copy request is made, and Corbie neither fetched nor sent the blob's bytes.
 
-**R-blob-29** An upload for a run that has not started within a day is removed.
-*Accept:* a client uploads two files under a new run's name and never sends the start. Twenty-three hours later they are there; after a day and a housekeeping pass they are gone. The uploads of a run that did start are untouched.
+**R-blob-29** An upload for a run that has not started, or for a submit the controller has not taken, is removed after a day.
+*Accept:* a client uploads two files under a new run's name and never sends the start, and uploads a file under `uploads/<client>/<message>/` and never sends the submit. Twenty-three hours later they are there; after a day and a housekeeping pass they are gone. The uploads of a run that did start are untouched.
 
 **C-blob-10** A value handed up is copied whole: every blob it refers to, those a stored definition names included. The child's record may go before the parent's, and a reference left pointing into it stops opening. *Test:* `blob_copy_up_takes_blobs_referred_to_inside_blobs`
 
@@ -73,7 +73,7 @@ The detailed rules behind the [Blobs overview](../blob.md).
 
 **C-blob-12** A search for references inside a blob passes over content that only looks like a reference and never fails on it; a reference is followed, kept or copied only in a stored definition, whose scripts and child definitions go with it. A blob holds whatever a job put there, and trimming and copying are not where content is judged. *Test:* `blob_reference_search_passes_over_lookalikes`
 
-**C-blob-14** How old an upload or a blob is is never taken from a file's modification time; it is read from a name that carries the time it was given: an upload's from its instance's name, a blob's from its own. Backups and copies change file times. *Test:* `blob_age_not_from_file_times`
+**C-blob-14** How old an upload or a blob is is never taken from a file's modification time; it is read from a name that carries the time it was given: an upload's from its instance's name or its message's, a blob's from its own. Backups and copies change file times. *Test:* `blob_age_not_from_file_times`
 
 ## Limits
 
@@ -92,15 +92,15 @@ The detailed rules behind the [Blobs overview](../blob.md).
 
 Uses:
 
-- **Store**: one value for each blob, written only-if-new under a record's `blobs/`; reading a part of a value; a link for a copy in a directory and the bucket's own copy in a bucket; a value sent in parts appears whole or not at all (R-store-09).
+- **Store**: one value for each blob, written only-if-new under the `blobs/` of a record, a location or a receipt, or under `uploads/`; reading a part of a value; a link for a copy in a directory and the bucket's own copy in a bucket; a value sent in parts appears whole or not at all (R-store-09).
 - **Instances**: a blob lives in an instance's record, is trimmed while the instance runs (R-inst-39) and goes when the record goes.
 - **Identity**: the sealed messages, entries and receipts that are the only things a reference travels in.
 
 Used by:
 
-- **Controller**: copies up what a child hands to its parent, before the parent is told (R-blob-23); removes uploads that never started as part of housekeeping; reads and writes the small blobs a step needs.
+- **Controller**: copies up what a child hands to its parent, before the parent is told (R-blob-23); copies uploads to locations and into records, a location's file into each run's record, and a called run's output beside the call's result (R-blob-19); removes uploads that were never taken as part of housekeeping; reads and writes the small blobs a step needs.
 - **Runner**: reads a job's script, files and input by reference from records; writes the blobs in a job's emits and output into the instance's record.
-- **Client**: uploads the files of a start, copies a value from one run to another, shows a blob as type, size and path in the one shape (C-client-16), and fetches contents for whoever may have them.
+- **Client**: uploads a submit's files under `uploads/`, writes a start's input and its files into the record of the run it names (R-inst-65), copies a value from one run to another, shows a blob as type, size and path in the one shape (C-client-16), and fetches contents for whoever may have them.
 - **Machines**: a value handed down is a reference into the parent's record; a value handed up is a reference into the receiver's own.
 - **Flow**: the items of a blob, read by a job.
 - **Agent**: handles shown to a model in place of references (R-agent-47), and the tools that read blobs in part.

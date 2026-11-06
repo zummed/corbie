@@ -1,0 +1,6 @@
+# The caller is cancelled while it waits on a call: the call job is
+# cancelled, and with it the run it called.
+flow: caller
+allow: [send:lookup]
+stages:
+  look: { job: { call: { at: lookup }, input: { n: 1 } } }

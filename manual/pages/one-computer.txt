@@ -8,7 +8,7 @@ Set up
     corbie start &
     corbie check
 
-  --ceiling all       the most any job on this computer may be allowed; without it, nothing
+  --ceiling all       the most any job on this computer may be allowed; without it, nothing; trees go at any prefix either way
   ~/.config/corbie    the config that init writes: the private keys and, by default, the store
   --store <address>   another directory, or an S3 bucket, as the store
   --config <dir>      names another config directory, as CORBIE_CONFIG does, for every command

@@ -1,0 +1,19 @@
+# A machine made while running sends only to its parent and its children: the
+# one that sends to a location and the one that calls fail as they ask, and
+# the one that sends to its parent is heard.
+statechart: maker
+initial: making
+states:
+  making:
+    job: ./make.js
+    on: { done: sending }
+  sending:
+    job: { machine: "${states.making.output.sends}", allow: [all] }
+    on: { failed: calling }
+  calling:
+    job: { machine: "${states.making.output.calls}", allow: [all] }
+    on: { failed: talking }
+  talking:
+    job: { machine: "${states.making.output.talks}", allow: [all] }
+    on: { hello: finished }
+  finished: { end: done, output: told }

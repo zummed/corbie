@@ -3,7 +3,7 @@
   "output": {
     "after_bad": {
       "error": {
-        "<contains>": "turn: Error: the model call failed"
+        "<contains>": "turn: the model call failed"
       }
     },
     "after_good": {

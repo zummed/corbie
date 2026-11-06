@@ -1,0 +1,10 @@
+{
+  "status": "done",
+  "output": { "n": 2 },
+  "record": [
+    { "machine": "lookup", "ask": { "kind": "hold", "name": "guarded" } },
+    { "machine": "lookup", "ask": { "kind": "script", "name": "ask", "job": { "input": { "asking": { "machine": "lookup" } } } } },
+    { "machine": "caller", "ask": { "kind": "script", "name": "ask" }, "absent": true }
+  ],
+  "note": "R-perm-69: a called run's held jobs go only to its own file's ask."
+}

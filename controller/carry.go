@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"slices"
-	"strconv"
 	"strings"
 	"time"
 
@@ -26,9 +25,10 @@ func errorsIs(err, target error) bool { return errors.Is(err, target) }
 // messages and wakes the entry names. Every write is only-if-new under a
 // name the entry gives, so doing any of it again is harmless.
 func (p *pass) finish(inst string, step *instance.Step) error {
-	// The step that ends a run frees its key before anything else.
-	if st := &step.State; st.Status != instance.Running && st.Key != "" {
-		if err := p.free(inst, st.Key); err != nil {
+	// The step that ends a run frees its key before anything else: a
+	// singleton's is the empty key.
+	if st := &step.State; st.Status != instance.Running && (st.Lifetime == machine.LifetimeKeyed || st.Lifetime == machine.LifetimeSingleton) {
+		if err := p.free(inst, store.Key(p.ctl, st.Location, st.Key), st.Key); err != nil {
 			return err
 		}
 	}
@@ -219,16 +219,29 @@ func (p *pass) carry(inst string, step *instance.Step, ask *instance.Ask) error 
 			_, err = p.send(store.Message(ask.Runner, p.ctl, ask.Message), ask.At, msg, to.Card)
 			return err
 		}
-		msg := &instance.Message{Kind: instance.KindCancel, Instance: ask.Child, From: inst}
+		to := ask.Child
+		if ask.Run != "" {
+			to = ask.Run // a run a call started
+		}
+		msg := &instance.Message{Kind: instance.KindCancel, Instance: to, From: inst}
 		_, err := p.send(store.Message(p.ctl, p.ctl, ask.Message), noEnd, msg, p.c.ID.Card)
 		return err
+
+	case instance.AskCall:
+		return p.called(inst, step, ask)
+
+	case instance.AskResult:
+		return p.result(ask)
 
 	case instance.AskTell:
 		return p.tell(ask.To, inst, ask.Message, ask.Text)
 
 	case instance.AskEvent:
-		if ask.Key != "" {
-			return p.toKey(inst, step, ask)
+		if ask.Job != nil {
+			return p.sendJob(inst, step, ask)
+		}
+		if ask.Location != "" {
+			return p.toAddress(inst, step, ask)
 		}
 		if ask.To == "" || ask.Undelivered {
 			return nil // written in the record, and nowhere else
@@ -269,7 +282,12 @@ func (p *pass) carry(inst string, step *instance.Step, ask *instance.Ask) error 
 		return err
 
 	case instance.AskEnd:
-		result := &instance.Result{Job: ask.Name, Status: instance.Done, Used: st.Used}
+		result := &instance.Result{Job: ask.Name, Status: instance.Done}
+		if st.Above.Parent != "" {
+			// What a child used is its parent's; a called run's is its own
+			// tree's.
+			result.Used = st.Used
+		}
 		output, err := p.handUp(ask.Output, ask.To)
 		if err != nil {
 			return err
@@ -292,6 +310,11 @@ func (p *pass) carry(inst string, step *instance.Step, ask *instance.Ask) error 
 		return err
 
 	case instance.AskReceipt:
+		if ask.Run != "" {
+			// A taken call's receipt is kept until its result has been
+			// written a day, and so has no end of its own.
+			return p.answer(ask.Sender, ask.Message, noEnd, ask.Receipt)
+		}
 		return p.writeReceipt(ask.Sender, ask.Message, ask.Receipt)
 	}
 	return nil
@@ -302,7 +325,7 @@ func (p *pass) carry(inst string, step *instance.Step, ask *instance.Ask) error 
 // handed up as it is, and opens nothing there as it opened nothing here.
 func (p *pass) handUp(v any, to string) (any, error) {
 	return blob.Walk(v, func(_ string, ref blob.Ref) (any, error) {
-		copied, err := blob.CopyWhole(p.ctx, p.store, ref, p.ctl, to)
+		copied, err := blob.CopyWhole(p.ctx, p.store, ref, p.ctl, store.Blobs(p.ctl, to))
 		if err != nil {
 			return ref.Value(), p.blobError(err)
 		}
@@ -365,7 +388,7 @@ func (p *pass) same(name string, msg *instance.Message) (bool, error) {
 		return false, nil
 	}
 	// An event sent to a key may have been moved on to another run.
-	return there.Kind == msg.Kind && there.From == msg.From && (there.Instance == msg.Instance || msg.Kind == instance.KindKeyed), nil
+	return there.Kind == msg.Kind && there.From == msg.From && (there.Instance == msg.Instance || msg.Kind == instance.KindSend), nil
 }
 
 // failJob fails a job before anything was sent for it. The failure reaches
@@ -412,29 +435,23 @@ func (p *pass) job(inst string, step *instance.Step, ask *instance.Ask) (*instan
 	// Every layer the controller knows of, each by name: the job in its
 	// definition, the start, each parent's job, and the client's ceiling.
 	job.Layers = append([]permission.Layer{ownLayer(asked)}, layersAbove(st, asked)...)
-	ceiling := client.Ceiling
-	ceiling.Name = "the ceiling of the client " + strconv.Quote(client.Card.Name)
-	ceiling.Fix = fmt.Sprintf("the controller's owner runs: corbie controller enrol %s --allow %%s", client.Card.Name)
-	job.Layers = append(job.Layers, ceiling)
+	job.Layers = append(job.Layers, ceilingOf(client))
+	location := st.Location
 
-	// The values of the secrets the job names, and no others. A run secret
-	// overrides a controller secret of the same name. One that a layer does
-	// not let travel at all is not sent, and the job is refused as its
-	// script would be on using it.
+	// The values of the secrets the job names, and no others: those set
+	// nearest the run's location. One that a layer does not let travel at
+	// all is not sent, and the job is refused as its script would be on
+	// using it.
 	for _, name := range secret.Named(asked.Allow) {
 		if r := refusedSecret(job.Layers, asked.Allow, name); r != nil {
 			return nil, none, &machine.Error{Status: machine.StatusDenied, Error: r.Error(), Refused: r.What, Layer: r.Layer, Fix: r.Fix}, nil
 		}
-		value, ok := st.Above.Secrets[name]
-		if !ok {
-			kept, found, err := secret.Get(p.ctx, p.store, p.c.ID, name)
-			if err != nil && !isAltered(err) {
-				return nil, none, nil, err
-			}
-			value = kept
-			if !found {
-				return nil, none, p.failf("the secret %q is not set (the controller's owner sets it with: corbie controller secret set %s)", name, name), nil
-			}
+		value, found, err := secret.Get(p.ctx, p.store, p.c.ID, location, name)
+		if err != nil && !isAltered(err) {
+			return nil, none, nil, err
+		}
+		if !found {
+			return nil, none, p.failf("%s is not set at %s or above (the controller's owner sets it with: corbie controller secret set %s%s)", name, location, name, atFlag(location)), nil
 		}
 		if job.Secrets == nil {
 			job.Secrets = map[string]string{}
@@ -442,6 +459,15 @@ func (p *pass) job(inst string, step *instance.Step, ask *instance.Ask) (*instan
 		job.Secrets[name] = value
 	}
 	return &instance.Message{Kind: instance.KindJob, Instance: inst, Job: job}, runner.Card, nil, nil
+}
+
+// atFlag is the flag that names a location on the command line: none for
+// "/", which is the default.
+func atFlag(location string) string {
+	if location == "/" {
+		return ""
+	}
+	return " --at " + location
 }
 
 // refusedSecret says which layers do not let a secret the job names travel
@@ -499,8 +525,9 @@ func (p *pass) child(inst string, step *instance.Step, ask *instance.Ask) *insta
 	}
 	above := &instance.Above{Parent: inst, Job: ask.Name, Depth: st.Above.Depth + 1, MaxDepth: st.Above.MaxDepth,
 		Layers:   layers,
-		AskAbout: st.Above.AskAbout, Ask: st.Above.Ask, Secrets: st.Above.Secrets, Context: st.Above.Context, IsAsk: job.Name == instance.AskName,
-		Made: made || st.Above.Made && !job.Above, Keep: st.Keep}
+		AskAbout: st.Above.AskAbout, Ask: st.Above.Ask, Context: st.Above.Context, Values: st.Above.Values,
+		IsAsk: job.Name == instance.AskName,
+		Made:  made || st.Above.Made && !job.Above, Keep: st.Keep}
 	// The nearest ask above the child is the one its job goes to: an ask
 	// nearer than its machine's, or the machine's own. A machine made while
 	// running keeps none, so it hands down the one above it.
@@ -517,29 +544,33 @@ func (p *pass) child(inst string, step *instance.Step, ask *instance.Ask) *insta
 	}
 	mac := hmac.New(sha256.New, st.Seed)
 	mac.Write([]byte("child\x00" + ask.Name))
+	// A child runs at its parent's location.
 	start := &instance.Start{Definition: job.Found.Blob, Input: job.Input, Labels: st.Labels, Timeout: job.Timeout,
-		Seed: mac.Sum(nil), Above: above}
-	if job.RunKey != nil {
-		start.Key = *job.RunKey
-	}
+		Seed: mac.Sum(nil), Above: above, Location: st.Location, Tree: st.Tree}
 	return start
 }
 
 // receipt answers a client's message that led to no step.
 func (p *pass) receipt(a *arrival, r *instance.Receipt) error {
-	return p.writeReceipt(a.sender, a.name, r)
+	client, message, _ := a.client()
+	return p.writeReceipt(client, message, r)
 }
 
 // writeReceipt writes the answer to a client's message under the message's
 // own name, sealed to the client that sent it. A message sent twice gets
 // the same answer twice: the first receipt stands.
 func (p *pass) writeReceipt(sender, message string, r *instance.Receipt) error {
+	return p.answer(sender, message, p.now.Add(instance.ReceiptLife), r)
+}
+
+// answer writes a receipt good until a time: none for a taken call's.
+func (p *pass) answer(sender, message string, until time.Time, r *instance.Receipt) error {
 	to, err := p.trusted(sender)
 	if err != nil || to == nil {
 		return err
 	}
 	name := store.Receipt(p.ctl, sender, message[strings.LastIndexByte(message, '/')+1:])
-	_, err = p.write(name, p.now.Add(instance.ReceiptLife), r, to.Card)
+	_, err = p.write(name, until, r, to.Card)
 	return err
 }
 
@@ -549,7 +580,7 @@ func (p *pass) writeReceipt(sender, message string, r *instance.Receipt) error {
 func (p *pass) head(inst string, step *instance.Step) error {
 	st := &step.State
 	head := &instance.Head{Name: inst, Machine: st.Machine, Type: st.Type, Status: st.Status, Step: step.Number,
-		Started: st.Started, Ended: st.Ended, Parent: st.Above.Parent, Key: st.Key, StartedBy: st.Above.StartedBy,
+		Started: st.Started, Ended: st.Ended, Parent: st.Above.Parent, Location: st.Location, Key: st.Key, StartedBy: st.Above.StartedBy,
 		Timers: len(st.Timers), Labels: st.Labels, Keep: st.Keep}
 	if st.Error != nil && st.Status == instance.Failed {
 		head.Failure = st.Error.Status
@@ -568,46 +599,52 @@ func (p *pass) head(inst string, step *instance.Step) error {
 
 	running, finished := store.RunningHead(p.ctl, inst), store.FinishedHead(p.ctl, inst)
 	if st.Status != instance.Running {
-		if _, err := p.write(finished, noEnd, head); err != nil {
+		// A note written in the record after the end moves the finished
+		// head on with it.
+		if _, err := p.forward(finished, head); err != nil {
 			return err
 		}
 		_, err := p.store.Delete(p.ctx, running, store.Overwrite)
 		return err
 	}
+	made, err := p.forward(running, head)
+	if err != nil || !made {
+		return err
+	}
+	// There was no running head: the instance is new, or it has ended and a
+	// later step moved its head. Which of the two is asked only once the head
+	// is written: an instance that has ended, however lately, is then sure to
+	// be found among the finished, and the head just written is taken away
+	// again.
+	if _, ended, err := p.store.Read(p.ctx, finished); err != nil || ended == store.None {
+		return err
+	}
+	_, err = p.store.Delete(p.ctx, running, store.Overwrite)
+	return err
+}
+
+// forward writes a head only-if-unchanged and only forward: a head already
+// at the step or past it stays. It says whether there was no head before.
+func (p *pass) forward(at string, head *instance.Head) (made bool, err error) {
+	signed, err := p.c.ID.Write(at, p.now, noEnd, head)
+	if err != nil {
+		return false, err
+	}
 	for {
-		data, mark, err := p.store.Read(p.ctx, running)
+		data, mark, err := p.store.Read(p.ctx, at)
 		if err != nil {
-			return err
+			return false, err
 		}
-		if mark == store.None {
-			// No running head: the instance is new, or it has ended and a
-			// later step moved its head. Which of the two is asked only once
-			// the head is written: an instance that has ended, however
-			// lately, is then sure to be found among the finished, and the
-			// head just written is taken away again.
-			done, err := p.write(running, noEnd, head)
-			if err != nil {
-				return err
+		how := store.OnlyIfNew
+		if mark != store.None {
+			var current instance.Head
+			if _, err := identity.Read(data, at, p.c.ID.Card, nil, &current); err == nil && current.Step >= head.Step {
+				return false, nil
 			}
-			if !done {
-				continue
-			}
-			if _, ended, err := p.store.Read(p.ctx, finished); err != nil || ended == store.None {
-				return err
-			}
-			_, err = p.store.Delete(p.ctx, running, store.Overwrite)
-			return err
+			how = store.OnlyIfUnchanged(mark)
 		}
-		var current instance.Head
-		if _, err := identity.Read(data, running, p.c.ID.Card, nil, &current); err == nil && current.Step >= step.Number {
-			return nil // the head is already at this step or past it
-		}
-		signed, err := p.c.ID.Write(running, p.now, noEnd, head)
-		if err != nil {
-			return err
-		}
-		if done, err := p.store.Write(p.ctx, running, signed, store.OnlyIfUnchanged(mark)); err != nil || done {
-			return err
+		if done, err := p.store.Write(p.ctx, at, signed, how); err != nil || done {
+			return done && mark == store.None, err
 		}
 		// The head changed under the write: read it again.
 	}

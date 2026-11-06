@@ -1,0 +1,3 @@
+[
+  { "do": "send", "to": "/case/room#k", "event": "set", "data": { "target": 21 }, "taken": true, "acted": true }
+]

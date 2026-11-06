@@ -1,0 +1,9 @@
+{
+  "status": "failed",
+  "failure": "denied",
+  "error_contains": ["send:/case/boiler", "add the line send:/case/boiler to the allow list of the definition of \"thermostat\""],
+  "record": [
+    { "machine": "boiler", "event": { "name": "set" }, "absent": true }
+  ],
+  "note": "R-ctl-122, R-chart-78: a send the sender's own layers refuse fails the chart as denied."
+}

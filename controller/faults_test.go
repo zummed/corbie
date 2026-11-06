@@ -127,7 +127,7 @@ func Test_ctl_wake_set_again_survives_delete_of_used_one(t *testing.T) {
 	// Leave the state and enter it again before its time: the timer is
 	// cleared and set again for the very same moment.
 	w.tick(time.Hour)
-	w.client.Send(ctx, run, "again", nil, 0)
+	w.client.Send(ctx, w.to(run), "again", nil, 0)
 	w.settle()
 	if head := w.head(run); head.Step != 2 || head.Timers != 1 {
 		t.Fatalf("after entering again the head is %+v", head)
@@ -148,7 +148,7 @@ func Test_ctl_loser_of_step_carries_out_winners_entry(t *testing.T) {
 	w := newWorld(t)
 	run := w.submit(door, nil, map[string]any{"greeting": "x"})
 	w.settle()
-	w.client.Send(ctx, run, "open", nil, 0)
+	w.client.Send(ctx, w.to(run), "open", nil, 0)
 	w.settle()
 	var ticket string
 	for _, k := range w.latest(run).State.Tickets {
@@ -194,7 +194,7 @@ func TestEventSentTwiceIsTakenOnce(t *testing.T) {
 	w := newWorld(t)
 	run := w.submit(kept, nil, nil)
 	w.settle()
-	message, _ := w.client.Send(ctx, run, "tick", nil, 0)
+	message, _ := w.client.Send(ctx, w.to(run), "tick", nil, 0)
 	w.settle()
 	if head := w.head(run); head.Step != 2 {
 		t.Fatalf("the event was not taken: %+v", head)

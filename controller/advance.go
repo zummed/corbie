@@ -75,13 +75,25 @@ func (p *pass) advance(inst string, waiting []*arrival) error {
 		for _, d := range taken.dropped {
 			if d.move {
 				// One at a time: a later event goes where the first has gone.
-				to := sendingTo{d.a.msg.From, d.a.msg.Key}
+				to := sendingTo{senderOf(d.a.msg), d.a.msg.To.At, keyOf(d.a.msg.To)}
 				if moved[to] {
 					p.later()
 				} else if err := p.redirect(d.a); err != nil {
 					return err
 				}
 				moved[to] = true
+				continue
+			}
+			if d.note != "" {
+				if err := p.undeliver(d.a, d.note); err != nil {
+					return err
+				}
+				continue
+			}
+			if d.failed != "" {
+				if err := p.callFailed(d.a, d.failed); err != nil {
+					return err
+				}
 				continue
 			}
 			if d.receipt != nil {
@@ -148,7 +160,7 @@ func isAltered(err error) bool {
 }
 
 // readers are the parties everything in an instance's record is sealed to:
-// the controller, and the client that started the root.
+// the controller, and the client of the root's tree.
 func (p *pass) readers(inst string) ([]identity.Card, error) {
 	cards := []identity.Card{p.c.ID.Card}
 	t, err := p.trusted(store.InstanceClient(inst))

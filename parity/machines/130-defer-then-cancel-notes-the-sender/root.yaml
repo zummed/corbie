@@ -1,0 +1,23 @@
+# The boss sends the worker three pieces of work: the worker takes the first
+# and keeps the other two. While the boss waits on go, the worker is
+# cancelled, and each kept event is noted as undelivered in the boss's
+# record.
+statechart: boss
+allow: [send:worker]
+initial: sending
+states:
+  sending:
+    entry:
+      send:
+        - { to: { at: worker }, event: work, data: 1 }
+        - { to: { at: worker }, event: work, data: 2 }
+        - { to: { at: worker }, event: work, data: 3 }
+    timers: { pause: 1s }
+    on: { pause: waiting }
+  waiting:
+    ticket: go
+    on: { go: listening }
+  listening:
+    timers: { pause: 1s }
+    on: { pause: finished }
+  finished: { end: done }

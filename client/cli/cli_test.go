@@ -49,12 +49,18 @@ type machine struct {
 // said along the way.
 func (m machine) run(stdin string, args ...string) (int, string, string) {
 	m.t.Helper()
+	return m.runFor(30*time.Second, stdin, args...)
+}
+
+// runFor runs corbie as run does, stopping it after a time.
+func (m machine) runFor(limit time.Duration, stdin string, args ...string) (int, string, string) {
+	m.t.Helper()
 	var out, said bytes.Buffer
 	full := append(args, "--config", m.config)
 	// Not a deadline: a runner takes a context's deadline for its host's
 	// limit, and takes no job it could not finish before it.
 	ctx, cancel := context.WithCancel(context.Background())
-	defer time.AfterFunc(30*time.Second, cancel).Stop()
+	defer time.AfterFunc(limit, cancel).Stop()
 	defer cancel()
 	status := cli.Run(ctx, full, strings.NewReader(stdin), &out, &said)
 	return status, out.String(), said.String()
@@ -67,6 +73,15 @@ func (m machine) ok(stdin string, args ...string) string {
 		m.t.Fatalf("corbie %s ended %d:\n%s%s", strings.Join(args, " "), status, out, said)
 	}
 	return out
+}
+
+// recorded records a file as a tree of one file, as corbie run submit does,
+// with the flags given, and gives its location: / and the file's name
+// without its extension. A run of it is started by its location.
+func (m machine) recorded(file string, flags ...string) string {
+	m.t.Helper()
+	m.ok("", append([]string{"run", "submit", file}, flags...)...)
+	return "/" + strings.TrimSuffix(strings.TrimSuffix(filepath.Base(file), ".js"), ".yaml")
 }
 
 func files(t *testing.T, contents map[string]string) string {
@@ -136,23 +151,33 @@ func TestInitRunSubmitStart(t *testing.T) {
 		}
 	}
 	dir := files(t, map[string]string{"hello.yaml": hello, "greet.js": `return { text: "hello " + input.name }`})
+	roles := make(chan int, 1)
+	var stop context.CancelFunc
+	start := func() {
+		var ctx context.Context
+		ctx, stop = context.WithCancel(context.Background())
+		go func() {
+			var out, said bytes.Buffer
+			roles <- cli.Run(ctx, []string{"start", "controller", "--interval", "200ms", "runner", "--interval", "200ms", "--config", m.config}, strings.NewReader(""), &out, &said)
+		}()
+	}
+	start()
+	defer func() { stop() }()
+	if out := m.ok("", "run", "submit", filepath.Join(dir, "hello.yaml")); out != "/hello   transient   recorded\n" {
+		t.Fatalf("the file was recorded as %q", out)
+	}
+	stop()
+	<-roles
 
-	// With the controller stopped, a submitted run is waiting to start.
-	id := strings.TrimSpace(m.ok("", "run", "submit", filepath.Join(dir, "hello.yaml"), "--input", `{"name": "directory"}`, "--label", "team=ops"))
+	// With the controller stopped, a run started is waiting to start.
+	id := strings.TrimSpace(m.ok("", "run", "submit", "/hello", "--input", `{"name": "directory"}`, "--label", "team=ops"))
 	if strings.ContainsAny(id, " \n") || !strings.HasPrefix(id, "box-client/") {
 		t.Fatalf("submit printed %q", id)
 	}
 	if out := m.ok("", "run", "show", id); !strings.Contains(out, "waiting") {
 		t.Fatalf("before any controller ran, show printed %s", out)
 	}
-
-	roles := make(chan int, 1)
-	ctx, stop := context.WithCancel(context.Background())
-	defer stop()
-	go func() {
-		var out, said bytes.Buffer
-		roles <- cli.Run(ctx, []string{"start", "controller", "--interval", "200ms", "runner", "--interval", "200ms", "--config", m.config}, strings.NewReader(""), &out, &said)
-	}()
+	start()
 	if out := m.ok("", "run", "show", id, "--wait", "--json"); !strings.Contains(out, `"status":"done"`) || !strings.Contains(out, "hello directory") {
 		t.Fatalf("the run ended as %s", out)
 	}
@@ -171,13 +196,13 @@ func TestInitRunSubmitStart(t *testing.T) {
 	// names the command that changes it. The script's own list allowed it,
 	// so nothing is said of adding to the command line.
 	reads := files(t, map[string]string{"reads.js": `return fs.read("/etc/hostname")`})
-	_, out, _ = m.run("", "run", "submit", filepath.Join(reads, "reads.js"), "--allow", "disk", "--wait")
+	_, out, _ = m.run("", "run", "submit", m.recorded(filepath.Join(reads, "reads.js"), "--allow", "disk"), "--wait")
 	if !strings.Contains(out, "denied") || !strings.Contains(out, "corbie controller enrol box-client --allow fs.read:/etc/hostname") || strings.Contains(out, "add to the command") {
 		t.Fatalf("a denied run printed %s", out)
 	}
 	m.ok("", "controller", "enrol", "box-client", "--allow", "fs.read:/etc/hostname")
 	m.ok("", "runner", "trust", "box-controller", "--allow", "fs.read:/etc/hostname")
-	if _, out, _ := m.run("", "run", "submit", filepath.Join(reads, "reads.js"), "--allow", "disk", "--wait"); !strings.Contains(out, "done") {
+	if _, out, _ := m.run("", "run", "submit", "/reads", "--wait"); !strings.Contains(out, "done") {
 		t.Fatalf("after the ceilings were raised: %s", out)
 	}
 	stop()
@@ -199,7 +224,7 @@ func TestInitWithNoStoreSetsItUpInTheConfig(t *testing.T) {
 	}
 	m.staying("start", "controller", "--interval", "20ms", "runner", "--interval", "20ms")
 	dir := files(t, map[string]string{"one.js": `return 1`})
-	if out := m.ok("", "run", "submit", filepath.Join(dir, "one.js"), "--wait", "--json"); !strings.Contains(out, `"status":"done"`) || !strings.Contains(out, `"output":1`) {
+	if out := m.ok("", "run", "submit", m.recorded(filepath.Join(dir, "one.js")), "--wait", "--json"); !strings.Contains(out, `"status":"done"`) || !strings.Contains(out, `"output":1`) {
 		t.Fatalf("the run ended as %s", out)
 	}
 }
@@ -430,13 +455,13 @@ func TestViewerNeedsNoIdentity(t *testing.T) {
 	storeDir := filepath.Join(t.TempDir(), "store")
 	m.ok("", "init", "--store", storeDir, "--name", "box")
 	dir := files(t, map[string]string{"hello.yaml": hello, "greet.js": `return 1`})
-	id := strings.TrimSpace(m.ok("", "run", "submit", filepath.Join(dir, "hello.yaml"), "--input", `{"name": "x"}`))
 	ctx, stop := context.WithCancel(context.Background())
 	done := make(chan int, 1)
 	go func() {
 		var out, said bytes.Buffer
 		done <- cli.Run(ctx, []string{"start", "controller", "--interval", "100ms", "runner", "--interval", "100ms", "--config", m.config}, strings.NewReader(""), &out, &said)
 	}()
+	id := strings.TrimSpace(m.ok("", "run", "submit", m.recorded(filepath.Join(dir, "hello.yaml")), "--input", `{"name": "x"}`))
 	m.ok("", "run", "show", id, "--wait")
 	// The record says the run has ended a moment before its head does:
 	// let the controller finish the step before it is stopped.
@@ -497,5 +522,55 @@ func TestTestReadsADirectory(t *testing.T) {
 	status, out, _ := m.run("", "test", "on")
 	if status != 1 || !strings.Contains(out, "on/hello.yaml\n    ") {
 		t.Fatalf("with its script gone, corbie test on ended %d and printed %q", status, out)
+	}
+}
+
+// corbie test runs a file by its lifetime: a transient file with its input,
+// a singleton started by its submit, and a keyed file not at all.
+func TestTestRunsEachLifetime(t *testing.T) {
+	m := machine{t, t.TempDir()}
+	dir := files(t, map[string]string{"hello.yaml": hello, "greet.js": `return { text: "hello " + input.name }`,
+		"once.yaml": "statechart: once\nlifetime: singleton\ninitial: over\nstates:\n  over: { end: done, output: once }\n",
+		"room.yaml": "statechart: room\nlifetime: keyed\ninitial: open\nstates:\n  open: { on: { said: open } }\n"})
+	if out := m.ok("", "test", filepath.Join(dir, "hello.yaml"), "--input", `{"name": "x"}`, "--json"); !strings.Contains(out, `"text":"hello x"`) {
+		t.Fatalf("a transient file printed %s", out)
+	}
+	if out := m.ok("", "test", filepath.Join(dir, "once.yaml"), "--json"); !strings.Contains(out, `"output":"once"`) {
+		t.Fatalf("a singleton printed %s", out)
+	}
+	status, out, said := m.run("", "test", filepath.Join(dir, "room.yaml"))
+	if status != 1 || out != "" || !strings.Contains(said, "room.yaml is keyed: a run starts there when an event is sent to a key") {
+		t.Fatalf("a keyed file ended %d: %s%s", status, out, said)
+	}
+}
+
+// corbie test --definition prints the definition written out, each value
+// with its file and line, and runs nothing; a flag of a start beside it is
+// a mistake.
+func Test_client_test_definition_prints_file_and_line(t *testing.T) {
+	m := machine{t, t.TempDir()}
+	dir := files(t, map[string]string{
+		"base.yaml":   "allow: [net:example.com]\ntitle: base\n",
+		"family.yaml": "flow: family\ninclude: base.yaml\nstages:\n  greet: { job: ./greet.js }\n",
+		"greet.js":    "this script would fail: (",
+	})
+	out := m.ok("", "test", filepath.Join(dir, "family.yaml"), "--definition")
+	for _, line := range []string{"flow: family", "# family.yaml:1", "net:example.com", "# base.yaml:1", "title: base", "# base.yaml:2", "job: ./greet.js", "# family.yaml:4"} {
+		if !strings.Contains(out, line) {
+			t.Fatalf("--definition printed no %q:\n%s", line, out)
+		}
+	}
+	var def map[string]any
+	if err := json.Unmarshal([]byte(m.ok("", "test", filepath.Join(dir, "family.yaml"), "--definition", "--json")), &def); err != nil || def["name"] != "family" || def["lines"] == nil {
+		t.Fatalf("--definition --json printed %v (%v)", def, err)
+	}
+	for _, flags := range [][]string{{"--input", "{}"}, {"--watch"}, {"--value", "A=b"}} {
+		args := append([]string{"test", filepath.Join(dir, "family.yaml"), "--definition"}, flags...)
+		if status, out, said := m.run("", args...); status != 2 || out != "" || !strings.Contains(said, "--definition runs nothing") {
+			t.Errorf("corbie %s ended %d: %s%s", strings.Join(args, " "), status, out, said)
+		}
+	}
+	if status, _, said := m.run("", "test", dir, "--definition"); status != 2 || !strings.Contains(said, "--definition applies to one definition") {
+		t.Fatalf("a directory with --definition ended %d: %s", status, said)
 	}
 }

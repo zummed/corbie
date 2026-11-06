@@ -176,6 +176,7 @@ func (s *Stage) reads() (all []machine.Read, when []machine.Read) {
 		all = append(all, machine.ReadsIn(s.Job.Input, "stages")...)
 		all = append(all, machine.Reads(s.Job.Machine, "stages")...)
 		all = append(all, machine.Reads(s.Job.Script, "stages")...)
+		all = append(all, machine.ReadsIn(s.Job.Addressed(), "stages")...)
 	}
 	all = append(all, machine.ReadsIn(s.Each, "stages")...)
 	all = append(all, machine.ReadsIn(s.Blob, "stages")...)

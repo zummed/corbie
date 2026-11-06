@@ -13,8 +13,9 @@ import (
 )
 
 // With no controller running, cancel, send and reply given a life each
-// come back once that life has passed, saying the message was not taken
-// up; and what each sent is good for that life.
+// wait for a receipt past that life, while a controller whose clock is
+// behind may still take the message; and what each sent is good for that
+// life.
 func TestCancelSendAndReplyTakeALife(t *testing.T) {
 	m := machine{t, filepath.Join(t.TempDir(), "config")}
 	storeDir := filepath.Join(t.TempDir(), "store")
@@ -32,12 +33,9 @@ func TestCancelSendAndReplyTakeALife(t *testing.T) {
 			t.Fatal(err)
 		}
 		began := time.Now()
-		status, out, said := m.run("", append(command, "--life", "200ms")...)
-		if status != 1 || out != "" || !strings.Contains(said, "not taken up") {
-			t.Errorf("corbie %s --life 200ms with no controller ended %d: %s%s", strings.Join(command[:2], " "), status, out, said)
-		}
-		if took := time.Since(began); took > 10*time.Second {
-			t.Errorf("corbie %s --life 200ms waited %v for its receipt", strings.Join(command[:2], " "), took)
+		status, out, said := m.runFor(time.Second, "", append(command, "--life", "200ms")...)
+		if status == 0 || out != "" || strings.Contains(said, "not taken up") || time.Since(began) < time.Second {
+			t.Errorf("corbie %s --life 200ms with no controller ended %d after %v: %s%s", strings.Join(command[:2], " "), status, time.Since(began), out, said)
 		}
 		after, err := store.Names(s.List(ctx, inbox))
 		if err != nil || len(after) != len(before)+1 {

@@ -5,16 +5,19 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/zummed/corbie/client"
 	"github.com/zummed/corbie/client/gateway"
+	"github.com/zummed/corbie/machine"
 	"github.com/zummed/corbie/permission"
 
 	_ "github.com/zummed/corbie/statechart"
@@ -33,6 +36,9 @@ type caller struct {
 	t     *testing.T
 	url   string
 	token string
+	// client is the gateway's client, which submits the trees the gateway
+	// starts runs in.
+	client *client.Client
 }
 
 func (c caller) do(method, path, body string) (int, map[string]any, string) {
@@ -84,32 +90,53 @@ func (c caller) upload(parts ...part) (int, map[string]any, string) {
 	return c.send("POST", "/runs", form.FormDataContentType(), &body)
 }
 
-// form gives the parts of a start that is a definition, the files beside
-// it by their paths under "files", and anything else a start carries.
+// placed counts the trees the tests submit, each at a prefix of its own.
+var placed atomic.Int64
+
+// place submits a definition and the files beside it as a tree of one file,
+// through the gateway's client, and gives its location once the submit is
+// taken.
+func (c caller) place(src string, files map[string]string) string {
+	c.t.Helper()
+	draft, err := machine.Parse([]byte(src), machine.Given(files))
+	if err != nil {
+		c.t.Fatalf("the definition does not pass:\n%v", err)
+	}
+	name := draft.Definition.Name
+	at := fmt.Sprintf("/%s-%d", name, placed.Add(1))
+	ctx := context.Background()
+	message, err := c.client.Submit(ctx, &client.Tree{Prefix: at, Machines: []*client.Machine{{Path: name + ".yaml", Location: at, Draft: draft}}}, 0)
+	if err != nil {
+		c.t.Fatal(err)
+	}
+	receipt, err := c.client.WaitReceipt(ctx, message, time.Minute, 10*time.Millisecond)
+	if err != nil || !receipt.Taken {
+		c.t.Fatalf("the submit of %s has the receipt %+v: %v", at, receipt, err)
+	}
+	return at
+}
+
+// form gives the parts of a start: the start as JSON, with its location
+// "at", or a definition under "definition" and the files beside it by
+// their paths under "files", which are placed first and started at their
+// location.
 func form(c caller, request map[string]any) []part {
 	c.t.Helper()
-	var parts []part
 	rest := map[string]any{}
 	for name, value := range request {
-		switch name {
-		case "definition":
-			parts = append(parts, part{name: "definition", contents: value.(string)})
-		case "files":
-			for at, text := range value.(map[string]string) {
-				parts = append(parts, part{name: "file:" + at, filename: "a-file", contents: text})
-			}
-		default:
+		if name != "definition" && name != "files" {
 			rest[name] = value
 		}
 	}
-	if len(rest) > 0 {
-		data, err := json.Marshal(rest)
-		if err != nil {
-			c.t.Fatal(err)
-		}
-		parts = append(parts, part{name: "start", contents: string(data)})
+	if src, given := request["definition"].(string); given {
+		files, _ := request["files"].(map[string]string)
+		rest["at"] = c.place(src, files)
 	}
-	return parts
+	data, err := json.Marshal(rest)
+	if err != nil {
+		c.t.Fatal(err)
+	}
+	return []part{{name: "start", contents: string(data)}}
 }
 
 func TestGateway(t *testing.T) {
@@ -120,7 +147,7 @@ func TestGateway(t *testing.T) {
 	defer local.Close()
 	server := httptest.NewServer(&gateway.Gateway{Client: local.Client, Token: "the-token"})
 	defer server.Close()
-	c := caller{t: t, url: server.URL, token: "the-token"}
+	c := caller{t: t, url: server.URL, token: "the-token", client: local.Client}
 
 	// A request without the right token is refused and does nothing.
 	if status, _, _ := (caller{t: t, url: server.URL, token: "the-toke"}).do("GET", "/runs", ""); status != http.StatusUnauthorized {
@@ -129,15 +156,15 @@ func TestGateway(t *testing.T) {
 	// A field the gateway does not know is refused, and the answer names
 	// it: in what a start carries, among the parts of its form, and in what
 	// an event carries.
-	if status, _, text := c.upload(part{name: "definition", contents: door}, part{name: "start", contents: `{"labels": {"a": "b"}, "ceiling": ["all"]}`}); status != 400 || !strings.Contains(text, "ceiling") {
+	if status, _, text := c.upload(part{name: "start", contents: `{"at": "/door", "labels": {"a": "b"}, "ceiling": ["all"]}`}); status != 400 || !strings.Contains(text, "ceiling") {
 		t.Fatalf("an unknown field was answered %d %s", status, text)
 	}
-	if status, _, text := c.upload(part{name: "definition", contents: door}, part{name: "ceiling", contents: "all"}); status != 400 || !strings.Contains(text, `a part named \"ceiling\"`) {
+	if status, _, text := c.upload(part{name: "start", contents: `{"at": "/door"}`}, part{name: "ceiling", contents: "all"}); status != 400 || !strings.Contains(text, `a part named \"ceiling\"`) {
 		t.Fatalf("an unknown part was answered %d %s", status, text)
 	}
-	// A definition with mistakes is refused with everything wrong.
-	if status, _, text := c.upload(part{name: "definition", contents: "statechart: bad\nstates: {a: {on: {go: nowhere}}}"}); status != 400 || !strings.Contains(text, "nowhere") {
-		t.Fatalf("a bad definition was answered %d %s", status, text)
+	// A start names the location it starts a run at.
+	if status, _, text := c.upload(part{name: "start", contents: `{"input": {}}`}); status != 400 || !strings.Contains(text, "at") {
+		t.Fatalf("a start with no location was answered %d %s", status, text)
 	}
 	// Nothing was started by any of them.
 	if status, _, text := c.do("GET", "/runs?all", ""); status != 200 || strings.TrimSpace(text) != "[]" {
@@ -200,6 +227,17 @@ func TestGateway(t *testing.T) {
 	}
 	if status, _, text := c.do("GET", "/runs?all&label=team=ops", ""); status != 200 || !strings.Contains(text, id) {
 		t.Fatalf("the listing was answered %d %s", status, text)
+	}
+	// A listing narrowed to a location, and to a key there, gives the runs
+	// and their IDs.
+	at, _ := run["location"].(string)
+	if status, _, text := c.do("GET", "/runs?all&at="+at, ""); status != 200 || at == "" || !strings.Contains(text, id) {
+		t.Fatalf("the listing at %q was answered %d %s", at, status, text)
+	}
+	for _, query := range []string{"?all&at=/elsewhere", "?all&at=" + at + "&key=alice"} {
+		if status, _, text := c.do("GET", "/runs"+query, ""); status != 200 || strings.TrimSpace(text) != "[]" {
+			t.Fatalf("the listing %s was answered %d %s", query, status, text)
+		}
 	}
 	if status, def, _ := c.do("GET", "/runs/"+id+"/definition", ""); status != 200 || def["name"] != "door" {
 		t.Fatalf("the definition was answered %d %v", status, def)

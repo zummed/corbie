@@ -1,0 +1,12 @@
+# A send to a location whose singleton is not running is noted in the
+# sender's record, and fails nothing. lonely.yaml is transient, and nothing
+# started it.
+statechart: asker
+allow: [send:lonely]
+initial: asking
+states:
+  asking:
+    entry: { send: { to: { at: lonely }, event: hello } }
+    timers: { pause: 1s }
+    on: { pause: finished }
+  finished: { end: done, output: { fine: true } }

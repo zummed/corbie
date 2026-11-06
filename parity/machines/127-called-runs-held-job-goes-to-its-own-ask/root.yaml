@@ -1,0 +1,9 @@
+# The called run holds a stage for approval. It goes to the called file's
+# own ask, which approves it, and not to the caller's, which approves
+# nothing.
+flow: caller
+allow: [send:lookup]
+ask: ./no.js
+stages:
+  look: { job: { call: { at: lookup }, input: { n: 1 } } }
+output: ${stages.look.output}

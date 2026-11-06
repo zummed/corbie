@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -12,8 +13,8 @@ import (
 
 // This file is the whole layout: every name Corbie writes is made here.
 //
-// An instance's name is "<client>/<id>": the client that started its root,
-// then an id that begins with the time it was named. So anything that names
+// An instance's name is "<client>/<id>": the client that owns its root's
+// tree, then an id that begins with the time it was named. So anything that names
 // an instance says where its head and its record are and how old it is.
 
 const (
@@ -29,7 +30,6 @@ func Stamp(t time.Time) string { return t.UTC().Format(stamp) }
 func Inbox(party string) string                    { return party + "/inbox" }
 func Message(party, sender, message string) string { return party + "/inbox/" + sender + "/" + message }
 func Receipts(ctl, sender string) string           { return ctl + "/receipts/" + sender }
-func Receipt(ctl, sender, message string) string   { return ctl + "/receipts/" + sender + "/" + message }
 func Running(ctl string) string                    { return ctl + "/running" }
 func Finished(ctl string) string                   { return ctl + "/finished" }
 func RunningHead(ctl, instance string) string      { return ctl + "/running/" + instance }
@@ -45,15 +45,152 @@ func Blob(ctl, instance, name string) string       { return ctl + "/records/" + 
 func Wakes(ctl string) string                      { return ctl + "/wakes" }
 func TrustList(ctl string) string                  { return ctl + "/trust" }
 func Trust(ctl, party string) string               { return ctl + "/trust/" + party }
-func Secrets(ctl string) string                    { return ctl + "/secrets" }
-func Secret(ctl, name string) string               { return ctl + "/secrets/" + name }
 func TakenList(runner string) string               { return runner + "/taken" }
+func Uploads(ctl, client string) string            { return ctl + "/uploads/" + client }
 
-// Key is the name of a key's file among a client's. A key is any text, so
-// the name holds its hash and never the key itself.
-func Key(ctl, client, key string) string {
+// Uploaded is where the files a client sends with one message are.
+func Uploaded(ctl, client, message string) string {
+	return ctl + "/uploads/" + client + "/" + message
+}
+
+// Upload is the name of a file a client sends with a message.
+func Upload(ctl, client, message, name string) string {
+	return Uploaded(ctl, client, message) + "/" + name
+}
+
+// Receipt is the name of the controller's answer to a client's message: in
+// a directory of the message's own name.
+func Receipt(ctl, sender, message string) string {
+	return ctl + "/receipts/" + sender + "/" + message + "/receipt"
+}
+
+// Result is the name of what became of the run a client called in a tree
+// it does not own, beside the call's receipt.
+func Result(ctl, sender, message string) string {
+	return ctl + "/receipts/" + sender + "/" + message + "/result"
+}
+
+// ReceiptBlobs is where the blobs a call's result names are.
+func ReceiptBlobs(ctl, sender, message string) string {
+	return ctl + "/receipts/" + sender + "/" + message + "/blobs"
+}
+
+// ReceiptBlob is the name of a blob a call's result names.
+func ReceiptBlob(ctl, sender, message, name string) string {
+	return ReceiptBlobs(ctl, sender, message) + "/" + name
+}
+
+// ReceiptMessage reads the message out of the name of a receipt or of one
+// of its blobs.
+func ReceiptMessage(ctl, name string) (message string, ok bool) {
+	rest, ok := strings.CutPrefix(name, ctl+"/receipts/")
+	parts := strings.Split(rest, "/")
+	if !ok || len(parts) < 3 {
+		return "", false
+	}
+	return parts[1], true
+}
+
+// Locations is where everything set at a location is kept.
+func Locations(ctl string) string { return ctl + "/locations" }
+
+// LocationDir is where the entries of one location are: under "+" after
+// its path, and "+" is never a part of a location, so no location's entries
+// are a path above another's. The entries of "/" are under locations/+.
+func LocationDir(ctl, location string) string {
+	if location == "/" {
+		return ctl + "/locations/+"
+	}
+	parts := strings.Split(strings.TrimPrefix(location, "/"), "/")
+	for i, part := range parts {
+		parts[i] = stored(part)
+	}
+	return ctl + "/locations/" + strings.Join(parts, "/") + "/+"
+}
+
+// stored is a part of a location as it is kept in the store: one that
+// starts with a dot, as .rook does, after a "#", so that a directory does
+// not hide it. No part of a location holds "#", so no other part is kept
+// starting with one.
+func stored(part string) string {
+	if strings.HasPrefix(part, ".") {
+		return "#" + part
+	}
+	return part
+}
+
+// Tree is the name of the entry of a tree submitted at a prefix.
+func Tree(ctl, prefix string) string            { return LocationDir(ctl, prefix) + "/tree" }
+func LocationFile(ctl, location string) string  { return LocationDir(ctl, location) + "/file" }
+func LocationBlobs(ctl, location string) string { return LocationDir(ctl, location) + "/blobs" }
+func LocationBlob(ctl, location, name string) string {
+	return LocationBlobs(ctl, location) + "/" + name
+}
+func Keys(ctl, location string) string   { return LocationDir(ctl, location) + "/keys" }
+func Secrets(ctl, at string) string      { return LocationDir(ctl, at) + "/secrets" }
+func Secret(ctl, at, name string) string { return Secrets(ctl, at) + "/" + name }
+func Values(ctl, at string) string       { return LocationDir(ctl, at) + "/values" }
+func Value(ctl, at, name string) string  { return Values(ctl, at) + "/" + name }
+
+// Key is the name of a key's file among a location's. A key is any text, so
+// the name holds its hash and never the key itself. A singleton's is the
+// empty key.
+func Key(ctl, location, key string) string {
+	return Keys(ctl, location) + "/" + keyHash(key)
+}
+
+func keyHash(key string) string {
 	sum := sha256.Sum256([]byte(key))
-	return ctl + "/keys/" + client + "/" + hex.EncodeToString(sum[:])
+	return hex.EncodeToString(sum[:])
+}
+
+// ParseLocation reads the location out of the name of one of its entries,
+// and what follows the location's "+".
+func ParseLocation(ctl, name string) (location, entry string, ok bool) {
+	rest, ok := strings.CutPrefix(name, Locations(ctl)+"/")
+	if !ok {
+		return "", "", false
+	}
+	parts := strings.Split(rest, "/")
+	at := slices.Index(parts, "+")
+	if at < 0 || at == len(parts)-1 {
+		return "", "", false
+	}
+	for i, part := range parts[:at] {
+		parts[i] = strings.TrimPrefix(part, "#")
+	}
+	return "/" + strings.Join(parts[:at], "/"), strings.Join(parts[at+1:], "/"), true
+}
+
+// CheckLocation says whether a text can be a location: "/", or "/" then
+// parts, none of them empty, ".", ".." or "+", and none holding "#", which
+// separates a key from its location, "*", which makes a pattern, a slash, a
+// backslash or a control character.
+func CheckLocation(location string) error {
+	if location == "/" {
+		return nil
+	}
+	rest, ok := strings.CutPrefix(location, "/")
+	if !ok {
+		return fmt.Errorf("%w: the location %q does not start with /", ErrName, location)
+	}
+	for part := range strings.SplitSeq(rest, "/") {
+		if part == "." || part == ".." || part == "+" || strings.ContainsAny(part, "#*") || CheckPart(stored(part)) != nil {
+			return fmt.Errorf("%w: the location %q has the part %q: a part is not empty, ., .. or +, and holds no #, *, backslash or control character", ErrName, location, part)
+		}
+	}
+	return nil
+}
+
+// Above gives a location and each path above it, nearest first, ending
+// with "/".
+func Above(location string) []string {
+	above := []string{location}
+	for len(location) > 1 {
+		location = location[:max(strings.LastIndexByte(location, '/'), 1)]
+		above = append(above, location)
+	}
+	return above
 }
 
 // Taken is the name of the mark a runner leaves for a job it has taken. The
@@ -124,6 +261,14 @@ func ChildInstance(parent string, at time.Time, job string) string {
 	return InstanceClient(parent) + "/" + Stamp(at) + "-" + hex.EncodeToString(sum[:5])
 }
 
+// RootInstance makes the name of a root instance that the controller starts
+// for a client, as a submit starts a singleton. It follows from what asked
+// for it, so that asking twice names one instance.
+func RootInstance(client string, at time.Time, from string) string {
+	sum := sha256.Sum256([]byte(client + "\x00" + from))
+	return client + "/" + Stamp(at) + "-" + hex.EncodeToString(sum[:5])
+}
+
 // CheckInstance says whether name has the form of an instance's name.
 func CheckInstance(name string) error {
 	client, id, ok := strings.Cut(name, "/")
@@ -136,7 +281,7 @@ func CheckInstance(name string) error {
 	return nil
 }
 
-// InstanceClient is the client that started the instance's root.
+// InstanceClient is the client that owns the tree of the instance's root.
 func InstanceClient(instance string) string {
 	client, _, _ := strings.Cut(instance, "/")
 	return client

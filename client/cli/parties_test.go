@@ -20,7 +20,7 @@ import (
 // commands with the words that follow it.
 func TestAGroupOfCommandsPrintsItsCommands(t *testing.T) {
 	row := regexp.MustCompile(`(?m)^  (\S+)   `)
-	for _, group := range []string{"run", "controller", "runner", "client", "controller secret"} {
+	for _, group := range []string{"run", "controller", "runner", "client", "controller secret", "controller value"} {
 		for _, asked := range [][]string{nil, {"--help"}} {
 			args := append(strings.Fields(group), asked...)
 			var out, said bytes.Buffer

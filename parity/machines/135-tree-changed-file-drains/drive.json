@@ -1,0 +1,4 @@
+[
+  { "wait": { "machine": "waiting", "status": "running" }, "do": "submit", "dir": "changed" },
+  { "wait": { "machine": "waiting", "status": "running" }, "do": "send", "event": "go", "taken": true, "acted": true }
+]

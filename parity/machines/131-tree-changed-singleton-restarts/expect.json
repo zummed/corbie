@@ -1,0 +1,9 @@
+{
+  "status": "done",
+  "output": "new",
+  "record": [
+    { "machine": "asker", "event": { "name": "said", "data": "old" } },
+    { "machine": "asker", "event": { "name": "said", "data": "new" } }
+  ],
+  "note": "R-ctl-115: a changed singleton is cancelled and started again on the new file, which takes the sends to its location."
+}

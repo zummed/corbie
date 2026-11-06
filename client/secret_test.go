@@ -26,7 +26,8 @@ func echo(t *testing.T) *httptest.Server {
 
 func runWithSecret(t *testing.T, l *client.Local, def string, files map[string]string, input any) *client.Run {
 	t.Helper()
-	id, err := l.Start(ctx, draft(t, def, files), client.Start{Input: input, Secrets: map[string]string{"TOKEN": "tok-en/123456789"}})
+	setSecret(t, l, "TOKEN", "tok-en/123456789")
+	id, err := l.Run(ctx, draft(t, def, files), client.Start{Input: input})
 	if err != nil {
 		t.Fatal(err)
 	}

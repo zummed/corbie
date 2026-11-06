@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/zummed/corbie/blob"
 	"github.com/zummed/corbie/client"
 	"github.com/zummed/corbie/controller"
 	"github.com/zummed/corbie/identity"
@@ -16,6 +17,7 @@ import (
 	"github.com/zummed/corbie/machine"
 	"github.com/zummed/corbie/permission"
 	"github.com/zummed/corbie/runner"
+	"github.com/zummed/corbie/secret"
 	"github.com/zummed/corbie/store"
 
 	_ "github.com/zummed/corbie/statechart"
@@ -38,6 +40,10 @@ type world struct {
 	now    time.Time
 	writes int
 	ops    []store.Op
+	// placed counts the trees submitted, so that each has a prefix of its own.
+	placed int
+	// located gives the location of each run a test started.
+	located map[string]string
 }
 
 func newWorld(t *testing.T) *world {
@@ -112,25 +118,136 @@ func (w *world) draft(src string, files map[string]string) *machine.Draft {
 	return draft
 }
 
-// submit starts a run and gives its name.
+// submit submits a definition as a tree of one file, at a prefix of its
+// own, and gives the run there: the one the submit starts for a singleton,
+// and otherwise one started at the location with the input.
 func (w *world) submit(src string, files map[string]string, input any) string {
 	w.t.Helper()
-	run, err := w.client.Start(ctx, w.draft(src, files), client.Start{Input: input})
+	at, run := w.place(w.client, src, files)
+	if run != "" {
+		return run
+	}
+	return w.startAt(w.client, at, client.Start{Input: input})
+}
+
+// place has a client submit a definition as a tree of one file, at a prefix
+// no other test of the world uses, and runs the controller until the submit
+// is taken. The file is <name>.yaml, so its location is the prefix and the
+// name, as a client gives it. It gives that location and the run the submit
+// started there, if it started one.
+func (w *world) place(c *client.Client, src string, files map[string]string) (at, run string) {
+	w.t.Helper()
+	draft := w.draft(src, files)
+	name := draft.Definition.Name
+	w.mu.Lock()
+	w.placed++
+	prefix := fmt.Sprintf("/%s-%d", name, w.placed)
+	w.mu.Unlock()
+	at = prefix + "/" + name
+	message, err := c.Submit(ctx, &client.Tree{Prefix: prefix, Machines: []*client.Machine{{Path: name + ".yaml", Location: at, Draft: draft}}}, 0)
 	if err != nil {
 		w.t.Fatal(err)
 	}
+	for range 10 {
+		w.pass()
+		r, err := c.Receipt(ctx, message)
+		switch {
+		case err != nil:
+			w.t.Fatal(err)
+		case r == nil:
+			continue
+		case !r.Taken:
+			w.t.Fatalf("the submit of %s was refused: %s", at, r.Refused)
+		}
+		for _, done := range r.Tree.Locations {
+			run = done.Run
+		}
+		w.locate(run, at)
+		return at, run
+	}
+	w.t.Fatalf("the submit of %s has no receipt", at)
+	return "", ""
+}
+
+// startAt has a client start a run at a location, and gives its name.
+func (w *world) startAt(c *client.Client, at string, start client.Start) string {
+	w.t.Helper()
+	start.At = at
+	run, err := c.Start(ctx, start)
+	if err != nil {
+		w.t.Fatal(err)
+	}
+	w.locate(run, at)
 	return run
+}
+
+// locate notes the location of a run a test started.
+func (w *world) locate(run, at string) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	if w.located == nil {
+		w.located = map[string]string{}
+	}
+	if run != "" {
+		w.located[run] = at
+	}
+}
+
+// to gives the address of one run: at the location a test started it at, or
+// the one its head names.
+func (w *world) to(run string) machine.Address {
+	w.t.Helper()
+	w.mu.Lock()
+	at, ok := w.located[run]
+	w.mu.Unlock()
+	if !ok {
+		if head := w.head(run); head != nil {
+			at = head.Location
+		}
+	}
+	return machine.Address{At: at, Run: run}
+}
+
+// input writes a start's input into a run's record, as a client does
+// before it sends the start, and gives the blob the start names.
+func (w *world) input(run, input string) blob.Ref {
+	w.t.Helper()
+	ref, err := blob.Write(ctx, w.owner, store.Blob("ctl", run, blob.NewName()), blob.TypeOf("input.json"), blob.NewKey(), strings.NewReader(input))
+	if err != nil {
+		w.t.Fatal(err)
+	}
+	return ref
+}
+
+// secret sets a secret at a location, as the controller's owner does.
+func (w *world) secret(name, value, at string) {
+	w.t.Helper()
+	if err := secret.Set(ctx, w.ctrl.Store, w.ctl, at, name, value); err != nil {
+		w.t.Fatal(err)
+	}
 }
 
 // pass runs one pass of the controller.
 func (w *world) pass() time.Time {
 	w.t.Helper()
-	next, err := w.ctrl.Pass(ctx)
+	// A pass that does not end is cancelled, and the test fails: it gives no
+	// deadline, which would change what the pass takes on.
+	bounded, cancel := context.WithCancel(ctx)
+	defer cancel()
+	timer := time.AfterFunc(passLimit, cancel)
+	defer timer.Stop()
+	next, err := w.ctrl.Pass(bounded)
+	if bounded.Err() != nil {
+		w.t.Fatalf("a pass did not end within %s", passLimit)
+	}
 	if err != nil {
 		w.t.Fatal("pass:", err)
 	}
 	return next
 }
+
+// passLimit is the longest one pass of a test may take.
+const passLimit = 30 * time.Second
 
 // settle runs passes until one changes nothing.
 func (w *world) settle() {

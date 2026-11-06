@@ -8,21 +8,21 @@ The client is a public Go package in the Corbie repository. An application writt
 
 It does two kinds of thing.
 
-It **sends**: start a run, cancel one, send an event to one or to a key, answer a ticket. To start a run it takes a definition and the files it names, fills out the short forms, checks the whole and reports everything wrong at once, uploads the definition, its files and any file in the input side by side, a bounded number at a time, and sends the start once every one is in the store. A start may carry input, labels, a key, run secrets, a list that narrows what the run may do, and a timeout. Any value in the input may be a file.
+It **sends**: submit a tree, start a run of a location, cancel runs, send an event, answer a ticket. To submit a tree it reads every file, writes each machine out with its includes resolved and its short forms filled out, checks the whole and reports everything wrong at once, and uploads the definitions and the files they name side by side, a bounded number at a time. A start names a location and may carry input, labels, a list that narrows what the run may do, and a timeout. Any value in the input may be a file, and the start is sent once every file is in the store.
 
 It **reads**: list runs and follow the list as it changes; show one run, where it stands and how it ended; read a run's record so far, children included, and follow it as it grows; fetch a file from a result; show the definition a run was started from.
 
 Reading is the one way of watching described under Instances. The package owns the awkward corners so that nothing built on it meets them: a head that is a moment behind its record, a run that has been sent and not yet taken up, a start that was refused, a receipt that arrives before the head does, a head that is moving from running to finished.
 
-To a client a run is an instance: a root it started, or one below it.
+To a client a run is an instance: a root at a location in one of its trees, or one below it.
 
 ## One shape for a run
 
 Wherever a run is shown, it has the same shape and the same words.
 
-A run is `waiting` to start, `running`, `done`, `failed` or `cancelled`. A failed run says why: an `error`, a `timeout`, or `denied` with the refusal. A finished run has its output, and a list of the permissions it used, which for a machine are those of every job in it and below it.
+A run shows its location, and its key at a keyed location. A run is `waiting` to start, `running`, `done`, `failed` or `cancelled`. A failed run says why: an `error`, a `timeout`, or `denied` with the refusal. A finished run has its output, and a list of the permissions it used, which for a machine are those of every job in it and below it.
 
-A run waiting on a ticket shows the ticket's name. The ticket's value is in the record, which only the client that started the run can read. Only that client is shown the run's title, its input, its output, the failure's text and the permissions it used.
+A run waiting on a ticket shows the ticket's name. The ticket's value is in the record, which only the client of the run's tree can read. Only that client is shown the run's title, its input, its output, the failure's text and the permissions it used, and another client that asks for more than the run's status is told there is no such run of its own, and which client's tree the run is in. A client that called the run from outside the tree is shown its status and its output or error, from the call's result, and the run its call started (see instance.md).
 
 A blob in any value is shown as its type, its size and the path to ask for it by. Its key is never shown, at the command line, over HTTP or to a model.
 
@@ -34,14 +34,16 @@ corbie start [<name> [<its flags>]]…    run the controller, a runner, the gate
 corbie check                            start one small run, and report which part of a setup did not respond
 corbie test flow.yaml                   run a definition or a script in this process, with no setup; given directories, read every machine in them
 
-corbie run submit flow.yaml             start a run and print its ID
+corbie run submit flow.yaml             record one file as a tree, and start it if it is a singleton
+corbie run submit <dir> --at <prefix>   record a directory as a tree, and start its singletons
+corbie run submit <location>            start a run of a transient location and print its ID
 corbie run ls                           list runs
 corbie run show <id>                    show one run: its status and its result
-corbie run cancel <id>                  cancel a run that this client started
-corbie run send <id> <event> [data]     send an event to a run that this client started
+corbie run cancel <id>                  cancel a run in one of this client's trees
+corbie run send <id> <event> [data]     send an event to a run
 corbie run reply <id> <ticket> [value]  answer a ticket that a run waits on
 
-corbie controller …                     enrol and remove runners and clients, set ceilings and tags, manage secrets, cancel any run
+corbie controller …                     enrol and remove runners and clients, set ceilings and tags, manage secrets and values, cancel any run
 corbie runner …                         print a card, trust a controller
 corbie client …                         print a card, trust a controller
 
@@ -61,7 +63,7 @@ The commands form a tree. A word at the top is a command, or begins several comm
                respond
   test         run a definition or a script in this process, with no setup
   run          submit, ls, show, cancel, send, reply
-  controller   card, enrol, remove, parties, secret, policy, cancel
+  controller   card, enrol, remove, parties, secret, value, policy, cancel
   runner       card, trust, remove
   client       card, trust, remove
   manual       print a page of the manual, or list the pages; web
@@ -71,7 +73,7 @@ The commands form a tree. A word at the top is a command, or begins several comm
 Programs on PATH, which corbie <name> runs: rook, ui.
 ```
 
-- `corbie run` and `corbie run --help` list the commands of `corbie run` in the same rows, and the same holds for `controller`, `controller secret`, `runner` and `client`.
+- `corbie run` and `corbie run --help` list the commands of `corbie run` in the same rows, and the same holds for `controller`, `controller secret`, `controller value`, `runner` and `client`.
 - `corbie manual`'s help ends with the row of `web`.
 - A command's usage line is in its own help, never in these rows.
 - The rows fit 80 columns: a text too long goes on below, under itself.
@@ -94,23 +96,42 @@ Following from a terminal is one flag, `--watch`. It prints what the command pri
 - `run ls --watch` prints the listing, then each run that appears or changes.
 - `run show --watch` prints the record, then each entry as it is written, until the run ends.
 
-`run submit --key <key>` starts a run with a key, and the receipt refuses it if a running run has the key. `run send --key <key> <event> [data]` reads the key's file and sends to the run it names. `run ls` and `run show` print a run's key. `run show` prints a run's title, and `run ls` does not, since a listing reads only the heads.
+`run show`, `run cancel` and `run send` name a run in one of three ways:
 
-`run show` can also print one step, one job's input and output, or the definition, can save a result's files to a directory, and with `--wait` stays until the run ends and prints its result. `run submit` sends a start; `run submit --wait` waits for the run it started and `run submit --watch` follows it.
+```
+<id>                  one run, by its ID
+/home/devices/boiler  the singleton at a location; for run show, the one run of this client's running there; for run cancel, every run there
+/home/chats#alice     the running run of key alice at a keyed location
+```
+
+`run send` to a key with no running run starts one, as the file's `lifetime: keyed` says. A client sends to the runs of its own trees with no `send:` entry, and only it cancels them. A send to another tree needs `send:` in the client's ceiling and `client:<its name>` in the receiver's `receive:` (see permission.md).
+
+`run show` prints a run's title, and `run ls` does not, since a listing reads only the heads. `run show` can also print one step, one job's input and output, or the definition, can save a result's files to a directory, and with `--wait` stays until the run ends and prints its result.
+
+`run submit <location>` sends a start; `run submit --wait` waits for the run it started and `run submit --watch` follows it. The tree's client starts a transient location with no `send:` entry. Another client's start is a call: its ceiling needs `send:` for the location, the file's `receive:` must list `client:<its name>`, and the start takes no labels or `--allow`. Under the ID it printed, it is shown only the call's result: the run's status and its output or error, and the result's files. A cancel of that ID is refused, naming the run the call started and its tree's client, which alone cancels it.
 
 A secret's value is never on the command line. It is read only from the source the command names, and a value not found there is a mistake that sends nothing:
 
 ```
---secret NAME                         typed at the terminal, not shown
---secret-env NAME                     the environment variable NAME
 controller secret set NAME            typed at the terminal, not shown
 controller secret set NAME --env      the environment variable NAME
 controller secret set NAME -          standard input, to the end
 ```
 
+`--at <location>` sets a secret for the runs at that location and below. With no `--at` it is set at `/`, for every tree. A plain value is not secret, so it is given on the line (see secret.md):
+
+```
+corbie controller value set DB_HOST db.prod.lan --at /prod
+corbie controller value list
+```
+
+A file given alone is a tree of one file, at `--at`, by default `/` and the file's name without its extension. An argument of `run submit` that starts with `/`, does not end in `.yaml` or `.js`, and is no file or directory on this computer is read as a location. A file's name that is not there is reported as not found. `run show`, `run cancel` and `run send` read every argument that starts with `/` as a location.
+
 A script file can be submitted as it is. The package wraps it in a flow of one stage, with the permissions it may use and its limits, which the command line takes as flags.
 
-`corbie check` is the last step of setting anything up. It starts a small run of its own, which asks for one job and sets one timer, follows it as any client does, and reports each thing that had to happen, with how long it took. While it waits it says what for.
+`corbie check` is the last step of setting anything up. It submits a small transient machine of its own as a tree at `/corbie-check/<client>`, so several clients can check one controller, starts a run of it, which asks for one job and sets one timer, follows it as any client does, and reports each thing that had to happen, with how long it took. While it waits it says what for.
+
+The client's ceiling needs an `at:` entry that matches `/corbie-check/<client>`. Without one, the check's first line is the refused submit, with the line to add.
 
 ```
 corbie check
@@ -124,9 +145,9 @@ A line that is not `ok` says what leaves it so, on a computer and on a serverles
 
 The check asks the host nothing. What it reports is what turned up in the store, so it is the same check on every host, and it fails unless every line is `ok`.
 
-Every command can print its result as JSON, in the one shape above. A command ends with success, with a mistake in how it was written, or with failure, which includes a run that did not end well.
+Every command can print its result as JSON, in the one shape above. A command ends with success, with a mistake in how it was written, or with failure, which includes a run that did not end well, and ends the same way whichever it prints.
 
-The config and the store may be named by environment variables. No other flag is read from the environment.
+`--json`, `--config` and `--store` may be written before the command as well as after it. The config and the store may be named by environment variables. No other flag is read from the environment.
 
 The commands, their help, the manual's pages about them and the names by which a model is allowed to run them all come from one table.
 
@@ -189,38 +210,81 @@ A program's word that is itself a role's or a program's name begins the next nam
 - When `corbie start` is stopped, it interrupts each program and waits for it, for up to ten seconds before killing it.
 - On a serverless host, `corbie start` refuses a program before anything starts.
 
-`corbie test` is an ordinary run: the same roles, in one process, on a store in memory, with ceilings that allow everything.
+`corbie test` is an ordinary run: the same roles, in one process, on a store in memory, with ceilings that allow everything. It records the file as a tree of one file and starts it. A singleton is started by that submit, so a flag of a start given with one is a mistake. A keyed file is refused: its runs start when an event is sent to a key. `corbie test <file> --definition` prints the machine as the client writes it out, each value with its file and line, runs nothing, and takes no flag of a start.
 
-## A directory of machines
-
-`corbie run submit` takes directories as well as a file. It brings the runs of those directories into line with their files, and exits when each run it cancelled has ended and each start has been taken.
+`corbie test` sets values and secrets at `/` of the controller in its process, read from the sources `controller value set` and `controller secret set` read:
 
 ```
-cd my-project
-corbie run submit bridges schedules
+--value NAME=VALUE    a value
+--secret NAME         a secret, typed at the terminal, not shown
+--secret-env NAME     a secret, from the environment variable NAME
 ```
 
-It reads every `*.yaml` in each directory and those below it, but for `.git`, whose first key gives a type of machine. Any other holds data, or fields to include.
+## A tree
 
-| What it finds | What it does |
-|---|---|
-| a machine with no run, or whose latest run is at another hash | cancels that run, and starts one under the key `file:<path>`, labelled `machine` and `hash` |
-| a machine whose latest run is at its hash, running or ended | leaves it as it is |
-| a run whose file has gone from a directory it was given | cancels it |
-| a file with a problem, or one with a run that no longer reads as a machine | reports it, and leaves its run as it is |
+`corbie run submit <dir> --at <prefix>` records a directory as a tree. Each file with a type line gets a location: its path under the prefix, without `.yaml`. A file without one is a piece, read only by including it. `--at` defaults to `/` and the directory's own name, and `.` uses the directory's real name.
 
-`hash` is the SHA-256 of every file the machine was read from. The command keeps nothing of its own, so running it twice starts nothing new.
+```yaml
+# house/devices/boiler.yaml
+statechart: boiler
+lifetime: singleton
+initial: idle
+states:
+  idle:
+    on: { set: applying }
+  applying:
+    job: { include: ./boiler-job.yaml }
+    on: { done: idle, failed: idle }
 
-- A run that ended, failed or was cancelled stays that way until its files change, and `--again <file>` starts it before then. A machine that should come back by itself runs as a job with `restart:`.
-- A run that cannot be cancelled is reported, and its machine is not started. A problem with one machine leaves the rest done.
-- A run is found from its record, which lasts as long as its `keep:` says. Once the record has gone, the next submit starts the machine again.
-- Every machine in a directory it is given is started, so a machine that only another machine runs is kept elsewhere.
-- A machine is given no input, and one that needs some is refused, and reported. It reads the context's absolute path as `${run.context}`.
+# house/devices/boiler-job.yaml           no type line: a piece
+script: ./boiler.js
+input: { target: "${event.data.target}" }
+allow: [net:boiler.lan:443, "secret:BOILER_PASSWORD@net:boiler.lan:443"]
+
+# house/schedules/away.yaml
+flow: away
+allow: [send:devices/boiler]
+stages:
+  lower:
+    job: { send: { to: { at: devices/boiler }, event: set, data: { target: 12 } } }
+```
+
+```
+$ corbie run submit house --at /home
+/home/devices/boiler   singleton   started <id>
+/home/schedules/away   transient   recorded
+not set at its location or above: secret BOILER_PASSWORD for /home/devices/boiler
+
+$ corbie run submit /home/schedules/away --wait
+```
+
+A submit does this, and exits when each run it cancelled has ended and each start has been taken. The controller's start of a singleton is good until it is taken, so the submit waits for it with no limit:
+
+1. It reads every `*.yaml` in the directory and below it, but for `.git`, and writes out and checks each machine.
+2. It records every file at its location in the store, and removes the locations whose files have gone, cancelling every run there.
+3. For a changed file, the runs already running at its location do as its `update:` says.
+4. It starts each singleton with no running run, and nothing else.
+5. It prints the names of values and secrets the files use that are not set at their locations or above. This is a reminder, not a refusal.
+
+A tree belongs to the client that first submitted it. Every run keeps the definition it started with, and a submit changes no other tree.
+
+- A submit at a prefix inside or above another tree is refused, naming that tree. `/` is never a tree.
+- A submit at a tree another client owns is refused, naming the owner.
+- A submit at a prefix that no `at:` entry of the client's ceiling matches is refused.
+- A file under a directory whose name starts with a dot is read as any other: `.rook/review.yaml` submitted at `/project` is at `/project/.rook/review`.
+- A file beside a directory of the same name, as `boiler.yaml` beside `boiler/x.yaml`, is refused with the files below it, because a location has nothing below it. They are reported among the files with problems.
+- A file with a problem is reported, and its location keeps what was recorded before. A problem with one file leaves the rest done. In JSON, `problems` gives each problem's text by location.
+- A file whose approvals have no ask is recorded, since it may run as another machine's child under that machine's ask. A run started at its location is refused.
+- A singleton is given no input, and one that needs some is refused, and reported. It reads the context's absolute path as `${run.context}`.
+- When a client submits a different directory at a prefix it holds, the submit prints `/home: last submitted from /srv/old-house`.
+- `corbie run cancel <location>` after a submit cancels the runs there, so the next of each starts on the new definition.
 - `corbie test` given directories reads their machines as this command does, prints each one ok or its problems, and starts and cancels nothing. It reads no config and no store, so it changes nothing wherever it runs.
 
 ## The gateway
 
-The gateway offers the package over HTTP for applications not written in Go. Its routes start, list, show and cancel runs, read a run's record, definition and files, and send events and answers to a run. A listing and a record are each given as they stand, and with `?watch` as a stream that follows them. Files go in as uploads and come out by their path in a result.
+The gateway offers the package over HTTP for applications not written in Go. Its routes start a run of a location with an input, list, show and cancel runs, read a run's record, definition and files, and send events and answers to a run. A listing and a record are each given as they stand, and with `?watch` as a stream that follows them. Files in an input go in as uploads and come out by their path in a result.
+
+A start is the gateway's client starting a transient location, as `corbie run submit <location>` does. The location's file lists `client:<the gateway's client>` in `receive:`, or the gateway's client owns the tree. A start in a tree another client owns is a call, and the run is shown from the call's result. A route names a run by its ID. A listing narrowed with `?at=<location>`, and `&key=<key>` at a keyed location, gives the IDs of the runs there.
 
 A gateway is started with `corbie start gateway`, alone or beside a controller and a runner. It is one client with one ceiling. Callers show it a token it was given when it was started, and all of them act as that client. Different ceilings need different gateways. A request with a field the gateway does not know is refused.
 

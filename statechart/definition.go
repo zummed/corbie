@@ -3,6 +3,7 @@
 package statechart
 
 import (
+	"encoding/json/v2"
 	"fmt"
 	"slices"
 	"sort"
@@ -50,14 +51,12 @@ type Transition struct {
 }
 
 // Send is the chart's one action: a named event to the parent, to a child,
-// or to the run a key names. Machine is the machine started with that key
-// when no run has it.
+// or to a run by its address.
 type Send struct {
-	To      string `json:"to,omitzero"`
-	Key     string `json:"key,omitzero"`
-	Machine string `json:"machine,omitzero"`
-	Event   string `json:"event"`
-	Data    any    `json:"data,omitzero"`
+	To      string               `json:"to,omitzero"`
+	Address *machine.AddressSpec `json:"address,omitzero"`
+	Event   string               `json:"event"`
+	Data    any                  `json:"data,omitzero"`
 }
 
 // names are what an expression of a chart reads.
@@ -69,23 +68,41 @@ func init() { machine.Register(chartType{}) }
 
 func (chartType) Name() string { return "statechart" }
 
-// SendsToKeys says a chart can send an event to a key: of the types, only a
-// chart acts on events.
-func (chartType) SendsToKeys() {}
+// SendsToAddresses says a chart can send an event to a run by its address:
+// of the types, only a chart's send is an action.
+func (chartType) SendsToAddresses() {}
+
+// Owns says whether a name is a timer's or a ticket's of a state of the
+// chart, which no sender may take.
+func (chartType) Owns(def *machine.Definition, name string) bool {
+	var chart Chart
+	if json.Unmarshal(def.Body, &chart) != nil {
+		return false
+	}
+	for _, n := range chart.index(func(string, string, ...any) {}) {
+		if n.state == nil {
+			continue
+		}
+		if _, timer := n.state.Timers[name]; timer || n.state.Ticket == name {
+			return true
+		}
+	}
+	return false
+}
+
+// Receives says a chart's runs take events sent to them: of the types, only
+// a chart acts on events, and only a chart may be keyed.
+func (chartType) Receives() {}
 
 // What a chart's definition holds of its own. A state may hold states, so
 // its shape holds itself.
 var (
-	toShape = &machine.Shape{Name: "to", What: "the run a send goes to, by its key", Fields: []machine.Field{
-		{Name: "key", Kind: machine.KindWord, Like: "chat:${event.data.chat}", Does: "the key of the run"},
-		{Name: "machine", Kind: machine.KindValue, Path: true, Like: "./chat.yaml", Does: "the machine started with the key when no run has it, given the event's data as its input"},
-	}}
 	sendShape = &machine.Shape{Name: "send", What: "a send", Fields: []machine.Field{
-		{Name: "to", Kind: machine.KindValue, Of: toShape, Like: "parent", Does: "who it is sent to: parent, a state or a named job of the chart, or { key, machine }"},
+		{Name: "to", Kind: machine.KindValue, Of: machine.AddressShape, Like: "parent", Does: "who it is sent to: parent, a state or a named job of the chart, an address, or one expression that gives one, such as ${event.from}"},
 		{Name: "event", Kind: machine.KindWord, Like: "review_wanted", Does: "the event's name"},
 		{Name: "data", Kind: machine.KindValue, Like: `{ ticket: "${tickets.verdict}" }`, Does: "what the event carries"},
 	}}
-	sends = machine.Field{Name: "send", Kind: machine.KindValue, Of: sendShape, Like: "{ to: parent, event: review_wanted }",
+	sends = machine.Field{Name: "send", Kind: machine.KindValue, Of: sendShape, Many: true, Like: "{ to: parent, event: review_wanted }",
 		Does: "an event to send: one, or a list"}
 	actionShape     = &machine.Shape{Name: "action", What: "what a state does on entering or leaving", Fields: []machine.Field{sends}}
 	transitionShape = &machine.Shape{Name: "transition", What: "a transition", Fields: []machine.Field{
@@ -254,28 +271,26 @@ func fillSends(p *machine.Parser, place string, f *machine.Fields, name string) 
 	return sends
 }
 
-// fillTo reads who a send goes to: a word, or a mapping that names a key.
+// fillTo reads who a send goes to: a word, or an address.
 func fillTo(p *machine.Parser, place string, sf *machine.Fields) Send {
 	v, _ := sf.Value("to")
-	if word, ok := v.(string); ok {
+	if word, ok := v.(string); ok && !machine.HasExpr(word) {
 		return Send{To: word}
 	}
 	if v == nil {
 		return Send{}
 	}
-	tf := p.Fields(place, v, sf.Of("to"))
-	if tf == nil {
-		return Send{}
+	address := p.Address(place, v)
+	return Send{Address: &address}
+}
+
+// addressParts gives what an address is written with, for its expressions
+// to be read.
+func addressParts(a *machine.AddressSpec) []any {
+	if a == nil {
+		return nil
 	}
-	send := Send{Key: tf.Text("key")}
-	if written, ok := tf.Value("machine"); ok {
-		send.Machine = p.Machine(place+".machine", written)
-	}
-	tf.Done()
-	if send.Key == "" {
-		p.Problem(place+".key", "a send written with a mapping names a key")
-	}
-	return send
+	return []any{a.At, a.Key, a.Run, a.Expr}
 }
 
 // node is a state with where it sits.
@@ -385,7 +400,7 @@ func (chartType) Check(c *machine.Checker, def *machine.Definition) {
 		}
 		for _, send := range append(slices.Clone(s.Entry), s.Exit...) {
 			eventParts(n.place, machine.ReadsIn(send.Data, "event"))
-			eventParts(n.place, machine.ReadsIn(send.Key, "event"))
+			eventParts(n.place, machine.ReadsIn(addressParts(send.Address), "event"))
 		}
 		for _, rule := range rulesOf(s) {
 			for _, t := range rule {
@@ -394,7 +409,7 @@ func (chartType) Check(c *machine.Checker, def *machine.Definition) {
 				}
 				for _, send := range t.Send {
 					eventParts(n.place, machine.ReadsIn(send.Data, "event"))
-					eventParts(n.place, machine.ReadsIn(send.Key, "event"))
+					eventParts(n.place, machine.ReadsIn(addressParts(send.Address), "event"))
 				}
 			}
 		}
@@ -469,11 +484,8 @@ func (chartType) Check(c *machine.Checker, def *machine.Definition) {
 				}
 				c.Value(at+".data", send.Data, names...)
 				switch {
-				case send.Key != "":
-					c.Value(at+".to.key", send.Key, names...)
-					if send.Machine != "" {
-						c.Machine(at+".to.machine", send.Machine)
-					}
+				case send.Address != nil:
+					c.Address(at+".to", send.Address, names...)
 				case send.To == machine.Parent:
 				case scripts[send.To]:
 					c.Problem(at+".to", "%q runs a script, and only a machine can be sent an event", send.To)

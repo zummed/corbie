@@ -1,0 +1,6 @@
+statechart: answer
+lifetime: singleton
+allow: [send:root]
+initial: idle
+states:
+  idle: { on: { ask: { send: { to: "${event.from}", event: said, data: old } } } }

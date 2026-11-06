@@ -11,6 +11,7 @@ import (
 	"github.com/zummed/corbie/client"
 	"github.com/zummed/corbie/identity"
 	"github.com/zummed/corbie/instance"
+	"github.com/zummed/corbie/machine"
 	"github.com/zummed/corbie/store"
 )
 
@@ -204,4 +205,15 @@ func plainOf(t *testing.T, v any) (data any) {
 		t.Fatal(err)
 	}
 	return data
+}
+
+// addressOf gives the address of a run that has started: at the location its
+// head names.
+func addressOf(t *testing.T, l *client.Client, id string) machine.Address {
+	t.Helper()
+	to, err := l.Address(ctx, id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return to
 }

@@ -4,9 +4,9 @@ An instance is one run of a machine. It is two things in the store: a head, whic
 
 ## The head
 
-The head is a small signed summary that the controller rewrites as the instance moves. It says what the instance is called and what type of machine it is, whether it is running, done, failed or cancelled, which step it has reached, when it started, which instance is its parent, and what it is waiting for: how many jobs on runners, how many timers, and the names of any tickets. It also carries the labels its client gave it at the start, its key, and the run whose send started it.
+The head is a small signed summary that the controller rewrites as the instance moves. It says what the instance is called and what type of machine it is, whether it is running, done, failed or cancelled, which step it has reached, when it started, which instance is its parent, and what it is waiting for: how many jobs on runners, how many timers, and the names of any tickets. It also carries its location, its key at a keyed location, the labels its client gave it at the start, and the run whose send or call started it.
 
-The head is sealed to nobody. Anyone the store lets read it can read it and can check the controller's signature. For that reason it holds nothing the instance was given or produced: no input, no output, no error text, no log line, no value of a ticket. Labels and a key are the exceptions. A label is the client's own words about the run, chosen knowing they are public, and a child carries its parent's. A key is written by the definition or the client that gives it, on the same terms.
+The head is sealed to nobody. Anyone the store lets read it can read it and can check the controller's signature. For that reason it holds nothing the instance was given or produced: no input, no output, no error text, no log line, no value of a ticket. A location, a key and labels are the exceptions. A label is the client's own words about the run, chosen knowing they are public, and a child carries its parent's. A location is chosen by its tree's client, and a key by the definition or the client that sends to it, on the same terms.
 
 The head is a summary and may be a moment behind. The record is the truth, and the controller brings the head up to date after each step.
 
@@ -20,15 +20,15 @@ A **step** entry is written by the controller each time the instance takes a ste
 
 An **emit** entry is written by a job while it runs: a log line, a note of progress, a piece of a model's reply, a named value. The job's runner writes it straight into the record, in order, and a watcher sees it as soon as it is there. If the machine has said it wants to act on values of that name, the runner also tells the controller, which costs one more message; otherwise the controller plays no part.
 
-The record also holds the instance's **blobs**: the larger values its entries refer to.
+The record also holds the instance's **blobs**: the larger values its entries refer to. Among them is the definition the instance started with, which a later submit at its location does not change.
 
-Everything in a record is sealed so that only the controller and the client that started the root can read it.
+Everything in a record is sealed so that only the controller and the client that owns the root's tree can read it.
 
 ## How long it is kept
 
 A definition says how long its instances are kept after they end; a week if it says nothing. When that time has passed the controller deletes the record and then the head, and the run is gone. A child's record goes no later than its parent's.
 
-An instance that runs for a long time would grow without limit, so its definition's keep also bounds its own history: step and emit entries older than that are removed while it runs. A blob in the record of a running instance stays for as long as the current state of that instance, or of any instance running below it, refers to it. The definition, its scripts and the run's secrets always stay.
+An instance that runs for a long time would grow without limit, so its definition's keep also bounds its own history: step and emit entries older than that are removed while it runs. A blob in the record of a running instance stays for as long as the current state of that instance, or of any instance running below it, refers to it. The definition and its scripts always stay.
 
 ## Watching
 
@@ -40,16 +40,26 @@ A run is reported once more when it ends, saying how. For a listing that does no
 
 For an instance whose record the watcher may read, it then reads the entries it has not seen. Because entries never change, each is read once.
 
-What a watcher sees depends only on what the store lets it read, and there are three levels. With no access it sees nothing. With access to heads it sees where every instance stands and nothing inside any of them, which is what a dashboard or a metrics exporter needs. A client sees where its own runs stand and everything inside them.
+What a watcher sees depends only on what the store lets it read, and there are three levels. With no access it sees nothing. With access to heads it sees where every instance stands and nothing inside any of them, which is what a dashboard or a metrics exporter needs. A client sees where the runs of its trees stand and everything inside them.
 
 Watching holds no state anywhere and asks nothing of the controller. In a directory or in memory, a watcher in the same process as the writer is told at once that something was written. Any other watcher looks again at an interval, which is the one setting watching has.
 
 ## Sending
 
-A client acts on an instance by writing a message into the controller's inbox: start a run, cancel one, send it an event, answer a ticket. A client has no inbox of its own.
+A client acts by writing a message into the controller's inbox: submit a tree, start a run, cancel one, send it an event, answer a ticket. A client has no inbox of its own.
 
-For every message a client sends, the controller writes a receipt under the same name, saying that the message was taken or why it was refused. This is how a client learns that a start was refused before any instance existed, and how a client that answers a ticket for a run it did not start learns that its answer was taken. The receipt for an event also says whether the machine acted on it or had no rule for it. A receipt is sealed to the client that sent the message and is kept for a day. A message sent twice gets the same answer twice. Everything else a client learns, it learns from heads and records.
+For every message a client sends, the controller writes a receipt under the same name, saying that the message was taken or why it was refused. This is how a client learns that a start was refused before any instance existed, and how a client that answers a ticket for a run it did not start learns that its answer was taken. The receipt for an event also names the run that took it and says whether the machine acted on it or had no rule for it. A receipt is sealed to the client that sent the message and is kept for a day, a taken call's for longer, as below. A message sent twice gets the same answer twice. Everything else a client learns, it learns from heads, records and the results of its calls.
 
-A client chooses a run's name before starting it, because files it sends along go into the run's record first. An application that must survive its own restart notes the name before it sends.
+A client chooses a run's name before starting it, because a start's input goes into the run's record before the start is sent: the input's files, then the input itself, which the start names and the controller reads. A run whose record holds nothing was never sent. An application that must survive its own restart notes the name before it sends.
 
-A message is good for as long as its sender says, a few minutes unless it says otherwise. Until the controller has taken it there is no receipt and no head, and a client that asks is told the run is waiting to start. Once a start is past its time with no receipt, the run is no longer waiting: it was never taken up.
+A client's start of a location in a tree it does not own is a call. The client cannot read the run's record:
+
+1. It writes the input under the name it chose, as for any start, and the controller copies the input into the new run's record, named under the tree's client.
+2. The controller writes the call's receipt at once: taken, naming the run, or refused and why.
+3. When the run ends, the controller writes the call's result beside the receipt: the run's status, and its output or error, with the blobs the output names.
+
+The result is sealed to the client that called. The receipt of a taken call is kept while its run is running, and the receipt and the result are deleted together a day after the result is written. When the controller holds no card for the client as the run ends, it writes no result and deletes the receipt.
+
+A message is good for as long as its sender says, a few minutes unless it says otherwise. A controller refuses a message past its time and the clock allowance of five minutes, by its own clock. Until the controller has taken a start there is no receipt and no head, and a client that asks is told the run is waiting to start.
+
+A client waits for a receipt until its message is past its time and twice the clock allowance, since the controller's clock may be five minutes behind its own. A start with no receipt by then was never taken up, and no controller takes it later.

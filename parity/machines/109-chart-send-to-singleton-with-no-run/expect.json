@@ -1,0 +1,8 @@
+{
+  "status": "done",
+  "output": { "fine": true },
+  "record": [
+    { "machine": "asker", "ask": { "kind": "event", "location": "/case/lonely", "undelivered": true, "event": { "name": "hello" } } }
+  ],
+  "note": "R-ctl-121: a send to { at } with no singleton running is noted as undelivered."
+}

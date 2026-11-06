@@ -1,0 +1,8 @@
+{
+  "status": "done",
+  "output": { "fine": true },
+  "record": [
+    { "machine": "sender", "ask": { "kind": "note", "text": { "<contains>": "takes no sent event" } } }
+  ],
+  "note": "R-ctl-121: a send to a flow's run is noted as undelivered."
+}

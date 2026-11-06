@@ -561,7 +561,7 @@ func checkTool(c *machine.Checker, a *Agent, name string, tool *Tool) {
 		c.Job(place+".job", tool.Job, "args", "input", "tool")
 		// The arguments' fields are not known until the list is made, so
 		// one read here could be missing every time.
-		for _, read := range machine.ReadsIn(tool.Job.Input, "args") {
+		for _, read := range machine.ReadsIn(append([]any{tool.Job.Input}, tool.Job.Addressed()...), "args") {
 			c.Problem(place+".job", "it reads \"args.%s\"; with list:, the job reads ${args} only whole, since its fields are not known until the run", read.Name)
 		}
 		return
@@ -577,7 +577,7 @@ func checkTool(c *machine.Checker, a *Agent, name string, tool *Tool) {
 	// find it missing: the model is never told of it, whatever else the
 	// shape allows.
 	properties, _ := tool.Args["properties"].(map[string]any)
-	for _, read := range machine.ReadsIn(tool.Job.Input, "args") {
+	for _, read := range machine.ReadsIn(append([]any{tool.Job.Input}, tool.Job.Addressed()...), "args") {
 		if _, named := properties[read.Name]; !named {
 			c.Problem(place+".job", "it reads \"args.%s\", which the tool's args do not name", read.Name)
 		}

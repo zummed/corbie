@@ -28,8 +28,8 @@ func parse(job *plugin.Job, first any, opt plugin.Options) (any, error) {
 	return Data(data)
 }
 
-// Data reads one YAML document into plain data: maps, lists, text,
-// numbers, true or false, and null.
+// Data reads one YAML document into plain data: maps, with their keys in
+// the order written, lists, text, numbers, true or false, and null.
 func Data(data []byte) (any, error) {
 	d := yaml.NewDecoder(bytes.NewReader(data))
 	var doc yaml.Node
@@ -65,20 +65,20 @@ func plain(n *yaml.Node, budget *int, inside map[*yaml.Node]bool) (any, error) {
 		defer delete(inside, n.Alias)
 		return plain(n.Alias, budget, inside)
 	case yaml.MappingNode:
-		m := map[string]any{}
+		m := plugin.NewOrdered()
 		for i := 0; i+1 < len(n.Content); i += 2 {
 			k := n.Content[i]
 			if k.Kind != yaml.ScalarNode {
 				return bad("a key is plain text, a number or true or false")
 			}
-			if _, dup := m[k.Value]; dup {
+			if _, dup := m.Values[k.Value]; dup {
 				return bad(fmt.Sprintf("the key %q is written twice", k.Value))
 			}
 			v, err := plain(n.Content[i+1], budget, inside)
 			if err != nil {
 				return nil, err
 			}
-			m[k.Value] = v
+			m.Set(k.Value, v)
 		}
 		return m, nil
 	case yaml.SequenceNode:
@@ -171,7 +171,8 @@ const page = `yaml: this plugin parses a YAML document into data and writes data
 
 document is text, bytes or a blob, and holds one YAML document.
 
-- parse gives maps, lists, text, numbers, true or false, and null.
+- parse gives maps, lists, text, numbers, true or false, and null. A map's
+  keys are in the order the document writes them.
 - A value YAML would read as a date or a time stays the text written.
 - An alias gives a copy of what its anchor marks. A merge key, <<, is an
   ordinary key.

@@ -23,7 +23,8 @@ import (
 )
 
 // A Controller brings nothing with it but its key. Who it trusts, its
-// secrets and every instance are in the store.
+// trees, the secrets and values set at locations, and every instance are in
+// the store.
 type Controller struct {
 	ID    *identity.Identity
 	Store store.Store
@@ -147,7 +148,7 @@ func (c *Controller) Pass(ctx context.Context) (next time.Time, err error) {
 		return next, err
 	}
 	waiting := map[string][]*arrival{}
-	sending := map[sendingTo]string{}
+	sending := &ahead{to: map[sendingTo]string{}, held: map[sendingTo]bool{}, at: map[sendingAt]map[string]bool{}}
 	var order, house []string
 	var kept []*arrival // the instances' own wakes for housekeeping, soonest first
 	add := func(inst string, a *arrival) {
@@ -156,8 +157,26 @@ func (c *Controller) Pass(ctx context.Context) (next time.Time, err error) {
 		}
 		waiting[inst] = append(waiting[inst], a)
 	}
+	// Submits are taken first, one at a time, each client's in the order
+	// it sent them. What they start and cancel is for the next pass.
 	for _, a := range messages {
-		if a != nil && !p.behind(a, sending) {
+		if a != nil && a.msg.Kind == instance.KindSubmit {
+			if err := p.submit(a); err != nil {
+				return next, err
+			}
+		}
+	}
+	// A client's sends to addresses are routed next, each client's in the
+	// order it sent them. Each is taken by its run in the next pass.
+	for _, a := range messages {
+		if a != nil && routed(a) {
+			if err := p.route(a); err != nil {
+				return next, err
+			}
+		}
+	}
+	for _, a := range messages {
+		if a != nil && a.msg.Kind != instance.KindSubmit && !routed(a) && !p.behind(a, sending) {
 			add(a.msg.Instance, a)
 		}
 	}
@@ -257,8 +276,23 @@ func (p *pass) accept(name string, data []byte) (*arrival, error) {
 		return nil, nil
 	}
 	var msg instance.Message
-	if v.Open(p.c.ID, &msg) != nil || store.CheckInstance(msg.Instance) != nil || !whole(&msg) {
+	if v.Open(p.c.ID, &msg) != nil || !whole(&msg) {
 		return nil, nil
+	}
+	// A submit is for no instance, and only a client sends one; so is a
+	// client's send to an address, which the controller routes.
+	clientSend := kind == identity.Client && msg.Kind == instance.KindSend
+	if msg.Kind == instance.KindSubmit && (kind != identity.Client || msg.Instance != "") ||
+		clientSend && msg.Instance != "" ||
+		msg.Kind != instance.KindSubmit && !clientSend && store.CheckInstance(msg.Instance) != nil {
+		return nil, nil
+	}
+	// Only the controller says who sent an event.
+	switch kind {
+	case identity.Client:
+		msg.Sender = &machine.Address{Client: sender}
+	case identity.Runner:
+		msg.Sender = nil
 	}
 	sent := v.Sent
 	if sent.After(p.now) {
@@ -271,10 +305,14 @@ func (p *pass) accept(name string, data []byte) (*arrival, error) {
 // One that does not is not a message at all.
 func whole(msg *instance.Message) bool {
 	switch msg.Kind {
+	case instance.KindSubmit:
+		return msg.Submit != nil
 	case instance.KindStart:
 		return msg.Start != nil
-	case instance.KindEvent, instance.KindKeyed:
+	case instance.KindEvent:
 		return msg.Event != nil && msg.Event.Name != ""
+	case instance.KindSend:
+		return msg.Event != nil && msg.Event.Name != "" && msg.To != nil
 	case instance.KindAnswer:
 		return msg.Answer != nil
 	case instance.KindResult:
@@ -286,6 +324,10 @@ func whole(msg *instance.Message) bool {
 	}
 	return false
 }
+
+// routed says a message is a client's send to an address, which the
+// controller routes to the run it goes to.
+func routed(a *arrival) bool { return a.kind == identity.Client && a.msg.Kind == instance.KindSend }
 
 // trusted reads what the controller holds about a party, from where trust
 // is kept, once in this pass.

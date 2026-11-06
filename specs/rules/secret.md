@@ -4,28 +4,22 @@ The detailed rules behind the [Secrets overview](../secret.md). Requirements are
 
 ## Where secrets come from
 
-**R-sec-01** A controller secret is kept by the controller in the store, sealed so that only the controller can read it.
-*Accept:* after a secret is set, the value under the controller's secrets in the store does not hold the secret in the clear, the controller's key opens it, and a runner's key and a client's key do not.
+**R-sec-01** A secret set at a location is kept by the controller in the store, sealed so that only the controller can read it.
+*Accept:* after a secret is set at `/` and at `/home`, the values under `locations/+/secrets/` and `locations/home/+/secrets/` in the store do not hold the secret in the clear, the controller's key opens them, and a runner's key and a client's key do not. A secret copied to another location's path is refused as altered.
 
-**R-sec-02** The controller's owner sets a controller secret, sets it again, or removes it. Only the latest value is kept.
-*Accept:* the owner sets `K` to `a`, and a job that names `K` sends `a`. The owner sets `K` to `b`, and the next job sends `b`. The owner removes `K`, and the next job fails as naming a secret that is not set. No command brings `a` back.
-
-**R-sec-10** A run secret is sent with a start, for that run and everything below it, and overrides a controller secret of the same name.
-*Accept:* a root is started with the run secret `K`. A job of the root that names `K` sends it, and so does a job of a machine three levels down. A second root the same client starts without it fails as naming a secret that is not set. With the controller holding `K` as `a`, a root started with the run secret `K` as `b` sends `b`, and a root started without it sends `a`.
-
-**R-sec-12** A run secret is kept, sealed, in the root's record for as long as the root runs.
-*Accept:* a root with a keep of one hour runs for a day, and entries older than an hour are removed from its record as it goes. A job it starts at the end of the day still sends the run secret. The root's head holds no trace of the secret, and nothing in the record holds it in the clear.
+**R-sec-02** The controller's owner sets a secret at a location with `corbie controller secret set NAME --at <location>`, sets it again, or removes it; with no `--at` it is set at `/`. Only the latest value is kept.
+*Accept:* the owner sets `K` to `a`, and a job that names `K` sends `a`. The owner sets `K` to `b`, and the next job sends `b`. The owner removes `K`, and the next job fails as naming a secret that is not set. No command brings `a` back. With `K` set at `/` and at `/work`, removing the one at `/work` leaves runs at `/work` using the one at `/`.
 
 **R-sec-13** A machine only ever holds a secret's name.
-*Accept:* a root that uses `K` runs to its end. Where `K` is a controller secret, its step entries, opened with the controller's key, hold the name `K` and nowhere its value. A run secret's value is in the record, sealed, and nowhere else (R-sec-12). No expression in a definition can read either.
+*Accept:* a root that uses `K` runs to its end. Its step entries, opened with the controller's key, hold the name `K` and nowhere its value. No expression in a definition can read it.
 
 ## Getting to a job
 
-**R-sec-14** A definition names each secret a job uses, by a `secret` entry for that job with the secret's name written out. When the controller builds a job, it puts in the values of the secrets the job names and no others, and where a layer the controller knows of (the job in its definition, the start, each parent's job, the client's ceiling) does not allow one of them, the job is denied before anything is sent; being allowed a secret is not the same as being sent it.
-*Accept:* the controller holds `A` and `B`, and a job's lists hold `secret:A@net:api.example`. The job, opened as its runner, holds `A`'s value and not `B`'s; the script sends `A`, and its use of `B` fails, saying the job's definition does not name it. Under a client's ceiling of `network` nothing is sent and the job is denied, naming the client's ceiling and what would allow it; the same when a start's list or a parent's job has no entry that covers `A`, or denies it everywhere; under a ceiling of `network, secret:A@*` the value is in the job. A job with `allow: [all]` and no `secret` entry is sent holding no secret's value.
+**R-sec-14** A definition names each secret a job uses, by a `secret` entry for that job with the secret's name written out. When the controller builds a job, it puts in the values of the secrets the job names and no others, and where a layer the controller knows of (the job in its definition, the start, each parent's job, the tree client's ceiling) does not allow one of them, the job is denied before anything is sent; being allowed a secret is not the same as being sent it.
+*Accept:* `A` and `B` are set at `/`, and a job's lists hold `secret:A@net:api.example`. The job, opened as its runner, holds `A`'s value and not `B`'s; the script sends `A`, and its use of `B` fails, saying the job's definition does not name it. Under a client's ceiling of `network` nothing is sent and the job is denied, naming the client's ceiling and what would allow it; the same when a start's list or a parent's job has no entry that covers `A`, or denies it everywhere; under a ceiling of `network, secret:A@*` the value is in the job. A job with `allow: [all]` and no `secret` entry is sent holding no secret's value.
 
 **R-sec-16** An entry that covers secrets by a pattern in the name permits them and sends nothing.
-*Accept:* the controller holds `GH_TOKEN`. A job whose only secret entry is `secret:GH_*@net:api.github.com` is sent with no secret's value. A client's ceiling of `secret:GH_*@*` allows `GH_TOKEN` for a job whose definition names it, and that job holds the value.
+*Accept:* `GH_TOKEN` is set at `/`. A job whose only secret entry is `secret:GH_*@net:api.github.com` is sent with no secret's value. A client's ceiling of `secret:GH_*@*` allows `GH_TOKEN` for a job whose definition names it, and that job holds the value.
 
 **R-sec-17** The values travel in the job, which is sealed to its runner, and nowhere else; the runner's own ceiling is applied when the script acts.
 *Accept:* the job in the runner's inbox cannot be opened with another runner's key or with the client's, and after the run ends the value is in no head, step, emit, result or receipt. Every layer the controller knows of allows `A`, and the runner's ceiling has no entry that covers it: the job is sent with the value, the script's sending of `A` is refused, naming the runner's ceiling, and nothing arrives at the destination.
@@ -33,8 +27,17 @@ The detailed rules behind the [Secrets overview](../secret.md). Requirements are
 **R-sec-19** Each attempt at a job is built afresh, so it gets the value current at that time.
 *Accept:* a job has `restart: { limit: 1 }` and its first attempt fails. The owner sets the secret again before the second, and the second attempt sends the new value.
 
-**R-sec-20** A job that names a secret that is not set fails before anything is sent.
-*Accept:* a job names `MISSING`, which is neither a controller secret nor a run secret. The job fails with an error naming `MISSING`, and no runner's inbox ever holds it.
+**R-sec-20** A job that names a secret not set at its run's location or above fails before anything is sent, naming the secret and the location.
+*Accept:* a job names `MISSING`, which is set at no location. The job fails with the error `MISSING is not set at <its location> or above`, and no runner's inbox ever holds it.
+
+**R-sec-49** A run uses the secrets set at its location or above, and the one set nearest its location wins. A secret can be set before any tree is submitted at its location, and `corbie controller secret list` gives each name with the location it is set at.
+*Accept:* `ANTHROPIC_KEY` is set at `/` and at `/work`. A secret's value read for `/work/agents/support` is the one set at `/work`, and for `/home/devices/boiler` the one set at `/`; both are set before anything is submitted. The list prints `ANTHROPIC_KEY  /` and `ANTHROPIC_KEY  /work`, and no value.
+
+**R-sec-50** The controller's owner sets a plain value at a location with `corbie controller value set NAME VALUE --at <location>`, lists them with `corbie controller value list` and removes one with `corbie controller value remove NAME --at <location>`. A value is kept sealed to the controller as a secret is, its name follows the rule for a secret's (C-sec-04), and the one set nearest a location wins. An expression reads it as `${values.NAME}`. A run reads its values once, at its first step, and keeps them when a value is set again. It is not masked.
+*Accept:* `HUB` is set to `hub.lan` at `/` and to `192.0.2.8:8123` at `/home`, and `ZONE` to `eu` at `/`. The values for `/home/devices/boiler` are `HUB` `192.0.2.8:8123` and `ZONE` `eu`. The list prints each name, its location and its value. After the one at `/home` is removed, `HUB` for `/home/devices/boiler` is `hub.lan`. The value under `locations/home/+/values/HUB` holds no `192.0.2.8` in the clear, and a runner's or a client's key does not open it. A run at `/home/devices/boiler` whose first step reads `${values.HUB}` as `192.0.2.8:8123` waits; `HUB` is set at `/home` to `192.0.2.9`; its next step reads `${values.HUB}` as `192.0.2.8:8123`, and a run started after reads `192.0.2.9`.
+
+**R-sec-51** A job that names a value not set at its run's location or above fails before anything is sent, naming the value and the location.
+*Accept:* a job allows `net:${values.HUB}` in a run at `/home/devices/boiler`, and `HUB` is set nowhere. The job fails with an error naming `HUB` and `/home/devices/boiler`, and no runner's inbox ever holds it.
 
 ## Binding
 
@@ -47,13 +50,13 @@ The detailed rules behind the [Secrets overview](../secret.md). Requirements are
 **R-sec-25** A secret's entry opens nothing by itself. The connection, the program or the file needs its own entry.
 *Accept:* a job allowed only `secret:GITHUB_TOKEN@net:api.github.com` is refused a request to `api.github.com`, with the secret or without, and the fix names `net:api.github.com`. A job allowed only `secret:TG_BOT@*` is refused a connection to anywhere.
 
-**R-sec-26** A secret's name is always written out; its destination is a scope like any other and may be filled from the machine's input.
+**R-sec-26** A secret's name is always written out; its destination is a scope like any other and may be filled from the machine's input or a value.
 *Accept:* a definition with the entry `secret:${input.which}@*` fails its check, the report naming the entry. A job allows `net:${input.board}` and `secret:BOARD_TOKEN@net:${input.board}`; in a run started with `board: board.example`, the job sends the secret to `board.example`, and nowhere else.
 
 **R-sec-29** A secret bound to a host goes only over an encrypted connection. `secret:NAME@net.unencrypted:host` lets it go to that host over a connection that is not encrypted as well, and to no other host; one bound to anywhere goes over either.
 *Accept:* a job allowed `net:api.example` and `secret:K@net:api.example` sends `K` in a request to `https://api.example/`. The same request to `http://api.example/` is refused, and the refusal says the connection is not encrypted and gives `secret:K@net.unencrypted:api.example:80` as the line that would let it go. With `secret:K@net.unencrypted:api.example` instead, the requests to `http://api.example/` and to `https://api.example/` are both sent, and the server receives `K`; a request with `K` to `http://other.example/`, which the job may also reach, is refused. With `secret:K@*`, the request to `http://api.example/` is sent.
 
-**C-sec-04** A secret's name is not empty, holds no `@`, `:`, `=`, `*`, `$`, `{`, `}`, slash, backslash or blank, and does not start with `-` or `.`, by one rule wherever a name is written. `NAME@destination` must split in exactly one place, `NAME=value` on a command line is a value and never a name, a name is a part of a name in the store, and a command line must not read a name as a flag or as standard input. *Test:* `sec_name_splits_one_way`
+**C-sec-04** A secret's name, and a value's, is not empty, holds no `@`, `:`, `=`, `*`, `$`, `{`, `}`, slash, backslash or blank, and does not start with `-` or `.`, by one rule wherever a name is written. `NAME@destination` must split in exactly one place, `NAME=value` on a command line is a value and never a name, a name is a part of a name in the store, and a command line must not read a name as a flag or as standard input. *Test:* `sec_name_splits_one_way`
 
 **C-sec-05** Whether a connection is encrypted is judged at the moment a value goes into it, not when it was opened. A connection that starts plain and is turned encrypted partway carries a host-bound secret only afterwards. *Test:* `sec_encrypted_judged_when_the_value_goes`
 
@@ -122,13 +125,12 @@ The detailed rules behind the [Secrets overview](../secret.md). Requirements are
 
 ## Interfaces
 
-- **Store** keeps controller secrets under the controller's area, sealed.
-- **Identity** supplies the sealing: a controller secret to the controller alone, a job to its runner.
-- **Controller** chooses the values when it builds a job, and fails a job that names a secret that is not set.
-- **Instances** keep a root's run secrets in its record for as long as the root runs, through any trimming of its history.
+- **Store** keeps secrets and values under `locations/<location>/+/`, sealed.
+- **Identity** supplies the sealing: a secret and a value to the controller alone, a job to its runner.
+- **Controller** chooses the values when it builds a job, the one set nearest the run's location for each name, and fails a job that names a secret or a value not set at its location or above.
 - **Permissions** supply the `secret` kind and how its scope is matched (R-perm-09), the rule for a secret's name (C-sec-04), the layers a value must pass, the check at the moment of acting, and the refusal.
 - **Plugins** get a value only with a way out. The `secrets` plugin makes handles, and masking is done at the line every plugin's results cross.
 - **Runner** holds a job's values for the life of the job, applies its own ceiling when the script acts, and has what its job's process prints masked before it is kept.
-- **Client** sends run secrets with a start, and the controller's commands set, set again and remove controller secrets.
+- **Client**: the controller's commands set, list and remove secrets and values at a location, with `--at`.
 - **Models** use a secret as a model service's key, bound to the service's connection (R-model-15).
 - **Manual** says where a secret's protection ends, as the overview does.

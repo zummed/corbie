@@ -11,6 +11,7 @@ import (
 
 // The kinds of message.
 const (
+	KindSubmit = "submit" // record a tree at a prefix
 	KindStart  = "start"  // start a run
 	KindCancel = "cancel" // cancel a run; to a runner, cancel a job
 	KindEvent  = "event"  // send a run an event
@@ -18,7 +19,7 @@ const (
 	KindResult = "result" // a job's outcome: a script's from its runner, a child's from the controller
 	KindEmit   = "emit"   // a value a job sent up that the machine wants
 	KindJob    = "job"    // a job for a runner
-	KindKeyed  = "keyed"  // an event sent to a key, with what starts a run for it if there is one
+	KindSend   = "send"   // an event sent to an address, with what starts a run for it if there is one
 	KindNote   = "note"   // something to be written in a run's record
 )
 
@@ -31,10 +32,14 @@ type Message struct {
 	// From is, in a message the controller sends itself, the instance it
 	// is sent on behalf of.
 	From string `json:"from,omitzero"`
-	// Key is the key an event was sent to.
-	Key string `json:"key,omitzero"`
+	// To is the address an event is sent to or a call starts a run at, and
+	// Sender the run or client it is from. Only the controller writes
+	// Sender.
+	To     *machine.Address `json:"to,omitzero"`
+	Sender *machine.Address `json:"sender,omitzero"`
 
 	Start  *Start         `json:"start,omitzero"`
+	Submit *Submit        `json:"submit,omitzero"`
 	Event  *machine.Event `json:"event,omitzero"`
 	Answer *Answer        `json:"answer,omitzero"`
 	Result *Result        `json:"result,omitzero"`
@@ -49,30 +54,61 @@ type Message struct {
 // nothing.
 const MessageLife = 5 * time.Minute
 
-// A Start starts a run.
+// A Start starts a run. A client's start names a location, and its input
+// is the blob InputBlob in the run's record; Definition and Input are
+// written by the controller, from the file recorded there and that blob, or
+// from the job that starts a child.
 type Start struct {
-	Definition blob.Ref          `json:"definition"`
+	Definition blob.Ref          `json:"definition,omitzero"`
 	Input      any               `json:"input,omitzero"`
+	InputBlob  blob.Ref          `json:"input_blob,omitzero"`
 	Labels     map[string]string `json:"labels,omitzero"`
 	// Allow is the start's own list, which narrows the root and everything
 	// below it.
 	Allow *permission.Layer `json:"allow,omitzero"`
 	// Timeout is how long the run may take, if the start says.
 	Timeout machine.Duration `json:"timeout,omitzero"`
-	// Secrets are the run's own secrets, for it and everything below it.
-	Secrets map[string]string `json:"secrets,omitzero"`
 	// Seed is the secret the instance's tickets and random numbers follow
 	// from.
 	Seed []byte `json:"seed"`
 	// Above is set by the controller when it starts a child.
 	Above *Above `json:"above,omitzero"`
-	// Key is the key the run is started with.
+	// Location is the location the run is started at: its machine is the
+	// file recorded there.
+	Location string `json:"location,omitzero"`
+	// Key is, for an event sent to a key, the key of the run it starts.
 	Key string `json:"key,omitzero"`
-	// Context is the directory the client submitted from.
-	Context string `json:"context,omitzero"`
-	// Run is the run an event sent to a key starts: the event's data is its
-	// input. What a client or a job starts is the message's own instance.
+	// Tree is the prefix of the tree the location is in, for a child, which
+	// runs at its parent's location.
+	Tree string `json:"tree,omitzero"`
+	// Replaces is, for a singleton a submit starts again, the runs it
+	// replaces: the new run starts once every one has ended.
+	Replaces []string `json:"replaces,omitzero"`
+	// Run is the run an event sent to a key starts, where it names one: the
+	// event's data is its input. What a client or a job starts is the
+	// message's own instance.
 	Run string `json:"run,omitzero"`
+}
+
+// A Submit records a directory as a tree at a prefix. Files are its
+// machines, by location, each uploaded with the message; Problems are the
+// locations of files that could not be read, which keep what was recorded
+// before.
+type Submit struct {
+	Prefix    string                `json:"prefix"`
+	Directory string                `json:"directory"`
+	Files     map[string]SubmitFile `json:"files,omitzero"`
+	Problems  []string              `json:"problems,omitzero"`
+}
+
+// A SubmitFile is one machine of a submit: its stored definition among the
+// message's uploads, the hash of what it runs, and the names of the secrets
+// and the values it uses.
+type SubmitFile struct {
+	Definition blob.Ref `json:"definition"`
+	Hash       string   `json:"hash"`
+	Secrets    []string `json:"secrets,omitzero"`
+	Values     []string `json:"values,omitzero"`
 }
 
 // An Answer answers a ticket: the ticket's value and the answer.
@@ -132,7 +168,7 @@ type Job struct {
 	Due time.Time `json:"due"`
 	// Wants names the emitted values the machine wants to hear about.
 	Wants []string `json:"wants,omitzero"`
-	// Client is the card of the client that started the root: what the job
-	// adds to the record is sealed to it and to the controller.
+	// Client is the card of the client that owns the root's tree: what the
+	// job adds to the record is sealed to it and to the controller.
 	Client identity.Card `json:"client"`
 }

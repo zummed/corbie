@@ -1,0 +1,6 @@
+{
+  "status": "failed",
+  "failure": "error",
+  "error_contains": "/case/lookup does not receive a call from the run",
+  "note": "R-ctl-128, R-perm-67: a call the receiver's receive: refuses fails the call job."
+}

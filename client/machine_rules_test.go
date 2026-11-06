@@ -47,7 +47,7 @@ func TestPermissionScopeFilledFromAnythingButTheInputIsRefused(t *testing.T) {
 			t.Errorf("%s passed the check", c.entry)
 			continue
 		}
-		for _, want := range []string{c.place, `"` + c.entry + `"`, "from the machine's input and from nothing else"} {
+		for _, want := range []string{c.place, `"` + c.entry + `"`, "from the machine's input and its values, and from nothing else"} {
 			if !strings.Contains(err.Error(), want) {
 				t.Errorf("%s was refused without %q:\n%v", c.entry, want, err)
 			}
@@ -68,7 +68,8 @@ func TestAgentToolScopeIsFilledFromTheAgentsInput(t *testing.T) {
 	os.WriteFile(filepath.Join(dir, "note.txt"), []byte("the note"), 0o600)
 	m := newModel(t, calls("c1", "look", `{"name": "note.txt"}`), says("done"))
 	l := local(t, "all")
-	id, err := l.Start(ctx, draft(t, `
+	setSecret(t, l, "TEST_KEY", "sk-test-key")
+	id, err := l.Run(ctx, draft(t, `
 		agent: reader
 		input: { dir: any }
 		model: { name: test-model, service: anthropic, address: `+m.URL+`, secret: TEST_KEY }
@@ -79,7 +80,7 @@ func TestAgentToolScopeIsFilledFromTheAgentsInput(t *testing.T) {
 		    args: { name: string }
 		    job: { script: ./look.js, input: { path: "${input.dir}/${args.name}" }, allow: ["fs.read:${input.dir}/**"] }
 	`, map[string]string{"look.js": `return fs.read(input.path)`}), client.Start{
-		Input: map[string]any{"dir": dir}, Secrets: map[string]string{"TEST_KEY": "sk-test-key"}})
+		Input: map[string]any{"dir": dir}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -261,7 +262,7 @@ func TestControllerRefusesWhatTheClientLetThroughInTheSameWords(t *testing.T) {
 		t.Fatal("the altered definition is not one the check refuses")
 	}
 	l := local(t)
-	id, startErr := l.Start(ctx, d, client.Start{})
+	id, startErr := l.Run(ctx, d, client.Start{})
 	if startErr != nil {
 		t.Fatal(startErr)
 	}
@@ -480,9 +481,8 @@ func TestTitleIsFilledInWhenTheRunStarts(t *testing.T) {
 		    job:
 		      machine:
 		        flow: inner
-		        title: "${run.key} ${input.n}"
+		        title: "inner ${input.n}"
 		        stages: { s: { job: { script: ./add.js, input: { n: 2 } } } }
-		      key: inner-key
 		      input: { n: 3 }
 		output: ${stages.check.output}
 	`
@@ -494,7 +494,7 @@ func TestTitleIsFilledInWhenTheRunStarts(t *testing.T) {
 	if err != nil || len(children) != 1 {
 		t.Fatalf("the run's children are %v: %v", children, err)
 	}
-	if child, err := l.Show(ctx, children[0].ID); err != nil || child.Title != "inner-key 3" {
+	if child, err := l.Show(ctx, children[0].ID); err != nil || child.Title != "inner 3" {
 		t.Fatalf("the child's title is %q: %v", child.Title, err)
 	}
 	if children[0].Title != "" {
@@ -507,18 +507,31 @@ func TestTitleIsFilledInWhenTheRunStarts(t *testing.T) {
 
 	sender := `
 		statechart: sender
+		allow: ["send:keyed"]
 		initial: a
 		states:
 		  a:
 		    job: ./echo.js
-		    on: { done: { go: z, send: { to: { machine: ./keyed.yaml, key: keyed-1 }, event: hello, data: { x: "a\n\n b" } } } }
+		    on: { done: { go: z, send: { to: { at: keyed, key: keyed-1 }, event: hello, data: { x: "a\n\n b" } } } }
 		  z: { end: done }
 	`
-	files := map[string]string{"echo.js": scripts["echo.js"], "keyed.yaml": "flow: keyed\ntitle: \"${run.key} ${input.x}\"\nstages: { s: { job: ./echo.js } }\n"}
-	run(t, l, sender, files, nil)
+	keyedSrc := "statechart: keyed\nlifetime: keyed\ntitle: \"keyed ${input.x}\"\ninitial: a\nstates: { a: { on: { hello: b } }, b: { end: done } }\n"
+	files := map[string]string{"echo.js": scripts["echo.js"]}
+	message, err := l.Submit(ctx, &client.Tree{Prefix: "/titles", Machines: []*client.Machine{
+		{Path: "sender.yaml", Location: "/titles/sender", Draft: draft(t, sender, files)},
+		{Path: "keyed.yaml", Location: "/titles/keyed", Draft: draft(t, keyedSrc, nil)}}}, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if r, err := l.WaitReceipt(ctx, message, 0, 20*time.Millisecond); err != nil || !r.Taken {
+		t.Fatalf("the tree's receipt is %+v: %v", r, err)
+	}
+	if _, err := l.Start(ctx, client.Start{At: "/titles/sender"}); err != nil {
+		t.Fatal(err)
+	}
 	keyed := waitForFinished(t, l, "keyed")
-	if got, err := l.Show(ctx, keyed); err != nil || got.Title != "keyed-1 a b" {
-		t.Errorf("a run a send started has the title %q: %v", got.Title, err)
+	if got, err := l.Show(ctx, keyed); err != nil || got.Title != "keyed a b" || got.Location != "/titles/keyed" || got.Key != "keyed-1" {
+		t.Errorf("a run a send started is shown as %+v: %v", got, err)
 	}
 
 	long := run(t, l, "flow: long\ntitle: \"${'x'.repeat(300)}é\"\nstages: { s: { job: ./echo.js } }\n", scripts, nil)
@@ -670,34 +683,34 @@ func Test_mach_run_is_read_in_every_type(t *testing.T) {
 			flow: f
 			stages:
 			  a: { job: { script: ./echo.js, input: { id: "${run.id}" } } }
-			output: { id: "${stages.a.output.id}", same: "${run.id}", key: "${run.key}" }
+			output: { id: "${stages.a.output.id}", same: "${run.id}" }
 		`,
 		"a statechart's job and final state": `
 			statechart: s
 			initial: a
 			states:
 			  a: { job: { script: ./echo.js, input: { id: "${run.id}" } }, on: { done: b } }
-			  b: { end: done, output: { id: "${states.a.output.id}", same: "${run.id}", key: "${run.key}" } }
+			  b: { end: done, output: { id: "${states.a.output.id}", same: "${run.id}" } }
 		`,
 		"an agent's prompt": `
 			agent: g
 			model: { name: scripted, service: anthropic }
 			turn: ./turn.js
 			prompt: "${run.id}"
-			reply: { id: string, same: string, key: string }
+			reply: { id: string, same: string }
 		`,
 		"a timeout read from the run": `
 			flow: f
 			limits: { timeout: "${run.id ? '1m' : '1s'}" }
 			stages:
 			  a: { job: { script: ./echo.js, input: { id: "${run.id}" }, timeout: "${run.id ? '1m' : '1s'}" } }
-			output: { id: "${stages.a.output.id}", same: "${run.id}", key: "${run.key}" }
+			output: { id: "${stages.a.output.id}", same: "${run.id}" }
 		`,
 	} {
 		files := map[string]string{"echo.js": echo["echo.js"], "turn.js": `
 			const said = require("agents").conversation(input)
 			const id = said[said.length - 1].content
-			const answer = { role: "assistant", content: JSON.stringify({ id, same: id, key: "" }), calls: [] }
+			const answer = { role: "assistant", content: JSON.stringify({ id, same: id }), calls: [] }
 			return { turn: blobs.make([answer], { type: "application/json" }), text: answer.content, calls: [], stop: "end", usage: { input: 1, output: 1 } }
 		`}
 		r := run(t, l, def, files, nil)
@@ -705,16 +718,52 @@ func Test_mach_run_is_read_in_every_type(t *testing.T) {
 		if reply, ok := out["reply"].(map[string]any); ok {
 			out = reply
 		}
-		if r.Status != "done" || out["id"] != r.ID || out["same"] != r.ID || out["key"] != "" {
+		if r.Status != "done" || out["id"] != r.ID || out["same"] != r.ID {
 			t.Fatalf("%s: the run %s ended %s and read %v: %s", name, r.ID, r.Status, r.Output, r.Error)
 		}
+	}
+	// Each type reads the run's location where it reads its ID, and the
+	// location is the run's.
+	for name, def := range map[string]string{
+		"a flow's output": `
+			flow: f
+			stages:
+			  a: { job: { script: ./turn.js } }
+			output: "${run.location}"
+		`,
+		"a statechart's final state": `
+			statechart: s
+			initial: b
+			states:
+			  b: { end: done, output: "${run.location}" }
+		`,
+		"an agent's prompt": `
+			agent: g
+			model: { name: scripted, service: anthropic }
+			turn: ./turn.js
+			prompt: "${run.location}"
+		`,
+		"a timeout": `
+			flow: f
+			limits: { timeout: "${run.location ? '1m' : '1s'}" }
+			stages:
+			  a: { job: { script: ./turn.js, timeout: "${run.location ? '1m' : '1s'}" } }
+		`,
+	} {
+		if _, err := machineParse(def, map[string]string{"turn.js": "return {}"}); err != nil {
+			t.Errorf("%s does not read run.location: %v", name, err)
+		}
+	}
+	located := machine.NewEvaluator(time.Now(), []byte("seed"), machine.Run{ID: "r1", Location: "/home/devices/boiler"})
+	if got, err := located.Text("${run.location}", machine.Scope{"input": nil}, "output"); err != nil || got != "/home/devices/boiler" {
+		t.Errorf("run.location gives %v (%v)", got, err)
 	}
 	_, err := machineParse(`
 		flow: f
 		stages:
 		  a: { job: { script: ./echo.js, allow: ["fs.read:${run.id}/**"] } }
 	`, echo)
-	if err == nil || !strings.Contains(err.Error(), "from the machine's input and from nothing else") {
+	if err == nil || !strings.Contains(err.Error(), "from the machine's input and its values, and from nothing else") {
 		t.Fatalf("a permission's scope read the run: %v", err)
 	}
 }

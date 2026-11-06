@@ -91,8 +91,9 @@ func carried(v any, run string) any {
 
 func runAgent(t *testing.T, l *client.Local, def string, files map[string]string) *client.Run {
 	t.Helper()
-	id, err := l.Start(ctx, draft(t, def, files), client.Start{
-		Input: map[string]any{"question": "what is 41 plus one?"}, Secrets: map[string]string{"TEST_KEY": "sk-test-key"}})
+	setSecret(t, l, "TEST_KEY", "sk-test-key")
+	id, err := l.Run(ctx, draft(t, def, files), client.Start{
+		Input: map[string]any{"question": "what is 41 plus one?"}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -228,8 +229,8 @@ func TestShapeIsJSONSchema(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if a, b := jsonOf(short.Definition), jsonOf(written.Definition); a != b {
-		t.Fatalf("the short form and the full form were stored differently:\n%s\n%s", a, b)
+	if short.Hash() != written.Hash() {
+		t.Fatalf("the short form and the full form were stored differently:\n%s\n%s", jsonOf(short.Definition), jsonOf(written.Definition))
 	}
 
 	m := newModel(t, calls("c1", "file", `{"labels": ["urgent"], "assign": {"user": "sam"}}`), says("done"))
@@ -310,6 +311,14 @@ func Test_agent_shape_ref_outside_the_shape_is_refused(t *testing.T) {
 func Test_agent_tool_reading_unnamed_argument_is_refused(t *testing.T) {
 	agentRefused(t, strings.Replace(agentDef("http://127.0.0.1:1", ""), `input: { n: "${args.n}" }`, `input: { n: "${args.other}" }`, 1),
 		`reads "args.other", which the tool's args do not name`)
+	// So does a call's location, and a send's address and data.
+	for _, job := range []string{
+		`job: { call: { at: "${args.where}" } }`,
+		`job: { send: { to: { at: room, key: "${args.who}" }, event: set, data: { n: "${args.n}" } } }`,
+	} {
+		agentRefused(t, strings.Replace(agentDef("http://127.0.0.1:1", ""), `job: { script: ./add.js, input: { n: "${args.n}" } }`, job, 1),
+			`which the tool's args do not name`)
+	}
 }
 
 func Test_agent_tool_cannot_take_an_agents_own_job_name(t *testing.T) {
@@ -434,8 +443,9 @@ func TestModelTextIsSeenWhileItIsWritten(t *testing.T) {
 	m := newModel(t, llmstandin.Reply{Text: reply, Hold: hold})
 	waited := false
 	l := local(t, "all")
-	id, err := l.Start(ctx, draft(t, agentDef(m.URL, ""), scripts), client.Start{
-		Input: map[string]any{"question": "what is 41 plus one?"}, Secrets: map[string]string{"TEST_KEY": "sk-test-key"}})
+	setSecret(t, l, "TEST_KEY", "sk-test-key")
+	id, err := l.Run(ctx, draft(t, agentDef(m.URL, ""), scripts), client.Start{
+		Input: map[string]any{"question": "what is 41 plus one?"}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -491,13 +501,14 @@ func TestHandleSaysItemsCostAndThePreviewOnce(t *testing.T) {
 		    args: { it: blob }
 		    job: { script: ./again.js, input: { it: "${args.it}" } }
 `, 1)
-	id, err := l.Start(ctx, draft(t, def, map[string]string{"add.js": scripts["add.js"],
+	setSecret(t, l, "TEST_KEY", "sk-test-key")
+	id, err := l.Run(ctx, draft(t, def, map[string]string{"add.js": scripts["add.js"],
 		"again.js": `return { same: input.it }`,
 		"table.js": `
 			let text = "city,amount\n"
 			for (let i = 0; i < input.rows; i++) text += "city-" + (i % 10) + "," + i + "\n"
 			return { table: blobs.make(text, { type: "text/csv" }) }
-		`}), client.Start{Input: map[string]any{"question": "q"}, Secrets: map[string]string{"TEST_KEY": "sk-test-key"}})
+		`}), client.Start{Input: map[string]any{"question": "q"}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -797,8 +808,9 @@ const fileTools = `[
 func TestAgentListedTools(t *testing.T) {
 	m := newModel(t, calls("c1", "files_read", `{"path": "a.txt"}`), calls("c2", "files_open_recent", `{}`), says("done"))
 	l := local(t, "all")
-	id, err := l.Start(ctx, draft(t, listed(m.URL, fileTools), listedScripts),
-		client.Start{Input: map[string]any{"question": "q"}, Secrets: map[string]string{"TEST_KEY": "sk-test-key"}})
+	setSecret(t, l, "TEST_KEY", "sk-test-key")
+	id, err := l.Run(ctx, draft(t, listed(m.URL, fileTools), listedScripts),
+		client.Start{Input: map[string]any{"question": "q"}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -840,9 +852,9 @@ func TestAgentListedTools(t *testing.T) {
 	}
 	// A run that carries the conversation on lists the tools again.
 	m2 := newModel(t, says("done again"))
-	id, err = l.Start(ctx, draft(t, listed(m2.URL, fileTools)+"\n\t\tconversation: ${input.so}\n", listedScripts), client.Start{
-		Input:   map[string]any{"question": "and again?", "so": carried(r.Output.(map[string]any)["conversation"], r.ID)},
-		Secrets: map[string]string{"TEST_KEY": "sk-test-key"}})
+	setSecret(t, l, "TEST_KEY", "sk-test-key")
+	id, err = l.Run(ctx, draft(t, listed(m2.URL, fileTools)+"\n\t\tconversation: ${input.so}\n", listedScripts), client.Start{
+		Input: map[string]any{"question": "and again?", "so": carried(r.Output.(map[string]any)["conversation"], r.ID)}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -919,7 +931,7 @@ func Test_agent_tree_shaped_tools_and_reply(t *testing.T) {
 func TestAgentListThatCannotBeUsedFails(t *testing.T) {
 	long := strings.Repeat("x", 60)
 	for list, want := range map[string]string{
-		`none`: "tools.files.list: Error: the server is away",
+		`none`: "tools.files.list: the server is away",
 		`[ { does: Nameless, args: { type: object } } ]`:                                     "a tool in the list has no name",
 		`[ { name: count, args: { type: string } } ]`:                                        `the tool "count"'s args`,
 		`[ { name: count } ]`:                                                                `the tool "count"'s args`,
@@ -986,5 +998,93 @@ func TestAgentWithTheToolsOfAnMCPServer(t *testing.T) {
 	}
 	if shown := lastShown(m.Calls[1]); !strings.Contains(shown, "2 notes: tea at 4, tea at 5") {
 		t.Errorf("the call gave %s", shown)
+	}
+}
+
+// A tool whose job is a call is shown to the model as the whole of the
+// called run's result, and a called run that fails as its error.
+func Test_agent_tool_that_calls_shows_the_whole_result(t *testing.T) {
+	for _, end := range []string{"done", "failed"} {
+		m := newModel(t, calls("call_1", "look", `{"n": 41}`), says("found it"))
+		l := local(t, "all")
+		setSecret(t, l, "TEST_KEY", "sk-test-key")
+		sums := strings.Replace(agentDef(m.URL, ""), `  add:
+		    does: Add one to a number
+		    args: { n: number }
+		    job: { script: ./add.js, input: { n: "${args.n}" } }`, `  look:
+		    does: Look a number up
+		    args: { n: number }
+		    job: { call: { at: lookup }, input: { n: "${args.n}" }, allow: ["send:lookup"] }`, 1)
+		tree := &client.Tree{Prefix: "/a", Machines: []*client.Machine{
+			{Path: "sums.yaml", Location: "/a/sums", Draft: draft(t, sums, nil)},
+			{Path: "lookup.yaml", Location: "/a/lookup"},
+		}}
+		tree.Machines[1].Draft = draft(t, strings.Replace(`
+			statechart: lookup
+			initial: a
+			states:
+			  a: { end: END, output: { got: "${input.n}", from: lookup } }
+		`, "END", end, 1), nil)
+		message, err := l.Submit(ctx, tree, 0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if r, err := l.WaitReceipt(ctx, message, 0, client.LocalInterval); err != nil || !r.Taken {
+			t.Fatalf("the tree: %+v %v", r, err)
+		}
+		id, err := l.Start(ctx, client.Start{At: "/a/sums", Input: map[string]any{"question": "what is 41?"}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if r := wait(t, l, id); r.Status != "done" {
+			t.Fatalf("the agent ended %s: %s", r.Status, r.Error)
+		}
+		shown := jsonOf(m.Calls[1])
+		if !strings.Contains(shown, `\"from\":\"lookup\"`) || !strings.Contains(shown, `\"got\":41`) {
+			t.Fatalf("with the run %s the model was shown %s", end, shown)
+		}
+		if failed := strings.Contains(shown, "end: failed"); failed != (end == "failed") {
+			t.Fatalf("with the run %s the model was shown %s", end, shown)
+		}
+	}
+}
+
+// A tool whose job is a send ends done once its event is written: the event
+// reaches the keyed run, and the model is shown a result with no output.
+func Test_agent_tool_that_sends_is_done_once_written(t *testing.T) {
+	m := newModel(t, calls("call_1", "tell", `{"n": 41}`), says("told it"))
+	l := local(t, "all")
+	setSecret(t, l, "TEST_KEY", "sk-test-key")
+	sums := strings.Replace(agentDef(m.URL, ""), `  add:
+		    does: Add one to a number
+		    args: { n: number }
+		    job: { script: ./add.js, input: { n: "${args.n}" } }`, `  tell:
+		    does: Tell the room a number
+		    args: { n: number }
+		    job: { send: { to: { at: room, key: room-1 }, event: said, data: { n: "${args.n}" } }, allow: ["send:room"] }`, 1)
+	room := "statechart: room\nlifetime: keyed\ntitle: \"room ${input.n}\"\ninitial: a\nstates: { a: { on: { said: b } }, b: { end: done } }\n"
+	message, err := l.Submit(ctx, &client.Tree{Prefix: "/a", Machines: []*client.Machine{
+		{Path: "sums.yaml", Location: "/a/sums", Draft: draft(t, sums, nil)},
+		{Path: "room.yaml", Location: "/a/room", Draft: draft(t, room, nil)},
+	}}, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if r, err := l.WaitReceipt(ctx, message, 0, client.LocalInterval); err != nil || !r.Taken {
+		t.Fatalf("the tree: %+v %v", r, err)
+	}
+	id, err := l.Start(ctx, client.Start{At: "/a/sums", Input: map[string]any{"question": "tell the room 41"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if r := wait(t, l, id); r.Status != "done" || r.Output.(map[string]any)["reply"] != "told it" {
+		t.Fatalf("the agent ended %s: %s %v", r.Status, r.Error, r.Output)
+	}
+	if got, err := l.Show(ctx, waitForFinished(t, l, "room")); err != nil || got.Title != "room 41" || got.Status != "done" {
+		t.Fatalf("the room is shown as %+v: %v", got, err)
+	}
+	shown := jsonOf(m.Calls[1])
+	if !strings.Contains(shown, `{"content":"","is_error":false,"tool_use_id":"call_1","type":"tool_result"}`) {
+		t.Fatalf("the model was shown %s", shown)
 	}
 }

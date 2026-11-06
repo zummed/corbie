@@ -8,7 +8,7 @@ and the new events. It computes the new state and the jobs to start, writes
 both to the run's record as the next step, then starts the jobs.
 
 An event is a start message, a job's result, a timer that is due, or an event
-from a parent or child run.
+sent by a client or another run.
 
 This is the machine from `corbie manual first-machine`.
 

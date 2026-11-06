@@ -2,10 +2,12 @@ package controller_test
 
 import (
 	"regexp"
+	"slices"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/zummed/corbie/secret"
 	"github.com/zummed/corbie/store"
 )
 
@@ -13,14 +15,17 @@ import (
 var layout = []*regexp.Regexp{
 	regexp.MustCompile(`^version$`),
 	regexp.MustCompile(`^ctl/inbox/[^/]+/[^/]+$`),
-	regexp.MustCompile(`^ctl/receipts/[^/]+/[^/]+$`),
+	regexp.MustCompile(`^ctl/receipts/[^/]+/[^/]+/(receipt|result|blobs/[^/]+)$`),
 	regexp.MustCompile(`^ctl/(running|finished)/[^/]+/[^/]+$`),
 	regexp.MustCompile(`^ctl/records/[^/]+/[^/]+/steps/\d{8}$`),
 	regexp.MustCompile(`^ctl/records/[^/]+/[^/]+/emits/[^/]+/\d{8}$`),
 	regexp.MustCompile(`^ctl/records/[^/]+/[^/]+/blobs/[^/]+$`),
 	regexp.MustCompile(`^ctl/wakes/\d{8}T\d{6}\.\d{3}Z/[^/]+/[^/]+/[^/]+$`),
 	regexp.MustCompile(`^ctl/trust/[^/]+$`),
-	regexp.MustCompile(`^ctl/secrets/[^/]+$`),
+	regexp.MustCompile(`^ctl/locations(/[^/+]+)*/\+/(tree|file|blobs/[^/]+|keys/[0-9a-f]{64}|secrets/[^/]+|values/[^/]+)$`),
+	regexp.MustCompile(`^ctl/uploads/[^/]+/[^/]+/[^/]+$`),
+	// A client's keys, until a send names a location.
+	regexp.MustCompile(`^ctl/keys/[^/]+/[0-9a-f]{64}$`),
 }
 
 // A whole run, with children, events, a ticket, a timer and receipts, keeps
@@ -28,10 +33,18 @@ var layout = []*regexp.Regexp{
 func TestWhatEveryRunKeepsTo(t *testing.T) {
 	w := newWorld(t)
 	const marker = "MARKER-IN-A-VALUE"
+	for _, value := range []string{marker, marker + " again"} {
+		if err := secret.Set(ctx, w.ctrl.Store, w.ctl, "/", "K", value); err != nil {
+			t.Fatal(err)
+		}
+		if err := secret.SetValue(ctx, w.ctrl.Store, w.ctl, "/home/.rook", "V", value); err != nil {
+			t.Fatal(err)
+		}
+	}
 	door := w.submit(door, nil, map[string]any{"greeting": marker})
 	fam := w.submit(family, nil, map[string]any{"note": marker})
 	w.settle()
-	w.client.Send(ctx, door, "open", map[string]any{"said": marker}, 0)
+	w.client.Send(ctx, w.to(door), "open", map[string]any{"said": marker}, 0)
 	w.settle()
 	var ticket string
 	for _, k := range w.latest(door).State.Tickets {
@@ -67,9 +80,11 @@ func TestWhatEveryRunKeepsTo(t *testing.T) {
 		if !drawn {
 			t.Errorf("a name the layout does not draw was written: %s", op.Name)
 		}
-		// Only the head of a running instance, a trust entry and a secret
-		// are ever rewritten.
-		rewritable := strings.HasPrefix(op.Name, "ctl/running/") || strings.HasPrefix(op.Name, "ctl/trust/") || strings.HasPrefix(op.Name, "ctl/secrets/")
+		// Only the head of a running instance, a trust entry, a key's
+		// file, and a tree, a file, a secret and a value at a location are
+		// ever rewritten.
+		rewritable := strings.HasPrefix(op.Name, "ctl/running/") || strings.HasPrefix(op.Name, "ctl/trust/") || strings.HasPrefix(op.Name, "ctl/keys/") ||
+			strings.HasPrefix(op.Name, "ctl/locations/") && !strings.Contains(op.Name, "/+/blobs/")
 		if op.Act == store.ActRewrite && !rewritable {
 			t.Errorf("%s was rewritten (%s)", op.Name, op.How)
 		}
@@ -87,9 +102,15 @@ func TestWhatEveryRunKeepsTo(t *testing.T) {
 			}
 		}
 		// What is sealed cannot be read by whoever runs the store.
-		sealed := strings.HasPrefix(op.Name, "ctl/inbox/") || strings.HasPrefix(op.Name, "ctl/receipts/") || strings.HasPrefix(op.Name, "ctl/records/")
+		sealed := strings.HasPrefix(op.Name, "ctl/inbox/") || strings.HasPrefix(op.Name, "ctl/receipts/") || strings.HasPrefix(op.Name, "ctl/records/") ||
+			strings.HasPrefix(op.Name, "ctl/locations/") || strings.HasPrefix(op.Name, "ctl/keys/")
 		if sealed && op.Value != nil && (strings.Contains(string(op.Value), marker) || strings.Contains(string(op.Value), ticket)) {
 			t.Errorf("%s shows a value of the run's to whoever reads the store", op.Name)
+		}
+	}
+	for _, name := range []string{store.Secret("ctl", "/", "K"), store.Value("ctl", "/home/.rook", "V")} {
+		if !slices.ContainsFunc(ops, func(op store.Op) bool { return op.Name == name && op.Act == store.ActRewrite }) {
+			t.Errorf("%s was not set again", name)
 		}
 	}
 	if len(heads) < 4 {

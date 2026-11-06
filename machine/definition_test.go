@@ -344,7 +344,7 @@ func TestPermissionScopeReadsOnlyTheInput(t *testing.T) {
 		t.Fatalf("a scope filled from the input: %v", err)
 	}
 	got := problems(t, strings.Replace(def, "WHAT", "item", 1), js)
-	for _, want := range []string{"work.a.allow[0]", `"fs.read:${item}/**"`, "from the machine's input and from nothing else", `reads "item"`} {
+	for _, want := range []string{"work.a.allow[0]", `"fs.read:${item}/**"`, "from the machine's input and its values, and from nothing else", `reads "item"`} {
 		if !strings.Contains(got, want) {
 			t.Errorf("a scope filled from an item was reported without %q:\n%s", want, got)
 		}
@@ -455,6 +455,20 @@ func TestDurations(t *testing.T) {
 	for _, text := range []string{"", "soon", "5", "-1h", "1w"} {
 		if _, err := ParseDuration(text); err == nil {
 			t.Errorf("%q passed as a length of time", text)
+		}
+	}
+}
+
+// A file that is not YAML names the line its problem is on, whether the
+// YAML reader's parser or its scanner found it.
+func Test_mach_not_yaml_names_its_line(t *testing.T) {
+	for src, line := range map[string]string{
+		"probe: p\n# c\n# c\ninput: { days: number? }\n": "line 4:",
+		"probe: p\nmeta: [1, 2\n":                        "line 2:",
+		"probe: p\nmeta:\n\t- x\n":                       "line 3:",
+	} {
+		if got := problems(t, src, nil); !strings.Contains(got, "this is not YAML that can be read: "+line) {
+			t.Errorf("%q gave:\n%s", src, got)
 		}
 	}
 }

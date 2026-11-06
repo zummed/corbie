@@ -146,25 +146,40 @@ func calls(t *testing.T, n int, done func(), answered func(body string)) *httpte
 	return host
 }
 
-// setUp sets up one machine's config and a store with corbie init, and
-// leaves a start waiting in the store.
-func setUp(t *testing.T, address string) (config string) {
+// setUp makes a config whose store is at address, and leaves a submit of a
+// singleton waiting there: once sent says whether its message is in the
+// controller's inbox. The submit is stopped then, since no controller
+// answers it.
+func setUp(t *testing.T, address string, sent func() bool) (config string) {
 	t.Helper()
 	config = filepath.Join(t.TempDir(), "config")
 	if status, said := corbie(ctx, "init", "--config", config, "--store", address, "--name", "host"); status != 0 {
 		t.Fatalf("corbie init: %s", said)
 	}
 	definition := filepath.Join(t.TempDir(), "waits.yaml")
-	os.WriteFile(definition, []byte("statechart: waits\ninitial: waiting\nstates:\n  waiting: { ticket: word }\n"), 0o600)
-	if status, said := corbie(ctx, "run", "submit", definition, "--config", config); status != 0 {
-		t.Fatalf("corbie run submit: %s", said)
+	os.WriteFile(definition, []byte("statechart: waits\nlifetime: singleton\ninitial: waiting\nstates:\n  waiting: { ticket: word }\n"), 0o600)
+	submitting, stop := context.WithCancel(ctx)
+	done := make(chan string, 1)
+	go func() {
+		_, said := corbie(submitting, "run", "submit", definition, "--config", config)
+		done <- said
+	}()
+	for began := time.Now(); !sent(); time.Sleep(time.Millisecond) {
+		if time.Since(began) > 10*time.Second {
+			t.Fatalf("corbie run submit sent nothing: %s", <-done)
+		}
 	}
+	stop()
+	<-done
 	return config
 }
 
 func Test_role_serverless_host_refuses_directory_and_memory(t *testing.T) {
 	directory := t.TempDir()
-	config := setUp(t, directory)
+	config := setUp(t, directory, func() bool {
+		sent, _ := filepath.Glob(filepath.Join(directory, "host-controller", "inbox", "*", "*"))
+		return len(sent) > 0
+	})
 	// The same command starts on a computer: it is stopped once it
 	// has taken the start.
 	loop, stop := context.WithCancel(ctx)
@@ -214,8 +229,8 @@ func Test_role_host_package_readable_by_all_still_starts(t *testing.T) {
 	t.Setenv("AWS_ACCESS_KEY_ID", "the-key")
 	t.Setenv("AWS_SECRET_ACCESS_KEY", "the-secret")
 	t.Setenv("AWS_SESSION_TOKEN", "")
-	// The config is made on its owner's machine, and a start is waiting.
-	config := setUp(t, "s3://bkt?region=test-1&endpoint="+served.URL)
+	// The config is made on its owner's machine, and a submit is waiting.
+	config := setUp(t, "s3://bkt?region=test-1&endpoint="+served.URL, func() bool { return held.has("/inbox/") })
 	// The host unpacks its package read-only and readable by everyone.
 	modes := func(dir string) (all []string) {
 		filepath.WalkDir(dir, func(path string, entry fs.DirEntry, err error) error {
@@ -241,12 +256,12 @@ func Test_role_host_package_readable_by_all_still_starts(t *testing.T) {
 	if status, said := corbie(limited, "start", "controller", "--config", config); status != 1 || !strings.Contains(said, "can be read by others") {
 		t.Fatalf("with an identity that others can read, corbie start ended %d: %s", status, said)
 	}
-	if held.has("/running/") {
-		t.Fatal("a controller whose identity others can read took a start")
+	if held.has("/receipts/") {
+		t.Fatal("a controller whose identity others can read took a submit")
 	}
 
 	// On the host the role starts all the same: it takes the host's call
-	// and the start that was waiting, with a copy of its config that is on
+	// and the submit that was waiting, with a copy of its config that is on
 	// the copy's own disk and its owner's alone.
 	disk := t.TempDir()
 	t.Setenv("TMPDIR", disk)
@@ -261,8 +276,8 @@ func Test_role_host_package_readable_by_all_still_starts(t *testing.T) {
 	if status, said := corbie(serving, "start", "controller", "--config", config); status != 0 {
 		t.Fatalf("on a serverless host, with its config readable by everyone, corbie start ended %d: %s", status, said)
 	}
-	if len(answers) != 1 || !strings.Contains(answers[0], `"controller":"done"`) || !held.has("/running/") {
-		t.Fatalf("the controller answered the host's call with %v, and took the start: %v", answers, held.has("/running/"))
+	if len(answers) != 1 || !strings.Contains(answers[0], `"controller":"done"`) || !held.has("/receipts/") {
+		t.Fatalf("the controller answered the host's call with %v, and took the submit: %v", answers, held.has("/receipts/"))
 	}
 	identities := 0
 	for _, line := range own {

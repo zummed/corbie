@@ -49,7 +49,7 @@ func serve(t *testing.T, c *client.Client) caller {
 	t.Helper()
 	server := httptest.NewServer(&gateway.Gateway{Client: c, Token: "the-token", Interval: 10 * time.Millisecond})
 	t.Cleanup(server.Close)
-	return caller{t: t, url: server.URL, token: "the-token"}
+	return caller{t: t, url: server.URL, token: "the-token", client: c}
 }
 
 // alone is a gateway whose controller is not running: what is sent to it
@@ -103,7 +103,7 @@ func TestGatewayRefusesAParameterItDoesNotKnow(t *testing.T) {
 	// An entry of a start's deny list that is no permission is refused as
 	// one of its allow list is.
 	for _, list := range []string{"allow", "deny"} {
-		if status, _, text := c.upload(form(c, map[string]any{"definition": door, list: []string{"nonsense"}})...); status != http.StatusBadRequest || !strings.Contains(text, "is not a permission") {
+		if status, _, text := c.upload(form(c, map[string]any{"at": "/door", list: []string{"nonsense"}})...); status != http.StatusBadRequest || !strings.Contains(text, "is not a permission") {
 			t.Errorf("a start whose %s list holds no permission was answered %d %s", list, status, text)
 		}
 	}
@@ -227,47 +227,6 @@ func Test_client_gateway_blob_in_stream_entry_can_be_fetched(t *testing.T) {
 	}
 }
 
-// A definition sent to the gateway may name only the files sent with it,
-// and a path that is a file and a directory both is refused.
-func Test_client_gateway_definition_cannot_read_gateway_disk(t *testing.T) {
-	c0, c := alone(t)
-	// A file on the gateway's own disk, beside where it runs and by its
-	// whole path.
-	dir := t.TempDir()
-	secret := dir + "/secret.js"
-	if err := os.WriteFile(secret, []byte(`return "the gateway's own"`), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	t.Chdir(dir)
-	sent := func(script string, files map[string]string) (int, string) {
-		status, _, text := c.upload(form(c, map[string]any{"files": files,
-			"definition": "flow: reads\nstages:\n  it: { job: { script: " + script + " } }\n"})...)
-		return status, text
-	}
-	for _, script := range []string{"./secret.js", "../" + dir[strings.LastIndexByte(dir, '/')+1:] + "/secret.js", secret, "./sub/../secret.js"} {
-		if status, text := sent(script, map[string]string{"./other.js": "return 1"}); status != 400 || !strings.Contains(text, "secret.js") {
-			t.Errorf("a definition naming %s, which was not sent with it, was answered %d %s", script, status, text)
-		}
-	}
-	// A file and a directory of one name, and one file twice.
-	for _, files := range []map[string]string{
-		{"./a": "return 1", "./a/b.js": "return 2"},
-		{"./a": "return 1", "./a/b/c.js": "return 2"},
-		{"./a": "return 1", "a": "return 2"},
-	} {
-		if status, text := sent("./a", files); status != 400 || !strings.Contains(text, "./a") {
-			t.Errorf("an upload holding %v was answered %d %s", files, status, text)
-		}
-	}
-	if status, text := sent("./a", map[string]string{"./a": "return 1", "./b/c.js": "return 2"}); status != 200 {
-		t.Fatalf("a definition naming a file sent with it was answered %d %s", status, text)
-	}
-	// Nothing was started by any of the refused.
-	if names, _ := store.Names(c0.Store.List(context.Background(), store.Records("controller")+"/client")); len(names) != 2 {
-		t.Fatalf("the refused requests left %d values in the store: %v", len(names), names)
-	}
-}
-
 // An input of null in a start is no input: the machine sees what it sees
 // when nothing is sent.
 func Test_client_gateway_null_input_is_no_input(t *testing.T) {
@@ -278,11 +237,12 @@ initial: over
 states:
   over: { end: done, output: { given: "${input === undefined ? 'nothing' : JSON.stringify(input)}" } }
 `
+	at := c.place(sees, nil)
 	var outputs, starts []string
 	for _, parts := range [][]part{
-		{{name: "definition", contents: sees}},
-		{{name: "definition", contents: sees}, {name: "start", contents: `{"input": null}`}},
-		{{name: "start", contents: `{"input": null, "labels": null}`}, {name: "definition", contents: sees}},
+		{{name: "start", contents: `{"at": "` + at + `"}`}},
+		{{name: "start", contents: `{"at": "` + at + `", "input": null}`}},
+		{{name: "start", contents: `{"input": null, "labels": null, "at": "` + at + `"}`}},
 	} {
 		status, started, text := c.upload(parts...)
 		id, _ := started["id"].(string)
@@ -398,7 +358,7 @@ func Test_client_gateway_unknown_run_is_not_found(t *testing.T) {
 		t.Fatalf("the answers for runs that do not exist took %v", took)
 	}
 	// With no controller running, a run just started is waiting.
-	id := c.start(map[string]any{"definition": door})
+	id := c.start(map[string]any{"at": "/door"})
 	for _, route := range []string{"", "?wait=20ms"} {
 		if status, run, text := c.do("GET", "/runs/"+id+route, ""); status != 200 || run["status"] != "waiting" || run["id"] != id {
 			t.Errorf("GET /runs/%s%s for a run just started was answered %d %s", id, route, status, text)
@@ -440,7 +400,13 @@ func Test_client_wait_cut_short_answers_as_it_stands(t *testing.T) {
 		c *client.Client
 		caller
 	}{"waiting": {unsent, waiting}, "running": {local.Client, running}} {
-		id := at.start(map[string]any{"definition": door})
+		// With no controller, nothing takes a submit: the start names a
+		// location that is not there, and is never taken up.
+		request := map[string]any{"at": "/door"}
+		if want == "running" {
+			request = map[string]any{"definition": door}
+		}
+		id := at.start(request)
 		if want == "running" {
 			for deadline := time.Now().Add(5 * time.Second); ; time.Sleep(5 * time.Millisecond) {
 				if run, err := at.c.Show(context.Background(), id); err == nil && run.Status == "running" {
@@ -478,6 +444,53 @@ func Test_client_wait_cut_short_answers_as_it_stands(t *testing.T) {
 		}
 		if status, _, text := at.do("GET", "/runs/"+id+"?wait=soon", ""); status != 400 {
 			t.Errorf("a wait with a limit that is no length of time was answered %d %s", status, text)
+		}
+	}
+}
+
+// A gateway whose client does not own a location's tree starts a run there
+// as a call. The run is answered from the call's result: its status and its
+// output, whose files are fetched as any run's are, and nothing of its
+// record.
+func Test_client_gateway_call_is_answered_from_its_result(t *testing.T) {
+	local, owner := served(t)
+	ctx := context.Background()
+	gw, err := identity.New("gw", identity.Client)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := identity.WriteTrust(ctx, local.Controller.Store, local.Controller.ID, identity.Trust{Card: gw.Card, Ceiling: permission.Layer{Allow: []string{"send:/**"}}}); err != nil {
+		t.Fatal(err)
+	}
+	c := serve(t, client.New(gw, local.Controller.ID.Card, local.Memory.As(store.Party{Kind: store.Client, Name: "gw", Controller: local.Controller.ID.Name})))
+	at := owner.place(`
+statechart: echo
+receive: [client:gw]
+initial: over
+states:
+  over: { end: done, output: "${input}" }
+`, nil)
+	status, started, text := c.upload(part{name: "start", contents: `{"at": "` + at + `", "input": {"n": 1}}`},
+		part{name: "input:file", filename: "a.txt", contents: "called"})
+	id, _ := started["id"].(string)
+	if status != 200 || id == "" {
+		t.Fatalf("the call was answered %d %s", status, text)
+	}
+	status, run, text := c.do("GET", "/runs/"+id+"?wait", "")
+	if status != 200 || run["status"] != "done" || run["called"] == nil || run["output"].(map[string]any)["n"] != 1.0 {
+		t.Fatalf("the call was answered %d %s", status, text)
+	}
+	if status, _, text := c.do("GET", "/runs/"+id+"/files/file", ""); status != 200 || text != "called" {
+		t.Fatalf("the call's file was answered %d %s", status, text)
+	}
+	if status, record, text := c.do("GET", "/runs/"+id+"/record", ""); status != 200 || len(record["entries"].([]any)) != 0 {
+		t.Fatalf("the record of a call was answered %d %s", status, text)
+	}
+	// Its definition and a cancel are more than its result, and refused as
+	// that, whether the run is done or not.
+	for route, method := range map[string]string{"/definition": "GET", "/cancel": "POST"} {
+		if status, _, text := c.do(method, "/runs/"+id+route, "{}"); status != 403 || !strings.Contains(text, "a call into a tree of another client") {
+			t.Errorf("%s /runs/<call>%s was answered %d %s", method, route, status, text)
 		}
 	}
 }

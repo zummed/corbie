@@ -89,7 +89,7 @@ func TestAPermissionListedToBeAskedAboutHoldsTheJob(t *testing.T) {
 
 func TestAskThatIsAMachineWaitsForAPerson(t *testing.T) {
 	l := local(t)
-	id, err := l.Start(ctx, draft(t, `
+	id, err := l.Run(ctx, draft(t, `
 		flow: careful
 		ask:
 		  machine:
@@ -143,7 +143,7 @@ func Test_mach_denial_says_why_the_ask_gave_no_yes(t *testing.T) {
 
 func Test_mach_every_refusal_is_recorded(t *testing.T) {
 	l := local(t)
-	id, err := l.Start(ctx, draft(t, `
+	id, err := l.Run(ctx, draft(t, `
 		flow: several
 		ask: { script: ./ask.js }
 		stages:

@@ -3,7 +3,7 @@
   "output": {
     "noted": {
       "error": {
-        "<contains>": "two: Error: told to fail"
+        "<contains>": "two: told to fail"
       },
       "name": "failed",
       "output": null

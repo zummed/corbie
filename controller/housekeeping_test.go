@@ -35,7 +35,7 @@ func TestFinishedInstanceGoesWhenItsKeepHasPassed(t *testing.T) {
 	w := newWorld(t)
 	run := w.submit(kept, nil, nil)
 	w.settle()
-	w.client.Send(ctx, run, "stop", nil, 0)
+	w.client.Send(ctx, w.to(run), "stop", nil, 0)
 	w.settle()
 	if head := w.head(run); head == nil || head.Status != instance.Done || head.Keep.String() != "24h0m0s" {
 		t.Fatalf("the run ended with the head %+v", head)
@@ -65,7 +65,7 @@ func TestOlderHistoryOfARunningInstanceIsTrimmed(t *testing.T) {
 	w.settle()
 	for range 30 {
 		w.tick(2 * time.Hour)
-		w.client.Send(ctx, run, "tick", nil, 0)
+		w.client.Send(ctx, w.to(run), "tick", nil, 0)
 		w.settle()
 	}
 	steps := w.list(store.Steps("ctl", run))
@@ -73,7 +73,7 @@ func TestOlderHistoryOfARunningInstanceIsTrimmed(t *testing.T) {
 		t.Fatalf("after sixty hours with a keep of a day, %d steps remain", len(steps))
 	}
 	// It carries on correctly from what is left.
-	w.client.Send(ctx, run, "stop", nil, 0)
+	w.client.Send(ctx, w.to(run), "stop", nil, 0)
 	w.settle()
 	if head := w.head(run); head.Status != instance.Done || head.Step != 32 {
 		t.Fatalf("after trimming the run ended as %+v", head)
@@ -87,7 +87,7 @@ func TestReceiptsAndUploadsNeverStartedGo(t *testing.T) {
 	w := newWorld(t)
 	run := w.submit(kept, nil, nil)
 	w.settle()
-	message, _ := w.client.Send(ctx, run, "tick", nil, 0)
+	message, _ := w.client.Send(ctx, w.to(run), "tick", nil, 0)
 	// A message under a name that carries no time gets a receipt too.
 	w.leave(w.c1, "a-name-of-the-clients-own", &instance.Message{Kind: instance.KindEvent, Instance: run, Event: &machine.Event{Name: "tick"}})
 	w.settle()
@@ -97,9 +97,14 @@ func TestReceiptsAndUploadsNeverStartedGo(t *testing.T) {
 	// An upload for a run that is never started.
 	orphan, _ := w.client.NewRun()
 	w.blob(orphan, w.clock(), "left behind")
+	// An upload for a submit that is never sent.
+	unsent := store.Upload("ctl", "c1", w.clock().Format("20060102T150405.000000Z")+"-abcdef", blob.NewName())
+	if _, err := blob.Write(ctx, w.owner, unsent, "text/plain", blob.NewKey(), strings.NewReader("never sent")); err != nil {
+		t.Fatal(err)
+	}
 	w.tick(23 * time.Hour)
 	w.settle()
-	if w.receipt(message) == nil || w.receipt("a-name-of-the-clients-own") == nil || len(w.list(store.Record("ctl", orphan))) != 1 {
+	if w.receipt(message) == nil || w.receipt("a-name-of-the-clients-own") == nil || len(w.list(store.Record("ctl", orphan))) != 1 || len(w.list(store.Uploads("ctl", "c1"))) != 1 {
 		t.Fatal("a receipt or an upload went within the day")
 	}
 	w.tick(2 * time.Hour)
@@ -109,6 +114,9 @@ func TestReceiptsAndUploadsNeverStartedGo(t *testing.T) {
 	}
 	if got := w.list(store.Record("ctl", orphan)); len(got) != 0 {
 		t.Fatalf("an upload that never started is still there: %v", got)
+	}
+	if got := w.list(store.Uploads("ctl", "c1")); len(got) != 0 {
+		t.Fatalf("an upload for a submit never sent is still there: %v", got)
 	}
 	// The uploads of the run that did start are untouched.
 	if def, err := w.client.Definition(ctx, run); err != nil || def == nil {
@@ -176,17 +184,18 @@ func Test_ctl_housekeeping_gets_through_all_across_fresh_starts(t *testing.T) {
 	w := newWorld(t)
 	// Fifty runs that have ended, with their receipts, and an upload for a
 	// run that never started.
+	at, _ := w.place(w.client, kept, nil)
 	for range 50 {
-		run := w.submit(kept, nil, nil)
+		run := w.startAt(w.client, at, client.Start{})
 		w.settle()
-		w.client.Send(ctx, run, "stop", nil, 0)
+		w.client.Send(ctx, w.to(run), "stop", nil, 0)
 		w.settle()
 		w.tick(time.Second)
 	}
 	orphan, _ := w.client.NewRun()
 	w.blob(orphan, w.clock(), "left behind")
 	w.tick(26 * time.Hour) // every one of them is past keeping
-	late := w.submit(kept, nil, nil)
+	late := w.startAt(w.client, at, client.Start{})
 	past := func() (names []string) {
 		for _, under := range []string{store.Finished("ctl"), store.Records("ctl"), "ctl/receipts", store.Wakes("ctl")} {
 			for _, name := range w.list(under) {
@@ -359,7 +368,7 @@ func Test_inst_removal_takes_children_first(t *testing.T) {
 	w.settle()
 	middle := w.below(top)
 	bottom := w.below(middle)
-	w.client.Send(ctx, top, "end", nil, 0)
+	w.client.Send(ctx, w.to(top), "end", nil, 0)
 	w.settle()
 	for _, inst := range []string{top, middle, bottom} {
 		if head := w.head(inst); head.Status != instance.Done {
@@ -452,13 +461,13 @@ func Test_inst_removal_takes_children_first(t *testing.T) {
 		kid := w.below(top)
 		for range 30 {
 			w.tick(2 * time.Hour)
-			w.client.Send(ctx, top, "tick", nil, 0)
+			w.client.Send(ctx, w.to(top), "tick", nil, 0)
 			w.settle()
 		}
 		if steps := w.list(store.Steps("ctl", top)); len(steps) == 0 || store.Number(steps[0]) == 1 {
 			t.Fatalf("the step that started the machine below was not trimmed: %v", steps)
 		}
-		w.client.Send(ctx, top, "end", nil, 0)
+		w.client.Send(ctx, w.to(top), "end", nil, 0)
 		w.settle()
 		if a, b := w.head(top), w.head(kid); a.Status != instance.Done || !a.Ended.Equal(b.Ended) {
 			t.Fatalf("the two ended as %+v and %+v", a, b)
@@ -500,9 +509,8 @@ func Test_inst_trim_spares_blob_of_a_recent_entry(t *testing.T) {
 	// The run's input holds a file for as long as it runs.
 	run, _ := w.client.NewRun()
 	held := w.blob(run, started, "held by the current state")
-	if _, err := w.client.Start(ctx, w.draft(kept, nil), client.Start{Run: run, Input: map[string]any{"file": held.Value()}}); err != nil {
-		t.Fatal(err)
-	}
+	at, _ := w.place(w.client, kept, nil)
+	w.startAt(w.client, at, client.Start{Run: run, Input: map[string]any{"file": held.Value()}})
 	w.settle()
 	// Two files no state refers to: one made as the run began, and one made
 	// twenty hours before the trim, which a step or an emit of those twenty
@@ -511,7 +519,7 @@ func Test_inst_trim_spares_blob_of_a_recent_entry(t *testing.T) {
 	recent := w.blob(run, started.Add(52*time.Hour), "made lately")
 	for range 36 {
 		w.tick(2 * time.Hour)
-		w.client.Send(ctx, run, "tick", nil, 0)
+		w.client.Send(ctx, w.to(run), "tick", nil, 0)
 		w.settle()
 	}
 	// Three days on, with a keep of a day, the history was last trimmed at
@@ -575,7 +583,7 @@ func Test_inst_trim_keeps_blob_a_grandchild_uses(t *testing.T) {
 	middle := w.below(top)
 	bottom := w.below(middle)
 	file := w.blob(top, w.clock(), "handed down")
-	w.client.Send(ctx, top, "file", file.Value(), 0)
+	w.client.Send(ctx, w.to(top), "file", file.Value(), 0)
 	w.settle()
 	holds := func(inst string) bool {
 		data, err := identity.Encode(w.latest(inst).State)
@@ -591,7 +599,7 @@ func Test_inst_trim_keeps_blob_a_grandchild_uses(t *testing.T) {
 	// bottom's job reads it.
 	for range 36 {
 		w.tick(2 * time.Hour)
-		w.client.Send(ctx, top, "tick", nil, 0)
+		w.client.Send(ctx, w.to(top), "tick", nil, 0)
 		w.settle()
 	}
 	if steps := w.list(store.Steps("ctl", top)); store.Number(steps[0]) == 1 {
@@ -602,7 +610,7 @@ func Test_inst_trim_keeps_blob_a_grandchild_uses(t *testing.T) {
 	}
 	// The two below end; a keep later nothing refers to the file, and it
 	// goes.
-	w.client.Send(ctx, top, "end", nil, 0)
+	w.client.Send(ctx, w.to(top), "end", nil, 0)
 	w.settle()
 	if head := w.head(bottom); head.Status != instance.Done || w.head(top).Status != instance.Running {
 		t.Fatalf("the bottom ended as %+v", head)
@@ -622,7 +630,7 @@ func TestHousekeepingIsDoneALittleAtATime(t *testing.T) {
 	for range runs {
 		run := w.submit(kept, nil, nil)
 		w.settle()
-		w.client.Send(ctx, run, "stop", nil, 0)
+		w.client.Send(ctx, w.to(run), "stop", nil, 0)
 		w.settle()
 	}
 	w.tick(26 * time.Hour)
@@ -717,10 +725,11 @@ func (s noBlobs) ReadPart(ctx context.Context, name string, from, length int64) 
 func Test_ctl_keep_is_in_the_record(t *testing.T) {
 	w := newWorld(t)
 	run := w.submit(kept, nil, nil)
-	// The first pass is stopped once the step is written: its head is not.
+	// The first pass is stopped once the location's file is copied into
+	// the record and the step is written: its head is not.
 	good := w.ctrl.Store
 	stop := &stopping{Store: good}
-	stop.left.Store(1)
+	stop.left.Store(2)
 	w.afresh(stop)
 	if _, err := w.ctrl.Pass(ctx); err == nil || len(w.steps(run)) != 1 || w.head(run) != nil {
 		t.Fatalf("the pass that was stopped: %v, with %d steps and the head %+v", err, len(w.steps(run)), w.head(run))
@@ -783,5 +792,65 @@ func TestDueTimerDoesNotWaitBehindHousekeeping(t *testing.T) {
 	w.settle()
 	if n := left(); n != 0 {
 		t.Fatalf("after the passes that followed, %d wakes for housekeeping are left", n)
+	}
+}
+
+// A receipt is aged from when it was written, whatever time its message's
+// name carries: one under a name a year old, written now, is kept a day.
+func Test_ctl_receipt_is_aged_from_its_own_write(t *testing.T) {
+	w := newWorld(t)
+	run := w.submit(kept, nil, nil)
+	w.settle()
+	old := "20251010T120000.000Z-0123456789"
+	w.leave(w.c1, old, &instance.Message{Kind: instance.KindEvent, Instance: run, Event: &machine.Event{Name: "tick"}})
+	w.settle()
+	if w.receipt(old) == nil {
+		t.Fatal("the message under an old name got no receipt")
+	}
+	w.tick(2 * time.Hour)
+	w.settle()
+	if w.receipt(old) == nil {
+		t.Fatal("a receipt written two hours ago went because its message's name is a year old")
+	}
+	w.tick(23 * time.Hour)
+	w.settle()
+	if w.receipt(old) != nil {
+		t.Fatal("the receipt is still there a day after it was written")
+	}
+}
+
+// A taken call's receipt that waits for its result is passed over, however
+// many there are: receipts past keeping that sort after a thousand of them
+// still go, a thousand in a round and the rest in the next.
+func Test_ctl_receipts_past_keeping_behind_running_calls_go(t *testing.T) {
+	w := newWorld(t)
+	w.submit(kept, nil, nil)
+	w.settle()
+	receipt := func(message string, until time.Time, r *instance.Receipt) {
+		at := store.Receipt("ctl", "c1", message)
+		data, err := w.ctl.Write(at, w.clock(), until, r, w.c1.Card)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := w.owner.Write(ctx, at, data, store.OnlyIfNew); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for i := range 1001 {
+		receipt(fmt.Sprintf("a-call-%04d", i), time.Time{}, &instance.Receipt{Taken: true, Run: "c1/20261010T120000.000Z-0123456789"})
+	}
+	for i := range 1001 {
+		receipt(fmt.Sprintf("b-refused-%04d", i), w.clock().Add(instance.ReceiptLife), &instance.Receipt{Refused: "no"})
+	}
+	w.tick(26 * time.Hour)
+	w.settle()
+	if r := w.receipt("b-refused-1000"); r != nil {
+		t.Fatal("a receipt past keeping behind a thousand running calls is still there")
+	}
+	if r := w.receipt("b-refused-0000"); r != nil {
+		t.Fatal("a receipt past keeping is still there")
+	}
+	if r := w.receipt("a-call-1000"); r == nil {
+		t.Fatal("the receipt of a call waiting for its result went")
 	}
 }

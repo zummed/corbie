@@ -144,7 +144,7 @@ The detailed rules behind the [Plugins overview](../plugin.md). Requirements are
 *Accept:* of two runners, the one whose binary has `pg` is enrolled with the tag `pg`. A job tagged `pg` always goes to it and runs. A job with no tag may go to either, and on the other fails with an error that names `pg`.
 
 **R-plug-54** An extension cannot add a kind of permission.
-*Accept:* the public package gives an extension no way to name a seventh kind, and in a binary with extensions an entry of a kind outside the six is still refused (R-perm-01).
+*Accept:* the public package gives an extension no way to name another kind, and in a binary with extensions an entry of a kind not in R-perm-01 is still refused.
 
 ## Interfaces
 

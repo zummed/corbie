@@ -18,20 +18,15 @@ const starts = `
                            repeatable
   --label k=v              a label on the run, readable by anyone who can
                            list runs; repeatable
-  --key <key>              the key that names the run among this client's
-                           running runs; refused if a running run has it
   --allow <entry>          one permission the run's jobs may use; with
                            --allow or --deny they may use no other; repeatable
   --deny <entry>           one permission the run's jobs are refused,
                            whatever is allowed; repeatable
   --timeout <time>         the longest the run may take, such as 1h; it
                            cannot extend the definition's timeout
-  --secret NAME            a run secret, its value typed at the terminal and
-                           not shown; repeatable
-  --secret-env NAME        a run secret, its value read from the environment
-                           variable NAME; repeatable
   --life <time>            how long the start message is valid while no
-                           controller takes it; default 5m`
+                           controller takes it, and how long --wait and
+                           --watch wait for it to be taken; default 5m`
 
 // scripts is the help for a script file given where a definition is.
 const scripts = `
@@ -159,24 +154,40 @@ The check reads only the store, so it is the same wherever Corbie runs.
                   default 90s
 
   corbie manual functions   the calls a serverless host must make`},
-		{Name: "test", Usage: "<definition or script> [--input <json>] [--watch] | <directory>...", Summary: "run a definition or a script in this process, with no setup", Stays: true, Run: cmdTest, Help: `
+		{Name: "test", Usage: "<definition or script> [--input <json>] [--value NAME=VALUE] [--watch] | <definition> --definition | <directory>...", Summary: "run a definition or a script in this process, with no setup", Stays: true, Run: cmdTest, Help: `
 It runs a controller, a runner and a client in this process with the store in
-memory, waits until the run ends and prints it. It reads no config and keeps
-nothing. It fails unless the run ends with status done.
+memory, records the file as a tree of one file, starts it, waits until the run
+ends and prints it. It reads no config and keeps nothing. It fails unless the
+run ends with status done.
+
+A singleton is started by the submit, and takes no flag of a start. A keyed
+file is refused: its runs start when an event is sent to a key.
 
 The ceilings allow everything. Each job's own allow: list still applies.
 ` + starts + `
+  --value NAME=VALUE       a value, set at / of the controller in this
+                           process; repeatable
+  --secret NAME            a secret set at / of the controller in this
+                           process, its value typed at the terminal and not
+                           shown; repeatable
+  --secret-env NAME        a secret set at / of the controller in this
+                           process, its value read from the environment
+                           variable NAME; repeatable
   --watch                  print each entry of the run's record as it is
                            written
+
+With --definition, it prints the definition as the client writes it out,
+each value with its file and line, and runs nothing.
 
 Given directories, it reads every machine in them as corbie run submit does,
 prints each one ok or its problems, and starts nothing. It fails when a
 machine has a problem.
 ` + scripts},
-		{Name: "run submit", Usage: "<definition or script> [--input <json>] [--wait | --watch] | <directory>... [--again <file>]", Summary: "start a run and print its ID", Run: cmdSubmit, Help: `
-It reads the definition and the files it names, reports every fault in them
-together, uploads the files and sends the start message. It prints the run's
-ID and exits, unless --wait or --watch is given.
+		{Name: "run submit", Usage: "<directory or file> [--at <prefix>] | <location> [--input <json>] [--wait | --watch]", Summary: "record a tree, or start a run of a location and print its ID", Run: cmdSubmit, Help: `
+Given a location, it starts a run of the file recorded there: it uploads the
+input's files and sends the start message. It prints the run's ID and exits,
+unless --wait or --watch is given. A location starts with /, does not end in
+.yaml or .js, and is no file or directory on this computer.
 ` + starts + `
   --wait                   wait until the run ends, then print it
   --watch                  print each entry of the run's record as it is
@@ -184,22 +195,27 @@ ID and exits, unless --wait or --watch is given.
 
 With --wait or --watch the command fails unless the run ends with status done.
 
-Given directories, it reads every *.yaml in them and those below them, but for
-.git, whose first key gives a type of machine. It starts a machine whose latest
-run is at another hash, or that has no run, and cancels any run still going. It
-cancels the run of a machine whose file has gone. A run at the machine's hash
-is left as it is, running or ended. A file with a problem is reported, and its
-run is left as it is. Each run has the key file:<path>, from the current
-directory, which is the context. A machine whose input: names dir is given the
-context's absolute path there.
+Given a file, it records it as a tree of one file, at --at: by default / and
+the file's name without its extension. A flag of a start given with a file is
+refused, but for a script file's flags below.
 
-  --again <file>   start this machine though its run has ended; repeatable
+Given a directory, it records it as a tree. Each *.yaml in it and below it, but
+for .git, whose first key gives a type of machine has a location: its path
+under the prefix, without .yaml. It starts each singleton with no running run,
+and cancels the runs at a location whose file has gone. A changed file's
+running runs do as its update: says. A file with a problem is reported, and its
+location keeps what was recorded before. It prints what it did at each
+location, and the secrets and values the files use that are not set.
 
-  corbie manual a-directory   a directory of machines
+  --at <prefix>   where the tree is recorded; by default / and the
+                  directory's or the file's name, without .yaml or .js
+
+  corbie manual a-directory   a tree of machines
 ` + scripts},
 		{Name: "run ls", Usage: "[--watch] [--all] [--label k=v] [--status <status>] [--parent <id>]", Summary: "list runs", Run: cmdLs, Help: `
-It lists this client's runs that are in progress, child runs included. A run
-with status waiting, which no controller has started, is not listed.
+It lists the runs of this client's trees that are in progress, child runs
+included. A run with status waiting, which no controller has started, is not
+listed.
 
   --all               include runs that have ended and are still in the store
   --label k=v         only runs with this label; --label k takes any value;
@@ -212,9 +228,10 @@ with status waiting, which no controller has started, is not listed.
                       or ends
 
   corbie manual runs   a run as it is printed, and with --json`},
-		{Name: "run show", Usage: "<id> [--record | --watch | --wait | --tickets | --step n | --definition | --save <directory>]", Summary: "show one run: its status and its result", Run: cmdShow, Help: `
+		{Name: "run show", Usage: "<id> | <location>[#key] [--record | --watch | --wait | --tickets | --step n | --definition | --save <directory>]", Summary: "show one run: its status and its result", Run: cmdShow, Help: `
 It prints the run's status and input, and its output or its error when it has
-ended. It takes one of these flags at most.
+ended. A location, or a location and a key, names the one run of this
+client's running there. It takes one of these flags at most.
 
   --record             print each entry of the run's record so far, child
                        runs' included, then the run
@@ -231,18 +248,27 @@ ended. It takes one of these flags at most.
 With --watch or --wait the command fails unless the run ends with status done.
 
   corbie manual runs   the statuses, a failure, and a blob in a result`},
-		{Name: "run cancel", Usage: "<id> [--life 5m]", Summary: "cancel a run that this client started", Run: cmdCancel, Help: `
+		{Name: "run cancel", Usage: "<id> | <location>[#key] [--life 5m]", Summary: "cancel a run in a tree of this client's", Run: cmdCancel, Help: `
 It sends the cancel to the controller and prints the answer: taken, or refused
-with the reason. It fails if the cancel is refused.
+with the reason. It fails if the cancel is refused. A location cancels every
+run of this client's running there, each with a cancel of its own; a run that
+starts there meanwhile is not cancelled. A keyed location and a key, as
+/location#key, cancels the running run of that key, and fails when none is
+running.
 
   --life <time>   how long the cancel is valid while no controller takes it,
                   and how long the command waits for the answer; default 5m`},
-		{Name: "run send", Usage: "<id> <event> [data] [--life 5m] | --key <key> <event> [data] [--life 5m]", Summary: "send an event to a run that this client started", Run: cmdSend, Help: `
-The data is JSON, or plain text if it does not parse as JSON. The command
-prints whether the machine acted on the event or had no rule for it, or
-refused with the reason. It fails if the event is refused.
+		{Name: "run send", Usage: "<id> | <location>[#key] <event> [data] [--life 5m]", Summary: "send an event to a run by its address", Run: cmdSend, Help: `
+The address is the run's ID, a singleton's location, or a keyed location and
+a key as /location#key, which starts a run when none has the key. The data is
+JSON, or plain text if it does not parse as JSON. The command prints the run
+that took the event and whether the machine acted on it or had no rule for
+it, or the reason it was not delivered. It fails if the event is not
+delivered.
 
-  --key <key>     send to the run with this key, in place of naming its ID
+A run in another client's tree needs send:<location> in this client's
+ceiling and client:<name> in the file's receive:.
+
   --life <time>   how long the event is valid while no controller takes it,
                   and how long the command waits for the answer; default 5m`},
 		{Name: "run reply", Usage: "<id> <ticket> [value] [--life 5m]", Summary: "answer a ticket that a run waits on", Run: cmdReply, Help: `
@@ -278,9 +304,10 @@ address. corbie runner trust and corbie client trust take those two lines.
   <name>   a runner or client already enrolled: sets its ceiling or tags
            again
 
-  --ceiling <list>   sets a client's ceiling, the most any run it starts may
-                     be allowed: entries separated by commas; none removes
-                     it; without the flag it stays as it is
+  --ceiling <list>   sets a client's ceiling, the most any run in its trees
+                     may be allowed, with at:<prefix> for where it may
+                     submit trees: entries separated by commas; none
+                     removes it; without the flag it stays as it is
   --allow <entry>    adds one entry to the client's ceiling; repeatable
   --deny <entry>     adds one permission the client's ceiling refuses,
                      whatever it allows; repeatable
@@ -302,16 +329,33 @@ removed.`},
 		{Name: "controller parties", Usage: "", Summary: "list the runners and clients the controller trusts", Run: cmdParties, Help: `
 Each line gives a runner's or a client's kind, name and card fingerprint, then
 its ceiling, deny list and tags if set, then removed if it was removed.`},
-		{Name: "controller secret set", Usage: "<NAME> [-]", Summary: "set a controller secret", Run: cmdSecretSet, Help: `
+		{Name: "controller secret set", Usage: "<NAME> [- | --env] [--at <location>]", Summary: "set a secret for the runs at a location and below", Run: cmdSecretSet, Help: `
 The value is typed at the terminal and not shown. It is never given on the
-command line.
+command line. A run uses the secret set nearest its location.
 
-  -       the value is read from standard input, to the end
-  --env   the value is read from the environment variable NAME
+  -                the value is read from standard input, to the end
+  --env            the value is read from the environment variable NAME
+  --at <location>  where the secret is set; by default /, for every tree
 
   corbie manual using-secrets   how a job uses a secret`},
-		{Name: "controller secret remove", Usage: "<NAME>", Summary: "remove a controller secret", Run: cmdSecretRemove},
-		{Name: "controller secret list", Usage: "", Summary: "list the names of the controller's secrets", Run: cmdSecretList},
+		{Name: "controller secret remove", Usage: "<NAME> [--at <location>]", Summary: "remove a secret set at a location", Run: cmdSecretRemove, Help: `
+A secret of the name set above the location is then the one used.
+
+  --at <location>  where the secret is set; by default /`},
+		{Name: "controller secret list", Usage: "", Summary: "list the names of the secrets and where each is set", Run: cmdSecretList},
+		{Name: "controller value set", Usage: "<NAME> <VALUE> [--at <location>]", Summary: "set a value for the runs at a location and below", Run: cmdValueSet, Help: `
+A value is plain text, not secret. An expression reads it as ${values.NAME},
+and a run uses the value set nearest its location.
+
+  --at <location>  where the value is set; by default /, for every tree
+  --               a value that starts with - follows it, as in OFFSET -- -5
+
+  corbie manual using-secrets   secrets and values`},
+		{Name: "controller value remove", Usage: "<NAME> [--at <location>]", Summary: "remove a value set at a location", Run: cmdValueRemove, Help: `
+A value of the name set above the location is then the one used.
+
+  --at <location>  where the value is set; by default /`},
+		{Name: "controller value list", Usage: "", Summary: "list the values and where each is set", Run: cmdValueList},
 		{Name: "controller policy", Usage: "<name> | --viewer", Summary: "print the bucket policy for one controller, runner or client", Run: cmdPolicy, Help: `
 On an S3 bucket each controller, runner and client has its own access key.
 The command prints the IAM policy that limits one key to the objects its
@@ -321,7 +365,7 @@ process reads and writes.
   --viewer   a key that can only list runs and read their status
 
   corbie manual bucket   creating the keys`},
-		{Name: "controller cancel", Usage: "<id>", Summary: "cancel any run, whichever client started it", Run: cmdControllerCancel, Help: `
+		{Name: "controller cancel", Usage: "<id>", Summary: "cancel any run, in any client's tree", Run: cmdControllerCancel, Help: `
 It writes the cancel to the controller's inbox and does not wait. The
 controller cancels the run the next time it polls.`},
 

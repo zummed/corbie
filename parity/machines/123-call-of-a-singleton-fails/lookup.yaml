@@ -1,0 +1,6 @@
+statechart: lookup
+lifetime: singleton
+initial: waiting
+states:
+  waiting: { on: { stop: over } }
+  over: { end: done }

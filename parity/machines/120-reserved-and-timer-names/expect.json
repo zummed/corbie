@@ -1,0 +1,11 @@
+{
+  "status": "done",
+  "record": [
+    { "machine": "room", "event": { "name": "hello" } },
+    { "machine": "room", "event": { "name": "tick" }, "absent": true },
+    { "machine": "room", "event": { "name": "ok" }, "absent": true },
+    { "machine": "sender", "ask": { "kind": "note", "text": { "<contains>": "the event tick sent to /case/room#k was not delivered" } } },
+    { "machine": "sender", "ask": { "kind": "note", "text": { "<contains>": "the event ok sent to /case/room#k was not delivered" } } }
+  ],
+  "note": "R-ctl-121, R-chart-79: an event under a timer's or a ticket's name of the receiver is noted as undelivered."
+}

@@ -1,0 +1,8 @@
+{
+  "status": "done",
+  "record": [
+    { "machine": "room", "event": { "name": "set", "sender": { "client": "client" } } },
+    { "machine": "room", "ask": { "kind": "event", "undelivered": true, "text": "a client has no inbox" } }
+  ],
+  "note": "R-ctl-123, R-chart-77: a client's send has { client } in event.from, and the tree's own client is taken whatever receive: lists."
+}

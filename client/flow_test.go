@@ -105,7 +105,7 @@ func TestFlowFailureHandledByAStageThatReadsIt(t *testing.T) {
 		  cleanup: ${stages.cleanup.output}
 		  needs_bad_skipped: ${stages.needs_bad.skipped}
 	`, scripts, nil)
-	check(t, r.Status, r.Output, "done", `{"cleanup":{"error":"Error: told to fail at line 1, column 7"},"needs_bad_skipped":true}`)
+	check(t, r.Status, r.Output, "done", `{"cleanup":{"error":"told to fail at line 1, column 7"},"needs_bad_skipped":true}`)
 }
 
 // The flow's output: that reads a failure handles it, as a stage's when:
@@ -119,7 +119,7 @@ func TestFlowFailureHandledByTheOutput(t *testing.T) {
 		    job: { script: ./fail.js }
 		output: { error: "${stages.bad.error}" }
 	`, scripts, nil)
-	check(t, r.Status, r.Output, "done", `{"error":"Error: told to fail at line 1, column 7"}`)
+	check(t, r.Status, r.Output, "done", `{"error":"told to fail at line 1, column 7"}`)
 }
 
 func TestFlowFailureNobodyReadsFailsTheFlow(t *testing.T) {
@@ -132,7 +132,7 @@ func TestFlowFailureNobodyReadsFailsTheFlow(t *testing.T) {
 		  other:
 		    job: { script: ./echo.js, input: { got: "${stages.bad.output}" } }
 	`, scripts, nil)
-	if r.Status != "failed" || r.Failure != "error" || !strings.HasPrefix(r.Error, "bad: Error: told to fail") {
+	if r.Status != "failed" || r.Failure != "error" || !strings.HasPrefix(r.Error, "bad: told to fail") {
 		t.Fatalf("the flow ended %s/%s: %q", r.Status, r.Failure, r.Error)
 	}
 }
@@ -156,7 +156,7 @@ func TestFlowEach(t *testing.T) {
 		`,
 		"echo.js": scripts["echo.js"],
 	}, map[string]any{"numbers": []any{1, 2, 3}})
-	check(t, r.Status, r.Output, "done", `[{"item":1,"output":10},{"item":2,"error":"Error: two is refused at line 1, column 26"},{"item":3,"output":30}]`)
+	check(t, r.Status, r.Output, "done", `[{"item":1,"output":10},{"item":2,"error":"two is refused at line 1, column 26"},{"item":3,"output":30}]`)
 }
 
 func TestFlowEachFollowsEmits(t *testing.T) {
@@ -337,6 +337,17 @@ func Test_flow_reference_to_missing_stage_is_refused(t *testing.T) {
 		  a: { job: { script: ./add.js, input: { n: 1 } } }
 		output: ${stages["nowhere"].output}
 	`, scripts, `no stage named "nowhere"`)
+	// A send's data and a call's location are read as an input is.
+	flowRefused(t, `
+		flow: bad
+		stages:
+		  a: { job: { send: { to: { at: room, key: k }, event: set, data: "${stages.gone.output}" } } }
+	`, scripts, `no stage named "gone"`)
+	flowRefused(t, `
+		flow: bad
+		stages:
+		  a: { job: { call: { at: "${stages.away.output}" } } }
+	`, scripts, `no stage named "away"`)
 	// A flow with a cycle is refused, and the refusal names both stages.
 	flowRefused(t, `
 		flow: circle

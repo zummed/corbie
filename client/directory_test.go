@@ -5,23 +5,19 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"strings"
-	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/zummed/corbie/client"
-	"github.com/zummed/corbie/controller"
-	"github.com/zummed/corbie/identity"
-	"github.com/zummed/corbie/permission"
-	"github.com/zummed/corbie/role"
-	"github.com/zummed/corbie/runner"
-	"github.com/zummed/corbie/store"
+	"github.com/zummed/corbie/instance"
 )
 
-// keptMachine is a machine that runs until it is told to end.
+// keptMachine is a singleton that runs until it is told to end.
 const keptMachine = `
 	statechart: kept
+	lifetime: singleton
 	initial: running
 	states:
 	  running:
@@ -29,244 +25,246 @@ const keptMachine = `
 	  over: { end: done }
 `
 
-func TestDirectoryStartsItsMachines(t *testing.T) {
-	w := newWorld(t)
-	dir := house(t, map[string]string{"on/kept.yaml": keptMachine, "plain.yaml": "statechart: plain\ninitial: e\nstates:\n  e: { end: done }\n"})
-	w.submit(dir, "on")
-	run := w.show(w.running("on/kept.yaml"))
-	if run.Labels[client.LabelMachine] != "on/kept.yaml" || run.Input != nil {
-		t.Fatalf("the run is labelled %v, with input %v", run.Labels, run.Input)
+// A tree's singleton is started by the submit, a transient file is recorded,
+// and a piece has no location.
+func TestTreeStartsItsSingletons(t *testing.T) {
+	l := local(t, "all")
+	dir := house(t, map[string]string{
+		"on/kept.yaml": keptMachine,
+		"plain.yaml":   "flow: plain\nstages:\n  s: { job: { script: ./one.js } }\noutput: ${stages.s.output}\n",
+		"one.js":       "return 1",
+		"piece.yaml":   "allow: [env:HOME]\n",
+	})
+	done := submitTree(t, l, dir, "/house")
+	want := []instance.Recorded{
+		{Location: "/house/on/kept", Lifetime: "singleton", What: "started", Run: done.Locations[0].Run},
+		{Location: "/house/plain", Lifetime: "transient", What: "recorded"},
 	}
-	if runs := w.roots(nil); len(runs) != 1 {
+	if !reflect.DeepEqual(done.Locations, want) || done.Locations[0].Run == "" {
+		t.Fatalf("the submit did %+v", done.Locations)
+	}
+	run := show(t, l, done.Locations[0].Run)
+	if run.Status != "running" || run.Input != nil {
+		t.Fatalf("the singleton is %s, with input %v", run.Status, run.Input)
+	}
+	if runs := roots(t, l); len(runs) != 1 {
 		t.Fatalf("there are %d runs", len(runs))
+	}
+	// The transient file runs when its tree's client starts it.
+	id, err := l.Start(ctx, client.Start{At: "/house/plain"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if r := wait(t, l, id); r.Status != "done" || r.Output != float64(1) {
+		t.Fatalf("the run of /house/plain ended %s with %v: %s", r.Status, r.Output, r.Error)
 	}
 }
 
 func TestSecondSubmitStartsNothing(t *testing.T) {
-	w := newWorld(t)
-	dir := house(t, map[string]string{"on/kept.yaml": keptMachine})
-	w.submit(dir, "on")
-	first := w.running("on/kept.yaml")
-	w.submit(dir, "on")
-	if runs := w.roots(nil); len(runs) != 1 || runs[0].ID != first {
+	l := local(t, "all")
+	dir := house(t, map[string]string{"kept.yaml": keptMachine})
+	first := submitTree(t, l, dir, "").Locations[0].Run
+	again := submitTree(t, l, dir, "")
+	if again.Locations[0].What != "recorded" || len(again.Cancelled) > 0 || again.Before != "" {
+		t.Fatalf("the second submit did %+v", again)
+	}
+	if runs := roots(t, l); len(runs) != 1 || runs[0].ID != first {
 		t.Fatalf("the runs are %v", runs)
 	}
 }
 
-func TestChangedMachineStartedAgain(t *testing.T) {
-	w := newWorld(t)
-	dir := house(t, map[string]string{"on/kept.yaml": keptMachine})
-	w.submit(dir, "on")
-	first := w.running("on/kept.yaml")
-	w.write(dir, "on/kept.yaml", dedent(keptMachine)+"# changed\n")
-	w.submit(dir, "on")
-	if w.show(first).Status != "cancelled" || w.running("on/kept.yaml") == first {
-		t.Fatalf("the runs are %v", w.roots(nil))
+// A changed singleton is cancelled and started again on the new file.
+func TestChangedSingletonStartedAgain(t *testing.T) {
+	l := local(t, "all")
+	dir := house(t, map[string]string{"kept.yaml": keptMachine})
+	first := submitTree(t, l, dir, "").Locations[0].Run
+	write(t, dir, "kept.yaml", dedent(keptMachine)+"title: changed\n")
+	done := submitTree(t, l, dir, "")
+	second := done.Locations[0].Run
+	if done.Locations[0].What != "restarted" || !slices.Equal(done.Cancelled, []string{first}) || second == first {
+		t.Fatalf("the submit did %+v", done)
+	}
+	old, now := show(t, l, first), show(t, l, second)
+	if old.Status != "cancelled" || now.Status != "running" || now.Title != "changed" {
+		t.Fatalf("the old run is %s, and the new one %s, titled %q", old.Status, now.Status, now.Title)
 	}
 }
 
-// A file put back as it was is a change: what counts is the latest run, and not
-// that some run once had the hash.
-func TestFilePutBackStartsAgain(t *testing.T) {
-	w := newWorld(t)
-	dir := house(t, map[string]string{"on/kept.yaml": keptMachine})
-	w.submit(dir, "on")
-	w.write(dir, "on/kept.yaml", dedent(keptMachine)+"# changed\n")
-	w.submit(dir, "on")
-	second := w.running("on/kept.yaml")
-	w.write(dir, "on/kept.yaml", dedent(keptMachine))
-	w.submit(dir, "on")
-	if w.show(second).Status != "cancelled" || w.running("on/kept.yaml") == second {
-		t.Fatalf("the runs are %v", w.roots(nil))
-	}
-}
-
-func TestRemovedMachineIsCancelled(t *testing.T) {
-	w := newWorld(t)
-	dir := house(t, map[string]string{"on/kept.yaml": keptMachine})
-	w.submit(dir, "on")
-	first := w.running("on/kept.yaml")
-	if err := os.Remove(filepath.Join(dir, "on/kept.yaml")); err != nil {
+// A file gone from the tree cancels every run at its location.
+func TestRemovedFileCancelsItsRuns(t *testing.T) {
+	l := local(t, "all")
+	dir := house(t, map[string]string{"kept.yaml": keptMachine, "other.yaml": "flow: other\nstages:\n  s: { job: { script: ./one.js } }\n", "one.js": "return 1"})
+	first := submitTree(t, l, dir, "/a").Locations[0].Run
+	if err := os.Remove(filepath.Join(dir, "kept.yaml")); err != nil {
 		t.Fatal(err)
 	}
-	w.submit(dir, "on")
-	if got := w.show(first).Status; got != "cancelled" {
-		t.Fatalf("the run is %s", got)
+	done := submitTree(t, l, dir, "/a")
+	if got := show(t, l, first).Status; got != "cancelled" || done.Locations[0] != (instance.Recorded{Location: "/a/kept", Lifetime: "singleton", What: "removed"}) {
+		t.Fatalf("the run is %s, and the submit did %+v", got, done.Locations)
 	}
-}
-
-// A submit acts only on the directories it is given, though a name begins as
-// one of them does.
-func TestOtherDirectoriesAreLeftAlone(t *testing.T) {
-	w := newWorld(t)
-	dir := house(t, map[string]string{"on/kept.yaml": keptMachine, "on-call/other.yaml": keptMachine})
-	w.submit(dir, "on", "on-call")
-	other := w.running("on-call/other.yaml")
-	if err := os.Remove(filepath.Join(dir, "on-call/other.yaml")); err != nil {
+	if _, err := l.Start(ctx, client.Start{At: "/a/kept"}); err != nil {
 		t.Fatal(err)
 	}
-	w.submit(dir, "on")
-	if got := w.show(other).Status; got != "running" {
-		t.Fatalf("the run is %s", got)
+}
+
+// A transient file changed with update: drain leaves its running runs on the
+// definition they started with, and the next run gets the new one.
+func TestDrainLeavesRunsOnTheirDefinition(t *testing.T) {
+	l := local(t, "all")
+	waits := "statechart: waits\ninitial: w\nstates:\n  w: { on: { go: over } }\n  over: { end: done, output: %s }\n"
+	dir := house(t, map[string]string{"waits.yaml": strings.Replace(waits, "%s", "old", 1)})
+	submitTree(t, l, dir, "/d")
+	old, err := l.Start(ctx, client.Start{At: "/d/waits"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := l.Taken(ctx, old, 0, interval); err != nil {
+		t.Fatal(err)
+	}
+	write(t, dir, "waits.yaml", strings.Replace(waits, "%s", "new", 1))
+	if done := submitTree(t, l, dir, "/d"); len(done.Cancelled) > 0 {
+		t.Fatalf("a drain cancelled %v", done.Cancelled)
+	}
+	fresh, err := l.Start(ctx, client.Start{At: "/d/waits"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, id := range []string{old, fresh} {
+		if err := l.Taken(ctx, id, 0, interval); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := l.Send(ctx, addressOf(t, l.Client, id), "go", nil, 0); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if a, b := wait(t, l, old), wait(t, l, fresh); a.Output != "old" || b.Output != "new" {
+		t.Fatalf("the runs gave %v and %v", a.Output, b.Output)
 	}
 }
 
-// A run a send starts carries its sender's labels and is no run of a directory.
-func TestRunStartedBySendIsLeftAlone(t *testing.T) {
-	w := newWorld(t)
+// A file with a problem is reported, and its location keeps what was
+// recorded before and its run; the rest of the tree is done.
+func TestFileWithAProblemKeepsItsLocation(t *testing.T) {
+	l := local(t, "all")
+	dir := house(t, map[string]string{"kept.yaml": keptMachine})
+	first := submitTree(t, l, dir, "/p").Locations[0].Run
+	write(t, dir, "kept.yaml", "statechart: kept\nlifetime: singleton\nnot a field: 1\n")
+	write(t, dir, "new.yaml", dedent(keptMachine))
+	done := submitTree(t, l, dir, "/p")
+	if done.Locations[0].What != "problem" || done.Locations[1].What != "started" || len(done.Cancelled) > 0 {
+		t.Fatalf("the submit did %+v", done)
+	}
+	if got := show(t, l, first).Status; got != "running" {
+		t.Fatalf("the run of the file with a problem is %s", got)
+	}
+}
+
+// A run reads the tree's directory as run.context and its location as
+// run.location, and so does a machine it runs as a child.
+func TestContextIsReadByARunAndItsChildren(t *testing.T) {
+	l := local(t, "all")
 	dir := house(t, map[string]string{
-		"on/listen.yaml": `
-			statechart: listen
-			initial: hearing
-			states:
-			  hearing:
-			    on:
-			      say: { send: { to: { machine: chat.yaml, key: "chat:${event.data}" }, event: said, data: "${event.data}" } }
+		"on/top.yaml": `
+			flow: top
+			stages:
+			  first: { job: { script: ./one.js, input: { at: "${run.context}" } } }
+			  kid: { job: { machine: kid.yaml } }
+			output: { first: "${stages.first.output}", mine: "${run.context}", at: "${run.location}", kid: "${stages.kid.output}" }
 		`,
-		"chat.yaml": `
-			statechart: chat
-			initial: open
-			states:
-			  open:
-			    on: { said: open, end: over }
-			  over: { end: done }
-		`,
+		"kid.yaml":  "flow: kid\nstages:\n  a: { job: { script: ./one.js } }\noutput: [\"${run.context}\", \"${run.location}\"]\n",
+		"on/one.js": "return input && input.at",
+		"one.js":    "return 1",
 	})
-	w.submit(dir, "on")
-	listen := w.running("on/listen.yaml")
-	w.send(listen, "say", "one")
-	w.until("the chat to start", func() bool { return len(w.roots(nil)) == 2 })
-	w.submit(dir, "on")
-	if got := w.running("on/listen.yaml"); got != listen || len(w.roots(nil)) != 2 {
-		t.Fatalf("the runs are %v", w.roots(nil))
-	}
-}
-
-// A file with a problem is reported and leaves its run as it is, and the rest
-// are still done.
-func TestFileWithAProblemKeepsItsRun(t *testing.T) {
-	w := newWorld(t)
-	dir := house(t, map[string]string{"on/kept.yaml": keptMachine})
-	w.submit(dir, "on")
-	first := w.running("on/kept.yaml")
-	w.write(dir, "on/kept.yaml", "statechart: kept\nnot a field: 1\n")
-	w.write(dir, "on/next.yaml", dedent(keptMachine))
-	err := w.trySubmit(dir, nil, "on")
-	if err == nil || !strings.Contains(err.Error(), "on/kept.yaml") {
-		t.Fatalf("the submit gave %v", err)
-	}
-	if run := w.show(first); run.Status != "running" {
-		t.Fatalf("a typo ended the run: %+v", run)
-	}
-	w.running("on/next.yaml")
-}
-
-// A problem with one file stops nothing else: a machine changed beside it is
-// still started again.
-func TestAProblemLeavesTheRestDone(t *testing.T) {
-	w := newWorld(t)
-	dir := house(t, map[string]string{"on/a.yaml": keptMachine, "on/b.yaml": keptMachine})
-	w.submit(dir, "on")
-	first := w.running("on/a.yaml")
-	w.write(dir, "on/a.yaml", dedent(keptMachine)+"# changed\n")
-	w.write(dir, "on/b.yaml", "data: 1\n")
-	err := w.trySubmit(dir, nil, "on")
-	if err == nil || !strings.Contains(err.Error(), "no longer reads as a machine") {
-		t.Fatalf("the submit gave %v", err)
-	}
-	if w.show(first).Status != "cancelled" || w.running("on/a.yaml") == first {
-		t.Fatalf("the runs are %v", w.roots(nil))
-	}
-}
-
-// A file that no longer reads as a machine is reported, and leaves its run.
-func TestFileThatIsNoLongerAMachineKeepsItsRun(t *testing.T) {
-	w := newWorld(t)
-	dir := house(t, map[string]string{"on/kept.yaml": keptMachine})
-	w.submit(dir, "on")
-	first := w.running("on/kept.yaml")
-	w.write(dir, "on/kept.yaml", "# being written\n")
-	err := w.trySubmit(dir, nil, "on")
-	if err == nil || !strings.Contains(err.Error(), "no longer reads as a machine") {
-		t.Fatalf("the submit gave %v", err)
-	}
-	if run := w.show(first); run.Status != "running" {
-		t.Fatalf("the run is %+v", run)
-	}
-}
-
-// A run that ended stays ended until its files change.
-func TestRunThatEndedStaysEnded(t *testing.T) {
-	w := newWorld(t)
-	dir := house(t, map[string]string{"on/kept.yaml": keptMachine})
-	w.submit(dir, "on")
-	first := w.running("on/kept.yaml")
-	w.send(first, "end", nil)
-	w.until("the run to end", func() bool { return w.show(first).Status == "done" })
-	w.submit(dir, "on")
-	if runs := w.roots(nil); len(runs) != 1 {
-		t.Fatalf("it was started again: %d runs", len(runs))
-	}
-	w.write(dir, "on/kept.yaml", dedent(keptMachine)+"# changed\n")
-	w.submit(dir, "on")
-	w.running("on/kept.yaml")
-}
-
-// A run cancelled by hand stays stopped, so a stop holds across submits.
-func TestRunCancelledByHandStaysStopped(t *testing.T) {
-	w := newWorld(t)
-	dir := house(t, map[string]string{"on/kept.yaml": keptMachine})
-	w.submit(dir, "on")
-	first := w.running("on/kept.yaml")
-	if _, err := w.Cancel(context.Background(), first, 0); err != nil {
+	submitTree(t, l, dir, "/c")
+	id, err := l.Start(ctx, client.Start{At: "/c/on/top"})
+	if err != nil {
 		t.Fatal(err)
 	}
-	w.until("the run to end", func() bool { return w.show(first).Status == "cancelled" })
-	w.submit(dir, "on")
-	if runs := w.roots(nil); len(runs) != 1 {
-		t.Fatalf("it was started again: %d runs", len(runs))
+	real, _ := filepath.EvalSymlinks(dir)
+	run := wait(t, l, id)
+	if want := map[string]any{"first": real, "mine": real, "at": "/c/on/top", "kid": []any{real, "/c/on/top"}}; !reflect.DeepEqual(run.Output, want) {
+		t.Fatalf("the output is %v: %s", run.Output, run.Error)
 	}
 }
 
-// --again starts a machine whose run has ended, and no other.
-func TestAgainStartsARunThatEnded(t *testing.T) {
-	w := newWorld(t)
-	dir := house(t, map[string]string{"on/kept.yaml": keptMachine, "on/other.yaml": keptMachine})
-	w.submit(dir, "on")
-	first, other := w.running("on/kept.yaml"), w.running("on/other.yaml")
-	for _, id := range []string{first, other} {
-		w.send(id, "end", nil)
+// --at is / and the directory's own name by default, and . is read as the
+// directory's real name.
+func TestTreeIsAtItsNameByDefault(t *testing.T) {
+	dir := house(t, map[string]string{"house/kept.yaml": keptMachine})
+	tree, err := client.ReadTree(filepath.Join(dir, "house"), "")
+	if err != nil || tree.Prefix != "/house" || tree.Machines[0].Location != "/house/kept" {
+		t.Fatalf("read %+v, %v", tree, err)
 	}
-	w.until("the runs to end", func() bool { return w.show(first).Status == "done" && w.show(other).Status == "done" })
-	if err := w.trySubmit(dir, []string{"on/kept.yaml"}, "on"); err != nil {
-		t.Fatal(err)
+	t.Chdir(filepath.Join(dir, "house"))
+	if tree, err = client.ReadTree(".", ""); err != nil || tree.Prefix != "/house" {
+		t.Fatalf("read . as %+v, %v", tree, err)
 	}
-	if w.running("on/kept.yaml") == first {
-		t.Fatal("it was not started again")
-	}
-	if runs := w.roots(nil); len(runs) != 3 {
-		t.Fatalf("there are %d runs", len(runs))
-	}
-	if err := w.trySubmit(dir, []string{"on/nothing.yaml"}, "on"); err == nil {
-		t.Fatal("a file that is no machine was taken")
+	if _, err := client.ReadTree(".", "/"); err == nil {
+		t.Fatal("a tree at / was read")
 	}
 }
 
-// --again on a machine that is running starts nothing.
-func TestAgainLeavesARunningRun(t *testing.T) {
-	w := newWorld(t)
-	dir := house(t, map[string]string{"on/kept.yaml": keptMachine})
-	w.submit(dir, "on")
-	first := w.running("on/kept.yaml")
-	if err := w.trySubmit(dir, []string{"on/kept.yaml"}, "on"); err != nil {
-		t.Fatal(err)
+// A file beside a directory of the same name, or with a name no location can
+// have, is reported among the files with problems, and the rest of the tree
+// is done.
+func TestTreeLocationsAreLeaves(t *testing.T) {
+	for name, c := range map[string]struct {
+		files map[string]string
+		bad   []string
+	}{
+		"beside": {map[string]string{"boiler.yaml": keptMachine, "boiler/x.yaml": keptMachine}, []string{"boiler.yaml", "boiler/x.yaml"}},
+		"plus":   {map[string]string{"+.yaml": keptMachine}, []string{"+.yaml"}},
+		"hash":   {map[string]string{"a#b.yaml": keptMachine}, []string{"a#b.yaml"}},
+		"star":   {map[string]string{"a*.yaml": keptMachine}, []string{"a*.yaml"}},
+	} {
+		c.files["good.yaml"] = keptMachine
+		tree, err := client.ReadTree(house(t, c.files), "/x")
+		if err != nil {
+			t.Fatalf("%s: %v", name, err)
+		}
+		var bad []string
+		for _, m := range tree.Machines {
+			if m.Problem != nil {
+				bad = append(bad, m.Path)
+			} else if m.Path != "good.yaml" {
+				t.Errorf("%s: %s has no problem", name, m.Path)
+			}
+		}
+		slices.Sort(bad)
+		if !slices.Equal(bad, c.bad) {
+			t.Errorf("%s: the files with problems are %v", name, bad)
+		}
 	}
-	if runs := w.roots(nil); len(runs) != 1 || runs[0].ID != first {
-		t.Fatalf("the runs are %v", runs)
+	l := local(t, "all")
+	done := submitTree(t, l, house(t, map[string]string{"boiler.yaml": keptMachine, "boiler/x.yaml": keptMachine, "good.yaml": keptMachine}), "/leaf")
+	var what []string
+	for _, row := range done.Locations {
+		what = append(what, row.Location+" "+row.What)
+	}
+	if want := []string{"/leaf/boiler problem", "/leaf/boiler/x problem", "/leaf/good started"}; !slices.Equal(what, want) {
+		t.Fatalf("the submit did %v", what)
+	}
+	tree, err := client.ReadTree(house(t, map[string]string{".rook/review.yaml": keptMachine}), "/project")
+	if err != nil || tree.Machines[0].Location != "/project/.rook/review" {
+		t.Fatalf("a file under a dot directory: %+v, %v", tree, err)
 	}
 }
 
-// A link does not take a machine out of the context.
+// A file that is not YAML is reported with the same words whether it is read
+// alone or in a directory.
+func TestNotYAMLSaidOnce(t *testing.T) {
+	dir := house(t, map[string]string{"bad.yaml": "flow: w\n# c\n# c\ninput: { days: number? }\n"})
+	tree, err := client.ReadTree(dir, "/x")
+	if err != nil || len(tree.Machines) != 1 || tree.Machines[0].Problem == nil {
+		t.Fatalf("read %+v, %v", tree, err)
+	}
+	_, alone := client.ReadMachine(dir, "bad.yaml")
+	want := "this is not YAML that can be read: line 4: "
+	if got := tree.Machines[0].Problem.Error(); !strings.HasPrefix(got, want) || alone == nil || !strings.HasPrefix(alone.Error(), want) {
+		t.Fatalf("in a directory %q, alone %v", got, alone)
+	}
+}
+
 func TestLinksStayInTheContext(t *testing.T) {
 	dir := house(t, map[string]string{
 		"outside/m.yaml":  "statechart: m\ninitial: e\nstates:\n  e: { end: done }\n",
@@ -280,12 +278,12 @@ func TestLinksStayInTheContext(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	found, err := client.ReadMachines(filepath.Join(dir, "house"))
+	tree, err := client.ReadTree(filepath.Join(dir, "house"), "")
 	if err != nil {
 		t.Fatal(err)
 	}
 	got := map[string]bool{}
-	for _, m := range found {
+	for _, m := range tree.Machines {
 		got[m.Path] = m.Problem == nil
 	}
 	if want := map[string]bool{"a.yaml": false, "x.yaml": false, "near.yaml": true}; !reflect.DeepEqual(got, want) {
@@ -293,34 +291,34 @@ func TestLinksStayInTheContext(t *testing.T) {
 	}
 }
 
-// A context reached by a link reads as the directory it names.
+// A tree reached by a link reads as the directory it names.
 func TestLinkedContextReads(t *testing.T) {
 	dir := house(t, map[string]string{"real/m.yaml": "statechart: m\ninitial: e\nstates:\n  e: { end: done }\n"})
 	link := filepath.Join(dir, "link")
 	if err := os.Symlink("real", link); err != nil {
 		t.Fatal(err)
 	}
-	found, err := client.ReadMachines(link, ".")
-	if err != nil || len(found) != 1 || found[0].Path != "m.yaml" || found[0].Problem != nil {
-		t.Fatalf("read %v, %v", found, err)
+	tree, err := client.ReadTree(link, "")
+	if err != nil || len(tree.Machines) != 1 || tree.Machines[0].Path != "m.yaml" || tree.Machines[0].Problem != nil || tree.Prefix != "/real" {
+		t.Fatalf("read %+v, %v", tree, err)
 	}
 }
 
 // A file of data, however little it holds, is no problem.
 func TestDataIsNoProblem(t *testing.T) {
 	dir := house(t, map[string]string{"notes.yaml": "# for later\n", "empty.yaml": "", "list.yaml": "- a\n", "people.yaml": "people: {}\n"})
-	found, err := client.ReadMachines(dir)
+	tree, err := client.ReadTree(dir, "/x")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(found) != 0 {
-		t.Fatalf("read %v", found[0].Path)
+	if len(tree.Machines) != 0 {
+		t.Fatalf("read %v", tree.Machines[0].Path)
 	}
 }
 
-// A bare path reads from the context and ./ from the file's directory, in any
-// file at any depth. ../ is refused however it is written, and so is a path from
-// the top of the disk.
+// A bare path reads from the tree's directory and ./ from the file's
+// directory, in any file at any depth. ../ is refused however it is written,
+// and so is a path from the top of the disk.
 func TestPathsReadFromTheContext(t *testing.T) {
 	dir := house(t, map[string]string{
 		"outside.js":                 "return 1",
@@ -341,12 +339,12 @@ func TestPathsReadFromTheContext(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, "house/top.yaml"), []byte("flow: top\nstages:\n  s: { job: { script: "+filepath.Join(dir, "outside.js")+" } }\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	found, err := client.ReadMachines(filepath.Join(dir, "house"))
+	tree, err := client.ReadTree(filepath.Join(dir, "house"), "")
 	if err != nil {
 		t.Fatal(err)
 	}
 	got := map[string]bool{}
-	for _, m := range found {
+	for _, m := range tree.Machines {
 		got[m.Path] = m.Problem == nil
 	}
 	want := map[string]bool{"deep/down/a.yaml": true, "deep/included.yaml": true, "up.yaml": false, "hidden.yaml": false,
@@ -367,11 +365,8 @@ func TestRequireFindsWhatAJobNames(t *testing.T) {
 		"blocks/near.js":  "exports.value = 'near'",
 		"on/start.yaml":   "flow: start\nstages:\n  s: { job: { machine: blocks/who.yaml } }\noutput: ${stages.s.output}\n",
 	})
-	draft, _, err := client.ReadMachine(dir, "on/start.yaml")
-	if err != nil {
-		t.Fatal(err)
-	}
-	id, err := l.Start(context.Background(), draft, client.Start{})
+	submitTree(t, l, dir, "/require")
+	id, err := l.Start(context.Background(), client.Start{At: "/require/on/start"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -384,131 +379,59 @@ func TestRequireFindsWhatAJobNames(t *testing.T) {
 	}
 }
 
-// A run reads the context as run.context, from its first step, and so does what
-// it starts.
-func TestContextIsReadByARunAndItsChildren(t *testing.T) {
-	w := newWorld(t)
-	dir := house(t, map[string]string{
-		"on/top.yaml": `
-			flow: top
-			stages:
-			  first: { job: { script: ./one.js, input: { at: "${run.context}" } } }
-			  kid: { job: { machine: kid.yaml } }
-			output: { first: "${stages.first.output}", mine: "${run.context}", kid: "${stages.kid.output}" }
-		`,
-		"kid.yaml":  "flow: kid\nstages:\n  a: { job: { script: ./one.js } }\noutput: ${run.context}\n",
-		"on/one.js": "return input && input.at",
-		"one.js":    "return 1",
-	})
-	w.submit(dir, "on")
-	var run *client.Run
-	w.until("the run to end", func() bool {
-		for _, r := range w.roots(nil) {
-			if r.Key == client.KeyFile+"on/top.yaml" {
-				run = w.show(r.ID)
-			}
-		}
-		return run != nil && run.Status == "done"
-	})
-	if want := map[string]any{"first": dir, "mine": dir, "kid": dir}; !reflect.DeepEqual(run.Output, want) {
-		t.Fatalf("the output is %v, and the input %v", run.Output, run.Input)
-	}
-}
-
 const interval = 20 * time.Millisecond
 
-// A world is a controller, a runner and a client in the test's process,
-// with the store in memory and one clock the test moves. client.NewLocal
-// takes no clock, so the world is put together here as it puts it
-// together.
-type world struct {
-	*client.Client
-	t     *testing.T
-	ahead atomic.Int64 // how far the clock is ahead of the computer's
-}
-
-func newWorld(t *testing.T) *world {
+// submitTree submits a directory as a tree, and stays until each run it
+// cancelled has ended and each it started has been taken up, as corbie run
+// submit does.
+func submitTree(t *testing.T, l *client.Local, dir, at string) *instance.Submitted {
 	t.Helper()
-	w := &world{t: t}
-	mem := store.NewMemory()
-	ctl, err1 := identity.New("controller", identity.Controller)
-	run, err2 := identity.New("runner", identity.Runner)
-	cli, err3 := identity.New("client", identity.Client)
-	for _, err := range []error{err1, err2, err3} {
-		if err != nil {
-			t.Fatal(err)
-		}
-	}
-	as := func(kind store.Kind, name string) store.Store {
-		return mem.As(store.Party{Kind: kind, Name: name, Controller: ctl.Name})
-	}
-	ctlStore := as(store.Controller, ctl.Name)
-	ctx, stop := context.WithCancel(context.Background())
-	if err := store.SetUp(ctx, ctlStore); err != nil {
+	tree, err := client.ReadTree(dir, at)
+	if err != nil {
 		t.Fatal(err)
 	}
-	ceiling := permission.Layer{Allow: []string{"all"}}
-	for _, trust := range []identity.Trust{{Card: run.Card}, {Card: cli.Card, Ceiling: ceiling}} {
-		if err := identity.WriteTrust(ctx, ctlStore, ctl, trust); err != nil {
-			t.Fatal(err)
+	message, err := l.Submit(ctx, tree, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	receipt, err := l.WaitReceipt(ctx, message, 0, interval)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !receipt.Taken {
+		t.Fatalf("the submit was refused: %s", receipt.Refused)
+	}
+	for _, id := range receipt.Tree.Cancelled {
+		wait(t, l, id)
+	}
+	for _, done := range receipt.Tree.Locations {
+		if done.Run != "" {
+			if err := l.Taken(ctx, done.Run, 0, interval); err != nil {
+				t.Fatal(err)
+			}
 		}
 	}
-	c := controller.New(ctl, ctlStore)
-	c.Now, c.AnyRunner = w.now, true
-	r := runner.New(run, runner.Served{Controller: ctl.Card, Ceiling: ceiling, Store: as(store.Runner, run.Name)})
-	r.Now, r.Command = w.now, []string{os.Args[0], runner.JobArg}
-	w.Client = client.New(cli, ctl.Card, as(store.Client, cli.Name))
-	w.Client.Now = w.now
-	inbox, stopInbox := ctlStore.Notice(store.Inbox(ctl.Name))
-	jobs, stopJobs := ctlStore.Notice(store.Inbox(run.Name))
-	done := make(chan struct{})
-	go func() {
-		defer close(done)
-		defer stopInbox()
-		defer stopJobs()
-		role.Run(ctx, w.now, func(role string, err error) { t.Logf("%s: %v", role, err) },
-			role.Role{Name: "controller", Pass: c.Pass, Interval: interval, Notice: inbox},
-			role.Role{Name: "runner", Pass: r.Pass, Interval: interval, Notice: jobs})
-	}()
-	t.Cleanup(func() { stop(); <-done })
-	return w
+	return receipt.Tree
 }
 
-func (w *world) now() time.Time { return time.Now().Add(time.Duration(w.ahead.Load())) }
-
-// set moves the clock to a time.
-func (w *world) set(at time.Time) { w.ahead.Store(int64(time.Until(at))) }
-
-// submit brings the runs of directories of a context into line with their files.
-func (w *world) submit(dir string, dirs ...string) {
-	w.t.Helper()
-	if err := w.trySubmit(dir, nil, dirs...); err != nil {
-		w.t.Fatal(err)
+// write writes a file of a directory.
+func write(t *testing.T, dir, name, text string) {
+	t.Helper()
+	full := filepath.Join(dir, filepath.FromSlash(name))
+	if err := os.MkdirAll(filepath.Dir(full), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(full, []byte(text), 0o644); err != nil {
+		t.Fatal(err)
 	}
 }
 
-// trySubmit is submit, with the files to start again and what it gave.
-func (w *world) trySubmit(dir string, again []string, dirs ...string) error {
-	s := &client.Submit{Client: w.Client, Context: dir, Dirs: dirs, Again: again, Interval: interval, Say: func(format string, args ...any) {
-		w.t.Logf("submit: "+format, args...)
-	}}
-	return s.Run(context.Background())
-}
-
-// write writes a file of a context.
-func (w *world) write(dir, name, text string) {
-	w.t.Helper()
-	if err := os.WriteFile(filepath.Join(dir, filepath.FromSlash(name)), []byte(text), 0o644); err != nil {
-		w.t.Fatal(err)
-	}
-}
-
-// roots gives the root runs that carry every one of the labels.
-func (w *world) roots(labels map[string]string) []*client.Run {
-	w.t.Helper()
-	runs, err := w.List(context.Background(), client.Filter{Labels: labels, Finished: true})
+// roots gives the root runs, finished ones too.
+func roots(t *testing.T, l *client.Local) []*client.Run {
+	t.Helper()
+	runs, err := l.List(ctx, client.Filter{Finished: true})
 	if err != nil {
-		w.t.Fatal(err)
+		t.Fatal(err)
 	}
 	var out []*client.Run
 	for _, run := range runs {
@@ -519,47 +442,12 @@ func (w *world) roots(labels map[string]string) []*client.Run {
 	return out
 }
 
-// until waits for a condition, and fails the test after a few seconds.
-func (w *world) until(what string, cond func() bool) {
-	w.t.Helper()
-	for end := time.Now().Add(10 * time.Second); !cond(); {
-		if time.Now().After(end) {
-			w.t.Fatalf("waited for %s", what)
-		}
-		time.Sleep(interval)
-	}
-}
-
-// running waits for the running run of a machine in a directory, and gives its ID.
-func (w *world) running(path string) string {
-	w.t.Helper()
-	var id string
-	w.until("the run of "+path, func() bool {
-		id = ""
-		for _, run := range w.roots(nil) {
-			if run.Key == client.KeyFile+path && run.Status == "running" {
-				id = run.ID
-			}
-		}
-		return id != ""
-	})
-	return id
-}
-
-// send sends a run an event.
-func (w *world) send(run, event string, data any) {
-	w.t.Helper()
-	if _, err := w.Send(context.Background(), run, event, data, 0); err != nil {
-		w.t.Fatal(err)
-	}
-}
-
 // show gives a run as it stands.
-func (w *world) show(id string) *client.Run {
-	w.t.Helper()
-	run, err := w.Show(context.Background(), id)
+func show(t *testing.T, l *client.Local, id string) *client.Run {
+	t.Helper()
+	run, err := l.Show(ctx, id)
 	if err != nil {
-		w.t.Fatal(err)
+		t.Fatal(err)
 	}
 	return run
 }
@@ -569,13 +457,7 @@ func house(t *testing.T, files map[string]string) string {
 	t.Helper()
 	dir := t.TempDir()
 	for name, text := range files {
-		full := filepath.Join(dir, filepath.FromSlash(name))
-		if err := os.MkdirAll(filepath.Dir(full), 0o755); err != nil {
-			t.Fatal(err)
-		}
-		if err := os.WriteFile(full, []byte(dedent(text)), 0o644); err != nil {
-			t.Fatal(err)
-		}
+		write(t, dir, name, dedent(text))
 	}
 	return dir
 }

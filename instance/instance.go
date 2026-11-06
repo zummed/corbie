@@ -28,8 +28,8 @@ const (
 )
 
 // A Head is the small public summary of an instance, signed by the
-// controller and sealed to nobody. Apart from its labels it holds nothing
-// the instance was given or produced.
+// controller and sealed to nobody. Apart from its location, key and labels
+// it holds nothing the instance was given or produced.
 type Head struct {
 	Name    string `json:"name"`    // the instance
 	Machine string `json:"machine"` // what the definition is called
@@ -41,7 +41,9 @@ type Head struct {
 	Started time.Time `json:"started"`
 	Ended   time.Time `json:"ended,omitzero"`
 	Parent  string    `json:"parent,omitzero"`
-	// Key is the run's key, and StartedBy the run whose send started it.
+	// Location is where the run's machine lives, Key is its key at a keyed
+	// location, and StartedBy is the run whose send or call started it.
+	Location  string            `json:"location,omitzero"`
 	Key       string            `json:"key,omitzero"`
 	StartedBy string            `json:"started_by,omitzero"`
 	Jobs      int               `json:"jobs,omitzero"`
@@ -93,8 +95,16 @@ type State struct {
 	Definition blob.Ref          `json:"definition"`
 	Input      any               `json:"input,omitzero"`
 	Labels     map[string]string `json:"labels,omitzero"`
-	// Key is the key that names the instance, while it runs.
+	// Location is where the instance's machine lives: the location of the
+	// file it was started from, or of the run that started it as a child.
+	// Tree is the prefix of the tree that location is in.
+	Location string `json:"location,omitzero"`
+	Tree     string `json:"tree,omitzero"`
+	// Key is the instance's key at a keyed location, while it runs.
 	Key string `json:"key,omitzero"`
+	// Lifetime is the lifetime of the file a root was started from at its
+	// location. A child has none.
+	Lifetime string `json:"lifetime,omitzero"`
 	// Title is what the definition's title filled in to when the instance
 	// started.
 	Title string `json:"title,omitzero"`
@@ -126,13 +136,13 @@ type State struct {
 	JobsStarted int `json:"jobs_started,omitzero"`
 	// Heard is the name of the last message taken from each of the most
 	// recent MaxHeard senders, oldest first: the instance's parent and each
-	// run that sent to its key. The controller writes those under names that
-	// sort in the order sent, and may write one again when it repeats a
-	// carry-out: one that does not sort after the last taken from its sender
-	// has been taken already.
+	// run that sent to it by address. The controller writes those under
+	// names that sort in the order sent, and may write one again when it
+	// repeats a carry-out: one that does not sort after the last taken from
+	// its sender has been taken already.
 	Heard []Heard `json:"heard,omitzero"`
-	// Emitted counts, for each job and name, the values given to the
-	// machine, so a later attempt's are not given twice.
+	// Emitted counts, for each job and name, the values of its attempt
+	// given to the machine, so one that arrives twice is given once.
 	Emitted map[string]int `json:"emitted,omitzero"`
 	// Sent counts the events the instance has sent up to its parent.
 	Sent int `json:"sent,omitzero"`
@@ -166,17 +176,31 @@ type Above struct {
 	// running: its job gave a stored definition. The controller sets it when
 	// it starts a child, and a definition has no say in it.
 	Made bool `json:"made,omitzero"`
-	// Secrets are the run's own secrets, sent with the root's start.
-	Secrets map[string]string `json:"secrets,omitzero"`
-	// Context is the directory the root's client submitted from.
+	// Context is the directory last submitted at the run's tree.
 	Context string `json:"context,omitzero"`
+	// Values are the values set at the root's location or above, as they
+	// were at the root's first step, by name. A run a send or a call
+	// started takes those of its own location, never its sender's.
+	Values map[string]string `json:"values,omitzero"`
 	// Keep is the longest the instance may be kept after it ends: no
 	// longer than what started it, so a child's record goes no later than
 	// its parent's.
 	Keep machine.Duration `json:"keep,omitzero"`
-	// StartedBy is the run whose send started the instance. It is a root of
-	// the sender's client, and no parent of it: nothing ends with the sender.
+	// StartedBy is the run whose send or call started the instance. It is
+	// a root of its own tree's client, and no parent of it.
 	StartedBy string `json:"started_by,omitzero"`
+	// CallJob is, for a run a call job started, that job of StartedBy's:
+	// the run's end is the job's result.
+	CallJob string `json:"call_job,omitzero"`
+	// CallReceipt is, for a run a client called in a tree it does not own,
+	// the call's message: the run's result is written beside its receipt.
+	CallReceipt *CallReceipt `json:"call_receipt,omitzero"`
+}
+
+// A CallReceipt names a client's call: the client and its message.
+type CallReceipt struct {
+	Client  string `json:"client"`
+	Message string `json:"message"`
 }
 
 // MaxHeard is how many senders an instance remembers the last message of.
@@ -208,6 +232,8 @@ type Going struct {
 	Runner string `json:"runner,omitzero"`
 	// Child is the instance a machine was started as.
 	Child string `json:"child,omitzero"`
+	// Called is the run a call job started.
+	Called string `json:"called,omitzero"`
 	// Due is when a job's result is due.
 	Due time.Time `json:"due,omitzero"`
 	// Began is when this attempt was sent on its way.
@@ -268,10 +294,12 @@ type Ticket struct {
 const (
 	AskScript  = "script"  // send a script to a runner
 	AskChild   = "child"   // start a child machine
+	AskCall    = "call"    // start a run at a location for a call job
 	AskCancel  = "cancel"  // cancel a job
 	AskEvent   = "event"   // send an event to the parent or a child
 	AskWake    = "wake"    // be woken at a time
 	AskReceipt = "receipt" // answer a client's message
+	AskResult  = "result"  // write what became of a run a client called, beside the call's receipt
 	AskEnd     = "end"     // tell the parent the instance has ended
 	AskFail    = "fail"    // a job failed before anything was sent
 	AskHold    = "hold"    // a job is held for the ask
@@ -296,12 +324,18 @@ type Ask struct {
 	// sends up, which is only written here.
 	To    string         `json:"to,omitzero"`
 	Event *machine.Event `json:"event,omitzero"`
-	// Key is the key an event is sent to, and Run the run it is started as
-	// when no run has the key.
-	Key string `json:"key,omitzero"`
-	Run string `json:"run,omitzero"`
+	// Location is the location an event is sent to or a call starts a run
+	// at. Key is the key an event is sent to, and Run the run it is started
+	// as when no run has the key, or the run a call starts.
+	Location string `json:"location,omitzero"`
+	Key      string `json:"key,omitzero"`
+	Run      string `json:"run,omitzero"`
+	// Client is the client an event was addressed to, which has no inbox.
+	Client string `json:"client,omitzero"`
+	// Direct says the event was sent to one run by its ID, which is To.
+	Direct bool `json:"direct,omitzero"`
 	// Undelivered says the event was for a child that is not running, or
-	// for a key that names no running run.
+	// for an address that names no running run able to take it.
 	Undelivered bool `json:"undelivered,omitzero"`
 	// At is a wake's time, or a job's due time.
 	At   time.Time `json:"at,omitzero"`
@@ -309,8 +343,9 @@ type Ask struct {
 	// Message is the name of the message, in an inbox, that carrying this
 	// out writes.
 	Message string         `json:"message,omitzero"`
-	Sender  string         `json:"sender,omitzero"` // whose message a receipt answers
+	Sender  string         `json:"sender,omitzero"` // whose message a receipt or a call's result answers
 	Receipt *Receipt       `json:"receipt,omitzero"`
+	Result  *CallResult    `json:"result,omitzero"`
 	Error   *machine.Error `json:"error,omitzero"`
 	Output  any            `json:"output,omitzero"`
 	Text    string         `json:"text,omitzero"`
@@ -321,14 +356,50 @@ type Ask struct {
 type Receipt struct {
 	Taken   bool   `json:"taken"`
 	Refused string `json:"refused,omitzero"`
+	// Denied is a start a permission refused, as a run's failure gives it:
+	// what was refused, the layer that refused it and the fix.
+	Denied *machine.Error `json:"denied,omitzero"`
 	// Problems are what is wrong with a definition that was refused.
 	Problems machine.Problems `json:"problems,omitzero"`
+	// Tree is what a submit that was taken did.
+	Tree *Submitted `json:"tree,omitzero"`
 	// Acted says, for an event, whether the machine acted on it or had no
 	// rule for it.
 	Acted *bool `json:"acted,omitzero"`
+	// Run is, for an event sent to an address, the run that took it.
+	Run string `json:"run,omitzero"`
 }
 
-// ReceiptLife is how long a receipt is kept.
+// Submitted is what a submit did: what became of each location of the
+// tree, the runs it cancelled, the directory last submitted there when it
+// was another, and the secrets and values the files use that are not set.
+type Submitted struct {
+	Locations []Recorded `json:"locations,omitzero"`
+	Cancelled []string   `json:"cancelled,omitzero"`
+	Before    string     `json:"before,omitzero"`
+	Missing   []string   `json:"missing,omitzero"`
+}
+
+// Recorded is what a submit did at one location: started, restarted,
+// recorded, removed or problem. Run is the run it started.
+type Recorded struct {
+	Location string `json:"location"`
+	Lifetime string `json:"lifetime,omitzero"`
+	What     string `json:"what"`
+	Run      string `json:"run,omitzero"`
+}
+
+// A CallResult is what became of a run a client called in a tree it does
+// not own, written beside the call's receipt when the run ends: its status,
+// and its output or error. The blobs its output names are beside it.
+type CallResult struct {
+	Status string         `json:"status"`
+	Output any            `json:"output,omitzero"`
+	Error  *machine.Error `json:"error,omitzero"`
+}
+
+// ReceiptLife is how long a receipt is kept, and a call's receipt and
+// result after the result is written.
 const ReceiptLife = 24 * time.Hour
 
 // An Emit is one emit entry of a record: values a job emitted, in the
@@ -385,10 +456,9 @@ type KeyFile struct {
 	Start string `json:"start"`
 }
 
-// ReadKey reads a key's file among a client's. It gives nil where there is
-// none. An file that does not check gives an error, and its mark.
-func ReadKey(ctx context.Context, s store.Store, ctl identity.Card, id *identity.Identity, client, key string) (*KeyFile, store.Mark, error) {
-	at := store.Key(ctl.Name, client, key)
+// ReadKey reads the file of a key, under its name at. It gives nil where
+// there is none. A file that does not check gives an error, and its mark.
+func ReadKey(ctx context.Context, s store.Store, ctl identity.Card, id *identity.Identity, at, key string) (*KeyFile, store.Mark, error) {
 	data, mark, err := s.Read(ctx, at)
 	if err != nil || mark == store.None {
 		return nil, mark, err

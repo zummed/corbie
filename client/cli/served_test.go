@@ -75,7 +75,7 @@ func TestADirectoryServedToOtherMachines(t *testing.T) {
 	// A client on one machine starts a run whose job is for the runner on
 	// another: both reach the store through the desk.
 	dir := files(t, map[string]string{"greet.js": `return { text: "hello " + input.name }`})
-	out := laptop.ok("", "run", "submit", filepath.Join(dir, "greet.js"), "--tag", "gpu", "--input", `{"name": "world"}`, "--wait")
+	out := laptop.ok("", "run", "submit", laptop.recorded(filepath.Join(dir, "greet.js"), "--tag", "gpu"), "--input", `{"name": "world"}`, "--wait")
 	if !strings.Contains(out, `"text":"hello world"`) {
 		t.Fatalf("a run started and done on other computers printed:\n%s", out)
 	}
@@ -190,7 +190,7 @@ return input.i
 		Status string
 		Output []struct{ Output int }
 	}
-	out := laptop.ok("", "run", "submit", filepath.Join(dir, "farm.yaml"), "--input", string(input), "--wait", "--json")
+	out := laptop.ok("", "run", "submit", laptop.recorded(filepath.Join(dir, "farm.yaml")), "--input", string(input), "--wait", "--json")
 	if err := json.Unmarshal([]byte(out), &run); err != nil || run.Status != "done" || len(run.Output) != items {
 		t.Fatalf("a flow of %d jobs over five runners ended %s with %d outputs (%v)", items, run.Status, len(run.Output), err)
 	}

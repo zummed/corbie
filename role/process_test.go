@@ -174,7 +174,18 @@ func Test_role_fresh_process_every_pass_same_store(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			run, err := c.Start(ctx, draft, client.Start{})
+			// The definition is submitted as a tree of one file, which a
+			// pass of the controller takes, and a run is started there.
+			at := "/" + draft.Definition.Name
+			message, err := c.Submit(ctx, &client.Tree{Prefix: at, Machines: []*client.Machine{{Path: draft.Definition.Name + ".yaml", Location: at, Draft: draft}}}, 0)
+			if err != nil {
+				t.Fatal(err)
+			}
+			pass("controller")
+			if r, err := c.Receipt(ctx, message); err != nil || r == nil || !r.Taken {
+				t.Fatalf("the submit has the receipt %+v: %v", r, err)
+			}
+			run, err := c.Start(ctx, client.Start{At: at})
 			if err != nil {
 				t.Fatal(err)
 			}

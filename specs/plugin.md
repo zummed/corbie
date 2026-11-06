@@ -33,6 +33,7 @@ Every plugin is written the same way and reads the same way to a script.
 - A call is `module.call(first, options)`: the one obvious thing first, then named options. An option the plugin does not know is refused.
 - Calls wait for their answer.
 - What goes in and comes out is plain data: text, numbers, lists, maps, bytes, handles to secrets, references to blobs. Bytes are one type everywhere.
+- A map read from YAML, JSON or a table keeps its keys in the order they were written, as Node's `JSON.parse` keeps them.
 - Something that stays open, such as a connection, is an object with its calls and a `close`.
 - An error is one shape, with a short code from a short list: not found, refused by the other side, timed out, not permitted, bad input, and failed for anything else.
 

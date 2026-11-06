@@ -25,11 +25,13 @@ This command keeps running, in its own terminal or in the background as here.
 Submit a run
 ------------
 
-    corbie run submit title.yaml --input '{"url": "https://example.com"}'
+    corbie run submit title.yaml
+      /title   transient   recorded
+    corbie run submit /title --input '{"url": "https://example.com"}'
 
-`run submit` writes the definition, the script and the input to the store,
-prints the run's ID and exits. The controller starts the run. `<id>` below is
-that ID.
+The first `run submit` records the definition and its script in the store, at
+the location `/title`. The second starts a run there with the input, prints the
+run's ID and exits. `<id>` below is that ID.
 
     corbie run show <id> --wait
       input: {"url":"https://example.com"}
@@ -59,5 +61,4 @@ The record is files in `~/.config/corbie/store`, which `corbie run show` reads.
 Stop `corbie start` with Ctrl-C and `corbie run show <id>` prints the same
 result. A run submitted while no controller is running is shown as `waiting`.
 
-Next: `corbie manual install` covers running Corbie on several computers, on a
-bucket and as serverless functions.
+Next: `corbie manual a-directory` records a directory of machines.

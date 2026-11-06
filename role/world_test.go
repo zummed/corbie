@@ -44,6 +44,8 @@ type world struct {
 	ops     []store.Op
 	// answered are the jobs the test has answered in the runner's place.
 	answered map[string]bool
+	// placed counts the trees submitted, each at a prefix of its own.
+	placed int
 }
 
 func newWorld(t *testing.T) *world {
@@ -114,7 +116,28 @@ func (w *world) submit(src string, files map[string]string, input any) string {
 	if err != nil {
 		w.t.Fatalf("the definition does not pass:\n%v", err)
 	}
-	run, err := w.client.Start(ctx, draft, client.Start{Input: input})
+	// The definition is submitted as a tree of one file at a prefix of its
+	// own, the controller is called until it has taken the submit, and a
+	// run is started at the file's location.
+	w.mu.Lock()
+	w.placed++
+	prefix := fmt.Sprintf("/%s-%d", draft.Definition.Name, w.placed)
+	w.mu.Unlock()
+	at := prefix + "/" + draft.Definition.Name
+	message, err := w.client.Submit(ctx, &client.Tree{Prefix: prefix, Machines: []*client.Machine{{Path: draft.Definition.Name + ".yaml", Location: at, Draft: draft}}}, 0)
+	if err != nil {
+		w.t.Fatal(err)
+	}
+	for r := (*instance.Receipt)(nil); r == nil; {
+		w.h.call("ctl", w.controller)
+		if r, err = w.client.Receipt(ctx, message); err != nil {
+			w.t.Fatal(err)
+		}
+		if r != nil && !r.Taken {
+			w.t.Fatalf("the submit of %s was refused: %s", at, r.Refused)
+		}
+	}
+	run, err := w.client.Start(ctx, client.Start{At: at, Input: input})
 	if err != nil {
 		w.t.Fatal(err)
 	}

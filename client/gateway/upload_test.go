@@ -63,9 +63,9 @@ var looksFiles = map[string]string{
 	"./lib/names.js": "exports.says = \"naïve \\r\\n\"",
 }
 
-// A start is an upload form: a definition, two scripts and an image as
-// input go in with the one request, whatever their bytes, and the run's
-// script reads the image's bytes unchanged. A file comes out by its path in
+// A start is an upload form: the start and an image as input go in with the
+// one request, whatever their bytes, and the run's script reads the image's
+// bytes unchanged. A file comes out by its path in
 // the result, with its type.
 func TestStartUploadsItsFilesWhateverTheirBytes(t *testing.T) {
 	_, c := served(t)
@@ -106,13 +106,12 @@ func TestStartUploadsItsFilesWhateverTheirBytes(t *testing.T) {
 // A part of the form is taken as a field or as a file alike.
 func TestStartTakesAPartAsAFieldOrAFile(t *testing.T) {
 	_, c := served(t)
+	at := c.place(looks, looksFiles)
+	start := `{"at": "` + at + `", "input": {"n": 3}}`
 	var outputs []string
 	for _, parts := range [][]part{
-		{{name: "definition", contents: looks}, {name: "file:./look.js", contents: looksFiles["./look.js"]}, {name: "file:lib/names.js", contents: looksFiles["./lib/names.js"]},
-			{name: "start", contents: `{"input": {"n": 3}}`}, {name: "input:image", filename: "a.gif", contents: "GIF89a"}},
-		{{name: "definition", filename: "looks.yaml", contents: looks}, {name: "file:look.js", filename: "look.js", contents: looksFiles["./look.js"]},
-			{name: "file:./lib/names.js", filename: "names.js", contents: looksFiles["./lib/names.js"]},
-			{name: "start", filename: "start.json", contents: `{"input": {"n": 3}}`}, {name: "input:image", filename: "a.gif", contents: "GIF89a"}},
+		{{name: "start", contents: start}, {name: "input:image", filename: "a.gif", contents: "GIF89a"}},
+		{{name: "start", filename: "start.json", contents: start}, {name: "input:image", filename: "a.gif", contents: "GIF89a"}},
 	} {
 		status, started, text := c.upload(parts...)
 		id, _ := started["id"].(string)
@@ -131,8 +130,7 @@ func TestStartTakesAPartAsAFieldOrAFile(t *testing.T) {
 		t.Fatalf("given as fields the run ended with %s, and given as files with %s", outputs[0], outputs[1])
 	}
 	// An input file given as a field has no name to take a type from.
-	status, started, text := c.upload(part{name: "definition", contents: looks}, part{name: "file:./look.js", contents: looksFiles["./look.js"]},
-		part{name: "file:./lib/names.js", contents: looksFiles["./lib/names.js"]}, part{name: "input:image", contents: "bytes"})
+	status, started, text := c.upload(part{name: "start", contents: `{"at": "` + at + `"}`}, part{name: "input:image", contents: "bytes"})
 	if status != 200 {
 		t.Fatalf("the start was answered %d %s", status, text)
 	}
@@ -145,22 +143,26 @@ func TestStartTakesAPartAsAFieldOrAFile(t *testing.T) {
 // what is wrong, and nothing is uploaded and nothing sent.
 func TestStartThatIsNoUploadFormIsRefused(t *testing.T) {
 	c0, c := alone(t)
-	definition := part{name: "definition", contents: door}
+	start := part{name: "start", contents: `{"at": "/door"}`}
 	for what, sent := range map[string]struct {
 		parts []part
 		names string
 	}{
-		"no definition":                  {[]part{{name: "start", contents: `{}`}}, "definition"},
-		"two definitions":                {[]part{definition, definition}, "more than once"},
-		"a definition as field and file": {[]part{definition, {name: "definition", filename: "door.yaml", contents: door}}, "more than once"},
-		"a file with no path":            {[]part{definition, {name: "file:", contents: "return 1"}}, `file:`},
-		"an input file with no name":     {[]part{definition, {name: "input:", filename: "a.png", contents: "x"}}, `input:`},
-		"a part it does not know":        {[]part{definition, {name: "inputs:image", filename: "a.png", contents: "x"}}, `inputs:image`},
-		"a start that is not JSON":       {[]part{definition, {name: "start", contents: `labels: {a: b}`}}, "start"},
-		"a start with nothing in it":     {[]part{definition, {name: "start"}}, "start"},
-		"a timeout that is no time":      {[]part{definition, {name: "start", contents: `{"timeout": "soon"}`}}, "soon"},
-		"a file and an input no map":     {[]part{definition, {name: "start", contents: `{"input": [1]}`}, {name: "input:image", filename: "a.png", contents: "x"}}, "not a map"},
-		"a file and a value, one name":   {[]part{definition, {name: "start", contents: `{"input": {"image": 1}}`}, {name: "input:image", filename: "a.png", contents: "x"}}, "image"},
+		"no start":                     {[]part{{name: "input:image", filename: "a.png", contents: "x"}}, "no part named start"},
+		"two starts":                   {[]part{start, start}, "more than once"},
+		"a start as field and file":    {[]part{start, {name: "start", filename: "start.json", contents: `{"at": "/door"}`}}, "more than once"},
+		"a definition":                 {[]part{start, {name: "definition", contents: door}}, `definition`},
+		"a file beside a definition":   {[]part{start, {name: "file:./a.js", contents: "return 1"}}, `file:./a.js`},
+		"an input file with no name":   {[]part{start, {name: "input:", filename: "a.png", contents: "x"}}, `input:`},
+		"a part it does not know":      {[]part{start, {name: "inputs:image", filename: "a.png", contents: "x"}}, `inputs:image`},
+		"a start that is not JSON":     {[]part{{name: "start", contents: `labels: {a: b}`}}, "start"},
+		"a start with nothing in it":   {[]part{{name: "start"}}, "start"},
+		"a start with no location":     {[]part{{name: "start", contents: `{"input": {}}`}}, "at"},
+		"a location that is no path":   {[]part{{name: "start", contents: `{"at": "door"}`}}, "door"},
+		"secrets":                      {[]part{{name: "start", contents: `{"at": "/door", "secrets": {"TOKEN": "x"}}`}}, "secrets"},
+		"a timeout that is no time":    {[]part{{name: "start", contents: `{"at": "/door", "timeout": "soon"}`}}, "soon"},
+		"a file and an input no map":   {[]part{{name: "start", contents: `{"at": "/door", "input": [1]}`}, {name: "input:image", filename: "a.png", contents: "x"}}, "not a map"},
+		"a file and a value, one name": {[]part{{name: "start", contents: `{"at": "/door", "input": {"image": 1}}`}, {name: "input:image", filename: "a.png", contents: "x"}}, "image"},
 	} {
 		if status, _, text := c.upload(sent.parts...); status != 400 || !strings.Contains(text, sent.names) {
 			t.Errorf("a start with %s was answered %d %s", what, status, text)
@@ -210,7 +212,7 @@ func TestStartLeavesNothingOfItsUploadsBehind(t *testing.T) {
 		after.Store(kept())
 	}))
 	t.Cleanup(server.Close)
-	c := caller{t: t, url: server.URL, token: "the-token"}
+	c := caller{t: t, url: server.URL, token: "the-token", client: local.Client}
 	large := image(5 << 20)
 	parts := append(form(c, map[string]any{"definition": looks, "files": looksFiles}), part{name: "input:image", filename: "scan.png", contents: large})
 	status, started, text := c.upload(parts...)
@@ -230,11 +232,34 @@ func TestStartLeavesNothingOfItsUploadsBehind(t *testing.T) {
 	}
 }
 
+// sentThenLooking calls looked at the first read of a receipt after a
+// message is written to the controller's inbox.
+type sentThenLooking struct {
+	store.Store
+	sent   *atomic.Bool
+	looked func()
+}
+
+func (l sentThenLooking) Write(ctx context.Context, name string, data []byte, how store.How) (bool, error) {
+	done, err := l.Store.Write(ctx, name, data, how)
+	if strings.HasPrefix(name, store.Inbox("controller")+"/") {
+		l.sent.Store(true)
+	}
+	return done, err
+}
+
+func (l sentThenLooking) Read(ctx context.Context, name string) ([]byte, store.Mark, error) {
+	if strings.Contains(name, "/receipts/") && l.sent.Swap(false) {
+		l.looked()
+	}
+	return l.Store.Read(ctx, name)
+}
+
 // A cancel, an event and an answer each take a life: with no controller
-// running, each is answered once that life has passed, saying the message
-// was not taken up, and what was sent is good for that life.
+// running, each is answered once no controller may take it, saying the
+// message was not taken up, and what was sent is good for that life.
 func TestCancelEventAndAnswerTakeALife(t *testing.T) {
-	mem, _, c := aloneOn(t)
+	mem, local, c := aloneOn(t)
 	owner := mem.As(store.Party{Kind: store.Owner})
 	ctx := context.Background()
 	goodFor := func(message string) time.Duration {
@@ -250,15 +275,24 @@ func TestCancelEventAndAnswerTakeALife(t *testing.T) {
 		return value.Until.Sub(value.Sent)
 	}
 	// A start takes one too.
-	id := c.start(map[string]any{"definition": door, "life": "90s"})
+	id := c.start(map[string]any{"at": "/door", "life": "90s"})
 	if sent, err := store.Names(owner.List(ctx, store.Inbox("controller"))); err != nil || len(sent) != 1 || goodFor(sent[0]) != 90*time.Second {
 		t.Fatalf("a start with a life of 90s left %v in the inbox (%v)", sent, err)
 	}
+	// The first look for a receipt after a message is sent moves the clock
+	// on by the time a controller may take it: the life and twice the clock
+	// allowance.
+	var ahead atomic.Int64
+	local.Now = func() time.Time { return time.Now().Add(time.Duration(ahead.Load())) }
+	local.Store = sentThenLooking{local.Store, &atomic.Bool{}, func() {
+		ahead.Add(int64(200*time.Millisecond + 2*identity.ClockAllowance + time.Second))
+	}}
 	for path, body := range map[string]string{
 		"/cancel":  `{"life": "200ms"}`,
 		"/events":  `{"event": "open", "life": "200ms"}`,
 		"/tickets": `{"ticket": "the-ticket", "value": true, "life": "200ms"}`,
 	} {
+		ahead.Store(0)
 		before, err := store.Names(owner.List(ctx, store.Inbox("controller")))
 		if err != nil {
 			t.Fatal(err)
@@ -328,9 +362,9 @@ output: ${stages.read.output}
 	}
 }
 
-// One start carries a definition, its script, an input, a label, a run
-// secret, a narrowing list and a timeout, and each is in effect for the
-// run it starts.
+// One start carries a definition, its script, an input, a label, a
+// narrowing list and a timeout, and each is in effect for the run it starts,
+// which reads a secret set at /.
 func TestStartCarriesEverythingAStartMay(t *testing.T) {
 	local, err := client.NewLocal(context.Background(), permission.Layer{Allow: []string{"all"}}, nil)
 	if err != nil {
@@ -338,6 +372,9 @@ func TestStartCarriesEverythingAStartMay(t *testing.T) {
 	}
 	local.Runner.Command = []string{os.Args[0], runner.JobArg}
 	t.Cleanup(local.Close)
+	if err := local.SetSecret(context.Background(), "/", "TOKEN", "the token set at /"); err != nil {
+		t.Fatal(err)
+	}
 	c := serve(t, local.Client)
 	var shown atomic.Value
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -366,14 +403,14 @@ output: ${stages.call.output}
 			if (input.n === 3) for (;;) {}
 			return { status, n: input.n }`},
 			"input":  map[string]any{"url": server.URL, "host": host, "n": n},
-			"labels": map[string]string{"team": "docs"}, "secrets": map[string]string{"TOKEN": "the-start's-own-token"},
-			"allow": []string{"net:" + host, "secret:TOKEN@*", "fs.read:/srv/reports/**"},
-			"deny":  []string{"fs.read:/srv/reports/kept/**"}, "timeout": timeout})
+			"labels": map[string]string{"team": "docs"},
+			"allow":  []string{"net:" + host, "secret:TOKEN@*", "fs.read:/srv/reports/**"},
+			"deny":   []string{"fs.read:/srv/reports/kept/**"}, "timeout": timeout})
 		_, run, text := c.do("GET", "/runs/"+id+"?wait", "")
 		return run, text
 	}
 	run, text := started(1, "30s")
-	if run["status"] != "done" || quotedAny(run["output"]) != `{"n":1,"status":200}` || run["labels"].(map[string]any)["team"] != "docs" || shown.Load() != "the-start's-own-token" {
+	if run["status"] != "done" || quotedAny(run["output"]) != `{"n":1,"status":200}` || run["labels"].(map[string]any)["team"] != "docs" || shown.Load() != "the token set at /" {
 		t.Fatalf("the run ended %s, and its job showed the token %q", text, shown.Load())
 	}
 	if _, _, listed := c.do("GET", "/runs?all&label=team=docs", ""); !strings.Contains(listed, run["id"].(string)) {

@@ -17,7 +17,8 @@ func Test_agent_next_turn_waits_for_open_approval(t *testing.T) {
 	both := llmstandin.Reply{Calls: []llmstandin.ToolCall{{ID: "held", Name: "deploy", Args: `{"n":10}`}, {ID: "free", Name: "add", Args: `{"n":1}`}}}
 	m := newModel(t, both, says("done"))
 	l := local(t, "all")
-	id, err := l.Start(ctx, draft(t, strings.ReplaceAll(`
+	setSecret(t, l, "TEST_KEY", "sk-test-key")
+	id, err := l.Run(ctx, draft(t, strings.ReplaceAll(`
 		agent: careful
 		model: { name: test-model, service: anthropic, address: ADDRESS, secret: TEST_KEY }
 		prompt: Add, and put it out.
@@ -39,7 +40,7 @@ func Test_agent_next_turn_waits_for_open_approval(t *testing.T) {
 		    does: Put a number out
 		    args: { n: number }
 		    job: { script: ./add.js, input: { n: "${args.n}" }, approve: true }
-	`, "ADDRESS", m.URL), scripts), client.Start{Secrets: map[string]string{"TEST_KEY": "sk-test-key"}})
+	`, "ADDRESS", m.URL), scripts), client.Start{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -152,11 +153,11 @@ func Test_agent_handle_name_is_stable_and_never_reused(t *testing.T) {
 	// the earlier turns still means the blob it was given to.
 	both := llmstandin.Reply{Calls: []llmstandin.ToolCall{{ID: "d1", Name: "make", Args: `{"text":"the fourth"}`}, {ID: "d2", Name: "blob_read", Args: `{"blob":"blob1"}`}}}
 	m2 := newModel(t, both, says("done"))
-	id, err := l.Start(ctx, draft(t, strings.Replace(def, m.URL, m2.URL, 1)+"\n\t\tconversation: ${input.so}\n", map[string]string{"add.js": scripts["add.js"],
+	setSecret(t, l, "TEST_KEY", "sk-test-key")
+	id, err := l.Run(ctx, draft(t, strings.Replace(def, m.URL, m2.URL, 1)+"\n\t\tconversation: ${input.so}\n", map[string]string{"add.js": scripts["add.js"],
 		"make.js":  `return { file: blobs.make(input.text) }`,
 		"again.js": `return { same: input.it }`}), client.Start{
-		Input:   map[string]any{"question": "and again?", "so": carried(r.Output.(map[string]any)["conversation"], r.ID)},
-		Secrets: map[string]string{"TEST_KEY": "sk-test-key"}})
+		Input: map[string]any{"question": "and again?", "so": carried(r.Output.(map[string]any)["conversation"], r.ID)}})
 	if err != nil {
 		t.Fatal(err)
 	}

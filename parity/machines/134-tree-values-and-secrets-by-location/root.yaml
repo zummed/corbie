@@ -1,0 +1,27 @@
+# The value HUB is set at / and at /case, and the chart at /case/root reads
+# the one set at /case, the nearer, at its first step. While it waits on the
+# ticket go, HUB is set at /case/root as well: the chart keeps the value it
+# read, and its child, which runs at the same location, is given its parent's
+# and does not read the new one. The job of own names the secret TOKEN, set
+# at /case, above the run's location, and is sent a handle for it.
+statechart: parent
+initial: own
+states:
+  own:
+    job:
+      script: ./handle.js
+      input: { hub: "${values.HUB}" }
+      allow: ["secret:TOKEN@net:example.invalid"]
+    on: { done: hold }
+  hold:
+    ticket: go
+    on: { go: kid }
+  kid:
+    job: { machine: ./kid.yaml }
+    on: { done: finished }
+  finished:
+    end: done
+    output:
+      own: ${states.own.output}
+      kid: ${states.kid.output}
+      kept: ${values.HUB}

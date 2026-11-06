@@ -1,0 +1,8 @@
+{
+  "status": "done",
+  "record": [
+    { "machine": "worker", "status": "cancelled" },
+    { "machine": "boss", "ask": { "kind": "note", "text": { "<contains>": "was cancelled while it kept the event under defer:" } } }
+  ],
+  "note": "R-chart-81: events a cancelled chart kept under defer: are noted as undelivered in each sender's record."
+}

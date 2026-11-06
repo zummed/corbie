@@ -1,0 +1,9 @@
+{
+  "status": "done",
+  "record": [
+    { "machine": "sender", "ask": { "kind": "event", "location": "/case/room", "key": "a", "run": "<any>" } },
+    { "machine": "sender", "ask": { "kind": "event", "location": "/case/room", "key": "b", "undelivered": true, "text": { "<contains>": "at its limit of 1 runs" } } },
+    { "machine": "room", "order": ["hi"] }
+  ],
+  "note": "R-ctl-124: limits: { runs } caps the runs of a keyed location, and a send past it is noted."
+}

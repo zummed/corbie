@@ -4,8 +4,10 @@
 package client
 
 import (
+	"bytes"
 	"context"
 	"crypto/rand"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"io"
@@ -48,8 +50,11 @@ func (c *Client) identity() error {
 	return nil
 }
 
-// A Start is what a start may carry besides its definition.
+// A Start is what a start of a location carries.
 type Start struct {
+	// At is the location the run is started at: the run's machine is the
+	// file recorded there.
+	At string
 	// Run is the run's name, if it was chosen beforehand with NewRun.
 	Run string
 	// Input is the run's input. An InputFile may stand in place of any
@@ -62,17 +67,10 @@ type Start struct {
 	// input.
 	Input  any
 	Labels map[string]string
-	// Key names the run among this client's running runs.
-	Key string
-	// Context is the directory the run was submitted from, which its machines
-	// read as run.context.
-	Context string
 	// Allow narrows what the run, and everything below it, may do.
 	Allow *permission.Layer
 	// Timeout is how long the run may take.
 	Timeout time.Duration
-	// Secrets are the run's own secrets.
-	Secrets map[string]string
 	// Life is how long the start is good for; a few minutes if it says
 	// nothing.
 	Life time.Duration
@@ -129,12 +127,15 @@ func (c *Client) NewRun() (string, error) {
 	return store.NewInstance(c.ID.Name, c.Now()), nil
 }
 
-// Start starts a run of a definition that has been filled out and checked.
-// The definition and its files are written into the run's record first,
-// and then the start is sent. It gives the run's name.
-func (c *Client) Start(ctx context.Context, draft *machine.Draft, start Start) (string, error) {
+// Start starts a run of a location. The files of the input, and then the
+// input itself, are written into the run's record first, and then the start
+// is sent. It gives the run's name.
+func (c *Client) Start(ctx context.Context, start Start) (string, error) {
 	if err := c.identity(); err != nil {
 		return "", err
+	}
+	if err := store.CheckLocation(start.At); err != nil {
+		return "", fmt.Errorf("%w: a start names a location: %w", ErrStart, err)
 	}
 	run := start.Run
 	if run == "" {
@@ -142,16 +143,6 @@ func (c *Client) Start(ctx context.Context, draft *machine.Draft, start Start) (
 	}
 	if err := store.CheckInstance(run); err != nil || store.InstanceClient(run) != c.ID.Name {
 		return "", fmt.Errorf("%w: %q is not a name this client can give a run", ErrStart, run)
-	}
-	if start.Key != "" {
-		if err := machine.CheckKey(start.Key); err != nil {
-			return "", fmt.Errorf("%w: %w", ErrStart, err)
-		}
-	}
-	for name := range start.Secrets {
-		if err := permission.CheckSecretName(name); err != nil {
-			return "", fmt.Errorf("%w: %w", ErrStart, err)
-		}
 	}
 	if file, whole := start.Input.(InputFile); whole {
 		return "", fmt.Errorf("%w: the file %q is the whole input; a file goes in a map[string]any or a []any of it", ErrStart, file.Name)
@@ -163,24 +154,19 @@ func (c *Client) Start(ctx context.Context, draft *machine.Draft, start Start) (
 	if err != nil {
 		return "", err
 	}
-	// Every upload is made side by side, under one bound: the definition
-	// and its files, a copy of each blob carried over from another run
-	// (every blob lives in the record of one instance), and a blob for each
-	// file of the input. made is what stands at each blob's name in the
-	// input once they are done.
+	// Every upload is made side by side, under one bound: a copy of each
+	// blob carried over from another run (every blob lives in the record of
+	// one instance), and a blob for each file of the input. made is what
+	// stands at each blob's name in the input once they are done.
 	s := store.Bounded(c.Store, store.SideBySide)
-	var ref blob.Ref
-	uploads := []func() error{func() (err error) {
-		ref, err = draft.Store(ctx, s, c.ctl(), run)
-		return err
-	}}
+	var uploads []func() error
 	made := map[string]*blob.Ref{}
 	for _, carried := range blob.Refs(input) {
 		if made[carried.At] == nil {
 			copied := new(blob.Ref)
 			made[carried.At] = copied
 			uploads = append(uploads, func() (err error) {
-				*copied, err = blob.CopyWhole(ctx, s, carried, c.ctl(), run)
+				*copied, err = blob.CopyWhole(ctx, s, carried, c.ctl(), store.Blobs(c.ctl(), run))
 				return err
 			})
 		}
@@ -217,12 +203,63 @@ func (c *Client) Start(ctx context.Context, draft *machine.Draft, start Start) (
 	if input, err = blob.Walk(input, func(_ string, at blob.Ref) (any, error) { return made[at.At].Value(), nil }); err != nil {
 		return "", err
 	}
+	// The input is written into the run's record last, null when there is
+	// none, and the start names it: the controller reads the input from
+	// there. A run whose record holds nothing was never sent.
+	data, err := json.Marshal(input, json.Deterministic(true))
+	if err != nil {
+		return "", err
+	}
+	written, err := blob.Write(ctx, c.Store, store.Blob(c.ctl(), run, blob.NewName()), blob.TypeOf("input.json"), blob.NewKey(), bytes.NewReader(data))
+	if err != nil {
+		return "", err
+	}
 	seed := make([]byte, 32)
 	rand.Read(seed)
 	msg := &instance.Message{Kind: instance.KindStart, Instance: run, Start: &instance.Start{
-		Definition: ref, Input: input, Labels: start.Labels, Key: start.Key, Context: start.Context, Allow: start.Allow,
-		Timeout: machine.Duration(start.Timeout), Secrets: start.Secrets, Seed: seed}}
+		Location: start.At, InputBlob: written, Labels: start.Labels, Allow: start.Allow,
+		Timeout: machine.Duration(start.Timeout), Seed: seed}}
 	return run, c.send(ctx, startMessage(run), start.Life, msg)
+}
+
+// Submit records a tree at its prefix. Each machine of the tree is written
+// among the message's uploads, a bounded number at a time, and then the
+// submit is sent. A file with a problem is sent as one, and its location
+// keeps what was recorded before. It gives the name of the message, by which
+// its receipt is found.
+func (c *Client) Submit(ctx context.Context, tree *Tree, life time.Duration) (string, error) {
+	if err := c.identity(); err != nil {
+		return "", err
+	}
+	name := c.sender.Next(c.Now())
+	submit := &instance.Submit{Prefix: tree.Prefix, Directory: tree.Directory, Files: map[string]instance.SubmitFile{}}
+	var good []*Machine
+	for _, m := range tree.Machines {
+		switch {
+		case m.Problem != nil && store.CheckLocation(m.Location) != nil:
+			// A path that gives no location keeps nothing there.
+		case m.Problem != nil:
+			submit.Problems = append(submit.Problems, m.Location)
+		default:
+			good = append(good, m)
+		}
+	}
+	s := store.Bounded(c.Store, store.SideBySide)
+	refs := make([]blob.Ref, len(good))
+	err := store.Each(ctx, store.SideBySide, len(good), func(i int) (err error) {
+		refs[i], err = good[i].Draft.Write(ctx, func(typ string, contents []byte) (blob.Ref, error) {
+			return blob.Write(ctx, s, store.Upload(c.ctl(), c.ID.Name, name, blob.NewName()), typ, blob.NewKey(), bytes.NewReader(contents))
+		})
+		return err
+	})
+	if err != nil {
+		return "", err
+	}
+	for i, m := range good {
+		submit.Files[m.Location] = instance.SubmitFile{Definition: refs[i], Hash: m.Draft.Hash(),
+			Secrets: secretsOf(m.Draft), Values: m.Draft.Values()}
+	}
+	return name, c.send(ctx, name, life, &instance.Message{Kind: instance.KindSubmit, Submit: submit})
 }
 
 // resolve gives a value as plain data, in which each file is what file
@@ -308,34 +345,73 @@ func startMessage(run string) string {
 // answer are each good for the life given, or for a few minutes if it is
 // zero.
 func (c *Client) Cancel(ctx context.Context, run string, life time.Duration) (string, error) {
-	return c.sendNext(ctx, life, &instance.Message{Kind: instance.KindCancel, Instance: run})
-}
-
-// Send sends a named event to a run.
-func (c *Client) Send(ctx context.Context, run, event string, data any, life time.Duration) (string, error) {
-	return c.sendNext(ctx, life, &instance.Message{Kind: instance.KindEvent, Instance: run,
-		Event: &machine.Event{Name: event, Data: data}})
-}
-
-// ErrNoKey is a key that names no run of this client's.
-var ErrNoKey = errors.New("no run has the key")
-
-// SendToKey sends a named event to the run with a key.
-func (c *Client) SendToKey(ctx context.Context, key, event string, data any, life time.Duration) (string, error) {
 	if err := c.identity(); err != nil {
 		return "", err
 	}
-	if err := machine.CheckKey(key); err != nil {
+	// A call's run is in the tree of the client called: only that client
+	// cancels it.
+	if c.mine(run) && store.CheckInstance(run) == nil {
+		receipt, err := c.Receipt(ctx, startMessage(run))
+		if err != nil {
+			return "", err
+		}
+		if receipt != nil && receipt.Run != "" && receipt.Run != run {
+			return "", fmt.Errorf("%w: it started %s, in a tree of the client %s, and only that client cancels it", ErrCalled, receipt.Run, store.InstanceClient(receipt.Run))
+		}
+	}
+	return c.sendNext(ctx, life, &instance.Message{Kind: instance.KindCancel, Instance: run})
+}
+
+// Send sends a named event to a run by its address. The controller takes it
+// as it takes a run's send, and its receipt names the run that took it.
+func (c *Client) Send(ctx context.Context, to machine.Address, event string, data any, life time.Duration) (string, error) {
+	if err := c.identity(); err != nil {
 		return "", err
 	}
-	entry, _, err := instance.ReadKey(ctx, c.Store, c.Controller, c.ID, c.ID.Name, key)
+	own := to.At == "" && to.Run != "" && c.mine(to.Run)
+	switch {
+	case own:
+		if err := store.CheckInstance(to.Run); err != nil {
+			return "", err
+		}
+	case to.Check() != nil:
+		return "", to.Check()
+	case to.Client != "" || !strings.HasPrefix(to.At, "/"):
+		return "", fmt.Errorf("an address a client sends to names a location in full, from /")
+	}
+	name := c.sender.Next(c.Now())
+	return name, c.send(ctx, name, life, &instance.Message{Kind: instance.KindSend, To: &to, Event: &machine.Event{Name: event, Data: data}})
+}
+
+// Address reads the address of a run as a client writes it: a location from
+// /, a location and a key as /location#key, or a run's ID, which is at the
+// location its head names. A run of the client's own is named by its ID
+// alone until it has a head.
+func (c *Client) Address(ctx context.Context, text string) (machine.Address, error) {
+	if strings.HasPrefix(text, "/") {
+		at, key, keyed := strings.Cut(text, "#")
+		to := machine.Address{At: at}
+		if keyed {
+			to.Key = &key
+		}
+		return to, to.Check()
+	}
+	if err := store.CheckInstance(text); err != nil {
+		return machine.Address{}, fmt.Errorf("%q is neither a location, which starts with /, nor a run's ID", text)
+	}
+	head, _, err := instance.ReadHead(ctx, c.Store, c.Controller, text)
 	if err != nil {
-		return "", err
+		return machine.Address{}, err
 	}
-	if entry == nil {
-		return "", fmt.Errorf("%w: %q", ErrNoKey, key)
+	if head != nil {
+		return machine.Address{At: head.Location, Run: text}, nil
 	}
-	return c.Send(ctx, entry.Run, event, data, life)
+	// A run of this client's that has no head yet is sent to by its ID
+	// alone: the controller finds it.
+	if c.mine(text) {
+		return machine.Address{Run: text}, nil
+	}
+	return machine.Address{}, fmt.Errorf("%w: the run is in a tree of the client %s, and a send to one of its runs names its location", ErrOthers, store.InstanceClient(text))
 }
 
 // Reply answers a ticket of a run. The ticket is the authority: any client
@@ -363,6 +439,13 @@ func good(life time.Duration) time.Duration {
 		return instance.MessageLife
 	}
 	return life
+}
+
+// taking is how long after it is sent a controller may still take a
+// message: its life and the allowance for clocks, by a controller's clock
+// that may be the allowance behind this client's.
+func taking(life time.Duration) time.Duration {
+	return good(life) + 2*identity.ClockAllowance
 }
 
 // send writes one message into the controller's inbox, signed by this
@@ -402,13 +485,13 @@ var ErrNotTaken = errors.New("the message was not taken up: it is no longer good
 
 // WaitReceipt stays until the controller has answered a message this
 // client has just sent, and gives the receipt. life is the life the message
-// was sent with. Once the message is no longer good and no receipt has
+// was sent with. Once no controller may take the message and no receipt has
 // come, the wait ends, saying the message was not taken up. It looks again
 // when this process writes to the store, and otherwise at the interval.
 func (c *Client) WaitReceipt(ctx context.Context, message string, life, interval time.Duration) (*instance.Receipt, error) {
 	notice, stop := c.Store.Notice(c.ctl())
 	defer stop()
-	until := c.Now().Add(good(life))
+	until := c.Now().Add(taking(life))
 	for {
 		receipt, err := c.Receipt(ctx, message)
 		if err != nil || receipt != nil {

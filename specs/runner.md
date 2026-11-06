@@ -20,7 +20,7 @@ The job names its script, the script's files and its input, and the runner reads
 
 Every job has a scratch directory of its own, made for it and removed when it ends. A runner that starts removes the scratch directories left by one that was killed before it could. A path a script writes without a leading `/`, or on Windows without a drive, is in that directory; on Windows one with a leading `/` and no drive is refused. Everything a job starts is stopped when the job ends, however it ends.
 
-When the script returns, the runner writes any blobs in the output into the instance's record and sends the output to the controller as the job's result, along with the permissions it used. If the script throws, or is refused something, or runs out of time, the result says so. Everything a job writes for the controller is under a name that is that job's alone, so a write whose answer was lost is sent again. Only when the result is written does the runner delete the job from its inbox. It removes the mark once the job's due time has passed.
+When the script returns, the runner writes any blobs in the output into the instance's record and sends the output to the controller as the job's result, along with the permissions it used. If the script throws, or is refused something, or runs out of time, the result says so. A thrown error's text is its `message`, as Node's `err.message` has it, then the line and column where it was thrown. Everything a job writes for the controller is under a name that is that job's alone, so a write whose answer was lost is sent again. Only when the result is written does the runner delete the job from its inbox. It removes the mark once the job's due time has passed.
 
 ## A machine a script defines
 
@@ -52,6 +52,8 @@ Besides plugins, a script has a few things of its own:
 - `emit(name, value)` sends a named value up while the script runs. `log(text)` and `progress(done, total)` are emits for a watcher's benefit. Emits are written to the record a few at a time, not one write each.
 - `job` says which request this is. Every attempt after a failure has the same request name, so a script can use it to avoid doing something twice. A restart after a job ended well has a new one.
 - `require` loads something by name or by path. A bare name is a plugin or a library that comes with the binary. A path starting `./` or `../` is read from the directory of the file that calls it, and is one of the files the job lists. A file whose path ends in `.yaml`, `.yml` or `.json` gives its data, read as the `yaml` plugin reads a document, so a script loads data shipped with its definition with no permission and on any host.
+
+A job's input and output pass through the store as JSON, so their maps reach the next script with their keys sorted.
 
 A script cannot start jobs, whether scripts or machines. Deciding what runs is a machine's work.
 

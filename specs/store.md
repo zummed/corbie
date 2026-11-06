@@ -16,7 +16,7 @@ A value is deleted by the first or the third. A value appears whole or not at al
 
 These three are all the coordination Corbie has. There are no locks, no leases and no transactions across names.
 
-Almost everything is written only-if-new and never changed afterwards. Very few values are ever rewritten: an instance's head, its note of how far a large step has been carried out, a key's file whose run has ended, an event sent to a key that moves on to the run with the key, and the controller's lists of who it trusts and which secrets it holds. This makes the store easy to reason about and cheap to watch: a value read once is read again only when a listing shows it has changed.
+Almost everything is written only-if-new and never changed afterwards. Very few values are ever rewritten: an instance's head, its note of how far a large step has been carried out, a key's file whose run has ended, an event sent to a key that moves on to the run with the key, a tree and the files at its locations when it is submitted again, the controller's list of who it trusts, and the secrets and values set at a location. This makes the store easy to reason about and cheap to watch: a value read once is read again only when a listing shows it has changed.
 
 ## Layout
 
@@ -27,7 +27,10 @@ version                                  the layout's version
 
 <controller>/
   inbox/<sender>/<message>               messages to the controller
-  receipts/<sender>/<message>            what became of each message a client sent
+  receipts/<sender>/<message>/           what became of each message a client sent
+      receipt                            taken or refused
+      result                             for a call, the run's status and its output or error
+      blobs/<name>                       the blobs a call's output names
   running/<client>/<instance>            heads of instances that are running
   finished/<client>/<instance>           heads of instances that have ended
   records/<client>/<instance>/
@@ -36,16 +39,39 @@ version                                  the layout's version
       blobs/<name>                       written by whoever made the blob
       carried                            how far a large step has been carried out
   wakes/<time>/<instance>/<name>         when an instance is next due attention
-  keys/<client>/<hash>                   which run a key names, by the SHA-256 of the key
+  locations/<location>/+/
+      tree                               at a tree's prefix: the client that owns the tree, and the directory last submitted there
+      file                               the file recorded at the location, written out
+      blobs/<name>                       the scripts and machines that file names
+      keys/<hash>                        which run a key names, by the SHA-256 of the key; a singleton's is the empty key
+      secrets/<name>                     a secret set at the location
+      values/<name>                      a value set at the location
+  uploads/<client>/<message>/<name>      the files a client sends with a submit
   trust/<party>                          who the controller trusts
-  secrets/<name>                         the secrets it holds
 
 <runner>/
   inbox/<sender>/<message>               jobs for the runner
   taken/<due time>/<job>                 one mark for each job it has taken
 ```
 
-The version is written once, when the store is first set up, and a Corbie that does not know it refuses to use the store. An instance's name begins with the client that started its root and carries the time it was named, so anything that names an instance says where its head and record are and how old it is.
+The version is written once, when the store is first set up, and a Corbie that does not know it refuses to use the store. An instance's name begins with the client that owns its root's tree and carries the time it was named, so anything that names an instance says where its head and record are and how old it is.
+
+A location's entries are under `+` after its path. No part of a location is empty, `.`, `..` or `+`, and none holds `#`. A part that starts with a dot, as `.rook` does, is kept after a `#`, as `locations/#.rook/`, so that a directory does not hide it. A tree's entry is at its prefix. Secrets and values may be set at a path above a location as well, and those set at `/` are under `locations/+/`. For example, these commands:
+
+```
+corbie run submit house --at /home
+corbie controller secret set BOILER_PASSWORD --at /home/devices/boiler
+corbie controller secret set ANTHROPIC_KEY
+```
+
+write these values, and each file's scripts and machines under `blobs/`:
+
+```
+<controller>/locations/home/+/tree
+<controller>/locations/home/devices/boiler/+/file
+<controller>/locations/home/devices/boiler/+/secrets/BOILER_PASSWORD
+<controller>/locations/+/secrets/ANTHROPIC_KEY
+```
 
 ## Who may touch what
 
@@ -55,7 +81,7 @@ The layout is drawn so that the right to read or write is only ever a matter of 
 |---|---|---|
 | Controller | everything in its own area; jobs into runners' inboxes | everything in its own area |
 | Runner | results into the controller's inbox; new emits and blobs in records; its own inbox and marks | its own inbox and marks; blobs in records |
-| Client | messages into the controller's inbox; new blobs in the records of its own runs | its own receipts, heads and records |
+| Client | messages into the controller's inbox; its own uploads; new blobs in the records of its own runs | its own receipts, heads and records |
 | A viewer given heads only | nothing | every head |
 
 Every party can read the layout's version. A runner or a client adds to a record only-if-new: it can never change or remove what is there. A runner is not limited to the records of the jobs it holds, so a runner can add junk to any record. What it adds is signed by it and tied to a job, and readers ignore an entry from a runner that had no such job.
@@ -67,6 +93,8 @@ Blobs are encrypted and their keys travel only in sealed messages, so the right 
 A store is a directory, a directory served to other computers, a bucket or memory, chosen by its address.
 
 A **directory** is for one computer. Every value is a plain file, so a person can look at an instance with ordinary tools. A listing reads every file it lists. A change the directory has answered is on disk: a computer that loses power comes back with everything it said it had written, and nothing it said it had deleted. Windows cannot sync a directory, so there a name made or removed just before the power went may be lost, as far as NTFS keeps it. Every party on the computer can read and write all of it. A directory keeps no party out of anything, and Corbie says so.
+
+On a file system that ignores case, as macOS's and Windows's do by default, `/Work` and `/work` are one directory. A secret or a value set at one of them is refused while the other has that name set, and so is a remove. A tree submitted at one of them is refused while the other is a tree. Listing the secrets or the values reads every file under `locations/`.
 
 A **served directory** is for a few computers of one's own, with nothing rented and nothing else installed. The computer that holds the directory and the controller serves it, and a party on another computer reaches it at `corbie://host:port`. Roles on the serving computer use the directory as it is.
 

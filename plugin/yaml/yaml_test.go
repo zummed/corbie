@@ -3,6 +3,7 @@ package yaml
 import (
 	"context"
 	"errors"
+	"fmt"
 	"reflect"
 	"strings"
 	"testing"
@@ -21,6 +22,23 @@ func call(t *testing.T, name string, first any) (any, error) {
 	}
 	module, _ := plugin.Find("yaml")
 	return module.Calls[name].Invoke(job, "yaml", name, first, nil)
+}
+
+// unordered gives data with each map as a Go map, to compare whole.
+func unordered(v any) any {
+	switch v := v.(type) {
+	case *plugin.Ordered:
+		m := map[string]any{}
+		for k, item := range v.Values {
+			m[k] = unordered(item)
+		}
+		return m
+	case []any:
+		for i, item := range v {
+			v[i] = unordered(item)
+		}
+	}
+	return v
 }
 
 func code(err error) string {
@@ -62,11 +80,18 @@ func Test_yaml_document_as_data(t *testing.T) {
 		}},
 		"when": "2026-10-29",
 	}
-	if !reflect.DeepEqual(doc, want) {
+	if !reflect.DeepEqual(unordered(doc), want) {
 		t.Fatalf("parse gave %v", doc)
 	}
+	// A map's keys are in the order the document writes them.
+	if got := fmt.Sprint(doc.(*plugin.Ordered).Keys, doc.(*plugin.Ordered).Values["base"]); got != "[does base tools when] map[timeout:20s]" {
+		t.Fatalf("the keys are in the order %s", got)
+	}
+	if doc, err := call(t, "parse", "z: 1\nm: { b: 2, a: 3 }\na: 4\n"); err != nil || fmt.Sprint(doc) != "map[z:1 m:map[b:2 a:3] a:4]" {
+		t.Fatalf("parse gave %v, %v", doc, err)
+	}
 	// Bytes and a blob are read the same.
-	if doc, err := call(t, "parse", plugin.Bytes("a: 1\n")); err != nil || !reflect.DeepEqual(doc, map[string]any{"a": 1.0}) {
+	if doc, err := call(t, "parse", plugin.Bytes("a: 1\n")); err != nil || !reflect.DeepEqual(unordered(doc), map[string]any{"a": 1.0}) {
 		t.Fatalf("parse of bytes gave %v, %v", doc, err)
 	}
 	if doc, err := call(t, "parse", ""); err != nil || doc != nil {
@@ -101,7 +126,7 @@ func Test_yaml_write(t *testing.T) {
 	}
 	// What is written reads back as the same data.
 	back, err := call(t, "parse", out)
-	if err != nil || back.(map[string]any)["hot"] != "true" || back.(map[string]any)["sizes"].([]any)[1] != 2.5 {
+	if err != nil || back.(*plugin.Ordered).Values["hot"] != "true" || back.(*plugin.Ordered).Values["sizes"].([]any)[1] != 2.5 {
 		t.Fatalf("it read back as %v, %v", back, err)
 	}
 	for what, data := range map[string]any{

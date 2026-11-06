@@ -79,9 +79,11 @@ states:
 `})
 	asked(m, "", true, "test", filepath.Join(dir, "make.js"))
 	asked(m, "", true, "test", filepath.Join(dir, "make.js"), "--watch")
-	id, _ := object(asked(m, "", true, "run", "submit", filepath.Join(dir, "make.js")))["id"].(string)
-	asked(m, "", true, "run", "submit", filepath.Join(dir, "make.js"), "--wait")
-	asked(m, "", true, "run", "submit", filepath.Join(dir, "make.js"), "--watch")
+	asked(m, "", true, "run", "submit", filepath.Join(dir, "make.js"))
+	asked(m, "", true, "run", "submit", filepath.Join(dir, "door.yaml"))
+	id, _ := object(asked(m, "", true, "run", "submit", "/make"))["id"].(string)
+	asked(m, "", true, "run", "submit", "/make", "--wait")
+	asked(m, "", true, "run", "submit", "/make", "--watch")
 	asked(m, "", true, "run", "show", id, "--wait")
 	asked(m, "", true, "run", "show", id)
 	asked(m, "", true, "run", "show", id, "--record")
@@ -111,7 +113,7 @@ states:
 		t.Errorf("corbie check --json printed %v", found)
 	}
 	door := func() string {
-		id, _ := object(asked(m, "", true, "run", "submit", filepath.Join(dir, "door.yaml")))["id"].(string)
+		id, _ := object(asked(m, "", true, "run", "submit", "/door"))["id"].(string)
 		return id
 	}
 	asked(m, "", true, "run", "send", door(), "open")
@@ -122,6 +124,11 @@ states:
 	asked(m, "the value\n", false, "controller", "secret", "set", "A_SECRET_OF_THIS_TEST", "-")
 	asked(m, "", true, "controller", "secret", "list")
 	asked(m, "", false, "controller", "secret", "remove", "A_SECRET_OF_THIS_TEST")
+	asked(m, "", false, "controller", "value", "set", "HUB", "hub.lan", "--at", "/home")
+	if listed := asked(m, "", true, "controller", "value", "list"); listed != `[{"name":"HUB","at":"/home","value":"hub.lan"}]`+"\n" {
+		t.Errorf("corbie controller value list --json printed %s", listed)
+	}
+	asked(m, "", false, "controller", "value", "remove", "HUB", "--at", "/home")
 	asked(m, "", true, "controller", "policy", "--viewer", "--store", "s3://bucket/prefix?region=eu-west-2")
 	asked(m, "", true, "manual")
 	asked(m, "", true, "manual", "runs")

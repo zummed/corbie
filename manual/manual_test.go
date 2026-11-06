@@ -666,7 +666,7 @@ func Test_man_everything_held_has_a_page(t *testing.T) {
 }
 
 // Every field a definition may hold is on a page: a type's own on the
-// type's page, and what every type takes, its limits, and a job, on the
+// type's page, and what every type takes, its limits, a job and what a job sends or calls, on the
 // page of definitions. What a definition is read by is the one account of its
 // fields, so a field added there and written on no page is found here.
 func Test_man_every_field_is_on_its_page(t *testing.T) {
@@ -677,7 +677,7 @@ func Test_man_every_field_is_on_its_page(t *testing.T) {
 		d, _ := machine.Describe(kind)
 		for name, shape := range d.Shapes {
 			on := page
-			if name == "definition" || name == "limits" || name == "job" || name == "restart" {
+			if name == "definition" || name == "limits" || name == "job" || name == "restart" || name == "address" || name == "call" || name == "sent" {
 				on = shared
 			}
 			for _, f := range shape.Fields {
@@ -1012,8 +1012,8 @@ func TestBrowserIsGivenThePagesAsPrinted(t *testing.T) {
 	if _, runs := get("/runs"); !strings.Contains(runs, `<a class="to" href="run%20show">corbie run show</a>`) {
 		t.Errorf("the page runs does not lead a browser to the page of corbie run show")
 	}
-	if _, secrets := get("/using-secrets"); !strings.Contains(secrets, `<li><a class="to" href="run%20submit">corbie run submit</a>`) {
-		t.Errorf("the page using-secrets does not list the page of corbie run submit among its pages")
+	if _, secrets := get("/using-secrets"); !strings.Contains(secrets, `<li><a class="to" href="controller%20secret%20set">corbie controller secret set</a>`) {
+		t.Errorf("the page using-secrets does not list the page of corbie controller secret set among its pages")
 	}
 	if status, _ := get("/nosuchpage"); status != 404 {
 		t.Errorf("a browser asking for a page that is none is answered %d", status)

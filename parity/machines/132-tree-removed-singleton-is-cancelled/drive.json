@@ -1,0 +1,4 @@
+[
+  { "wait": { "machine": "asker", "ticket": "go" }, "do": "remove", "file": "answer.yaml" },
+  { "wait": { "machine": "asker", "ticket": "go" }, "do": "reply", "value": {} }
+]

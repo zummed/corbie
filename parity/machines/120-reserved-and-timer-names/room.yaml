@@ -1,0 +1,5 @@
+statechart: room
+lifetime: keyed
+initial: open
+states:
+  open: { timers: { tick: 1h }, ticket: ok, on: { tick: open, ok: open, hello: open } }

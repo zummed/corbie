@@ -1,0 +1,7 @@
+{
+  "status": "cancelled",
+  "record": [
+    { "machine": "lookup", "status": "cancelled" }
+  ],
+  "note": "R-ctl-129: cancelling a calling job cancels the run it called."
+}

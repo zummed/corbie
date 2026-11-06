@@ -2,6 +2,7 @@ package plugin
 
 import (
 	"bytes"
+	"encoding/json/jsontext"
 	"encoding/json/v2"
 	"errors"
 	"io"
@@ -193,11 +194,70 @@ func (j *Job) As(data []byte, form, typ string) (any, error) {
 	case "blob":
 		return NewBlob(typ, data), nil
 	case "json":
-		var v any
-		if err := json.Unmarshal(bytes.TrimPrefix(data, bom), &v); err != nil {
+		v, err := ParseJSON(bytes.TrimPrefix(data, bom))
+		if err != nil {
 			return nil, Errorf(BadInput, "it is not JSON: %v", err)
 		}
 		return v, nil
 	}
 	return nil, Errorf(BadInput, "as: is \"text\", \"bytes\", \"json\" or \"blob\", not %q", form)
+}
+
+// ParseJSON reads a JSON document of one value, as ReadJSON does.
+func ParseJSON(data []byte) (any, error) {
+	dec := jsontext.NewDecoder(bytes.NewReader(data))
+	v, err := ReadJSON(dec)
+	if err != nil {
+		return nil, err
+	}
+	if _, err := dec.ReadToken(); err != io.EOF {
+		if err == nil {
+			err = errors.New("there is more after the value")
+		}
+		return nil, err
+	}
+	return v, nil
+}
+
+// ReadJSON reads one JSON value. Each map in it is an Ordered, with its
+// keys in the order they were written.
+func ReadJSON(dec *jsontext.Decoder) (any, error) {
+	switch dec.PeekKind() {
+	case '{':
+		if _, err := dec.ReadToken(); err != nil {
+			return nil, err
+		}
+		m := NewOrdered()
+		for dec.PeekKind() != '}' {
+			key, err := dec.ReadToken()
+			if err != nil {
+				return nil, err
+			}
+			name := key.String()
+			v, err := ReadJSON(dec)
+			if err != nil {
+				return nil, err
+			}
+			m.Set(name, v)
+		}
+		_, err := dec.ReadToken()
+		return m, err
+	case '[':
+		if _, err := dec.ReadToken(); err != nil {
+			return nil, err
+		}
+		list := []any{}
+		for dec.PeekKind() != ']' {
+			v, err := ReadJSON(dec)
+			if err != nil {
+				return nil, err
+			}
+			list = append(list, v)
+		}
+		_, err := dec.ReadToken()
+		return list, err
+	}
+	var v any
+	err := json.UnmarshalDecode(dec, &v)
+	return v, err
 }

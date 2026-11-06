@@ -51,7 +51,8 @@ Choose where it runs
 Check the setup
 ---------------
 
-`corbie check` ends every setup. It starts a run with one job and one timer.
+`corbie check` ends every setup. It records a machine at
+`/corbie-check/<client>` and starts a run of it with one job and one timer.
 
   the controller took the start    ok     1.0s
   a runner took the job            ok     0.2s

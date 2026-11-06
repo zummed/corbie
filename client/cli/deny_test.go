@@ -43,7 +43,7 @@ func TestCeilingIsGivenADenyList(t *testing.T) {
 	// command line, and gives which layers refused the file, if any did.
 	reads := func(file string) string {
 		t.Helper()
-		_, out, said := m.run("", "run", "submit", script, "--allow", "all", "--input", inputOf(file), "--wait", "--json")
+		_, out, said := m.run("", "run", "submit", m.recorded(script, "--allow", "all"), "--input", inputOf(file), "--wait", "--json")
 		var run struct{ Status, Refused, Layer string }
 		if err := json.Unmarshal([]byte(out), &run); err != nil {
 			t.Fatalf("submit printed %q and said %q", out, said)
@@ -130,5 +130,24 @@ func TestStartIsGivenADenyList(t *testing.T) {
 	}
 	if status, _, said := m.run("", "test", definition, "--input", input, "--deny", "nonsense"); status != 2 || !strings.Contains(said, "--deny: ") {
 		t.Fatalf("a deny entry that is no permission ended %d: %s", status, said)
+	}
+}
+
+// A client's ceiling takes at entries, and a runner's does not.
+func TestOnlyAClientsCeilingTakesAt(t *testing.T) {
+	m := machine{t, filepath.Join(t.TempDir(), "config")}
+	m.ok("", "init", "--store", filepath.Join(t.TempDir(), "store"), "--name", "box", "--ceiling", "all")
+	m.ok("", "controller", "enrol", "box-client", "--ceiling", "at:/work,send:/work/**,network")
+	if out := m.ok("", "controller", "parties"); !strings.Contains(out, "ceiling: at:/work,send:/work/**,network") {
+		t.Fatalf("the controller's parties: %s", out)
+	}
+	for _, mistaken := range [][]string{
+		{"controller", "enrol", "box-client", "--ceiling", "at:work"},
+		{"controller", "enrol", "box-client", "--ceiling", "send:work/**"},
+		{"runner", "trust", "box-controller", "--ceiling", "at:/work"},
+	} {
+		if status, _, said := m.run("", mistaken...); status != 2 || !strings.Contains(said, "--ceiling: ") {
+			t.Errorf("corbie %s ended %d: %s", strings.Join(mistaken, " "), status, said)
+		}
 	}
 }

@@ -1,0 +1,12 @@
+# The first stage sends set to the singleton at /case/boiler and ends done,
+# with no output, once the message is written. The second sends to
+# /case/lost, where no singleton runs: the send is noted as undelivered, and
+# the stage ends done all the same.
+flow: lower
+allow: [send:boiler, send:lost]
+stages:
+  lower: { job: { send: { to: { at: boiler }, event: set, data: { target: 12 } } } }
+  lost: { job: { send: { to: { at: lost }, event: set } } }
+output:
+  lower: ${stages.lower.output ?? 'none'}
+  lost: ${stages.lost.output ?? 'none'}

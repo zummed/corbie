@@ -48,7 +48,7 @@ ask's note.
 The ask
 -------
 
-  input.jobs    the held jobs: [{ name, input, allow, script or machine }]
+  input.jobs    the held jobs: [{ name, input, allow, script, machine, call or send }]
   the result    { approve: [names of jobs], note }
 
 An ask is any job.
@@ -65,9 +65,11 @@ list of an entry in one, it has `set`, the set's full name, such as
 `platform.deploys`. A call that is not approved goes back to the model as
 denied.
 
-A machine with no `ask:` uses the ask of the machine above it. A job of an
-agent's set, and every machine below it, use the `ask:` of the set, or of the
-nearest set it is inside that has one.
+A machine with no `ask:` uses the ask of the machine above it. A run that a
+send or a call started has no machine above it, and uses only its own file's
+`ask:`. `ask_about: [send:…]` holds a call or a send job, and never a
+statechart's `send:` action. A job of an agent's set, and every machine below
+it, use the `ask:` of the set, or of the nearest set it is inside that has one.
 
 A machine made while running has no ask of its own, and one that writes an
 `ask:` fails as it starts, saying so. Its held jobs go to the nearest `ask:`

@@ -49,7 +49,7 @@ func TestRunThroughTheStore(t *testing.T) {
 	}
 
 	// An event the chart has a rule for.
-	message, err := w.client.Send(ctx, run, "open", nil, 0)
+	message, err := w.client.Send(ctx, w.to(run), "open", nil, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -76,7 +76,7 @@ func TestRunThroughTheStore(t *testing.T) {
 	}
 
 	// An event it has no rule for is dropped, and the receipt says so.
-	message, _ = w.client.Send(ctx, run, "open", nil, 0)
+	message, _ = w.client.Send(ctx, w.to(run), "open", nil, 0)
 	w.settle()
 	if r := w.receipt(message); r == nil || !r.Taken || r.Acted == nil || *r.Acted {
 		t.Fatalf("the receipt for an event with no rule is %+v", r)
@@ -118,7 +118,7 @@ func TestTimerEndsTheWait(t *testing.T) {
 	w := newWorld(t)
 	run := w.submit(door, nil, map[string]any{"greeting": "hi"})
 	w.settle()
-	w.client.Send(ctx, run, "open", nil, 0)
+	w.client.Send(ctx, w.to(run), "open", nil, 0)
 	w.settle()
 
 	// A pass before the timer's time leaves it.

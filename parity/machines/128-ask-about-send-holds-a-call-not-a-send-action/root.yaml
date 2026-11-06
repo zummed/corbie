@@ -1,0 +1,13 @@
+# ask_about: [send:…] holds the chart's call job for its ask. The send
+# action on entering the state is never held.
+statechart: caller
+allow: ["send:**"]
+ask_about: ["send:**"]
+ask: ./yes.js
+initial: calling
+states:
+  calling:
+    entry: { send: { to: { at: room, key: k }, event: hi } }
+    job: { call: { at: lookup }, input: { n: 1 } }
+    on: { done: over }
+  over: { end: done }

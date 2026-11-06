@@ -7,9 +7,11 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/zummed/corbie/client"
 	"github.com/zummed/corbie/identity"
@@ -23,11 +25,12 @@ import (
 // ceiling reads a ceiling as it is given on a command line. --ceiling sets
 // its allow list, entries with commas between them; --allow and --deny each
 // add one entry, and with no --ceiling they are added to the ceiling the
-// party has.
+// party has. check is what each list is checked with: a client's ceiling
+// takes at entries, and no other list does.
 // none is what --ceiling and --tags are given to take away what was set.
 const none = "none"
 
-func ceiling(text string, allow, deny []string, has permission.Layer) (permission.Layer, error) {
+func ceiling(text string, allow, deny []string, has permission.Layer, check func([]string) error) (permission.Layer, error) {
 	var set []string
 	for _, entry := range strings.Split(text, ",") {
 		if entry = strings.TrimSpace(entry); entry != "" && text != none {
@@ -38,7 +41,7 @@ func ceiling(text string, allow, deny []string, has permission.Layer) (permissio
 		flag    string
 		entries []string
 	}{{"--ceiling", set}, {"--allow", allow}, {"--deny", deny}} {
-		if err := permission.CheckList(given.entries); err != nil {
+		if err := check(given.entries); err != nil {
 			return permission.Layer{}, Mistake("%s: %v", given.flag, err)
 		}
 	}
@@ -216,7 +219,7 @@ func cmdInit(e *Env, args []string) error {
 	if e.store == "" {
 		e.store = filepath.Join(cfg.Dir, "store")
 	}
-	limit, err := ceiling(ceilingText, nil, deny, permission.Layer{})
+	limit, err := ceiling(ceilingText, nil, deny, permission.Layer{}, permission.CheckList)
 	if err != nil {
 		return err
 	}
@@ -263,7 +266,11 @@ func cmdInit(e *Env, args []string) error {
 	// The controller trusts the runner and the client; they trust it. A
 	// name stays tied to the key it was first trusted with, here as when a
 	// party is enrolled, and both are looked at before either is written.
-	trusted := []identity.Trust{{Card: run.Card}, {Card: cli.Card, Ceiling: limit}}
+	// The client's ceiling holds at:/** beside the ceiling, so it may
+	// submit a tree at any prefix.
+	clientCeiling := limit
+	clientCeiling.Allow = append(slices.Clone(limit.Allow), permission.At+":/**")
+	trusted := []identity.Trust{{Card: run.Card}, {Card: cli.Card, Ceiling: clientCeiling}}
 	for _, t := range trusted {
 		old, err := identity.ReadTrust(e.ctx, s, ctl.Card, t.Card.Name)
 		if err != nil {
@@ -456,7 +463,11 @@ func cmdEnrol(e *Env, args []string) error {
 	if err != nil {
 		return err
 	}
-	if trust.Ceiling, err = ceiling(ceilingText, allow, deny, has(old, card)); err != nil {
+	check := permission.CheckList
+	if card.Kind == identity.Client {
+		check = permission.CheckCeiling
+	}
+	if trust.Ceiling, err = ceiling(ceilingText, allow, deny, has(old, card), check); err != nil {
 		return err
 	}
 	for _, tag := range strings.Split(tags, ",") {
@@ -564,7 +575,7 @@ func cmdTrust(kind identity.Kind) func(e *Env, args []string) error {
 				}
 			}
 		}
-		if trust.Ceiling, err = ceiling(ceilingText, allow, deny, has(old, card)); err != nil {
+		if trust.Ceiling, err = ceiling(ceilingText, allow, deny, has(old, card), permission.CheckList); err != nil {
 			return err
 		}
 		trust.Store = address
@@ -683,6 +694,7 @@ func cmdParties(e *Env, args []string) error {
 func cmdSecretSet(e *Env, args []string) error {
 	var fromEnv bool
 	e.Flags.BoolVar(&fromEnv, "env", false, "")
+	at := atFlag(e)
 	rest, err := e.Parse(args)
 	if err != nil {
 		return err
@@ -692,6 +704,9 @@ func cmdSecretSet(e *Env, args []string) error {
 	}
 	name := rest[0]
 	if err := checkSecretName(name); err != nil {
+		return err
+	}
+	if err := checkAt(*at); err != nil {
 		return err
 	}
 	fromStdin := len(rest) == 2 && rest[1] == "-"
@@ -722,7 +737,21 @@ func cmdSecretSet(e *Env, args []string) error {
 	if err != nil {
 		return err
 	}
-	return secret.Set(e.ctx, s, ctl, name, value)
+	return secret.Set(e.ctx, s, ctl, *at, name, value)
+}
+
+// atFlag is the flag --at: the location a secret or a value is set at, by
+// default "/".
+func atFlag(e *Env) *string {
+	return e.Flags.String("at", "/", "")
+}
+
+// checkAt refuses a location a secret or a value cannot be set at.
+func checkAt(at string) error {
+	if err := store.CheckLocation(at); err != nil {
+		return Mistake("--at %q: a location starts with /, as /home/devices/boiler, and no part of it is empty, ., .. or +, or holds # or *", at)
+	}
+	return nil
 }
 
 // checkSecretName refuses a name a secret cannot have, and a value written
@@ -793,6 +822,7 @@ func secretTyped(e *Env, name, otherwise string) (string, error) {
 }
 
 func cmdSecretRemove(e *Env, args []string) error {
+	at := atFlag(e)
 	rest, err := e.Parse(args)
 	if err != nil {
 		return err
@@ -800,11 +830,14 @@ func cmdSecretRemove(e *Env, args []string) error {
 	if len(rest) != 1 {
 		return Mistake("name the secret to remove")
 	}
+	if err := checkAt(*at); err != nil {
+		return err
+	}
 	ctl, s, err := e.Controller()
 	if err != nil {
 		return err
 	}
-	return secret.Remove(e.ctx, s, ctl, rest[0])
+	return secret.Remove(e.ctx, s, ctl, *at, rest[0])
 }
 
 func cmdSecretList(e *Env, args []string) error {
@@ -815,22 +848,93 @@ func cmdSecretList(e *Env, args []string) error {
 	if err != nil {
 		return err
 	}
-	names, err := secret.List(e.ctx, s, ctl.Name)
+	entries, err := secret.List(e.ctx, s, ctl.Name)
 	if err != nil {
 		return err
 	}
-	if names == nil {
-		names = []string{}
+	type listed struct {
+		Name string `json:"name"`
+		At   string `json:"at"`
 	}
-	return e.Print(names, func() string {
-		if len(names) == 0 {
-			return ""
-		}
-		return strings.Join(names, "\n") + "\n"
-	})
+	printed, rows := []listed{}, [][]string{}
+	for _, entry := range entries {
+		printed = append(printed, listed{entry.Name, entry.At})
+		rows = append(rows, []string{entry.Name, entry.At})
+	}
+	return e.Print(printed, func() string { return aligned(rows) })
 }
 
-// cmdControllerCancel cancels any run, whichever client started it, with
+func cmdValueSet(e *Env, args []string) error {
+	at := atFlag(e)
+	rest, err := e.Parse(args)
+	if err != nil {
+		return err
+	}
+	if len(rest) != 2 {
+		return Mistake("name the value, then give it")
+	}
+	if err := secret.CheckValueName(rest[0]); err != nil {
+		return Mistake("%v", err)
+	}
+	if err := checkAt(*at); err != nil {
+		return err
+	}
+	ctl, s, err := e.Controller()
+	if err != nil {
+		return err
+	}
+	return secret.SetValue(e.ctx, s, ctl, *at, rest[0], rest[1])
+}
+
+func cmdValueRemove(e *Env, args []string) error {
+	at := atFlag(e)
+	rest, err := e.Parse(args)
+	if err != nil {
+		return err
+	}
+	if len(rest) != 1 {
+		return Mistake("name the value to remove")
+	}
+	if err := checkAt(*at); err != nil {
+		return err
+	}
+	ctl, s, err := e.Controller()
+	if err != nil {
+		return err
+	}
+	return secret.RemoveValue(e.ctx, s, ctl, *at, rest[0])
+}
+
+func cmdValueList(e *Env, args []string) error {
+	if _, err := e.Parse(args); err != nil {
+		return err
+	}
+	ctl, s, err := e.Controller()
+	if err != nil {
+		return err
+	}
+	entries, err := secret.ListValues(e.ctx, s, ctl)
+	if err != nil {
+		return err
+	}
+	type listed struct {
+		Name  string `json:"name"`
+		At    string `json:"at"`
+		Value string `json:"value"`
+	}
+	printed, rows := []listed{}, [][]string{}
+	for _, entry := range entries {
+		printed = append(printed, listed{entry.Name, entry.At, entry.Value})
+		value := entry.Value
+		if strings.ContainsFunc(value, unicode.IsControl) {
+			value = strconv.Quote(value)
+		}
+		rows = append(rows, []string{entry.Name, entry.At, value})
+	}
+	return e.Print(printed, func() string { return aligned(rows) })
+}
+
+// cmdControllerCancel cancels any run, in any client's tree, with
 // the controller's own key.
 func cmdControllerCancel(e *Env, args []string) error {
 	rest, err := e.Parse(args)
@@ -924,4 +1028,26 @@ func cmdPolicy(e *Env, args []string) error {
 	}
 	_, err = fmt.Fprintln(e.Out, policy)
 	return err
+}
+
+// aligned prints rows of text in columns two spaces apart, the last of
+// each row as it is.
+func aligned(rows [][]string) string {
+	var widths []int
+	for _, row := range rows {
+		for i, cell := range row[:len(row)-1] {
+			if i == len(widths) {
+				widths = append(widths, 0)
+			}
+			widths[i] = max(widths[i], len(cell))
+		}
+	}
+	var b strings.Builder
+	for _, row := range rows {
+		for i, cell := range row[:len(row)-1] {
+			fmt.Fprintf(&b, "%-*s  ", widths[i], cell)
+		}
+		b.WriteString(row[len(row)-1] + "\n")
+	}
+	return b.String()
 }

@@ -1,0 +1,9 @@
+{
+  "status": "done",
+  "output": { "lower": "none", "lost": "none" },
+  "record": [
+    { "machine": "boiler", "event": { "name": "set", "data": { "target": 12 }, "sender": { "at": "/case/root", "run": "<any>" } } },
+    { "machine": "lower", "ask": { "kind": "event", "name": "lost", "location": "/case/lost", "undelivered": true } }
+  ],
+  "note": "R-ctl-131: a send job ends done, with no output, once its event is written; one not delivered is noted in the record and fails nothing."
+}

@@ -38,7 +38,7 @@ or ceiling.
 Ceilings and tags
 -----------------
 
-  a controller gives a client a ceiling   the most any run that client starts may be allowed
+  a controller gives a client a ceiling   the most any run in that client's trees may be allowed; its at: entries are the prefixes it may submit at
   a runner gives a controller a ceiling   the most that controller's jobs may be allowed on the runner
   a controller gives a runner tags        a job with `tags:` goes to a runner that has every tag it names
 

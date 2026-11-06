@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"slices"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -17,12 +18,15 @@ import (
 	"github.com/zummed/corbie/instance"
 	"github.com/zummed/corbie/machine"
 	"github.com/zummed/corbie/permission"
+	"github.com/zummed/corbie/secret"
 	"github.com/zummed/corbie/store"
 )
 
-// talk is a run a key names. It ends when it is told bye.
+// talk is the keyed file at /t/room: a run for each key. It ends when it is
+// told bye.
 const talk = `
 	statechart: talk
+	lifetime: keyed
 	initial: open
 	states:
 	  open:
@@ -30,28 +34,69 @@ const talk = `
 	      said:
 	        - { go: over, when: "${event.data.text == 'bye'}" }
 	        - { go: open }
-	  over: { end: done, output: "${run.key}" }
+	  over: { end: done }
 `
 
-// router sends what it is told to the run of a chat.
+// router is the transient file at /t/router. It sends what it is told to the
+// run of a chat at /t/room, and rings the run of the location it is given.
 const router = `
 	statechart: router
+	allow: ["send:**"]
 	initial: ready
 	states:
 	  ready:
 	    on:
-	      say: { send: { to: { machine: ./talk.yaml, key: "chat:${event.data.chat}" }, event: said, data: "${event.data}" } }
-	      tell: { send: { to: { key: "chat:${event.data.chat}" }, event: said, data: "${event.data}" } }
+	      say: { send: { to: { at: room, key: "chat:${event.data.chat}" }, event: said, data: "${event.data}" } }
+	      ring: { send: { to: { at: "${event.data.at}" }, event: rang } }
+	      poke: { send: { to: { at: "${event.data.at}", run: "${event.data.run}" }, event: said, data: "${event.data}" } }
 	      stop: gone
 	  gone: { end: done }
 `
 
-var routed = map[string]string{"talk.yaml": talk}
+// rooms submits the tree /t: the router and the room, and any other files
+// by their location. It gives a run of the router.
+func (w *world) rooms(files map[string]string, scripts ...string) string {
+	w.t.Helper()
+	given := map[string]string{}
+	for _, name := range scripts {
+		given[name] = "return input"
+	}
+	return w.roomsWith(files, given)
+}
+
+// roomsWith is rooms, with the files the machines name.
+func (w *world) roomsWith(files, named map[string]string) string {
+	w.t.Helper()
+	all := map[string]string{"/t/router": router, "/t/room": talk}
+	for at, src := range files {
+		all[at] = src
+	}
+	if r := w.submitTree(w.client, w.tree("/t", "/srv/t", all, named)); !r.Taken {
+		w.t.Fatalf("the tree was refused: %s", r.Refused)
+	}
+	return w.router()
+}
+
+// router starts another run of the router.
+func (w *world) router() string {
+	w.t.Helper()
+	run := w.startAt(w.client, "/t/router", client.Start{})
+	w.settle()
+	return run
+}
 
 // say has a client send a router an event.
 func (w *world) say(run, event string, chat int, text string) {
 	w.t.Helper()
-	if _, err := w.client.Send(ctx, run, event, map[string]any{"chat": float64(chat), "text": text}, time.Hour); err != nil {
+	if _, err := w.client.Send(ctx, w.to(run), event, map[string]any{"chat": float64(chat), "text": text}, time.Hour); err != nil {
+		w.t.Fatal(err)
+	}
+}
+
+// tell has a client send a router an event with data.
+func (w *world) tell(run, event string, data map[string]any) {
+	w.t.Helper()
+	if _, err := w.client.Send(ctx, w.to(run), event, data, time.Hour); err != nil {
 		w.t.Fatal(err)
 	}
 }
@@ -88,22 +133,22 @@ func (w *world) told(run string) []string {
 	return texts
 }
 
-// entry reads a key's entry.
-func (w *world) entry(client, key string) *instance.KeyFile {
+// entry reads the file of a key at a location.
+func (w *world) entry(location, key string) *instance.KeyFile {
 	w.t.Helper()
-	entry, _, err := instance.ReadKey(ctx, w.owner, w.ctl.Card, w.ctl, client, key)
+	entry, _, err := instance.ReadKey(ctx, w.owner, w.ctl.Card, w.ctl, store.Key("ctl", location, key), key)
 	if err != nil {
 		w.t.Fatal(err)
 	}
 	return entry
 }
 
-// write signs a key's entry, as a controller stopped at the right moment
+// writeEntry signs a key's file, as a controller stopped at the right moment
 // leaves it.
-func (w *world) writeEntry(client, key, run, start string) {
+func (w *world) writeEntry(location, key, run, start string) {
 	w.t.Helper()
-	at := store.Key("ctl", client, key)
-	data, err := w.ctl.Write(at, w.now, time.Time{}, instance.KeyFile{Key: key, Run: run, Start: start}, w.ctl.Card, w.c1.Card)
+	at := store.Key("ctl", location, key)
+	data, err := w.ctl.Write(at, w.now, time.Time{}, instance.KeyFile{Key: key, Run: run, Start: start}, w.ctl.Card)
 	if err != nil {
 		w.t.Fatal(err)
 	}
@@ -112,7 +157,8 @@ func (w *world) writeEntry(client, key, run, start string) {
 	}
 }
 
-// keyNotes gives what a run's record says of its sends to keys that failed.
+// keyNotes gives what a run's record says of its sends that were not
+// delivered.
 func (w *world) keyNotes(run string) []string {
 	w.t.Helper()
 	var notes []string
@@ -121,23 +167,35 @@ func (w *world) keyNotes(run string) []string {
 			switch {
 			case ask.Kind == instance.AskNote:
 				notes = append(notes, ask.Text)
-			case ask.Kind == instance.AskEvent && ask.Undelivered && ask.Name == "" && ask.Text != "":
-				notes = append(notes, ask.Text)
 			case ask.Kind == instance.AskEvent && ask.Undelivered && ask.Name == "":
-				notes = append(notes, "undelivered "+ask.Key)
+				notes = append(notes, ask.Text)
 			}
 		}
 	}
 	return notes
 }
 
-// A send with a machine starts a run with the key when no run has it, gives
-// it the event's data as its input and then the event, and joins that run
-// after. The run is a root of the sender's client that records its sender.
+// sentBy gives the asks of a run's record that send to an address.
+func (w *world) sentBy(run string) []instance.Ask {
+	w.t.Helper()
+	var asks []instance.Ask
+	for _, step := range w.steps(run) {
+		for _, ask := range step.Asks {
+			if ask.Kind == instance.AskEvent && ask.Location != "" {
+				asks = append(asks, ask)
+			}
+		}
+	}
+	return asks
+}
+
+// A send to a key with no running run starts one, a root of the client of
+// the receiving tree, gives it the event's data as its input and then the
+// event, and goes to that run after. The run's head names its location, its
+// key and its sender, and its record names the sender's address.
 func Test_chart_send_to_a_key_starts_a_run_then_delivers(t *testing.T) {
 	w := newWorld(t)
-	sender := w.submit(router, routed, nil)
-	w.settle()
+	sender := w.rooms(nil)
 	w.say(sender, "say", 1, "one")
 	w.settle()
 	w.say(sender, "say", 1, "two")
@@ -151,58 +209,79 @@ func Test_chart_send_to_a_key_starts_a_run_then_delivers(t *testing.T) {
 		t.Fatalf("the run was told %v", got)
 	}
 	head, st := w.head(run), w.latest(run).State
-	if head.Key != "chat:1" || head.Parent != "" || head.StartedBy != sender || store.InstanceClient(run) != "c1" {
+	if head.Location != "/t/room" || head.Key != "chat:1" || head.Parent != "" || head.StartedBy != sender || store.InstanceClient(run) != "c1" {
 		t.Fatalf("the head is %+v", head)
 	}
-	if st.Above.Parent != "" || st.Above.StartedBy != sender || st.Above.Depth != 1 {
+	if st.Above.Parent != "" || st.Above.StartedBy != sender || st.Above.Depth != 1 || st.Lifetime != machine.LifetimeKeyed {
 		t.Fatalf("it runs under %+v", st.Above)
 	}
 	if in, _ := st.Input.(map[string]any); in["text"] != "one" {
 		t.Fatalf("its input is %v", st.Input)
 	}
-	if entry := w.entry("c1", "chat:1"); entry == nil || entry.Run != run {
+	if entry := w.entry("/t/room", "chat:1"); entry == nil || entry.Run != run {
 		t.Fatalf("the entry is %+v", entry)
 	}
-	for _, step := range w.steps(run) {
-		for _, event := range step.Events {
-			if event.Name == "said" && event.From != sender {
-				t.Fatalf("the event is from %q", event.From)
-			}
-		}
+	first := w.steps(run)[0]
+	if len(first.Events) != 2 || first.Events[0].Name != machine.Start || first.Events[1].Name != "said" {
+		t.Fatalf("the first step took %+v", first.Events)
+	}
+	if from := first.Events[1].Event.Sender; from == nil || from.At != "/t/router" || from.Run != sender || from.Key != nil {
+		t.Fatalf("the event came from %+v", from)
+	}
+	asks := w.sentBy(sender)
+	if len(asks) != 2 || asks[0].Run != run || asks[0].To != run || asks[1].Run != "" || asks[1].To != run || asks[0].Location != "/t/room" || asks[0].Key != "chat:1" {
+		t.Fatalf("the sender's record says %+v", asks)
 	}
 }
 
-// A send to a key with no machine reaches the run with the key, and one that
-// names no run is written in the sender's record and fails nothing.
-func Test_chart_send_to_a_key_no_run_has_is_undelivered(t *testing.T) {
+// A send to { at } goes to the singleton's run. With none running, at a
+// location that is not a singleton, or where nothing is recorded, it is
+// written in the sender's record as undelivered, saying which, and fails
+// nothing.
+func Test_chart_send_to_a_singleton_with_no_run_is_undelivered(t *testing.T) {
 	w := newWorld(t)
-	sender := w.submit(router, routed, nil)
+	sender := w.rooms(map[string]string{"/t/bell": `
+		statechart: bell
+		lifetime: singleton
+		initial: a
+		states:
+		  a: { on: { rang: b } }
+		  b: { end: done }
+	`})
+	w.tell(sender, "ring", map[string]any{"at": "bell"})
 	w.settle()
-	w.say(sender, "tell", 1, "nobody hears this")
-	w.settle()
-	if got := w.keyNotes(sender); !slices.Equal(got, []string{"undelivered chat:1"}) || w.head(sender).Status != instance.Running {
-		t.Fatalf("the record says %v, and the run is %s", got, w.head(sender).Status)
+	bell := w.at("/t/bell")
+	if len(bell) != 1 {
+		t.Fatalf("the bell's runs are %v", bell)
 	}
-	if got := w.runsOf("talk"); len(got) != 0 {
-		t.Fatalf("the send started %v", got)
+	for _, at := range []string{"bell", "router", "nowhere"} {
+		w.tell(sender, "ring", map[string]any{"at": at})
+		w.settle()
 	}
-	w.say(sender, "say", 1, "one")
-	w.settle()
-	w.say(sender, "tell", 1, "two")
-	w.settle()
-	if got := w.told(w.runsOf("talk")[0]); !slices.Equal(got, []string{"one", "two"}) {
-		t.Fatalf("the run was told %v", got)
+	notes := w.keyNotes(sender)
+	if len(notes) != 3 || !strings.Contains(notes[0], "no run of the singleton at /t/bell") ||
+		!strings.Contains(notes[1], "/t/router is transient") || !strings.Contains(notes[2], "nothing is recorded at /t/nowhere") {
+		t.Fatalf("the record says %v", notes)
+	}
+	if head := w.head(sender); head.Status != instance.Running {
+		t.Fatalf("the sender is %s", head.Status)
 	}
 }
 
-// A key is free again once its run ends.
+// A key is free again once its run ends, and so is a singleton's.
 func Test_ctl_key_is_free_once_its_run_ends(t *testing.T) {
 	w := newWorld(t)
-	sender := w.submit(router, routed, nil)
-	w.settle()
+	sender := w.rooms(map[string]string{"/t/bell": `
+		statechart: bell
+		lifetime: singleton
+		initial: a
+		states:
+		  a: { on: { rang: b } }
+		  b: { end: done }
+	`})
 	w.say(sender, "say", 1, "bye")
 	w.settle()
-	if entry := w.entry("c1", "chat:1"); entry != nil {
+	if entry := w.entry("/t/room", "chat:1"); entry != nil {
 		t.Fatalf("the entry of a run that ended is %+v", entry)
 	}
 	w.say(sender, "say", 1, "again")
@@ -210,203 +289,103 @@ func Test_ctl_key_is_free_once_its_run_ends(t *testing.T) {
 	if runs := w.runsOf("talk"); len(runs) != 2 {
 		t.Fatalf("the runs are %v", runs)
 	}
+	if entry := w.entry("/t/bell", ""); entry == nil {
+		t.Fatal("the singleton's key has no file")
+	}
+	w.tell(sender, "ring", map[string]any{"at": "bell"})
+	w.settle()
+	if entry := w.entry("/t/bell", ""); entry != nil {
+		t.Fatalf("the singleton ended and its key names %+v", entry)
+	}
 }
 
 // A key is any text: it is in no name in the store, however it is written.
 func Test_store_a_key_is_in_no_name(t *testing.T) {
-	w := newWorld(t)
-	key := "../a/b:c d/" + strings.Repeat("é", 200)
-	if _, err := w.client.Start(ctx, w.draft(talk, nil), client.Start{Key: key}); err != nil {
-		t.Fatal(err)
-	}
-	w.settle()
-	found := w.entry("c1", key)
-	if found == nil {
-		t.Fatal("the key has no entry")
-	}
-	if head := w.head(found.Run); head.Key != key {
-		t.Fatalf("the head says %q", head.Key)
-	}
-	sum := sha256.Sum256([]byte(key))
-	if name := store.Key("ctl", "c1", key); name != "ctl/keys/c1/"+hex.EncodeToString(sum[:]) {
-		t.Fatalf("the key's entry is under %s", name)
-	}
-	for _, name := range w.list("ctl") {
-		if strings.Contains(name, "é") {
-			t.Fatalf("a name holds the key: %s", name)
+	for _, key := range []string{"a/b", "../../x", "with space", strings.Repeat("é", 256), " "} {
+		sum := sha256.Sum256([]byte(key))
+		if name := store.Key("ctl", "/t/room", key); name != "ctl/locations/t/room/+/keys/"+hex.EncodeToString(sum[:]) {
+			t.Fatalf("the key %q is named %s", key, name)
 		}
 	}
 }
 
-// A client's keys name only that client's runs.
-func Test_ctl_a_key_names_only_runs_of_its_client(t *testing.T) {
+// One key at two locations is two runs, and a send names the run of the
+// location it is sent to.
+func Test_ctl_a_key_names_runs_of_one_location(t *testing.T) {
 	w := newWorld(t)
-	c2 := w.party("c2", identity.Client)
-	w.enrol(c2, permission.Layer{Allow: []string{"all"}}, nil)
-	theirs, err := w.clientOf(c2).Start(ctx, w.draft(talk, nil), client.Start{Key: "chat:1"})
-	if err != nil {
-		t.Fatal(err)
-	}
+	other := strings.Replace(router, "at: room", "at: hall", 1)
+	sender := w.rooms(map[string]string{"/t/hall": talk, "/t/other": other})
+	second := w.startAt(w.client, "/t/other", client.Start{})
 	w.settle()
-	sender := w.submit(router, routed, nil)
+	w.say(sender, "say", 1, "one")
+	w.say(second, "say", 1, "two")
 	w.settle()
-	w.say(sender, "tell", 1, "not for them")
-	w.say(sender, "say", 1, "mine")
-	w.settle()
-	if got := w.told(theirs); len(got) != 0 {
-		t.Fatalf("another client's run was told %v", got)
+	runs := w.runsOf("talk")
+	if len(runs) != 2 || w.head(runs[0]).Location == w.head(runs[1]).Location {
+		t.Fatalf("the runs are %v", runs)
 	}
-	if got := w.keyNotes(sender); !slices.Equal(got, []string{"undelivered chat:1"}) {
-		t.Fatalf("the record says %v", got)
-	}
-	var mine []string
-	for _, run := range w.runsOf("talk") {
-		if run != theirs {
-			mine = append(mine, run)
+	for _, run := range runs {
+		if w.head(run).Key != "chat:1" {
+			t.Fatalf("the run %s has the key %q", run, w.head(run).Key)
 		}
 	}
-	if len(mine) != 1 || store.InstanceClient(mine[0]) != "c1" {
-		t.Fatalf("the runs are %v", mine)
-	}
 }
 
-// waits is a machine that waits for an event.
-const waits = `
-	statechart: waits
-	initial: open
-	states:
-	  open: { on: { finish: over } }
-	  over: { end: done }
-`
-
-// A client's start with a key in use is refused in its receipt, and leaves
-// no run. Sent again once the key is free, it is taken.
-func Test_ctl_client_start_with_a_key_in_use_is_refused(t *testing.T) {
-	w := newWorld(t)
-	first, err := w.client.Start(ctx, w.draft(waits, nil), client.Start{Key: "k"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	w.settle()
-	second, err := w.client.Start(ctx, w.draft(waits, nil), client.Start{Key: "k"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	w.settle()
-	_, message, _ := strings.Cut(second, "/")
-	if r := w.receipt(message); r == nil || r.Taken || !strings.Contains(r.Refused, "in use") || !strings.Contains(r.Refused, first) || w.head(second) != nil {
-		t.Fatalf("the receipt is %+v and the head %+v", r, w.head(second))
-	}
-	if _, err := w.client.Send(ctx, first, "finish", nil, time.Hour); err != nil {
-		t.Fatal(err)
-	}
-	w.settle()
-	third, err := w.client.Start(ctx, w.draft(waits, nil), client.Start{Key: "k"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	w.settle()
-	if head := w.head(third); head == nil || head.Status != instance.Running || head.Key != "k" {
-		t.Fatalf("the head is %+v", head)
-	}
-}
-
-// A job with a key whose key is in use fails, with a reason. A run with the
-// key from a job is an ordinary child, cancelled with its job.
-func Test_ctl_job_with_a_key_in_use_fails(t *testing.T) {
-	w := newWorld(t)
-	files := map[string]string{"waits.yaml": waits}
-	flow := `
-		flow: asks
-		stages:
-		  a: { job: { machine: ./waits.yaml, key: "${input.key}" } }
-	`
-	first := w.submit(flow, files, map[string]any{"key": "k"})
-	w.settle()
-	second := w.submit(flow, files, map[string]any{"key": "k"})
-	w.settle()
-	st := w.latest(second).State
-	if st.Status != instance.Failed || !strings.Contains(st.Error.Error, "in use") {
-		t.Fatalf("the second run is %s: %+v", st.Status, st.Error)
-	}
-	child := w.child(first)
-	if head := w.head(child); head.Key != "k" || head.Parent != first {
-		t.Fatalf("the child's head is %+v", head)
-	}
-	if _, err := w.client.Cancel(ctx, first, time.Hour); err != nil {
-		t.Fatal(err)
-	}
-	w.settle()
-	if head := w.head(child); head.Status != instance.Cancelled {
-		t.Fatalf("the child is %s", head.Status)
-	}
-	if entry := w.entry("c1", "k"); entry != nil {
-		t.Fatalf("the entry of a child that ended is %+v", entry)
-	}
-}
-
-// A key past the bound, or empty, fails the send or the job with a reason in
-// the sender's record, and nothing is written to the store. The sender goes
-// on: a key can come from outside.
+// A key past its bound, or empty, is undelivered before anything is read.
 func Test_mach_key_past_its_bound_writes_nothing(t *testing.T) {
 	w := newWorld(t)
-	sender := w.submit(`
-		statechart: s
+	sender := w.rooms(map[string]string{"/t/keys": `
+		statechart: keys
+		allow: ["send:room"]
 		initial: ready
 		states:
 		  ready:
 		    on:
-		      go: { send: { to: { machine: ./waits.yaml, key: "${event.data}" }, event: x } }
-	`, map[string]string{"waits.yaml": waits}, nil)
+		      go: { send: { to: { at: room, key: "${event.data}" }, event: said, data: { text: x } } }
+	`})
+	sender = w.startAt(w.client, "/t/keys", client.Start{})
 	w.settle()
-	before := w.list("ctl/keys")
-	for _, key := range []any{strings.Repeat("a", 257), "", nil, map[string]any{"a": 1.0}} {
-		if _, err := w.client.Send(ctx, sender, "go", key, time.Hour); err != nil {
+	w.noted()
+	for _, key := range []any{strings.Repeat("a", 257), "", nil} {
+		if _, err := w.client.Send(ctx, w.to(sender), "go", key, time.Hour); err != nil {
 			t.Fatal(err)
 		}
 		w.settle()
 	}
+	for _, op := range w.noted() {
+		if strings.Contains(op.Name, "/+/keys/") {
+			t.Fatalf("an undelivered key led to %s %s", op.Act, op.Name)
+		}
+	}
 	notes := w.keyNotes(sender)
-	if len(notes) != 4 || !strings.Contains(notes[0], "at most 256") || !strings.Contains(notes[1], "not empty") {
+	if len(notes) != 3 || !strings.Contains(notes[0], "at most 256") || !strings.Contains(notes[1], "not empty") || !strings.Contains(notes[2], "not empty") {
 		t.Fatalf("the record says %v", notes)
 	}
-	if got := w.list("ctl/keys"); !slices.Equal(got, before) || len(w.runsOf("waits")) != 0 || w.head(sender).Status != instance.Running {
-		t.Fatalf("the keys are %v and the runs %v", got, w.runsOf("waits"))
+	if len(w.runsOf("talk")) != 0 || w.head(sender).Status != instance.Running {
+		t.Fatalf("the runs are %v", w.runsOf("talk"))
 	}
-	if _, err := w.client.Send(ctx, sender, "go", strings.Repeat("é", 256), time.Hour); err != nil {
+	if _, err := w.client.Send(ctx, w.to(sender), "go", strings.Repeat("é", 256), time.Hour); err != nil {
 		t.Fatal(err)
 	}
 	w.settle()
-	if got := w.runsOf("waits"); len(got) != 1 {
+	if got := w.runsOf("talk"); len(got) != 1 {
 		t.Fatalf("256 characters started %v", got)
-	}
-
-	flow := `
-		flow: f
-		stages:
-		  a: { job: { machine: ./waits.yaml, key: "${input.key}" } }
-	`
-	run := w.submit(flow, map[string]string{"waits.yaml": waits}, map[string]any{"key": ""})
-	w.settle()
-	if st := w.latest(run).State; st.Status != instance.Failed || !strings.Contains(st.Error.Error, "not empty") {
-		t.Fatalf("a job with an empty key: %s %+v", st.Status, st.Error)
 	}
 }
 
-// A run's data that does not fit its machine's input fails the send in the
-// sender's record. The key stays free.
+// A run's data that does not fit its machine's input fails the run as it
+// starts, and the sender's record says so. The key is free again.
 func Test_ctl_send_whose_data_does_not_fit_fails_in_the_senders_record(t *testing.T) {
 	w := newWorld(t)
 	strict := strings.Replace(talk, "initial: open", "input: { count: number }\n\tinitial: open", 1)
-	sender := w.submit(router, map[string]string{"talk.yaml": strict}, nil)
-	w.settle()
+	sender := w.rooms(map[string]string{"/t/room": strict})
 	w.say(sender, "say", 1, "no count in this")
 	w.settle()
 	notes := w.keyNotes(sender)
-	if len(notes) != 1 || !strings.Contains(notes[0], "chat:1") || !strings.Contains(notes[0], "count") {
+	if len(notes) != 1 || !strings.Contains(notes[0], "/t/room#chat:1") || !strings.Contains(notes[0], "count") {
 		t.Fatalf("the record says %v", notes)
 	}
-	if entry := w.entry("c1", "chat:1"); entry != nil {
+	if entry := w.entry("/t/room", "chat:1"); entry != nil {
 		t.Fatalf("the key is held by %+v", entry)
 	}
 	if left := w.list(store.Inbox("ctl")); len(left) != 0 {
@@ -414,31 +393,25 @@ func Test_ctl_send_whose_data_does_not_fit_fails_in_the_senders_record(t *testin
 	}
 }
 
-// Whatever its type, a run a send starts has the event's data as its input,
-// and an event sent on to a type that does not act on it is ignored.
-func Test_ctl_send_starts_a_machine_of_any_type(t *testing.T) {
+// A flow takes no sent event: a send to a flow's run by its ID is noted as
+// undelivered.
+func Test_ctl_send_to_a_flow_or_agent_run_is_undelivered(t *testing.T) {
 	w := newWorld(t)
 	w.newRunner()
-	sender := w.submit(router, map[string]string{"talk.yaml": `
-		flow: talk
+	sender := w.rooms(map[string]string{"/t/work": `
+		flow: work
 		stages:
-		  a: { job: { script: ./step.js, input: "${input}" } }
-	`, "step.js": "return input"}, nil)
+		  a: { job: { script: ./step.js } }
+	`}, "step.js")
+	work := w.startAt(w.client, "/t/work", client.Start{})
 	w.settle()
-	w.say(sender, "say", 1, "one")
+	w.tell(sender, "poke", map[string]any{"at": "work", "run": work, "text": "x"})
 	w.settle()
-	w.say(sender, "say", 1, "two")
-	w.settle()
-	runs := w.runsOf("talk")
-	if len(runs) != 1 {
-		t.Fatalf("the runs are %v", runs)
+	if notes := w.keyNotes(sender); len(notes) != 1 || !strings.Contains(notes[0], "takes no sent event") {
+		t.Fatalf("the record says %v", notes)
 	}
-	st := w.latest(runs[0]).State
-	if in, _ := st.Input.(map[string]any); in["text"] != "one" || st.Status != instance.Running {
-		t.Fatalf("the flow has the input %v and is %s", st.Input, st.Status)
-	}
-	if got := w.told(runs[0]); !slices.Equal(got, []string{"one", "two"}) {
-		t.Fatalf("the flow was given %v", got)
+	if st := w.latest(work).State; st.Status != instance.Running || len(w.steps(work)) != 1 {
+		t.Fatalf("the flow is %s after %d steps", st.Status, len(w.steps(work)))
 	}
 }
 
@@ -466,12 +439,11 @@ func Test_ctl_key_stopped_after_every_write(t *testing.T) {
 func playKeys(t *testing.T, stopAfter int64) (string, bool) {
 	t.Helper()
 	w := newWorld(t)
-	sender := w.submit(router, routed, nil)
-	w.settle()
+	sender := w.rooms(nil)
 	w.say(sender, "say", 1, "one")
 	w.settle()
-	// Three in one step of the sender: the first ends the run the other two
-	// are sent to.
+	// Three for the sender: the first ends the run the other two are sent
+	// to.
 	w.say(sender, "say", 1, "bye")
 	w.say(sender, "say", 1, "two")
 	w.say(sender, "say", 1, "three")
@@ -494,29 +466,29 @@ func playKeys(t *testing.T, stopAfter int64) (string, bool) {
 	if left := w.list(store.Inbox("ctl")); len(left) != 0 {
 		t.Fatalf("left waiting: %v", left)
 	}
-	if entry := w.entry("c1", "chat:1"); entry == nil || w.head(entry.Run).Status != instance.Running {
+	if entry := w.entry("/t/room", "chat:1"); entry == nil || w.head(entry.Run).Status != instance.Running {
 		t.Fatalf("the key's entry is %+v", entry)
 	}
 	return strings.Join(told, " "), s.stopped.Load()
 }
 
 // Two senders race to start one key: one run starts, and each event reaches
-// it. The loser's copy of the definition stays until housekeeping.
+// it in each sender's order.
 func Test_ctl_two_senders_race_for_one_key(t *testing.T) {
 	w := newWorld(t)
-	first := w.submit(router, routed, nil)
-	second := w.submit(router, routed, nil)
-	w.settle()
-	w.say(first, "say", 1, "a")
-	w.say(second, "say", 1, "b")
+	first := w.rooms(nil)
+	second := w.router()
+	w.say(first, "say", 1, "a1")
+	w.say(second, "say", 1, "b1")
+	w.say(first, "say", 1, "a2")
+	w.say(second, "say", 1, "b2")
 	w.settle()
 	runs := w.runsOf("talk")
 	if len(runs) != 1 {
 		t.Fatalf("the runs are %v", runs)
 	}
 	got := w.told(runs[0])
-	slices.Sort(got)
-	if !slices.Equal(got, []string{"a", "b"}) {
+	if len(got) != 4 || slices.Index(got, "a1") > slices.Index(got, "a2") || slices.Index(got, "b1") > slices.Index(got, "b2") {
 		t.Fatalf("the run was told %v", got)
 	}
 }
@@ -526,9 +498,8 @@ func Test_ctl_two_senders_race_for_one_key(t *testing.T) {
 func Test_ctl_two_senders_stopped_after_every_write(t *testing.T) {
 	for n := int64(0); ; n++ {
 		w := newWorld(t)
-		first := w.submit(router, routed, nil)
-		second := w.submit(router, routed, nil)
-		w.settle()
+		first := w.rooms(nil)
+		second := w.router()
 		w.say(first, "say", 1, "a")
 		w.say(second, "say", 1, "b")
 		inner := w.ctrl.Store
@@ -565,14 +536,21 @@ func Test_ctl_two_senders_stopped_after_every_write(t *testing.T) {
 func Test_ctl_two_copies_race_for_one_key(t *testing.T) {
 	for range 5 {
 		w := newWorld(t)
-		first := w.submit(router, routed, nil)
-		second := w.submit(router, routed, nil)
-		w.settle()
+		first := w.rooms(nil)
+		second := w.router()
 		w.say(first, "say", 1, "a")
 		w.say(second, "say", 1, "b")
+		w.pass() // the sends are routed to the routers
 		other := controller.New(w.ctl, w.ctrl.Store)
 		other.Now = w.clock
 		done := make(chan error)
+		go func() { _, err := other.Pass(ctx); done <- err }()
+		if _, err := w.ctrl.Pass(ctx); err != nil {
+			t.Fatal(err)
+		}
+		if err := <-done; err != nil {
+			t.Fatal(err)
+		}
 		go func() { _, err := other.Pass(ctx); done <- err }()
 		if _, err := w.ctrl.Pass(ctx); err != nil {
 			t.Fatal(err)
@@ -593,42 +571,49 @@ func Test_ctl_two_copies_race_for_one_key(t *testing.T) {
 	}
 }
 
-// An event sent with a machine to a run that ended before it took the event
-// starts a run. One sent with no machine is noted as undelivered in the
-// sender's record.
+// An event sent to a key whose run ended before it took the event starts a
+// fresh run with it. One sent to a singleton whose run has ended, or to a run
+// by its ID that has ended, is noted in the sender's record.
 func Test_ctl_event_for_a_run_that_ended_starts_anew_or_is_noted(t *testing.T) {
-	for _, c := range []struct {
-		send string
-		runs int
-	}{{"say", 2}, {"tell", 1}} {
-		w := newWorld(t)
-		sender := w.submit(router, routed, nil)
-		w.settle()
-		w.say(sender, "say", 1, "one")
-		w.settle()
-		w.say(sender, "say", 1, "bye")
-		w.say(sender, c.send, 1, "late")
-		w.settle()
-		if runs := w.runsOf("talk"); len(runs) != c.runs {
-			t.Fatalf("%s: the runs are %v", c.send, runs)
-		}
-		if notes := w.keyNotes(sender); c.send == "tell" && (len(notes) != 1 || !strings.Contains(notes[0], "said")) {
-			t.Fatalf("the record says %v", notes)
-		}
+	w := newWorld(t)
+	sender := w.rooms(map[string]string{"/t/bell": `
+		statechart: bell
+		lifetime: singleton
+		initial: a
+		states:
+		  a: { on: { rang: b } }
+		  b: { end: done }
+	`})
+	w.say(sender, "say", 1, "one")
+	w.settle()
+	run := w.runsOf("talk")[0]
+	w.say(sender, "say", 1, "bye")
+	w.say(sender, "say", 1, "late")
+	w.tell(sender, "poke", map[string]any{"at": "room", "run": run, "text": "later"})
+	w.tell(sender, "ring", map[string]any{"at": "bell"})
+	w.tell(sender, "ring", map[string]any{"at": "bell"})
+	w.settle()
+	runs := w.runsOf("talk")
+	if len(runs) != 2 || !slices.Equal(w.told(runs[0]), []string{"late"}) {
+		t.Fatalf("the runs are %v", runs)
+	}
+	// The event for the key went to a fresh run, which the sender is told.
+	notes := w.keyNotes(sender)
+	if len(notes) != 3 || !strings.Contains(notes[0], "went to the run "+runs[0]+", not "+run) || !strings.Contains(notes[1], "has ended") || !strings.Contains(notes[2], "no run of the singleton") {
+		t.Fatalf("the record says %v", notes)
 	}
 }
 
-// An event with no machine for a run that has ended goes to the run that has
-// the key by then.
-func Test_ctl_event_with_no_machine_goes_to_the_run_that_has_the_key_now(t *testing.T) {
+// An event in flight to a run that has ended goes to the run that has the
+// key by then, under the name it was sent with.
+func Test_ctl_event_in_flight_goes_to_the_run_that_has_the_key_now(t *testing.T) {
 	w := newWorld(t)
-	sender := w.submit(router, routed, nil)
-	w.settle()
+	sender := w.rooms(nil)
 	w.say(sender, "say", 1, "one")
 	w.settle()
 	w.say(sender, "say", 1, "bye")
 	w.say(sender, "say", 1, "two")
-	w.say(sender, "tell", 1, "three")
+	w.say(sender, "say", 1, "three")
 	w.settle()
 	runs := w.runsOf("talk")
 	if len(runs) != 2 || !slices.Equal(w.told(runs[1]), []string{"two", "three"}) {
@@ -642,24 +627,18 @@ func Test_ctl_event_with_no_machine_goes_to_the_run_that_has_the_key_now(t *test
 func Test_ctl_event_on_its_way_is_not_overtaken(t *testing.T) {
 	for range 8 {
 		w := newWorld(t)
-		sender := w.submit(router, routed, nil)
-		w.settle()
-		// The sender reads an entry its run has left behind, and its event goes
+		sender := w.rooms(nil)
+		// The sender reads a file its run has left behind, and its event goes
 		// to a run that has ended.
-		ended, err := w.client.Start(ctx, w.draft(waits, nil), client.Start{})
-		if err != nil {
-			t.Fatal(err)
-		}
+		ended := w.router()
+		w.tell(ended, "stop", nil)
 		w.settle()
-		if _, err := w.client.Send(ctx, ended, "finish", nil, time.Hour); err != nil {
-			t.Fatal(err)
-		}
-		w.settle()
-		w.writeEntry("c1", "chat:1", ended, "ctl/inbox/ctl/gone")
+		w.writeEntry("/t/room", "chat:1", ended, "ctl/inbox/ctl/gone")
 		w.say(sender, "say", 1, "first")
-		w.pass()
-		// The entry goes before the sender's next event: that one starts a run.
-		if _, err := w.owner.Delete(ctx, store.Key("ctl", "c1", "chat:1"), store.Overwrite); err != nil {
+		w.pass() // routed
+		w.pass() // the sender's step
+		// The file goes before the sender's next event: that one starts a run.
+		if _, err := w.owner.Delete(ctx, store.Key("ctl", "/t/room", "chat:1"), store.Overwrite); err != nil {
 			t.Fatal(err)
 		}
 		w.say(sender, "say", 1, "second")
@@ -674,248 +653,353 @@ func Test_ctl_event_on_its_way_is_not_overtaken(t *testing.T) {
 	}
 }
 
-// An entry a crash left, naming a run that has ended or that never began,
+// A send to a run by its ID from a sender whose earlier send to a key at that
+// location is on its way to another run waits for it: the run hears both, in
+// the order sent, and drops neither.
+func Test_ctl_direct_send_waits_behind_a_moved_send(t *testing.T) {
+	w := newWorld(t)
+	sender := w.rooms(nil)
+	w.say(sender, "say", 1, "one")
+	w.settle()
+	gone := w.runsOf("talk")[0]
+	// The run that has the key ends, and a file left behind still names it
+	// when the sender sends its next event to the key.
+	w.tell(gone, "said", map[string]any{"text": "bye"})
+	w.settle()
+	w.writeEntry("/t/room", "chat:1", gone, "ctl/inbox/ctl/gone")
+	w.say(sender, "say", 1, "two")
+	w.pass() // routed
+	w.pass() // the sender names the run that has ended
+	moving, _ := w.keyedMessage()
+	if _, err := w.owner.Delete(ctx, store.Key("ctl", "/t/room", "chat:1"), store.Overwrite); err != nil {
+		t.Fatal(err)
+	}
+	// While the event is on its way, another run takes the key, and the
+	// sender sends to that run by its ID.
+	inner := w.ctrl.Store
+	w.afresh(&hiding{Store: inner, hide: func(n string) bool { return n == moving }})
+	other := w.router()
+	w.say(other, "say", 1, "fresh")
+	w.settle()
+	var next string
+	for _, run := range w.runsOf("talk") {
+		if run != gone && w.head(run).Status == instance.Running {
+			next = run
+		}
+	}
+	if next == "" {
+		t.Fatalf("no run has the key: %v", w.runsOf("talk"))
+	}
+	w.tell(sender, "poke", map[string]any{"at": "room", "run": next, "text": "three"})
+	w.pass() // routed
+	w.pass() // the sender sends to the run by its ID
+	w.afresh(inner)
+	w.settle()
+	got := w.told(next)
+	if !slices.Equal(got, []string{"fresh", "two", "three"}) {
+		t.Fatalf("the run was told %v", got)
+	}
+	// The sender is told the run its moved event went to.
+	if notes := w.keyNotes(sender); len(notes) != 1 || !strings.Contains(notes[0], "went to the run "+next+", not "+gone) {
+		t.Fatalf("the record says %v", notes)
+	}
+}
+
+// An event moved twice is noted twice in its sender's record, and the last
+// note names the run that took it.
+func Test_ctl_event_moved_twice_is_noted_twice(t *testing.T) {
+	w := newWorld(t)
+	sender := w.rooms(nil)
+	w.say(sender, "say", 1, "one")
+	w.say(sender, "say", 2, "two")
+	w.say(sender, "say", 3, "three")
+	w.settle()
+	w.say(sender, "say", 1, "bye")
+	w.settle()
+	runs := map[string]string{}
+	for _, run := range w.runsOf("talk") {
+		runs[w.told(run)[0]] = run
+	}
+	gone, first, last := runs["one"], runs["two"], runs["three"]
+	// The file of chat:1 names the run that has ended when the sender sends
+	// to the key, and then a run that is running.
+	w.writeEntry("/t/room", "chat:1", gone, "ctl/inbox/ctl/gone")
+	w.say(sender, "say", 1, "moved")
+	w.pass() // routed
+	w.pass() // the sender names the run that has ended
+	w.writeEntry("/t/room", "chat:1", first, "ctl/inbox/ctl/first")
+	w.pass() // moved to the first run
+	// The first run is cancelled before it takes the event, and the file
+	// names another.
+	if _, err := w.client.Cancel(ctx, first, time.Hour); err != nil {
+		t.Fatal(err)
+	}
+	w.writeEntry("/t/room", "chat:1", last, "ctl/inbox/ctl/last")
+	w.settle()
+	if got := w.told(last); !slices.Equal(got, []string{"three", "moved"}) {
+		t.Fatalf("the last run was told %v", got)
+	}
+	notes := w.keyNotes(sender)
+	if len(notes) != 2 || !strings.Contains(notes[0], "went to the run "+first+", not "+gone) || !strings.Contains(notes[1], "went to the run "+last+", not "+first) {
+		t.Fatalf("the record says %v", notes)
+	}
+}
+
+// A file a crash left, naming a run that has ended or that never began,
 // blocks nothing.
 func Test_ctl_stale_key_file_blocks_no_key(t *testing.T) {
 	gone := "c1/20261010T120000.000Z-0000000000"
-	for name, plant := range map[string]func(w *world, sender string){
-		"a run that has ended": func(w *world, _ string) {
-			w.say(w.submit(router, routed, nil), "stop", 1, "")
-			run, err := w.client.Start(ctx, w.draft(waits, nil), client.Start{})
-			if err != nil {
-				w.t.Fatal(err)
-			}
+	for name, plant := range map[string]func(w *world){
+		"a run that has ended": func(w *world) {
+			run := w.router()
+			w.tell(run, "stop", nil)
 			w.settle()
-			if _, err := w.client.Send(ctx, run, "finish", nil, time.Hour); err != nil {
-				w.t.Fatal(err)
-			}
-			w.settle()
-			w.writeEntry("c1", "chat:1", run, "ctl/inbox/ctl/gone")
+			w.writeEntry("/t/room", "chat:1", run, "ctl/inbox/ctl/gone")
 		},
-		"a run that never began": func(w *world, _ string) {
-			w.writeEntry("c1", "chat:1", gone, "ctl/inbox/ctl/gone")
+		"a run that never began": func(w *world) {
+			w.writeEntry("/t/room", "chat:1", gone, "ctl/inbox/ctl/gone")
 		},
 	} {
 		t.Run(name, func(t *testing.T) {
 			w := newWorld(t)
-			sender := w.submit(router, routed, nil)
+			sender := w.rooms(nil)
+			plant(w)
+			w.say(sender, "say", 1, "first")
 			w.settle()
-			plant(w, sender)
-			w.say(sender, "tell", 1, "nobody")
-			w.settle()
-			if notes := w.keyNotes(sender); len(notes) != 1 {
-				t.Fatalf("the record says %v", notes)
-			}
-			run, err := w.client.Start(ctx, w.draft(talk, nil), client.Start{Key: "chat:1"})
-			if err != nil {
-				t.Fatal(err)
-			}
-			w.settle()
-			if head := w.head(run); head == nil || head.Status != instance.Running {
-				t.Fatalf("the start with the key gives %+v", head)
+			runs := w.runsOf("talk")
+			if len(runs) != 1 || w.head(runs[0]).Status != instance.Running || w.head(runs[0]).Key != "chat:1" {
+				t.Fatalf("the send started %v", runs)
 			}
 			w.say(sender, "say", 1, "now")
 			w.settle()
-			if got := w.told(run); !slices.Equal(got, []string{"now"}) {
+			if got := w.told(runs[0]); !slices.Equal(got, []string{"first", "now"}) {
 				t.Fatalf("the run was told %v", got)
 			}
 		})
 	}
 }
 
-// A start that holds the key and has not taken its first step keeps it: its
-// message is still waiting, and a crash left it so.
+// hiding is a store that leaves some names out of a listing of the inbox.
+type hiding struct {
+	store.Store
+	hide func(name string) bool
+}
+
+func (h *hiding) List(ctx context.Context, under string) ([]store.Listed, error) {
+	names, err := h.Store.List(ctx, under)
+	if under != store.Inbox("ctl") {
+		return names, err
+	}
+	return slices.DeleteFunc(names, func(l store.Listed) bool { return h.hide(l.Name) }), err
+}
+
+// A key's file whose run has not taken its first step keeps the key while
+// its start is waiting: a controller stopped between the two leaves it so.
+// A send to the key goes to that run once it starts, and starts no other.
 func Test_ctl_key_file_of_a_start_still_waiting_is_kept(t *testing.T) {
 	w := newWorld(t)
-	first, err := w.client.Start(ctx, w.draft(waits, nil), client.Start{Key: "k", Life: time.Hour})
-	if err != nil {
-		t.Fatal(err)
+	first := w.rooms(nil)
+	second := w.router()
+	w.say(first, "say", 1, "one")
+	w.pass() // routed
+	w.pass() // the first sender's step writes the start of a run
+	name, data := w.keyedMessage()
+	var msg instance.Message
+	if _, err := identity.Read(data, name, w.ctl.Card, w.ctl, &msg); err != nil || msg.Start == nil || msg.Start.Run == "" {
+		t.Fatalf("the message is %+v, %v", msg, err)
 	}
-	_, id, _ := strings.Cut(first, "/")
-	w.writeEntry("c1", "k", first, store.Message("ctl", "c1", id))
-	second, err := w.client.Start(ctx, w.draft(waits, nil), client.Start{Key: "k"})
-	if err != nil {
-		t.Fatal(err)
+	started := msg.Start.Run
+	// The run took its key and stopped before its first step.
+	w.writeEntry("/t/room", "chat:1", started, name)
+	inner := w.ctrl.Store
+	w.afresh(&hiding{Store: inner, hide: func(n string) bool { return n == name }})
+	w.say(second, "say", 1, "two")
+	w.pass() // routed
+	w.pass() // the second sender's step finds the start waiting
+	if w.head(started) != nil {
+		t.Fatalf("the run %s began while its start was hidden", started)
 	}
+	if asks := w.sentBy(second); len(asks) != 1 || asks[0].To != started || asks[0].Run != "" {
+		t.Fatalf("the second sender's record says %+v", asks)
+	}
+	w.afresh(inner)
 	w.settle()
-	_, message, _ := strings.Cut(second, "/")
-	if r := w.receipt(message); r == nil || r.Taken || w.head(first) == nil {
-		t.Fatalf("the second start has the receipt %+v and the first the head %+v", r, w.head(first))
+	runs := w.runsOf("talk")
+	if len(runs) != 1 || runs[0] != started || !slices.Equal(w.told(started), []string{"one", "two"}) {
+		t.Fatalf("the runs are %v, and %s was told %v", runs, started, w.told(started))
 	}
 }
 
 // A run started by a send outlives its sender with what it was given: its
-// definition, the machines and scripts it names, the blobs in the event, and
-// the ask handed down to it are all in its own record.
+// definition, the machines and scripts it names, and the blobs in the event
+// are in its own record, and it outlives a submit that drains its file.
 func Test_ctl_keyed_root_outlives_its_sender(t *testing.T) {
 	w := newWorld(t)
 	r1 := w.newRunner()
-	inner := `
-		statechart: inner
-		initial: reading
-		states:
-		  reading: { job: { script: ./read.js, input: "${input}" }, on: { done: over } }
-		  over: { end: done }
-	`
 	keeper := `
 		statechart: keeper
+		lifetime: keyed
+		update: drain
+		ask: ./ok.js
 		initial: open
 		states:
 		  open: { on: { go: reading } }
-		  reading: { job: { machine: ./inner.yaml, input: "${input}" }, on: { done: asking } }
-		  asking: { job: { script: ./read.js, approve: true }, on: { done: over } }
+		  reading: { job: { script: ./read.js, input: "${input}", approve: true }, on: { done: over } }
 		  over: { end: done }
 	`
-	draft := w.draft(`
+	sender := `
 		statechart: sender
 		keep: 1h
-		ask: ./ok.js
+		allow: ["send:keeper"]
 		input: { doc: blob }
 		initial: ready
 		states:
 		  ready:
 		    on:
-		      go: { go: gone, send: { to: { machine: ./keeper.yaml, key: k }, event: hello, data: { doc: "${input.doc}" } } }
+		      go: { go: gone, send: { to: { at: keeper, key: k }, event: hello, data: { doc: "${input.doc}" } } }
 		  gone: { end: done }
-	`, map[string]string{"keeper.yaml": keeper, "inner.yaml": inner, "read.js": "return input", "ok.js": "return { approve: input.jobs.map(j => j.name) }"})
-	sender, err := w.client.Start(ctx, draft, client.Start{Input: map[string]any{"doc": client.InputFile{Name: "a.txt", Contents: strings.NewReader("what it was given")}}})
-	if err != nil {
-		t.Fatal(err)
+	`
+	scripts := map[string]string{"read.js": "return input", "ok.js": "return { approve: input.jobs.map(j => j.name) }"}
+	tree := func() *client.Tree {
+		return w.tree("/k", "/srv/k", map[string]string{"/k/keeper": keeper, "/k/sender": sender}, scripts)
 	}
+	if r := w.submitTree(w.client, tree()); !r.Taken {
+		t.Fatal(r.Refused)
+	}
+	from := w.startAt(w.client, "/k/sender", client.Start{Input: map[string]any{"doc": client.InputFile{Name: "a.txt", Contents: strings.NewReader("what it was given")}}})
 	w.settle()
-	if _, err := w.client.Send(ctx, sender, "go", nil, time.Hour); err != nil {
-		t.Fatal(err)
-	}
+	w.tell(from, "go", nil)
 	w.settle()
 	runs := w.runsOf("keeper")
-	if len(runs) != 1 || w.head(sender).Status != instance.Done {
-		t.Fatalf("the runs are %v and the sender is %s", runs, w.head(sender).Status)
+	if len(runs) != 1 || w.head(from).Status != instance.Done {
+		t.Fatalf("the runs are %v and the sender is %s", runs, w.head(from).Status)
 	}
 	run := runs[0]
 	st := w.latest(run).State
-	if st.Definition.Instance() != run {
-		t.Fatalf("the definition is in the record of %s", st.Definition.Instance())
-	}
-	if st.Keep != machine.DefaultKeep {
-		t.Fatalf("the run is kept for %s", st.Keep)
-	}
-	if st.Above.Ask == nil || st.Above.Ask.Definition.Instance() != run {
-		t.Fatalf("the ask handed down is %+v", st.Above.Ask)
+	if st.Definition.Instance() != run || st.Keep != machine.DefaultKeep || st.Above.Ask != nil {
+		t.Fatalf("the run's definition is in the record of %s, it is kept %s, and the ask above is %+v", st.Definition.Instance(), st.Keep, st.Above.Ask)
 	}
 
-	// The sender goes, record and all.
+	// The sender goes, record and all, and its file is submitted again.
 	w.tick(2 * time.Hour)
 	w.settle()
-	if left := w.list(store.Record("ctl", sender)); len(left) != 0 || w.head(sender) != nil {
+	if left := w.list(store.Record("ctl", from)); len(left) != 0 || w.head(from) != nil {
 		t.Fatalf("the sender's record holds %v", left)
 	}
+	again := tree()
+	again.Machines[0].Draft = w.draft(strings.Replace(keeper, "initial: open", "title: changed\n\t\tinitial: open", 1), scripts)
+	w.submitTree(w.client, again)
 
-	if _, err := w.client.Send(ctx, run, "go", nil, time.Hour); err != nil {
-		t.Fatal(err)
-	}
+	w.tell(run, "go", nil)
 	w.settle()
-	child := w.child(run)
 	var job *instance.Job
 	for _, msg := range w.inboxOf(r1) {
-		if msg.Job != nil && msg.Job.Instance == child {
+		if msg.Job != nil && msg.Job.Instance == run && strings.HasPrefix(msg.Job.Name, instance.AskName) {
 			job = msg.Job
 		}
 	}
-	if job == nil {
-		t.Fatalf("no job of the machine below it was sent: %v", w.list(store.Inbox("r1")))
+	if job == nil || job.Script.Instance() != run {
+		t.Fatalf("its own ask was not sent: %+v", w.latest(run).Asks)
 	}
-	if job.Script.Instance() != run {
-		t.Fatalf("the script is in the record of %s", job.Script.Instance())
-	}
-	in, _ := job.Input.(map[string]any)
+	in, _ := w.latest(run).State.Input.(map[string]any)
 	ref, ok := blob.AsRef(in["doc"])
 	if !ok || ref.Instance() != run {
-		t.Fatalf("the job's input is %v", job.Input)
+		t.Fatalf("the input is %v", in)
 	}
 	data, err := blob.ReadAll(ctx, w.owner, ref, 1<<20)
 	if err != nil || string(data) != "what it was given" {
 		t.Fatalf("the blob reads %q, %v", data, err)
 	}
-
-	// What it holds goes to the ask of a sender that is gone.
-	w.result(r1, child, "reading", instance.Result{Status: instance.Done, Output: 1})
-	w.settle()
-	found := false
-	for _, msg := range w.inboxOf(r1) {
-		if msg.Job != nil && msg.Job.Instance == run && strings.HasPrefix(msg.Job.Name, instance.AskName) {
-			found = msg.Job.Script.Instance() == run
-		}
-	}
-	if !found {
-		t.Fatalf("the ask was not sent: %+v", w.latest(run).Asks)
-	}
 }
 
-// A chain of sends that each start a run ends at the depth limit of the root
-// it began at: a run started by a send sits one level below its sender.
+// A chain of sends that each start a run ends at the depth limit of the file
+// of the run that would pass it: a run started by a send sits one level below
+// its sender, and fails as it starts, telling its sender.
 func Test_ctl_chain_of_sends_ends_at_the_depth_limit(t *testing.T) {
 	w := newWorld(t)
 	files := map[string]string{}
-	hop := func(n int) string {
-		return fmt.Sprintf(`
+	for n := 1; n <= 6; n++ {
+		files[fmt.Sprintf("/c/hop%d", n)] = fmt.Sprintf(`
 			statechart: hop%d
+			lifetime: keyed
+			limits: { depth: 3 }
+			allow: ["send:hop%d"]
 			initial: go
 			states:
-			  go: { entry: { send: { to: { machine: ./hop%d.yaml, key: "hop%d" }, event: hop } } }
+			  go: { entry: { send: { to: { at: hop%d, key: "h" }, event: hop } }, on: { x: go } }
 		`, n, n+1, n+1)
 	}
-	for n := 1; n <= 6; n++ {
-		files[fmt.Sprintf("hop%d.yaml", n)] = dedent(hop(n))
+	files["/c/hop0"] = `
+		statechart: hop0
+		allow: ["send:hop1"]
+		initial: go
+		states:
+		  go: { entry: { send: { to: { at: hop1, key: "h" }, event: hop } }, on: { x: go } }
+	`
+	if r := w.submitTree(w.client, w.tree("/c", "/srv/c", files, nil)); !r.Taken {
+		t.Fatal(r.Refused)
 	}
-	files["hop7.yaml"] = "statechart: hop7\ninitial: go\nstates:\n  go: { on: { x: go } }\n"
-	root := strings.Replace(hop(0), "initial: go", "limits: { depth: 3 }\n\t\t\tinitial: go", 1)
-	w.submit(root, files, nil)
+	w.startAt(w.client, "/c/hop0", client.Start{})
 	w.settle()
-	started := 0
-	for _, at := range w.list(store.Running("ctl")) {
+	running := 0
+	for _, at := range append(w.list(store.Running("ctl")), w.list(store.Finished("ctl"))...) {
 		head := w.head(store.InstanceOf("ctl", at))
-		if strings.HasPrefix(head.Machine, "hop") {
-			started++
-		}
 		if head.Machine == "hop3" {
 			if notes := w.keyNotes(head.Name); len(notes) != 1 || !strings.Contains(notes[0], "depth limit") {
 				t.Fatalf("the last of the chain says %v", notes)
 			}
 		}
-		if head.Machine == "hop4" {
-			t.Fatal("the chain went past the limit")
+		if head.Machine == "hop4" && head.Status != instance.Failed {
+			t.Fatalf("the chain went past the limit: %+v", head)
+		}
+		if head.Status == instance.Running {
+			running++
 		}
 	}
-	if started != 4 {
-		t.Fatalf("%d runs started", started)
+	if running != 4 {
+		t.Fatalf("%d runs are running", running)
 	}
 }
 
-// A send to a key costs one read of its entry, and never lists the store: a
-// pass lists its inbox and its wakes and nothing else.
+// A send to a key reads its file, and the location's file when it starts a
+// run. It lists nothing at a location with no limit on its runs, and lists
+// the keys once a step at one with a limit.
 func Test_ctl_send_to_a_key_lists_nothing(t *testing.T) {
 	w := newWorld(t)
-	sender := w.submit(router, routed, nil)
-	w.settle()
+	sender := w.rooms(nil)
 	w.say(sender, "say", 1, "one")
 	w.settle()
-	w.say(sender, "tell", 1, "two")
+	w.say(sender, "say", 1, "two")
 	w.noted()
 	w.settle()
 	reads := 0
 	for _, op := range w.noted() {
-		if strings.HasPrefix(op.Name, "ctl/keys") && op.Act == store.ActList {
-			t.Fatalf("a pass listed %s", op.Name)
-		}
 		if op.Act == store.ActList && op.Name != store.Inbox("ctl") && op.Name != store.Wakes("ctl") {
 			t.Fatalf("a pass listed %s", op.Name)
 		}
-		if strings.HasPrefix(op.Name, "ctl/keys") && op.Act == store.ActRead {
+		if strings.Contains(op.Name, "/keys/") && op.Act == store.ActRead {
 			reads++
 		}
 	}
 	if reads != 1 {
-		t.Fatalf("a send read the key's entry %d times", reads)
+		t.Fatalf("a send read the key's file %d times", reads)
+	}
+
+	w = newWorld(t)
+	sender = w.rooms(map[string]string{"/t/room": strings.Replace(talk, "lifetime: keyed", "lifetime: keyed\n\tlimits: { runs: 9 }", 1)})
+	w.noted()
+	w.say(sender, "say", 1, "one")
+	w.say(sender, "say", 2, "two")
+	w.pass() // routed
+	w.pass() // one step of the sender takes both
+	lists := 0
+	for _, op := range w.noted() {
+		if op.Act == store.ActList && strings.HasSuffix(op.Name, "/keys") {
+			lists++
+		}
+	}
+	if lists != 2 || len(w.sentBy(sender)) != 2 {
+		t.Fatalf("two sends listed the keys %d times", lists)
 	}
 }
 
@@ -924,18 +1008,21 @@ func Test_ctl_send_to_a_key_lists_nothing(t *testing.T) {
 // side by side, so a step that fits in a pass needs no more than a pass.
 func Test_ctl_step_sends_to_any_number_of_keys(t *testing.T) {
 	w := newWorld(t)
-	sender := w.submit(router, routed, nil)
-	w.settle()
-	for chat := range 100 {
+	sender := w.rooms(nil)
+	for chat := range 300 {
 		w.say(sender, "say", chat, "one")
 	}
+	w.pass() // routed
 	inner := w.ctrl.Store
 	w.ctrl = controller.New(w.ctl, &delayedKeys{Store: inner})
 	w.ctrl.Now = w.clock
-	limited, cancel := context.WithTimeout(ctx, time.Second)
+	limited, cancel := context.WithTimeout(ctx, 2*time.Second)
 	defer cancel()
 	if _, err := w.ctrl.Pass(limited); err != nil {
 		t.Fatalf("the pass: %v", err)
+	}
+	if steps := w.steps(sender); len(steps) != 2 {
+		t.Fatalf("the sender took %d steps in the pass", len(steps))
 	}
 	w.ctrl = controller.New(w.ctl, inner)
 	w.ctrl.Now = w.clock
@@ -943,85 +1030,80 @@ func Test_ctl_step_sends_to_any_number_of_keys(t *testing.T) {
 	if st := w.latest(sender).State; st.Status != instance.Running {
 		t.Fatalf("the sender ended %s: %+v", st.Status, st.Error)
 	}
-	if got := len(w.runsOf("talk")); got != 100 {
+	if got := len(w.runsOf("talk")); got != 300 {
 		t.Fatalf("%d runs started", got)
 	}
 }
 
-// delayedKeys takes 50 ms over each read of a key's file.
+// delayedKeys takes 20 ms over each read of a key's file.
 type delayedKeys struct{ store.Store }
 
 func (s *delayedKeys) Read(ctx context.Context, name string) ([]byte, store.Mark, error) {
-	if strings.HasPrefix(name, "ctl/keys/") {
-		time.Sleep(50 * time.Millisecond)
+	if strings.Contains(name, "/keys/") {
+		time.Sleep(20 * time.Millisecond)
 	}
 	return s.Store.Read(ctx, name)
 }
 
 // A machine made while running talks only to its parent and its children,
-// whatever the job that starts it lists. That job may give it a key.
-func Test_ctl_made_machine_uses_no_key(t *testing.T) {
+// whatever the job that starts it lists: a send to an address fails it.
+func Test_ctl_made_machine_sends_to_no_address(t *testing.T) {
 	const job = `
 		flow: maker
 		stages:
 		  make: { job: ./make.js }
-		  go: { job: { machine: "${stages.make.output}", allow: ["all"], KEY } }
+		  go: { job: { machine: "${stages.make.output}", allow: ["all"] } }
 	`
-	for name, made := range map[string]string{
-		"send": `
-			statechart: made
-			initial: a
-			states:
-			  a: { entry: { send: { to: { key: secret }, event: forged, data: 1 } } }
-		`,
-		"job": `
-			flow: made
-			stages:
-			  a: { job: { machine: { flow: inner, stages: { b: { job: ./step.js } } }, key: secret } }
-		`,
-	} {
-		w := newWorld(t)
-		target, err := w.client.Start(ctx, w.draft(waits, nil), client.Start{Key: "secret"})
-		if err != nil {
-			t.Fatal(err)
-		}
-		r1 := w.newRunner()
-		run := w.submit(strings.Replace(job, ", KEY", "", 1), map[string]string{"make.js": "return 1"}, nil)
-		w.settle()
-		w.made(r1, run, made)
-		w.settle()
-		st := w.latest(w.child(run)).State
-		if st.Status != instance.Failed || !strings.Contains(st.Error.Error, "sends to no key") {
-			t.Fatalf("%s: the machine is %s: %+v", name, st.Status, st.Error)
-		}
-		if steps := w.steps(target); len(steps) != 1 {
-			t.Fatalf("%s: the run with the key took %d steps", name, len(steps))
-		}
+	w := newWorld(t)
+	target := w.rooms(nil)
+	w.say(target, "say", 1, "one")
+	w.settle()
+	room := w.runsOf("talk")[0]
+	r1 := w.newRunner()
+	at, _ := w.place(w.client, job, map[string]string{"make.js": "return 1"})
+	run := w.startAt(w.client, at, client.Start{})
+	w.settle()
+	w.made(r1, run, `
+		statechart: made
+		initial: a
+		states:
+		  a: { entry: { send: { to: { at: /t/room, key: "chat:1" }, event: said, data: { text: forged } } } }
+	`)
+	w.settle()
+	st := w.latest(w.child(run)).State
+	if st.Status != instance.Failed || !strings.Contains(st.Error.Error, "sends only to its parent and its children") {
+		t.Fatalf("the machine is %s: %+v", st.Status, st.Error)
+	}
+	if got := w.told(room); !slices.Equal(got, []string{"one"}) {
+		t.Fatalf("the run with the key was told %v", got)
 	}
 
-	w := newWorld(t)
-	r1 := w.newRunner()
-	run := w.submit(strings.Replace(job, "KEY", "key: mine", 1), map[string]string{"make.js": "return 1"}, nil)
+	run = w.startAt(w.client, at, client.Start{})
 	w.settle()
-	w.made(r1, run, waits)
+	w.made(r1, run, `
+		statechart: made
+		initial: a
+		states:
+		  a: { entry: { send: { to: parent, event: hello } }, on: { x: a } }
+	`)
 	w.settle()
-	if entry := w.entry("c1", "mine"); entry == nil || entry.Run != w.child(run) {
-		t.Fatalf("the key names %+v", entry)
+	if st := w.latest(w.child(run)).State; st.Status != instance.Running {
+		t.Fatalf("a made machine that sends to its parent is %s: %+v", st.Status, st.Error)
 	}
 }
 
 // Each run a send starts has a seed of its own, so no two issue one ticket,
-// though one sender started them from one definition.
+// though one sender started them from one file.
 func Test_ctl_keyed_runs_of_one_sender_share_no_ticket(t *testing.T) {
 	w := newWorld(t)
-	sender := w.submit(router, map[string]string{"talk.yaml": `
+	sender := w.rooms(map[string]string{"/t/room": `
 		statechart: talk
+		lifetime: keyed
 		initial: open
 		states:
 		  open: { ticket: verdict, on: { verdict: over } }
 		  over: { end: done }
-	`}, nil)
-	w.settle()
+	`})
 	w.say(sender, "say", 1, "one")
 	w.say(sender, "say", 2, "two")
 	w.settle()
@@ -1035,35 +1117,64 @@ func Test_ctl_keyed_runs_of_one_sender_share_no_ticket(t *testing.T) {
 	}
 }
 
-// A run a send starts runs under the sender's layers, as a child does.
-func Test_ctl_keyed_root_runs_as_a_child_of_its_sender(t *testing.T) {
+// A run a send starts takes nothing from its sender: no layer, no label, no
+// ask, and the values of its own location. Its held job goes to its own ask,
+// and with none it is denied.
+func Test_ctl_sent_root_takes_nothing_from_its_sender(t *testing.T) {
 	w := newWorld(t)
-	allow := &permission.Layer{Allow: []string{"net:a.example"}}
-	sender, err := w.client.Start(ctx, w.draft(router, routed), client.Start{Allow: allow, Secrets: map[string]string{"S": "v"}, Labels: map[string]string{"app": "x"}})
-	if err != nil {
+	w.newRunner()
+	held := `
+		statechart: talk
+		lifetime: keyed
+		initial: open
+		states:
+		  open: { job: { script: ./step.js, approve: true }, on: { done: open, failed: open, said: open } }
+	`
+	w.rooms(map[string]string{"/t/room": held}, "step.js")
+	if err := secret.SetValue(ctx, w.ctrl.Store, w.ctl, "/t/router", "WHERE", "router"); err != nil {
 		t.Fatal(err)
 	}
+	if err := secret.SetValue(ctx, w.ctrl.Store, w.ctl, "/t/room", "WHERE", "room"); err != nil {
+		t.Fatal(err)
+	}
+	from := w.startAt(w.client, "/t/router", client.Start{Allow: &permission.Layer{Allow: []string{"send:**"}}, Labels: map[string]string{"app": "x"}})
 	w.settle()
-	w.say(sender, "say", 1, "one")
+	w.say(from, "say", 1, "one")
 	w.settle()
-	st := w.latest(w.runsOf("talk")[0]).State
-	if len(st.Above.Layers) != 1 || st.Above.Layers[0].Allow[0] != "net:a.example" || st.Above.Secrets["S"] != "v" || st.Labels["app"] != "x" || st.Above.Made {
-		t.Fatalf("it runs under %+v", st)
+	run := w.runsOf("talk")[0]
+	st := w.latest(run).State
+	if len(st.Above.Layers) != 0 || len(st.Labels) != 0 || st.Above.Made || st.Above.Parent != "" || st.Above.StartedBy != from ||
+		st.Above.Ask != nil || st.Above.Values["WHERE"] != "room" {
+		t.Fatalf("it runs under %+v with labels %v", st.Above, st.Labels)
+	}
+	failed := st.Error != nil && strings.Contains(st.Error.Error, "no ask applies")
+	for _, step := range w.steps(run) {
+		for _, e := range step.Events {
+			if e.Name == machine.Failed && strings.Contains(fmt.Sprint(e.Data), "no ask applies") {
+				failed = true
+			}
+		}
+		for _, ask := range step.Asks {
+			if ask.Kind == instance.AskFail && strings.Contains(ask.Error.Error, "no ask applies") {
+				failed = true
+			}
+		}
+	}
+	if !failed {
+		t.Fatalf("its held job was not denied: %+v", w.latest(run))
 	}
 }
 
-// One sender's events reach a key in the order sent, and a carry-out done
-// again delivers none twice.
+// One sender's events reach a key in the order sent, once each.
 func Test_ctl_keyed_events_arrive_once_in_order(t *testing.T) {
 	w := newWorld(t)
-	sender := w.submit(router, routed, nil)
-	w.settle()
+	sender := w.rooms(nil)
 	want := []string{}
-	for i := range 6 {
+	for i := range 50 {
 		text := fmt.Sprint("t", i)
 		want = append(want, text)
 		w.say(sender, "say", 1, text)
-		if i%2 == 0 {
+		if i%7 == 0 {
 			w.pass()
 		}
 	}
@@ -1077,14 +1188,14 @@ func Test_ctl_keyed_events_arrive_once_in_order(t *testing.T) {
 	}
 }
 
-// sentAgain writes again the messages of events sent to keys that were
+// sentAgain writes again the messages of events sent to addresses that were
 // written since the store was last asked, as a carry-out done again writes
 // them, and gives how many.
 func (w *world) sentAgain(ops []store.Op) int {
 	w.t.Helper()
 	again := 0
 	for _, op := range ops {
-		if op.Act == store.ActAdd && op.Done && strings.HasPrefix(op.Name, store.Inbox("ctl")+"/ctl/") && strings.HasSuffix(op.Name, ".key") {
+		if op.Act == store.ActAdd && op.Done && strings.HasPrefix(op.Name, store.Inbox("ctl")+"/ctl/") && strings.HasSuffix(op.Name, ".send") {
 			if _, err := w.owner.Write(ctx, op.Name, op.Value, store.OnlyIfNew); err != nil {
 				w.t.Fatal(err)
 			}
@@ -1096,12 +1207,10 @@ func (w *world) sentAgain(ops []store.Op) int {
 
 // A carry-out done again writes an event that has been taken. It goes to the
 // run the step names, whether that run started for it, took it running, or
-// has ended since, and no run is given it twice. A step written since is what
-// makes it a copy: the run's latest step still names the event it took last.
+// has ended since, and no run is given it twice.
 func Test_ctl_carry_out_done_again_gives_a_key_no_event_twice(t *testing.T) {
 	w := newWorld(t)
-	sender := w.submit(router, routed, nil)
-	w.settle()
+	sender := w.rooms(nil)
 	w.noted()
 	w.say(sender, "say", 1, "one")
 	w.settle()
@@ -1133,16 +1242,14 @@ func Test_ctl_carry_out_done_again_gives_a_key_no_event_twice(t *testing.T) {
 // first or left for the next step, and goes on to a new run.
 func Test_ctl_keyed_event_is_never_given_after_the_run_ends(t *testing.T) {
 	w := newWorld(t)
-	sender := w.submit(router, routed, nil)
-	w.settle()
+	sender := w.rooms(nil)
 	w.say(sender, "say", 1, "one")
 	w.settle()
 	run := w.runsOf("talk")[0]
 	w.say(sender, "say", 1, "two")
+	w.pass() // routed
 	w.pass() // the sender writes the event
-	if _, err := w.client.Send(ctx, run, "said", map[string]any{"text": "bye"}, time.Hour); err != nil {
-		t.Fatal(err)
-	}
+	w.tell(run, "said", map[string]any{"text": "bye"})
 	w.say(sender, "say", 1, "three")
 	w.settle()
 	told := 0
@@ -1154,106 +1261,127 @@ func Test_ctl_keyed_event_is_never_given_after_the_run_ends(t *testing.T) {
 	}
 }
 
-// The event names Corbie gives a machine cannot be sent to a key.
-func Test_chart_send_to_a_key_cannot_take_an_events_own_name(t *testing.T) {
+// An event sent to a run by its ID that arrives in the step that ends the
+// run is taken there and not acted on, as an event with no rule is: it is
+// in the run's record, and its sender is not told it was undelivered.
+func Test_ctl_direct_event_with_the_runs_end_is_taken_and_not_acted_on(t *testing.T) {
+	w := newWorld(t)
+	sender := w.rooms(nil)
+	w.say(sender, "say", 1, "one")
+	w.settle()
+	run := w.runsOf("talk")[0]
+	w.tell(sender, "poke", map[string]any{"at": "room", "run": run, "text": "bye"})
+	w.tell(sender, "poke", map[string]any{"at": "room", "run": run, "text": "late"})
+	w.settle()
+	steps := w.steps(run)
+	last := steps[len(steps)-1]
+	if got := w.told(run); !slices.Equal(got, []string{"one", "bye", "late"}) || events(last) != "said said" || last.State.Status != instance.Done {
+		t.Fatalf("the run was told %v, its last step took %q and is %s", got, events(last), last.State.Status)
+	}
+	if notes := w.keyNotes(sender); len(notes) != 0 {
+		t.Fatalf("the sender's notes are %q", notes)
+	}
+	if left := w.list(store.Inbox("ctl")); len(left) != 0 {
+		t.Fatalf("left waiting: %v", left)
+	}
+}
+
+// The event names Corbie gives a machine cannot be sent, and a run's own
+// timer and ticket names are undelivered at the run.
+func Test_chart_send_cannot_take_an_events_own_name(t *testing.T) {
 	for _, name := range []string{machine.Start, machine.Done, machine.Failed, machine.Timer} {
 		_, err := machine.Parse([]byte(dedent(`
 			statechart: s
 			initial: a
 			states:
-			  a: { on: { x: { send: { to: { key: k }, event: `+name+` } } } }
+			  a: { on: { x: { send: { to: { at: room, key: k }, event: `+name+` } } } }
 		`)), nil)
 		if err == nil || !strings.Contains(err.Error(), "no event can be sent") {
 			t.Fatalf("%s: %v", name, err)
 		}
 	}
+	w := newWorld(t)
+	owner := `
+		statechart: owner
+		allow: ["send:room"]
+		initial: ready
+		states:
+		  ready:
+		    on:
+		      tick: { send: { to: { at: room, key: "chat:1" }, event: tick } }
+		      ok: { send: { to: { at: room, key: "chat:1" }, event: ok } }
+	`
+	sender := w.rooms(map[string]string{"/t/room": `
+		statechart: talk
+		lifetime: keyed
+		initial: open
+		states:
+		  open: { timers: { tick: 1h }, ticket: ok, on: { tick: open, ok: open, said: open } }
+	`, "/t/owner": owner})
+	w.say(sender, "say", 1, "one")
+	w.settle()
+	run := w.runsOf("talk")[0]
+	ticker := w.startAt(w.client, "/t/owner", client.Start{})
+	w.settle()
+	w.tell(ticker, "tick", nil)
+	w.tell(ticker, "ok", nil)
+	w.settle()
+	if notes := w.keyNotes(ticker); len(notes) != 2 || !strings.Contains(notes[0], `"tick" is the name of an event the run gives itself`) || !strings.Contains(notes[1], `"ok"`) {
+		t.Fatalf("the record says %v", notes)
+	}
+	if steps := w.steps(run); len(steps) != 1 {
+		t.Fatalf("the run took %d steps", len(steps))
+	}
 }
 
-// A send writes who it goes to as a word or a mapping, and a mapping names a
-// key. Its machine is one the definition holds, written out.
-func Test_chart_send_to_is_checked(t *testing.T) {
-	for _, c := range []struct{ to, says string }{
-		{"{ machine: ./talk.yaml }", "names a key"},
-		{`{ machine: "${input.m}", key: k }`, "written out"},
-		{"{ key: k, other: 1 }", "other"},
-		{"[a]", "mapping"},
-	} {
-		_, err := machine.Parse([]byte(dedent(`
-			statechart: s
-			initial: a
-			states:
-			  a: { on: { x: { send: { to: `+c.to+`, event: e } } } }
-		`)), machine.Given(routed))
-		if err == nil || !strings.Contains(err.Error(), c.says) {
-			t.Fatalf("%s: %v", c.to, err)
-		}
-	}
-	if _, err := machine.Parse([]byte(dedent(`
-		flow: f
-		stages:
-		  a: { job: { script: ./step.js, key: k } }
-	`)), machine.Given(map[string]string{"step.js": "return 1"})); err == nil || !strings.Contains(err.Error(), "only a machine") {
-		t.Fatalf("a script with a key: %v", err)
-	}
-}
-
-// The body of a key's entry is the controller's, signed and sealed to the
-// controller and the client.
+// The body of a key's file is the controller's, signed and sealed to the
+// controller alone.
 func Test_store_key_file_is_signed_and_sealed(t *testing.T) {
 	w := newWorld(t)
-	run, err := w.client.Start(ctx, w.draft(waits, nil), client.Start{Key: "chat:1"})
-	if err != nil {
-		t.Fatal(err)
-	}
+	sender := w.rooms(nil)
+	w.say(sender, "say", 1, "one")
 	w.settle()
-	data, _, err := w.owner.Read(ctx, store.Key("ctl", "c1", "chat:1"))
+	run := w.runsOf("talk")[0]
+	at := store.Key("ctl", "/t/room", "chat:1")
+	data, _, err := w.owner.Read(ctx, at)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if strings.Contains(string(data), "chat:1") || strings.Contains(string(data), run) {
-		t.Fatalf("the entry is written in the clear: %s", data)
+		t.Fatalf("the file is written in the clear: %s", data)
 	}
 	var entry instance.KeyFile
-	if _, err := identity.Read(data, store.Key("ctl", "c1", "chat:1"), w.ctl.Card, w.c1, &entry); err != nil || entry.Run != run {
-		t.Fatalf("the client reads %+v, %v", entry, err)
+	if _, err := identity.Read(data, at, w.ctl.Card, w.c1, &entry); err == nil {
+		t.Fatal("the client reads the file")
 	}
-	if _, err := identity.Read(data, store.Key("ctl", "c1", "chat:2"), w.ctl.Card, w.c1, &entry); err == nil {
-		t.Fatal("an entry checks under another key's name")
+	if _, err := identity.Read(data, at, w.ctl.Card, w.ctl, &entry); err != nil || entry.Run != run {
+		t.Fatalf("the controller reads %+v, %v", entry, err)
 	}
-	// A note from a client to the controller is no message it acts on.
-	id := "20261010T120000.000000Z-ffffff"
-	w.leave(w.c1, id, &instance.Message{Kind: instance.KindKeyed, Instance: run, From: run,
-		Event: &machine.Event{Name: "finish"}})
+	if _, err := identity.Read(data, store.Key("ctl", "/t/room", "chat:2"), w.ctl.Card, w.ctl, &entry); err == nil {
+		t.Fatal("a file checks under another key's name")
+	}
+	if got, _, _ := w.clientOf(w.c1).Store.Read(ctx, at); got != nil {
+		t.Fatal("the client's store gives the file")
+	}
+	// A client's message that looks like the controller's is no message it
+	// acts on.
+	key := "chat:1"
+	w.leave(w.c1, "20261010T120000.000000Z-ffffff", &instance.Message{Kind: instance.KindSend, Instance: run, From: run,
+		To: &machine.Address{At: "/t/room", Key: &key}, Event: &machine.Event{Name: "said", Data: map[string]any{"text": "bye"}}})
 	w.settle()
 	if head := w.head(run); head.Status != instance.Running {
-		t.Fatalf("a client's keyed message ended the run: %+v", head)
+		t.Fatalf("a client's message ended the run: %+v", head)
 	}
 }
 
-// keyAndChild is a chart whose child has a key, and which sends that child one
-// event by its key and one as its parent, in one step.
-const keyAndChild = `
-	statechart: both
-	initial: ready
-	states:
-	  ready:
-	    job: { machine: ./talk.yaml, key: "chat:1" }
-	    on:
-	      both:
-	        send:
-	          - { to: { key: "chat:1" }, event: said, data: { text: a } }
-	          - { to: ready, event: said, data: { text: b } }
-	      done: over
-	  over: { end: done }
-`
-
-// twoToChild is the same with no key: two events as the child's parent.
+// twoToChild is a chart that sends its child two events as its parent, in one
+// step.
 const twoToChild = `
 	statechart: twice
 	initial: ready
 	states:
 	  ready:
-	    job: { machine: ./talk.yaml }
+	    job: { machine: ./child.yaml }
 	    on:
 	      both:
 	        send:
@@ -1263,18 +1391,36 @@ const twoToChild = `
 	  over: { end: done }
 `
 
+// keyAndChild is a chart that sends one event to a key and one to its child,
+// in one step.
+const keyAndChild = `
+	statechart: both
+	allow: ["send:room"]
+	initial: ready
+	states:
+	  ready:
+	    job: { machine: ./child.yaml }
+	    on:
+	      both:
+	        send:
+	          - { to: { at: room, key: "chat:1" }, event: said, data: { text: a } }
+	          - { to: ready, event: said, data: { text: b } }
+	      done: over
+	  over: { end: done }
+`
+
 // A step's events are written in the order sent, so a controller stopped
 // between two of them never has a run hear the later and take the earlier for
 // a copy.
 func Test_ctl_events_of_a_step_stopped_after_every_write(t *testing.T) {
+	child := strings.Replace(talk, "\tlifetime: keyed\n", "", 1)
 	for _, chart := range []string{keyAndChild, twoToChild} {
 		play := func(stopAfter int64) ([]string, bool) {
 			w := newWorld(t)
-			parent := w.submit(chart, routed, nil)
+			w.roomsWith(map[string]string{"/t/both": chart}, map[string]string{"child.yaml": child})
+			parent := w.startAt(w.client, "/t/both", client.Start{})
 			w.settle()
-			if _, err := w.client.Send(ctx, parent, "both", nil, 0); err != nil {
-				t.Fatal(err)
-			}
+			w.tell(parent, "both", nil)
 			inner := w.ctrl.Store
 			s := &stopping{Store: inner}
 			s.left.Store(stopAfter)
@@ -1287,11 +1433,12 @@ func Test_ctl_events_of_a_step_stopped_after_every_write(t *testing.T) {
 			}
 			w.afresh(inner)
 			w.settle()
-			runs := w.runsOf("talk")
-			if len(runs) != 1 {
-				t.Fatalf("the runs are %v", runs)
+			var told []string
+			for _, run := range w.runsOf("talk") {
+				told = append(told, w.told(run)...)
 			}
-			return w.told(runs[0]), s.stopped.Load()
+			slices.Sort(told)
+			return told, s.stopped.Load()
 		}
 		for n := int64(0); ; n++ {
 			got, stopped := play(n)
@@ -1299,61 +1446,60 @@ func Test_ctl_events_of_a_step_stopped_after_every_write(t *testing.T) {
 				break
 			}
 			if !slices.Equal(got, []string{"a", "b"}) {
-				t.Fatalf("stopped after %d writes the child was told %v", n, got)
+				t.Fatalf("stopped after %d writes the runs were told %v", n, got)
 			}
 		}
 	}
 }
 
-// Two runs whose IDs begin alike are two senders.
+// Two runs whose IDs begin alike are two senders, and a client is a sender
+// apart from every run.
 func Test_ctl_senders_with_names_that_begin_alike_are_apart(t *testing.T) {
 	w := newWorld(t)
+	w.rooms(nil)
 	stamp := store.Stamp(w.now)
 	start := func(run string) string {
 		w.t.Helper()
-		got, err := w.client.Start(ctx, w.draft(router, routed), client.Start{Run: run})
-		if err != nil {
-			t.Fatal(err)
-		}
-		return got
+		return w.startAt(w.client, "/t/router", client.Start{Run: run})
 	}
 	a := start("c1/" + stamp + "-aa")
 	b := start("c1/" + stamp + "-aa.b")
 	w.settle()
 	w.say(a, "say", 1, "one")
 	w.settle()
-	w.say(b, "tell", 1, "two")
+	w.say(b, "say", 1, "two")
 	w.settle()
-	w.say(a, "tell", 1, "three")
+	key := "chat:1"
+	if _, err := w.client.Send(ctx, machine.Address{At: "/t/room", Key: &key}, "said", map[string]any{"text": "three"}, time.Hour); err != nil {
+		t.Fatal(err)
+	}
+	w.settle()
+	w.say(a, "say", 1, "four")
 	w.settle()
 	runs := w.runsOf("talk")
-	if len(runs) != 1 || !slices.Equal(w.told(runs[0]), []string{"one", "two", "three"}) {
-		t.Fatalf("the runs are %v", runs)
+	if len(runs) != 1 || !slices.Equal(w.told(runs[0]), []string{"one", "two", "three", "four"}) {
+		t.Fatalf("the runs are %v, told %v", runs, w.told(runs[0]))
+	}
+	if heard := w.latest(runs[0]).State.Heard; len(heard) != 3 {
+		t.Fatalf("the run remembers %+v", heard)
 	}
 }
 
 // No client can send an event under a name Corbie gives a machine.
 func Test_mach_no_event_takes_a_name_of_corbies(t *testing.T) {
-	const counting = `
-		statechart: counting
-		initial: a
-		states:
-		  a:
-		    job: { machine: ./talk.yaml }
-		    on: { done: over }
-		  over: { end: done }
-	`
 	for _, name := range []string{machine.Start, machine.Done, machine.Failed, machine.Timer} {
 		w := newWorld(t)
-		run := w.submit(counting, routed, nil)
-		w.settle()
-		if _, err := w.client.Send(ctx, run, name, nil, 0); err != nil {
+		sender := w.rooms(nil)
+		message, err := w.client.Send(ctx, w.to(sender), name, nil, 0)
+		if err != nil {
 			t.Fatal(err)
 		}
 		w.settle()
-		st := w.latest(run).State
-		if st.Status != instance.Running || st.JobsStarted != 1 || len(w.runsOf("talk")) != 1 {
-			t.Fatalf("%s: the chart is %s with %d jobs", name, st.Status, st.JobsStarted)
+		if r := w.receipt(message); r == nil || r.Taken || !strings.Contains(r.Refused, "no event can be sent") {
+			t.Fatalf("%s: the receipt is %+v", name, r)
+		}
+		if st := w.latest(sender).State; st.Status != instance.Running || len(w.steps(sender)) != 1 {
+			t.Fatalf("%s: the chart is %s", name, st.Status)
 		}
 	}
 }
@@ -1386,7 +1532,7 @@ func Test_mach_emitted_value_takes_no_name_of_corbies(t *testing.T) {
 }
 
 // keyedMessage gives the name and the bytes of the one event waiting to go to
-// a key.
+// an address.
 func (w *world) keyedMessage() (string, []byte) {
 	w.t.Helper()
 	var found []string
@@ -1396,7 +1542,7 @@ func (w *world) keyedMessage() (string, []byte) {
 			w.t.Fatal(err)
 		}
 		var msg instance.Message
-		if _, err := identity.Read(data, name, w.ctl.Card, w.ctl, &msg); err == nil && msg.Kind == instance.KindKeyed {
+		if _, err := identity.Read(data, name, w.ctl.Card, w.ctl, &msg); err == nil && msg.Kind == instance.KindSend && msg.From != "" {
 			found = append(found, name)
 		}
 	}
@@ -1415,20 +1561,20 @@ func (w *world) keyedMessage() (string, []byte) {
 // it does not start the run again, and it holds up nothing the sender sends.
 func Test_ctl_start_written_again_after_its_run_ended_holds_up_nothing(t *testing.T) {
 	w := newWorld(t)
-	sender := w.submit(router, routed, nil)
-	w.settle()
+	sender := w.rooms(nil)
 	w.say(sender, "say", 1, "one")
-	w.pass()
+	w.pass() // routed
+	w.pass() // the sender's step
 	name, data := w.keyedMessage()
 	w.settle()
 	first := w.runsOf("talk")[0]
 	var others []string
 	for range 65 {
-		others = append(others, w.submit(router, routed, nil))
+		others = append(others, w.startAt(w.client, "/t/router", client.Start{}))
 	}
 	w.settle()
 	for i, other := range others[:64] {
-		w.say(other, "tell", 1, fmt.Sprint(i))
+		w.say(other, "say", 1, fmt.Sprint(i))
 	}
 	w.settle()
 	if _, err := w.owner.Write(ctx, name, data, store.OnlyIfNew); err != nil {
@@ -1438,7 +1584,7 @@ func Test_ctl_start_written_again_after_its_run_ended_holds_up_nothing(t *testin
 	if got := w.told(first); len(got) != 65 {
 		t.Fatalf("the run was told %d things", len(got))
 	}
-	w.say(others[64], "tell", 1, "bye")
+	w.say(others[64], "say", 1, "bye")
 	w.settle()
 	if w.head(first).Status != instance.Done {
 		t.Fatalf("the run is %s", w.head(first).Status)
@@ -1479,34 +1625,34 @@ func (s *moving) Delete(ctx context.Context, name string, how store.How) (bool, 
 // say it was lost.
 func Test_ctl_event_another_copy_moved_on_is_not_noted_as_lost(t *testing.T) {
 	w := newWorld(t)
-	sender := w.submit(router, routed, nil)
-	w.settle()
-	w.say(sender, "say", 1, "one")
-	w.settle()
-	gone := w.runsOf("talk")[0]
-	w.say(sender, "tell", 1, "late")
-	w.pass()
+	sender := w.rooms(map[string]string{"/t/bell": `
+		statechart: bell
+		lifetime: singleton
+		initial: a
+		states:
+		  a: { on: { rang: a } }
+	`})
+	bell := ""
+	for run := range w.at("/t/bell") {
+		bell = run
+	}
+	w.tell(sender, "ring", map[string]any{"at": "bell"})
+	w.pass() // routed
+	w.pass() // the sender's step
 	name, data := w.keyedMessage()
 	if _, err := w.owner.Delete(ctx, name, store.Overwrite); err != nil {
 		t.Fatal(err)
 	}
-	w.settle()
-	other := w.submit(router, routed, nil)
-	w.settle()
-	w.say(other, "tell", 1, "bye")
-	w.say(other, "say", 2, "two")
-	w.settle()
-	var kept string
-	for _, run := range w.runsOf("talk") {
-		if run != gone {
-			kept = run
-		}
+	// The bell's run ends, and the message finds it ended.
+	if _, err := w.client.Cancel(ctx, bell, 0); err != nil {
+		t.Fatal(err)
 	}
+	w.settle()
 	var msg instance.Message
 	if _, err := identity.Read(data, name, w.ctl.Card, w.ctl, &msg); err != nil {
 		t.Fatal(err)
 	}
-	msg.Instance = kept
+	msg.Instance = sender
 	moved, err := w.ctl.Write(name, w.now, time.Time{}, &msg, w.ctl.Card)
 	if err != nil {
 		t.Fatal(err)
@@ -1517,11 +1663,75 @@ func Test_ctl_event_another_copy_moved_on_is_not_noted_as_lost(t *testing.T) {
 	inner := w.ctrl.Store
 	w.ctrl = controller.New(w.ctl, &moving{Store: inner, name: name, with: moved})
 	w.ctrl.Now = w.clock
-	w.settle()
+	w.pass()
 	if notes := w.keyNotes(sender); len(notes) != 0 {
 		t.Fatalf("the record says %v", notes)
 	}
-	if got := w.told(kept); !slices.Contains(got, "late") {
-		t.Fatalf("the run was told %v", got)
+}
+
+// emptying deletes what is under a name once a write is made under another.
+type emptying struct {
+	store.Store
+	when, under string
+	done        atomic.Bool
+}
+
+func (e *emptying) Write(ctx context.Context, name string, value []byte, how store.How) (bool, error) {
+	written, err := e.Store.Write(ctx, name, value, how)
+	if err == nil && strings.HasPrefix(name, e.when) && !e.done.Swap(true) {
+		names, err := store.Names(e.Store.List(ctx, e.under))
+		if err != nil {
+			return false, err
+		}
+		for _, n := range names {
+			if _, err := e.Store.Delete(ctx, n, store.Overwrite); err != nil {
+				return false, err
+			}
+		}
+	}
+	return written, err
+}
+
+// A run a send starts that fails as it starts, for a definition that is no
+// longer in the store, for its depth or for its input, adds the reason to
+// its sender's record. Its first step is failed, and its key is free.
+func Test_ctl_sent_root_fails_at_start_and_tells_its_sender(t *testing.T) {
+	for _, c := range []struct {
+		name string
+		when string // the definition's blobs go once a write is made under it
+		want string
+	}{
+		{"gone before it starts", store.Inbox("ctl") + "/ctl/", "its machine is no longer in the store"},
+		{"gone after its key is taken", store.Keys("ctl", "/t/room"), "its machine is no longer in the store"},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			w := newWorld(t)
+			sender := w.rooms(nil)
+			w.ctrl.Store = &emptying{Store: w.ctrl.Store, when: c.when, under: store.LocationBlobs("ctl", "/t/room")}
+			w.say(sender, "say", 1, "one")
+			w.settle()
+			notes := w.keyNotes(sender)
+			if len(notes) != 1 || !strings.Contains(notes[0], c.want) {
+				t.Fatalf("the sender's record says %q", notes)
+			}
+			var runs []string
+			for _, at := range w.list(store.Finished("ctl")) {
+				if run := store.InstanceOf("ctl", at); w.head(run).Location == "/t/room" && !slices.Contains(runs, run) {
+					runs = append(runs, run)
+				}
+			}
+			if len(runs) != 1 {
+				t.Fatalf("the runs at /t/room are %v", runs)
+			}
+			if st := w.latest(runs[0]).State; st.Status != instance.Failed || !strings.Contains(st.Error.Error, c.want) {
+				t.Fatalf("the run is %s: %+v", st.Status, st.Error)
+			}
+			if entry := w.entry("/t/room", "chat:1"); entry != nil {
+				t.Fatalf("the key is held by %+v", entry)
+			}
+			if left := w.list(store.Inbox("ctl")); len(left) != 0 {
+				t.Fatalf("left waiting: %v", left)
+			}
+		})
 	}
 }

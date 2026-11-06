@@ -68,6 +68,8 @@ func (c *chart) give(events ...machine.Event) []string {
 			told = append(told, "job "+r.Job.Name)
 		case r.Cancel != "":
 			told = append(told, "cancel "+r.Cancel)
+		case r.Send != nil && r.Send.At != nil:
+			told = append(told, fmt.Sprintf("send %s to %s", r.Send.Event, addressText(r.Send.At)))
 		case r.Send != nil:
 			told = append(told, fmt.Sprintf("send %s to %s", r.Send.Event, r.Send.To))
 		case r.Timer != nil:
@@ -438,7 +440,7 @@ states:
 `
 
 func said(text string) machine.Event {
-	return machine.Event{Name: "said", From: "client", Data: text}
+	return machine.Event{Name: "said", Data: text, Sender: &machine.Address{Client: "panel"}}
 }
 
 func TestKeptEventsGoBeforeLaterOnes(t *testing.T) {
@@ -812,5 +814,134 @@ func TestTicketValueIsLettersAndDigits(t *testing.T) {
 	}
 	if len(seen) != 2000 {
 		t.Fatalf("2000 seeds gave %d different keys", len(seen))
+	}
+}
+
+// addressText writes an address as a record shows it: the location, then
+// #key or ~run, or client:name.
+func addressText(a *machine.Address) string {
+	switch {
+	case a.Client != "":
+		return "client:" + a.Client
+	case a.Run != "":
+		return a.At + "~" + a.Run
+	case a.Key != nil:
+		return a.At + "#" + *a.Key
+	}
+	return a.At
+}
+
+// Each form of address is filled in from the event as the send is made: a
+// location, a key, a run, and one expression that gives a whole address.
+func Test_chart_send_fills_each_address_form(t *testing.T) {
+	c := newChart(t, `
+statechart: router
+initial: a
+states:
+	a:
+		on:
+			go:
+				send:
+					- { to: { at: devices/boiler }, event: set }
+					- { to: { at: rooms/room, key: "${event.data.room}" }, event: set }
+					- { to: { at: /work/jobs, run: "${event.data.run}" }, event: set }
+					- { to: "${event.data.back}", event: set }
+					- { to: "${event.data.from}", event: set }
+`)
+	c.give(start())
+	// An address with both a key and a run, as event.from is for a keyed
+	// run, goes to the run.
+	c.want(c.give(machine.Event{Name: "go", Data: map[string]any{"room": "kitchen", "run": "c1/20261013T170000.000Z-ab12",
+		"back": map[string]any{"at": "/t/x", "key": "k"}, "from": map[string]any{"at": "/t/y", "key": "k", "run": "c1/20261013T170000.000Z-cd34"}}}),
+		"send set to devices/boiler", "send set to rooms/room#kitchen", "send set to /work/jobs~c1/20261013T170000.000Z-ab12", "send set to /t/x#k",
+		"send set to /t/y~c1/20261013T170000.000Z-cd34")
+}
+
+// A reply to ${event.from} goes to the address of the run or the client that
+// sent the event.
+func Test_chart_reply_to_event_from_gives_the_senders_address(t *testing.T) {
+	c := newChart(t, `
+statechart: room
+initial: a
+states:
+	a:
+		on:
+			knock: { send: { to: "${event.from}", event: opened, data: { at: "${event.from.at}" } } }
+`)
+	c.give(start())
+	key := "kitchen"
+	c.want(c.give(machine.Event{Name: "knock", Sender: &machine.Address{At: "/t/clerk", Run: "c1/20261013T170000.000Z-ab12", Key: &key}}),
+		"send opened to /t/clerk~c1/20261013T170000.000Z-ab12")
+	if data := c.out.Requests[0].Send.Data; !reflect.DeepEqual(data, map[string]any{"at": "/t/clerk"}) {
+		t.Fatalf("the reply's data is %v", data)
+	}
+	c.want(c.give(machine.Event{Name: "knock", Sender: &machine.Address{Client: "panel"}}), "send opened to client:panel")
+}
+
+// An event no run sent keeps its from: the job, the state of a timer or a
+// ticket, or parent.
+func Test_chart_event_from_is_unchanged_for_jobs_timers_tickets_and_parent(t *testing.T) {
+	c := newChart(t, `
+statechart: froms
+initial: a
+states:
+	a:
+		job: ./w.js
+		on:
+			done: { go: a, send: { to: parent, event: was, data: "${event.from}" } }
+			poke: { go: a, send: { to: parent, event: was, data: "${event.from}" } }
+`)
+	sent := func() any {
+		for _, r := range c.out.Requests {
+			if r.Send != nil {
+				return r.Send.Data
+			}
+		}
+		return nil
+	}
+	c.give(start())
+	c.give(done("a", nil))
+	if data := sent(); data != "a" {
+		t.Fatalf("a job's done came from %v", data)
+	}
+	c.give(machine.Event{Name: "poke", From: machine.Parent})
+	if data := sent(); data != machine.Parent {
+		t.Fatalf("the parent's event came from %v", data)
+	}
+}
+
+// A chart owns the names of its timers and tickets: no sender may take one.
+func Test_chart_owns_its_timer_and_ticket_names(t *testing.T) {
+	def, err := parse(t, `
+statechart: owner
+initial: a
+states:
+	a: { timers: { tick: 1m }, on: { tick: b } }
+	b: { ticket: ok, on: { ok: a, hello: a } }
+`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for name, owns := range map[string]bool{"tick": true, "ok": true, "hello": false} {
+		if machine.Owns(def, name) != owns {
+			t.Fatalf("the chart owns %q: %v", name, !owns)
+		}
+	}
+}
+
+// A send's address is checked where it is written: a key with no location,
+// a key and a run both, a location that climbs, an expression that is not
+// the whole address, and an empty name in a location are refused.
+func Test_chart_send_to_is_checked(t *testing.T) {
+	head := "statechart: bad\ninitial: a\nstates:\n\ta: { on: { x: { send: { to: %s, event: y } } } }\n"
+	for to, says := range map[string]string{
+		"{ key: k }":                      "an address names its location with at",
+		"{ at: room, key: k, run: r }":    "an address names a key or a run, not both",
+		"{ at: ../x }":                    "has no . or .. in it",
+		"{ at: room, machine: ./m.yaml }": `"machine" is not a field`,
+		`"x ${event.from}"`:               "exactly one expression that gives one",
+		"{ at: a//b }":                    "a location has no empty name",
+	} {
+		refused(t, fmt.Sprintf(head, to), says)
 	}
 }

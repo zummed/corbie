@@ -31,8 +31,8 @@ type Run struct {
 	Layer   string `json:"layer,omitzero"`
 	Fix     string `json:"fix,omitzero"`
 
-	// Title, Input and Output are shown only to the client that started
-	// the run.
+	// Title, Input and Output are shown only to the client of the run's
+	// tree.
 	Title  string `json:"title,omitzero"`
 	Input  any    `json:"input,omitzero"`
 	Output any    `json:"output,omitzero"`
@@ -44,13 +44,19 @@ type Run struct {
 	Started time.Time `json:"started,omitzero"`
 	Ended   time.Time `json:"ended,omitzero"`
 	Parent  string    `json:"parent,omitzero"`
-	// Key is the run's key, and StartedBy the run whose send started it.
-	Key       string            `json:"key,omitzero"`
-	StartedBy string            `json:"started_by,omitzero"`
-	Jobs      int               `json:"jobs,omitzero"`
-	Timers    int               `json:"timers,omitzero"`
-	Tickets   []string          `json:"tickets,omitzero"`
-	Labels    map[string]string `json:"labels,omitzero"`
+	// Location is where the run's machine lives, Key is the run's key at a
+	// keyed location, and StartedBy the run whose send or call started it.
+	Location  string `json:"location,omitzero"`
+	Key       string `json:"key,omitzero"`
+	StartedBy string `json:"started_by,omitzero"`
+	// Called is, for a start of a location in a tree another client owns,
+	// the run the call started there. The client is shown only its status
+	// and its output or error, from the call's result.
+	Called  string            `json:"called,omitzero"`
+	Jobs    int               `json:"jobs,omitzero"`
+	Timers  int               `json:"timers,omitzero"`
+	Tickets []string          `json:"tickets,omitzero"`
+	Labels  map[string]string `json:"labels,omitzero"`
 }
 
 // Ended says whether the run has ended.
@@ -68,10 +74,23 @@ var ErrNeverTaken = fmt.Errorf("%w: its start was never taken up", ErrNoRun)
 // waiting to start, or its start was refused.
 var ErrNoRecord = errors.New("the run has no record to read")
 
+// ErrOthers is a run in a tree of another client, which only that client
+// reads and cancels: to this client it is no run.
+var ErrOthers = fmt.Errorf("%w of this client's", ErrNoRun)
+
+// others says a run is in a tree of another client, naming the client.
+func others(id string) error {
+	return fmt.Errorf("%w: the run is in a tree of the client %s, which alone reads it and cancels it", ErrOthers, store.InstanceClient(id))
+}
+
+// ErrCalled is a run this client started as a call into a tree of another
+// client: only the call's result is shown.
+var ErrCalled = errors.New("the run is a call into a tree of another client, and only the call's result is shown")
+
 func runOf(head *instance.Head) *Run {
 	return &Run{ID: head.Name, Machine: head.Machine, Type: head.Type, Status: head.Status, Failure: head.Failure,
 		Step: head.Step, Started: head.Started, Ended: head.Ended, Parent: head.Parent, Jobs: head.Jobs,
-		Key: head.Key, StartedBy: head.StartedBy, Timers: head.Timers, Tickets: head.Tickets, Labels: head.Labels}
+		Location: head.Location, Key: head.Key, StartedBy: head.StartedBy, Timers: head.Timers, Tickets: head.Tickets, Labels: head.Labels}
 }
 
 // mine says whether the client may read what is inside a run.
@@ -91,7 +110,7 @@ func (c *Client) Show(ctx context.Context, id string) (*Run, error) {
 	}
 	if !c.mine(id) {
 		if head == nil {
-			return nil, ErrNoRun
+			return nil, others(id)
 		}
 		return runOf(head), nil
 	}
@@ -125,7 +144,7 @@ func (c *Client) Show(ctx context.Context, id string) (*Run, error) {
 	}
 	st := &latest.State
 	run.Machine, run.Type, run.Started, run.Parent, run.Labels = st.Machine, st.Type, st.Started, st.Above.Parent, st.Labels
-	run.Key, run.StartedBy, run.Title = st.Key, st.Above.StartedBy, st.Title
+	run.Location, run.Key, run.StartedBy, run.Title = st.Location, st.Key, st.Above.StartedBy, st.Title
 	// A blob in the output is shown as its type, its size and the path to
 	// ask for it by: its key is left out here, where the one shape is made.
 	run.Status, run.Step, run.Output, run.Used, run.Ended = st.Status, latest.Number, blob.Show(st.Output), st.Used, st.Ended
@@ -166,16 +185,22 @@ func (c *Client) unstarted(ctx context.Context, id string) (*Run, error) {
 	}
 	if receipt != nil && !receipt.Taken {
 		run := &Run{ID: id, Status: instance.Failed, Failure: machine.StatusError, Error: receipt.Refused}
+		if d := receipt.Denied; d != nil {
+			run.Failure, run.Refused, run.Layer, run.Fix = d.Status, d.Refused, d.Layer, d.Fix
+		}
 		if len(receipt.Problems) > 0 {
 			run.Error += ":\n" + receipt.Problems.Error()
 		}
 		return run, nil
 	}
+	if receipt != nil && receipt.Run != "" && receipt.Run != id {
+		return c.call(ctx, id, receipt.Run)
+	}
 	if receipt != nil {
 		return nil, nil
 	}
-	// A start's definition is written into the run's record before the
-	// start is sent, so a name with nothing in its record was never sent.
+	// A start's input is written into the run's record before the start is
+	// sent, so a name with nothing in its record was never sent.
 	uploaded, err := store.Names(c.Store.First(ctx, store.Blobs(c.ctl(), id), 1))
 	if err != nil {
 		return nil, err
@@ -188,7 +213,7 @@ func (c *Client) unstarted(ctx context.Context, id string) (*Run, error) {
 	// dated further ahead than clocks may differ is no start of this
 	// client's.
 	named, _ := store.InstanceTime(id)
-	if age := c.Now().Sub(named); age > instance.MessageLife+2*identity.ClockAllowance || age < -identity.ClockAllowance {
+	if age := c.Now().Sub(named); age > taking(0) || age < -identity.ClockAllowance {
 		return nil, ErrNeverTaken
 	}
 	return &Run{ID: id, Status: instance.Waiting}, nil
@@ -217,6 +242,43 @@ func (c *Client) Wait(ctx context.Context, id string, interval time.Duration) (*
 	}
 }
 
+// Taken stays until a run this client started has been taken up: it is no
+// longer waiting to start. A run is waited for while a controller may take
+// its start: for the life it was sent with, a few minutes if none, and the
+// allowance for clocks.
+func (c *Client) Taken(ctx context.Context, id string, life, interval time.Duration) error {
+	return c.taken(ctx, id, c.Now().Add(taking(life)), interval)
+}
+
+// Started stays until a run a submit started has been taken up. The
+// controller's start of it is good for ever, as a singleton started again
+// waits for the runs it replaces to end, and so the wait has no limit.
+func (c *Client) Started(ctx context.Context, id string, interval time.Duration) error {
+	return c.taken(ctx, id, time.Time{}, interval)
+}
+
+// taken stays until a run is no longer waiting to start, and gives up once
+// its start is past a time, where it is given one. A run the controller
+// starts has nothing in its record until then.
+func (c *Client) taken(ctx context.Context, id string, until time.Time, interval time.Duration) error {
+	notice, stop := c.Store.Notice(c.ctl())
+	defer stop()
+	for {
+		run, err := c.Show(ctx, id)
+		switch {
+		case err == nil && run.Status != instance.Waiting:
+			return nil
+		case (err == nil || errors.Is(err, ErrNoRun)) && !until.IsZero() && c.Now().After(until):
+			return ErrNeverTaken
+		case err != nil && !errors.Is(err, store.ErrUnreachable) && !errors.Is(err, ErrNoRun):
+			return err
+		}
+		if !pause(ctx, interval, notice) {
+			return ctx.Err()
+		}
+	}
+}
+
 // pause stays until something was written, the interval has passed, or the
 // context has ended, which it reports as false.
 func pause(ctx context.Context, interval time.Duration, notice <-chan struct{}) bool {
@@ -231,8 +293,8 @@ func pause(ctx context.Context, interval time.Duration, notice <-chan struct{}) 
 	return true
 }
 
-// current gives the latest step of a run this client started. A run with
-// no step is no run, or has no record to read yet.
+// current gives the latest step of a run in one of this client's trees. A
+// run with no step is no run, a call, or has no record to read yet.
 func (c *Client) current(ctx context.Context, id string) (*instance.Step, error) {
 	if err := c.identity(); err != nil {
 		return nil, err
@@ -241,7 +303,7 @@ func (c *Client) current(ctx context.Context, id string) (*instance.Step, error)
 		return nil, err
 	}
 	if !c.mine(id) {
-		return nil, fmt.Errorf("the run %q was started by another client, and only the client that started a run can read its record", id)
+		return nil, others(id)
 	}
 	latest, err := instance.Current(ctx, c.Store, c.Controller, c.ID, id)
 	if err != nil || latest != nil {
@@ -251,12 +313,15 @@ func (c *Client) current(ctx context.Context, id string) (*instance.Step, error)
 	if err != nil {
 		return nil, err
 	}
+	if run.Called != "" {
+		return nil, ErrCalled
+	}
 	return nil, fmt.Errorf("%w: it is %s", ErrNoRecord, run.Status)
 }
 
 // Tickets gives the tickets a run is waiting on, each name with its value.
 // The value is the whole right to answer; it is in the record, which only
-// the client that started the run can read.
+// the client of the run's tree can read.
 func (c *Client) Tickets(ctx context.Context, id string) (map[string]string, error) {
 	latest, err := c.current(ctx, id)
 	if err != nil {
@@ -267,4 +332,37 @@ func (c *Client) Tickets(ctx context.Context, id string) (map[string]string, err
 		tickets[ticket.Name] = ticket.Value
 	}
 	return tickets, nil
+}
+
+// call shows a start that was a call into another client's tree: running
+// until its result is beside its receipt, and then as the result says.
+func (c *Client) call(ctx context.Context, id, called string) (*Run, error) {
+	run := &Run{ID: id, Status: instance.Running, Called: called}
+	result, err := c.result(ctx, id)
+	if err != nil || result == nil {
+		return run, err
+	}
+	run.Status, run.Output = result.Status, blob.Show(result.Output)
+	if e := result.Error; e != nil {
+		run.Error, run.Refused, run.Layer, run.Fix = e.Error, e.Refused, e.Layer, e.Fix
+		if result.Status == instance.Failed {
+			run.Failure = e.Status
+		}
+	}
+	return run, nil
+}
+
+// result reads what became of a run this client called, beside the call's
+// receipt: nil while the run is running.
+func (c *Client) result(ctx context.Context, id string) (*instance.CallResult, error) {
+	at := store.Result(c.ctl(), c.ID.Name, startMessage(id))
+	data, mark, err := c.Store.Read(ctx, at)
+	if err != nil || mark == store.None {
+		return nil, err
+	}
+	var result instance.CallResult
+	if _, err := identity.Read(data, at, c.Controller, c.ID, &result); err != nil {
+		return nil, fmt.Errorf("the result of the call %s: %w", id, err)
+	}
+	return &result, nil
 }

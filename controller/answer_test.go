@@ -174,7 +174,7 @@ func lying(kind string, args []string) {
 			{Job: &machine.Job{Name: "x", Script: "./step.js", Allow: strange, Deny: strange, Timeout: long, Restart: &machine.Restart{Limit: -1}, Memory: -1,
 				Input: bad("../..", "text/plain"), Wants: strange, Shown: bad("", ""), Files: strange}},
 			{Job: &machine.Job{Name: "y", Stored: bad("../../secrets/x", blob.Definition), Allow: strange, Timeout: long, Input: bad("", blob.Definition)}},
-			{Job: &machine.Job{Name: "z", Stored: bad("ctl/secrets/x", blob.Definition)}},
+			{Job: &machine.Job{Name: "z", Stored: bad("ctl/locations/+/secrets/x", blob.Definition)}},
 			{Job: &machine.Job{Name: "w", Stored: bad("../x", "text/javascript")}},
 			{Send: &machine.Send{To: machine.Parent, Event: "e", Data: bad("../..", blob.Definition)}},
 			{Timer: &machine.TimerAt{Name: "t", At: time.Date(9999, 12, 31, 23, 59, 59, 0, time.UTC)}},
@@ -196,55 +196,50 @@ func lying(kind string, args []string) {
 			out.Requests = append(out.Requests, machine.Request{Job: &machine.Job{Name: fmt.Sprintf("j%d", i), Script: "./step.js", AskAt: args[1]}})
 		}
 
-	case "key send":
-		// A send to a key: args are the key, and the machine if there is one.
-		// What that starts is not the machine that lies.
+	case "address send":
+		// A send to an address: args are the location, and the key if there
+		// is one.
 		if in.State.Type != "statechart" && in.State.Type != "agent" {
 			break
 		}
-		send := &machine.Send{Key: &args[0], Event: "e", Data: 1.0}
+		to := &machine.Address{At: args[0]}
 		if len(args) > 1 {
-			send.Machine = args[1]
+			to.Key = &args[1]
 		}
-		out.Requests = []machine.Request{{Send: send}}
+		out.Requests = []machine.Request{{Send: &machine.Send{At: to, Event: "said", Data: map[string]any{"text": "forged"}}}}
 		out.State.Above.Made = false
 		out.State.Above.Layers = nil
 		out.State.Above.Depth = 0
 
-	case "key event":
-		// A send of an event of Corbie's own to a key, which what the key names
-		// would take for its start. args are the key and the event.
-		if in.State.Type == "statechart" && in.State.Machine != "waits" {
-			out.Requests = []machine.Request{{Send: &machine.Send{Key: &args[0], Event: args[1]}}}
+	case "address event":
+		// A send of an event of Corbie's own to an address, which what the
+		// key names would take for its start. args are the location, the key
+		// and the event.
+		if in.State.Type == "statechart" {
+			out.Requests = []machine.Request{{Send: &machine.Send{At: &machine.Address{At: args[0], Key: &args[1]}, Event: args[2]}}}
 		}
 
-	case "key job":
-		out.Requests = []machine.Request{{Job: &machine.Job{Name: "k", Stored: nil, Machine: args[1], RunKey: &args[0]}}}
-
-	case "strange keys":
-		// Keys of every odd form, and data that names nothing.
+	case "strange addresses":
+		// Addresses of every odd form, and data that names nothing.
 		bad := map[string]any{"$blob": "../..", "type": blob.Definition, "size": 1.0, "key": "x"}
 		for _, key := range []string{"\x00", "../../secrets/x", "a/b", "\u2028", strings.Repeat("é", 256), "ctl/keys/c1/x", "${input}"} {
-			out.Requests = append(out.Requests, machine.Request{Send: &machine.Send{Key: &key, Machine: args[0], Event: "\x00", Data: bad}})
+			for _, at := range []string{"/t/room", "../x", "/t/+/keys", key} {
+				out.Requests = append(out.Requests, machine.Request{Send: &machine.Send{At: &machine.Address{At: at, Key: &key}, Event: "\x00", Data: bad}})
+				out.Requests = append(out.Requests, machine.Request{Send: &machine.Send{At: &machine.Address{At: at, Run: key}, Event: "said", Data: bad}})
+			}
 		}
 
-	case "many keys":
+	case "many addresses":
 		n, _ := strconv.Atoi(args[0])
 		for i := range n {
 			key := fmt.Sprint("k", i)
-			out.Requests = append(out.Requests, machine.Request{Send: &machine.Send{Key: &key, Event: "e"}})
+			out.Requests = append(out.Requests, machine.Request{Send: &machine.Send{At: &machine.Address{At: "/t/room", Key: &key}, Event: "said"}})
 		}
 
 	case "many sends":
 		n, _ := strconv.Atoi(args[0])
 		for range n {
 			out.Requests = append(out.Requests, machine.Request{Send: &machine.Send{To: machine.Parent, Event: "e"}})
-		}
-
-	case "strange job keys":
-		// A job of the definition under keys of every odd form.
-		for i, key := range []string{"\x00", "../../secrets/x", "a/b", "\u2028", strings.Repeat("é", 256), "ctl/keys/c1/x", "${input}"} {
-			out.Requests = append(out.Requests, machine.Request{Job: &machine.Job{Name: fmt.Sprint("k", i), Machine: args[0], RunKey: &key}})
 		}
 
 	case "large":
@@ -296,35 +291,33 @@ const liesUnder = `
 	  go: { job: { machine: "${stages.make.output}", allow: ["all"] } }
 `
 
-// aChart is a made statechart that holds a machine, and waits.
+// aChart is a made statechart that waits.
 const aChart = `
 	statechart: liar
 	initial: a
 	states:
 	  a:
 	    on:
-	      never: { send: { to: { machine: { flow: kid, keep: 1000h, stages: { a: { job: ./step.js } } }, key: k }, event: e } }
+	      never: { send: { to: parent, event: e } }
 `
 
-// A machine made while running fails when it asks to send to a key or to give
-// a job one, whatever its answer says of itself and whatever the job above it
-// lists. Nothing is read of the keys, and no other run hears of it.
-func Test_ctl_answer_of_a_made_machine_uses_no_key(t *testing.T) {
+// A machine made while running fails when it asks to send to an address,
+// whatever its answer says of itself and whatever the job above it lists.
+// Nothing is read of the keys, and no other run hears of it.
+func Test_ctl_answer_of_a_made_machine_sends_to_no_address(t *testing.T) {
 	for _, lie := range [][]string{
-		{"key send", "k"},
-		{"key send", "k", "in-place-1"},
-		{"key send", strings.Repeat("a", 300)},
-		{"key event", "k", machine.Start},
-		{"key job", "k", "in-place-1"},
-		{"strange keys", "in-place-1"},
-		{"many keys", "1000"},
+		{"address send", "/t/room", "chat:1"},
+		{"address send", "/t/room"},
+		{"address send", "/t/room", strings.Repeat("a", 300)},
+		{"address event", "/t/room", "chat:1", machine.Start},
+		{"strange addresses"},
+		{"many addresses", "1000"},
 	} {
 		w := newWorld(t)
-		target, err := w.client.Start(ctx, w.draft(waits, nil), client.Start{Key: "k"})
-		if err != nil {
-			t.Fatal(err)
-		}
+		target := w.rooms(nil)
+		w.say(target, "say", 1, "one")
 		w.settle()
+		room := w.runsOf("talk")[0]
 		files := map[string]string{"make.js": "return 1"}
 		r1 := w.newRunner()
 		run := w.submit(liesUnder, files, nil)
@@ -334,14 +327,14 @@ func Test_ctl_answer_of_a_made_machine_uses_no_key(t *testing.T) {
 		w.made(r1, run, aChart)
 		w.settle()
 		st := w.latest(w.child(run)).State
-		if st.Status != instance.Failed || !strings.Contains(st.Error.Error, "sends to no key") {
+		if st.Status != instance.Failed || !strings.Contains(st.Error.Error, "sends only to its parent and its children") {
 			t.Fatalf("%s: the machine is %s: %+v", lie[0], st.Status, st.Error)
 		}
-		if steps := w.steps(target); len(steps) != 1 {
+		if steps := w.steps(room); len(steps) != 1 {
 			t.Fatalf("%s: the run with the key took %d steps", lie[0], len(steps))
 		}
 		for _, op := range w.noted() {
-			if strings.HasPrefix(op.Name, "ctl/keys") {
+			if strings.Contains(op.Name, "/keys/") {
 				t.Fatalf("%s: the answer led to a look at %s", lie[0], op.Name)
 			}
 		}
@@ -364,48 +357,25 @@ func Test_ctl_answer_with_many_sends_fails_its_machine(t *testing.T) {
 	}
 }
 
-// A listed agent's answer can give a job of its definition a key, and the
-// oddest are text in a step like any other.
-func Test_ctl_answer_with_strange_keys_ends_no_controller(t *testing.T) {
-	w := newWorld(t)
-	r1 := w.newRunner()
-	files := map[string]string{"kid.yaml": waits}
-	for name, text := range listerFiles {
-		files[name] = text
-	}
-	run, err := w.client.Start(ctx, w.draft(strings.Replace(lister, "  t:\n", "  m: { does: M, job: { machine: ./kid.yaml } }\n\t  t:\n", 1), files), client.Start{Secrets: map[string]string{"KEY": "k"}})
-	if err != nil {
-		t.Fatal(err)
-	}
-	w.settle()
-	w.lieNext("after a list", "strange job keys", "./kid.yaml")
-	w.result(r1, run, "t", oneTool)
-	w.settle()
-	if head := w.head(run); head == nil {
-		t.Fatal("the agent has no head")
-	}
-	other := w.submit(family, nil, nil)
-	w.settle()
-	w.done(other)
-}
-
-// A step of a type no definition of which can send to a key cannot say so.
-func Test_ctl_answer_of_a_listed_agent_cannot_send_to_a_key(t *testing.T) {
-	w := newWorld(t)
-	run, r1 := w.listed()
-	target, err := w.client.Start(ctx, w.draft(waits, nil), client.Start{Key: "k"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	w.settle()
-	w.lieNext("after a list", "key send", "k")
-	w.result(r1, run, "t", oneTool)
-	w.settle()
-	if st := w.latest(run).State; st.Status != instance.Failed || !strings.Contains(st.Error.Error, "sent to a key") {
-		t.Fatalf("the agent is %s: %+v", st.Status, st.Error)
-	}
-	if steps := w.steps(target); len(steps) != 1 {
-		t.Fatalf("the run took %d steps", len(steps))
+// A step of a type no definition of which can send to an address cannot say
+// so, however odd the address.
+func Test_ctl_answer_of_a_listed_agent_cannot_send_to_an_address(t *testing.T) {
+	for _, lie := range [][]string{{"address send", "/t/room", "chat:1"}, {"strange addresses"}} {
+		w := newWorld(t)
+		target := w.rooms(nil)
+		w.say(target, "say", 1, "one")
+		w.settle()
+		room := w.runsOf("talk")[0]
+		run, r1 := w.listed()
+		w.lieNext("after a list", lie...)
+		w.result(r1, run, "t", oneTool)
+		w.settle()
+		if st := w.latest(run).State; st.Status != instance.Failed || !strings.Contains(st.Error.Error, "sent to an address") {
+			t.Fatalf("%s: the agent is %s: %+v", lie[0], st.Status, st.Error)
+		}
+		if steps := w.steps(room); len(steps) != 1 {
+			t.Fatalf("%s: the run took %d steps", lie[0], len(steps))
+		}
 	}
 }
 
@@ -497,7 +467,7 @@ func Test_ctl_answer_says_nothing_of_what_a_step_used(t *testing.T) {
 	w := newWorld(t)
 	owner := w.submit(family, nil, nil)
 	w.settle()
-	secret := store.Secret("ctl", "token")
+	secret := store.Secret("ctl", "/", "token")
 	if _, err := w.owner.Write(ctx, secret, []byte("sealed"), store.OnlyIfNew); err != nil {
 		t.Fatal(err)
 	}
@@ -1012,29 +982,56 @@ func (c *askCounter) Asks(def *machine.Definition) map[string]*machine.JobSpec {
 	return c.Type.(machine.Reader).Asks(def)
 }
 
-// A definition a job stored is in the record of the run that stored it. A
-// client that names it starts nothing: it is not read, and the controller is
-// not given it to read as an owner's.
-func Test_ctl_client_start_names_a_definition_in_its_own_record(t *testing.T) {
+// A client starts a run at a location: the run's definition is the file
+// recorded there, copied into the run's own record, whatever else the start
+// names, and its input is the blob the start names in that record. A start that names a definition in another run's record, and no
+// location, starts nothing: the definition is not read, and the controller
+// is not given it to read as an owner's.
+func Test_ctl_client_start_names_a_location(t *testing.T) {
 	w := newWorld(t)
 	w.ctrl.Command = []string{"/nonexistent/no-step-process"}
 	w.newRunner()
-	holder := w.submit(kept, nil, nil)
+	at, _ := w.place(w.client, kept, nil)
+	holder := w.startAt(w.client, at, client.Start{})
 	w.settle()
 	ref, err := w.draft(plain, map[string]string{"step.js": "return 1"}).Store(ctx, w.ctrl.Store, "ctl", holder)
 	if err != nil {
 		t.Fatal(err)
 	}
-	run, err := w.client.NewRun()
-	if err != nil {
-		t.Fatal(err)
+	start := func(s *instance.Start) (string, *instance.Receipt) {
+		t.Helper()
+		run, err := w.client.NewRun()
+		if err != nil {
+			t.Fatal(err)
+		}
+		_, id, _ := strings.Cut(run, "/")
+		s.Seed = make([]byte, 32)
+		if s.InputBlob.At == "" {
+			s.InputBlob = w.input(run, `{"n":1}`)
+		}
+		w.leave(w.c1, id, &instance.Message{Kind: instance.KindStart, Instance: run, Start: s})
+		w.settle()
+		return run, w.receipt(id)
 	}
-	_, id, _ := strings.Cut(run, "/")
-	w.leave(w.c1, id, &instance.Message{Kind: instance.KindStart, Instance: run,
-		Start: &instance.Start{Definition: ref, Seed: make([]byte, 32)}})
-	w.settle()
-	if r := w.receipt(id); w.head(run) != nil || r == nil || r.Taken || !strings.Contains(r.Refused, "own record") {
-		t.Fatalf("the start has the head %+v and the receipt %+v", w.head(run), r)
+	run, r := start(&instance.Start{Location: at, Definition: ref})
+	if r == nil || !r.Taken || w.head(run) == nil {
+		t.Fatalf("the start of %s has the head %+v and the receipt %+v", at, w.head(run), r)
+	}
+	if st := w.latest(run).State; st.Machine != "kept" || st.Location != at || !strings.HasPrefix(st.Definition.At, store.Blobs("ctl", run)+"/") {
+		t.Fatalf("the run at %s is of %q at %s, from the definition %s", at, st.Machine, st.Location, st.Definition.At)
+	}
+	// The input is the blob the start names in the run's record, not what
+	// the message carries.
+	if in := w.latest(run).State.Input; fmt.Sprint(in) != "map[n:1]" {
+		t.Fatalf("the run at %s has the input %v", at, in)
+	}
+	run, r = start(&instance.Start{Location: at, Input: map[string]any{"n": 2.0}, InputBlob: w.input(holder, `{"n":3}`)})
+	if w.head(run) != nil || r == nil || r.Taken || !strings.Contains(r.Refused, "names its input") {
+		t.Fatalf("a start naming an input in another run's record has the head %+v and the receipt %+v", w.head(run), r)
+	}
+	run, r = start(&instance.Start{Definition: ref})
+	if w.head(run) != nil || r == nil || r.Taken || !strings.Contains(r.Refused, "names a location") {
+		t.Fatalf("the start of a definition in another record has the head %+v and the receipt %+v", w.head(run), r)
 	}
 }
 
@@ -1060,10 +1057,8 @@ var listerFiles = map[string]string{"step.js": "return 1", "ok.js": "return {}",
 func (w *world) listed() (run string, r1 *identity.Identity) {
 	w.t.Helper()
 	r1 = w.newRunner()
-	run, err := w.client.Start(ctx, w.draft(lister, listerFiles), client.Start{Secrets: map[string]string{"KEY": "k"}})
-	if err != nil {
-		w.t.Fatal(err)
-	}
+	w.secret("KEY", "k", "/")
+	run = w.submit(lister, listerFiles, nil)
 	w.settle()
 	return run, r1
 }
@@ -1403,15 +1398,16 @@ func Test_ctl_made_step_answer_past_a_steps_limit_fails_its_machine(t *testing.T
 // machine too: a state that grew a step at a time is read on every pass.
 func Test_ctl_made_step_state_past_a_steps_limit_fails_its_machine(t *testing.T) {
 	w := newWorld(t)
-	run := w.lied(plain, "grown")
+	run := w.lied("statechart: plain\ninitial: a\nstates:\n  a: { on: { go: a } }\n", "grown")
 	w.settle()
 	st := w.latest(w.child(run)).State
 	if st.Status != instance.Running {
 		t.Fatalf("the first step failed its machine: %+v", st.Error)
 	}
 	w.tick(time.Second)
-	w.put(w.c1, store.Stamp(w.clock())+"-event", &instance.Message{Kind: instance.KindEvent, Instance: w.child(run), Event: &machine.Event{Name: "go"}},
-		w.ctl.Card, w.clock().Add(time.Hour))
+	if _, err := w.client.Send(ctx, w.to(w.child(run)), "go", nil, time.Hour); err != nil {
+		t.Fatal(err)
+	}
 	w.settle()
 	st = w.latest(w.child(run)).State
 	if st.Status != instance.Failed || !strings.Contains(st.Error.Error, "MiB") {

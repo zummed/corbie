@@ -1,7 +1,7 @@
 Machines together: a job can be another machine, so a statechart can run a flow and an agent can use a flow as a tool.
 
-Both examples use `title.yaml` from `corbie manual first-machine`. Record
-lines are shown without their time and run number, and `<id>` is the child
+The first two examples use `title.yaml` from `corbie manual first-machine`.
+Record lines are shown without their time and run number, and `<id>` is a
 run's ID.
 
 A statechart runs the flow
@@ -24,17 +24,17 @@ A statechart runs the flow
     corbie test watch.yaml --watch
       step 1  <- start
       step 1  -> job fetching: a machine, <id>
-        step 1  <- start {"url":"https://example.com"}
-        step 1  -> job get_title: a script, on runner
-        step 2  <- done from get_title {"title":"Example Domain","url":"https://example.com"}
-        step 2  done
+      step 1  <- start {"url":"https://example.com"}
+      step 1  -> job get_title: a script, on runner
+      step 2  <- done from get_title {"title":"Example Domain","url":"https://example.com"}
+      step 2  done
       step 2  <- done from fetching {"title":"Example Domain","url":"https://example.com"}
       step 2  done
       output: "Example Domain"
 
 The job of the state `fetching` is the flow. The controller starts it as a
-child run, whose lines are indented. When the child run ends, the statechart
-receives `done` with the flow's output and moves to `finished`.
+child run, whose lines are among the statechart's, with the child's run number.
+When the child run ends, the statechart receives `done` with the flow's output and moves to `finished`.
 
 An agent uses the flow as a tool
 --------------------------------
@@ -56,8 +56,8 @@ An agent uses the flow as a tool
     corbie test helper.yaml --input '{"question": "What is the title of the page at https://example.com?"}' --secret-env ANTHROPIC_KEY --watch
       step 1  -> job turn: a script, on runner
       step 2  -> job title: a machine, <id>
-        step 1  -> job get_title: a script, on runner
-        step 2  done
+      step 1  -> job get_title: a script, on runner
+      step 2  done
       step 3  <- done from title {"title":"Example Domain","url":"https://example.com"}
       step 3  -> job turn#2: a script, on runner
       step 4  done
@@ -69,43 +69,59 @@ called the tool `title`, whose job is the flow, and in the second it answered.
 As a job the flow keeps its own `allow:` list: the script may still connect
 only to `example.com`.
 
-A statechart sends to a run by its key
---------------------------------------
+A statechart sends to a run by its address
+------------------------------------------
 
-    # room.yaml
+    # house/room.yaml
     statechart: room
+    lifetime: keyed
     initial: open
     states:
       open:
         on:
           knock: open
           leave: closed
-      closed: { end: done, output: "${run.key}" }
+      closed: { end: done }
 
-    # desk.yaml
+    # house/desk.yaml
     statechart: desk
+    allow: [send:room, send:bell]
     initial: first
     states:
       first:
         entry:
           send:
-            - { to: { machine: ./room.yaml, key: "room:1" }, event: knock, data: { by: ana } }
-            - { to: { key: "room:1" }, event: leave }
-            - { to: { key: "room:2" }, event: knock }
+            - { to: { at: room, key: "1" }, event: knock, data: { by: ana } }
+            - { to: { at: room, key: "1" }, event: leave }
+            - { to: { at: bell }, event: ring }
         timers: { pause: 1s }
         on: { pause: last }
       last: { end: done }
 
-    corbie test desk.yaml --watch
+    corbie init --ceiling all
+    corbie start &
+    corbie run submit house
+      /house/desk   transient   recorded
+      /house/room   keyed       recorded
+    corbie run submit /house/desk --watch
       step 1  <- start
-      step 1  -> send knock to the key "room:1"
-      step 1  -> send leave to the key "room:1"
-      step 1  -> send knock to the key "room:2" (undelivered: it is not running)
+      step 1  -> send knock to /house/room#1 · started <id>
+      step 1  -> send leave to /house/room#1 · <id>
+      step 1  -> send ring to /house/bell · undelivered: nothing is recorded at /house/bell
       step 2  done
 
-The first send finds no run with the key `room:1`, so it starts `room.yaml` with
-that key. The second is delivered to that run. No run has `room:2`, and the
-sender's record says so.
+`room.yaml` is keyed: it has a run for each key. The first send finds no run
+with the key `1`, so it starts one, with the event's data as its input. The
+second goes to that run, and nothing is recorded at `/house/bell`.
 
-Next: `corbie manual a-real-run` runs `title.yaml` on a controller and a
-runner.
+- `send:room` in `allow:` lets the statechart send to `/house/room`. A send it
+  does not allow fails the statechart as `denied`.
+- The run that takes an event reads its sender in `${event.from}`, and a send
+  `to: "${event.from}"` replies.
+- A file's `receive:` lists who may send to its runs, by default every
+  location of its tree and the tree's client.
+- `limits: { runs: 50 }` in a keyed file caps how many of its runs are
+  running at once; a send to a new key past it is not delivered.
+
+Next: `corbie manual install` covers running Corbie on several computers, on a
+bucket and as serverless functions.

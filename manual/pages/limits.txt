@@ -1,8 +1,8 @@
 What Corbie does not defend against: Corbie makes no check and gives no protection in these cases.
 
 A script uses files, the network, other programs, environment variables and
-secrets only through six kinds of permission, and Corbie checks every use. It
-does not defend against the following.
+secrets only through permissions, and Corbie checks every use. It does not
+defend against the following.
 
 - A program that a job starts reads files, writes files and opens connections
   as the runner's user. Permissions are checked when it is started and not
@@ -30,9 +30,8 @@ These are true of definitions.
   Nothing limits its memory, and its one second stops its own code and not a
   call to something built in, so `'a'.repeat(2**40)` ends the controller and a
   regular expression that backtracks holds a step without end. An owner can do
-  this to a controller that takes their definitions. A client starts a run
-  only from a definition in that run's own record, so a definition a job stored
-  reaches this process only if a client copies it there.
+  this to a controller that takes their definitions. Only a definition a client
+  submitted runs in this process; one a job stored runs in a process of its own.
 - An owner's expression is read and compiled in the controller's own process,
   and nothing stops that. Reading `=>` nested in what stands before another
   takes twice as long with each, and so does compiling a chain of `&&`, `||` or
@@ -40,14 +39,13 @@ These are true of definitions.
   brackets ended a client for want of stack, and the controller reads an
   expression with the same code.
 - Nothing limits what reading a definition costs the process that reads it. An
-  owner's definition costs this to their own client, gateway and controller. A
+  owner's definition costs this to their own client and controller. A
   job's definition costs that job, and past its limits the job fails.
 
   400 KB of brackets in one expression          2 seconds, 1 GiB
   4 MiB of YAML that writes [1,1,...]           2.3 seconds, 660 MiB
   14 levels of files that name the next twice   3.9 seconds, 230 MiB
 
-- A gateway takes a definition of up to 64 MiB from whoever holds its token.
 - Each step of a machine made while running, and each step after the first of
   an agent with a `list:` tool, is taken in a process of its own, and may use
   10 seconds and 1 GiB of memory. Past either, that machine fails and nothing
@@ -68,19 +66,21 @@ These are true of definitions.
   256 KiB of numbers against 1800 types                119 seconds
   forty $refs that each name the next twice            never ends
 
-These are true of keys.
+These are true of sends and calls to addresses.
 
 - A key is any text of at most 256 characters, and anyone who can list runs can
   read it.
-- A run a send starts counts as one level below its sender, so a chain of
-  sends that each start a run ends at `limits: { depth: }`, 8 by default.
+- A run a send or a call starts counts as one level below its sender, and
+  fails as it starts past its own file's `limits: { depth: }`, 16 by default.
+- `limits: { runs: }` is counted as a send is made, so sends from several runs
+  at once can pass it by a few.
 - A run remembers the last message of each of its 64 most recent senders. A
   controller stopped while it sends, with 64 others heard before it resumes,
   can deliver an event twice.
-- An event sent with `machine` to a run that ends before taking it is lost if
-  the sender's record has been removed, since that record holds the definition.
-- A controller stopped as it deletes an event no run has writes no note of it
-  in the sender's record.
+- A controller stopped as it deletes an event no run takes writes no note of
+  it in the sender's record.
+- Anything about the sender in an event's data is only the sender's claim:
+  `${event.from}` is what the controller wrote.
 
 These are true of the store.
 

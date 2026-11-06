@@ -1,0 +1,11 @@
+# The worker takes one piece of work and keeps the rest under defer: until
+# it is told hold.
+statechart: worker
+lifetime: singleton
+initial: idle
+states:
+  idle: { on: { work: busy } }
+  busy:
+    ticket: hold
+    defer: [work]
+    on: { hold: idle }

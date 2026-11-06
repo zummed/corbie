@@ -19,8 +19,9 @@ func Test_model_plain_address_key_bound_to_it(t *testing.T) {
 	}
 	at, _ := url.Parse(m.URL)
 	l := local(t, "all")
-	id, err := l.Start(ctx, draft(t, agentDef(m.URL, ""), scripts), client.Start{
-		Input: map[string]any{"question": "what is 41 plus one?"}, Secrets: map[string]string{"TEST_KEY": "sk-test-key"}})
+	setSecret(t, l, "TEST_KEY", "sk-test-key")
+	id, err := l.Run(ctx, draft(t, agentDef(m.URL, ""), scripts), client.Start{
+		Input: map[string]any{"question": "what is 41 plus one?"}})
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -1,0 +1,8 @@
+# The tree's client sends to a key. The run it starts has { client } in
+# event.from, and its reply to that is noted as undelivered: a client has no
+# inbox. The tree's own client is taken whatever receive: lists.
+statechart: watcher
+initial: waiting
+states:
+  waiting: { timers: { pause: 2s }, on: { pause: over } }
+  over: { end: done }

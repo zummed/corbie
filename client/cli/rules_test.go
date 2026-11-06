@@ -765,8 +765,9 @@ states:
 	})
 	// The stages follow one another, so the steps fall the same way each
 	// time. What a record's entries say, without what differs from run to run:
-	// names of runs and of parties, times, and the seeds of names.
-	varying := regexp.MustCompile(`"(id|time|at|child|to|message|source|sender|runner|started|ended)":"[^"]*",?|box-|client/[0-9TZ.]+-[0-9a-f]+|client\.[0-9TZ.]+-[0-9a-f]+`)
+	// names of runs and of parties, times, the seeds of names, and which batch
+	// of a job's emits a value was written in, which follows the clock.
+	varying := regexp.MustCompile(`"(id|time|at|child|to|message|source|sender|runner|started|ended)":"[^"]*",?|box-|client/[0-9TZ.]+-[0-9a-f]+|client\.[0-9TZ.]+-[0-9a-f]+|/[0-9]+/values\[[0-9]+\]`)
 	record := func(command ...string) (entries []string, run string) {
 		t.Helper()
 		status, out, errOut := m.run("", append(command, "--input", `{"name": "x"}`, "--watch", "--json")...)

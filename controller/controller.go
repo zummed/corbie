@@ -102,8 +102,18 @@ type arrival struct {
 }
 
 // good says whether a message is still good, asked only when it is about
-// to be given to a step.
-func (a *arrival) good(now time.Time) bool { return a.wake || a.value.Good(now) }
+// to be given to a step. A client's is good until the time it gives, with
+// no allowance for clocks: the client says the message was not taken up
+// once that time has passed.
+func (a *arrival) good(now time.Time) bool {
+	switch {
+	case a.wake:
+		return true
+	case a.kind == identity.Client:
+		return a.value.Until.IsZero() || !now.After(a.value.Until)
+	}
+	return a.value.Good(now)
+}
 
 // Pass looks at the store, does everything that is owed, and stops. It
 // says when the next thing is due, if it knows of one.

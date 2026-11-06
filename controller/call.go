@@ -171,7 +171,8 @@ func (b *build) callIn(start *arrival, file *located, s *instance.Start) error {
 		return err
 	}
 	if r := (&permission.Set{Layers: []permission.Layer{ceilingOf(client)}}).Check(permission.Send, s.Location); r != nil {
-		b.refuse(start, "%s", r.Error())
+		b.out.dropped = append(b.out.dropped, dropped{a: start, receipt: &instance.Receipt{Refused: r.Error(),
+			Denied: &machine.Error{Status: machine.StatusDenied, Error: r.Error(), Refused: r.What, Layer: r.Layer, Fix: r.Fix}}})
 		return nil
 	}
 	input, why, err := b.clientInput(s)

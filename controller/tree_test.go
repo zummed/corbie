@@ -798,3 +798,69 @@ func Test_ctl_singleton_waits_for_every_run_it_replaces(t *testing.T) {
 		t.Fatalf("the runs at /s are %v", runs)
 	}
 }
+
+// A singleton started again waits for every run at its location to end,
+// the children of the run it replaces included.
+func Test_ctl_singleton_waits_for_the_children_of_the_run_it_replaces(t *testing.T) {
+	w := newWorld(t)
+	holder := `
+		statechart: holder
+		lifetime: singleton
+		initial: w
+		states:
+		  w: { job: { machine: { statechart: inner, initial: x, states: { x: { on: { go: x } } } } } }
+	`
+	old := w.submitTree(w.client, w.tree("/s", "", map[string]string{"/s": holder}, nil)).Tree.Locations[0].Run
+	w.settle()
+	var child string
+	for _, name := range w.list(store.Running("ctl")) {
+		if head := w.head(store.InstanceOf("ctl", name)); head != nil && head.Parent == old {
+			child = head.Name
+		}
+	}
+	if child == "" {
+		t.Fatal("the singleton started no child")
+	}
+	message, err := w.client.Submit(ctx, w.tree("/s", "", map[string]string{"/s": strings.Replace(holder, "initial: w", "initial: w\n\t\ttitle: changed", 1)}, nil), 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The cancel of the child is not seen for a while.
+	inner := w.ctrl.Store
+	w.afresh(&hiding{Store: inner, hide: func(name string) bool {
+		return strings.Contains(name, "/inbox/") && strings.HasSuffix(name, ".cancel") && w.cancels(name, child)
+	}})
+	for range 4 {
+		w.pass()
+		w.tick(time.Second)
+	}
+	r := w.receipt(message)
+	if r == nil || !r.Taken {
+		t.Fatalf("the submit gave %+v", r)
+	}
+	single := r.Tree.Locations[0].Run
+	if w.head(old).Status != instance.Cancelled || w.head(child).Status != instance.Running || w.head(single) != nil {
+		t.Fatalf("with the child still running the new singleton is %+v", w.head(single))
+	}
+	w.afresh(inner)
+	for range 4 {
+		w.settle()
+		w.tick(time.Second)
+	}
+	if w.head(child).Status != instance.Cancelled || w.head(single) == nil || w.head(single).Status != instance.Running {
+		t.Fatalf("the runs at /s are %v", w.at("/s"))
+	}
+}
+
+// cancels says whether a message in the controller's inbox cancels a run.
+func (w *world) cancels(name, run string) bool {
+	data, _, err := w.owner.Read(ctx, name)
+	if err != nil || data == nil {
+		return false
+	}
+	var msg instance.Message
+	if _, err := identity.Read(data, name, w.ctl.Card, w.ctl, &msg); err != nil {
+		return false
+	}
+	return msg.Kind == instance.KindCancel && msg.Instance == run
+}

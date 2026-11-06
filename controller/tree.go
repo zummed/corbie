@@ -204,15 +204,25 @@ func (p *pass) checkTree(a *arrival, msg *instance.Submit) (string, error) {
 	}
 	locations := append(sortedKeys(msg.Files), msg.Problems...)
 	slices.Sort(locations)
-	for i, location := range locations {
+	given := map[string]bool{}
+	for _, location := range locations {
+		given[location] = true
+	}
+	for _, location := range locations {
 		if err := store.CheckLocation(location); err != nil {
 			return err.Error(), nil
 		}
 		if location != msg.Prefix && !strings.HasPrefix(location, msg.Prefix+"/") {
 			return fmt.Sprintf("the location %s is not in the tree %s", location, msg.Prefix), nil
 		}
-		if i > 0 && strings.HasPrefix(location, locations[i-1]+"/") {
-			return fmt.Sprintf("the location %s is below %s, and a location has nothing below it", location, locations[i-1]), nil
+		// A location has nothing below it. Two files with problems record
+		// nothing, and are no pair.
+		for above := path.Dir(location); above != "/" && above != "."; above = path.Dir(above) {
+			_, file := msg.Files[location]
+			_, aboveFile := msg.Files[above]
+			if given[above] && (file || aboveFile) {
+				return fmt.Sprintf("the location %s is below %s, and a location has nothing below it", location, above), nil
+			}
 		}
 	}
 	uploads := store.Uploaded(p.ctl, a.sender, a.name[strings.LastIndexByte(a.name, '/')+1:])
@@ -280,16 +290,16 @@ func (p *pass) plan(a *arrival, base string, before *treeEntry) (*treeEntry, err
 			done.What = didRestart
 		}
 		if lifetime == machine.LifetimeSingleton {
-			running := false
-			if !restart {
-				if running, err = p.holds(location); err != nil {
-					return nil, err
-				}
+			running, err := p.holds(location)
+			if err != nil {
+				return nil, err
 			}
-			if !running {
-				if !restart {
-					done.What = didStart
-				}
+			// A changed singleton with no run running is started, not
+			// started again.
+			if !restart && !running || restart && !running && was.Lifetime == lifetime {
+				done.What = didStart
+			}
+			if restart || !running {
 				done.Run = store.RootInstance(a.sender, a.sent, base+"\x00"+location)
 			}
 		}
@@ -468,6 +478,33 @@ func (p *pass) cancelAt(client, base string, locations []string, starts map[stri
 	return cancelled, nil
 }
 
+// runningAt says whether a run of a client's other than one named is
+// running at a location, a child included.
+func (p *pass) runningAt(client, location, other string) (bool, error) {
+	names, err := store.Names(p.store.List(p.ctx, store.Running(p.ctl)+"/"+client))
+	if err != nil {
+		return false, err
+	}
+	heads := make([]*instance.Head, len(names))
+	err = p.each(len(names), func(i int) error {
+		head, _, err := instance.ReadHead(p.ctx, p.store, p.c.ID.Card, store.InstanceOf(p.ctl, names[i]))
+		if isAltered(err) {
+			return nil
+		}
+		heads[i] = head
+		return err
+	})
+	if err != nil {
+		return false, err
+	}
+	for _, head := range heads {
+		if head != nil && head.Status == instance.Running && head.Location == location && head.Name != other {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
 // startSingleton starts a location's singleton: its start, which waits for
 // the runs it replaces to end, and then its key's file, which names it. The
 // runs it replaces are those running at the location, which the submit has
@@ -640,14 +677,15 @@ func (b *build) located(start *arrival) (*instance.Start, error) {
 		b.drop(start)
 		return nil, nil
 	}
-	for _, replaced := range s.Replaces {
-		head, _, err := instance.ReadHead(p.ctx, p.store, p.c.ID.Card, replaced)
-		if err != nil && !isAltered(err) {
+	// A singleton started again waits for every run it replaces to end,
+	// children included, and so does everything waiting for it: until no
+	// other run is running at its location.
+	if len(s.Replaces) > 0 {
+		running, err := p.runningAt(file.Client, s.Location, b.inst)
+		if err != nil {
 			return nil, err
 		}
-		if head != nil && head.Status == instance.Running {
-			// A singleton started again waits for every run it replaces
-			// to end, and so does everything waiting for it.
+		if running {
 			b.out.rest = nil
 			p.due(p.now.Add(time.Second))
 			return nil, nil

@@ -331,12 +331,12 @@ The controller writes the sender into `event.from`: `{ at, run }`, with `key` fo
 | a run kept it under `defer:` and was cancelled or restarted | noted as undelivered |
 | it is named `start`, `done`, `failed`, `timer`, a timer's name or a ticket's name | noted as undelivered |
 
-An undelivered send fails nothing, and the sender goes on.
+An undelivered send fails nothing, and the sender goes on. Its note is written in the sender's record even after the sender has ended.
 
 A run started by a send or a call:
 
 - It is a root of its own tree's client and no child of its sender. Ending the sender does not cancel it, but cancelling a calling job cancels the run it called.
-- It counts one level below its sender, and fails as it starts if that passes its own file's depth limit. A run that fails as it starts, such as one given data that does not fit its input, adds the reason to the sender's record while the sender runs.
+- It counts one level below its sender, and fails as it starts if that passes its own file's depth limit. A run that fails as it starts, such as one given data that does not fit its input, adds the reason to the sender's record.
 - Its authority is its location's. The sender adds nothing to it and takes nothing away, but the input it gives may fill an allow scope within the receiver's own patterns and every ceiling.
 - Its held jobs go only to its own file's `ask:` (see Approval).
 - It holds a copy of the blobs the event names, so it needs nothing of the sender's record.

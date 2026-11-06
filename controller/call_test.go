@@ -391,7 +391,19 @@ func Test_ctl_client_call_is_refused(t *testing.T) {
 	if why := refused(w.other("c2", "network"), client.Start{At: "/t/lookup"}); !strings.Contains(why, "send:/t/lookup") {
 		t.Fatalf("a call with no send: gave %q", why)
 	}
-	c2 := w.other("c2", "send:/t/**")
+	// Refused by the client's own ceiling, the call is denied, with what was
+	// refused, the layer and the fix.
+	c2 := w.other("c2", "network")
+	id, err := c2.Start(ctx, client.Start{At: "/t/lookup"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	w.settle()
+	if run, err := c2.Show(ctx, id); err != nil || run.Status != instance.Failed || run.Failure != machine.StatusDenied ||
+		run.Refused != "send:/t/lookup" || !strings.Contains(run.Layer, `the ceiling of the client "c2"`) || !strings.Contains(run.Fix, "--allow send:/t/lookup") {
+		t.Fatalf("a call its client's ceiling refuses is shown as %+v, %v", run, err)
+	}
+	c2 = w.other("c2", "send:/t/**")
 	if why := refused(c2, client.Start{At: "/t/s"}); !strings.Contains(why, "only by calling a transient location") {
 		t.Fatalf("a call of a singleton gave %q", why)
 	}

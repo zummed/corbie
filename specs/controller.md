@@ -158,7 +158,7 @@ A submit changes no other tree. Only the tree's client reads and cancels the run
 | a changed file with `update: drain` | leaves its runs to finish on the definition they started with |
 | a file gone from the tree | cancels every run at its location |
 
-- `drain` is the default for keyed and transient files. A singleton is always `restart`, and its new run starts once every run it replaces has ended.
+- `drain` is the default for keyed and transient files. A singleton is always `restart`, and its new run starts once every run it replaces has ended, their children included.
 - A keyed run cancelled by a restart starts fresh at the next send to its key.
 - Events a cancelled run had kept under `defer:` are noted as undelivered in each sender's record.
 - The controller finds a location's runs by listing its tree client's running heads, each of which names its location.
@@ -172,7 +172,7 @@ Addresses and `receive:` are written as machine.md says.
 3. The receiving run takes the message only if its `receive:` lists the sender, by default every location and the client of its own tree. A run checks the definition it started with, and a run about to start checks its location's file.
 4. The controller writes the sender into `event.from`: `{ at, run }`, with `key` for a keyed run, or `{ client }`, whatever a client wrote.
 
-The sender's record names the run the step named, or the run the send started. A run that ended first passes the event on, and the receiving run's record names the sender. A client's send is routed the same way, and its receipt names the run that took it. The tree's client names a run of its own by its ID alone.
+The sender's record names the run the step named, or the run the send started. A run that ended first passes the event on, and the receiving run's record names the sender. When the event goes to another run than the one the step named, as when another send took the key first, a note in the sender's record names the run that took it. A client's send is routed the same way, and its receipt names the run that took it. The tree's client names a run of its own by its ID alone.
 
 These sends are noted as undelivered in the sender's record and fail nothing:
 
@@ -183,7 +183,7 @@ These sends are noted as undelivered in the sender's record and fail nothing:
 - The address names a run by its ID that is not at the location the address gives, or a client.
 - A run that had kept the event under `defer:` was cancelled.
 
-An undelivered message is deleted, and then a note goes to the sender's record. A controller stopped between the two writes no note. Events from one run to one run arrive once each, in the order sent, and nothing is promised between two senders.
+An undelivered message is deleted, and then a note goes to the sender's record, written after the sender's end if it has ended. A controller stopped between the two writes no note. Events from one run to one run arrive once each, in the order sent, and nothing is promised between two senders.
 
 A call is a job the controller carries out itself, and a client's start of a location in another client's tree is one too:
 

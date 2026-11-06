@@ -110,6 +110,10 @@ func (p *pass) take(inst string, latest *instance.Step, waiting []*arrival) (*ta
 	b.time = latest.Time
 
 	if st.Status != instance.Running {
+		// A run that has ended takes nothing more but the controller's
+		// notes, such as that an event it sent was not delivered: they are
+		// written in its record after its end.
+		b.step.Time = b.time
 		for _, a := range waiting {
 			switch {
 			case a.isSend() && (heard(&st, a) || a.starts(inst)):
@@ -118,11 +122,16 @@ func (p *pass) take(inst string, latest *instance.Step, waiting []*arrival) (*ta
 				b.move(a)
 			case a.isSend():
 				b.undeliver(a, fmt.Sprintf("the run %s has ended", inst))
+			case !a.wake && a.kind == identity.Controller && a.msg.Kind == instance.KindNote:
+				b.note(a)
+				if at := a.time(); at.After(b.step.Time) {
+					b.step.Time = at
+				}
 			default:
 				b.refuse(a, "the run has ended (it is %s)", st.Status)
 			}
 		}
-		return &b.out, nil
+		return b.done()
 	}
 	for _, a := range waiting {
 		if at := a.time(); a.good(p.now) && at.After(b.time) {
@@ -286,7 +295,7 @@ func (b *build) arrive(a *arrival) error {
 	msg := a.msg
 	switch msg.Kind {
 	case instance.KindCancel:
-		b.refuse(a, "only the client that started a run may cancel it")
+		b.refuse(a, "the run is in a tree of the client %s, and only that client cancels it", store.InstanceClient(b.inst))
 	case instance.KindEvent:
 		b.eventFrom(a)
 	case instance.KindAnswer:
@@ -310,15 +319,20 @@ func (b *build) arrive(a *arrival) error {
 			b.drop(a)
 			return nil
 		}
-		b.use(a)
-		b.record(machine.Event{Name: a.label(), Data: msg.Note}, a, true)
-		b.ask(instance.Ask{Kind: instance.AskNote, Text: msg.Note})
+		b.note(a)
 	default:
 		// A start for an instance that exists, or a kind that is not for a
 		// controller.
 		b.drop(a)
 	}
 	return nil
+}
+
+// note writes the controller's note in the record.
+func (b *build) note(a *arrival) {
+	b.use(a)
+	b.record(machine.Event{Name: a.label(), Data: a.msg.Note}, a, true)
+	b.ask(instance.Ask{Kind: instance.AskNote, Text: a.msg.Note})
 }
 
 // eventFrom takes a named event a parent sent the instance. Any other
@@ -1261,7 +1275,7 @@ func (b *build) end(status string, output any, e *machine.Error) {
 	// failure.
 	if st.Above.StartedBy != "" && st.Above.CallJob == "" && status == instance.Failed && b.step.Number == 1 {
 		b.ask(instance.Ask{Kind: instance.AskTell, To: st.Above.StartedBy, Message: b.message("tell"),
-			Text: fmt.Sprintf("the run %s, started by a send to %s#%s, failed as it started: %s", b.inst, st.Location, st.Key, e.Error)})
+			Text: fmt.Sprintf("the run %s, started by a send to %s#%s, failed in its first step, which took the event: %s", b.inst, st.Location, st.Key, e.Error)})
 	}
 }
 
@@ -1543,7 +1557,7 @@ func (b *build) first(s *instance.Start, start *arrival) (refused bool, err erro
 		return false, nil
 	case st.Above.Depth > st.Above.MaxDepth:
 		answer(nil, false)
-		b.end(instance.Failed, nil, b.p.failf("depth limit reached: the run counts %d levels below the run that began its chain of sends, and its file allows %d", st.Above.Depth, st.Above.MaxDepth))
+		b.end(instance.Failed, nil, b.p.failf("depth limit reached: the run counts %d levels below the run that began its chain of sends and calls, and its file allows %d", st.Above.Depth, st.Above.MaxDepth))
 		return false, nil
 	case read.Failure != "":
 		answer(nil, false)
@@ -1658,9 +1672,24 @@ func (b *build) startOneAsk(held []*instance.Going) {
 		if job.Shown != nil {
 			what["asked"] = job.Shown
 		}
-		if job.IsMachine() {
+		switch {
+		case job.IsMachine():
 			what["machine"] = job.Machine
-		} else {
+		case job.IsCall():
+			what["call"] = map[string]any{"at": job.Call.At}
+		case job.IsSend():
+			to := map[string]any{"at": job.Send.At.At}
+			if job.Send.At.Key != nil {
+				to["key"] = *job.Send.At.Key
+			}
+			if job.Send.At.Run != "" {
+				to["run"] = job.Send.At.Run
+			}
+			if job.Send.At.Client != "" {
+				to["client"] = job.Send.At.Client
+			}
+			what["send"] = map[string]any{"to": to, "event": job.Send.Event, "data": job.Send.Data}
+		default:
 			what["script"] = job.Script
 		}
 		jobs = append(jobs, what)

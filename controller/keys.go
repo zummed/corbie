@@ -194,13 +194,13 @@ func (p *pass) aimAt(at, key string, keyed, live bool) (*target, error) {
 			}
 		}
 	}
-	if t.holder != "" || !keyed {
+	if t.holder != "" {
 		return t, nil
 	}
 	if t.file, err = p.readLocated(at); err != nil && !isAltered(err) {
 		return nil, err
 	}
-	if t.file == nil || t.file.Runs == 0 {
+	if !keyed || t.file == nil || t.file.Runs == 0 {
 		return t, nil
 	}
 	files, err := store.Names(p.store.List(p.ctx, store.Keys(p.ctl, at)))
@@ -215,10 +215,14 @@ func (t *target) aim(at string, keyed bool) (to string, starts bool, why string)
 	switch {
 	case t.holder != "":
 		return t.holder, false, ""
-	case !keyed:
-		return "", false, fmt.Sprintf("no run of the singleton at %s is running", at)
 	case t.file == nil:
 		return "", false, fmt.Sprintf("nothing is recorded at %s", at)
+	case !keyed && t.file.Lifetime == machine.LifetimeKeyed:
+		return "", false, fmt.Sprintf("%s is keyed: a send to it names a key, as %s#<key>", at, at)
+	case !keyed && t.file.Lifetime == machine.LifetimeTransient:
+		return "", false, fmt.Sprintf("%s is transient: a send to a location goes to a singleton or a key, and a run of a transient location is named by its ID", at)
+	case !keyed:
+		return "", false, fmt.Sprintf("no run of the singleton at %s is running", at)
 	case t.file.Lifetime != machine.LifetimeKeyed:
 		return "", false, fmt.Sprintf("%s is not keyed", at)
 	case t.file.Runs > 0 && t.runs >= t.file.Runs:
@@ -356,7 +360,7 @@ func (b *build) addressAt(addr *machine.Address) (at, why string) {
 // since its result follows from it, delivered or not.
 func (b *build) aim(ask *instance.Ask, s *machine.Send, at, why string) {
 	addr := s.At
-	ask.Location = at
+	ask.Location, ask.Client = at, addr.Client
 	if addr.Run == "" && at != "" {
 		ask.Key = keyOf(addr)
 	}
@@ -659,8 +663,8 @@ func (p *pass) addressed(inst string, step *instance.Step, ask *instance.Ask) (*
 	return msg, failure, err
 }
 
-// tell writes a note into a run's record, as a step of the controller's own.
-// A run that has ended takes nothing more.
+// tell writes a note into a run's record, as a step of the controller's own,
+// whether or not the run has ended.
 func (p *pass) tell(to, from, message, text string) error {
 	msg := &instance.Message{Kind: instance.KindNote, Instance: to, From: from, Note: text}
 	_, err := p.send(store.Message(p.ctl, p.ctl, message), noEnd, msg, p.c.ID.Card)
@@ -729,14 +733,24 @@ func (p *pass) redirect(a *arrival) error {
 	if err != nil {
 		return err
 	}
+	before := msg.Instance
 	msg.Instance, msg.Event = run, &machine.Event{Name: msg.Event.Name, Data: data}
 	signed, err := p.c.ID.Write(a.name, p.now, noEnd, &msg, p.c.ID.Card)
 	if err != nil {
 		return err
 	}
 	p.later()
-	_, err = p.store.Write(p.ctx, a.name, signed, store.OnlyIfUnchanged(a.mark))
-	return err
+	written, err := p.store.Write(p.ctx, a.name, signed, store.OnlyIfUnchanged(a.mark))
+	if err != nil || !written {
+		return err
+	}
+	// The sender's record names the run the event was aimed at: it is told
+	// the run the event went to. A client's receipt names that run itself.
+	if _, _, ok := a.client(); ok || run == before {
+		return nil
+	}
+	base := a.name[strings.LastIndexByte(a.name, '/')+1:]
+	return p.tell(msg.From, run, base+".moved", fmt.Sprintf("the event %s sent to %s went to the run %s, not %s", msg.Event.Name, addressText(msg.To), run, before))
 }
 
 // holder gives the run that has a key, whose file is named at: none where

@@ -48,7 +48,7 @@ ask's note.
 The ask
 -------
 
-  input.jobs    the held jobs: [{ name, input, allow, script or machine }]
+  input.jobs    the held jobs: [{ name, input, allow, script, machine, call or send }]
   the result    { approve: [names of jobs], note }
 
 An ask is any job.

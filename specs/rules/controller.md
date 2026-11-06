@@ -19,8 +19,8 @@ The detailed rules behind the [Controller overview](../controller.md). What the 
 **R-ctl-14** A message that arrives more than once harms nothing, because each kind is checked against the instance's state: a result the instance is not waiting for is dropped, a start for an instance that exists is dropped, and an answer to a ticket already answered changes nothing.
 *Accept:* the same result is left twice: the machine receives one `done`, and the second is gone from the inbox with no step written for it. The same start is delivered twice: there is one instance with one first step, and the receipt reads the same after the second delivery as after the first. Two different answers are sent for one ticket: the machine receives the first only, and the second's receipt says it was not the one taken.
 
-**R-ctl-19** A message for an instance that has ended is refused and changes nothing. An event sent to `{ at }` or `{ at, key }` goes on to the run that has the key, and one sent to the run by its ID is noted as undelivered.
-*Accept:* parity case 41: an answer to a ticket, sent after the run was cancelled, is refused as for an instance that has finished. `Test_ctl_event_for_a_run_that_ended_starts_anew_or_is_noted`.
+**R-ctl-19** A message for an instance that has ended is refused and changes nothing, but for a note of the controller's, which is written in its record after its end. An event sent to `{ at }` or `{ at, key }` goes on to the run that has the key, and its sender's record is told that run; one sent to the run by its ID is noted as undelivered.
+*Accept:* parity case 41: an answer to a ticket, sent after the run was cancelled, is refused as for an instance that has finished. `Test_ctl_event_for_a_run_that_ended_starts_anew_or_is_noted`, `Test_ctl_direct_send_waits_behind_a_moved_send` and `Test_ctl_undelivered_note_reaches_an_ended_sender`.
 
 **C-ctl-01** A message the controller sends itself stays good for as long as the instance it is for is kept. A controller can be away for longer than a few minutes, and a child's ending that has stopped being good by then leaves its parent waiting for something that will never come. *Test:* `ctl_message_to_self_outlives_absent_controller`
 
@@ -220,7 +220,7 @@ The detailed rules behind the [Controller overview](../controller.md). What the 
 **R-ctl-116** A file gone from the tree has every root run at its location cancelled, and its location removed. A child running at the location ends with its parent.
 *Accept:* parity cases 132 and 136. `Test_ctl_removal_cancels_only_root_runs`.
 
-**C-ctl-80** A singleton started again starts once every run it replaces has ended: the start names each run running at its location, or with none the run its key's file names, and waits while any of them is running. A later submit's start of the same singleton takes its key's file, and an earlier start that finds it so is left. Two runs of one singleton would act on the same thing at once, and a transient file changed to a singleton may have many runs. *Test:* `ctl_singleton_restart_has_no_overlap` and `ctl_singleton_waits_for_every_run_it_replaces`
+**C-ctl-80** A singleton started again starts once every run it replaces has ended, their children included: the start names each run running at its location, or with none the run its key's file names, and waits while any run of the tree's client other than itself is running at the location. A later submit's start of the same singleton takes its key's file, and an earlier start that finds it so is left. Two runs of one singleton would act on the same thing at once, and a transient file changed to a singleton may have many runs. *Test:* `ctl_singleton_restart_has_no_overlap`, `ctl_singleton_waits_for_every_run_it_replaces` and `ctl_singleton_waits_for_the_children_of_the_run_it_replaces`
 
 **C-ctl-85** A submit whose tree's entry names an earlier submit still in the inbox waits until that submit has been carried out, and is then worked out against the entry it left. Two controller copies can take an earlier and a later submit of one tree at once, and the later one worked out against an entry not yet carried out would find the changed files recorded and leave their runs as they were. *Test:* `ctl_submit_waits_for_an_earlier_one_carried_out`
 
@@ -228,7 +228,7 @@ The detailed rules behind the [Controller overview](../controller.md). What the 
 
 ## Sending and calling
 
-**R-ctl-119** A send to an address names the run it goes to while the sender's step is worked out, and the controller writes the event when it carries out the step, with the sender's address in `event.from`: `{ at, run }`, with `key` for a keyed run, or `{ client }`. The sender's record names the run the step named, or the run it started, and the receiving run's record names the sender.
+**R-ctl-119** A send to an address names the run it goes to while the sender's step is worked out, and the controller writes the event when it carries out the step, with the sender's address in `event.from`: `{ at, run }`, with `key` for a keyed run, or `{ client }`. The sender's record names the run the step named, or the run it started, and the receiving run's record names the sender. An event that goes to another run, as when another send took the key first, adds a note naming that run to the sender's record.
 *Accept:* parity cases 108 and 114. `Test_chart_send_to_a_key_starts_a_run_then_delivers` and `Test_ctl_event_from_is_the_senders_address`.
 
 **R-ctl-120** A run takes an event sent to it by address only if its `receive:` lists the sender, by default every location and the client of its own tree. The tree's own client is always listed. A run checks the definition it started with, and a run about to start checks its location's file.
@@ -258,7 +258,7 @@ The detailed rules behind the [Controller overview](../controller.md). What the 
 **R-ctl-129** Cancelling a calling job, or ending the run that holds it, cancels the run it called.
 *Accept:* parity case 126. `Test_ctl_cancelling_a_call_cancels_the_run`.
 
-**R-ctl-130** A client's start of a location in a tree another client owns is a call. It needs `send:` for the location in the client's ceiling, a `transient` location, and no labels or allow list, and the receiver's `receive:` must list `client:<name>`; otherwise the start's receipt refuses it. A call that is taken has a receipt naming the run, written as that run starts, and its result beside the receipt when that run ends (R-inst-69).
+**R-ctl-130** A client's start of a location in a tree another client owns is a call. It needs `send:` for the location in the client's ceiling, a `transient` location, and no labels or allow list, and the receiver's `receive:` must list `client:<name>`; otherwise the start's receipt refuses it, and a refusal by the client's ceiling is `denied`, with what was refused, the layer and the fix. A call that is taken has a receipt naming the run, written as that run starts, and its result beside the receipt when that run ends (R-inst-69).
 *Accept:* `Test_ctl_taken_call_receipt_waits_for_its_result`, `Test_ctl_client_call_is_refused` and `Test_ctl_client_starts_its_own_transient_locations`.
 
 **R-ctl-131** A send job, `job: { send }`, is checked as a send action is, against its own lists and the definition's, the lists the run was started under and its tree client's ceiling, and a refusal fails the job `denied`. Its event is written as the step is carried out, and then the job ends `done` with no output. A send job whose event is not delivered is noted in the record and ends `done` all the same. An event too large to write fails the job, as R-ctl-101 says.
@@ -273,7 +273,7 @@ The detailed rules behind the [Controller overview](../controller.md). What the 
 ## Keyed runs
 
 **R-ctl-126** A send to a key at a keyed location with no running run starts one, with the event's data as its input, and then gives it the event. Further sends to the key go to that run. When it ends, the next send to the key starts a fresh one.
-*Accept:* parity case 115. `Test_chart_send_to_a_key_starts_a_run_then_delivers`, `Test_ctl_key_is_free_once_its_run_ends` and `Test_ctl_event_for_a_run_that_ended_starts_anew_or_is_noted`.
+*Accept:* parity case 115. `Test_chart_send_to_a_key_starts_a_run_then_delivers`, `Test_ctl_key_is_free_once_its_run_ends` and `Test_ctl_event_for_a_run_that_ended_starts_anew_or_is_noted`, `Test_ctl_direct_send_waits_behind_a_moved_send` and `Test_ctl_undelivered_note_reaches_an_ended_sender`.
 
 **C-ctl-67** A run takes its key's file only-if-new after its definition has been read and its location's `receive:` takes the event, and before anything of the run is written; a file that names it already is its own. A run that loses has done nothing, and its start moves on to the run that won, which takes it as an event. A claim made after the step would have a machine act on an event that a second run also acts on. *Test:* `ctl_two_senders_race_for_one_key`, `ctl_two_copies_race_for_one_key` and `ctl_two_senders_stopped_after_every_write`
 

@@ -24,17 +24,17 @@ A statechart runs the flow
     corbie test watch.yaml --watch
       step 1  <- start
       step 1  -> job fetching: a machine, <id>
-        step 1  <- start {"url":"https://example.com"}
-        step 1  -> job get_title: a script, on runner
-        step 2  <- done from get_title {"title":"Example Domain","url":"https://example.com"}
-        step 2  done
+      step 1  <- start {"url":"https://example.com"}
+      step 1  -> job get_title: a script, on runner
+      step 2  <- done from get_title {"title":"Example Domain","url":"https://example.com"}
+      step 2  done
       step 2  <- done from fetching {"title":"Example Domain","url":"https://example.com"}
       step 2  done
       output: "Example Domain"
 
 The job of the state `fetching` is the flow. The controller starts it as a
-child run, whose lines are indented. When the child run ends, the statechart
-receives `done` with the flow's output and moves to `finished`.
+child run, whose lines are among the statechart's, with the child's run number.
+When the child run ends, the statechart receives `done` with the flow's output and moves to `finished`.
 
 An agent uses the flow as a tool
 --------------------------------
@@ -56,8 +56,8 @@ An agent uses the flow as a tool
     corbie test helper.yaml --input '{"question": "What is the title of the page at https://example.com?"}' --secret-env ANTHROPIC_KEY --watch
       step 1  -> job turn: a script, on runner
       step 2  -> job title: a machine, <id>
-        step 1  -> job get_title: a script, on runner
-        step 2  done
+      step 1  -> job get_title: a script, on runner
+      step 2  done
       step 3  <- done from title {"title":"Example Domain","url":"https://example.com"}
       step 3  -> job turn#2: a script, on runner
       step 4  done
@@ -107,7 +107,7 @@ A statechart sends to a run by its address
       step 1  <- start
       step 1  -> send knock to /house/room#1 · started <id>
       step 1  -> send leave to /house/room#1 · <id>
-      step 1  -> send ring to /house/bell · undelivered: no run of the singleton at /house/bell is running
+      step 1  -> send ring to /house/bell · undelivered: nothing is recorded at /house/bell
       step 2  done
 
 `room.yaml` is keyed: it has a run for each key. The first send finds no run

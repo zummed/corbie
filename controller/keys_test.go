@@ -236,7 +236,8 @@ func Test_chart_send_to_a_key_starts_a_run_then_delivers(t *testing.T) {
 
 // A send to { at } goes to the singleton's run. With none running, at a
 // location that is not a singleton, or where nothing is recorded, it is
-// written in the sender's record as undelivered and fails nothing.
+// written in the sender's record as undelivered, saying which, and fails
+// nothing.
 func Test_chart_send_to_a_singleton_with_no_run_is_undelivered(t *testing.T) {
 	w := newWorld(t)
 	sender := w.rooms(map[string]string{"/t/bell": `
@@ -259,7 +260,7 @@ func Test_chart_send_to_a_singleton_with_no_run_is_undelivered(t *testing.T) {
 	}
 	notes := w.keyNotes(sender)
 	if len(notes) != 3 || !strings.Contains(notes[0], "no run of the singleton at /t/bell") ||
-		!strings.Contains(notes[1], "no run of the singleton at /t/router") || !strings.Contains(notes[2], "/t/nowhere") {
+		!strings.Contains(notes[1], "/t/router is transient") || !strings.Contains(notes[2], "nothing is recorded at /t/nowhere") {
 		t.Fatalf("the record says %v", notes)
 	}
 	if head := w.head(sender); head.Status != instance.Running {
@@ -596,8 +597,9 @@ func Test_ctl_event_for_a_run_that_ended_starts_anew_or_is_noted(t *testing.T) {
 	if len(runs) != 2 || !slices.Equal(w.told(runs[0]), []string{"late"}) {
 		t.Fatalf("the runs are %v", runs)
 	}
+	// The event for the key went to a fresh run, which the sender is told.
 	notes := w.keyNotes(sender)
-	if len(notes) != 2 || !strings.Contains(notes[0], "has ended") || !strings.Contains(notes[1], "no run of the singleton") {
+	if len(notes) != 3 || !strings.Contains(notes[0], "went to the run "+runs[0]+", not "+run) || !strings.Contains(notes[1], "has ended") || !strings.Contains(notes[2], "no run of the singleton") {
 		t.Fatalf("the record says %v", notes)
 	}
 }
@@ -697,7 +699,8 @@ func Test_ctl_direct_send_waits_behind_a_moved_send(t *testing.T) {
 	if !slices.Equal(got, []string{"fresh", "two", "three"}) {
 		t.Fatalf("the run was told %v", got)
 	}
-	if notes := w.keyNotes(sender); len(notes) != 0 {
+	// The sender is told the run its moved event went to.
+	if notes := w.keyNotes(sender); len(notes) != 1 || !strings.Contains(notes[0], "went to the run "+next+", not "+gone) {
 		t.Fatalf("the record says %v", notes)
 	}
 }

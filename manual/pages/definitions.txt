@@ -301,13 +301,16 @@ and the receiver's `receive:` to accept the sender.
   receive: [thermostats/*, client:panel]                                 for every event
   receive: { set: [thermostats/*, client:panel], stop: [client:panel] }   by event name
 
-- With no `receive:`, a file accepts its own tree and its tree's client.
+- With no `receive:`, a file accepts its own tree and its tree's client. A
+  written `receive:` replaces the tree with its list, and the tree's client is
+  accepted whatever the list says.
 - A call is checked against a list. A mapping takes a call only from the
   tree's client.
 - The run reads the sender as `event.from`: `{ at, run }`, with `key` for a
   keyed run, or `{ client }`.
 - A send the receiver refuses, or that no running statechart can take, is
-  noted as undelivered in the sender's record and fails nothing.
+  noted as undelivered in the sender's record and fails nothing, after the
+  sender's end if it has ended.
 - A machine made while running sends only to its parent and its children.
 
 Events
@@ -347,12 +350,13 @@ The ask is a job, and the controller adds two fields to its input.
   ask: { machine: ./ask.yaml }    a machine, which can wait for a person
 
   input.asking    { machine, instance }: the machine whose jobs are held, and its run's ID
-  input.jobs      [{ name, input, allow, script or machine, asked }]: each held job
+  input.jobs      [{ name, input, allow, script, machine, call or send, asked }]: each held job
 
 - A held job has `asked: { does, args, said }` only for an agent's tool call,
   with `entry` and `tool` too for a tool from a `list:`, and `part`, the part's
   name, for a tool of a part or for `open`. The list of an entry in a part has
   `asked: { part }`.
+- A held call job has `call: { at }`, and a held send job `send: { to, event, data }`.
 
 The ask returns `{ approve: [names of jobs], note: "..." }`.
 

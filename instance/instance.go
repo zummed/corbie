@@ -330,6 +330,8 @@ type Ask struct {
 	Location string `json:"location,omitzero"`
 	Key      string `json:"key,omitzero"`
 	Run      string `json:"run,omitzero"`
+	// Client is the client an event was addressed to, which has no inbox.
+	Client string `json:"client,omitzero"`
 	// Direct says the event was sent to one run by its ID, which is To.
 	Direct bool `json:"direct,omitzero"`
 	// Undelivered says the event was for a child that is not running, or
@@ -354,6 +356,9 @@ type Ask struct {
 type Receipt struct {
 	Taken   bool   `json:"taken"`
 	Refused string `json:"refused,omitzero"`
+	// Denied is a start a permission refused, as a run's failure gives it:
+	// what was refused, the layer that refused it and the fix.
+	Denied *machine.Error `json:"denied,omitzero"`
 	// Problems are what is wrong with a definition that was refused.
 	Problems machine.Problems `json:"problems,omitzero"`
 	// Tree is what a submit that was taken did.

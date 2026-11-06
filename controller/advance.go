@@ -160,7 +160,7 @@ func isAltered(err error) bool {
 }
 
 // readers are the parties everything in an instance's record is sealed to:
-// the controller, and the client that started the root.
+// the controller, and the client of the root's tree.
 func (p *pass) readers(inst string) ([]identity.Card, error) {
 	cards := []identity.Card{p.c.ID.Card}
 	t, err := p.trusted(store.InstanceClient(inst))

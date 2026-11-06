@@ -49,7 +49,7 @@ func Test_ctl_send_job_is_done_once_written(t *testing.T) {
 	if sent == nil || sent.To != rooms[0] || sent.Undelivered {
 		t.Fatalf("the record names the send %+v", sent)
 	}
-	if lost == nil || !lost.Undelivered || !strings.Contains(lost.Text, "no run of the singleton at /t/lost is running") {
+	if lost == nil || !lost.Undelivered || !strings.Contains(lost.Text, "nothing is recorded at /t/lost") {
 		t.Fatalf("the record names the lost send %+v", lost)
 	}
 	done := map[string]bool{}
@@ -277,5 +277,70 @@ func Test_ctl_restart_starts_a_singleton_again_and_notes_kept_events(t *testing.
 	}
 	if len(kept) != 2 {
 		t.Fatalf("the sender's record says %v", w.keyNotes(sender))
+	}
+}
+
+// A send job's event that the receiver refuses is noted in the flow's
+// record, though the flow ended once the event was written: the note is
+// written after its end, and the flow stays done.
+func Test_ctl_undelivered_note_reaches_an_ended_sender(t *testing.T) {
+	w := newWorld(t)
+	w.rooms(map[string]string{
+		"/t/poke": `
+			flow: poke
+			allow: ["send:**"]
+			stages:
+			  poke: { job: { send: { to: { at: picky, key: k1 }, event: said, data: { text: hi } } } }
+		`,
+		"/t/picky": strings.Replace(talk, "statechart: talk", "statechart: picky\n\treceive: [client:nobody]", 1),
+	})
+	run := w.startAt(w.client, "/t/poke", client.Start{})
+	w.settle()
+	if head := w.head(run); head.Status != instance.Done {
+		t.Fatalf("the flow is %s", head.Status)
+	}
+	notes := w.keyNotes(run)
+	if len(notes) != 1 || !strings.Contains(notes[0], "the event said sent to /t/picky#k1 was not delivered: /t/picky does not receive said") {
+		t.Fatalf("the ended flow's record says %v", notes)
+	}
+	steps := w.steps(run)
+	if last := steps[len(steps)-1]; last.State.Status != instance.Done {
+		t.Fatalf("the note's step left the flow %s", last.State.Status)
+	}
+}
+
+// A held call or send job is shown to the ask as what it is: the location a
+// call starts, or where a send goes, its event and its data.
+func Test_ctl_ask_is_told_a_held_call_or_send(t *testing.T) {
+	const tell = `
+		flow: tell
+		allow: ["send:**"]
+		ask_about: ["send:**"]
+		ask: ./ask.js
+		stages:
+		  c: { job: { call: { at: lookup }, input: { n: 5 } } }
+		  s: { job: { send: { to: { at: room, key: "chat:1" }, event: said, data: { text: hello } } } }
+	`
+	w := newWorld(t)
+	r1 := w.newRunner()
+	w.roomsWith(map[string]string{"/t/tell": tell, "/t/lookup": lookup}, map[string]string{"ask.js": "return input"})
+	w.startAt(w.client, "/t/tell", client.Start{})
+	w.settle()
+	var jobs []any
+	for _, msg := range w.inboxOf(r1) {
+		if in, _ := msg.Job.Input.(map[string]any); in["jobs"] != nil {
+			jobs, _ = in["jobs"].([]any)
+		}
+	}
+	got := map[string]map[string]any{}
+	for _, job := range jobs {
+		j := job.(map[string]any)
+		got[j["name"].(string)] = j
+	}
+	call, _ := got["c"]["call"].(map[string]any)
+	send, _ := got["s"]["send"].(map[string]any)
+	to, _ := send["to"].(map[string]any)
+	if call["at"] != "/t/lookup" || got["c"]["script"] != nil || to["at"] != "/t/room" || to["key"] != "chat:1" || send["event"] != "said" || got["s"]["script"] != nil {
+		t.Fatalf("the ask was told %v", jobs)
 	}
 }

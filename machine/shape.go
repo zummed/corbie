@@ -113,7 +113,9 @@ const (
 	// size in bytes, written like 256MB.
 	KindDuration Kind = "duration"
 	KindSize     Kind = "size"
-	// KindList is a list of texts; one text alone is a list of one.
+	// KindList is a list of texts; one text alone is a list of one. Where
+	// its reader takes one, a mapping of names, each with such a list,
+	// gives a list for each name.
 	KindList Kind = "list"
 	// KindFields is a mapping with a shape of its own, and KindNamed a
 	// mapping of names, each of which holds a thing of one shape.
@@ -174,7 +176,7 @@ var shared = []Field{
 		Does: "how runs start at its location: singleton, one started by the submit; keyed, one for each key a send names; transient, the default, one for each call or start"},
 	{Name: "update", Kind: KindWord, Like: "restart", Values: []string{UpdateRestart, UpdateDrain},
 		Does: "what a changed file does to the runs already running at its location: restart cancels them; drain, the default but for a singleton, lets them finish"},
-	{Name: "receive", Kind: KindValue, Like: "[thermostats/*, client:panel]",
+	{Name: "receive", Kind: KindList, Like: "[thermostats/*, client:panel]",
 		Does: "who may send to its runs or call it: locations and client:<name>, for every event or by event name; with none, its own tree and its tree's client"},
 }
 

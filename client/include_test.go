@@ -420,6 +420,69 @@ func Test_mach_include_splices_into_a_list(t *testing.T) {
 	}
 }
 
+// A field whose value may be a list of what it holds, such as a state's
+// send:, splices an included item or list into its list, and receive: takes
+// included entries in both its forms.
+func TestIncludeSplicesIntoAListOfThings(t *testing.T) {
+	d := draft(t, `
+		statechart: s
+		initial: a
+		states:
+		  a:
+		    on: { go: b }
+		    entry:
+		      send:
+		        - { to: parent, event: one }
+		        - { include: ./sends.yaml }
+		  b: { end: done }
+		receive:
+		  set: [{ include: ./who.yaml }, client:panel]
+	`, map[string]string{
+		"sends.yaml": "- { to: parent, event: two }\n- { to: parent, event: three }\n",
+		"who.yaml":   "[thermostats/*, /work/**]\n",
+	})
+	stored := jsonOf(d.Definition)
+	for _, want := range []string{`"event":"one"`, `"event":"two"`, `"event":"three"`, `"receive":{"set":["thermostats/*","/work/**","client:panel"]}`} {
+		if !strings.Contains(stored, want) {
+			t.Errorf("the stored definition does not hold %s: %s", want, stored)
+		}
+	}
+	if strings.Contains(stored, "include") {
+		t.Errorf("the stored definition holds an include: %s", stored)
+	}
+	d = draft(t, "statechart: s\ninitial: a\nstates: { a: { end: done } }\nreceive: { include: ./by-event.yaml }\n",
+		map[string]string{"by-event.yaml": "set: [client:panel]\nstop: [{ include: ./who.yaml }]\n", "who.yaml": "- client:admin\n"})
+	if got := jsonOf(d.Definition); !strings.Contains(got, `"receive":{"set":["client:panel"],"stop":["client:admin"]}`) {
+		t.Errorf("receive: by event from a file is stored as %s", got)
+	}
+}
+
+// A definition read from a file in a directory reads the files it includes
+// from that directory, keeps their lines by their paths, and names its own
+// file where an include leads back to it.
+func TestIncludeFromAFileInADirectory(t *testing.T) {
+	files := map[string]string{
+		"house/boiler.yaml": "flow: boiler\ninclude: ./base.yaml\nstages: { one: { job: ./a.js } }\n",
+		"house/base.yaml":   "keep: 1d\n",
+		"house/a.js":        "return 1",
+	}
+	d, err := machine.ParseIn("house/boiler.yaml", []byte(files["house/boiler.yaml"]), machine.Given(files))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := d.Definition.Lines["keep"]; got != "house/base.yaml:1" {
+		t.Errorf("keep is kept at %q", got)
+	}
+	if got := d.Definition.Lines["flow"]; got != "house/boiler.yaml:1" {
+		t.Errorf("flow is kept at %q", got)
+	}
+	files["house/base.yaml"] = "include: ./boiler.yaml\n"
+	_, err = machine.ParseIn("house/boiler.yaml", []byte(files["house/boiler.yaml"]), machine.Given(files))
+	if err == nil || !strings.Contains(err.Error(), "the definition leads back to itself: house/boiler.yaml -> house/base.yaml -> house/boiler.yaml") {
+		t.Errorf("an include that leads back to the file gave: %v", err)
+	}
+}
+
 // A text may be a list of pieces, each a text or { include: … }, joined by one
 // empty line, and { include: <file> } alone is a text of one piece.
 func Test_mach_text_is_joined_from_pieces(t *testing.T) {

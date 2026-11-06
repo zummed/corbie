@@ -207,7 +207,7 @@ func (p *Parser) location(def *Definition, f, limits *Fields) {
 	def.Lifetime = f.Text("lifetime")
 	def.Update = f.Text("update")
 	def.Runs = limits.Int("runs")
-	if receive, ok := f.Value("receive"); ok {
+	if receive, ok := f.take("receive", KindList); ok {
 		def.Receive = p.receive("receive", receive)
 	}
 	if p.inPlace || p.made {

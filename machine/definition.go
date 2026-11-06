@@ -128,12 +128,16 @@ func (s *AddressSpec) Fill(e *Evaluator, scope Scope, place string) (*Address, e
 			return nil, err
 		}
 		m, ok := v.(map[string]any)
-		for name, field := range map[string]*string{"at": &a.At, "key": &a.Key, "run": &a.Run, "client": &a.Client} {
+		var key string
+		for name, field := range map[string]*string{"at": &a.At, "key": &key, "run": &a.Run, "client": &a.Client} {
 			if text, isText := m[name].(string); isText {
 				*field = text
 			} else if m[name] != nil {
 				ok = false
 			}
+		}
+		if _, isText := m["key"].(string); isText {
+			a.Key = &key
 		}
 		if !ok || len(m) == 0 {
 			return nil, fmt.Errorf("%s: %s gives %s, and an address is { at }, { at, key }, { at, run } or { client }", place, s.Expr, describe(v))
@@ -143,7 +147,7 @@ func (s *AddressSpec) Fill(e *Evaluator, scope Scope, place string) (*Address, e
 			written string
 			into    *string
 			name    string
-		}{{s.At, &a.At, "at"}, {s.Key, &a.Key, "key"}, {s.Run, &a.Run, "run"}} {
+		}{{s.At, &a.At, "at"}, {s.Run, &a.Run, "run"}} {
 			if f.written == "" {
 				continue
 			}
@@ -152,6 +156,13 @@ func (s *AddressSpec) Fill(e *Evaluator, scope Scope, place string) (*Address, e
 				return nil, err
 			}
 			*f.into = text
+		}
+		if s.Key != "" {
+			key, err := e.Key(s.Key, scope, place+".key")
+			if err != nil {
+				return nil, err
+			}
+			a.Key = &key
 		}
 	}
 	if err := a.Check(); err != nil {
@@ -477,6 +488,11 @@ func (c *Checker) Address(place string, s *AddressSpec, names ...string) {
 	if s.Key != "" && !HasExpr(s.Key) {
 		if err := CheckKey(s.Key); err != nil {
 			c.Problem(place+".key", "%v", err)
+		}
+	}
+	if s.Run != "" && !HasExpr(s.Run) {
+		if err := store.CheckInstance(s.Run); err != nil {
+			c.Problem(place+".run", "%v", err)
 		}
 	}
 }

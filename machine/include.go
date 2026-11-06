@@ -161,6 +161,8 @@ func (p *Parser) out(n *node, field *Field, place string, chain []string) *node 
 		case field.Kind == KindNamed:
 			entry := field.entry()
 			return p.mapping(n, func(string) *Field { return entry }, place, chain)
+		case field.Kind == KindList:
+			return p.mapping(n, func(string) *Field { return &Field{Kind: KindList} }, place, chain)
 		case field.Holds() != nil:
 			return p.mapping(n, field.Holds().field, place, chain)
 		}

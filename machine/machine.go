@@ -13,6 +13,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/zummed/corbie/blob"
+	"github.com/zummed/corbie/store"
 )
 
 // An Event is anything that reaches a machine: a name, where it came from,
@@ -163,25 +164,26 @@ func (r *Job) IsCall() bool { return r.Call != nil }
 
 // An Address names a run: the run of a singleton location, the run for a key
 // at a keyed location, or one run by its ID. As the sender of an event it may
-// name a client instead.
+// name a client instead. A key is kept as it was filled in, empty or past
+// KeyLimit included: such a send is undelivered, and fails nothing.
 type Address struct {
-	At     string `json:"at,omitzero"`
-	Key    string `json:"key,omitzero"`
-	Run    string `json:"run,omitzero"`
-	Client string `json:"client,omitzero"`
+	At     string  `json:"at,omitzero"`
+	Key    *string `json:"key,omitzero"`
+	Run    string  `json:"run,omitzero"`
+	Client string  `json:"client,omitzero"`
 }
 
 // Check says what is wrong with an address once it is filled in. One that
 // names a run and a key, as the sender of an event from a keyed run does,
-// goes to the run.
+// goes to the run. Its key is checked where it is delivered.
 func (a *Address) Check() error {
 	switch {
-	case a.Client != "" && (a.At != "" || a.Key != "" || a.Run != ""):
+	case a.Client != "" && (a.At != "" || a.Key != nil || a.Run != ""):
 		return errors.New("an address names a client or a location, not both")
 	case a.Client != "":
 		return nil
-	case a.Key != "":
-		if err := CheckKey(a.Key); err != nil {
+	case a.Run != "":
+		if err := store.CheckInstance(a.Run); err != nil {
 			return err
 		}
 	}

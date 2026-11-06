@@ -25,7 +25,7 @@ expressions read `input`, `values` and `run`.
 
 - A title is one line of at most 200 characters. Each run of white space,
   line breaks among it, becomes one space, and a longer title is cut.
-- Only the client that owns the run's tree sees its title. `corbie run ls` does
+- Only the client that started the run sees its title. `corbie run ls` does
   not print it.
 - A title that cannot be filled in fails the run, as an input that does not
   fit does.
@@ -266,7 +266,7 @@ Sending and calling
 -------------------
 
 A job sends an event to a run by its address, or calls a location and waits
-for the result. A statechart's send takes the same addresses.
+for the result.
 
   { at: devices/boiler }                    the run of a singleton location
   { at: rooms/thermostat, key: kitchen }    the run for that key, started if none is running
@@ -277,7 +277,7 @@ for the result. A statechart's send takes the same addresses.
   send: { to: "${event.from}", event: applied }    a reply to the sender
 
 - A location is read from the tree's prefix, or in full when it starts with
-  `/`. `../` is refused.
+  `/`. A name in it is not empty, `.`, `..` or `+`, and holds no `#`.
 - `at`, `key` and `run` may hold expressions, and `to` may be one expression
   that gives an address. The address is checked once it is filled in.
 - A send job ends `done` once the event is written. It takes `to`, `event`,
@@ -287,9 +287,8 @@ for the result. A statechart's send takes the same addresses.
 - A key is any text of 1 to 256 characters. Anyone who can list runs can read
   it, so put no secret in a key.
 
-A send or a call needs the sender's permissions to hold `send:<location>`
-(see `corbie manual permissions`), and the receiver's `receive:` to accept
-the sender.
+A send or a call needs the sender's permissions to hold `send:<location>`,
+and the receiver's `receive:` to accept the sender.
 
   receive: [thermostats/*, client:panel]                                 for every event
   receive: { set: [thermostats/*, client:panel], stop: [client:panel] }   by event name

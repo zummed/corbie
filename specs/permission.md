@@ -21,7 +21,7 @@ There are eight kinds.
 
 A scope is one of four things, matched the same way wherever it appears: a path, a host, a name, or a location. Any of them may use `*` for a part. A host with no port means every port, a host of `*` means every host, and a host written as an address, `10.0.0.*`, matches no name. A path is checked where it really points, after links are followed.
 
-A location is matched as a path is. In a definition it is read from the tree's prefix by default, and as a full path when it starts with `/`; `../` is refused. In a ceiling it starts with `/`.
+A location is matched as a path is. In a definition it is read from the tree's prefix by default, and as a full path when it starts with `/`. A name in it is not empty, `.`, `..` or `+`, and holds no `#`. In a ceiling it starts with `/`.
 
 On Windows:
 

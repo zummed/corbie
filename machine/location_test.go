@@ -2,6 +2,7 @@ package machine
 
 import (
 	"encoding/json/v2"
+	"reflect"
 	"slices"
 	"strings"
 	"testing"
@@ -98,6 +99,17 @@ func Test_mach_receive_says_who_may_send(t *testing.T) {
 	if got := d.Definition.Receive; len(got) != 2 || !slices.Equal(got["stop"], []string{"client:panel"}) {
 		t.Errorf("a mapping is stored as %v", got)
 	}
+	// A receive: written empty, in either form, accepts nobody, and is
+	// stored apart from none.
+	for _, written := range []string{"[]", "{}"} {
+		d = parsed(t, "probe: p\nreceive: "+written+"\n", nil)
+		if d.Definition.Receive == nil || len(d.Definition.Receive[""]) != 0 {
+			t.Errorf("receive: %s is stored as %#v", written, d.Definition.Receive)
+		}
+	}
+	if d := parsed(t, "probe: p\n", nil); d.Definition.Receive != nil {
+		t.Errorf("no receive: is stored as %#v", d.Definition.Receive)
+	}
 	got := problems(t, "probe: p\nreceive:\n  set: [\"${input.who}\", \"client:\", ../up, a//b, \"x#y\", +/z]\n  done: [a]\n", nil)
 	for _, want := range []string{
 		`receive.set[0]: "${input.who}": a receive: entry is written out`,
@@ -118,15 +130,23 @@ func Test_mach_receive_says_who_may_send(t *testing.T) {
 // gives one. A location written out is checked with the definition, and one
 // filled in when it is filled.
 func Test_mach_address_names_a_run(t *testing.T) {
+	kitchen, empty, long, k := "kitchen", "", strings.Repeat("k", KeyLimit+1), "k"
+	r1, r2 := "c1/20261010T120000.000Z-0000000001", "c1/20261010T120000.000Z-0000000002"
 	for _, c := range []struct {
 		to    string
 		scope Scope
 		want  Address
 	}{
 		{"{ at: devices/boiler }", nil, Address{At: "devices/boiler"}},
-		{`{ at: rooms/thermostat, key: "${input.room}" }`, Scope{"input": map[string]any{"room": "kitchen"}}, Address{At: "rooms/thermostat", Key: "kitchen"}},
-		{`{ at: "/home/${input.place}", run: "${input.id}" }`, Scope{"input": map[string]any{"place": "boiler", "id": "r1"}}, Address{At: "/home/boiler", Run: "r1"}},
-		{`"${input.from}"`, Scope{"input": map[string]any{"from": map[string]any{"at": "/home/x", "run": "r2", "key": "k"}}}, Address{At: "/home/x", Run: "r2", Key: "k"}},
+		{`{ at: rooms/thermostat, key: "${input.room}" }`, Scope{"input": map[string]any{"room": "kitchen"}}, Address{At: "rooms/thermostat", Key: &kitchen}},
+		// A key filled in empty or too long is kept, so its send is
+		// undelivered and fails nothing; a key that is no text is empty.
+		{`{ at: rooms/thermostat, key: "${input.room}" }`, Scope{"input": map[string]any{"room": ""}}, Address{At: "rooms/thermostat", Key: &empty}},
+		{`{ at: rooms/thermostat, key: "${input.room}" }`, Scope{"input": map[string]any{"room": map[string]any{}}}, Address{At: "rooms/thermostat", Key: &empty}},
+		{`{ at: rooms/thermostat, key: "${input.room}" }`, Scope{"input": map[string]any{"room": long}}, Address{At: "rooms/thermostat", Key: &long}},
+		{`{ at: "/home/${input.place}", run: "${input.id}" }`, Scope{"input": map[string]any{"place": "boiler", "id": r1}}, Address{At: "/home/boiler", Run: r1}},
+		{`"${input.from}"`, Scope{"input": map[string]any{"from": map[string]any{"at": "/home/x", "run": r2, "key": "k"}}}, Address{At: "/home/x", Run: r2, Key: &k}},
+		{`"${input.from}"`, Scope{"input": map[string]any{"from": map[string]any{"at": "/home/x", "key": ""}}}, Address{At: "/home/x", Key: &empty}},
 		{`"${input.from}"`, Scope{"input": map[string]any{"from": map[string]any{"client": "panel"}}}, Address{Client: "panel"}},
 	} {
 		d := parsed(t, "probe: p\nwork:\n  a: { send: { to: "+c.to+", event: set } }\n", nil)
@@ -143,12 +163,13 @@ func Test_mach_address_names_a_run(t *testing.T) {
 			t.Errorf("%s: %v", c.to, err)
 			continue
 		}
-		if !job.IsSend() || *job.Send.At != c.want || job.Send.Event != "set" {
+		if !job.IsSend() || !reflect.DeepEqual(*job.Send.At, c.want) || job.Send.Event != "set" {
 			t.Errorf("%s was filled as %+v", c.to, job.Send)
 		}
 	}
-	got := problems(t, "probe: p\nwork:\n  a: { send: { to: { at: ../up }, event: e } }\n  b: { send: { to: { at: x, key: k, run: r }, event: e } }\n  c: { send: { to: \"to ${input.x}\", event: e } }\n  d: { send: { to: { key: k }, event: e } }\n", nil)
+	got := problems(t, "probe: p\nwork:\n  a: { send: { to: { at: ../up }, event: e } }\n  b: { send: { to: { at: x, key: k, run: r }, event: e } }\n  c: { send: { to: \"to ${input.x}\", event: e } }\n  d: { send: { to: { key: k }, event: e } }\n  e: { send: { to: { at: x, run: ../../y }, event: e } }\n", nil)
 	for _, want := range []string{
+		`work.e.send.to.run: "../../y" is not the name of a run`,
 		`work.a.send.to.at: "../up": a location is read from the tree's prefix`,
 		"work.b.send.to: an address names a key or a run, not both",
 		`work.c.send.to: "to ${input.x}": an address is { at }, { at, key } or { at, run }, or exactly one expression that gives one`,
@@ -164,6 +185,9 @@ func Test_mach_address_names_a_run(t *testing.T) {
 		if _, err := spec.Fill(eval(t), Scope{"input": map[string]any{"at": at}}, "work.a.send.to"); err == nil || !strings.Contains(err.Error(), want) {
 			t.Errorf("%q filled in gave: %v", at, err)
 		}
+	}
+	if _, err := (&AddressSpec{At: "x", Run: "${input.id}"}).Fill(eval(t), Scope{"input": map[string]any{"id": "c1/../y"}}, "to"); err == nil || !strings.Contains(err.Error(), "is not the name of a run") {
+		t.Errorf("a run filled in as a path gave: %v", err)
 	}
 	if _, err := (&AddressSpec{Expr: "${input}"}).Fill(eval(t), Scope{"input": "x"}, "to"); err == nil || !strings.Contains(err.Error(), "an address is") {
 		t.Errorf("an expression that gives text gave: %v", err)

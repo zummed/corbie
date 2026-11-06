@@ -52,9 +52,11 @@ func Test_client_location_that_is_a_path_on_disk(t *testing.T) {
 	os.WriteFile(filepath.Join(dir, "room.yaml"), []byte(strings.Replace(room, "keyed", "singleton", 1)), 0o644)
 	// /tmp is a directory on every computer the tests run on.
 	m.ok("", "run", "submit", dir, "--at", "/tmp")
-	if shown := m.ok("", "run", "show", "/tmp/room"); !strings.Contains(shown, "running") {
-		t.Fatalf("run show /tmp/room printed %s", shown)
-	}
+	// The singleton the submit started may not have been taken yet.
+	until(t, "the singleton at /tmp/room", func() bool {
+		status, shown, _ := m.run("", "run", "show", "/tmp/room")
+		return status == 0 && strings.Contains(shown, "running")
+	})
 	if out := m.ok("", "run", "cancel", "/tmp/room"); !strings.Contains(out, "taken") {
 		t.Fatalf("run cancel /tmp/room printed %s", out)
 	}

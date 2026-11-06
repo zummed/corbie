@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"maps"
 	"os"
 	"path/filepath"
 	"slices"
@@ -605,47 +606,65 @@ func within(dir, name string) (string, bool, error) {
 }
 
 // checkMachines prints each machine of each directory ok or its problems,
-// and fails if any has one.
+// among them the sends and calls the controller would refuse, and fails if
+// any has one.
 func (e *Env) checkMachines(dirs []string) error {
-	var found []*client.Machine
-	var paths []string
+	var paths, problems []string
+	nothing := map[string][]string{}
 	for _, dir := range dirs {
 		tree, err := client.ReadTree(dir, "")
 		if err != nil {
 			return err
 		}
+		unsent, empty := tree.Unsent()
+		for at, from := range empty {
+			for _, f := range from {
+				nothing[at] = append(nothing[at], filepath.ToSlash(filepath.Join(dir, f)))
+			}
+		}
 		for _, m := range tree.Machines {
-			found = append(found, m)
+			var lines []string
+			if m.Problem != nil {
+				lines = append(lines, m.Problem.Error())
+			}
+			lines = append(lines, unsent[m]...)
 			paths = append(paths, filepath.ToSlash(filepath.Join(dir, m.Path)))
+			problems = append(problems, strings.Join(lines, "\n"))
 		}
 	}
 	bad := 0
-	report := map[string]string{}
+	report := struct {
+		Files   map[string]string   `json:"files"`
+		Nothing map[string][]string `json:"nothing_at,omitzero"`
+	}{map[string]string{}, nothing}
 	width := 0
-	for i, m := range found {
-		width = max(width, len(paths[i]))
-		report[paths[i]] = "ok"
-		if m.Problem != nil {
+	for i, path := range paths {
+		width = max(width, len(path))
+		report.Files[path] = "ok"
+		if problems[i] != "" {
 			bad++
-			report[paths[i]] = m.Problem.Error()
+			report.Files[path] = problems[i]
 		}
 	}
 	err := e.Print(report, func() string {
 		var b strings.Builder
-		for i, m := range found {
-			if m.Problem == nil {
-				fmt.Fprintf(&b, "%-*s  ok\n", width, paths[i])
+		for i, path := range paths {
+			if problems[i] == "" {
+				fmt.Fprintf(&b, "%-*s  ok\n", width, path)
 				continue
 			}
-			fmt.Fprintf(&b, "%s\n", paths[i])
-			for _, line := range strings.Split(m.Problem.Error(), "\n") {
+			fmt.Fprintf(&b, "%s\n", path)
+			for _, line := range strings.Split(problems[i], "\n") {
 				fmt.Fprintf(&b, "    %s\n", line)
 			}
+		}
+		for _, at := range slices.Sorted(maps.Keys(nothing)) {
+			fmt.Fprintf(&b, "nothing in the tree is at %s, named by %s\n", at, strings.Join(nothing[at], ", "))
 		}
 		return b.String()
 	})
 	if err == nil && bad > 0 {
-		return fmt.Errorf("%d of %d files have problems", bad, len(found))
+		return fmt.Errorf("%d of %d files have problems", bad, len(paths))
 	}
 	return err
 }

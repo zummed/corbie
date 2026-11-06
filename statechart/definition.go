@@ -485,7 +485,7 @@ func (chartType) Check(c *machine.Checker, def *machine.Definition) {
 				c.Value(at+".data", send.Data, names...)
 				switch {
 				case send.Address != nil:
-					c.Address(at+".to", send.Address, names...)
+					c.SendTo(at+".to", send.Address, send.Event, names...)
 				case send.To == machine.Parent:
 				case scripts[send.To]:
 					c.Problem(at+".to", "%q runs a script, and only a machine can be sent an event", send.To)

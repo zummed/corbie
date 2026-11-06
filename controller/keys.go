@@ -217,14 +217,13 @@ func (t *target) aim(at string, keyed bool) (to string, starts bool, why string)
 		return t.holder, false, ""
 	case t.file == nil:
 		return "", false, fmt.Sprintf("nothing is recorded at %s", at)
-	case !keyed && t.file.Lifetime == machine.LifetimeKeyed:
-		return "", false, fmt.Sprintf("%s is keyed: a send to it names a key, as %s#<key>", at, at)
-	case !keyed && t.file.Lifetime == machine.LifetimeTransient:
-		return "", false, fmt.Sprintf("%s is transient: a send to a location goes to a singleton or a key, and a run of a transient location is named by its ID", at)
+	}
+	if why := machine.Addressable(at, t.file.Lifetime, keyed); why != "" {
+		return "", false, why
+	}
+	switch {
 	case !keyed:
 		return "", false, fmt.Sprintf("no run of the singleton at %s is running", at)
-	case t.file.Lifetime != machine.LifetimeKeyed:
-		return "", false, fmt.Sprintf("%s is not keyed", at)
 	case t.file.Runs > 0 && t.runs >= t.file.Runs:
 		return "", false, fmt.Sprintf("%s is at its limit of %d runs", at, t.file.Runs)
 	}
@@ -477,35 +476,12 @@ func (b *build) refuses(msg *instance.Message, def *machine.Definition) string {
 }
 
 // receives says whether a definition's receive: lists a sender for an
-// event. The tree's own client is always listed. With no receive:, every
-// location of the run's tree is.
+// event. The tree's own client is always listed.
 func (b *build) receives(def *machine.Definition, sender *machine.Address, event string) bool {
-	if sender == nil {
-		return false
-	}
-	if sender.Client != "" && sender.Client == store.InstanceClient(b.inst) {
+	if sender != nil && sender.Client != "" && sender.Client == store.InstanceClient(b.inst) {
 		return true
 	}
-	list := []string{"**"}
-	if len(def.Receive) > 0 {
-		var ok bool
-		if list, ok = def.Receive[event]; !ok {
-			list = def.Receive[""]
-		}
-	}
-	for _, entry := range list {
-		if name, ok := strings.CutPrefix(entry, "client:"); ok {
-			if sender.Client != "" && sender.Client == name {
-				return true
-			}
-			continue
-		}
-		pattern, err := permission.ReadLocation(b.st.Tree, entry)
-		if err == nil && sender.At != "" && permission.MatchLocation(pattern, sender.At) {
-			return true
-		}
-	}
-	return false
+	return machine.ReceivesFrom(def, b.st.Tree, sender, event)
 }
 
 // undeliver leaves out an event sent to the run by its address, which it

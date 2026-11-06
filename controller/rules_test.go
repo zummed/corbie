@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"path"
 	"slices"
 	"strings"
 	"sync"
@@ -558,7 +559,13 @@ func TestControllerSecret(t *testing.T) {
 			t.Fatalf("with the secret set to %q: %q, and the job was sent %q", value, failure, sent)
 		}
 	}
-	// Set at the run's own location, the nearer value is the one sent.
+	// Set at the tree's prefix, nearer than /, that value is the one sent;
+	// set at the run's own location too, that nearer value is.
+	prefix := path.Dir(at)
+	w.secret("K", "the prefix's", prefix)
+	if failure, sent := uses(); failure != "" || !slices.Equal(sent, []string{"the prefix's"}) {
+		t.Fatalf("with the secret set at %s too: %q, and the job was sent %q", prefix, failure, sent)
+	}
 	w.secret("K", "the nearest", at)
 	if failure, sent := uses(); failure != "" || !slices.Equal(sent, []string{"the nearest"}) {
 		t.Fatalf("with the secret set at %s too: %q, and the job was sent %q", at, failure, sent)
@@ -571,8 +578,14 @@ func TestControllerSecret(t *testing.T) {
 	if err := secret.Remove(ctx, w.ctrl.Store, w.ctl, at, "K"); err != nil {
 		t.Fatal(err)
 	}
+	if failure, sent := uses(); failure != "" || !slices.Equal(sent, []string{"the prefix's"}) {
+		t.Fatalf("with the nearest secret removed: %q, and the job was sent %q", failure, sent)
+	}
+	if err := secret.Remove(ctx, w.ctrl.Store, w.ctl, prefix, "K"); err != nil {
+		t.Fatal(err)
+	}
 	if failure, sent := uses(); failure != "" || !slices.Equal(sent, []string{"the second"}) {
-		t.Fatalf("with the nearer secret removed: %q, and the job was sent %q", failure, sent)
+		t.Fatalf("with the nearer secrets removed: %q, and the job was sent %q", failure, sent)
 	}
 	if err := secret.Remove(ctx, w.ctrl.Store, w.ctl, "/", "K"); err != nil {
 		t.Fatal(err)

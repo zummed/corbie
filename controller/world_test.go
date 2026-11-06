@@ -129,16 +129,19 @@ func (w *world) submit(src string, files map[string]string, input any) string {
 
 // place has a client submit a definition as a tree of one file, at a prefix
 // no other test of the world uses, and runs the controller until the submit
-// is taken. It gives the file's location, which is the prefix, and the run
-// the submit started there, if it started one.
+// is taken. The file is <name>.yaml, so its location is the prefix and the
+// name, as a client gives it. It gives that location and the run the submit
+// started there, if it started one.
 func (w *world) place(c *client.Client, src string, files map[string]string) (at, run string) {
 	w.t.Helper()
 	draft := w.draft(src, files)
+	name := draft.Definition.Name
 	w.mu.Lock()
 	w.placed++
-	at = fmt.Sprintf("/%s-%d", draft.Definition.Name, w.placed)
+	prefix := fmt.Sprintf("/%s-%d", name, w.placed)
 	w.mu.Unlock()
-	message, err := c.Submit(ctx, &client.Tree{Prefix: at, Machines: []*client.Machine{{Path: draft.Definition.Name + ".yaml", Location: at, Draft: draft}}}, 0)
+	at = prefix + "/" + name
+	message, err := c.Submit(ctx, &client.Tree{Prefix: prefix, Machines: []*client.Machine{{Path: name + ".yaml", Location: at, Draft: draft}}}, 0)
 	if err != nil {
 		w.t.Fatal(err)
 	}

@@ -300,11 +300,11 @@ func Test_ctl_job_with_a_key_in_use_fails(t *testing.T) {
 	w.settle()
 	second := w.submit(flow, files, map[string]any{"key": "k"})
 	w.settle()
-	st := w.latest(second).State
-	if st.Status != instance.Failed || !strings.Contains(st.Error.Error, "in use") {
-		t.Fatalf("the second run is %s: %+v", st.Status, st.Error)
-	}
 	child := w.child(first)
+	st := w.latest(second).State
+	if st.Status != instance.Failed || !strings.Contains(st.Error.Error, "in use") || !strings.Contains(st.Error.Error, child) {
+		t.Fatalf("the second run is %s, and its error does not name %s, which holds k: %+v", st.Status, child, st.Error)
+	}
 	if head := w.head(child); head.Key != "k" || head.Parent != first {
 		t.Fatalf("the child's head is %+v", head)
 	}
@@ -691,17 +691,38 @@ func Test_ctl_stale_key_file_blocks_no_key(t *testing.T) {
 }
 
 // A start that holds the key and has not taken its first step keeps it: its
-// message is still waiting, and a crash left it so. An event sent to the key
-// goes to that run, and starts no other.
+// message is still waiting, and a crash left it so. Here the message lands
+// just after the pass that takes a send to the key has listed the inbox, so
+// that send finds the run with no step and its start waiting. The event goes
+// to that run once it starts, and starts no other.
 func Test_ctl_key_file_of_a_start_still_waiting_is_kept(t *testing.T) {
 	w := newWorld(t)
 	sender := w.submit(router, routed, nil)
-	w.settle()
 	at, _ := w.place(w.client, waits, nil)
-	first := w.startAt(w.client, at, client.Start{Life: time.Hour})
-	_, id, _ := strings.Cut(first, "/")
-	w.writeEntry("c1", "chat:1", first, store.Message("ctl", "c1", id))
+	w.settle()
 	w.say(sender, "say", 1, "one")
+	w.pass() // the sender's step sends to the key, starting a run there
+	var first string
+	inner := w.ctrl.Store
+	w.afresh(&unread{Store: inner, after: func() {
+		if first != "" {
+			return
+		}
+		first = w.startAt(w.client, at, client.Start{Life: time.Hour})
+		_, id, _ := strings.Cut(first, "/")
+		w.writeEntry("c1", "chat:1", first, store.Message("ctl", "c1", id))
+	}})
+	w.pass() // the send to the key is taken, and finds the start waiting
+	if first == "" || w.head(first) != nil {
+		t.Fatalf("the first run %q began in the pass that found its start waiting", first)
+	}
+	if runs := w.runsOf("talk"); len(runs) != 0 {
+		t.Fatalf("the send started %v, though the key's file names %s, whose start is waiting", runs, first)
+	}
+	if entry := w.entry("c1", "chat:1"); entry == nil || entry.Run != first {
+		t.Fatalf("the key's file is %+v", entry)
+	}
+	w.afresh(inner)
 	w.settle()
 	if runs := w.runsOf("talk"); len(runs) != 0 || w.head(first) == nil || !slices.Equal(w.told(first), []string{"one"}) {
 		t.Fatalf("the send started %v, and the first run has the head %+v and was told %v", runs, w.head(first), w.told(first))

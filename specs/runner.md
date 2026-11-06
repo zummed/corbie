@@ -51,7 +51,7 @@ Besides plugins, a script has a few things of its own:
 
 - `emit(name, value)` sends a named value up while the script runs. `log(text)` and `progress(done, total)` are emits for a watcher's benefit. Emits are written to the record a few at a time, not one write each.
 - `job` says which request this is. Every attempt after a failure has the same request name, so a script can use it to avoid doing something twice. A restart after a job ended well has a new one.
-- `require` loads something by name or by path. A bare name is a plugin or a library that comes with the binary. A path starting `./` or `../` is read from the directory of the file that calls it, and is one of the files the job lists. A file whose path ends in `.yaml`, `.yml` or `.json` gives its data, read as the `yaml` plugin reads a document, a `.js` file runs and gives its `exports`, and any other file gives its text, so a script loads data and text shipped with its definition, such as a prompt in Markdown, with no permission and on any host.
+- `require` loads something by name or by path. A bare name is a plugin or a library that comes with the binary. A path starting `./` or `../` is read from the directory of the file that calls it, and is one of the files the job lists. A file whose path ends in `.yaml`, `.yml` or `.json` gives its data, read as the `yaml` plugin reads a document, a `.js` or `.cjs` file runs and gives its `exports`, and any other text file gives its text, so a script loads data and text shipped with its definition, such as a prompt in Markdown, with no permission and on any host.
 
 A job's input and output pass through the store as JSON, so their maps reach the next script with their keys sorted.
 

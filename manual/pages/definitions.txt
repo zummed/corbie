@@ -2,8 +2,8 @@ Definitions: every type of machine shares these fields, expressions, jobs, event
 
 A definition is a YAML file. Its first line is the machine's type and name:
 `flow: digest`, `statechart: review` or `agent: librarian`. A name is letters,
-digits, `_` and `-`, and starts with a letter. No machine, stage, state, tool
-or job is named `ask`, the name of the definition's ask.
+digits, `_` and `-`, and starts with a letter. No stage, state, tool or job is
+named `ask`, the name of the definition's ask.
 
 Fields every type takes
 -----------------------

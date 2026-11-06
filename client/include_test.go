@@ -373,18 +373,11 @@ limits: { turns: 3 }
 	if len(d.Children) != 1 {
 		t.Errorf("the machine in place gave %v", d.Children)
 	}
-	// A null removes the value it wins over, and is refused where nothing is
-	// removed.
-	files["base.yaml"] = strings.TrimSuffix(files["base.yaml"], "colour: red\n")
-	files["family.yaml"] = strings.Replace(files["family.yaml"], "read: { does: Read one shelf }\n", "write: null\n", 1)
-	files["family.yaml"] = strings.Replace(files["family.yaml"], "limits: { turns: 3 }", "limits: { turns: 3, timeout: null }", 1)
-	out = string(parseFamily(t, files).WrittenOut())
-	if strings.Contains(out, "write") || strings.Contains(out, "timeout") || !strings.Contains(out, "does: Read") || !strings.Contains(out, "turns: 3") {
-		t.Errorf("a null did not remove what it won over:\n%s", out)
-	}
-	files["family.yaml"] = strings.Replace(files["family.yaml"], "write: null", "wrote: null", 1)
-	if _, err := machine.ParseIn("family.yaml", []byte(files["family.yaml"]), machine.Given(files)); err == nil || !strings.Contains(err.Error(), "tools.wrote") {
-		t.Errorf("a null that removes nothing gave %v", err)
+	// One tool is taken from a file by its path, and no other.
+	d = draft(t, "agent: one\nmodel: { name: m, service: anthropic, secret: K }\nprompt: hi\ntools:\n  read: { include: ./tools.yaml#read }\n", map[string]string{
+		"tools.yaml": "read: { does: Read, job: ./read.js }\nwrite: { does: Write, job: ./write.js }\n", "read.js": "return 1", "write.js": "return 1"})
+	if out := string(d.WrittenOut()); !strings.Contains(out, "does: Read") || strings.Contains(out, "write") {
+		t.Errorf("one tool taken by its path gave:\n%s", out)
 	}
 	// A value of another kind than the included one wins whole.
 	d = draft(t, "flow: f\ninclude: ./base.yaml\nstages:\n  one: { job: ./a.js }\n", map[string]string{"base.yaml": "stages: two\nkeep: 1d\n", "a.js": "return 1"})

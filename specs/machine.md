@@ -78,7 +78,7 @@ The client writes the definition out before it sends it:
 
 - A value the including file writes wins over an included one, at every depth. A file's values win over those of the files it includes, and an earlier file's over a later one's. A file merged in whole by two routes is merged once; a `#path` item is always replaced.
 - A list or a text the including file writes replaces the included one whole. `family.yaml`'s `allow:` replaces `base.yaml`'s, so it takes the base's items back with `#allow`.
-- A name written as `null` removes the value it would win over: `tools: { include: ./tools.yaml, write_file: null }` takes every tool but `write_file`. A `null` that removes nothing is read as written, and refused where a value is needed.
+- Nothing an include gives can be taken away. A file takes only part of another by naming each part with `#path`: `tools: { read: { include: ./tools.yaml#read } }` takes one tool, and a tool added to `tools.yaml` later does not reach it.
 - A text may be a list of pieces, each a text or `{ include: … }`, joined by one empty line. A single `{ include: file.md }` in a text field is a text of one piece.
 - `${…}` in an included text is an expression, filled in at run time like any text. A literal `${` is written `${'${'}`.
 - An included file is part of the machine that includes it. Its expressions read that machine's `input`, `values` and `run`, its secret names are looked up at that machine's location, and that machine's `allow:`, `deny:` and `ask_about:` cover its jobs.

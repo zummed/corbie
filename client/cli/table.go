@@ -174,10 +174,12 @@ prints each one ok or its problems, and starts nothing. It fails when a
 machine has a problem.
 ` + scripts},
 		{Name: "run submit", Usage: "<file or directory> [--at <prefix>] | <location> [--input <json>] [--wait | --watch]", Summary: "start a run and print its ID, or record a tree", Run: cmdSubmit, Help: `
-Given a location, which starts with /, it starts a run there and sends the
-start message. It prints the run's ID and exits, unless --wait or --watch is
-given. A definition or a script file given with any of these flags is started
-in the same way, with the files it names, and recorded at no location.
+Given a location, it starts a run there and sends the start message. It prints
+the run's ID and exits, unless --wait or --watch is given. A location starts
+with /, does not end in .yaml or .js, and is no file or directory on this
+computer: an argument that is one is read as it. A definition or a script file
+given with any of these flags is started in the same way, with the files it
+names, and recorded at no location.
 ` + starts + `
   --wait                   wait until the run ends, then print it
   --watch                  print each entry of the run's record as it is

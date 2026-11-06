@@ -1,4 +1,4 @@
-# kid.yaml: a child, which reads the value and the location of its parent.
+# kid.yaml: a child, which reads the value it was given and its location.
 flow: kid
 stages:
   read:

@@ -67,8 +67,9 @@
 //	  "refused_contains": "…" }
 //
 // cancel cancels the run checked, or the one kept under a name. Steps that
-// set a value or a secret at the head of the list are taken before the case
-// is submitted, so that its runs read them from their first step. A submit
+// set a value or a secret at the head of the list, and wait for nothing, are
+// taken before the case is submitted, so that its runs read them from their
+// first step. A submit
 // or a remove waits for its receipt, which must say taken unless the step
 // says otherwise.
 package parity_test
@@ -321,7 +322,7 @@ func runCase(t *testing.T, dir string, want *expect) (wrong, findings []string) 
 	}
 	// The values and secrets set first are there before anything runs.
 	first := 0
-	for first < len(steps) && (steps[first].Do == "value" || steps[first].Do == "secret") {
+	for first < len(steps) && (steps[first].Do == "value" || steps[first].Do == "secret") && steps[first].Wait == (drive{}).Wait {
 		take(first)
 		first++
 	}

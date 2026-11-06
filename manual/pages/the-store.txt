@@ -150,12 +150,13 @@ Looking for yourself
 --------------------
 
 A directory store is plain files. Set up the store of
-`corbie manual a-real-run`, stop `corbie start`, and run these.
+`corbie manual a-real-run`, with title.yaml recorded at /title as that page
+does, stop `corbie start`, and run these.
 
   corbie run submit /title --input '{"url": "https://example.com"}'
   find ~/.config/corbie/store -type f    # the start message is in laptop-controller/inbox/
   corbie start &
-  find ~/.config/corbie/store -type f    # steps/, finished/, receipts/, wakes/ and taken/ have files
+  find ~/.config/corbie/store -type f    # locations/ holds title.yaml and its script; steps/, finished/, receipts/, wakes/ and taken/ have files
 
 Both inboxes are now empty: the controller and the runner delete a message
 after acting on it. `.lock/` holds the two files a directory store locks while

@@ -155,7 +155,7 @@ The detailed rules behind [the Client overview](../client.md).
 **R-client-137** `corbie start` with nothing named runs the roles the config holds: its controller, its runner, and the store's server when the config records where its directory is served. Anything named means exactly what is named.
 *Accept:* after `corbie init`, `corbie start` runs the controller and the runner, and a run submitted to it ends `done`; after `corbie init store --listen 127.0.0.1:<port>`, it serves the directory at that port as well. On a config that holds only a runner it runs the runner alone, and on a config that holds neither a controller nor a runner it fails, naming `corbie init`. After `corbie init`, `corbie start runner` runs no controller.
 
-**C-client-24** `corbie run submit` with neither `--wait` nor `--watch` prints the run's ID and nothing else on standard output. The ID is taken by other commands, and anything beside it breaks them. *Test:* `client_submit_prints_only_the_id`
+**C-client-24** `corbie run submit` that starts a run, with neither `--wait` nor `--watch`, prints the run's ID and nothing else on standard output. A submit that records a tree prints its rows instead (R-client-147). The ID is taken by other commands, and anything beside it breaks them. *Test:* `client_submit_prints_only_the_id` and `TestSubmitRecordsAFileAndStartsALocation`
 
 **C-client-25** A command's result goes to standard output and everything said along the way to standard error, the same for every command, and help that was asked for goes to standard output. A result that moves between the two from one command to the next cannot be piped, and help on standard error shows nothing when it is piped to a pager. *Test:* `client_results_on_stdout_progress_on_stderr`
 
@@ -190,6 +190,12 @@ The detailed rules behind [the Client overview](../client.md).
 **R-client-149** A run reads the tree's directory as `run.context` and its location as `run.location`, and so does what it starts. A singleton is given no input. *Test:* `TestContextIsReadByARunAndItsChildren`
 
 **R-client-150** `corbie test` given directories reads every machine in them as `corbie run submit` does, prints each one ok or its problems, takes no flag of a start, reads no config and no store, and starts and cancels nothing. It fails when a machine has a problem. *Test:* `TestTestReadsADirectory`
+
+**R-client-159** `corbie run submit <file>` given a definition or a script file alone, or with `--at`, records it as a tree of one file, at `--at`, by default `/` and the file's name without `.yaml` or `.js`, and prints its row as a directory's submit does. A file with a problem is reported and nothing is sent, so its location keeps what was recorded before. A flag of a start given with `--at` is refused.
+*Accept:* `corbie run submit hello.yaml` prints `/hello   transient   recorded`. A singleton given with `--at /standing/steady` prints `/standing/steady   singleton   started <id>`. A file whose `stages:` is a number fails, printing nothing on standard output. *Test:* `TestSubmitRecordsAFileAndStartsALocation`
+
+**R-client-160** `corbie run submit <location>` starts a run at the location. A location starts with `/`, does not end in `.yaml` or `.js`, and is no file or directory on this computer; a file's name that is not there is reported as not found, and nothing is sent. `--at`, `--memory`, `--tag`, `--key`, `--secret` and `--secret-env` are refused with a location: the file recorded there gives its jobs their own, and its secrets are set at the location.
+*Accept:* after `corbie run submit hello.yaml`, `corbie run submit /hello --input '{"name": "world"}'` prints a run's ID, and the run ends with the output `"hello, world"`. `corbie run submit /hello --key k` and `--secret-env HOME` are refused as mistakes, and so is `run submit /tmp/helo.yaml` when there is no such file. `corbie run submit /broken --wait`, where nothing is recorded, fails naming `/broken`. *Test:* `TestSubmitRecordsAFileAndStartsALocation`
 
 **C-client-55** A path in a machine may name a file of the context and none outside it, by a link or otherwise, so a directory's machines are what its files say. Tests: `TestPathsReadFromTheContext`, `TestLinksStayInTheContext`.
 

@@ -146,8 +146,6 @@ func calls(t *testing.T, n int, done func(), answered func(body string)) *httpte
 	return host
 }
 
-// setUp sets up one machine's config and a store with corbie init, and
-// leaves a start waiting in the store.
 // setUp makes a config whose store is at address, and leaves a submit of a
 // singleton waiting there: once sent says whether its message is in the
 // controller's inbox. The submit is stopped then, since no controller

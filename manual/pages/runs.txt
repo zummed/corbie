@@ -12,7 +12,7 @@ Commands
   corbie run ls                           lists this client's runs in progress, with child runs
   corbie run show <id>                    prints one run's status, input and output
   corbie run cancel <id>                  cancels a run in one of this client's trees
-  corbie run send <id> <event> [data]     sends an event to a run in one of this client's trees
+  corbie run send <id> <event> [data]     sends an event to a run
   corbie run reply <id> <ticket> [value]  answers a ticket the run waits on
   corbie controller cancel <id>           cancels any run, with the controller's config
 

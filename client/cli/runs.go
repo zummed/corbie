@@ -236,10 +236,12 @@ func (s *starting) narrow(start *client.Start) error {
 	return nil
 }
 
-// isLocation says whether an argument names a location: it starts with /
-// and is no file or directory on this computer.
+// isLocation says whether an argument names a location: it starts with /,
+// does not end in .yaml or .js, and is no file or directory on this
+// computer. A file's name that is not there is read as a file, and is
+// reported as not found.
 func isLocation(arg string) bool {
-	if !strings.HasPrefix(arg, "/") {
+	if !strings.HasPrefix(arg, "/") || strings.HasSuffix(arg, ".yaml") || strings.HasSuffix(arg, ".js") {
 		return false
 	}
 	_, err := os.Stat(arg)

@@ -259,15 +259,22 @@ func CheckText(text string, names []string) error {
 // A Scope is what the expressions of one place read, by name.
 type Scope map[string]any
 
-// RunName is the name every expression of every type reads its run by.
-const RunName = "run"
+// RunName is the name every expression of every type reads its run by, and
+// ValuesName the name it reads the values set at the run's location by.
+const (
+	RunName    = "run"
+	ValuesName = "values"
+)
 
 // A Run is what an expression reads of the run it is in: its ID, its key if it
-// has one, and the context its client submitted from.
+// has one, its location, the context its client submitted from, and the
+// values set at its location or above, by name.
 type Run struct {
-	ID      string
-	Key     string
-	Context string
+	ID       string
+	Key      string
+	Location string
+	Context  string
+	Values   map[string]string
 }
 
 // An Evaluator fills in the expressions of one step. The time expressions
@@ -284,11 +291,13 @@ type Evaluator struct {
 	// programs are the expressions the step has compiled, by their scope's
 	// names and their source.
 	programs map[string]*goja.Program
+	// values are the values each expression reads, by its source.
+	values map[string][]string
 }
 
 // NewEvaluator makes the evaluator of a step.
 func NewEvaluator(at time.Time, seed []byte, run Run) *Evaluator {
-	return &Evaluator{time: at, seed: seed, of: run, programs: map[string]*goja.Program{}}
+	return &Evaluator{time: at, seed: seed, of: run, programs: map[string]*goja.Program{}, values: map[string][]string{}}
 }
 
 // freeze makes the engine's own objects, and a value given to it, unable to
@@ -368,7 +377,26 @@ func (e *Evaluator) give(name string, v any) (goja.Value, error) {
 // Eval gives the value of one expression in a scope.
 func (e *Evaluator) Eval(src string, scope Scope) (any, error) {
 	scope = maps.Clone(scope)
-	scope[RunName] = map[string]any{"id": e.of.ID, "key": e.of.Key, "context": e.of.Context}
+	scope[RunName] = map[string]any{"id": e.of.ID, "key": e.of.Key, "location": e.of.Location, "context": e.of.Context}
+	values := map[string]any{}
+	for name, value := range e.of.Values {
+		values[name] = value
+	}
+	scope[ValuesName] = values
+	read, ok := e.values[src]
+	if !ok {
+		read, _ = valuesReadOf(src)
+		e.values[src] = read
+	}
+	for _, name := range read {
+		if _, set := e.of.Values[name]; !set {
+			location := e.of.Location
+			if location == "" {
+				location = "/"
+			}
+			return nil, fmt.Errorf("the value %s is not set at %s or above", name, location)
+		}
+	}
 	names := scopeNames(scope)
 	key := strings.Join(names, ",") + "\x00" + src
 	program := e.programs[key]
@@ -685,6 +713,92 @@ func ReadsIn(value any, root string) []Read {
 		}
 	}
 	return reads
+}
+
+// valuesRead gives the names of the values the expressions of a text read.
+// A value is read by the name it is written with: values[x] and values
+// alone are refused, so that what a definition reads can be listed.
+func valuesRead(text string) ([]string, error) {
+	parts, err := split(text)
+	if err != nil {
+		return nil, nil
+	}
+	var names []string
+	for _, p := range parts {
+		if p.expr {
+			read, err := valuesReadOf(p.text)
+			if err != nil {
+				return nil, fmt.Errorf("in ${%s}: %w", shown(p.text), err)
+			}
+			names = append(names, read...)
+		}
+	}
+	return names, nil
+}
+
+// valuesReadOf is valuesRead for one bare expression.
+func valuesReadOf(src string) ([]string, error) {
+	tree, err := readExpr("(", src, "\n)")
+	if err != nil {
+		return nil, nil
+	}
+	reads := ReadsOf(src, ValuesName)
+	declared, used := map[string]bool{}, map[string]bool{}
+	names2(reflect.ValueOf(tree.Body), declared, used, false)
+	var names []string
+	for _, r := range reads {
+		if r.Name == "*" {
+			return nil, errors.New("a value is read by its name, written out, as values.NAME")
+		}
+		names = append(names, r.Name)
+	}
+	if used[ValuesName] && uses(reflect.ValueOf(tree.Body), ValuesName) > len(reads) {
+		return nil, errors.New("a value is read by its name, written out, as values.NAME, and values alone is not read")
+	}
+	return names, nil
+}
+
+// uses counts the places an expression reads a name.
+func uses(v reflect.Value, name string) int {
+	count := 0
+	var walk func(v reflect.Value)
+	walk = func(v reflect.Value) {
+		switch v.Kind() {
+		case reflect.Interface, reflect.Pointer:
+			if v.IsNil() {
+				return
+			}
+			switch node := v.Interface().(type) {
+			case *ast.Identifier:
+				if string(node.Name) == name {
+					count++
+				}
+				return
+			case *ast.DotExpression:
+				walk(reflect.ValueOf(node.Left))
+				return
+			case *ast.PropertyKeyed:
+				if node.Computed {
+					walk(reflect.ValueOf(node.Key))
+				}
+				walk(reflect.ValueOf(node.Value))
+				return
+			}
+			walk(v.Elem())
+		case reflect.Slice:
+			for i := range v.Len() {
+				walk(v.Index(i))
+			}
+		case reflect.Struct:
+			for i := range v.NumField() {
+				if f := v.Field(i); f.CanInterface() {
+					walk(f)
+				}
+			}
+		}
+	}
+	walk(v)
+	return count
 }
 
 // Key fills in a key: text, or text with expressions in it. A value that is

@@ -73,6 +73,10 @@ func (chartType) Name() string { return "statechart" }
 // chart acts on events.
 func (chartType) SendsToKeys() {}
 
+// Receives says a chart's runs take events sent to them: of the types, only
+// a chart acts on events, and only a chart may be keyed.
+func (chartType) Receives() {}
+
 // What a chart's definition holds of its own. A state may hold states, so
 // its shape holds itself.
 var (

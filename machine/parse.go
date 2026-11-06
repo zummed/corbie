@@ -32,6 +32,10 @@ type Parser struct {
 	inline   int
 	limits   *Fields // the definition's limits, for a type to read its own
 	nearer   bool    // the jobs being read go to an ask nearer than the definition's
+	// inPlace says the definition being read is written in place, and made
+	// that it was made while a machine runs: neither is a file at a
+	// location.
+	inPlace, made bool
 }
 
 // Parse reads a written definition, fills it out, and checks it. load gives
@@ -55,7 +59,7 @@ func ParseMade(src []byte, load func(path string) ([]byte, error)) (*Draft, erro
 }
 
 func parse(src []byte, file string, load func(path string) ([]byte, error), root bool) (*Draft, error) {
-	p := &Parser{load: load, dir: path.Dir(file), top: file, source: file, noted: map[Problem]bool{}, includes: new(int), reads: map[string]*read{}}
+	p := &Parser{load: load, dir: path.Dir(file), top: file, source: file, noted: map[Problem]bool{}, includes: new(int), reads: map[string]*read{}, made: !root}
 	if file == "" {
 		p.dir = ""
 	} else {
@@ -150,6 +154,7 @@ func (p *Parser) fill(written map[string]any, first, place string) (draft *Draft
 	}
 	def.Title = f.Text("title")
 	def.Meta, _ = f.Value("meta")
+	p.location(def, f, limits)
 	// What is left is the type's own, read by the type's own shape. A
 	// field neither names is one that does not belong.
 	f.read()
@@ -193,6 +198,97 @@ func (p *Parser) fill(written map[string]any, first, place string) (draft *Draft
 	}
 	p.draft.needsAsk = approves && def.Ask == nil
 	return p.draft, p.draft.needsAsk
+}
+
+// location reads what a file says of the runs at its location. A machine
+// written in place or made while running is no file at a location, and
+// says none of it.
+func (p *Parser) location(def *Definition, f, limits *Fields) {
+	def.Lifetime = f.Text("lifetime")
+	def.Update = f.Text("update")
+	def.Runs = limits.Int("runs")
+	if receive, ok := f.Value("receive"); ok {
+		def.Receive = p.receive("receive", receive)
+	}
+	if p.inPlace || p.made {
+		for _, name := range []string{"lifetime", "update", "receive"} {
+			if f.Has(name) {
+				p.Problem(name, "%s belongs to a file at a location, and a machine written in place or made while running has none", name)
+			}
+		}
+		if limits.Has("runs") {
+			p.Problem("limits.runs", "runs belongs to a file at a location, and a machine written in place or made while running has none")
+		}
+		def.Lifetime, def.Update, def.Runs, def.Receive = "", "", 0, nil
+		return
+	}
+	if limits.Has("runs") && def.Runs < 1 {
+		p.Problem("limits.runs", "runs is at least 1")
+	}
+	if def.Lifetime == "" {
+		def.Lifetime = LifetimeTransient
+	}
+	if def.Update == "" {
+		def.Update = UpdateDrain
+		if def.Lifetime == LifetimeSingleton {
+			def.Update = UpdateRestart
+		}
+	}
+}
+
+// receive reads who may send to a file's runs: a list for every event, or a
+// mapping from an event's name to a list.
+func (p *Parser) receive(place string, written any) map[string][]string {
+	list := func(place string, v any) []string {
+		if text, ok := v.(string); ok {
+			return []string{text}
+		}
+		items, ok := v.([]any)
+		if !ok {
+			p.Problem(place, "this should be a list of locations and client:<name>, and is %s", describe(v))
+			return nil
+		}
+		out := []string{}
+		for i, item := range items {
+			text, ok := item.(string)
+			if !ok {
+				p.Problem(fmt.Sprintf("%s[%d]", place, i), "this should be text, and is %s", describe(item))
+				continue
+			}
+			out = append(out, text)
+		}
+		return out
+	}
+	m, ok := written.(map[string]any)
+	if !ok {
+		return map[string][]string{"": list(place, written)}
+	}
+	out := map[string][]string{}
+	for _, event := range sortedKeys(m) {
+		if event == "" {
+			p.Problem(place, "an event's name is not empty")
+			continue
+		}
+		out[event] = list(placeOf(place, event), m[event])
+	}
+	return out
+}
+
+// Address reads an address as it is written: a mapping, or exactly one
+// expression that gives one.
+func (p *Parser) Address(place string, written any) AddressSpec {
+	if text, ok := written.(string); ok {
+		if !IsOneExpr(text) {
+			p.Problem(place, "%q: an address is { at }, { at, key } or { at, run }, or exactly one expression that gives one", text)
+		}
+		return AddressSpec{Expr: text}
+	}
+	f := p.Fields(place, written, AddressShape)
+	if f == nil {
+		return AddressSpec{}
+	}
+	defer f.Done()
+	return AddressSpec{At: f.Text("at"), Key: f.Text("key"), Run: f.Text("run")}
 }
 
 // Ask notes a job the definition holds as an ask, at its place: a machine
@@ -249,6 +345,16 @@ func (p *Parser) Job(place string, written any) *JobSpec {
 		s.Files = append(s.Files, p.cleanPath(file))
 	}
 	machine, hasMachine := f.Value("machine")
+	if sf := f.Fields("send"); sf != nil {
+		to, _ := sf.Value("to")
+		s.Send = &SendSpec{To: p.Address(placeOf(place, "send.to"), to), Event: sf.Text("event")}
+		s.Send.Data, _ = sf.Value("data")
+		sf.Done()
+	}
+	if cf := f.Fields("call"); cf != nil {
+		s.Call = &AddressSpec{At: cf.Text("at")}
+		cf.Done()
+	}
 	s.Key = f.Text("key")
 	s.Input, _ = f.Value("input")
 	s.Allow = f.Strings("allow")
@@ -297,7 +403,7 @@ func (p *Parser) Machine(place string, written any) (name string) {
 			return name
 		}
 		p.child(place, name, func(sub *Parser) (*Draft, bool) {
-			sub.at = below(p.at, place)
+			sub.at, sub.inPlace = below(p.at, place), true
 			return sub.fill(m, first, place)
 		}, p.dir, "")
 	default:
@@ -501,7 +607,7 @@ func (p *Parser) child(place, name string, read func(*Parser) (*Draft, bool), di
 	p.draft.Definition.Machines[name] = blob.Ref{}
 	chain := p.reading(place)
 	sub := &Parser{load: p.load, dir: dir, top: p.top, source: p.source, chain: chain, includes: p.includes, reads: p.reads,
-		problems: p.problems, noted: p.noted, inline: p.inline * 100}
+		problems: p.problems, noted: p.noted, inline: p.inline * 100, made: p.made}
 	if file != "" {
 		sub.source, sub.chain = file, append(chain, file)
 	}

@@ -27,8 +27,8 @@ The detailed rules behind the [Machines overview](../machine.md). Area code: `ma
 **R-mach-139** A definition of any type may carry `meta:`, with any value; Corbie keeps it with the stored definition, never reads it, and fills in no expression in it.
 *Accept:* a flow, a statechart and an agent each carry `meta:` holding text that begins `${` and does not compile, and each is accepted. The flow's stored definition holds its `meta:` as written, a machine written in place keeps its own, and the flow runs to its end as it does without it.
 
-**R-mach-147** A definition of any type may give `title:`, text or text with expressions that read `input` and `run`. The controller fills it in when the run starts, from the filled input, as one line of at most 200 characters, each run of white space made one space and the rest cut, and keeps it in the run's record and never in its head. A title that cannot be filled in fails the run at its first step.
-*Accept:* a flow with `title: "${input.channel}: ${input.said}"` started with `{channel: "#testing", said: "give me\n\na release card"}` is shown to its client with the title `#testing: give me a release card`, a child written in place has its own title, and a run that a send to `{ machine, key }` starts has the title its own definition gives, from the key and the send's data; a viewer is shown none, and no version of any head holds the title. A title of 301 characters is shown as its first 200. A title that reads `stages` is refused at `title`. Parity case 111: a title that reads a part of the input it is not given fails the run, naming `title`, and starts no job. *Test:* `TestTitleIsFilledInWhenTheRunStarts`, `TestWhatEveryRunKeepsTo`
+**R-mach-147** A definition of any type may give `title:`, text or text with expressions that read `input`, `values` and `run`. The controller fills it in when the run starts, from the filled input, as one line of at most 200 characters, each run of white space made one space and the rest cut, and keeps it in the run's record and never in its head. A title that cannot be filled in fails the run at its first step.
+*Accept:* a flow with `title: "${input.channel}: ${input.said}"` started with `{channel: "#testing", said: "give me\n\na release card"}` is shown to its client with the title `#testing: give me a release card`, a child written in place has its own title, and a run that a send starts has the title its own definition gives, from the send's data; a viewer is shown none, and no version of any head holds the title. A title of 301 characters is shown as its first 200. A title that reads `stages` is refused at `title`. Parity case 111: a title that reads a part of the input it is not given fails the run, naming `title`, and starts no job. *Test:* `TestTitleIsFilledInWhenTheRunStarts`, `TestWhatEveryRunKeepsTo`
 
 **R-mach-10** The controller fills in each missing name of an instance's input that has a `default` in the definition's `input:`, in the input and in each object that `properties` and `items` lead to, and checks the filled input against `input:`; an input that does not fit fails the instance at its first step, naming each place, and starts nothing. The filled input is the data of the `start` event.
 *Accept:* parity case 14. Parity case 105: a flow started with `{urls: [a], fetch: {timeout: 5}, pages: [{}, {size: 3}]}` gives its stage `depth: 2`, `fetch: {retries: 3, timeout: 5}` and `pages: [{size: 10}, {size: 3}]` from the defaults of its `input:`.
@@ -73,8 +73,8 @@ The detailed rules behind the [Machines overview](../machine.md). Area code: `ma
 **R-mach-21** A value that is exactly one expression takes the expression's value, whatever its type; text with expressions inside it is text with the values filled in; everything else is literal.
 *Accept:* `count: "${input.n}"` with the input `{ n: 3 }` gives the number 3, and with `{ n: [1, 2] }` gives the list. `"Look into ${input.topic}."` with the topic `the disk` gives `Look into the disk.` `n: 3`, `title: hello` and a nested map reach a job's input exactly as written.
 
-**R-mach-24** Expressions are JavaScript, and an expression reads `input`, `run` and what its machine's type adds, and nothing else. `run` holds the run's `id` and its `key`, which is empty text for a run with none.
-*Accept:* `${input.urls.filter(u => u.startsWith("https")).length}` gives the number of matching items. A flow's expression that reads `states`, and an expression that names something outside the language itself such as `require` or `process`, are each refused when the definition is checked. `${run.id}` gives the run's ID in a flow's output, a statechart's final state, an agent's prompt and a limit's `timeout`. *Test:* `mach_run_is_read_in_every_type`
+**R-mach-24** Expressions are JavaScript, and an expression reads `input`, `values`, `run` and what its machine's type adds, and nothing else. `run` holds the run's `id`, its `location` and its `context`.
+*Accept:* `${input.urls.filter(u => u.startsWith("https")).length}` gives the number of matching items. A flow's expression that reads `states`, and an expression that names something outside the language itself such as `require` or `process`, are each refused when the definition is checked. `${run.id}` gives the run's ID in a flow's output, a statechart's final state, an agent's prompt and a limit's `timeout`, and `${run.location}` gives `/home/devices/boiler` for a run there. *Test:* `mach_run_is_read_in_every_type`
 
 **R-mach-27** An expression in a field that is a name is refused: a thing's name, a type, a permission's kind, a deny entry, a secret's name, a tag, a ticket's name. The path of a script or a machine is a name too, except that it may be exactly one expression that gives a stored definition or script.
 *Accept:* seven definitions, each with `${input.x}` in one of these fields, are each refused when checked, and each refusal names the field. `machine: "${input.definition}"`, given a stored definition, runs it as a child; `script: "./${input.name}.js"` is refused when checked.
@@ -160,6 +160,32 @@ The detailed rules behind the [Machines overview](../machine.md). Area code: `ma
 **C-mach-17** An event sent down before the child has taken its first step waits for the child; it is not counted as undelivered. A parent may send in the very step that starts the child, and the start and the event travel separately. *Test:* `mach_event_sent_before_child_starts_is_kept`
 
 **C-mach-18** An emitted value the machine has been given is not given to it again, however many times the message about it arrives. Messages may arrive more than once, and an item started twice is work done twice. *Test:* `mach_emit_delivered_twice_is_taken_once`
+
+## Locations and addresses
+
+**R-mach-153** A file's `lifetime:` says how runs start at its location: `singleton`, `keyed` or `transient`, the default, which is stored filled in. Only a type whose runs take sent events, the statechart, may be `keyed`. `lifetime:`, `update:`, `receive:` and `limits: { runs: }` belong to a file at a location, and are refused in a machine written in place or made while running.
+*Accept:* a file with no `lifetime:` is stored as `transient`; a type that takes no sent events with `lifetime: keyed` is refused at `lifetime`; `lifetime:` in a machine written in place and `limits: { runs: 2 }` in one made while running are each refused at their place. *Test:* `mach_a_file_says_how_its_runs_start`
+
+**R-mach-154** A file's `update:` is `restart` or `drain`, stored filled in: `restart` for a singleton and `drain` for any other by default. A singleton always restarts, and `update: drain` on one is refused.
+*Accept:* `lifetime: singleton` alone is stored with `update: restart`; with `update: drain` it is refused at `update`. *Test:* `mach_update_says_what_a_change_does`
+
+**R-mach-155** `limits: { runs: N }` caps how many runs of a keyed file are running at once. N is at least 1, and `runs` on a file that is not keyed is refused.
+*Accept:* a keyed chart with `runs: 50` is stored with 50; `runs: 0` and `runs:` on a transient file are refused at `limits.runs`. *Test:* `mach_runs_limits_a_keyed_file`
+
+**R-mach-156** A file's `receive:` is a list, for every event, or a mapping from an event's name to a list. An entry is a location pattern or `client:<name>`, written out; a pattern is read from the tree's prefix unless it starts with `/`, and holds no `..`, `.`, empty name, `+` name or `#`. An event's name in it is written out and is none that Corbie gives a machine itself.
+*Accept:* `receive: [thermostats/*, /work/**, client:panel]` is stored for every event and `{ set: […], stop: client:panel }` by name; an entry with an expression, `client:`, `../up`, `a//b`, `x#y` or `+/z`, and the event `done`, are each refused at their place. *Test:* `mach_receive_says_who_may_send`
+
+**R-mach-157** An address is `{ at }`, `{ at, key }` or `{ at, run }`, or exactly one expression that gives one. `at`, `key` and `run` may hold expressions; a location written out is checked with the definition, and one with expressions when it is filled in, as is a whole address. A location is read from the tree's prefix unless it starts with `/`, and `../` is refused. An address that names both a run and a key, as `event.from` does for a keyed run, goes to the run.
+*Accept:* `{ at: devices/boiler }`, a key filled from the input, a full path with a run, and `${input.from}` giving `{ at, run, key }` or `{ client }` each fill in as written. `{ at: ../up }`, a written address with both `key` and `run`, `to: "to ${input.x}"` and an address with no `at` are refused when checked; `${input.at}` filled with `../x` or empty text fails the job. *Test:* `mach_address_names_a_run`
+
+**R-mach-158** An expression and an allow entry's scope read the values set at the run's location or above as `values.NAME`. A value is read by its name: `values[expr]` and `values` alone are refused when checked, and the names a definition, a draft with its children and a job read can be listed. An expression that reads a value not set fails, naming the value and the run's location.
+*Accept:* a definition reading `values.GREETING`, `values['ROOM']` and `net:${values.HUB}:443` lists those three; with them set its job is filled as `kitchen` and `net:hub.lan:443`; with `HUB` not set it fails with `the value HUB is not set at /home/devices/boiler or above`. `${values[input.name]}` and `${Object.keys(values)}` are refused. *Test:* `mach_values_are_read_by_name`
+
+**R-mach-159** A job may be `send: { to, event, data }`: it sends the event to a run by its address. Beside `send:` it takes `approve:`, `allow:` and `deny:`, and no other field of a job. A job is exactly one of a script, a machine, a send or a call, and a sent event's name is written out and none that Corbie gives a machine itself.
+*Accept:* a send with `approve:` and `allow:` passes; a send with `input:` and `timeout:`, a send with a script, a send of `done` and a send whose event is an expression are each refused at their place. *Test:* `mach_a_job_sends`
+
+**R-mach-160** A job may be `call: { at }` with an input: it starts a run of that location and waits, and its output is that run's result. A call names its location with `at` alone, and takes no memory, tags, files or key.
+*Accept:* a call filled from the input names `services/weather` with its input and is no machine; a call with `tags:` and one at `x/../y` are refused. *Test:* `mach_a_job_calls`
 
 ## Keys
 
@@ -333,6 +359,6 @@ Used by:
 
 - **Flow, Statechart, Agent.** Each supplies the six things a type supplies, and takes from this area values and expressions, jobs and their names, events, children, tickets, approval, failure and limits.
 - **Client.** Fills out and checks a definition with this area's code before sending it; sends events and answers to tickets.
-- **Controller.** Checks a definition with this area's code before starting it, and calls a type's step.
+- **Controller.** Checks a definition with this area's code before starting it, and calls a type's step. It gives a run its location and its values, reads a location in an address from the tree's prefix, and carries out a send and a call.
 - **Manual.** Prints each type's page.
 - **Applications.** A Go program using Corbie as a library lists a definition's jobs, each with its place.

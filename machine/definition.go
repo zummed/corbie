@@ -35,6 +35,17 @@ type Definition struct {
 	// Meta is data Corbie keeps with the definition and never reads: no
 	// expression in it is filled in.
 	Meta any `json:"meta,omitzero"`
+	// Lifetime says how runs start at the file's location, and Update what a
+	// changed file does to those already running. Runs is how many runs of a
+	// keyed file may be running at once, with no limit at 0. A machine
+	// written in place or made while running has none of them.
+	Lifetime string `json:"lifetime,omitzero"`
+	Update   string `json:"update,omitzero"`
+	Runs     int    `json:"runs,omitzero"`
+	// Receive says who may send to the file's runs or call it, by event
+	// name, with "" for every event. With none, its own tree and its tree's
+	// client may.
+	Receive map[string][]string `json:"receive,omitzero"`
 	// Body is the type's own part.
 	Body jsontext.Value `json:"body"`
 	// Scripts and Machines are the files and child definitions the
@@ -46,6 +57,15 @@ type Definition struct {
 	Lines map[string]string `json:"lines,omitzero"`
 }
 
+// How runs start at a location, and what a changed file does to them.
+const (
+	LifetimeSingleton = "singleton"
+	LifetimeKeyed     = "keyed"
+	LifetimeTransient = "transient"
+	UpdateRestart     = "restart"
+	UpdateDrain       = "drain"
+)
+
 // The defaults of a definition that says nothing.
 const (
 	DefaultKeep    = Duration(7 * 24 * 3600e9)
@@ -56,24 +76,89 @@ const (
 // A JobSpec is a job as a definition writes it, its values not yet filled
 // in.
 type JobSpec struct {
-	Script  string   `json:"script,omitzero"`  // a path, or exactly one expression that gives a stored script
-	Files   []string `json:"files,omitzero"`   // the files the script loads
-	Machine string   `json:"machine,omitzero"` // a name in Machines, or exactly one expression that gives a stored definition
-	Key     string   `json:"key,omitzero"`     // the key a machine is started with: text, or expressions
-	Input   any      `json:"input,omitzero"`
-	Allow   []string `json:"allow,omitzero"`
-	Deny    []string `json:"deny,omitzero"`
-	Timeout string   `json:"timeout,omitzero"` // a length of time, or an expression that gives one
-	Restart *Restart `json:"restart,omitzero"`
-	Memory  int64    `json:"memory,omitzero"`
-	Tags    []string `json:"tags,omitzero"`
-	Approve bool     `json:"approve,omitzero"`
+	Script  string       `json:"script,omitzero"`  // a path, or exactly one expression that gives a stored script
+	Files   []string     `json:"files,omitzero"`   // the files the script loads
+	Machine string       `json:"machine,omitzero"` // a name in Machines, or exactly one expression that gives a stored definition
+	Send    *SendSpec    `json:"send,omitzero"`    // an event sent to a run by its address
+	Call    *AddressSpec `json:"call,omitzero"`    // a location whose run the job starts and waits for
+	Key     string       `json:"key,omitzero"`     // the key a machine is started with: text, or expressions
+	Input   any          `json:"input,omitzero"`
+	Allow   []string     `json:"allow,omitzero"`
+	Deny    []string     `json:"deny,omitzero"`
+	Timeout string       `json:"timeout,omitzero"` // a length of time, or an expression that gives one
+	Restart *Restart     `json:"restart,omitzero"`
+	Memory  int64        `json:"memory,omitzero"`
+	Tags    []string     `json:"tags,omitzero"`
+	Approve bool         `json:"approve,omitzero"`
 	// Alone says the job has only its own permissions.
 	Alone bool `json:"alone,omitzero"`
 }
 
 // IsMachine says whether the job is a machine.
 func (s *JobSpec) IsMachine() bool { return s.Machine != "" }
+
+// IsSend says whether the job sends an event, and IsCall whether it calls a
+// location.
+func (s *JobSpec) IsSend() bool { return s.Send != nil }
+func (s *JobSpec) IsCall() bool { return s.Call != nil }
+
+// A SendSpec is an event a job sends, as a definition writes it.
+type SendSpec struct {
+	To    AddressSpec `json:"to"`
+	Event string      `json:"event"`
+	Data  any         `json:"data,omitzero"`
+}
+
+// An AddressSpec is an address as a definition writes it: a location with a
+// key or a run, each text or text with expressions, or exactly one
+// expression that gives a whole address.
+type AddressSpec struct {
+	At   string `json:"at,omitzero"`
+	Key  string `json:"key,omitzero"`
+	Run  string `json:"run,omitzero"`
+	Expr string `json:"expr,omitzero"`
+}
+
+// Fill gives the address with its values filled in, and checked.
+func (s *AddressSpec) Fill(e *Evaluator, scope Scope, place string) (*Address, error) {
+	a := &Address{}
+	if s.Expr != "" {
+		v, err := e.Text(s.Expr, scope, place)
+		if err != nil {
+			return nil, err
+		}
+		m, ok := v.(map[string]any)
+		for name, field := range map[string]*string{"at": &a.At, "key": &a.Key, "run": &a.Run, "client": &a.Client} {
+			if text, isText := m[name].(string); isText {
+				*field = text
+			} else if m[name] != nil {
+				ok = false
+			}
+		}
+		if !ok || len(m) == 0 {
+			return nil, fmt.Errorf("%s: %s gives %s, and an address is { at }, { at, key }, { at, run } or { client }", place, s.Expr, describe(v))
+		}
+	} else {
+		for _, f := range []struct {
+			written string
+			into    *string
+			name    string
+		}{{s.At, &a.At, "at"}, {s.Key, &a.Key, "key"}, {s.Run, &a.Run, "run"}} {
+			if f.written == "" {
+				continue
+			}
+			text, err := e.Key(f.written, scope, place+"."+f.name)
+			if err != nil {
+				return nil, err
+			}
+			*f.into = text
+		}
+	}
+	if err := a.Check(); err != nil {
+		return nil, fmt.Errorf("%s: %w", place, err)
+	}
+	return a, nil
+}
 
 // Fill gives the job with its values filled in from a scope.
 func (s *JobSpec) Fill(e *Evaluator, scope Scope, place, name string) (*Job, error) {
@@ -92,6 +177,22 @@ func (s *JobSpec) Fill(e *Evaluator, scope Scope, place, name string) (*Job, err
 			return nil, err
 		}
 		job.RunKey = &key
+	}
+	if s.Send != nil {
+		to, err := s.Send.To.Fill(e, scope, place+".send.to")
+		if err != nil {
+			return nil, err
+		}
+		data, err := e.Fill(s.Send.Data, scope, place+".send.data")
+		if err != nil {
+			return nil, err
+		}
+		job.Send = &Send{At: to, Event: s.Send.Event, Data: data}
+	}
+	if s.Call != nil {
+		if job.Call, err = s.Call.Fill(e, scope, place+".call"); err != nil {
+			return nil, err
+		}
 	}
 	for i, entry := range s.Allow {
 		filled, err := e.Entry(entry, Scope{"input": scope["input"]}, fmt.Sprintf("%s.allow[%d]", place, i))
@@ -163,6 +264,8 @@ type Checker struct {
 	approves bool
 	// jobs is every job the check visits, with its place.
 	jobs []PlacedJob
+	// values is every value an expression of the definition reads, by name.
+	values map[string]bool
 }
 
 // A PlacedJob is a job of a definition and its place, such as
@@ -208,15 +311,39 @@ func (c *Checker) Asked(ask *JobSpec, check func()) {
 }
 
 // reading adds to the names a place gives what every expression reads.
-func reading(names []string) []string { return append(slices.Clip(names), RunName) }
+func reading(names []string) []string { return append(slices.Clip(names), RunName, ValuesName) }
+
+// text checks the expressions in a text, which may read the names, and
+// notes the values they read.
+func (c *Checker) text(place, text string, names []string) {
+	if err := CheckText(text, names); err != nil {
+		c.Problem(place, "%v", err)
+		return
+	}
+	read, err := valuesRead(text)
+	c.noteValues(place, read, err)
+}
+
+// noteValues notes the values an expression reads, each by the name it is
+// written with.
+func (c *Checker) noteValues(place string, read []string, err error) {
+	if err != nil {
+		c.Problem(place, "%v", err)
+		return
+	}
+	if c.values == nil {
+		c.values = map[string]bool{}
+	}
+	for _, name := range read {
+		c.values[name] = true
+	}
+}
 
 // Value checks the expressions in a value, which may read the names.
 func (c *Checker) Value(place string, value any, names ...string) {
 	switch v := value.(type) {
 	case string:
-		if err := CheckText(v, reading(names)); err != nil {
-			c.Problem(place, "%v", err)
-		}
+		c.text(place, v, reading(names))
 	case map[string]any:
 		for _, k := range sortedKeys(v) {
 			c.Value(place+"."+k, v[k], names...)
@@ -245,7 +372,10 @@ func (c *Checker) Duration(place, text string, names ...string) {
 func (c *Checker) Cond(place, src string, names ...string) {
 	if err := CheckExpr(src, reading(names)); err != nil {
 		c.Problem(place, "%s: %v", shown(src), err)
+		return
 	}
+	read, err := valuesReadOf(src)
+	c.noteValues(place, read, err)
 }
 
 // Job checks a job, whose expressions may read the names.
@@ -254,11 +384,37 @@ func (c *Checker) Job(place string, s *JobSpec, names ...string) {
 		return
 	}
 	c.jobs = append(c.jobs, PlacedJob{Place: place, Job: s})
+	kinds := 0
+	for _, is := range []bool{s.Script != "", s.Machine != "", s.IsSend(), s.IsCall()} {
+		if is {
+			kinds++
+		}
+	}
 	switch {
-	case s.Script != "" && s.Machine != "":
-		c.Problem(place, "a job is a script or a machine, not both")
-	case s.Script == "" && s.Machine == "":
-		c.Problem(place, "a job needs a script or a machine")
+	case kinds > 1:
+		c.Problem(place, "a job is one of a script, a machine, a send or a call")
+	case kinds == 0:
+		c.Problem(place, "a job needs a script, a machine, a send or a call")
+	case s.IsSend():
+		if s.Input != nil || s.Timeout != "" || s.Restart != nil || s.Memory != 0 || len(s.Tags) > 0 || len(s.Files) > 0 || s.Key != "" {
+			c.Problem(place, "a send takes to, event and data, and approve, allow and deny: it has no input, timeout, restart, memory, tags, files or key")
+		}
+		c.Address(place+".send.to", &s.Send.To, names...)
+		switch e := s.Send.Event; {
+		case e == "" || HasExpr(e):
+			c.Problem(place+".send.event", "%q: the event's name is written out", e)
+		case Reserved(e):
+			c.Problem(place+".send.event", "%q: no machine can send an event named %s, %s, %s or %s", e, Start, Done, Failed, Timer)
+		}
+		c.Value(place+".send.data", s.Send.Data, names...)
+	case s.IsCall():
+		if s.Memory != 0 || len(s.Tags) > 0 || len(s.Files) > 0 || s.Key != "" {
+			c.Problem(place, "memory, tags and files belong to a script, and a key to a machine; a call has none")
+		}
+		c.Address(place+".call", s.Call, names...)
+		if s.Call.Key != "" || s.Call.Run != "" || s.Call.Expr != "" {
+			c.Problem(place+".call", "a call names a location with at, and nothing else")
+		}
 	case s.IsMachine():
 		if s.Memory != 0 || len(s.Tags) > 0 || len(s.Files) > 0 {
 			c.Problem(place, "memory, tags and files belong to a script; a machine has none")
@@ -291,6 +447,40 @@ func (c *Checker) Job(place string, s *JobSpec, names ...string) {
 	c.approves = c.approves || s.Approve
 }
 
+// Address checks an address, whose expressions may read the names. A
+// location written out is checked here, and one with expressions when it
+// is filled in.
+func (c *Checker) Address(place string, s *AddressSpec, names ...string) {
+	if s.Expr != "" {
+		if !IsOneExpr(s.Expr) {
+			c.Problem(place, "%q: an address is { at }, { at, key } or { at, run }, or exactly one expression that gives one", s.Expr)
+			return
+		}
+		c.Value(place, s.Expr, names...)
+		return
+	}
+	switch {
+	case s.At == "":
+		c.Problem(place, "an address names its location with at")
+	case HasExpr(s.At):
+		c.Value(place+".at", s.At, names...)
+	default:
+		if err := CheckLocation(s.At); err != nil {
+			c.Problem(place+".at", "%v", err)
+		}
+	}
+	if s.Key != "" && s.Run != "" {
+		c.Problem(place, "an address names a key or a run, not both")
+	}
+	c.Value(place+".key", s.Key, names...)
+	c.Value(place+".run", s.Run, names...)
+	if s.Key != "" && !HasExpr(s.Key) {
+		if err := CheckKey(s.Key); err != nil {
+			c.Problem(place+".key", "%v", err)
+		}
+	}
+}
+
 // Machine checks a machine a send names, which is written out: only a job
 // takes a stored one.
 func (c *Checker) Machine(place, name string) {
@@ -307,8 +497,8 @@ func (c *Checker) named(place, name, what string, table map[string]blob.Ref, nam
 	if HasExpr(name) {
 		if names == nil || !IsOneExpr(name) {
 			c.Problem(place, "%q: the %s of a job is a name; it may be exactly one expression that gives a stored one, and nothing else", name, what)
-		} else if err := CheckText(name, reading(names)); err != nil {
-			c.Problem(place, "%v", err)
+		} else {
+			c.text(place, name, reading(names))
 		}
 		return
 	}
@@ -319,16 +509,18 @@ func (c *Checker) named(place, name, what string, table map[string]blob.Ref, nam
 
 // permissions checks the lists of a layer written in a definition, wherever
 // in the definition it is. A permission's kind and a secret's name are
-// written out, a scope may be filled from the machine's input and from
-// nothing else, and a deny entry holds no expression. What a script gave
+// written out, a scope may be filled from the machine's input and its values
+// and from nothing else, and a deny entry holds no expression. What a script gave
 // back or a model asked for never chooses a scope.
 func (c *Checker) permissions(place string, allow, deny []string) {
 	for i, entry := range allow {
 		at := fmt.Sprintf("%s.allow[%d]", place, i)
 		if err := permission.CheckWritten(entry); err != nil {
 			c.Problem(at, "%v", err)
-		} else if err := CheckText(entry, []string{"input"}); err != nil {
-			c.Problem(at, "%q: a permission's scope is filled from the machine's input and from nothing else: %v", entry, err)
+		} else if err := CheckText(entry, []string{"input", ValuesName}); err != nil {
+			c.Problem(at, "%q: a permission's scope is filled from the machine's input and its values, and from nothing else: %v", entry, err)
+		} else {
+			c.text(at, entry, []string{"input", ValuesName})
 		}
 	}
 	for i, entry := range deny {
@@ -355,6 +547,50 @@ func Jobs(def *Definition) []PlacedJob {
 	return check(def).jobs
 }
 
+// Values gives the names of the values the expressions of a definition read,
+// in order. Its child definitions are not read.
+func Values(def *Definition) []string {
+	return sortedKeys(check(def).values)
+}
+
+// Values gives the names of the values the expressions of a draft and of
+// every child definition in it read, in order.
+func (d *Draft) Values() []string {
+	all := map[string]bool{}
+	var add func(d *Draft)
+	add = func(d *Draft) {
+		for _, name := range Values(d.Definition) {
+			all[name] = true
+		}
+		for _, child := range d.Children {
+			add(child)
+		}
+	}
+	add(d)
+	return sortedKeys(all)
+}
+
+// Values gives the names of the values a job's expressions read, in order.
+func (s *JobSpec) Values() []string {
+	all := map[string]bool{}
+	written := []any{s.Script, s.Machine, s.Input, s.Timeout, s.Key}
+	for _, entry := range s.Allow {
+		written = append(written, entry)
+	}
+	if s.Send != nil {
+		written = append(written, s.Send.To.At, s.Send.To.Key, s.Send.To.Run, s.Send.To.Expr, s.Send.Data)
+	}
+	if s.Call != nil {
+		written = append(written, s.Call.At)
+	}
+	for _, read := range ReadsIn(written, ValuesName) {
+		if read.Name != "*" {
+			all[read.Name] = true
+		}
+	}
+	return sortedKeys(all)
+}
+
 func check(def *Definition) *Checker {
 	c := &Checker{def: def}
 	t, ok := TypeOf(def.Type)
@@ -379,6 +615,7 @@ func check(def *Definition) *Checker {
 	if (def.Depth != nil && *def.Depth < 0) || def.Jobs < 0 {
 		c.Problem("", "depth and jobs cannot be less than nothing")
 	}
+	c.location(def)
 	c.permissions("", def.Allow, def.Deny)
 	for i, entry := range def.AskAbout {
 		at := fmt.Sprintf("ask_about[%d]", i)
@@ -392,6 +629,58 @@ func check(def *Definition) *Checker {
 	c.approves = false // the ask's own job is never itself held by this definition's marks
 	t.Check(c, def)
 	return c
+}
+
+// location checks what a file says of the runs at its location.
+func (c *Checker) location(def *Definition) {
+	switch def.Lifetime {
+	case "", LifetimeSingleton, LifetimeTransient:
+	case LifetimeKeyed:
+		if !Receives(def) {
+			c.Problem("lifetime", "a %s takes no events sent to it, so it cannot be keyed: only a statechart can", def.Type)
+		}
+	default:
+		c.Problem("lifetime", "%q: lifetime is %s, %s or %s", def.Lifetime, LifetimeSingleton, LifetimeKeyed, LifetimeTransient)
+	}
+	switch def.Update {
+	case "", UpdateRestart:
+	case UpdateDrain:
+		if def.Lifetime == LifetimeSingleton {
+			c.Problem("update", "a singleton always restarts, and cannot drain")
+		}
+	default:
+		c.Problem("update", "%q: update is %s or %s", def.Update, UpdateRestart, UpdateDrain)
+	}
+	switch {
+	case def.Runs < 0:
+		c.Problem("limits.runs", "runs is at least 1")
+	case def.Runs > 0 && def.Lifetime != LifetimeKeyed:
+		c.Problem("limits.runs", "runs limits the runs of a keyed file, and this file is not keyed")
+	}
+	for _, event := range sortedKeys(def.Receive) {
+		place := "receive"
+		if event != "" {
+			place = "receive." + event
+			switch {
+			case HasExpr(event):
+				c.Problem(place, "%q: an event's name is written out", event)
+			case Reserved(event):
+				c.Problem(place, "%q: no run is sent an event named %s, %s, %s or %s", event, Start, Done, Failed, Timer)
+			}
+		}
+		for i, entry := range def.Receive[event] {
+			at := fmt.Sprintf("%s[%d]", place, i)
+			if HasExpr(entry) {
+				c.Problem(at, "%q: a receive: entry is written out, with no expression", entry)
+			} else if name, ok := strings.CutPrefix(entry, "client:"); ok {
+				if name == "" {
+					c.Problem(at, "client: names a client, as client:panel")
+				}
+			} else if err := CheckPattern(entry); err != nil {
+				c.Problem(at, "%v", err)
+			}
+		}
+	}
 }
 
 // DecodeBody reads a definition's body into a type's own form, strictly: a

@@ -16,13 +16,16 @@ Fields every type takes
   ask: { script: ./ask.js }    the job that approves held jobs
   title: "${input.topic}"      a run's title, filled in when it starts, as below
   meta: { owner: alice }        data Corbie keeps and never reads; no expression in it is filled in
+  lifetime: singleton          how runs start at the file's location, as below
+  update: restart              what a changed file does to its runs, as below
+  receive: [client:panel]      who may send to its runs or call it, as below
 
 `title:` names a run to a person, and `corbie run show` prints it. Its
-expressions read `input` and `run`.
+expressions read `input`, `values` and `run`.
 
 - A title is one line of at most 200 characters. Each run of white space,
   line breaks among it, becomes one space, and a longer title is cut.
-- Only the client that started the run sees its title. `corbie run ls` does
+- Only the client that owns the run's tree sees its title. `corbie run ls` does
   not print it.
 - A title that cannot be filled in fails the run, as an input that does not
   fit does.
@@ -32,6 +35,7 @@ expressions read `input` and `run`.
   timeout: 1h    how long a run may take; default no limit
   depth: 8       levels of child runs below a run that a client started; default 8, 0 for none
   jobs: 100      how many jobs a run may start; default no limit
+  runs: 50       of a keyed file, how many of its runs may be running at once; default no limit
   turns: 20      an agent's turns, as in `corbie manual agent`
 
 A length of time is written `30s`, `5m`, `48h` or `7d`.
@@ -132,7 +136,8 @@ contain one.
 An expression reads these names.
 
   input                     the run's input, in every type
-  run                       the run's `id` and `key`, in every type
+  values                    the values set at the run's location or above, as `values.HUB`
+  run                       the run's `id`, `location` and `context`, in every type
   stages, item              in a flow
   states, event, tickets    in a statechart
   args                      in an agent's tool
@@ -149,7 +154,11 @@ It may use JavaScript's operators, `? :`, arrow functions, methods such as
   each time the step is taken.
 - An expression may run for one second. That limit stops its own code, and
   not a call to something built in that is under way.
-- In a permission's scope an expression reads `input` and nothing else.
+- In a permission's scope an expression reads `input` and `values` and nothing
+  else.
+- A value is read by its name. `values[name]` and `values` alone are refused.
+- An expression that reads a value not set at the run's location or above
+  fails, naming the value and the location.
 - Put a value that contains `${...}` in quotes when it is inside `{ }` or `[ ]`,
   or when the expression has a colon followed by a space.
 - These take no expression: a name, a type, a permission's kind, a secret's
@@ -158,13 +167,15 @@ It may use JavaScript's operators, `? :`, arrow functions, methods such as
 Jobs
 ----
 
-A machine contains jobs. A job is a script, which a runner executes, or a
-machine, which the controller starts as a child run.
+A machine contains jobs. A job is a script, which a runner executes, a
+machine, which the controller starts as a child run, or a send or a call to
+another run, as below.
 
   script: ./fetch.js           a script file
   machine: ./child.yaml        a definition file, or a definition written in place
-  key: "chat:${input.id}"      machine only: the key the child run is started with
-  input: { url: "${item}" }    the input of the script or of the child run
+  send: { to, event, data }    an event sent to a run by its address
+  call: { at: services/weather }    a transient location whose run the job starts and waits for
+  input: { url: "${item}" }    the input of the script, the child run or the called run
   allow: [net:example.com]     for a script, what the job may do, with the definition's `allow:`;
                                for a machine, a limit on everything the child run does
   deny: [fs.write:/etc/**]     what the job may not do
@@ -230,57 +241,65 @@ A job with `restart:` runs again when it ends. With none it runs once.
 - A restart after a job ended well is a new job: it is held again if it needs
   approval, has a new `job.request`, and counts against `limits: { jobs: }`.
 - An ask that ends well is final, whatever its policy says.
-- A job's key is free between attempts. An event sent to it then is
-  undelivered, and an attempt whose key has been taken fails.
 
-Keys
-----
+Locations
+---------
 
-A key names a run. Give a run a key, then send to that key. Send with
-`machine` too and a run is started if none has the key.
+Each file with a type line in a submitted directory has a location: its path
+under the prefix it was submitted at, without `.yaml`. A file without one is
+a piece, which only includes read.
 
-1. A client gives a key with `corbie run submit --key`, a job with `key:`, and
-   a statechart's send with `to:`.
-2. Among one client's running runs, a key names at most one run. It is free
-   again once its run ends.
-3. `to: { key }` delivers the event to the run with the key. `to: { machine,
-   key }` delivers it, or starts the machine with that key when no run has it.
-4. A run reads its key as `${run.key}`, its ID as `${run.id}`, and the absolute
-   path of the context it was submitted from as `${run.context}`.
+  lifetime: singleton    one run, started by the submit
+  lifetime: keyed        one run for each key a send names; statecharts only
+  lifetime: transient    a run for each call or start; the default
 
-  send: { to: { key: "chat:${event.data.id}" }, event: said }                 a statechart's send
-  send: { to: { machine: ./chat.yaml, key: "chat:1" }, event: said }          the same, starting a run
-  job: { machine: ./ask-person.yaml, key: "question:${run.id}" }              a job in any type of machine
+  update: restart        a changed file cancels the runs at its location
+  update: drain          they finish on the definition they started with; the default
 
-  started by    when the key is in use                  the run is
-  a client      the start is refused in its receipt     a root
-  a job         the job fails, with a reason            a child of the job
-  a send        the event is delivered to that run      a root; ending the sender does not cancel it
+- A singleton always restarts, and `update: drain` on one is refused.
+- `limits: { runs: 50 }` on a keyed file caps how many of its runs are running
+  at once.
+- A machine written in place or made while running has no location, and
+  refuses `lifetime:`, `update:`, `receive:` and `runs:`.
 
-- A key is any text of 1 to 256 characters. A client's keys name only that
-  client's runs.
-- Anyone who can list runs can read a run's key. Put no secret in a key.
-- Text from outside can name any of your runs, so write the start of a key
-  yourself, as in `chat:${event.data.id}`.
-- A run a send starts gets the event's data as its input, and then the event.
-  It has the permissions and the ask a child of the sender would have.
-- A send that cannot be made fails nothing, and the sender's record says why.
-- Events from one run to one key arrive once each, in the order sent. An event
-  sent with `machine` starts a new run when its run ends first.
-- A machine made while running fails if it sends to a key or gives a job a key,
-  so it talks only to its parent and its children. A job above it may start it
-  with a key.
+Sending and calling
+-------------------
 
-A statechart a send starts takes the event in its first state, so the first
-event goes the same way as every later one. Do not act on `input` as well.
+A job sends an event to a run by its address, or calls a location and waits
+for the result. A statechart's send takes the same addresses.
 
-  initial: waiting
-  states:
-    waiting: { on: { said: answering } }
-    answering: { job: { script: ./answer.js, input: "${event.data}" }, on: { done: waiting } }
+  { at: devices/boiler }                    the run of a singleton location
+  { at: rooms/thermostat, key: kitchen }    the run for that key, started if none is running
+  { at: devices/boiler, run: <ID> }         one run by its ID
 
-`corbie manual machines-together` has an example, and `corbie manual
-statechart` has the fields of a send.
+  job: { send: { to: { at: devices/boiler }, event: set, data: { target: 12 } } }
+  job: { call: { at: services/weather }, input: { days: 2 } }
+  send: { to: "${event.from}", event: applied }    a reply to the sender
+
+- A location is read from the tree's prefix, or in full when it starts with
+  `/`. `../` is refused.
+- `at`, `key` and `run` may hold expressions, and `to` may be one expression
+  that gives an address. The address is checked once it is filled in.
+- A send job ends `done` once the event is written. It takes `to`, `event`,
+  `data`, `approve`, `allow` and `deny`, and nothing else.
+- A call job's output is the called run's result. It fails if the receiver
+  refuses it, if the location is not transient, or if the run fails.
+- A key is any text of 1 to 256 characters. Anyone who can list runs can read
+  it, so put no secret in a key.
+
+A send or a call needs the sender's permissions to hold `send:<location>`
+(see `corbie manual permissions`), and the receiver's `receive:` to accept
+the sender.
+
+  receive: [thermostats/*, client:panel]                                 for every event
+  receive: { set: [thermostats/*, client:panel], stop: [client:panel] }   by event name
+
+- With no `receive:`, a file accepts its own tree and its tree's client.
+- The run reads the sender as `event.from`: `{ at, run }`, with `key` for a
+  keyed run, or `{ client }`.
+- A send the receiver refuses, or that no running statechart can take, is
+  noted as undelivered in the sender's record and fails nothing.
+- A machine made while running sends only to its parent and its children.
 
 Events
 ------
@@ -292,7 +311,7 @@ The controller sends events to a machine. An event has a name, a source and data
   failed    a job failed; data is { status, error, output }
   <name>    a timer that is due, a ticket's answer, an event from the parent run,
             a child run, the client (`corbie run send`) or a send to the run's
-            key, or a value a job emitted with emit(name, value)
+            address, or a value a job emitted with emit(name, value)
 
 No client, machine or script can send an event named `start`, `done`, `failed`
 or `timer`.

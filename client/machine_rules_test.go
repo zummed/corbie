@@ -47,7 +47,7 @@ func TestPermissionScopeFilledFromAnythingButTheInputIsRefused(t *testing.T) {
 			t.Errorf("%s passed the check", c.entry)
 			continue
 		}
-		for _, want := range []string{c.place, `"` + c.entry + `"`, "from the machine's input and from nothing else"} {
+		for _, want := range []string{c.place, `"` + c.entry + `"`, "from the machine's input and its values, and from nothing else"} {
 			if !strings.Contains(err.Error(), want) {
 				t.Errorf("%s was refused without %q:\n%v", c.entry, want, err)
 			}
@@ -714,7 +714,7 @@ func Test_mach_run_is_read_in_every_type(t *testing.T) {
 		stages:
 		  a: { job: { script: ./echo.js, allow: ["fs.read:${run.id}/**"] } }
 	`, echo)
-	if err == nil || !strings.Contains(err.Error(), "from the machine's input and from nothing else") {
+	if err == nil || !strings.Contains(err.Error(), "from the machine's input and its values, and from nothing else") {
 		t.Fatalf("a permission's scope read the run: %v", err)
 	}
 }

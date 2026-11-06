@@ -170,6 +170,12 @@ var shared = []Field{
 	{Name: "ask", Kind: KindJob, Like: "{ machine: ./ask.yaml }", Does: "the job that approves when a job needs approval"},
 	{Name: "title", Kind: KindText, Like: `"${input.channel}: ${input.said}"`, Does: "what a run is called, filled in from its input when it starts; only the client that started it sees it"},
 	{Name: "meta", Kind: KindValue, Like: `{ on: { at: "02:00 Europe/London" } }`, Does: "data of any kind, which Corbie keeps with the definition and never reads"},
+	{Name: "lifetime", Kind: KindWord, Like: "singleton", Values: []string{LifetimeSingleton, LifetimeKeyed, LifetimeTransient},
+		Does: "how runs start at its location: singleton, one started by the submit; keyed, one for each key a send names; transient, the default, one for each call or start"},
+	{Name: "update", Kind: KindWord, Like: "restart", Values: []string{UpdateRestart, UpdateDrain},
+		Does: "what a changed file does to the runs already running at its location: restart cancels them; drain, the default but for a singleton, lets them finish"},
+	{Name: "receive", Kind: KindValue, Like: "[thermostats/*, client:panel]",
+		Does: "who may send to its runs or call it: locations and client:<name>, for every event or by event name; with none, its own tree and its tree's client"},
 }
 
 // The limits every type of machine takes. A type may add its own.
@@ -177,7 +183,27 @@ var limits = []Field{
 	{Name: "timeout", Kind: KindDuration, Like: "1h", Does: "how long an instance may run (for ever, if not given)"},
 	{Name: "depth", Kind: KindNumber, Like: "8", Does: "how many levels of machines may be below a root (0: none)"},
 	{Name: "jobs", Kind: KindNumber, Like: "100", Does: "how many jobs an instance may start"},
+	{Name: "runs", Kind: KindNumber, Like: "50", Does: "of a keyed file: how many of its runs may be running at once (no limit, if not given)"},
 }
+
+// AddressShape is the shape of an address: the run a send goes to.
+var AddressShape = &Shape{Name: "address", What: "an address", Fields: []Field{
+	{Name: "at", Kind: KindWord, Like: "devices/boiler", Does: "the location: read from the tree's prefix, or a full path from /"},
+	{Name: "key", Kind: KindWord, Like: "${event.data.room}", Does: "the key, at a keyed location: its run, started if none is running"},
+	{Name: "run", Kind: KindWord, Like: "${event.data.run}", Does: "one run at the location, by its ID"},
+}}
+
+// CallShape is the shape of a call: the location whose run a job starts.
+var CallShape = &Shape{Name: "call", What: "a call", Fields: []Field{
+	{Name: "at", Kind: KindWord, Like: "services/weather", Does: "the location, which is transient: read from the tree's prefix, or a full path from /"},
+}}
+
+// SendShape is the shape of the event a job sends.
+var SendShape = &Shape{Name: "sent", What: "an event a job sends", Fields: []Field{
+	{Name: "to", Kind: KindValue, Of: AddressShape, Like: "{ at: devices/boiler }", Does: "the run it goes to: an address, or one expression that gives one, such as ${event.from}"},
+	{Name: "event", Kind: KindWord, Like: "set", Does: "the event's name"},
+	{Name: "data", Kind: KindValue, Like: "{ target: 12 }", Does: "what the event carries"},
+}}
 
 // restartShape is the shape of a job's restart policy.
 var restartShape = &Shape{Name: "restart", What: "a job's restart policy", Fields: []Field{
@@ -191,8 +217,10 @@ var JobShape = &Shape{Name: "job", What: "a job", Fields: []Field{
 	{Name: "script", Kind: KindWord, Path: true, Like: "./fetch.js", Does: "a script, which a runner executes: a file beside the definition"},
 	{Name: "files", Kind: KindList, Path: true, Like: "[./lib.js]", Does: "files the script loads with require"},
 	{Name: "machine", Kind: KindValue, Path: true, Like: "./child.yaml", Does: "a machine, which the controller starts as a child: a definition beside this one, or written in place"},
+	{Name: "send", Kind: KindFields, Of: SendShape, Like: "{ to: { at: devices/boiler }, event: set }", Does: "an event sent to a run by its address; the job ends done once it is sent"},
+	{Name: "call", Kind: KindFields, Of: CallShape, Like: "{ at: services/weather }", Does: "a location whose run is started with the input; the job waits, and its output is that run's result"},
 	{Name: "key", Kind: KindWord, Like: "question:${run.id}", Does: "the key the machine is started with, which names its run among this client's running runs"},
-	{Name: "input", Kind: KindValue, Like: `{ url: "${item}" }`, Does: "what the script or the machine is given"},
+	{Name: "input", Kind: KindValue, Like: `{ url: "${item}" }`, Does: "what the script, the machine or the called run is given"},
 	{Name: "allow", Kind: KindList, Like: "[net:example.com]", Does: "what the job may do, with the definition's allow; for a machine, it narrows everything the child does"},
 	{Name: "deny", Kind: KindList, Like: "[exec]", Does: "what the job may not do"},
 	{Name: "timeout", Kind: KindDuration, Like: "5m", Does: "how long it may take, five minutes by default; for a machine, the child's timeout"},

@@ -62,9 +62,13 @@ func (s *sender) draft(d *machine.Draft, file, place string, above []permission.
 	own := permission.Layer{Name: name, Allow: def.Allow, Deny: def.Deny, Fix: "add the line %s to the allow list of " + name}
 	for _, send := range machine.Sends(def) {
 		layer := own
-		if send.Job != nil {
-			layer.Allow = append(append([]string{}, def.Allow...), send.Job.Allow...)
-			layer.Deny = append(append([]string{}, def.Deny...), send.Job.Deny...)
+		if job := send.Job; job != nil {
+			// A job has the definition's lists with its own.
+			at := strings.TrimSuffix(strings.TrimSuffix(send.Place, ".send.to"), ".call")
+			layer.Name = fmt.Sprintf("the job %s in the definition of %q", at, def.Name)
+			layer.Fix = "add the line %s to the allow list of " + layer.Name
+			layer.Allow = append(append([]string{}, def.Allow...), job.Allow...)
+			layer.Deny = append(append([]string{}, def.Deny...), job.Deny...)
 		}
 		why, empty := s.check(send, append([]permission.Layer{layer}, above...))
 		if why != "" {
@@ -138,6 +142,9 @@ func (s *sender) check(send machine.PlacedSend, layers []permission.Layer) (why,
 	}
 	if !machine.Receives(def) {
 		return fmt.Sprintf("%s is a %s, which takes no sent event", at, def.Type), ""
+	}
+	if machine.Owns(def, send.Event) {
+		return fmt.Sprintf("%q is the name of an event %s gives itself", send.Event, at), ""
 	}
 	if why := machine.Addressable(at, def.Lifetime, to.Key != ""); why != "" {
 		return why, ""

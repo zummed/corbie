@@ -551,19 +551,25 @@ func TestTestChecksTheSendsOfATree(t *testing.T) {
 			"        - { to: { at: weather }, event: set }\n"+
 			"    job: { call: { at: rooms/room } }\n"),
 		"door.yaml": chart(`allow: ["send:**"]`+"\n", "    entry:\n      send:\n"+
-			"        - { to: { at: boiler }, event: set }\n"),
+			"        - { to: { at: boiler }, event: set }\n"+
+			"        - { to: { at: bell }, event: ring }\n"+
+			"    job: { call: { at: weather }, deny: [\"send:weather\"] }\n"),
+		"bell.yaml": "statechart: bell\nlifetime: singleton\ninitial: a\nstates:\n  a: { timers: { ring: 1h }, on: { ring: a } }\n",
 	})
 	status, out, _ := m.run("", "test", dir)
 	out = strings.ReplaceAll(out, dir+"/", "")
 	name := filepath.Base(dir)
 	for _, want := range []string{
 		"panel.yaml       ok\n",
+		"bell.yaml        ok\n",
 		"sensor.yaml\n",
 		"    states.a.job.call: /" + name + "/rooms/room is keyed: a call starts a run only of a transient location\n",
 		"    states.a.entry.send[0].to: /" + name + "/rooms/room is keyed: a send to it names a key, as /" + name + "/rooms/room#<key>\n",
 		"    states.a.entry.send[1].to: send:/" + name + "/boiler was refused by the definition of \"x\"",
 		"    states.a.entry.send[2].to: /" + name + "/weather is a flow, which takes no sent event\n",
-		"door.yaml\n    states.a.entry.send[0].to: /" + name + "/boiler does not receive set from /" + name + "/door\n",
+		"door.yaml\n    states.a.job.call: send:/" + name + "/weather was refused by the job states.a.job in the definition of \"x\"",
+		"    states.a.entry.send[0].to: /" + name + "/boiler does not receive set from /" + name + "/door\n",
+		"    states.a.entry.send[1].to: \"ring\" is the name of an event /" + name + "/bell gives itself\n",
 		"nothing in the tree is at /" + name + "/later, named by panel.yaml states.a.entry.send[3].to\n",
 	} {
 		if !strings.Contains(out, want) {
@@ -575,6 +581,7 @@ func TestTestChecksTheSendsOfATree(t *testing.T) {
 	}
 	os.Remove(filepath.Join(dir, "sensor.yaml"))
 	os.Remove(filepath.Join(dir, "door.yaml"))
+	os.Remove(filepath.Join(dir, "bell.yaml"))
 	if out := m.ok("", "test", dir); !strings.Contains(out, "nothing in the tree is at /"+name+"/later") {
 		t.Errorf("a location with no machine failed the test:\n%s", out)
 	}

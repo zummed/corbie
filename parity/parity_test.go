@@ -4,10 +4,16 @@
 // A case is a directory of parity/machines. One that is written a second way
 // has a directory for that way inside it, which holds the same files.
 //
-//	root.yaml     the definition that is started; its other files lie beside it
+//	root.yaml     the machine whose run is checked; its other files lie beside it
 //	expect.json   how the run should end
-//	drive.json    what a client sends while it runs, if anything
+//	drive.json    what a client does while it runs, if anything
 //	input.json    the run's input; a second way with none uses the case's own
+//
+// The case's directory is submitted as a tree at /case, leaving out each
+// directory inside it that is a second way or that a step of the drive
+// submits. Every file of it with a type line has a location, and root.yaml's
+// is /case/root. The run checked is the one the submit starts, for a
+// singleton, and otherwise one started at /case/root with input.json.
 //
 // expect.json:
 //
@@ -15,8 +21,8 @@
 //	  "output": …, "error_contains": "…" or ["…", …],
 //	  "record": [ … ], "note": "…", "finding": "…", "seconds": 5 }
 //
-// or, for a definition that is refused before it runs, by the client's
-// check or in the receipt for its start:
+// or, for a machine that is refused before it runs, as its file is read or
+// in the receipt for its start:
 //
 //	{ "refused": true, "problem_contains": "…" }
 //
@@ -24,10 +30,13 @@
 // any value, "<blob>" is any blob, and { "<contains>": "text" } is any
 // text that holds that text.
 //
-// "record" checks the record of the run and of everything below it:
+// "record" checks the record of every run with no parent, the one checked
+// among them, and of everything below each:
 //
 //	{ "machine": "child", "status": "cancelled" }                  every instance of it ended so
 //	{ "machine": "parent", "event": { "name": "up1" } }            it was given such an event
+//	{ "machine": "room", "event": { "name": "set", "sender": { "at": "/case/desk", "run": "<any>" } } }
+//	                                                               …sent by a run at that location
 //	{ "machine": "parent", "ask": { "kind": "event", … } }         a step of it asked for this
 //	{ "machine": "agent", "emit": { "job": "turn#2", "name": "log", "data": … } }   a job of it emitted this
 //	{ "machine": "parent", "order": ["up1", "up2"] }               of the events with these names, it was given exactly these, in this order
@@ -44,15 +53,25 @@
 // drive.json is a list of steps, taken in order. Each waits and then acts:
 //
 //	{ "wait": { "machine": "child", "ticket": "answer", "input": { … }, "status": "done" },
-//	  "do": "reply|send|cancel|nothing",
-//	  "value": …,                      a reply's value
+//	  "do": "reply|send|cancel|submit|remove|value|secret|nothing",
+//	  "value": …,                      a reply's value, or the value or secret set
 //	  "wrong_ticket": true,            reply with a ticket the run is not waiting on
 //	  "remember": "k",                 keep the instance and ticket found, under a name
-//	  "remembered": "k",               reply to the instance and ticket kept under a name
+//	  "remembered": "k",               reply to, send to or cancel the instance kept under a name
 //	  "event": "go", "data": …,        an event to send, to the machine waited for
+//	  "dir": "changed",                submit: the directory inside the case submitted at /case in its place
+//	  "file": "room.yaml",             remove: the file left out when the tree is submitted again
+//	  "name": "HUB", "at": "/case",    value, secret: the name, and the location it is set at, by default /
 //	  "taken": false,                  what the receipt should say
 //	  "acted": false,
 //	  "refused_contains": "…" }
+//
+// cancel cancels the run checked, or the one kept under a name. Steps that
+// set a value or a secret at the head of the list, and wait for nothing, are
+// taken before the case is submitted, so that its runs read them from their
+// first step. A submit
+// or a remove waits for its receipt, which must say taken unless the step
+// says otherwise.
 package parity_test
 
 import (
@@ -69,7 +88,6 @@ import (
 
 	"github.com/zummed/corbie/client"
 	"github.com/zummed/corbie/instance"
-	"github.com/zummed/corbie/machine"
 	"github.com/zummed/corbie/permission"
 	"github.com/zummed/corbie/runner"
 
@@ -158,6 +176,10 @@ type drive struct {
 	Taken           *bool  `json:"taken"`
 	Acted           *bool  `json:"acted"`
 	RefusedContains string `json:"refused_contains"`
+	Dir             string `json:"dir"`
+	File            string `json:"file"`
+	Name            string `json:"name"`
+	At              string `json:"at"`
 	Finding         string `json:"finding"`
 }
 
@@ -237,13 +259,21 @@ func runCase(t *testing.T, dir string, want *expect) (wrong, findings []string) 
 			findings = append(findings, "finding: "+finding+"\n  "+problem)
 		}
 	}
-	src, err := os.ReadFile(filepath.Join(dir, "root.yaml"))
+	var steps []drive
+	readJSON(t, filepath.Join(dir, "drive.json"), &steps)
+	tree, err := caseTree(dir, steps)
 	if err != nil {
 		t.Fatal(err)
 	}
-	draft, err := machine.Parse(src, func(path string) ([]byte, error) {
-		return os.ReadFile(filepath.Join(dir, filepath.FromSlash(path)))
-	})
+	var root *client.Machine
+	for _, m := range tree.Machines {
+		if m.Path == "root.yaml" {
+			root = m
+		}
+	}
+	if root == nil {
+		t.Fatal("the case has no root.yaml")
+	}
 	// refused checks what a refusal says against what the case expects.
 	refused := func(problems string) ([]string, []string) {
 		for _, text := range want.ProblemContains {
@@ -253,11 +283,11 @@ func runCase(t *testing.T, dir string, want *expect) (wrong, findings []string) 
 		}
 		return wrong, nil
 	}
-	if want.Refused && err != nil {
-		return refused(err.Error())
+	if want.Refused && root.Problem != nil {
+		return refused(root.Problem.Error())
 	}
-	if err != nil {
-		return []string{fmt.Sprintf("the definition does not pass:\n%v", err)}, nil
+	if root.Problem != nil {
+		return []string{fmt.Sprintf("the definition does not pass:\n%v", root.Problem)}, nil
 	}
 
 	var input any
@@ -280,13 +310,41 @@ func runCase(t *testing.T, dir string, want *expect) (wrong, findings []string) 
 	}
 	within, cancel := context.WithTimeout(ctx, long)
 	defer cancel()
-	id, err := l.Start(within, draft, client.Start{Input: input})
-	if err != nil {
-		t.Fatal(err)
+	d := &driver{t: t, l: l, dir: dir, tree: tree, ctx: within, kept: map[string][2]string{}}
+	// take takes one step of the drive, and says whether the drive stops.
+	take := func(i int) bool {
+		problem := d.take(steps[i])
+		if problem != "" {
+			problem = fmt.Sprintf("drive step %d: %s", i+1, problem)
+		}
+		mark(steps[i].Finding, problem)
+		return strings.Contains(problem, ": waited")
+	}
+	// The values and secrets set first are there before anything runs.
+	first := 0
+	for first < len(steps) && (steps[first].Do == "value" || steps[first].Do == "secret") && steps[first].Wait == (drive{}).Wait {
+		take(first)
+		first++
+	}
+	done, problem := d.submit(tree, nil)
+	if problem != "" {
+		t.Fatal(problem)
+	}
+	var id string
+	for _, row := range done.Locations {
+		if row.Location == root.Location {
+			id = row.Run
+		}
+	}
+	if id == "" {
+		if id, err = l.Start(within, nil, client.Start{At: root.Location, Input: input}); err != nil {
+			t.Fatal(err)
+		}
 	}
 	if want.Refused {
-		// The client's check let it through: the controller checks it
-		// again, and says in the start's receipt whether it took it.
+		// The client's read let it through: the controller checks it
+		// again as the run starts, and says in the start's receipt whether
+		// it took it.
 		_, message, _ := strings.Cut(id, "/")
 		for until := time.Now().Add(receiptLimit); time.Now().Before(until); time.Sleep(poll) {
 			receipt, err := l.Receipt(within, message)
@@ -302,18 +360,8 @@ func runCase(t *testing.T, dir string, want *expect) (wrong, findings []string) 
 		}
 		return []string{"the definition passed its check and its start was taken: it should have been refused"}, nil
 	}
-	var steps []drive
-	readJSON(t, filepath.Join(dir, "drive.json"), &steps)
-	d := &driver{t: t, l: l, root: id, ctx: within, kept: map[string][2]string{}}
-	for i, step := range steps {
-		problem := d.take(step)
-		if problem != "" {
-			problem = fmt.Sprintf("drive step %d: %s", i+1, problem)
-		}
-		mark(step.Finding, problem)
-		if strings.Contains(problem, ": waited") {
-			break
-		}
+	d.root = id
+	for i := first; i < len(steps) && !take(i); i++ {
 	}
 	r, err := l.Wait(within, id, poll)
 	if err != nil {
@@ -441,14 +489,69 @@ func within(pattern, value any) bool {
 	return differ(pattern, value, "") == ""
 }
 
+// caseTree reads a case's directory as the tree submitted at /case, leaving
+// out each directory inside it that is a second way of the case or that a
+// step of the drive submits.
+func caseTree(dir string, steps []drive) (*client.Tree, error) {
+	tree, err := client.ReadTree(dir, "/case")
+	if err != nil {
+		return nil, err
+	}
+	apart := map[string]bool{}
+	for _, step := range steps {
+		if step.Do == "submit" {
+			apart[step.Dir] = true
+		}
+	}
+	tree.Machines = slices.DeleteFunc(tree.Machines, func(m *client.Machine) bool {
+		inside, _, found := strings.Cut(m.Path, "/")
+		if !found {
+			return false
+		}
+		_, err := os.Stat(filepath.Join(dir, inside, "expect.json"))
+		return apart[inside] || err == nil
+	})
+	return tree, nil
+}
+
 // driver is the client of a case: it waits for what a step of the drive
-// names and sends what it says.
+// names and does what it says.
 type driver struct {
 	t    *testing.T
 	l    *client.Local
+	dir  string       // the case's directory
+	tree *client.Tree // the tree last submitted at /case
 	root string
 	ctx  context.Context
 	kept map[string][2]string // an instance and a ticket, by the name they were kept under
+}
+
+// submit submits a tree at /case and waits for its receipt, which must say
+// taken unless the step says otherwise. It gives what the submit did, or
+// what was not as wanted.
+func (d *driver) submit(tree *client.Tree, step *drive) (*instance.Submitted, string) {
+	message, err := d.l.Submit(d.ctx, tree, 0)
+	if err != nil {
+		return nil, err.Error()
+	}
+	receipt, err := d.l.WaitReceipt(d.ctx, message, 0, poll)
+	if err != nil {
+		return nil, "the submit's receipt: " + err.Error()
+	}
+	want := true
+	if step != nil && step.Taken != nil {
+		want = *step.Taken
+	}
+	switch {
+	case receipt.Taken != want:
+		return nil, fmt.Sprintf("the receipt for the submit says taken: %v (%s)", receipt.Taken, receipt.Refused)
+	case step != nil && !strings.Contains(receipt.Refused, step.RefusedContains):
+		return nil, fmt.Sprintf("the receipt for the submit says %q, which does not hold %q", receipt.Refused, step.RefusedContains)
+	case !receipt.Taken:
+		return nil, ""
+	}
+	d.tree = tree
+	return receipt.Tree, ""
 }
 
 // find waits for an instance that is as a step says, and gives it with the
@@ -523,6 +626,38 @@ func (d *driver) take(step drive) string {
 	var message string
 	var err error
 	switch step.Do {
+	case "submit":
+		tree, err := client.ReadTree(filepath.Join(d.dir, step.Dir), "/case")
+		if err != nil {
+			return err.Error()
+		}
+		_, problem := d.submit(tree, &step)
+		return problem
+	case "remove":
+		tree := *d.tree
+		tree.Machines = slices.DeleteFunc(slices.Clone(tree.Machines), func(m *client.Machine) bool { return m.Path == step.File })
+		if len(tree.Machines) == len(d.tree.Machines) {
+			return "the tree has no file " + step.File
+		}
+		_, problem := d.submit(&tree, &step)
+		return problem
+	case "value", "secret":
+		text, ok := step.Value.(string)
+		if !ok {
+			return "a value or a secret is set as text"
+		}
+		at := step.At
+		if at == "" {
+			at = "/"
+		}
+		set := d.l.SetValue
+		if step.Do == "secret" {
+			set = d.l.SetSecret
+		}
+		if err := set(d.ctx, at, step.Name, text); err != nil {
+			return err.Error()
+		}
+		return ""
 	case "reply":
 		if step.WrongTicket {
 			ticket = "not-a-ticket-the-run-waits-on"
@@ -531,7 +666,10 @@ func (d *driver) take(step drive) string {
 	case "send":
 		message, err = d.l.Send(d.ctx, id, step.Event, step.Data, 0)
 	case "cancel":
-		message, err = d.l.Cancel(d.ctx, d.root, 0)
+		if step.Remembered == "" {
+			id = d.root
+		}
+		message, err = d.l.Cancel(d.ctx, id, 0)
 	case "nothing", "":
 		return ""
 	default:
@@ -585,13 +723,27 @@ func (d *driver) record(looks []look) []string {
 			break
 		}
 	}
-	var entries []client.Entry
-	if _, err := d.l.Follow(d.ctx, d.root, poll, func(e client.Entry) { entries = append(entries, e) }); err != nil {
-		return all("reading the record: " + err.Error())
-	}
+	// Every run with no parent is a root: the one checked, and each that a
+	// send or a call started. A root that has ended is followed to the end
+	// of everything below it, and one still running is read as it stands.
 	runs, err := d.l.List(d.ctx, client.Filter{Finished: true})
 	if err != nil {
 		return all("listing the runs: " + err.Error())
+	}
+	var entries []client.Entry
+	add := func(e client.Entry) { entries = append(entries, e) }
+	for _, r := range runs {
+		switch {
+		case r.Parent != "":
+			continue
+		case r.HasEnded():
+			_, err = d.l.Follow(d.ctx, r.ID, poll, add)
+		default:
+			_, err = d.l.Record(d.ctx, r.ID, add)
+		}
+		if err != nil {
+			return all("reading the record: " + err.Error())
+		}
 	}
 	machines := map[string]string{}
 	for _, r := range runs {

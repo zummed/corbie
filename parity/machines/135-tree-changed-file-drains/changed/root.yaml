@@ -1,0 +1,9 @@
+# changed/root.yaml: root.yaml changed, to end with the word new.
+statechart: waiting
+initial: waiting
+states:
+  waiting:
+    on: { go: over }
+  over:
+    end: done
+    output: new

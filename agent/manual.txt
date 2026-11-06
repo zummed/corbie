@@ -64,8 +64,8 @@ The model
   own             for claude-code: tools of the program that the model may use
 
 The key is a secret. `--secret-env ANTHROPIC_KEY` reads it from that
-environment variable for one run, and `corbie controller secret set
-ANTHROPIC_KEY` sets it for every run. Each turn's job gets `net:<host>` for the
+environment variable for `corbie test`, and `corbie controller secret set
+ANTHROPIC_KEY` sets it for every tree. Each turn's job gets `net:<host>` for the
 service and `secret:<secret>@net:<host>`, and nothing from the definition's
 `allow:`.
 

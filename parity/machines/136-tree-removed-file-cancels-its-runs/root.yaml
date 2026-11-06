@@ -1,0 +1,11 @@
+# The chart runs a child that waits on a ticket. The tree is then submitted
+# again without root.yaml: the run at /case/root is cancelled, and its child,
+# which runs at the same location, ends with it.
+statechart: parent
+initial: running
+states:
+  running:
+    job: { machine: ./child.yaml }
+    on: { done: finished }
+  finished:
+    end: done

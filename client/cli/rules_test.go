@@ -1106,7 +1106,8 @@ states:
 func Test_client_model_server_answers_beside_a_call_that_stays(t *testing.T) {
 	m, _ := working(t, "all")
 	dir := files(t, map[string]string{"door.yaml": door})
-	id := strings.TrimSpace(m.ok("", "run", "submit", filepath.Join(dir, "door.yaml")))
+	m.ok("", "run", "submit", filepath.Join(dir, "door.yaml"))
+	id := strings.TrimSpace(m.ok("", "run", "submit", "/door"))
 	in, toServer, err := os.Pipe()
 	if err != nil {
 		t.Fatal(err)
@@ -1157,7 +1158,8 @@ func Test_client_model_server_answers_beside_a_call_that_stays(t *testing.T) {
 func TestShowRecordIsWatchWithoutStaying(t *testing.T) {
 	m, _ := working(t, "all")
 	dir := files(t, map[string]string{"door.yaml": door})
-	id := strings.TrimSpace(m.ok("", "run", "submit", filepath.Join(dir, "door.yaml")))
+	m.ok("", "run", "submit", filepath.Join(dir, "door.yaml"))
+	id := strings.TrimSpace(m.ok("", "run", "submit", "/door"))
 	until(t, "the run's first step", func() bool { return strings.Contains(m.ok("", "run", "show", id), "waiting on ticket knock") })
 	// For a run in progress it returns, where --watch would stay.
 	out := m.ok("", "run", "show", id, "--record")

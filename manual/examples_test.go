@@ -58,8 +58,8 @@ import (
 //
 // A command must end well, unless the page shows it printing a line that
 // starts "error:" or "refused:", and then it must not. In a command, <id>
-// is the ID of the run the page's last corbie run submit started, and <ticket>
-// the ticket that run waits on, once it does.
+// is the ID of the run the page's last corbie run submit that started one
+// printed, and <ticket> the ticket that run waits on, once it does.
 
 // An example is one block of a page, read.
 type example struct {
@@ -341,7 +341,7 @@ type session struct {
 	dir     string
 	home    string
 	running []*left
-	id      string // the run the last corbie run submit started
+	id      string // the run the last corbie run submit that started one printed
 }
 
 // A left command is one a page left running: what it has printed so far,
@@ -500,7 +500,10 @@ func (s *session) run(ex example) outcome {
 		}
 		said := s.w.seen(printed)
 		if len(args) > 2 && args[1] == "run" && args[2] == "submit" {
-			s.id = runID.FindString(said)
+			// A submit that records a tree and starts nothing prints no ID.
+			if id := runID.FindString(said); id != "" {
+				s.id = id
+			}
 		}
 		wantStatus := 0
 		for _, line := range c.shown {

@@ -1,0 +1,5 @@
+{
+  "status": "done",
+  "output": "old",
+  "note": "R-ctl-112: a run keeps the definition it started from, whatever a later submit records at its location; update: drain is the default for a transient file."
+}

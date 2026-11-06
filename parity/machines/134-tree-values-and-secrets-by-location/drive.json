@@ -1,0 +1,7 @@
+[
+  { "do": "value", "name": "HUB", "value": "everywhere" },
+  { "do": "value", "name": "HUB", "value": "near", "at": "/case" },
+  { "do": "secret", "name": "TOKEN", "value": "not-a-real-token", "at": "/case" },
+  { "wait": { "machine": "parent", "ticket": "go" }, "do": "value", "name": "HUB", "value": "later", "at": "/case/root" },
+  { "wait": { "machine": "parent", "ticket": "go" }, "do": "reply", "value": {}, "taken": true }
+]

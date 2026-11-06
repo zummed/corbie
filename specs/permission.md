@@ -17,11 +17,13 @@ There are eight kinds.
 | `env` | reading a variable of the runner's | a name |
 | `secret` | sending a secret somewhere | a secret's name and a destination |
 | `send` | sending to or calling a location | a location |
-| `at` | submitting a tree, in a client's ceiling only | a prefix, matched as a path is |
+| `at` | submitting a tree, in a client's ceiling only | a prefix, starting with `/` |
 
 A scope is one of four things, matched the same way wherever it appears: a path, a host, a name, or a location. Any of them may use `*` for a part. A host with no port means every port, a host of `*` means every host, and a host written as an address, `10.0.0.*`, matches no name. A path is checked where it really points, after links are followed.
 
-A location is matched as a path is. In a definition it is read from the tree's prefix by default, and as a full path when it starts with `/`; `../` is refused. In a ceiling it starts with `/`.
+A location is a name in the store. Its parts are matched as a path's are, but no link is followed and case counts on every system. No part is empty, `.`, `..` or `+`, and none holds `#`; a tree's prefix and a location sent to hold no `*`.
+
+In a definition a location is read from the tree's prefix by default, and as a full path when it starts with `/`; `../` is refused. In a ceiling or a start's list it starts with `/`.
 
 On Windows:
 
@@ -103,7 +105,7 @@ A send or a call is checked on both sides:
 
 - A statechart's send action is checked against the chart's layers.
 - The runner's ceiling takes no part, since no runner sends.
-- A client sends to and calls the runs of a tree it owns with no `send:` entry, since it can cancel and submit them already.
+- A client sends to and calls the runs of a tree it owns with no `send:` entry, whatever their `receive:` says, since it can cancel and submit them already.
 - A parent run and its children send to each other with no `send:` or `receive:` entry.
 
 `receive:` is written in the receiver's file:
@@ -114,7 +116,7 @@ A send or a call is checked on both sides:
 | `[thermostats/*, client:panel]` | those senders, for every event |
 | `{ set: [thermostats/*, client:panel], stop: [client:panel] }` | each event from its own list only |
 
-An entry is a location, read as in a definition, or `client:<name>`. It matches the sender's location or the client that sent, never a run's ID. A written `receive:` replaces the default whole, so an event a mapping does not name is accepted from nobody.
+An entry is a location, read as in a definition, or `client:<name>`. It matches the sender's location or the client that sent, never a run's ID. A written `receive:` replaces the default whole, so an event a mapping does not name is accepted from no sender but the tree's client.
 
 ```yaml
 # work/services/lookup.yaml             location /work/services/lookup

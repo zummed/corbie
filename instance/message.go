@@ -56,12 +56,14 @@ type Message struct {
 // nothing.
 const MessageLife = 5 * time.Minute
 
-// A Start starts a run. A client's start names a location; Definition is
-// written by the controller, from the file recorded there or from the job
-// that starts a child.
+// A Start starts a run. A client's start names a location, and its input
+// is the blob InputBlob in the run's record; Definition and Input are
+// written by the controller, from the file recorded there and that blob, or
+// from the job that starts a child.
 type Start struct {
 	Definition blob.Ref          `json:"definition,omitzero"`
 	Input      any               `json:"input,omitzero"`
+	InputBlob  blob.Ref          `json:"input_blob,omitzero"`
 	Labels     map[string]string `json:"labels,omitzero"`
 	// Allow is the start's own list, which narrows the root and everything
 	// below it.

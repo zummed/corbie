@@ -139,7 +139,7 @@ func Test_ctl_submit_is_refused_naming_the_tree(t *testing.T) {
 		"/ is never a tree":                                func() *instance.Receipt { return w.submitTree(w.client, at("/", "/m")) },
 		"the location /h/a/b is below /h/a":                func() *instance.Receipt { return w.submitTree(w.client, at("/h", "/h/a", "/h/a/b")) },
 		"the location /elsewhere/m is not in the tree /in": func() *instance.Receipt { return w.submitTree(w.client, at("/in", "/elsewhere/m")) },
-		"the location /r is the tree's prefix, which only": func() *instance.Receipt { return w.submitTree(w.client, at("/r", "/r", "/r/m")) },
+		"the location /r/m is below /r":                    func() *instance.Receipt { return w.submitTree(w.client, at("/r", "/r", "/r/m")) },
 	} {
 		if r := try(); r.Taken || !strings.Contains(r.Refused, refused) {
 			t.Errorf("want %q, the submit gave %+v", refused, r)

@@ -1004,7 +1004,7 @@ func (c *askCounter) Asks(def *machine.Definition) map[string]*machine.JobSpec {
 
 // A client starts a run at a location: the run's definition is the file
 // recorded there, copied into the run's own record, whatever else the start
-// names. A start that names a definition in another run's record, and no
+// names, and its input is the blob the start names in that record. A start that names a definition in another run's record, and no
 // location, starts nothing: the definition is not read, and the controller
 // is not given it to read as an owner's.
 func Test_ctl_client_start_names_a_location(t *testing.T) {
@@ -1026,6 +1026,9 @@ func Test_ctl_client_start_names_a_location(t *testing.T) {
 		}
 		_, id, _ := strings.Cut(run, "/")
 		s.Seed = make([]byte, 32)
+		if s.InputBlob.At == "" {
+			s.InputBlob = w.input(run, `{"n":1}`)
+		}
 		w.leave(w.c1, id, &instance.Message{Kind: instance.KindStart, Instance: run, Start: s})
 		w.settle()
 		return run, w.receipt(id)
@@ -1036,6 +1039,15 @@ func Test_ctl_client_start_names_a_location(t *testing.T) {
 	}
 	if st := w.latest(run).State; st.Machine != "kept" || st.Location != at || !strings.HasPrefix(st.Definition.At, store.Blobs("ctl", run)+"/") {
 		t.Fatalf("the run at %s is of %q at %s, from the definition %s", at, st.Machine, st.Location, st.Definition.At)
+	}
+	// The input is the blob the start names in the run's record, not what
+	// the message carries.
+	if in := w.latest(run).State.Input; fmt.Sprint(in) != "map[n:1]" {
+		t.Fatalf("the run at %s has the input %v", at, in)
+	}
+	run, r = start(&instance.Start{Location: at, Input: map[string]any{"n": 2.0}, InputBlob: w.input(holder, `{"n":3}`)})
+	if w.head(run) != nil || r == nil || r.Taken || !strings.Contains(r.Refused, "names its input") {
+		t.Fatalf("a start naming an input in another run's record has the head %+v and the receipt %+v", w.head(run), r)
 	}
 	run, r = start(&instance.Start{Definition: ref})
 	if w.head(run) != nil || r == nil || r.Taken || !strings.Contains(r.Refused, "names a location") {

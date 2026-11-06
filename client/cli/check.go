@@ -212,8 +212,8 @@ func cmdCheck(e *Env, args []string) error {
 	waiting := func(leg string) { e.Say("waiting up to %s %s", wait, legWaits[leg]) }
 	waiting(legs[0])
 	// The check's machine is submitted as a tree of one file, and its run
-	// started there once the submit is taken. Each leg is waited for this
-	// long from the one before it. The run is followed as any run is, and
+	// started there once the submit is taken. The submit, and then each leg,
+	// is waited for this long from the one before it. The run is followed as any run is, and
 	// what the check reports is what turned up in the store: it asks the
 	// host nothing.
 	ctx, stop := context.WithCancel(e.ctx)
@@ -235,9 +235,14 @@ func cmdCheck(e *Env, args []string) error {
 		}
 		return errRunFailed
 	case !receipt.Taken:
-		e.Print(receipt, func() string { return "refused: " + receipt.Refused + "\n" })
+		if err := e.Print(receipt, func() string { return "refused: " + receipt.Refused + "\n" }); err != nil {
+			return err
+		}
 		return errRunFailed
 	}
+	// The first leg is the start alone: it is timed from here.
+	sent = time.Now()
+	giveUp.Reset(time.Duration(patience))
 	id, err := c.Start(e.ctx, client.Start{At: checkPrefix})
 	if err != nil {
 		return err

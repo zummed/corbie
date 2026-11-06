@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/zummed/corbie/blob"
 	"github.com/zummed/corbie/client"
 	"github.com/zummed/corbie/controller"
 	"github.com/zummed/corbie/identity"
@@ -174,6 +175,17 @@ func (w *world) startAt(c *client.Client, at string, start client.Start) string 
 		w.t.Fatal(err)
 	}
 	return run
+}
+
+// input writes a start's input into a run's record, as a client does
+// before it sends the start, and gives the blob the start names.
+func (w *world) input(run, input string) blob.Ref {
+	w.t.Helper()
+	ref, err := blob.Write(ctx, w.owner, store.Blob("ctl", run, blob.NewName()), blob.TypeOf("input.json"), blob.NewKey(), strings.NewReader(input))
+	if err != nil {
+		w.t.Fatal(err)
+	}
+	return ref
 }
 
 // secret sets a secret at a location, as the controller's owner does.

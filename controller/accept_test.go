@@ -22,7 +22,7 @@ import (
 func (w *world) start(client, at string) (string, *instance.Message) {
 	w.t.Helper()
 	run := store.NewInstance(client, w.clock())
-	return run, &instance.Message{Kind: instance.KindStart, Instance: run, Start: &instance.Start{Location: at, Seed: []byte("seed")}}
+	return run, &instance.Message{Kind: instance.KindStart, Instance: run, Start: &instance.Start{Location: at, InputBlob: w.input(run, "null"), Seed: []byte("seed")}}
 }
 
 // put writes a message into the controller's inbox, signed by one party

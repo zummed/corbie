@@ -198,9 +198,6 @@ func (p *pass) checkTree(a *arrival, msg *instance.Submit) (string, error) {
 		if location != msg.Prefix && !strings.HasPrefix(location, msg.Prefix+"/") {
 			return fmt.Sprintf("the location %s is not in the tree %s", location, msg.Prefix), nil
 		}
-		if location == msg.Prefix && len(locations) > 1 {
-			return fmt.Sprintf("the location %s is the tree's prefix, which only a tree of one file has", location), nil
-		}
 		if i > 0 && strings.HasPrefix(location, locations[i-1]+"/") {
 			return fmt.Sprintf("the location %s is below %s, and a location has nothing below it", location, locations[i-1]), nil
 		}
@@ -624,6 +621,27 @@ func (b *build) located(start *arrival) (*instance.Start, error) {
 			// end, and so does everything waiting for it.
 			b.out.rest = nil
 			p.due(p.now.Add(time.Second))
+			return nil, nil
+		}
+	}
+	if start.kind == identity.Client {
+		// A client's input is the blob its start names in the run's record.
+		in := s.InputBlob
+		if in.At != store.Blob(p.ctl, b.inst, path.Base(in.At)) {
+			b.refuse(start, "a client's start names its input, written in the run's record")
+			return nil, nil
+		}
+		data, err := blob.ReadAll(p.ctx, p.store, in, blob.StepLimit)
+		if err != nil {
+			if err = p.blobError(err); err != nil {
+				return nil, err
+			}
+			b.refuse(start, "the start's input cannot be read")
+			return nil, nil
+		}
+		s.Input = nil
+		if err := identity.Decode(data, &s.Input); err != nil {
+			b.refuse(start, "the start's input is not JSON")
 			return nil, nil
 		}
 	}

@@ -97,3 +97,14 @@ func Test_client_check_is_an_ordinary_run(t *testing.T) {
 		t.Fatalf("after a check the runs listed were %+v", runs)
 	}
 }
+
+// A submit of the check's machine the controller refuses is printed with
+// its reason, and the check fails.
+func TestCheckOfASubmitThatIsRefused(t *testing.T) {
+	m, _ := working(t, "")
+	m.ok("", "controller", "enrol", "box-client", "--ceiling", "network")
+	status, out, said := m.run("", "check", "--wait", "5s")
+	if status == 0 || !strings.HasPrefix(out, "refused: ") || !strings.Contains(out, "/corbie-check") {
+		t.Fatalf("a check whose submit was refused ended %d, printed %q and said %q", status, out, said)
+	}
+}

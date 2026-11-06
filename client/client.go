@@ -203,23 +203,21 @@ func (c *Client) Start(ctx context.Context, start Start) (string, error) {
 	if input, err = blob.Walk(input, func(_ string, at blob.Ref) (any, error) { return made[at.At].Value(), nil }); err != nil {
 		return "", err
 	}
-	// The input is written into the run's record last, {} when there is
-	// none, so a run whose record holds anything was sent.
-	written := input
-	if written == nil {
-		written = map[string]any{}
-	}
-	data, err := json.Marshal(written, json.Deterministic(true))
+	// The input is written into the run's record last, null when there is
+	// none, and the start names it: the controller reads the input from
+	// there. A run whose record holds nothing was never sent.
+	data, err := json.Marshal(input, json.Deterministic(true))
 	if err != nil {
 		return "", err
 	}
-	if _, err := blob.Write(ctx, c.Store, store.Blob(c.ctl(), run, blob.NewName()), blob.TypeOf("input.json"), blob.NewKey(), bytes.NewReader(data)); err != nil {
+	written, err := blob.Write(ctx, c.Store, store.Blob(c.ctl(), run, blob.NewName()), blob.TypeOf("input.json"), blob.NewKey(), bytes.NewReader(data))
+	if err != nil {
 		return "", err
 	}
 	seed := make([]byte, 32)
 	rand.Read(seed)
 	msg := &instance.Message{Kind: instance.KindStart, Instance: run, Start: &instance.Start{
-		Location: start.At, Input: input, Labels: start.Labels, Allow: start.Allow,
+		Location: start.At, InputBlob: written, Labels: start.Labels, Allow: start.Allow,
 		Timeout: machine.Duration(start.Timeout), Seed: seed}}
 	return run, c.send(ctx, startMessage(run), start.Life, msg)
 }

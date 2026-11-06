@@ -27,8 +27,7 @@ func Test_client_cancel_by_key(t *testing.T) {
 	m.ok("", "run", "submit", dir)
 	m.ok("", "run", "send", "/house/room#a", "said")
 	m.ok("", "run", "send", "/house/room#b", "said")
-	a := strings.Fields(m.ok("", "run", "show", "/house/room#a"))[0]
-	b := strings.Fields(m.ok("", "run", "show", "/house/room#b"))[0]
+	a, b := shownAt(t, m, "/house/room#a"), shownAt(t, m, "/house/room#b")
 	out := m.ok("", "run", "cancel", "/house/room#a")
 	if !strings.Contains(out, a+"  taken") || strings.Contains(out, b) {
 		t.Fatalf("cancel of /house/room#a printed %s", out)
@@ -43,6 +42,19 @@ func Test_client_cancel_by_key(t *testing.T) {
 	}
 }
 
+// shownAt waits for a running run at a location, which a send or a submit
+// has started but the controller may not have taken yet, and gives its ID.
+func shownAt(t *testing.T, m machine, at string) string {
+	t.Helper()
+	var shown string
+	until(t, "a run at "+at, func() bool {
+		status, out, _ := m.run("", "run", "show", at)
+		shown = out
+		return status == 0 && strings.Contains(out, "running")
+	})
+	return strings.Fields(shown)[0]
+}
+
 // run show and run cancel read an argument that starts with / as a
 // location, even when a directory of that name is on this computer.
 func Test_client_location_that_is_a_path_on_disk(t *testing.T) {
@@ -53,10 +65,7 @@ func Test_client_location_that_is_a_path_on_disk(t *testing.T) {
 	// /tmp is a directory on every computer the tests run on.
 	m.ok("", "run", "submit", dir, "--at", "/tmp")
 	// The singleton the submit started may not have been taken yet.
-	until(t, "the singleton at /tmp/room", func() bool {
-		status, shown, _ := m.run("", "run", "show", "/tmp/room")
-		return status == 0 && strings.Contains(shown, "running")
-	})
+	shownAt(t, m, "/tmp/room")
 	if out := m.ok("", "run", "cancel", "/tmp/room"); !strings.Contains(out, "taken") {
 		t.Fatalf("run cancel /tmp/room printed %s", out)
 	}
@@ -124,7 +133,7 @@ func Test_client_record_names_calls_clients_and_notes(t *testing.T) {
 
 	m.ok("", "run", "send", "/t/echo", "ping")
 	until(t, "the reply", func() bool {
-		out = m.ok("", "run", "show", "/t/echo", "--record")
+		_, out, _ = m.run("", "run", "show", "/t/echo", "--record")
 		return strings.Contains(out, "pong")
 	})
 	if !strings.Contains(out, "-> send pong to client:box-client · undelivered: a client has no inbox") {

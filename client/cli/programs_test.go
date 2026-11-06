@@ -534,3 +534,19 @@ func TestAProgramPrintsItsVersion(t *testing.T) {
 		t.Fatalf("corbie frob version --json ended %d and printed %q", status, out)
 	}
 }
+
+// The flags every command takes may be written before the command, and a
+// flag that no command follows is a mistake that names it.
+func TestFlagsBeforeTheCommand(t *testing.T) {
+	t.Setenv("PATH", t.TempDir())
+	for _, line := range [][]string{{"--json", "version"}, {"--config", t.TempDir(), "version", "--json"}} {
+		status, out, said := corbie("", line...)
+		if status != 0 || out == "" {
+			t.Errorf("corbie %v ended %d, printed %q and said %q", line, status, out, said)
+		}
+	}
+	status, out, said := corbie("", "--config")
+	if status != 2 || out != "" || said != "corbie: --config is a flag, and no command follows it.\n\ncorbie --help lists the commands.\n" {
+		t.Fatalf("corbie --config ended %d, printed %q and said %q", status, out, said)
+	}
+}

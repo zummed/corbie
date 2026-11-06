@@ -873,8 +873,8 @@ func cmdValueSet(e *Env, args []string) error {
 	if len(rest) != 2 {
 		return Mistake("name the value, then give it")
 	}
-	if permission.CheckSecretName(rest[0]) != nil {
-		return Mistake("%q is not a name a value can have: it follows the rule for a secret's name", rest[0])
+	if err := secret.CheckValueName(rest[0]); err != nil {
+		return Mistake("%v", err)
 	}
 	if err := checkAt(*at); err != nil {
 		return err

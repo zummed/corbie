@@ -170,7 +170,7 @@ var shared = []Field{
 	{Name: "deny", Kind: KindList, Like: "[exec]", Does: "what no script the definition runs may do"},
 	{Name: "ask_about", Kind: KindList, Like: "[exec]", Does: "permissions that must be asked about before a job starts"},
 	{Name: "ask", Kind: KindJob, Like: "{ machine: ./ask.yaml }", Does: "the job that approves when a job needs approval"},
-	{Name: "title", Kind: KindText, Like: `"${input.channel}: ${input.said}"`, Does: "what a run is called, filled in from its input when it starts; only the client that started it sees it"},
+	{Name: "title", Kind: KindText, Like: `"${input.channel}: ${input.said}"`, Does: "what a run is called, filled in from its input when it starts; only the client of its tree sees it"},
 	{Name: "meta", Kind: KindValue, Like: `{ on: { at: "02:00 Europe/London" } }`, Does: "data of any kind, which Corbie keeps with the definition and never reads"},
 	{Name: "lifetime", Kind: KindWord, Like: "singleton", Values: []string{LifetimeSingleton, LifetimeKeyed, LifetimeTransient},
 		Does: "how runs start at its location: singleton, one started by the submit; keyed, one for each key a send names; transient, the default, one for each call or start"},

@@ -235,9 +235,12 @@ func (c *Client) Submit(ctx context.Context, tree *Tree, life time.Duration) (st
 	submit := &instance.Submit{Prefix: tree.Prefix, Directory: tree.Directory, Files: map[string]instance.SubmitFile{}}
 	var good []*Machine
 	for _, m := range tree.Machines {
-		if m.Problem != nil {
+		switch {
+		case m.Problem != nil && store.CheckLocation(m.Location) != nil:
+			// A path that gives no location keeps nothing there.
+		case m.Problem != nil:
 			submit.Problems = append(submit.Problems, m.Location)
-		} else {
+		default:
 			good = append(good, m)
 		}
 	}
@@ -342,6 +345,20 @@ func startMessage(run string) string {
 // answer are each good for the life given, or for a few minutes if it is
 // zero.
 func (c *Client) Cancel(ctx context.Context, run string, life time.Duration) (string, error) {
+	if err := c.identity(); err != nil {
+		return "", err
+	}
+	// A call's run is in the tree of the client called: only that client
+	// cancels it.
+	if c.mine(run) && store.CheckInstance(run) == nil {
+		receipt, err := c.Receipt(ctx, startMessage(run))
+		if err != nil {
+			return "", err
+		}
+		if receipt != nil && receipt.Run != "" && receipt.Run != run {
+			return "", fmt.Errorf("%w: it started %s, in a tree of the client %s, and only that client cancels it", ErrCalled, receipt.Run, store.InstanceClient(receipt.Run))
+		}
+	}
 	return c.sendNext(ctx, life, &instance.Message{Kind: instance.KindCancel, Instance: run})
 }
 
@@ -394,7 +411,7 @@ func (c *Client) Address(ctx context.Context, text string) (machine.Address, err
 	if c.mine(text) {
 		return machine.Address{Run: text}, nil
 	}
-	return machine.Address{}, fmt.Errorf("%w: the run %s has not started", ErrNoRun, text)
+	return machine.Address{}, fmt.Errorf("%w: the run is in a tree of the client %s, and a send to one of its runs names its location", ErrOthers, store.InstanceClient(text))
 }
 
 // Reply answers a ticket of a run. The ticket is the authority: any client

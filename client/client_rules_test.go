@@ -254,6 +254,16 @@ func TestUnstartedRunIsWaitingOnlyWhileItsStartIsGood(t *testing.T) {
 	if run, err := a.Show(ctx, sent); err != nil || run.Status != instance.Waiting {
 		t.Fatalf("a start just sent is shown as %+v, %v", run, err)
 	}
+	// A wait for a start to be taken lasts as long as the start is good.
+	short, err := a.Start(ctx, client.Start{At: "/standing", Life: 50 * time.Millisecond})
+	if err != nil {
+		t.Fatal(err)
+	}
+	within, cancelShort := context.WithTimeout(ctx, 5*time.Second)
+	if err := a.Taken(within, short, 50*time.Millisecond, time.Millisecond); !errors.Is(err, client.ErrNeverTaken) || within.Err() != nil {
+		t.Fatalf("a wait for a start good for 50ms to be taken gave %v", err)
+	}
+	cancelShort()
 	// One named a day ahead of the clock was not named by this client.
 	ahead, err := a.Start(ctx, client.Start{At: "/standing", Run: "client/" + store.Stamp(time.Now().Add(24*time.Hour)) + "-0000000001"})
 	if err != nil {

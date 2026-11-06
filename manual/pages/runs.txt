@@ -11,7 +11,7 @@ Commands
   corbie run submit <location>            starts a run there and prints its ID
   corbie run ls                           lists the runs of this client's trees in progress
   corbie run show <id>                    prints one run's status, input and output
-  corbie run cancel <id>                  cancels a run in this client's trees; a location cancels each run there
+  corbie run cancel <id>                  cancels a run in this client's trees; a location cancels each run there, location#key one
   corbie run send <id> <event> [data]     sends an event to a run; a location, or location#key, names one too
   corbie run reply <id> <ticket> [value]  answers a ticket the run waits on
   corbie controller cancel <id>           cancels any run, with the controller's config
@@ -82,7 +82,7 @@ The record
   id, time          the run the entry belongs to, and when it was written
   step, events      a step's number, and the events it received: `name`, `from`, `data`,
                     and `answer: true` on the answer to a ticket
-  asks              what the controller did next; kind `script` or `child` is a job it started
+  asks              what the controller did next; kind `script`, `child` or `call` is a job it started
   status, state     the run's status and the machine's state after the step
   job, name, data   an emitted value: its job, its name (`log` for a log line) and the value
 

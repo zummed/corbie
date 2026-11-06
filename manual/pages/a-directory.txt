@@ -53,9 +53,9 @@ What the submit does at a location:
 - `--at` is / and the directory's name by default. A tree is not inside or above another, and / is never a tree.
 - A tree belongs to the client that first submitted it. Only that client reads and cancels the runs at its locations.
 - The client's ceiling needs an at: entry for the prefix. `corbie init` gives its client at:/**.
-- drain is the default for keyed and transient files. A singleton always restarts, once its old run has ended.
-- A file beside a directory of the same name, as boiler.yaml beside boiler/, is refused: a location has nothing below it.
-- A singleton is given no input. A run reads the directory's absolute path as ${run.context}, and its location as ${run.location}.
+- drain is the default for keyed and transient files. A singleton always restarts, once its old run and that run's children have ended.
+- A file beside a directory of the same name, as boiler.yaml beside boiler/, is refused with the files below it: a location has nothing below it. The rest of the tree is recorded.
+- A singleton is given no input, so one whose input: needs a value is refused. A run reads the directory's absolute path as ${run.context}, and its location as ${run.location}.
 - The submit prints the secrets and values the files use that are not set at their locations or above.
 
 To have a machine come back when it ends, run it as a job with restart:. `corbie manual definitions` gives the fields.

@@ -232,10 +232,10 @@ func (s *starting) testSecrets(e *Env) (map[string]string, error) {
 	return given, nil
 }
 
-// isLocation says whether an argument names a location: it starts with /,
-// does not end in .yaml or .js, and is no file or directory on this
-// computer. A file's name that is not there is read as a file, and is
-// reported as not found.
+// isLocation says whether an argument of run submit names a location: it
+// starts with /, does not end in .yaml or .js, and is no file or directory
+// on this computer. A file's name that is not there is read as a file, and
+// is reported as not found.
 func isLocation(arg string) bool {
 	if !strings.HasPrefix(arg, "/") || strings.HasSuffix(arg, ".yaml") || isScript(arg) {
 		return false
@@ -379,6 +379,9 @@ func cmdSubmit(e *Env, args []string) error {
 		return Mistake("name one directory, one definition, one script file or one location: each directory or file is a tree of its own")
 	}
 	name := names[0]
+	if e.Given("at") && at == "" {
+		return Mistake("--at is empty: a prefix is / and the names of one or more directories, as /home")
+	}
 	if isLocation(name) {
 		return e.startAt(&s, name, at)
 	}
@@ -440,17 +443,21 @@ func (e *Env) startAt(s *starting, location, at string) error {
 	if err != nil {
 		return err
 	}
-	return e.started(c, id, s, false)
+	return e.started(c, id, s, start.Life)
 }
 
-// started prints the ID of a run that was started, or stays until it ends.
-func (e *Env) started(c *client.Client, id string, s *starting, script bool) error {
+// started prints the ID of a run that was started, or stays until it ends:
+// first for no longer than its start, sent with the life given, is good.
+func (e *Env) started(c *client.Client, id string, s *starting, life time.Duration) error {
 	if !s.wait && !s.watch {
 		// The ID and nothing else: other commands take it.
 		return e.Print(map[string]string{"id": id}, func() string { return id + "\n" })
 	}
 	e.Say("%s", id)
-	return e.await(c, id, s.watch, script)
+	if err := c.Taken(e.ctx, id, life, interval); err != nil {
+		return err
+	}
+	return e.await(c, id, s.watch, false)
 }
 
 // directories tells whether the names are all directories, and refuses
@@ -495,13 +502,26 @@ func (e *Env) submit(tree *client.Tree) error {
 	}
 	for _, row := range done.Locations {
 		if row.Run != "" {
-			if err := c.Taken(e.ctx, row.Run, interval); err != nil {
+			if err := c.Taken(e.ctx, row.Run, 0, interval); err != nil {
 				return err
 			}
 		}
 	}
-	problems := 0
-	err = e.Print(done, func() string {
+	// The problems go with the JSON, keyed by location, as the text gives
+	// them under each file.
+	printed := struct {
+		*instance.Submitted
+		Problems map[string]string `json:"problems,omitzero"`
+	}{Submitted: done}
+	for _, m := range tree.Machines {
+		if m.Problem != nil {
+			if printed.Problems == nil {
+				printed.Problems = map[string]string{}
+			}
+			printed.Problems[m.Location] = m.Problem.Error()
+		}
+	}
+	err = e.Print(printed, func() string {
 		var b strings.Builder
 		if done.Before != "" {
 			fmt.Fprintf(&b, "%s: last submitted from %s\n", tree.Prefix, done.Before)
@@ -519,7 +539,6 @@ func (e *Env) submit(tree *client.Tree) error {
 		}
 		for _, m := range tree.Machines {
 			if m.Problem != nil {
-				problems++
 				fmt.Fprintf(&b, "%s\n", m.Path)
 				for _, line := range strings.Split(m.Problem.Error(), "\n") {
 					fmt.Fprintf(&b, "    %s\n", line)
@@ -531,8 +550,8 @@ func (e *Env) submit(tree *client.Tree) error {
 		}
 		return b.String()
 	})
-	if err == nil && problems > 0 {
-		return fmt.Errorf("%d of %d files have problems, and their locations keep what was recorded before", problems, len(tree.Machines))
+	if err == nil && len(printed.Problems) > 0 {
+		return fmt.Errorf("%d of %d files have problems, and their locations keep what was recorded before", len(printed.Problems), len(tree.Machines))
 	}
 	return err
 }
@@ -780,7 +799,12 @@ func (e *Env) entry(entry client.Entry) {
 		fmt.Fprintf(e.Out, "%s %s  %s %s: %s\n", at, short, entry.Job, entry.Name, text)
 		return
 	}
+	notes := true // whether the entry holds nothing but notes
 	for _, event := range entry.Events {
+		if event.Own && event.Name == instance.KindNote {
+			continue // printed once, as the note below
+		}
+		notes = false
 		line := event.Name
 		switch from := event.Sender; {
 		case from != nil && from.Client != "":
@@ -804,11 +828,14 @@ func (e *Env) entry(entry client.Entry) {
 	}
 	for _, ask := range entry.Asks {
 		line := ""
+		notes = notes && ask.Kind == instance.AskNote
 		switch ask.Kind {
 		case instance.AskScript:
 			line = fmt.Sprintf("job %s: a script, on %s", ask.Name, ask.Runner)
 		case instance.AskChild:
 			line = fmt.Sprintf("job %s: a machine, %s", ask.Name, ask.Child)
+		case instance.AskCall:
+			line = fmt.Sprintf("job %s: a call to %s, %s", ask.Name, ask.Location, ask.Run)
 		case instance.AskCancel:
 			line = "cancel " + ask.Name
 		case instance.AskEvent:
@@ -818,6 +845,10 @@ func (e *Env) entry(entry client.Entry) {
 				to = ask.Location + "#" + ask.Key
 			case ask.Location != "":
 				to = ask.Location
+			case ask.Client != "":
+				to = "client:" + ask.Client
+			case ask.Direct:
+				to = ask.To
 			case ask.Name != "":
 				to = ask.Name
 			}
@@ -846,7 +877,8 @@ func (e *Env) entry(entry client.Entry) {
 		}
 		fmt.Fprintf(e.Out, "%s %s  step %d  -> %s\n", at, short, entry.Step, line)
 	}
-	if entry.Status != instance.Running {
+	// A note that comes after the run has ended does not end it again.
+	if entry.Status != instance.Running && !notes {
 		fmt.Fprintf(e.Out, "%s %s  step %d  %s\n", at, short, entry.Step, entry.Status)
 	}
 }
@@ -967,7 +999,7 @@ func cmdShow(e *Env, args []string) error {
 	if err != nil {
 		return err
 	}
-	if isLocation(id) {
+	if strings.HasPrefix(id, "/") {
 		if id, err = e.runAt(c, id); err != nil {
 			return err
 		}
@@ -986,7 +1018,7 @@ func cmdShow(e *Env, args []string) error {
 		return err
 	case tickets:
 		// A ticket's value is the whole right to answer. It is in the
-		// record, which only the client that started the run can read.
+		// record, which only the client of the run's tree can read.
 		held, err := c.Tickets(e.ctx, id)
 		if err != nil {
 			return err
@@ -1153,25 +1185,26 @@ func (e *Env) answered(args []string, usage string, takes func(n int) bool, send
 
 func cmdCancel(e *Env, args []string) error {
 	var lifeText string
-	if len(args) > 0 && isLocation(args[0]) {
+	if len(args) > 0 && strings.HasPrefix(args[0], "/") {
 		e.Flags.StringVar(&lifeText, "life", "", "")
 		rest, err := e.Parse(args)
 		if err != nil {
 			return err
 		}
 		if len(rest) != 1 {
-			return Mistake("name one run by its ID, or one location")
+			return Mistake("name one run by its ID, one location, or a location and a key as /location#key")
 		}
 		return e.cancelAt(rest[0], lifeText)
 	}
-	return e.answered(args, "name one run by its ID, or one location", func(n int) bool { return n == 1 },
+	return e.answered(args, "name one run by its ID, one location, or a location and a key as /location#key", func(n int) bool { return n == 1 },
 		func(c *client.Client, rest []string, life time.Duration) (string, error) {
 			return c.Cancel(e.ctx, rest[0], life)
 		})
 }
 
-// cancelAt cancels every run of this client's running at a location: each
-// root, whose cancel ends everything below it.
+// cancelAt cancels every run of this client's running at a location, or
+// the one of a key given as /location#key: each root, whose cancel ends
+// everything below it.
 func (e *Env) cancelAt(location, lifeText string) error {
 	var life time.Duration
 	if lifeText != "" {
@@ -1185,7 +1218,8 @@ func (e *Env) cancelAt(location, lifeText string) error {
 	if err != nil {
 		return err
 	}
-	runs, err := c.List(e.ctx, client.Filter{Location: location, Status: instance.Running})
+	at, key, keyed := strings.Cut(location, "#")
+	runs, err := c.List(e.ctx, client.Filter{Location: at, Key: key, Status: instance.Running})
 	if err != nil {
 		return err
 	}
@@ -1208,6 +1242,9 @@ func (e *Env) cancelAt(location, lifeText string) error {
 			line, refused = run.ID+"  refused: "+receipt.Refused, true
 		}
 		lines = append(lines, line)
+	}
+	if len(lines) == 0 && keyed {
+		return fmt.Errorf("no run of this client's is running at %s", location)
 	}
 	if len(lines) == 0 {
 		lines = []string{"no run of this client's is running at " + location}
@@ -1237,17 +1274,20 @@ func (e *Env) runAt(c *client.Client, text string) (string, error) {
 	}
 	switch len(ids) {
 	case 0:
-		return "", Mistake("no run of this client's is running at %s", text)
+		return "", fmt.Errorf("no run of this client's is running at %s", text)
 	case 1:
 		return ids[0], nil
 	}
-	return "", Mistake("%d runs are running at %s: name one by its ID (%s)", len(ids), text, strings.Join(ids, ", "))
+	return "", fmt.Errorf("%d runs are running at %s: name one by its ID (%s)", len(ids), text, strings.Join(ids, ", "))
 }
 
 func cmdSend(e *Env, args []string) error {
 	return e.answered(args, "name a run or a location, then an event, and optionally its data", func(n int) bool { return n == 2 || n == 3 },
 		func(c *client.Client, rest []string, life time.Duration) (string, error) {
 			to, err := c.Address(e.ctx, rest[0])
+			if errors.Is(err, client.ErrOthers) {
+				return "", err
+			}
 			if err != nil {
 				return "", Mistake("%v", err)
 			}

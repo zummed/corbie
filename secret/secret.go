@@ -35,7 +35,7 @@ func Set(ctx context.Context, s store.Store, ctl *identity.Identity, at, name, v
 // SetValue keeps a value at a location, in place of any kept there before
 // under the name.
 func SetValue(ctx context.Context, s store.Store, ctl *identity.Identity, at, name, value string) error {
-	if err := checkValueName(name); err != nil {
+	if err := CheckValueName(name); err != nil {
 		return err
 	}
 	return keep(ctx, s, ctl, "value", name, at, store.Value(ctl.Name, at, name), value)
@@ -163,7 +163,7 @@ func Remove(ctx context.Context, s store.Store, ctl *identity.Identity, at, name
 // RemoveValue removes a value set at a location. One set above it is then
 // the one used.
 func RemoveValue(ctx context.Context, s store.Store, ctl *identity.Identity, at, name string) error {
-	if err := checkValueName(name); err != nil {
+	if err := CheckValueName(name); err != nil {
 		return err
 	}
 	return remove(ctx, s, ctl, "value", name, at, store.Value(ctl.Name, at, name))
@@ -223,9 +223,9 @@ func list(ctx context.Context, s store.Store, ctl, kind string) ([]Entry, error)
 	return entries, nil
 }
 
-// checkValueName refuses a name a value cannot have: a value's name
+// CheckValueName refuses a name a value cannot have: a value's name
 // follows the rule for a secret's.
-func checkValueName(name string) error {
+func CheckValueName(name string) error {
 	if permission.CheckSecretName(name) != nil {
 		return fmt.Errorf("%q is not a name a value can have: a name holds no @, :, =, *, $, {, }, slash, backslash or blank, and does not start with - or .", name)
 	}

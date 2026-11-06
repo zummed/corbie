@@ -138,6 +138,7 @@ func Program(name string, commands []Command, args []string, in io.Reader, out, 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	t := table{name: "corbie " + name, commands: append(slices.Clip(commands), forPrograms(name)...)}
+	args = t.hoist(args)
 	if cmd, rest := t.find(args); cmd != nil {
 		return t.do(ctx, cmd, rest, in, out, errOut)
 	}
@@ -152,6 +153,7 @@ func Program(name string, commands []Command, args []string, in io.Reader, out, 
 // Run is Main under a context.
 func Run(ctx context.Context, args []string, in io.Reader, out, errOut io.Writer) int {
 	t := own()
+	args = t.hoist(args)
 	cmd, rest := t.find(args)
 	if cmd == nil {
 		if len(args) == 0 || args[0] == "help" || args[0] == "--help" || args[0] == "-h" {
@@ -172,6 +174,11 @@ func Run(ctx context.Context, args []string, in io.Reader, out, errOut io.Writer
 		// a mistake, answered with those commands.
 		if taken(args[0]) {
 			fmt.Fprintf(errOut, "corbie: %q is not a command.\n\n%s", strings.Join(group, " "), t.groupHelp(args[0]))
+			return 2
+		}
+		// A flag is no program's name.
+		if strings.HasPrefix(args[0], "-") {
+			fmt.Fprintf(errOut, "corbie: %s is a flag, and no command follows it.\n\ncorbie --help lists the commands.\n", args[0])
 			return 2
 		}
 		// A word that begins no command runs the program of that name on
@@ -368,6 +375,31 @@ func (t table) find(args []string) (*Command, []string) {
 		}
 	}
 	return found, rest
+}
+
+// hoist moves the flags every command takes, --json, --config and --store,
+// from before a command's words to after them, where its flags are read. A
+// line that names no command is left as it is written.
+func (t table) hoist(args []string) []string {
+	var words, flags []string
+	for i := 0; i < len(args); i++ {
+		name, _, valued := strings.Cut(strings.TrimPrefix(args[i], "--"), "=")
+		switch {
+		case !strings.HasPrefix(args[i], "-"):
+			words = append(words, args[i])
+			if cmd, _ := t.find(words); cmd != nil {
+				return slices.Concat(words, flags, args[i+1:])
+			}
+		case args[i] == "--json", valued && (name == "config" || name == "store"):
+			flags = append(flags, args[i])
+		case (name == "config" || name == "store") && i+1 < len(args):
+			flags = append(flags, args[i], args[i+1])
+			i++
+		default:
+			return args
+		}
+	}
+	return args
 }
 
 // Find gives the command a command line names, as the one reading of it.

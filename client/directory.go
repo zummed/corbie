@@ -38,8 +38,9 @@ type Machine struct {
 // ReadTree reads every machine file in dir and below it, but for .git: each
 // *.yaml whose first key gives a type of machine. Any other is a piece, which
 // a machine reads by including it. at is the prefix, by default / and the
-// directory's own name. A file that cannot be read is given with its
-// Problem; a tree whose files cannot all have locations is an error.
+// directory's own name, and one that cannot be a prefix is an error. A file
+// that cannot be read, or whose path gives no location, is given with its
+// Problem.
 func ReadTree(dir, at string) (*Tree, error) {
 	// A walk does not follow a link at its start, and the directory may be
 	// one.
@@ -52,6 +53,9 @@ func ReadTree(dir, at string) (*Tree, error) {
 	}
 	if at == "" {
 		at = "/" + filepath.Base(full)
+		if store.CheckLocation(at) != nil {
+			return nil, fmt.Errorf("the directory's name gives the prefix %s, which cannot be one: a part holds no #, * or +; give --at", at)
+		}
 	}
 	if err := store.CheckLocation(at); err != nil || at == "/" {
 		return nil, fmt.Errorf("--at %s: a prefix is / and the names of one or more directories, as /home, and is not / alone", at)
@@ -88,18 +92,26 @@ func ReadTree(dir, at string) (*Tree, error) {
 	if err != nil {
 		return nil, err
 	}
-	// A location has nothing below it, and its name is one the store holds.
-	locations := make([]string, len(t.Machines))
-	for i, m := range t.Machines {
+	// A location's name is one the store holds, and a location has nothing
+	// below it: a file that breaks either is a problem, reported with the
+	// rest, and both files of a pair are.
+	placed := map[string]*Machine{}
+	for _, m := range t.Machines {
 		if err := store.CheckLocation(m.Location); err != nil {
-			return nil, fmt.Errorf("%s: %w", m.Path, err)
+			m.Draft, m.Problem = nil, err
+			continue
 		}
-		locations[i] = m.Location
+		placed[m.Location] = m
 	}
-	slices.Sort(locations)
-	for i := 1; i < len(locations); i++ {
-		if strings.HasPrefix(locations[i], locations[i-1]+"/") {
-			return nil, fmt.Errorf("%s.yaml is beside a directory of the same name, which holds the machine at %s: a location has nothing below it", strings.TrimPrefix(locations[i-1], at+"/"), locations[i])
+	for _, m := range t.Machines {
+		if placed[m.Location] != m {
+			continue
+		}
+		for above := path.Dir(m.Location); above != at && above != "/"; above = path.Dir(above) {
+			if a := placed[above]; a != nil {
+				a.Draft, a.Problem = nil, fmt.Errorf("it is beside a directory of the same name, which holds the machine at %s: a location has nothing below it", m.Location)
+				m.Draft, m.Problem = nil, fmt.Errorf("it is below the location of %s: a location has nothing below it", a.Path)
+			}
 		}
 	}
 	return t, nil
@@ -139,7 +151,7 @@ func firstKey(dir, full string) (string, error) {
 	}
 	var doc yaml.Node
 	if err := yaml.Unmarshal(src, &doc); err != nil {
-		return "", err
+		return "", machine.NotYAML(err, src)
 	}
 	if len(doc.Content) == 0 {
 		return "", nil

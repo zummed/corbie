@@ -25,7 +25,8 @@ const starts = `
   --timeout <time>         the longest the run may take, such as 1h; it
                            cannot extend the definition's timeout
   --life <time>            how long the start message is valid while no
-                           controller takes it; default 5m`
+                           controller takes it, and how long --wait and
+                           --watch wait for it to be taken; default 5m`
 
 // scripts is the help for a script file given where a definition is.
 const scripts = `
@@ -247,11 +248,13 @@ client's running there. It takes one of these flags at most.
 With --watch or --wait the command fails unless the run ends with status done.
 
   corbie manual runs   the statuses, a failure, and a blob in a result`},
-		{Name: "run cancel", Usage: "<id> | <location> [--life 5m]", Summary: "cancel a run in a tree of this client's", Run: cmdCancel, Help: `
+		{Name: "run cancel", Usage: "<id> | <location>[#key] [--life 5m]", Summary: "cancel a run in a tree of this client's", Run: cmdCancel, Help: `
 It sends the cancel to the controller and prints the answer: taken, or refused
 with the reason. It fails if the cancel is refused. A location cancels every
 run of this client's running there, each with a cancel of its own; a run that
-starts there meanwhile is not cancelled.
+starts there meanwhile is not cancelled. A keyed location and a key, as
+/location#key, cancels the running run of that key, and fails when none is
+running.
 
   --life <time>   how long the cancel is valid while no controller takes it,
                   and how long the command waits for the answer; default 5m`},
@@ -326,7 +329,7 @@ removed.`},
 		{Name: "controller parties", Usage: "", Summary: "list the runners and clients the controller trusts", Run: cmdParties, Help: `
 Each line gives a runner's or a client's kind, name and card fingerprint, then
 its ceiling, deny list and tags if set, then removed if it was removed.`},
-		{Name: "controller secret set", Usage: "<NAME> [-] [--at <location>]", Summary: "set a secret for the runs at a location and below", Run: cmdSecretSet, Help: `
+		{Name: "controller secret set", Usage: "<NAME> [- | --env] [--at <location>]", Summary: "set a secret for the runs at a location and below", Run: cmdSecretSet, Help: `
 The value is typed at the terminal and not shown. It is never given on the
 command line. A run uses the secret set nearest its location.
 

@@ -22,7 +22,7 @@ Wherever a run is shown, it has the same shape and the same words.
 
 A run shows its location, and its key at a keyed location. A run is `waiting` to start, `running`, `done`, `failed` or `cancelled`. A failed run says why: an `error`, a `timeout`, or `denied` with the refusal. A finished run has its output, and a list of the permissions it used, which for a machine are those of every job in it and below it.
 
-A run waiting on a ticket shows the ticket's name. The ticket's value is in the record, which only the client of the run's tree can read. Only that client is shown the run's title, its input, its output, the failure's text and the permissions it used. A client that called the run from outside the tree is shown its status and its output or error, from the call's result, and the run its call started (see instance.md).
+A run waiting on a ticket shows the ticket's name. The ticket's value is in the record, which only the client of the run's tree can read. Only that client is shown the run's title, its input, its output, the failure's text and the permissions it used, and another client that asks for more than the run's status is told there is no such run of its own, and which client's tree the run is in. A client that called the run from outside the tree is shown its status and its output or error, from the call's result, and the run its call started (see instance.md).
 
 A blob in any value is shown as its type, its size and the path to ask for it by. Its key is never shown, at the command line, over HTTP or to a model.
 
@@ -108,7 +108,7 @@ Following from a terminal is one flag, `--watch`. It prints what the command pri
 
 `run show` prints a run's title, and `run ls` does not, since a listing reads only the heads. `run show` can also print one step, one job's input and output, or the definition, can save a result's files to a directory, and with `--wait` stays until the run ends and prints its result.
 
-`run submit <location>` sends a start; `run submit --wait` waits for the run it started and `run submit --watch` follows it. The tree's client starts a transient location with no `send:` entry. Another client's start is a call: its ceiling needs `send:` for the location, the file's `receive:` must list `client:<its name>`, and the start takes no labels or `--allow`. Under the ID it printed, it is shown only the call's result: the run's status and its output or error, and the result's files.
+`run submit <location>` sends a start; `run submit --wait` waits for the run it started and `run submit --watch` follows it. The tree's client starts a transient location with no `send:` entry. Another client's start is a call: its ceiling needs `send:` for the location, the file's `receive:` must list `client:<its name>`, and the start takes no labels or `--allow`. Under the ID it printed, it is shown only the call's result: the run's status and its output or error, and the result's files. A cancel of that ID is refused, naming the run the call started and its tree's client, which alone cancels it.
 
 A secret's value is never on the command line. It is read only from the source the command names, and a value not found there is a mistake that sends nothing:
 
@@ -125,7 +125,7 @@ corbie controller value set DB_HOST db.prod.lan --at /prod
 corbie controller value list
 ```
 
-A file given alone is a tree of one file, at `--at`, by default `/` and the file's name without its extension. An argument that starts with `/`, does not end in `.yaml` or `.js`, and is no file or directory on this computer is read as a location. A file's name that is not there is reported as not found.
+A file given alone is a tree of one file, at `--at`, by default `/` and the file's name without its extension. An argument of `run submit` that starts with `/`, does not end in `.yaml` or `.js`, and is no file or directory on this computer is read as a location. A file's name that is not there is reported as not found. `run show`, `run cancel` and `run send` read every argument that starts with `/` as a location.
 
 A script file can be submitted as it is. The package wraps it in a flow of one stage, with the permissions it may use and its limits, which the command line takes as flags.
 
@@ -145,9 +145,9 @@ A line that is not `ok` says what leaves it so, on a computer and on a serverles
 
 The check asks the host nothing. What it reports is what turned up in the store, so it is the same check on every host, and it fails unless every line is `ok`.
 
-Every command can print its result as JSON, in the one shape above. A command ends with success, with a mistake in how it was written, or with failure, which includes a run that did not end well.
+Every command can print its result as JSON, in the one shape above. A command ends with success, with a mistake in how it was written, or with failure, which includes a run that did not end well, and ends the same way whichever it prints.
 
-The config and the store may be named by environment variables. No other flag is read from the environment.
+`--json`, `--config` and `--store` may be written before the command as well as after it. The config and the store may be named by environment variables. No other flag is read from the environment.
 
 The commands, their help, the manual's pages about them and the names by which a model is allowed to run them all come from one table.
 
@@ -272,8 +272,8 @@ A tree belongs to the client that first submitted it. Every run keeps the defini
 - A submit at a tree another client owns is refused, naming the owner.
 - A submit at a prefix that no `at:` entry of the client's ceiling matches is refused.
 - A file under a directory whose name starts with a dot is read as any other: `.rook/review.yaml` submitted at `/project` is at `/project/.rook/review`.
-- A file beside a directory of the same name, as `boiler.yaml` beside `boiler/x.yaml`, is refused, because a location has nothing below it.
-- A file with a problem is reported, and its location keeps what was recorded before. A problem with one file leaves the rest done.
+- A file beside a directory of the same name, as `boiler.yaml` beside `boiler/x.yaml`, is refused with the files below it, because a location has nothing below it. They are reported among the files with problems.
+- A file with a problem is reported, and its location keeps what was recorded before. A problem with one file leaves the rest done. In JSON, `problems` gives each problem's text by location.
 - A file whose approvals have no ask is recorded, since it may run as another machine's child under that machine's ask. A run started at its location is refused.
 - A singleton is given no input, and one that needs some is refused, and reported. It reads the context's absolute path as `${run.context}`.
 - When a client submits a different directory at a prefix it holds, the submit prints `/home: last submitted from /srv/old-house`.

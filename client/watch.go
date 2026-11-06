@@ -342,6 +342,9 @@ func (c *Client) Follow(ctx context.Context, id string, interval time.Duration, 
 	if err := store.CheckInstance(id); err != nil {
 		return nil, err
 	}
+	if !c.mine(id) {
+		return nil, others(id)
+	}
 	notice, stop := c.Store.Notice(store.Records(c.ctl()))
 	defer stop()
 	all := map[string]*followed{id: {jobs: map[string]identity.Card{}, emits: map[string]bool{}}}
@@ -379,6 +382,9 @@ func (c *Client) Record(ctx context.Context, id string, tell func(Entry)) (*Run,
 	}
 	if err := store.CheckInstance(id); err != nil {
 		return nil, err
+	}
+	if !c.mine(id) {
+		return nil, others(id)
 	}
 	all := map[string]*followed{id: {jobs: map[string]identity.Card{}, emits: map[string]bool{}}}
 	if run, err := c.look(ctx, id, all, tell); err != nil || run != nil {
@@ -736,7 +742,7 @@ func (c *Client) Fetch(ctx context.Context, id, path string) (io.Reader, File, e
 // find gives the reference of the blob a path names.
 func (c *Client) find(ctx context.Context, id, path string) (blob.Ref, error) {
 	latest, err := c.current(ctx, id)
-	if errors.Is(err, ErrNoRecord) {
+	if errors.Is(err, ErrCalled) {
 		// A call's result is beside its receipt, and only its output can be
 		// read.
 		output, called, callErr := c.calledOutput(ctx, id)
@@ -744,7 +750,7 @@ func (c *Client) find(ctx context.Context, id, path string) (blob.Ref, error) {
 		case callErr != nil:
 			return blob.Ref{}, callErr
 		case !called:
-			return blob.Ref{}, err
+			return blob.Ref{}, fmt.Errorf("%w: it is running", ErrNoRecord)
 		}
 		data, err := plain(output)
 		if err != nil {
@@ -804,13 +810,13 @@ func (c *Client) Files(ctx context.Context, id string) (map[string]File, error) 
 	var given any
 	latest, err := c.current(ctx, id)
 	switch {
-	case errors.Is(err, ErrNoRecord):
+	case errors.Is(err, ErrCalled):
 		output, called, callErr := c.calledOutput(ctx, id)
 		if callErr != nil {
 			return nil, callErr
 		}
 		if !called {
-			return nil, err
+			return nil, fmt.Errorf("%w: it is running", ErrNoRecord)
 		}
 		given = output
 	case err != nil:

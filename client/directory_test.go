@@ -118,7 +118,7 @@ func TestDrainLeavesRunsOnTheirDefinition(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := l.Taken(ctx, old, interval); err != nil {
+	if err := l.Taken(ctx, old, 0, interval); err != nil {
 		t.Fatal(err)
 	}
 	write(t, dir, "waits.yaml", strings.Replace(waits, "%s", "new", 1))
@@ -130,7 +130,7 @@ func TestDrainLeavesRunsOnTheirDefinition(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, id := range []string{old, fresh} {
-		if err := l.Taken(ctx, id, interval); err != nil {
+		if err := l.Taken(ctx, id, 0, interval); err != nil {
 			t.Fatal(err)
 		}
 		if _, err := l.Send(ctx, addressOf(t, l.Client, id), "go", nil, 0); err != nil {
@@ -205,20 +205,63 @@ func TestTreeIsAtItsNameByDefault(t *testing.T) {
 }
 
 // A file beside a directory of the same name, or with a name no location can
-// have, is refused, and so is the whole tree.
+// have, is reported among the files with problems, and the rest of the tree
+// is done.
 func TestTreeLocationsAreLeaves(t *testing.T) {
-	for name, files := range map[string]map[string]string{
-		"beside": {"boiler.yaml": keptMachine, "boiler/x.yaml": keptMachine},
-		"plus":   {"+.yaml": keptMachine},
-		"hash":   {"a#b.yaml": keptMachine},
+	for name, c := range map[string]struct {
+		files map[string]string
+		bad   []string
+	}{
+		"beside": {map[string]string{"boiler.yaml": keptMachine, "boiler/x.yaml": keptMachine}, []string{"boiler.yaml", "boiler/x.yaml"}},
+		"plus":   {map[string]string{"+.yaml": keptMachine}, []string{"+.yaml"}},
+		"hash":   {map[string]string{"a#b.yaml": keptMachine}, []string{"a#b.yaml"}},
+		"star":   {map[string]string{"a*.yaml": keptMachine}, []string{"a*.yaml"}},
 	} {
-		if _, err := client.ReadTree(house(t, files), "/x"); err == nil {
-			t.Errorf("%s: the tree was read", name)
+		c.files["good.yaml"] = keptMachine
+		tree, err := client.ReadTree(house(t, c.files), "/x")
+		if err != nil {
+			t.Fatalf("%s: %v", name, err)
 		}
+		var bad []string
+		for _, m := range tree.Machines {
+			if m.Problem != nil {
+				bad = append(bad, m.Path)
+			} else if m.Path != "good.yaml" {
+				t.Errorf("%s: %s has no problem", name, m.Path)
+			}
+		}
+		slices.Sort(bad)
+		if !slices.Equal(bad, c.bad) {
+			t.Errorf("%s: the files with problems are %v", name, bad)
+		}
+	}
+	l := local(t, "all")
+	done := submitTree(t, l, house(t, map[string]string{"boiler.yaml": keptMachine, "boiler/x.yaml": keptMachine, "good.yaml": keptMachine}), "/leaf")
+	var what []string
+	for _, row := range done.Locations {
+		what = append(what, row.Location+" "+row.What)
+	}
+	if want := []string{"/leaf/boiler problem", "/leaf/boiler/x problem", "/leaf/good started"}; !slices.Equal(what, want) {
+		t.Fatalf("the submit did %v", what)
 	}
 	tree, err := client.ReadTree(house(t, map[string]string{".rook/review.yaml": keptMachine}), "/project")
 	if err != nil || tree.Machines[0].Location != "/project/.rook/review" {
 		t.Fatalf("a file under a dot directory: %+v, %v", tree, err)
+	}
+}
+
+// A file that is not YAML is reported with the same words whether it is read
+// alone or in a directory.
+func TestNotYAMLSaidOnce(t *testing.T) {
+	dir := house(t, map[string]string{"bad.yaml": "flow: w\n# c\n# c\ninput: { days: number? }\n"})
+	tree, err := client.ReadTree(dir, "/x")
+	if err != nil || len(tree.Machines) != 1 || tree.Machines[0].Problem == nil {
+		t.Fatalf("read %+v, %v", tree, err)
+	}
+	_, alone := client.ReadMachine(dir, "bad.yaml")
+	want := "this is not YAML that can be read: line 4: "
+	if got := tree.Machines[0].Problem.Error(); !strings.HasPrefix(got, want) || alone == nil || !strings.HasPrefix(alone.Error(), want) {
+		t.Fatalf("in a directory %q, alone %v", got, alone)
 	}
 }
 
@@ -363,7 +406,7 @@ func submitTree(t *testing.T, l *client.Local, dir, at string) *instance.Submitt
 	}
 	for _, done := range receipt.Tree.Locations {
 		if done.Run != "" {
-			if err := l.Taken(ctx, done.Run, interval); err != nil {
+			if err := l.Taken(ctx, done.Run, 0, interval); err != nil {
 				t.Fatal(err)
 			}
 		}

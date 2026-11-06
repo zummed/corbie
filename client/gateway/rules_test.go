@@ -486,4 +486,11 @@ states:
 	if status, record, text := c.do("GET", "/runs/"+id+"/record", ""); status != 200 || len(record["entries"].([]any)) != 0 {
 		t.Fatalf("the record of a call was answered %d %s", status, text)
 	}
+	// Its definition and a cancel are more than its result, and refused as
+	// that, whether the run is done or not.
+	for route, method := range map[string]string{"/definition": "GET", "/cancel": "POST"} {
+		if status, _, text := c.do(method, "/runs/"+id+route, "{}"); status != 403 || !strings.Contains(text, "a call into a tree of another client") {
+			t.Errorf("%s /runs/<call>%s was answered %d %s", method, route, status, text)
+		}
+	}
 }

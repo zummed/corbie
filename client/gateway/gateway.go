@@ -402,6 +402,8 @@ func reply(w http.ResponseWriter, v any, err error) {
 		switch {
 		case errors.Is(err, client.ErrNoRun), errors.Is(err, client.ErrNoFile):
 			status = http.StatusNotFound
+		case errors.Is(err, client.ErrCalled):
+			status = http.StatusForbidden
 		case errors.Is(err, client.ErrNoRecord):
 			// The run is there, and what was asked for is not yet.
 			status = http.StatusConflict

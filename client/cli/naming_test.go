@@ -36,6 +36,11 @@ func Test_client_cancel_by_key(t *testing.T) {
 	if shown := m.ok("", "run", "show", b); !strings.Contains(shown, "running") {
 		t.Fatalf("the run of key b was touched: %s", shown)
 	}
+	// The list of running runs drops a cancelled run a moment after its end.
+	until(t, "the key's run to leave the running list", func() bool {
+		status, _, _ := m.run("", "run", "show", "/house/room#a")
+		return status != 0
+	})
 	status, out, said := m.run("", "run", "cancel", "/house/room#a")
 	if status != 1 || out != "" || !strings.Contains(said, "no run of this client's is running at /house/room#a") || strings.Contains(said, "usage") {
 		t.Fatalf("a cancel of a key with no run ended %d: %s%s", status, out, said)

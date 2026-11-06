@@ -180,7 +180,7 @@ func (c *Client) Start(ctx context.Context, draft *machine.Draft, start Start) (
 			copied := new(blob.Ref)
 			made[carried.At] = copied
 			uploads = append(uploads, func() (err error) {
-				*copied, err = blob.CopyWhole(ctx, s, carried, c.ctl(), run)
+				*copied, err = blob.CopyWhole(ctx, s, carried, c.ctl(), store.Blobs(c.ctl(), run))
 				return err
 			})
 		}

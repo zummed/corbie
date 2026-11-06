@@ -329,21 +329,45 @@ func ReadAll(ctx context.Context, s store.Store, ref Ref, limit int64) ([]byte, 
 	return contents, nil
 }
 
-// Copy puts a blob into another instance's record under the same name,
-// without its bytes passing through, and gives the copy's reference. Done
-// twice, it is done once.
-func Copy(ctx context.Context, s store.Store, ref Ref, ctl, instance string) (Ref, error) {
-	if ref.Instance() == instance {
+// Copy puts a blob into a directory of blobs under the same name, without
+// its bytes passing through, and gives the copy's reference. Done twice, it
+// is done once. Only a blob kept where blobs are kept is copied: in a
+// record, among a location's entries, beside a call's receipt, or among
+// the files a client sends with a message.
+func Copy(ctx context.Context, s store.Store, ref Ref, ctl, dir string) (Ref, error) {
+	if path.Dir(ref.At) == dir {
 		return ref, nil
 	}
-	name := path.Base(ref.At)
-	if ref.At != store.Blob(ctl, ref.Instance(), name) {
+	if !kept(ctl, ref.At) {
 		return Ref{}, ErrGone
 	}
-	to := store.Blob(ctl, instance, name)
+	to := dir + "/" + path.Base(ref.At)
 	if _, err := s.Copy(ctx, ref.At, to); err != nil {
 		return Ref{}, gone(err)
 	}
 	ref.At = to
 	return ref, nil
+}
+
+// kept says whether a name is one a blob is kept under in a controller's
+// area: a record's blobs/<name>, a location's blobs/<name>, a receipt's
+// blobs/<name>, or uploads/<client>/<message>/<name>. A name with a part
+// no store can hold is refused by the store.
+func kept(ctl, at string) bool {
+	name := path.Base(at)
+	if instance := store.InstanceOf(ctl, at); instance != "" {
+		return at == store.Blob(ctl, instance, name)
+	}
+	if location, _, ok := store.ParseLocation(ctl, at); ok {
+		return at == store.LocationBlob(ctl, location, name)
+	}
+	rest, ok := strings.CutPrefix(at, ctl+"/")
+	parts := strings.Split(rest, "/")
+	switch {
+	case ok && len(parts) == 5 && parts[0] == "receipts":
+		return at == store.ReceiptBlob(ctl, parts[1], parts[2], name)
+	case ok && len(parts) == 4 && parts[0] == "uploads":
+		return at == store.Upload(ctl, parts[1], parts[2], name)
+	}
+	return false
 }

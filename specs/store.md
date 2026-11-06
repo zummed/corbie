@@ -28,7 +28,8 @@ version                                  the layout's version
 <controller>/
   inbox/<sender>/<message>               messages to the controller
   receipts/<sender>/<message>/           what became of each message a client sent
-      receipt                            taken or refused; for a call, the run's status and its output or error
+      receipt                            taken or refused
+      result                             for a call, the run's status and its output or error
       blobs/<name>                       the blobs a call's output names
   running/<client>/<instance>            heads of instances that are running
   finished/<client>/<instance>           heads of instances that have ended

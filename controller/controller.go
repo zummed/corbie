@@ -273,7 +273,7 @@ func whole(msg *instance.Message) bool {
 	switch msg.Kind {
 	case instance.KindStart:
 		return msg.Start != nil
-	case instance.KindEvent, instance.KindKeyed:
+	case instance.KindEvent, instance.KindSend:
 		return msg.Event != nil && msg.Event.Name != ""
 	case instance.KindAnswer:
 		return msg.Answer != nil

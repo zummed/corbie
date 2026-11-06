@@ -16,9 +16,9 @@ A blob's contents are bytes to Corbie. A reference written inside a blob is not 
 
 ## Where a blob lives and when it goes
 
-Every blob lives inside the record of one instance, with the file recorded at one location, or with a call's receipt, and goes when that record goes, that file is replaced or removed, or that receipt is a day old. Nothing counts references and nothing extends a blob's life.
+Every blob lives inside the record of one instance, with the file recorded at one location, or with a call's result, and goes when that record goes, that file is replaced or removed, or that result is a day old. Nothing counts references and nothing extends a blob's life.
 
-A blob made by a job is written into the record of the instance the job is for. A blob a client supplies with a start is written into the new instance's record. The controller copies the files a client sends with a submit to their locations, and a location's file into the record of each run it starts there. It copies the files a client sends with a call into a tree it does not own into the called run's record, and the blobs that run's output names into the call's receipt.
+A blob made by a job is written into the record of the instance the job is for. A blob a client supplies with a start is written into the new instance's record. The controller copies the files a client sends with a submit to their locations, and a location's file into the record of each run it starts there. It copies the files a client sends with a call into a tree it does not own into the called run's record, and the blobs that run's output names beside the call's result.
 
 A value handed **down** to a child is read where it is. A child never outlives its parent, and a parent keeps what its running children still use.
 

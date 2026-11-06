@@ -48,20 +48,36 @@ func Trust(ctl, party string) string               { return ctl + "/trust/" + pa
 func TakenList(runner string) string               { return runner + "/taken" }
 func Uploads(ctl, client string) string            { return ctl + "/uploads/" + client }
 
+// Uploaded is where the files a client sends with one message are.
+func Uploaded(ctl, client, message string) string {
+	return ctl + "/uploads/" + client + "/" + message
+}
+
 // Upload is the name of a file a client sends with a message.
 func Upload(ctl, client, message, name string) string {
-	return ctl + "/uploads/" + client + "/" + message + "/" + name
+	return Uploaded(ctl, client, message) + "/" + name
 }
 
 // Receipt is the name of the controller's answer to a client's message: in
-// a directory of the message's own name, beside the blobs the answer names.
+// a directory of the message's own name.
 func Receipt(ctl, sender, message string) string {
 	return ctl + "/receipts/" + sender + "/" + message + "/receipt"
 }
 
-// ReceiptBlob is the name of a blob a receipt names.
+// Result is the name of what became of the run a client called in a tree
+// it does not own, beside the call's receipt.
+func Result(ctl, sender, message string) string {
+	return ctl + "/receipts/" + sender + "/" + message + "/result"
+}
+
+// ReceiptBlobs is where the blobs a call's result names are.
+func ReceiptBlobs(ctl, sender, message string) string {
+	return ctl + "/receipts/" + sender + "/" + message + "/blobs"
+}
+
+// ReceiptBlob is the name of a blob a call's result names.
 func ReceiptBlob(ctl, sender, message, name string) string {
-	return ctl + "/receipts/" + sender + "/" + message + "/blobs/" + name
+	return ReceiptBlobs(ctl, sender, message) + "/" + name
 }
 
 // ReceiptMessage reads the message out of the name of a receipt or of one

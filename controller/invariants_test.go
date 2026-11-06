@@ -15,7 +15,7 @@ import (
 var layout = []*regexp.Regexp{
 	regexp.MustCompile(`^version$`),
 	regexp.MustCompile(`^ctl/inbox/[^/]+/[^/]+$`),
-	regexp.MustCompile(`^ctl/receipts/[^/]+/[^/]+/(receipt|blobs/[^/]+)$`),
+	regexp.MustCompile(`^ctl/receipts/[^/]+/[^/]+/(receipt|result|blobs/[^/]+)$`),
 	regexp.MustCompile(`^ctl/(running|finished)/[^/]+/[^/]+$`),
 	regexp.MustCompile(`^ctl/records/[^/]+/[^/]+/steps/\d{8}$`),
 	regexp.MustCompile(`^ctl/records/[^/]+/[^/]+/emits/[^/]+/\d{8}$`),

@@ -68,7 +68,7 @@ func Test_store_no_name_is_a_path_above_another(t *testing.T) {
 		Wake("ctl", now, i, "timer.x"), Trust("ctl", "r1"),
 		Message("r1", "ctl", JobMessage(i, "fetch")), Taken("r1", now, JobMessage(i, "fetch")),
 		Message("ctl", "ctl", LinkMessage(i, 3, 0, "start")),
-		ReceiptBlob("ctl", "c1", "m1", "b1"), Upload("ctl", "c1", "m2", "f1"),
+		ReceiptBlob("ctl", "c1", "m1", "b1"), Result("ctl", "c1", "m1"), Upload("ctl", "c1", "m2", "f1"),
 		Tree("ctl", "/home"), LocationFile("ctl", "/home/boiler"), LocationBlob("ctl", "/home/boiler", "b1"),
 		Key("ctl", "/home/boiler", ""), Key("ctl", "/home/rooms", "k"), ClientKey("ctl", "c1", "k"),
 		LocationFile("ctl", "/project/.rook/review"), LocationFile("ctl", "/project/.rook"),
@@ -139,5 +139,8 @@ func Test_store_location_part_cannot_be_plus(t *testing.T) {
 	}
 	if message, ok := ReceiptMessage("ctl", ReceiptBlob("ctl", "c1", "m1", "b")); !ok || message != "m1" {
 		t.Errorf("a receipt's blob is read as of %q", message)
+	}
+	if message, ok := ReceiptMessage("ctl", Result("ctl", "c1", "m1")); !ok || message != "m1" {
+		t.Errorf("a call's result is read as of %q", message)
 	}
 }

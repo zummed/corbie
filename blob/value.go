@@ -239,17 +239,17 @@ func named(ctx context.Context, s store.Store, def Ref, seen map[string]bool) ([
 	return all, nil
 }
 
-// CopyWhole copies a blob into an instance's record, with what it names if
+// CopyWhole copies a blob into a directory of blobs, with what it names if
 // it is a stored definition. It gives the copy's reference.
-func CopyWhole(ctx context.Context, s store.Store, ref Ref, ctl, instance string) (Ref, error) {
+func CopyWhole(ctx context.Context, s store.Store, ref Ref, ctl, dir string) (Ref, error) {
 	named, err := Named(ctx, s, ref)
 	if err != nil {
 		return Ref{}, err
 	}
 	for _, inner := range named {
-		if _, err := Copy(ctx, s, inner, ctl, instance); err != nil {
+		if _, err := Copy(ctx, s, inner, ctl, dir); err != nil {
 			return Ref{}, err
 		}
 	}
-	return Copy(ctx, s, ref, ctl, instance)
+	return Copy(ctx, s, ref, ctl, dir)
 }

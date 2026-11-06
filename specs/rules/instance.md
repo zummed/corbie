@@ -7,8 +7,8 @@ The detailed rules behind the [Instances overview](../instance.md).
 **R-inst-01** The head is signed by the controller, and anyone who can read it can check the signature with the controller's card.
 *Accept:* read a head straight from the store and check it against the controller's card: it passes. Change one byte of it: the check fails and no viewer shows it.
 
-**R-inst-02** The head says what the instance is called, what type of machine it is, when it started, which instance is its parent, its key and the run whose send started it if it has them, whether it is running, done, failed or cancelled, and which step it has reached.
-*Accept:* the head of a flow started as a child by a statechart gives the flow's name, says it is a flow, gives a start time, names the statechart's instance as its parent, says `running` and gives the step the controller last wrote; a root's head names no parent. The heads of four ended runs show `done`, `failed` and `cancelled` as each ended.
+**R-inst-02** The head says what the instance is called, what type of machine it is, when it started, which instance is its parent, its location, its key at a keyed location and the run whose send or call started it if it has them, whether it is running, done, failed or cancelled, and which step it has reached.
+*Accept:* the head of a flow started as a child by a statechart at `/home/hall` gives the flow's name, says it is a flow, gives a start time, names the statechart's instance as its parent, gives `/home/hall` as its location, says `running` and gives the step the controller last wrote; a root's head names no parent. A run at the keyed location `/home/rooms/room` started by a send to the key `kitchen` gives that location, that key and the sending run, and a run a call job started names the calling run. The heads of four ended runs show `done`, `failed` and `cancelled` as each ended.
 
 **R-inst-05** The head says what the instance is waiting for: how many jobs on runners, how many timers, and the names of any tickets.
 *Accept:* a statechart in a state with one script job, one timer and `ticket: verdict` shows one job, one timer and `verdict` among its tickets. Once the job's result has been taken it shows no jobs; once the state is left it shows no ticket.
@@ -19,8 +19,8 @@ The detailed rules behind the [Instances overview](../instance.md).
 **R-inst-09** The head is sealed to nobody. Whoever the store lets read it can read all of it and needs no identity of their own.
 *Accept:* with the controller's card, the store's address and read access to heads, and no identity file, a viewer lists the heads and reads every field of each.
 
-**R-inst-10** Apart from its labels, the head holds nothing the instance was given or produced: no input, no output, no error text, no log line, no value of a ticket.
-*Accept:* run a machine whose input, output, error text, log lines, ticket value and ticket answer each hold a marker string of their own, on a memory store that keeps every version of every head. No version of any head holds any of the markers. A label holding a marker does appear.
+**R-inst-10** Apart from its location, key and labels, the head holds nothing the instance was given or produced: no input, no output, no error text, no log line, no value of a ticket.
+*Accept:* run a machine whose input, output, error text, log lines, ticket value and ticket answer each hold a marker string of their own, on a memory store that keeps every version of every head. No version of any head holds any of the markers. A label, a location and a key holding a marker do appear.
 
 **R-inst-12** The head may be a moment behind the record, and where the two differ the record is right.
 *Accept:* stop the controller after it has written step 4 and before it has touched the head, which says 3. A client's `run show` says the run is at step 4. The next pass brings the head to 4 and takes no new step to do it.
@@ -50,8 +50,11 @@ The detailed rules behind the [Instances overview](../instance.md).
 **R-inst-29** When the machine has said it wants to act on values of a name, the runner also tells the controller of each such value by a message; for values of any other name the controller plays no part.
 *Accept:* a flow has a stage that takes its items from what another stage emits: each item emitted reaches the machine as an event, and a message for it was written into the controller's inbox. A job that logs a hundred lines and reports progress, in a machine that has asked for none of them, causes one message from its runner to the controller: its result.
 
-**R-inst-32** Everything in a record is sealed so that the controller and the client that started the root can read it, and nobody else can.
-*Accept:* run a root with a child, with a marker string in each input, emit and output, and read the record's values raw: no marker shows. The client that started the root opens every entry of both records. Another enrolled client handed the same raw values opens none. A runner opens no step entry and no emit entry, the emits it wrote itself included.
+**R-inst-32** Everything in a record is sealed so that the controller and the client that owns the root's tree can read it, and nobody else can.
+*Accept:* run a root with a child, with a marker string in each input, emit and output, and read the record's values raw: no marker shows. The client that owns the root's tree opens every entry of both records. Another enrolled client handed the same raw values opens none, also when it called the root into that tree. A runner opens no step entry and no emit entry, the emits it wrote itself included.
+
+**R-inst-68** Among an instance's blobs is the definition it started with, and a later submit at its location does not change it.
+*Accept:* start a run at `/t/job`, then submit the tree again with `job.yaml` and its script changed. `run show` prints the definition the run started with, and its next job runs the script it started with. A run started at `/t/job` after the submit runs the new ones.
 
 ## How long it is kept
 
@@ -70,8 +73,8 @@ The detailed rules behind the [Instances overview](../instance.md).
 **R-inst-39** A blob in the record of a running instance stays for as long as the current state of that instance, or of any instance running below it, refers to it.
 *Accept:* a statechart's first state produced a file that its current state reads as `states.<name>.output`; three keeps later the file is still fetched. A parent hands a file down to a child, moves on so that its own state no longer mentions the file, and runs for three keeps while the child keeps running: the child's jobs still read the file, and once the child has ended and a keep has passed, the file is removed.
 
-**R-inst-41** The definition, its scripts and the run's secrets are never trimmed.
-*Accept:* after the trimming above, `run show` prints the instance's definition, a new job reads its script and the files it lists, and a job that names a run secret is sent its value.
+**R-inst-41** The definition and its scripts are never trimmed.
+*Accept:* after the trimming above, `run show` prints the instance's definition, and a new job reads its script and the files it lists.
 
 **C-inst-06** A blob is trimmed only when it is older than the keep as well as referred to by no current state. Step and emit entries younger than the keep refer to blobs too, and a watcher reading them would find nothing behind the reference. *Test:* `inst_trim_spares_blob_of_a_recent_entry`
 
@@ -109,8 +112,8 @@ The detailed rules behind the [Instances overview](../instance.md).
 
 ## Sending
 
-**R-inst-56** A client acts on an instance by writing a message into the controller's inbox, and there are four: start a run, cancel one, send it an event, answer a ticket. A client has no inbox of its own.
-*Accept:* `corbie run submit`, `run cancel`, `run send` and `run reply` each write exactly one message under `<controller>/inbox/<client>/` and write to no other place in the controller's or a runner's area, the uploads of a start apart. After starts, refusals, cancels, events, answers and finished runs, no name in the store is addressed to a client other than its receipts.
+**R-inst-56** A client acts by writing a message into the controller's inbox, and there are five: submit a tree, start a run, cancel one, send it an event, answer a ticket. A client has no inbox of its own.
+*Accept:* `corbie run submit` of a directory and of a location, `run cancel`, `run send` and `run reply` each write exactly one message under `<controller>/inbox/<client>/` and write to no other place in the controller's or a runner's area, the uploads of a submit or a start apart. After submits, starts, calls, refusals, cancels, events, answers and finished runs, no name in the store is addressed to a client other than its receipts and the results of its calls.
 
 **R-inst-58** For every message a client sends, the controller writes a receipt under the same name, saying that the message was taken or why it was refused. A start that is refused has a receipt saying why and no instance exists for it; an answer to a ticket for a run the client did not start has a receipt saying whether it was the one taken.
 *Accept:* a start, a cancel, an event and an answer that the controller takes each get a receipt saying taken. A cancel for a run the client did not start gets a receipt saying why it was refused. A start whose definition does not pass its check gets a receipt listing what is wrong, and no head and no record exist under the name the client chose. Client `c2`, which can read nothing of `c1`'s run, answers a ticket of that run: its receipt says the answer was the one taken, and a second answer to the same ticket gets a receipt saying it was not.
@@ -130,11 +133,17 @@ The detailed rules behind the [Instances overview](../instance.md).
 **R-inst-67** A message is good for as long as its sender says, and for a few minutes when the sender says nothing. Until the controller has taken a start there is no receipt and no head, and a client that asks is told the run is waiting to start.
 *Accept:* a start sent with a life of an hour is taken by a controller that first looks fifty minutes later; a start sent with no life given, found by a controller that first looks an hour later, is not taken, and its receipt says it came too late. With the controller stopped, `corbie run submit` prints the run's name and `corbie run show` on it says `waiting`, and the store holds the start message and its uploads and nothing else of the run.
 
+**R-inst-69** A client that calls a location in a tree it does not own is given the call's receipt at once, saying it was taken or why it was refused, and, when a taken call's run ends, the call's result beside the receipt: the run's status, its output or error, and the blobs the output names. The result is sealed to that client and kept for a day after the run ends.
+*Accept:* client `c2` calls a location in `c1`'s tree whose run ends with a marker string and a file in its output. The receipt says taken before the run ends, and no result is there until it ends. Then the result says `done` and holds the output, the file opens from the receipt's `blobs/` after `c1`'s run has been removed, and the result read raw shows no marker and does not open for `c1`. A call the receiver's `receive:` refuses has a receipt saying why and no result. The result of a call whose run took two days can be read twenty-three hours after the run ended, and is gone after a day and a housekeeping pass.
+
+**R-inst-70** A client that calls a location in a tree it does not own uploads the input's files under the call's name, and the controller copies them into the new run's record.
+*Accept:* on a memory store that notes every write, `c2`'s call with two files writes two names under `<controller>/uploads/c2/<the call's name>/` and then the call. The run's input refers to two blobs in its own record, written by the controller, and its jobs read the files.
+
 ## Interfaces
 
 Uses:
 
-- **Store**: heads under `running/` and `finished/`, records under `records/`, receipts under `receipts/`, each within the table of who may touch what; ordered listing, each name with what a read of it gives; the notice a directory or memory store gives a watcher in the same process.
+- **Store**: heads under `running/` and `finished/`, records under `records/`, receipts and the results of calls under `receipts/`, the files sent with a message under `uploads/`, each within the table of who may touch what; ordered listing, each name with what a read of it gives; the notice a directory or memory store gives a watcher in the same process.
 - **Identity**: the controller's signature on a head; the sealing of record entries to the controller and the root's client, and of a receipt to its client; the signature of a runner on what it emits.
 - **Blobs**: the larger values a record's entries refer to, where they live in the record, and the rules for when a blob in a record goes.
 
@@ -142,7 +151,6 @@ Used by:
 
 - **Controller**: writes step entries, heads and receipts; brings the head up to date after each step (R-ctl-27) and moves it when an instance ends; accepts or refuses each of a client's messages; trims and removes what is past keeping, a little at a time (R-ctl-98).
 - **Runner**: writes a job's emit entries and blobs into the instance's record, in batches (C-run-33), every one before the job's result (C-run-23), and a message to the controller for each emitted value the machine wants.
-- **Client**: writes the four messages and a start's uploads; lists, shows and follows runs by the one way of watching; owns what a viewer is told at the awkward moments: a receipt before a head, a start never taken (R-client-36 to R-client-40), and C-inst-02.
+- **Client**: writes the five messages and their uploads; lists, shows and follows runs by the one way of watching; owns what a viewer is told at the awkward moments: a receipt before a head, a start never taken (R-client-36 to R-client-40), and C-inst-02.
 - **Machines** and each machine type: the state a step entry holds, and what a watcher is shown of it.
 - **Roles**: a pass that is killed leaves the head and the record as R-inst-12, R-inst-13 and C-ctl-16 describe.
-- **Secrets**: a run's secrets are kept, sealed, in the root's record and are never trimmed (R-inst-41).

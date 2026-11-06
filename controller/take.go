@@ -280,7 +280,7 @@ func (b *build) arrive(a *arrival) error {
 		}
 	case instance.KindEmit:
 		b.emit(a)
-	case instance.KindKeyed:
+	case instance.KindSend:
 		if a.isKeyed() {
 			b.keyed(a)
 		} else {

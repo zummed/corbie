@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -226,7 +227,7 @@ func definition(t *testing.T, s store.Store, instance string, inner ...Ref) Ref 
 // instance's record, as a value is handed up.
 func copyAll(s store.Store, v any, instance string) (any, error) {
 	return Walk(v, func(_ string, ref Ref) (any, error) {
-		copied, err := CopyWhole(ctx, s, ref, "ctl", instance)
+		copied, err := CopyWhole(ctx, s, ref, "ctl", store.Blobs("ctl", instance))
 		return copied.Value(), err
 	})
 }
@@ -280,12 +281,71 @@ func Test_blob_copy_up_takes_blobs_referred_to_inside_blobs(t *testing.T) {
 	}
 }
 
+// A definition a client uploads with a submit goes to its location, from
+// there into the record of each run started at it, and what a called run's
+// output names goes beside the call's receipt. Each copy takes what a
+// definition names, and opens wherever it is.
+func TestBlobsAreCopiedBetweenAreas(t *testing.T) {
+	s := memory(t)
+	script := write(t, s, store.Upload("ctl", "c1", "m1", NewName()), []byte("return 1"))
+	contents, _ := json.Marshal(map[string]any{"flow": "x", "scripts": []any{script.Local().Value()}})
+	def, err := Write(ctx, s, store.Upload("ctl", "c1", "m1", NewName()), Definition, NewKey(), bytes.NewReader(contents))
+	if err != nil {
+		t.Fatal(err)
+	}
+	run := "c1/20261010T120000.000Z-run"
+	var copies []Ref
+	for _, dir := range []string{
+		store.LocationBlobs("ctl", "/home/.rook/boiler"),
+		store.Blobs("ctl", run),
+		store.ReceiptBlobs("ctl", "c2", "m2"),
+		store.Uploaded("ctl", "c2", "m3"),
+	} {
+		if def, err = CopyWhole(ctx, s, def, "ctl", dir); err != nil {
+			t.Fatalf("a copy into %s: %v", dir, err)
+		}
+		if path.Dir(def.At) != dir {
+			t.Fatalf("the copy into %s is at %s", dir, def.At)
+		}
+		named, err := Named(ctx, s, def)
+		if err != nil || len(named) != 1 || path.Dir(named[0].At) != dir {
+			t.Fatalf("what the copy in %s names: %v (%v)", dir, named, err)
+		}
+		if got, err := ReadAll(ctx, s, named[0], StepLimit); err != nil || string(got) != "return 1" {
+			t.Fatalf("the script beside the copy in %s: %q (%v)", dir, got, err)
+		}
+		copies = append(copies, def)
+	}
+	if def.Instance() != "" || copies[1].Instance() != run {
+		t.Error("a copy tells the wrong record it lives in")
+	}
+	// Done twice, it is done once.
+	before, _ := store.Names(s.List(ctx, "ctl"))
+	if again, err := CopyWhole(ctx, s, copies[0], "ctl", store.LocationBlobs("ctl", "/home/.rook/boiler")); err != nil || again != copies[0] {
+		t.Fatalf("a copy into where it is: %v", err)
+	}
+	if after, _ := store.Names(s.List(ctx, "ctl")); len(after) != len(before) {
+		t.Fatal("a second copy wrote more blobs")
+	}
+	// Nothing but a blob kept where blobs are is copied.
+	for _, at := range []string{
+		store.LocationFile("ctl", "/home/boiler"), store.Receipt("ctl", "c2", "m2"), store.Result("ctl", "c2", "m2"),
+		store.Tree("ctl", "/home"), store.Value("ctl", "/home", "HUB"), store.Step("ctl", run, 1), "ctl/uploads/c1/m1",
+		"ctl/receipts/c2/m2/blobs", "ctl/elsewhere/c1/m1/x",
+	} {
+		s.Write(ctx, at, []byte("sealed"), store.Overwrite)
+		if _, err := Copy(ctx, s, Ref{At: at, Size: 6, Key: NewKey()}, "ctl", store.Blobs("ctl", run)); err != ErrGone {
+			t.Errorf("%s copied as a blob: %v", at, err)
+		}
+	}
+}
+
 func Test_blob_directory_linked_copy_survives_original_removed(t *testing.T) {
 	dir := t.TempDir()
 	s, _ := store.Open(dir)
 	contents := bytes.Repeat([]byte("large"), 100000)
 	ref := write(t, s, store.Blob("ctl", "c1/i1", "b"), contents)
-	copied, err := Copy(ctx, s, ref, "ctl", "c1/i2")
+	copied, err := Copy(ctx, s, ref, "ctl", store.Blobs("ctl", "c1/i2"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -326,7 +386,7 @@ func TestFaultsOfABlobAreItsOwn(t *testing.T) {
 		"a definition that is not one":   real,
 		"a definition that is not there": {At: "ctl/records/c1/i1/blobs/none", Type: Definition, Size: 4, Key: NewKey()},
 	} {
-		_, err := CopyWhole(ctx, s, ref, "ctl", "c1/i2")
+		_, err := CopyWhole(ctx, s, ref, "ctl", store.Blobs("ctl", "c1/i2"))
 		if !Unusable(err) {
 			t.Errorf("%s: copying gives %v", what, err)
 		}

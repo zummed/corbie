@@ -10,7 +10,8 @@ Layout
     inbox/<sender>/<message>      messages from clients and runners, and its own for child runs
     receipts/<sender>/<message>/
         receipt                   its answer to a message from a client
-        blobs/<name>              each file the answer names
+        result                    how a run the client called in another client's tree ended
+        blobs/<name>              each file that result names
     running/<client>/<run>        the status of each run in progress
     finished/<client>/<run>       the status of each run that has ended
     records/<client>/<run>/

@@ -29,7 +29,7 @@ import (
 // isKeyed says an arrival is an event the controller carried for a run that
 // sent it to a key. No other party can send one.
 func (a *arrival) isKeyed() bool {
-	return !a.wake && a.msg.Kind == instance.KindKeyed && a.kind == identity.Controller
+	return !a.wake && a.msg.Kind == instance.KindSend && a.kind == identity.Controller
 }
 
 // starts says an arrival starts an instance: a start, or an event sent to a
@@ -238,7 +238,7 @@ func (p *pass) toKey(inst string, step *instance.Step, ask *instance.Ask) error 
 	if err != nil {
 		return err
 	}
-	msg := &instance.Message{Kind: instance.KindKeyed, Instance: ask.To, From: inst, Key: ask.Key, Event: &machine.Event{Name: ask.Event.Name, Data: data}}
+	msg := &instance.Message{Kind: instance.KindSend, Instance: ask.To, From: inst, Key: ask.Key, Event: &machine.Event{Name: ask.Event.Name, Data: data}}
 	if ask.Run != "" {
 		// Named by the run it starts, so its seed is its own.
 		named := *ask
@@ -269,7 +269,7 @@ func (p *pass) toKey(inst string, step *instance.Step, ask *instance.Ask) error 
 // a root, and outlives the record of the run that sent: its definition, the
 // machines and scripts that names, and the ask handed down to it.
 func (p *pass) own(start *instance.Start, run string) (*machine.Error, error) {
-	def, err := blob.CopyWhole(p.ctx, p.store, start.Definition, p.ctl, run)
+	def, err := blob.CopyWhole(p.ctx, p.store, start.Definition, p.ctl, store.Blobs(p.ctl, run))
 	if err != nil {
 		if err = p.blobError(err); err != nil {
 			return nil, err
@@ -281,7 +281,7 @@ func (p *pass) own(start *instance.Start, run string) (*machine.Error, error) {
 		return nil, nil
 	}
 	ask := *start.Above.Ask
-	if ask.Definition, err = blob.CopyWhole(p.ctx, p.store, ask.Definition, p.ctl, run); err != nil {
+	if ask.Definition, err = blob.CopyWhole(p.ctx, p.store, ask.Definition, p.ctl, store.Blobs(p.ctl, run)); err != nil {
 		if err = p.blobError(err); err != nil {
 			return nil, err
 		}

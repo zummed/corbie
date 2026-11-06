@@ -302,7 +302,7 @@ func (p *pass) carry(inst string, step *instance.Step, ask *instance.Ask) error 
 // handed up as it is, and opens nothing there as it opened nothing here.
 func (p *pass) handUp(v any, to string) (any, error) {
 	return blob.Walk(v, func(_ string, ref blob.Ref) (any, error) {
-		copied, err := blob.CopyWhole(p.ctx, p.store, ref, p.ctl, to)
+		copied, err := blob.CopyWhole(p.ctx, p.store, ref, p.ctl, store.Blobs(p.ctl, to))
 		if err != nil {
 			return ref.Value(), p.blobError(err)
 		}
@@ -365,7 +365,7 @@ func (p *pass) same(name string, msg *instance.Message) (bool, error) {
 		return false, nil
 	}
 	// An event sent to a key may have been moved on to another run.
-	return there.Kind == msg.Kind && there.From == msg.From && (there.Instance == msg.Instance || msg.Kind == instance.KindKeyed), nil
+	return there.Kind == msg.Kind && there.From == msg.From && (there.Instance == msg.Instance || msg.Kind == instance.KindSend), nil
 }
 
 // failJob fails a job before anything was sent for it. The failure reaches

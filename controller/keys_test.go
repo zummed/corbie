@@ -1222,7 +1222,7 @@ func Test_store_key_file_is_signed_and_sealed(t *testing.T) {
 	}
 	// A note from a client to the controller is no message it acts on.
 	id := "20261010T120000.000000Z-ffffff"
-	w.leave(w.c1, id, &instance.Message{Kind: instance.KindKeyed, Instance: run, From: run,
+	w.leave(w.c1, id, &instance.Message{Kind: instance.KindSend, Instance: run, From: run,
 		Event: &machine.Event{Name: "finish"}})
 	w.settle()
 	if head := w.head(run); head.Status != instance.Running {
@@ -1396,7 +1396,7 @@ func (w *world) keyedMessage() (string, []byte) {
 			w.t.Fatal(err)
 		}
 		var msg instance.Message
-		if _, err := identity.Read(data, name, w.ctl.Card, w.ctl, &msg); err == nil && msg.Kind == instance.KindKeyed {
+		if _, err := identity.Read(data, name, w.ctl.Card, w.ctl, &msg); err == nil && msg.Kind == instance.KindSend {
 			found = append(found, name)
 		}
 	}

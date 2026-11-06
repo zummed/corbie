@@ -11,6 +11,7 @@ import (
 
 // The kinds of message.
 const (
+	KindSubmit = "submit" // record a tree at a prefix
 	KindStart  = "start"  // start a run
 	KindCancel = "cancel" // cancel a run; to a runner, cancel a job
 	KindEvent  = "event"  // send a run an event
@@ -18,7 +19,7 @@ const (
 	KindResult = "result" // a job's outcome: a script's from its runner, a child's from the controller
 	KindEmit   = "emit"   // a value a job sent up that the machine wants
 	KindJob    = "job"    // a job for a runner
-	KindKeyed  = "keyed"  // an event sent to a key, with what starts a run for it if there is one
+	KindSend   = "send"   // an event sent to an address, with what starts a run for it if there is one
 	KindNote   = "note"   // something to be written in a run's record
 )
 
@@ -33,6 +34,11 @@ type Message struct {
 	From string `json:"from,omitzero"`
 	// Key is the key an event was sent to.
 	Key string `json:"key,omitzero"`
+	// To is the address an event is sent to or a call starts a run at, and
+	// Sender the run or client it is from. Only the controller writes
+	// Sender.
+	To     *machine.Address `json:"to,omitzero"`
+	Sender *machine.Address `json:"sender,omitzero"`
 
 	Start  *Start         `json:"start,omitzero"`
 	Event  *machine.Event `json:"event,omitzero"`
@@ -66,9 +72,12 @@ type Start struct {
 	Seed []byte `json:"seed"`
 	// Above is set by the controller when it starts a child.
 	Above *Above `json:"above,omitzero"`
-	// Key is the key the run is started with.
+	// Location is the location the run is started at: its machine is the
+	// file recorded there.
+	Location string `json:"location,omitzero"`
+	// Key is the run's key at a keyed location.
 	Key string `json:"key,omitzero"`
-	// Context is the directory the client submitted from.
+	// Context is the directory last submitted at the run's tree.
 	Context string `json:"context,omitzero"`
 	// Run is the run an event sent to a key starts: the event's data is its
 	// input. What a client or a job starts is the message's own instance.
@@ -132,7 +141,7 @@ type Job struct {
 	Due time.Time `json:"due"`
 	// Wants names the emitted values the machine wants to hear about.
 	Wants []string `json:"wants,omitzero"`
-	// Client is the card of the client that started the root: what the job
-	// adds to the record is sealed to it and to the controller.
+	// Client is the card of the client that owns the root's tree: what the
+	// job adds to the record is sealed to it and to the controller.
 	Client identity.Card `json:"client"`
 }

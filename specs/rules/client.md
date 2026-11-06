@@ -179,15 +179,15 @@ The detailed rules behind [the Client overview](../client.md).
 
 **C-client-53** A model runs a program on PATH only for a command the server's `--allow` names by its whole name, and `corbie start` never starts a program for a model. Anything on the owner's PATH would otherwise be a model's to run. *Test:* `client_model_runs_a_program_only_as_allowed`
 
-## A directory of machines
+## A tree
 
-**R-client-146** `corbie run submit` given directories reads every machine in them and those below them, and reads no `.git`. It takes no flag of a start but `--again`. A run of a machine has the key `file:<path>` and the labels `machine` and `hash`, and the command keeps nothing else, so running it again starts nothing new. *Test:* `TestDirectoryStartsItsMachines`, `TestSecondSubmitStartsNothing`
+**R-client-146** `corbie run submit <dir> --at <prefix>` records one directory as a tree: it reads every `*.yaml` in it and below it, but for `.git`, and each file whose first key gives a type of machine has a location, its path under the prefix without `.yaml`. `--at` is `/` and the directory's real name by default. A file beside a directory of the same name, or whose location has a part a location cannot have, is refused before anything is sent. *Test:* `TestTreeStartsItsSingletons`, `TestTreeIsAtItsNameByDefault` and `TestTreeLocationsAreLeaves`
 
-**R-client-147** It starts a machine with no run, or whose latest run is at another hash, cancelling that run first, and cancels the run of a file gone from a directory it was given. A run at the machine's hash stays as it is, running or ended, and `--again <file>` starts one that ended. *Test:* `TestChangedMachineStartedAgain`, `TestFilePutBackStartsAgain`, `TestRemovedMachineIsCancelled`, `TestOtherDirectoriesAreLeftAlone`, `TestRunThatEndedStaysEnded`, `TestRunCancelledByHandStaysStopped`, `TestAgainStartsARunThatEnded`
+**R-client-147** The submit prints, for each location, its lifetime and what was done there, `started <id>`, `restarted <id>`, `recorded`, `removed` or `problem`, then the directory last submitted there when it was another, and the secrets and values the files use that are not set at their locations or above. It exits when each run it cancelled has ended and each run it started has been taken up. A refused submit prints the refusal and fails. *Test:* `TestTreeStartsItsSingletons`, `TestSecondSubmitStartsNothing`, `TestChangedSingletonStartedAgain` and `TestRemovedFileCancelsItsRuns`
 
-**R-client-148** A file with a problem, or a file with a run that no longer reads as a machine, is reported and leaves its run as it is, and the rest are still done. A run that cannot be cancelled, or has not ended by the time the message is no longer good, is reported, and its machine is not started. The command then fails. *Test:* `TestFileWithAProblemKeepsItsRun`, `TestFileThatIsNoLongerAMachineKeepsItsRun`
+**R-client-148** A file with a problem is reported, its location keeps what was recorded before and its runs, and the rest of the tree is done. The command then fails. *Test:* `TestFileWithAProblemKeepsItsLocation`
 
-**R-client-149** A start carries the context, and every expression of the run and of what it starts reads it as `run.context`. A directory's machines are given no input. *Test:* `TestContextIsReadByARunAndItsChildren`
+**R-client-149** A run reads the tree's directory as `run.context` and its location as `run.location`, and so does what it starts. A singleton is given no input. *Test:* `TestContextIsReadByARunAndItsChildren`
 
 **R-client-150** `corbie test` given directories reads every machine in them as `corbie run submit` does, prints each one ok or its problems, takes no flag of a start, reads no config and no store, and starts and cancels nothing. It fails when a machine has a problem. *Test:* `TestTestReadsADirectory`
 

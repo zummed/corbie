@@ -42,24 +42,33 @@ type Parser struct {
 // the contents of a file the definition names, by its path. A definition
 // that holds a job for approval and has no ask for it to go to is refused.
 func Parse(src []byte, load func(path string) ([]byte, error)) (*Draft, error) {
-	return parse(src, "", load, true)
+	return parse(src, "", load, true, false)
 }
 
 // ParseIn is Parse for a definition kept in a file of the context, by its
 // path from the context. load gives a file by its path from the context.
 func ParseIn(file string, src []byte, load func(path string) ([]byte, error)) (*Draft, error) {
-	return parse(src, file, load, true)
+	return parse(src, file, load, true, false)
+}
+
+// ParseAt is ParseIn for a file at a location in a tree. Whether its
+// approvals have an ask to go to is settled when a run starts there: the
+// file may run only as another machine's child, under that machine's ask.
+func ParseAt(file string, src []byte, load func(path string) ([]byte, error)) (*Draft, error) {
+	return parse(src, file, load, false, false)
 }
 
 // ParseMade is Parse for a definition made while a machine runs. Whether
 // its approvals have an ask to go to is left open: that is settled by what
 // is above it when a job is held.
 func ParseMade(src []byte, load func(path string) ([]byte, error)) (*Draft, error) {
-	return parse(src, "", load, false)
+	return parse(src, "", load, false, true)
 }
 
-func parse(src []byte, file string, load func(path string) ([]byte, error), root bool) (*Draft, error) {
-	p := &Parser{load: load, dir: path.Dir(file), top: file, source: file, noted: map[Problem]bool{}, includes: new(int), reads: map[string]*read{}, made: !root}
+// parse reads a definition. root says one whose approvals have no ask to go
+// to is refused, and made that it was made while a machine runs.
+func parse(src []byte, file string, load func(path string) ([]byte, error), root, made bool) (*Draft, error) {
+	p := &Parser{load: load, dir: path.Dir(file), top: file, source: file, noted: map[Problem]bool{}, includes: new(int), reads: map[string]*read{}, made: made}
 	if file == "" {
 		p.dir = ""
 	} else {

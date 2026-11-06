@@ -7,6 +7,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -265,7 +266,11 @@ func cmdInit(e *Env, args []string) error {
 	// The controller trusts the runner and the client; they trust it. A
 	// name stays tied to the key it was first trusted with, here as when a
 	// party is enrolled, and both are looked at before either is written.
-	trusted := []identity.Trust{{Card: run.Card}, {Card: cli.Card, Ceiling: limit}}
+	// The client's ceiling holds at:/** beside the ceiling, so it may
+	// submit a tree at any prefix.
+	clientCeiling := limit
+	clientCeiling.Allow = append(slices.Clone(limit.Allow), permission.At+":/**")
+	trusted := []identity.Trust{{Card: run.Card}, {Card: cli.Card, Ceiling: clientCeiling}}
 	for _, t := range trusted {
 		old, err := identity.ReadTrust(e.ctx, s, ctl.Card, t.Card.Name)
 		if err != nil {

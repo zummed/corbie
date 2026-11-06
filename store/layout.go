@@ -267,6 +267,14 @@ func ChildInstance(parent string, at time.Time, job string) string {
 	return InstanceClient(parent) + "/" + Stamp(at) + "-" + hex.EncodeToString(sum[:5])
 }
 
+// RootInstance makes the name of a root instance that the controller starts
+// for a client, as a submit starts a singleton. It follows from what asked
+// for it, so that asking twice names one instance.
+func RootInstance(client string, at time.Time, from string) string {
+	sum := sha256.Sum256([]byte(client + "\x00" + from))
+	return client + "/" + Stamp(at) + "-" + hex.EncodeToString(sum[:5])
+}
+
 // CheckInstance says whether name has the form of an instance's name.
 func CheckInstance(name string) error {
 	client, id, ok := strings.Cut(name, "/")
@@ -279,7 +287,7 @@ func CheckInstance(name string) error {
 	return nil
 }
 
-// InstanceClient is the client that started the instance's root.
+// InstanceClient is the client that owns the tree of the instance's root.
 func InstanceClient(instance string) string {
 	client, _, _ := strings.Cut(instance, "/")
 	return client

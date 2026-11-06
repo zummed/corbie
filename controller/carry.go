@@ -26,9 +26,10 @@ func errorsIs(err, target error) bool { return errors.Is(err, target) }
 // messages and wakes the entry names. Every write is only-if-new under a
 // name the entry gives, so doing any of it again is harmless.
 func (p *pass) finish(inst string, step *instance.Step) error {
-	// The step that ends a run frees its key before anything else.
-	if st := &step.State; st.Status != instance.Running && st.Key != "" {
-		if err := p.free(inst, st.Key); err != nil {
+	// The step that ends a run frees its key before anything else: a
+	// singleton's is the empty key.
+	if st := &step.State; st.Status != instance.Running && (st.Key != "" || st.Lifetime == machine.LifetimeSingleton) {
+		if err := p.free(inst, p.keyAt(inst, st.Lifetime, st.Location, st.Key), st.Key); err != nil {
 			return err
 		}
 	}
@@ -417,11 +418,15 @@ func (p *pass) job(inst string, step *instance.Step, ask *instance.Ask) (*instan
 	ceiling.Fix = fmt.Sprintf("the controller's owner runs: corbie controller enrol %s --allow %%s", client.Card.Name)
 	job.Layers = append(job.Layers, ceiling)
 
-	// Every run is at "/" until runs are started at their locations.
-	location := "/"
+	// A run started with no location reads the secrets set at "/".
+	location := st.Location
+	if location == "" {
+		location = "/"
+	}
 
-	// The values of the secrets the job names, and no others. A run secret
-	// overrides a controller secret of the same name. One that a layer does
+	// The values of the secrets the job names, and no others: those set
+	// nearest the run's location, or a run secret the start gave. One that a
+	// layer does
 	// not let travel at all is not sent, and the job is refused as its
 	// script would be on using it.
 	for _, name := range secret.Named(asked.Allow) {
@@ -511,8 +516,9 @@ func (p *pass) child(inst string, step *instance.Step, ask *instance.Ask) *insta
 	}
 	above := &instance.Above{Parent: inst, Job: ask.Name, Depth: st.Above.Depth + 1, MaxDepth: st.Above.MaxDepth,
 		Layers:   layers,
-		AskAbout: st.Above.AskAbout, Ask: st.Above.Ask, Secrets: st.Above.Secrets, Context: st.Above.Context, IsAsk: job.Name == instance.AskName,
-		Made: made || st.Above.Made && !job.Above, Keep: st.Keep}
+		AskAbout: st.Above.AskAbout, Ask: st.Above.Ask, Secrets: st.Above.Secrets, Context: st.Above.Context, Values: st.Above.Values,
+		IsAsk: job.Name == instance.AskName,
+		Made:  made || st.Above.Made && !job.Above, Keep: st.Keep}
 	// The nearest ask above the child is the one its job goes to: an ask
 	// nearer than its machine's, or the machine's own. A machine made while
 	// running keeps none, so it hands down the one above it.
@@ -529,8 +535,9 @@ func (p *pass) child(inst string, step *instance.Step, ask *instance.Ask) *insta
 	}
 	mac := hmac.New(sha256.New, st.Seed)
 	mac.Write([]byte("child\x00" + ask.Name))
+	// A child runs at its parent's location.
 	start := &instance.Start{Definition: job.Found.Blob, Input: job.Input, Labels: st.Labels, Timeout: job.Timeout,
-		Seed: mac.Sum(nil), Above: above}
+		Seed: mac.Sum(nil), Above: above, Location: st.Location, Tree: st.Tree}
 	if job.RunKey != nil {
 		start.Key = *job.RunKey
 	}
@@ -561,7 +568,7 @@ func (p *pass) writeReceipt(sender, message string, r *instance.Receipt) error {
 func (p *pass) head(inst string, step *instance.Step) error {
 	st := &step.State
 	head := &instance.Head{Name: inst, Machine: st.Machine, Type: st.Type, Status: st.Status, Step: step.Number,
-		Started: st.Started, Ended: st.Ended, Parent: st.Above.Parent, Key: st.Key, StartedBy: st.Above.StartedBy,
+		Started: st.Started, Ended: st.Ended, Parent: st.Above.Parent, Location: st.Location, Key: st.Key, StartedBy: st.Above.StartedBy,
 		Timers: len(st.Timers), Labels: st.Labels, Keep: st.Keep}
 	if st.Error != nil && st.Status == instance.Failed {
 		head.Failure = st.Error.Status

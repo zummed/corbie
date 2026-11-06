@@ -25,7 +25,7 @@ type Definition struct {
 	Keep    Duration       `json:"keep,omitzero"`    // how long its instances are kept
 	Timeout string         `json:"timeout,omitzero"` // how long an instance may run: a length of time, or an expression
 	Title   string         `json:"title,omitzero"`   // what a run is called: text, or text with expressions
-	Depth   *int           `json:"depth,omitzero"`   // how many levels of machines may be below it; eight if not said
+	Depth   *int           `json:"depth,omitzero"`   // how many levels of machines may be below it; sixteen if not said
 	Jobs    int            `json:"jobs,omitzero"`    // how many jobs an instance may start
 	Allow   []string       `json:"allow,omitzero"`
 	Deny    []string       `json:"deny,omitzero"`
@@ -69,7 +69,7 @@ const (
 // The defaults of a definition that says nothing.
 const (
 	DefaultKeep    = Duration(7 * 24 * 3600e9)
-	DefaultDepth   = 8
+	DefaultDepth   = 16
 	DefaultTimeout = Duration(5 * 60e9)
 )
 

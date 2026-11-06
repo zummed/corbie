@@ -33,7 +33,7 @@ expressions read `input`, `values` and `run`.
 `limits:` takes these.
 
   timeout: 1h    how long a run may take; default no limit
-  depth: 8       levels of child runs below a run that a client started; default 8, 0 for none
+  depth: 16      levels of child runs below a run that a client or a submit started; default 16, 0 for none
   jobs: 100      how many jobs a run may start; default no limit
   runs: 50       of a keyed file, how many of its runs may be running at once; default no limit
   turns: 20      an agent's turns, as in `corbie manual agent`

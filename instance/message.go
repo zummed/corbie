@@ -41,6 +41,7 @@ type Message struct {
 	Sender *machine.Address `json:"sender,omitzero"`
 
 	Start  *Start         `json:"start,omitzero"`
+	Submit *Submit        `json:"submit,omitzero"`
 	Event  *machine.Event `json:"event,omitzero"`
 	Answer *Answer        `json:"answer,omitzero"`
 	Result *Result        `json:"result,omitzero"`
@@ -77,11 +78,38 @@ type Start struct {
 	Location string `json:"location,omitzero"`
 	// Key is the run's key at a keyed location.
 	Key string `json:"key,omitzero"`
+	// Tree is the prefix of the tree the location is in, for a child, which
+	// runs at its parent's location.
+	Tree string `json:"tree,omitzero"`
 	// Context is the directory last submitted at the run's tree.
 	Context string `json:"context,omitzero"`
+	// Replaces is, for a singleton a submit starts again, the run it
+	// replaces: the new run starts once that one has ended.
+	Replaces string `json:"replaces,omitzero"`
 	// Run is the run an event sent to a key starts: the event's data is its
 	// input. What a client or a job starts is the message's own instance.
 	Run string `json:"run,omitzero"`
+}
+
+// A Submit records a directory as a tree at a prefix. Files are its
+// machines, by location, each uploaded with the message; Problems are the
+// locations of files that could not be read, which keep what was recorded
+// before.
+type Submit struct {
+	Prefix    string                `json:"prefix"`
+	Directory string                `json:"directory"`
+	Files     map[string]SubmitFile `json:"files,omitzero"`
+	Problems  []string              `json:"problems,omitzero"`
+}
+
+// A SubmitFile is one machine of a submit: its stored definition among the
+// message's uploads, the hash of what it runs, and the names of the secrets
+// and the values it uses.
+type SubmitFile struct {
+	Definition blob.Ref `json:"definition"`
+	Hash       string   `json:"hash"`
+	Secrets    []string `json:"secrets,omitzero"`
+	Values     []string `json:"values,omitzero"`
 }
 
 // An Answer answers a ticket: the ticket's value and the answer.

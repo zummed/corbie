@@ -73,7 +73,7 @@ These are true of keys.
 - A key is any text of at most 256 characters, and anyone who can list runs can
   read it.
 - A run a send starts counts as one level below its sender, so a chain of
-  sends that each start a run ends at `limits: { depth: }`, 8 by default.
+  sends that each start a run ends at `limits: { depth: }`, 16 by default.
 - A run remembers the last message of each of its 64 most recent senders. A
   controller stopped while it sends, with 64 others heard before it resumes,
   can deliver an event twice.

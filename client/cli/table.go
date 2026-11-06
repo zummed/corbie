@@ -173,7 +173,7 @@ Given directories, it reads every machine in them as corbie run submit does,
 prints each one ok or its problems, and starts nothing. It fails when a
 machine has a problem.
 ` + scripts},
-		{Name: "run submit", Usage: "<definition or script> [--input <json>] [--wait | --watch] | <directory>... [--again <file>]", Summary: "start a run and print its ID", Run: cmdSubmit, Help: `
+		{Name: "run submit", Usage: "<definition or script> [--input <json>] [--wait | --watch] | <directory> [--at <prefix>]", Summary: "start a run and print its ID, or record a tree", Run: cmdSubmit, Help: `
 It reads the definition and the files it names, reports every fault in them
 together, uploads the files and sends the start message. It prints the run's
 ID and exits, unless --wait or --watch is given.
@@ -184,18 +184,18 @@ ID and exits, unless --wait or --watch is given.
 
 With --wait or --watch the command fails unless the run ends with status done.
 
-Given directories, it reads every *.yaml in them and those below them, but for
-.git, whose first key gives a type of machine. It starts a machine whose latest
-run is at another hash, or that has no run, and cancels any run still going. It
-cancels the run of a machine whose file has gone. A run at the machine's hash
-is left as it is, running or ended. A file with a problem is reported, and its
-run is left as it is. Each run has the key file:<path>, from the current
-directory, which is the context. A machine whose input: names dir is given the
-context's absolute path there.
+Given a directory, it records it as a tree. Each *.yaml in it and below it, but
+for .git, whose first key gives a type of machine has a location: its path
+under the prefix, without .yaml. It starts each singleton with no running run,
+and cancels the runs at a location whose file has gone. A changed file's
+running runs do as its update: says. A file with a problem is reported, and its
+location keeps what was recorded before. It prints what it did at each
+location, and the secrets and values the files use that are not set.
 
-  --again <file>   start this machine though its run has ended; repeatable
+  --at <prefix>   where the tree is recorded; by default / and the
+                  directory's name
 
-  corbie manual a-directory   a directory of machines
+  corbie manual a-directory   a tree of machines
 ` + scripts},
 		{Name: "run ls", Usage: "[--watch] [--all] [--label k=v] [--status <status>] [--parent <id>]", Summary: "list runs", Run: cmdLs, Help: `
 It lists this client's runs that are in progress, child runs included. A run

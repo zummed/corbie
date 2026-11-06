@@ -174,8 +174,9 @@ func (c *Client) unstarted(ctx context.Context, id string) (*Run, error) {
 	if receipt != nil {
 		return nil, nil
 	}
-	// A start's definition is written into the run's record before the
-	// start is sent, so a name with nothing in its record was never sent.
+	// A start's definition, or for a start of a location an empty blob, is
+	// written into the run's record before the start is sent, so a name
+	// with nothing in its record was never sent.
 	uploaded, err := store.Names(c.Store.First(ctx, store.Blobs(c.ctl(), id), 1))
 	if err != nil {
 		return nil, err
@@ -213,6 +214,30 @@ func (c *Client) Wait(ctx context.Context, id string, interval time.Duration) (*
 		}
 		if !pause(ctx, interval, notice) {
 			return c.Show(context.WithoutCancel(ctx), id)
+		}
+	}
+}
+
+// Taken stays until a run has been taken up: it is no longer waiting to
+// start. A run the controller starts, as a submit starts a singleton, has
+// nothing in its record until then, and is waited for while a start would
+// be good.
+func (c *Client) Taken(ctx context.Context, id string, interval time.Duration) error {
+	notice, stop := c.Store.Notice(c.ctl())
+	defer stop()
+	until := c.Now().Add(instance.MessageLife)
+	for {
+		run, err := c.Show(ctx, id)
+		switch {
+		case err == nil && run.Status != instance.Waiting:
+			return nil
+		case errors.Is(err, ErrNoRun) && c.Now().After(until):
+			return ErrNeverTaken
+		case err != nil && !errors.Is(err, store.ErrUnreachable) && !errors.Is(err, ErrNoRun):
+			return err
+		}
+		if !pause(ctx, interval, notice) {
+			return ctx.Err()
 		}
 	}
 }

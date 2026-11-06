@@ -4,6 +4,7 @@
 package client
 
 import (
+	"bytes"
 	"context"
 	"crypto/rand"
 	"errors"
@@ -50,6 +51,9 @@ func (c *Client) identity() error {
 
 // A Start is what a start may carry besides its definition.
 type Start struct {
+	// At is the location the run is started at, from the file recorded
+	// there: a start of a location is given no definition.
+	At string
 	// Run is the run's name, if it was chosen beforehand with NewRun.
 	Run string
 	// Input is the run's input. An InputFile may stand in place of any
@@ -129,12 +133,21 @@ func (c *Client) NewRun() (string, error) {
 	return store.NewInstance(c.ID.Name, c.Now()), nil
 }
 
-// Start starts a run of a definition that has been filled out and checked.
-// The definition and its files are written into the run's record first,
-// and then the start is sent. It gives the run's name.
+// Start starts a run of a location, or of a definition that has been filled
+// out and checked. The definition, if one is given, and the files of the
+// input are written into the run's record first, and then the start is sent.
+// It gives the run's name.
 func (c *Client) Start(ctx context.Context, draft *machine.Draft, start Start) (string, error) {
 	if err := c.identity(); err != nil {
 		return "", err
+	}
+	if start.At != "" {
+		if err := store.CheckLocation(start.At); err != nil {
+			return "", fmt.Errorf("%w: %w", ErrStart, err)
+		}
+		if draft != nil || start.Key != "" || start.Context != "" || len(start.Secrets) > 0 {
+			return "", fmt.Errorf("%w: a start of a location is given no definition, key, context or secrets", ErrStart)
+		}
 	}
 	run := start.Run
 	if run == "" {
@@ -170,10 +183,21 @@ func (c *Client) Start(ctx context.Context, draft *machine.Draft, start Start) (
 	// input once they are done.
 	s := store.Bounded(c.Store, store.SideBySide)
 	var ref blob.Ref
-	uploads := []func() error{func() (err error) {
-		ref, err = draft.Store(ctx, s, c.ctl(), run)
-		return err
-	}}
+	var uploads []func() error
+	if draft != nil {
+		uploads = append(uploads, func() (err error) {
+			ref, err = draft.Store(ctx, s, c.ctl(), run)
+			return err
+		})
+	} else {
+		// The controller copies a location's file into the run's record. An
+		// empty blob is written there first, so the run's record shows the
+		// start was sent.
+		uploads = append(uploads, func() error {
+			_, err := blob.Write(ctx, s, store.Blob(c.ctl(), run, blob.NewName()), "", blob.NewKey(), bytes.NewReader(nil))
+			return err
+		})
+	}
 	made := map[string]*blob.Ref{}
 	for _, carried := range blob.Refs(input) {
 		if made[carried.At] == nil {
@@ -220,9 +244,46 @@ func (c *Client) Start(ctx context.Context, draft *machine.Draft, start Start) (
 	seed := make([]byte, 32)
 	rand.Read(seed)
 	msg := &instance.Message{Kind: instance.KindStart, Instance: run, Start: &instance.Start{
-		Definition: ref, Input: input, Labels: start.Labels, Key: start.Key, Context: start.Context, Allow: start.Allow,
+		Definition: ref, Location: start.At, Input: input, Labels: start.Labels, Key: start.Key, Context: start.Context, Allow: start.Allow,
 		Timeout: machine.Duration(start.Timeout), Secrets: start.Secrets, Seed: seed}}
 	return run, c.send(ctx, startMessage(run), start.Life, msg)
+}
+
+// Submit records a tree at its prefix. Each machine of the tree is written
+// among the message's uploads, a bounded number at a time, and then the
+// submit is sent. A file with a problem is sent as one, and its location
+// keeps what was recorded before. It gives the name of the message, by which
+// its receipt is found.
+func (c *Client) Submit(ctx context.Context, tree *Tree, life time.Duration) (string, error) {
+	if err := c.identity(); err != nil {
+		return "", err
+	}
+	name := c.sender.Next(c.Now())
+	submit := &instance.Submit{Prefix: tree.Prefix, Directory: tree.Directory, Files: map[string]instance.SubmitFile{}}
+	var good []*Machine
+	for _, m := range tree.Machines {
+		if m.Problem != nil {
+			submit.Problems = append(submit.Problems, m.Location)
+		} else {
+			good = append(good, m)
+		}
+	}
+	s := store.Bounded(c.Store, store.SideBySide)
+	refs := make([]blob.Ref, len(good))
+	err := store.Each(ctx, store.SideBySide, len(good), func(i int) (err error) {
+		refs[i], err = good[i].Draft.Write(ctx, func(typ string, contents []byte) (blob.Ref, error) {
+			return blob.Write(ctx, s, store.Upload(c.ctl(), c.ID.Name, name, blob.NewName()), typ, blob.NewKey(), bytes.NewReader(contents))
+		})
+		return err
+	})
+	if err != nil {
+		return "", err
+	}
+	for i, m := range good {
+		submit.Files[m.Location] = instance.SubmitFile{Definition: refs[i], Hash: m.Draft.Hash(),
+			Secrets: secretsOf(m.Draft), Values: m.Draft.Values()}
+	}
+	return name, c.send(ctx, name, life, &instance.Message{Kind: instance.KindSubmit, Submit: submit})
 }
 
 // resolve gives a value as plain data, in which each file is what file
@@ -328,7 +389,7 @@ func (c *Client) SendToKey(ctx context.Context, key, event string, data any, lif
 	if err := machine.CheckKey(key); err != nil {
 		return "", err
 	}
-	entry, _, err := instance.ReadKey(ctx, c.Store, c.Controller, c.ID, c.ID.Name, key)
+	entry, _, err := instance.ReadKey(ctx, c.Store, c.Controller, c.ID, store.ClientKey(c.ctl(), c.ID.Name, key), key)
 	if err != nil {
 		return "", err
 	}

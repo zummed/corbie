@@ -348,7 +348,7 @@ Larger machines are built from smaller ones. A child is started by a job and its
 
 A definition can be made while a machine runs, by a script or by an agent, and run as a child. It is filled out, checked and stored exactly as one sent by a client is, in the process of the job that defines it (see Runner). It is checked again when a job starts it, as any definition is, and whether its approvals have an ask to go to, since that depends on what is above it. Each of its steps is taken in a process of its own (see Controller).
 
-A root may have eight levels of machines below it unless it says otherwise, and an ask that is a machine uses a level like any child. A definition may also limit how many jobs an instance starts. A job past either limit fails and is not restarted.
+A root may have sixteen levels of machines below it unless it says otherwise, and an ask that is a machine uses a level like any child. A definition may also limit how many jobs an instance starts. A job past either limit fails and is not restarted.
 
 ## Waiting on the outside
 

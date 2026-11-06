@@ -84,7 +84,7 @@ func (b *build) readKeys(requests []machine.Request) error {
 	}
 	runs := make([]string, len(keys))
 	err := b.p.each(len(keys), func(i int) error {
-		file, _, err := instance.ReadKey(b.p.ctx, b.p.store, b.p.c.ID.Card, b.p.c.ID, store.InstanceClient(b.inst), keys[i])
+		file, _, err := instance.ReadKey(b.p.ctx, b.p.store, b.p.c.ID.Card, b.p.c.ID, store.ClientKey(b.p.ctl, store.InstanceClient(b.inst), keys[i]), keys[i])
 		if err != nil && !isAltered(err) {
 			return err
 		}
@@ -161,14 +161,22 @@ func (b *build) keyed(a *arrival) {
 // goes on to the run that has the key.
 func (b *build) move(a *arrival) { b.out.dropped = append(b.out.dropped, dropped{a: a, move: true}) }
 
-// claim takes a key's file for a run. It gives the run that has the key
-// where that is another. A file whose run has ended, or never began, is
-// replaced.
-func (p *pass) claim(inst, key, start string) (string, error) {
-	client := store.InstanceClient(inst)
-	at := store.ClientKey(p.ctl, client, key)
+// keyAt is the name of the file of a run's key: among its location's, for
+// a run started from its location's file, which has a lifetime; and among
+// its client's for a run a client or a send started with a key.
+func (p *pass) keyAt(inst, lifetime, location, key string) string {
+	if lifetime != "" {
+		return store.Key(p.ctl, location, key)
+	}
+	return store.ClientKey(p.ctl, store.InstanceClient(inst), key)
+}
+
+// claim takes a key's file, named at, for a run. It gives the run that has
+// the key where that is another. A file whose run has ended, or never
+// began, is replaced.
+func (p *pass) claim(inst, at, key, start string) (string, error) {
 	for {
-		file, mark, err := instance.ReadKey(p.ctx, p.store, p.c.ID.Card, p.c.ID, client, key)
+		file, mark, err := instance.ReadKey(p.ctx, p.store, p.c.ID.Card, p.c.ID, at, key)
 		if err != nil && !isAltered(err) {
 			return "", err
 		}
@@ -188,9 +196,13 @@ func (p *pass) claim(inst, key, start string) (string, error) {
 				return file.Run, nil
 			}
 		}
-		readers, err := p.readers(inst)
-		if err != nil {
-			return "", err
+		// A key's file among a location's is sealed to the controller
+		// alone; among a client's, to that client as well.
+		readers := []identity.Card{p.c.ID.Card}
+		if strings.HasPrefix(at, p.ctl+"/keys/") {
+			if readers, err = p.readers(inst); err != nil {
+				return "", err
+			}
 		}
 		data, err := p.c.ID.Write(at, p.now, noEnd, instance.KeyFile{Key: key, Run: inst, Start: start}, readers...)
 		if err != nil {
@@ -217,14 +229,13 @@ func (p *pass) live(file *instance.KeyFile) (bool, error) {
 	return waiting != nil, err
 }
 
-// free deletes a key's file, where it still names the run.
-func (p *pass) free(inst, key string) error {
-	client := store.InstanceClient(inst)
-	file, mark, err := instance.ReadKey(p.ctx, p.store, p.c.ID.Card, p.c.ID, client, key)
+// free deletes a key's file, named at, where it still names the run.
+func (p *pass) free(inst, at, key string) error {
+	file, mark, err := instance.ReadKey(p.ctx, p.store, p.c.ID.Card, p.c.ID, at, key)
 	if err != nil && !isAltered(err) || mark == store.None || file != nil && file.Run != inst {
 		return err
 	}
-	_, err = p.store.Delete(p.ctx, store.ClientKey(p.ctl, client, key), store.OnlyIfUnchanged(mark))
+	_, err = p.store.Delete(p.ctx, at, store.OnlyIfUnchanged(mark))
 	return err
 }
 
@@ -320,7 +331,7 @@ func (p *pass) redirect(a *arrival) error {
 		text := fmt.Sprintf("the event %s sent to the key %q was not delivered: %s", msg.Event.Name, msg.Key, why)
 		return p.tell(msg.From, msg.Instance, a.name[strings.LastIndexByte(a.name, '/')+1:]+".note", text)
 	}
-	run, err := p.holder(store.InstanceClient(msg.From), msg.Key)
+	run, err := p.holder(store.ClientKey(p.ctl, store.InstanceClient(msg.From), msg.Key), msg.Key)
 	if err != nil {
 		return err
 	}
@@ -359,10 +370,10 @@ func (p *pass) redirect(a *arrival) error {
 	return err
 }
 
-// holder gives the run that has a key: none where its file names a run that
-// has ended or never began.
-func (p *pass) holder(client, key string) (string, error) {
-	file, _, err := instance.ReadKey(p.ctx, p.store, p.c.ID.Card, p.c.ID, client, key)
+// holder gives the run that has a key, whose file is named at: none where
+// its file names a run that has ended or never began.
+func (p *pass) holder(at, key string) (string, error) {
+	file, _, err := instance.ReadKey(p.ctx, p.store, p.c.ID.Card, p.c.ID, at, key)
 	if err != nil && !isAltered(err) || file == nil {
 		return "", err
 	}

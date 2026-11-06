@@ -2,13 +2,19 @@ package client
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
+	"fmt"
+	"slices"
 	"time"
 
 	"github.com/zummed/corbie/controller"
 	"github.com/zummed/corbie/identity"
+	"github.com/zummed/corbie/machine"
 	"github.com/zummed/corbie/permission"
 	"github.com/zummed/corbie/role"
 	"github.com/zummed/corbie/runner"
+	"github.com/zummed/corbie/secret"
 	"github.com/zummed/corbie/store"
 )
 
@@ -46,7 +52,10 @@ func NewLocal(ctx context.Context, ceiling permission.Layer, report func(role st
 	if err := store.SetUp(ctx, ctlStore); err != nil {
 		return nil, err
 	}
-	for _, t := range []identity.Trust{{Card: run.Card}, {Card: cli.Card, Ceiling: ceiling}} {
+	// The client may submit a tree at any prefix.
+	clientCeiling := ceiling
+	clientCeiling.Allow = append(slices.Clone(ceiling.Allow), permission.At+":/**")
+	for _, t := range []identity.Trust{{Card: run.Card}, {Card: cli.Card, Ceiling: clientCeiling}} {
 		if err := identity.WriteTrust(ctx, ctlStore, ctl, t); err != nil {
 			return nil, err
 		}
@@ -73,6 +82,44 @@ func NewLocal(ctx context.Context, ceiling permission.Layer, report func(role st
 // LocalInterval is how long a role in one process sleeps when nothing is
 // due and nothing wakes it.
 var LocalInterval = time.Second
+
+// SetSecret sets a secret at a location, as the controller's owner does.
+func (l *Local) SetSecret(ctx context.Context, at, name, value string) error {
+	return secret.Set(ctx, l.Controller.Store, l.Controller.ID, at, name, value)
+}
+
+// SetValue sets a value at a location, as the controller's owner does.
+func (l *Local) SetValue(ctx context.Context, at, name, value string) error {
+	return secret.SetValue(ctx, l.Controller.Store, l.Controller.ID, at, name, value)
+}
+
+// Run submits a definition as a tree of one file, at a prefix of its own
+// that begins with the machine's name, and gives the run it starts there:
+// the one the submit starts for a singleton, and otherwise one started at
+// the location with what start carries.
+func (l *Local) Run(ctx context.Context, draft *machine.Draft, start Start) (string, error) {
+	random := make([]byte, 3)
+	rand.Read(random)
+	at := "/" + draft.Definition.Name + "-" + hex.EncodeToString(random)
+	message, err := l.Submit(ctx, &Tree{Prefix: at, Machines: []*Machine{{Path: draft.Definition.Name + ".yaml", Location: at, Draft: draft}}}, start.Life)
+	if err != nil {
+		return "", err
+	}
+	receipt, err := l.WaitReceipt(ctx, message, start.Life, LocalInterval)
+	switch {
+	case err != nil:
+		return "", err
+	case !receipt.Taken:
+		return "", fmt.Errorf("%w: the submit was refused: %s", ErrStart, receipt.Refused)
+	}
+	for _, done := range receipt.Tree.Locations {
+		if done.Run != "" {
+			return done.Run, nil
+		}
+	}
+	start.At = at
+	return l.Start(ctx, nil, start)
+}
 
 // Close stops the roles and waits for them.
 func (l *Local) Close() {

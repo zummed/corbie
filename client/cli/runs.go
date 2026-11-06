@@ -110,7 +110,7 @@ func (s *starting) prepare(e *Env, file string) (*machine.Draft, client.Start, e
 		if err != nil {
 			return nil, start, err
 		}
-		draft, _, err = client.ReadMachine(context, rel)
+		draft, err = client.ReadMachine(context, rel)
 		if err != nil {
 			return nil, start, err
 		}
@@ -233,14 +233,7 @@ func cmdTest(e *Env, args []string) error {
 		if len(given) > 0 {
 			return Mistake("%s applies to one definition; a directory takes no flag of a start", strings.Join(given, ", "))
 		}
-		context, err := os.Getwd()
-		if err != nil {
-			return err
-		}
-		if err := inContext(context, files); err != nil {
-			return err
-		}
-		return e.checkMachines(context, files)
+		return e.checkMachines(files)
 	}
 	if len(files) != 1 {
 		return Mistake("name directories, or one definition, or one script file")
@@ -270,10 +263,10 @@ func cmdTest(e *Env, args []string) error {
 
 func cmdSubmit(e *Env, args []string) error {
 	var s starting
-	var again list
+	var at string
 	s.flags(e)
 	e.Flags.BoolVar(&s.wait, "wait", false, "")
-	e.Flags.Var(&again, "again", "")
+	e.Flags.StringVar(&at, "at", "", "")
 	files, err := e.Parse(args)
 	if err != nil {
 		return err
@@ -282,6 +275,8 @@ func cmdSubmit(e *Env, args []string) error {
 	switch {
 	case err != nil:
 		return err
+	case dirs && len(files) != 1:
+		return Mistake("name one directory: each is a tree of its own, submitted at its own prefix")
 	case dirs:
 		given := []string{}
 		e.Flags.Visit(func(f *flag.Flag) {
@@ -290,13 +285,13 @@ func cmdSubmit(e *Env, args []string) error {
 			}
 		})
 		if len(given) > 0 {
-			return Mistake("%s applies to one definition; a directory takes only --again", strings.Join(given, ", "))
+			return Mistake("%s applies to one definition; a directory takes only --at", strings.Join(given, ", "))
 		}
-		return e.submitDirectories(files, again)
-	case len(again) > 0:
-		return Mistake("--again applies to directories, and %s is not one", strings.Join(files, ", "))
+		return e.submitTree(files[0], at)
+	case at != "":
+		return Mistake("--at applies to a directory, and %s is not one", strings.Join(files, ", "))
 	case len(files) != 1:
-		return Mistake("name directories, or one definition, or one script file")
+		return Mistake("name one directory, or one definition, or one script file")
 	}
 	if s.wait && s.watch {
 		return Mistake("--wait and --watch are two ways of staying; give one")
@@ -339,41 +334,77 @@ func directories(names []string) (bool, error) {
 	return dirs > 0, nil
 }
 
-// inContext makes each name a path from the context, and refuses a name
-// outside it.
-func inContext(context string, names []string) error {
-	for i, name := range names {
-		rel, inside, err := within(context, name)
-		if err != nil {
-			return err
-		}
-		if !inside {
-			return Mistake("%s is outside the context, %s: run this from a directory that holds it", name, context)
-		}
-		names[i] = rel
-	}
-	return nil
-}
-
-// submitDirectories brings the runs of directories of the context into line
-// with their files.
-func (e *Env) submitDirectories(dirs []string, again []string) error {
-	context, err := os.Getwd()
+// submitTree records a directory as a tree, and stays until each run it
+// cancelled has ended and each run it started has been taken up.
+func (e *Env) submitTree(dir, at string) error {
+	tree, err := client.ReadTree(dir, at)
 	if err != nil {
-		return err
-	}
-	if err := inContext(context, dirs); err != nil {
-		return err
-	}
-	if err := inContext(context, again); err != nil {
-		return err
+		return Mistake("%v", err)
 	}
 	c, err := e.Client()
 	if err != nil {
 		return err
 	}
-	s := &client.Submit{Client: c, Context: context, Dirs: dirs, Again: again, Interval: interval, Say: e.Say}
-	return s.Run(e.ctx)
+	message, err := c.Submit(e.ctx, tree, 0)
+	if err != nil {
+		return err
+	}
+	receipt, err := c.WaitReceipt(e.ctx, message, 0, interval)
+	if err != nil {
+		return err
+	}
+	if !receipt.Taken {
+		e.Print(receipt, func() string { return "refused: " + receipt.Refused + "\n" })
+		return errRunFailed
+	}
+	done := receipt.Tree
+	for _, id := range done.Cancelled {
+		if _, err := c.Wait(e.ctx, id, interval); err != nil {
+			return err
+		}
+	}
+	for _, row := range done.Locations {
+		if row.Run != "" {
+			if err := c.Taken(e.ctx, row.Run, interval); err != nil {
+				return err
+			}
+		}
+	}
+	problems := 0
+	err = e.Print(done, func() string {
+		var b strings.Builder
+		if done.Before != "" {
+			fmt.Fprintf(&b, "%s: last submitted from %s\n", tree.Prefix, done.Before)
+		}
+		width := 0
+		for _, row := range done.Locations {
+			width = max(width, len(row.Location))
+		}
+		for _, row := range done.Locations {
+			what := row.What
+			if row.Run != "" {
+				what += " " + row.Run
+			}
+			fmt.Fprintf(&b, "%-*s   %-9s   %s\n", width, row.Location, row.Lifetime, what)
+		}
+		for _, m := range tree.Machines {
+			if m.Problem != nil {
+				problems++
+				fmt.Fprintf(&b, "%s\n", m.Path)
+				for _, line := range strings.Split(m.Problem.Error(), "\n") {
+					fmt.Fprintf(&b, "    %s\n", line)
+				}
+			}
+		}
+		for _, name := range done.Missing {
+			fmt.Fprintf(&b, "not set at its location or above: %s\n", name)
+		}
+		return b.String()
+	})
+	if err == nil && problems > 0 {
+		return fmt.Errorf("%d of %d files have problems, and their locations keep what was recorded before", problems, len(tree.Machines))
+	}
+	return err
 }
 
 // contextOf gives the context of a file and its path from there: the current
@@ -423,32 +454,40 @@ func within(dir, name string) (string, bool, error) {
 	return filepath.ToSlash(rel), true, nil
 }
 
-// checkMachines prints each machine of a directory ok or its problems, and
-// fails if any has one.
-func (e *Env) checkMachines(dir string, under []string) error {
-	found, err := client.ReadMachines(dir, under...)
-	if err != nil {
-		return err
+// checkMachines prints each machine of each directory ok or its problems,
+// and fails if any has one.
+func (e *Env) checkMachines(dirs []string) error {
+	var found []*client.Machine
+	var paths []string
+	for _, dir := range dirs {
+		tree, err := client.ReadTree(dir, "")
+		if err != nil {
+			return err
+		}
+		for _, m := range tree.Machines {
+			found = append(found, m)
+			paths = append(paths, filepath.ToSlash(filepath.Join(dir, m.Path)))
+		}
 	}
 	bad := 0
 	report := map[string]string{}
 	width := 0
-	for _, m := range found {
-		width = max(width, len(m.Path))
-		report[m.Path] = "ok"
+	for i, m := range found {
+		width = max(width, len(paths[i]))
+		report[paths[i]] = "ok"
 		if m.Problem != nil {
 			bad++
-			report[m.Path] = m.Problem.Error()
+			report[paths[i]] = m.Problem.Error()
 		}
 	}
-	err = e.Print(report, func() string {
+	err := e.Print(report, func() string {
 		var b strings.Builder
-		for _, m := range found {
+		for i, m := range found {
 			if m.Problem == nil {
-				fmt.Fprintf(&b, "%-*s  ok\n", width, m.Path)
+				fmt.Fprintf(&b, "%-*s  ok\n", width, paths[i])
 				continue
 			}
-			fmt.Fprintf(&b, "%s\n", m.Path)
+			fmt.Fprintf(&b, "%s\n", paths[i])
 			for _, line := range strings.Split(m.Problem.Error(), "\n") {
 				fmt.Fprintf(&b, "    %s\n", line)
 			}

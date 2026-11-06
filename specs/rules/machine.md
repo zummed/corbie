@@ -257,7 +257,7 @@ The detailed rules behind the [Machines overview](../machine.md). Area code: `ma
 **R-mach-75** Whether a child's approvals have an ask to go to is checked when the child is started.
 *Accept:* a definition made at run time marks a job for approval and has no ask; started under a machine with no ask anywhere above it, it fails at its start saying that no ask applies, and starts nothing; started under a machine with an ask, it runs.
 
-**R-mach-76** A root may have eight levels of machines below it unless it says otherwise, an ask that is a machine uses a level like any child, and a job that would go deeper fails.
+**R-mach-76** A root may have sixteen levels of machines below it unless it says otherwise, an ask that is a machine uses a level like any child, and a job that would go deeper fails.
 *Accept:* parity cases 79, 78 and 100.
 
 **R-mach-79** A definition may limit how many jobs its instance starts, and a job past the limit fails. The limit counts the jobs the instance itself starts, not the tree below it.
@@ -316,8 +316,8 @@ The detailed rules behind the [Machines overview](../machine.md). Area code: `ma
 **R-mach-113** A job that starts a child is held like any other, before the child exists.
 *Accept:* parity case 96.
 
-**R-mach-114** A definition sent by a client whose approvals have no ask to go to is refused when checked.
-*Accept:* a root flow that marks a stage for approval and has no ask is refused when submitted, and nothing is started.
+**R-mach-114** A definition sent by a client whose approvals have no ask to go to is refused when checked as it starts. A file in a tree is recorded all the same, since it may run as another machine's child, under that machine's ask.
+*Accept:* a root flow that marks a stage for approval and has no ask is refused when started, and nothing is started; submitted in a tree, it is recorded at its location.
 
 **R-mach-115** A machine run as an ask takes no ask from above it: one that needs approval and has no ask of its own is refused.
 *Accept:* parity case 77.

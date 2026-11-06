@@ -1,0 +1,6 @@
+flow: level-14
+stages:
+  down:
+    job: { machine: ./level-15.yaml }
+output:
+  below: ${stages.down.output}

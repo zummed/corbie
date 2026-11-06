@@ -23,7 +23,8 @@ import (
 )
 
 // A Controller brings nothing with it but its key. Who it trusts, its
-// secrets and every instance are in the store.
+// trees, the secrets and values set at locations, and every instance are in
+// the store.
 type Controller struct {
 	ID    *identity.Identity
 	Store store.Store
@@ -156,8 +157,17 @@ func (c *Controller) Pass(ctx context.Context) (next time.Time, err error) {
 		}
 		waiting[inst] = append(waiting[inst], a)
 	}
+	// Submits are taken first, one at a time, each client's in the order
+	// it sent them. What they start and cancel is for the next pass.
 	for _, a := range messages {
-		if a != nil && !p.behind(a, sending) {
+		if a != nil && a.msg.Kind == instance.KindSubmit {
+			if err := p.submit(a); err != nil {
+				return next, err
+			}
+		}
+	}
+	for _, a := range messages {
+		if a != nil && a.msg.Kind != instance.KindSubmit && !p.behind(a, sending) {
 			add(a.msg.Instance, a)
 		}
 	}
@@ -257,7 +267,12 @@ func (p *pass) accept(name string, data []byte) (*arrival, error) {
 		return nil, nil
 	}
 	var msg instance.Message
-	if v.Open(p.c.ID, &msg) != nil || store.CheckInstance(msg.Instance) != nil || !whole(&msg) {
+	if v.Open(p.c.ID, &msg) != nil || !whole(&msg) {
+		return nil, nil
+	}
+	// A submit is for no instance, and only a client sends one.
+	if msg.Kind == instance.KindSubmit && (kind != identity.Client || msg.Instance != "") ||
+		msg.Kind != instance.KindSubmit && store.CheckInstance(msg.Instance) != nil {
 		return nil, nil
 	}
 	sent := v.Sent
@@ -271,6 +286,8 @@ func (p *pass) accept(name string, data []byte) (*arrival, error) {
 // One that does not is not a message at all.
 func whole(msg *instance.Message) bool {
 	switch msg.Kind {
+	case instance.KindSubmit:
+		return msg.Submit != nil
 	case instance.KindStart:
 		return msg.Start != nil
 	case instance.KindEvent, instance.KindSend:

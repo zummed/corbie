@@ -291,7 +291,7 @@ func TestHelpIsAskedForWithTheFlag(t *testing.T) {
 	}
 	run := `The commands of corbie run:
 
-  submit   start a run and print its ID
+  submit   start a run and print its ID, or record a tree
   ls       list runs
   show     show one run: its status and its result
   cancel   cancel a run that this client started

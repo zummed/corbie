@@ -212,8 +212,9 @@ func (b *build) ending(a *arrival) (string, endText) {
 }
 
 // mayCancel says whether a cancel is from one who may cancel the instance:
-// the client that started it, the controller's owner with the controller's
-// own key, or the controller on behalf of the instance above.
+// the client that owns its root's tree, the controller's owner with the
+// controller's own key, the controller for a submit, or the controller on
+// behalf of the instance above.
 func (b *build) mayCancel(a *arrival) bool {
 	switch a.kind {
 	case identity.Client:
@@ -784,7 +785,7 @@ func (b *build) readDefinition(s *instance.Start) *stepOut {
 
 // run is what an expression reads of the instance.
 func (b *build) run() machine.Run {
-	return machine.Run{ID: b.inst, Key: b.st.Key, Context: b.st.Above.Context}
+	return machine.Run{ID: b.inst, Key: b.st.Key, Location: b.st.Location, Context: b.st.Above.Context, Values: b.st.Above.Values}
 }
 
 // readAllow fills in the allow list written for the whole definition, for
@@ -1255,7 +1256,7 @@ func (p *pass) begin(inst string, waiting []*arrival) (*taken, error) {
 		}
 		return &b.out, nil
 	}
-	s, above := start.msg.Start, instance.Above{}
+	s, above := start.msg.Start, &instance.Above{}
 	badKey := error(nil)
 	if s.Key != "" {
 		badKey = machine.CheckKey(s.Key)
@@ -1267,6 +1268,13 @@ func (p *pass) begin(inst string, waiting []*arrival) (*taken, error) {
 	case start.kind == identity.Client && (start.sender != store.InstanceClient(inst) || s.Above != nil):
 		b.refuse(start, "a run's name begins with the name of the client that starts it")
 		return &b.out, nil
+	case s.Location != "" && s.Above == nil && (start.kind == identity.Client || start.kind == identity.Controller):
+		// A start of a location: the run begins from the file recorded there.
+		var err error
+		if s, err = b.located(start); err != nil || s == nil {
+			return &b.out, err
+		}
+		above = s.Above
 	case start.kind == identity.Client && !strings.HasPrefix(s.Definition.At, store.Blob(p.ctl, inst, "")):
 		b.refuse(start, "a client starts a run from a definition in that run's own record")
 		return &b.out, nil
@@ -1274,19 +1282,23 @@ func (p *pass) begin(inst string, waiting []*arrival) (*taken, error) {
 		b.refuse(start, "%v", badKey)
 		return &b.out, nil
 	case start.kind == identity.Controller && s.Above != nil:
-		above = *s.Above
+		above = s.Above
 	case start.kind != identity.Client:
 		b.drop(start)
 		return &b.out, nil
 	}
-	if start.kind == identity.Client {
+	if start.kind == identity.Client && s.Location == "" {
 		// Set here, since the first step's expressions read it.
 		above.Context = s.Context
 	}
 	b.time = start.sent
 	b.step.Time = b.time
 	st := b.st
-	st.Status, st.Started, st.Definition, st.Input, st.Labels, st.Seed, st.Above, st.Key = instance.Running, b.time, s.Definition, s.Input, s.Labels, s.Seed, above, s.Key
+	st.Status, st.Started, st.Definition, st.Input, st.Labels, st.Seed, st.Above, st.Key = instance.Running, b.time, s.Definition, s.Input, s.Labels, s.Seed, *above, s.Key
+	if st.Location == "" {
+		// A child runs at its parent's location.
+		st.Location, st.Tree = s.Location, s.Tree
+	}
 	if start.isKeyed() {
 		// The data of the event is the run's input, and the event its first
 		// after its start.
@@ -1351,8 +1363,8 @@ func (b *build) first(s *instance.Start, start *arrival) (refused bool, err erro
 	// The key is taken before the step is written, so a run that loses it
 	// has done nothing.
 	inUse := ""
-	if s.Key != "" {
-		if inUse, err = p.claim(b.inst, s.Key, start.name); err != nil {
+	if s.Key != "" || st.Lifetime == machine.LifetimeSingleton {
+		if inUse, err = p.claim(b.inst, p.keyAt(b.inst, st.Lifetime, st.Location, s.Key), s.Key, start.name); err != nil {
 			return false, err
 		}
 	}
@@ -1363,18 +1375,26 @@ func (b *build) first(s *instance.Start, start *arrival) (refused bool, err erro
 	case inUse != "" && start.isKeyed():
 		b.move(start)
 		return true, nil
+	case inUse != "" && st.Lifetime == machine.LifetimeSingleton:
+		// A later submit started the singleton again: this start is left.
+		b.drop(start)
+		return true, nil
 	}
 	b.use(start)
 	b.record(machine.Event{Name: machine.Start, Data: st.Input}, start, false)
 	if start.isKeyed() {
 		b.record(machine.Event{Name: start.msg.Event.Name, From: start.msg.From, Data: start.msg.Event.Data}, start, false)
 	}
-	if start.kind == identity.Client {
-		b.ask(instance.Ask{Kind: instance.AskReceipt, Sender: start.sender, Message: start.name, Receipt: &instance.Receipt{Taken: true}})
+	if start.kind == identity.Client || st.Lifetime != "" {
+		// A root a client or a submit starts counts its depth from its own
+		// file.
 		st.Above.MaxDepth = machine.DefaultDepth
 		if def.Depth != nil {
 			st.Above.MaxDepth = *def.Depth
 		}
+	}
+	if start.kind == identity.Client {
+		b.ask(instance.Ask{Kind: instance.AskReceipt, Sender: start.sender, Message: start.name, Receipt: &instance.Receipt{Taken: true}})
 		if s.Allow != nil {
 			layer := *s.Allow
 			layer.Name = "the list the run was started with"

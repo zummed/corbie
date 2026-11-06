@@ -180,6 +180,50 @@ The detailed rules behind the [Controller overview](../controller.md). What the 
 
 **C-ctl-66** A client starts a run only from a definition in that run's own record, and any other start is refused before the definition is read. A job's stored definition is in the record of the run that stored it. Read for a client's start, it would be read in the controller as an owner's is, and one that ends the process would end the controller on every pass. *Test:* `ctl_client_start_names_a_definition_in_its_own_record`
 
+## Trees and locations
+
+**R-ctl-107** A submit records a directory as a tree at a prefix, and each of its files with a type line at its location: the file's path under the prefix, without `.yaml`. A submit changes no other tree.
+*Accept:* `house/devices/boiler.yaml` submitted at `/home` is recorded at `/home/devices/boiler`, and a file with no type line is at no location. A second tree submitted at `/work` leaves `/home`'s locations and runs as they were.
+
+**R-ctl-108** A submit is refused, with its receipt saying why, at a prefix no `at:` entry of the client's ceiling matches, inside or above another tree, at a tree another client owns, at `/`, or with a location below another's or outside the prefix. The refusal names the tree or the owner, and for the ceiling the line that allows it.
+*Accept:* `Test_ctl_submit_needs_an_at_entry` and `Test_ctl_submit_is_refused_naming_the_tree`.
+
+**R-ctl-109** The receipt of a submit says what was done at each location, the directory last submitted there when it was another, and the secrets and values the files use that are not set at their locations or above, which refuses nothing.
+*Accept:* `Test_ctl_submit_receipt_names_what_it_did`.
+
+**R-ctl-110** A file with a problem keeps what was recorded at its location before, and its runs, and the rest of the submit is done.
+*Accept:* a tree's singleton is running; its file is changed to one that does not read and another file is added: the new file's singleton starts, and the first runs on.
+
+**C-ctl-78** A submit can be taken again after a stop at any write and leaves what one never stopped leaves. The tree's entry is written first, naming the submit and what it does, and a submit taken again does exactly that; every later write is only-if-new, writes what is there already, or deletes. Worked out again after its first writes, a submit would find its own files recorded and do nothing to the runs it was to cancel or start. *Test:* `ctl_submit_stopped_after_every_write`
+
+**C-ctl-79** The controller reads a submit's files only from that submit's own uploads, and keeps a tree's entry and each location's file sealed to itself. A file named elsewhere could be another client's upload, and a location's file holds the keys of its blobs. *Test:* `ctl_submit_reads_only_its_own_uploads`
+
+## Starting runs
+
+**R-ctl-111** A submit starts a singleton when its location has no running run, and starts nothing for a singleton that runs. A run of a transient location is started by its tree's client naming the location; a start of a singleton or keyed location by a client, or of a location in another client's tree, is refused.
+*Accept:* `Test_ctl_singleton_is_started_once` and `Test_ctl_client_starts_its_own_transient_locations`.
+
+**R-ctl-112** A run at a location starts from the file recorded there, which the controller copies into the run's record at its first step, and keeps that definition whatever a later submit records.
+*Accept:* a transient file is changed with `update: drain` while a run of it waits: that run ends on the old definition, and the next run started there on the new one.
+
+**R-ctl-113** A run reads the values set at its location or above once, at its first step, the one set nearest winning, and keeps them; a job's secrets are those set nearest its run's location. A child runs at its parent's location, with its parent's values and context. A value a run reads that is not set fails it, naming the value and the location.
+*Accept:* `Test_ctl_values_are_read_at_the_first_step` and `Test_ctl_values_and_secrets_by_location`.
+
+**R-ctl-114** A root a client or a submit starts counts its depth limit from its own file's `limits: { depth }`, sixteen by default.
+*Accept:* parity case 79.
+
+## A changed or removed file
+
+**R-ctl-115** A changed file with `update: restart` has its root runs cancelled, and a singleton is started again on the new file. A file whose lifetime changed counts as removed and recorded anew. With `update: drain` the runs finish on the definition they started with.
+*Accept:* `Test_ctl_singleton_restart_has_no_overlap`.
+
+**R-ctl-116** A file gone from the tree has every root run at its location cancelled, and its location removed. A child running at the location ends with its parent.
+*Accept:* `Test_ctl_removal_cancels_only_root_runs`.
+
+**C-ctl-80** A singleton started again starts once the run it replaces has ended: the start names that run, and waits while it is running. A later submit's start of the same singleton takes its key's file, and an earlier start that finds it so is left. Two runs of one singleton would act on the same thing at once. *Test:* `ctl_singleton_restart_has_no_overlap`
+
+**C-ctl-81** The runs a submit cancels are found among its tree client's running heads, by their location, and only roots are sent a cancel. A child runs at its parent's location, and a cancel of its own would end it while its parent waits on it. *Test:* `ctl_removal_cancels_only_root_runs`
+
 ## Keys
 
 **C-ctl-67** A run takes its key's file only-if-new after its definition has been read and before its first step is written, and a file that names it already is its own. A run that loses has done nothing: a client's start is refused in its receipt, a job's child fails with a reason, and a send's start moves on to the run that won and delivers to it. A claim made after the step would have a machine act on an event that a second run also acts on. *Test:* `ctl_two_senders_race_for_one_key`, `ctl_two_copies_race_for_one_key`, `ctl_two_senders_stopped_after_every_write` and `ctl_client_start_with_a_key_in_use_is_refused`
@@ -236,11 +280,11 @@ Uses:
 - **Machine**: gives a type's step the definition, the state before and the events, and takes back the new state and the requests; checks a definition with the same code as the client (R-mach-17); starts children, counts depth and jobs, makes tickets and takes their answers, and holds jobs for the ask, as the Machines rules state (R-mach-65 to R-mach-115).
 - **Blob**: copies what a child hands up into the parent's record, once and for every type (R-blob-23), and reads the small blobs a step needs.
 - **Permission**: puts each layer that applies into a job by name, and reads the permissions a job declares against the lists of those to be asked about (R-perm-42).
-- **Secret**: puts into a job the values of the secrets it names and every layer allows (R-sec-14); fails a job that names a secret that is not set (R-sec-20), and denies one that names a secret a layer does not allow.
+- **Secret**: puts into a job the values of the secrets it names and every layer allows, set nearest its run's location (R-sec-14); fails a job that names a secret that is not set (R-sec-20), and denies one that names a secret a layer does not allow; reads a run's values at its first step, and the secrets and values a submit's files use that are not set.
 
 Used by:
 
-- **Client**: leaves starts, cancels, events and answers in the controller's inbox, and reads the receipts, heads and records the controller writes.
+- **Client**: leaves submits, starts, cancels, events and answers in the controller's inbox, with a submit's files among its uploads, and reads the receipts, heads and records the controller writes.
 - **Runner**: is sent jobs and cancels; returns results and the emits a machine wants.
 - **Flow, Statechart, Agent**: each supplies the step the controller runs, and relies on the controller for attempts, children, timers, tickets, limits and approval.
 - **Role**: a controller's pass is the unit that area starts and bounds.

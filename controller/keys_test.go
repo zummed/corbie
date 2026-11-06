@@ -91,7 +91,7 @@ func (w *world) told(run string) []string {
 // entry reads a key's entry.
 func (w *world) entry(client, key string) *instance.KeyFile {
 	w.t.Helper()
-	entry, _, err := instance.ReadKey(ctx, w.owner, w.ctl.Card, w.ctl, client, key)
+	entry, _, err := instance.ReadKey(ctx, w.owner, w.ctl.Card, w.ctl, store.ClientKey("ctl", client, key), key)
 	if err != nil {
 		w.t.Fatal(err)
 	}

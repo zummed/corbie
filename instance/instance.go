@@ -102,6 +102,9 @@ type State struct {
 	Tree     string `json:"tree,omitzero"`
 	// Key is the instance's key at a keyed location, while it runs.
 	Key string `json:"key,omitzero"`
+	// Lifetime is the lifetime of the file a root was started from at its
+	// location. A child has none.
+	Lifetime string `json:"lifetime,omitzero"`
 	// Title is what the definition's title filled in to when the instance
 	// started.
 	Title string `json:"title,omitzero"`
@@ -353,9 +356,30 @@ type Receipt struct {
 	Refused string `json:"refused,omitzero"`
 	// Problems are what is wrong with a definition that was refused.
 	Problems machine.Problems `json:"problems,omitzero"`
+	// Tree is what a submit that was taken did.
+	Tree *Submitted `json:"tree,omitzero"`
 	// Acted says, for an event, whether the machine acted on it or had no
 	// rule for it.
 	Acted *bool `json:"acted,omitzero"`
+}
+
+// Submitted is what a submit did: what became of each location of the
+// tree, the runs it cancelled, the directory last submitted there when it
+// was another, and the secrets and values the files use that are not set.
+type Submitted struct {
+	Locations []Recorded `json:"locations,omitzero"`
+	Cancelled []string   `json:"cancelled,omitzero"`
+	Before    string     `json:"before,omitzero"`
+	Missing   []string   `json:"missing,omitzero"`
+}
+
+// Recorded is what a submit did at one location: started, restarted,
+// recorded, removed or problem. Run is the run it started.
+type Recorded struct {
+	Location string `json:"location"`
+	Lifetime string `json:"lifetime,omitzero"`
+	What     string `json:"what"`
+	Run      string `json:"run,omitzero"`
 }
 
 // A CallResult is what became of a run a client called in a tree it does
@@ -425,10 +449,9 @@ type KeyFile struct {
 	Start string `json:"start"`
 }
 
-// ReadKey reads a key's file among a client's. It gives nil where there is
-// none. A file that does not check gives an error, and its mark.
-func ReadKey(ctx context.Context, s store.Store, ctl identity.Card, id *identity.Identity, client, key string) (*KeyFile, store.Mark, error) {
-	at := store.ClientKey(ctl.Name, client, key)
+// ReadKey reads the file of a key, under its name at. It gives nil where
+// there is none. A file that does not check gives an error, and its mark.
+func ReadKey(ctx context.Context, s store.Store, ctl identity.Card, id *identity.Identity, at, key string) (*KeyFile, store.Mark, error) {
 	data, mark, err := s.Read(ctx, at)
 	if err != nil || mark == store.None {
 		return nil, mark, err

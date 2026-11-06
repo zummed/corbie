@@ -1,7 +1,8 @@
-A directory of machines: one command brings the runs of directories into line with their files.
+A tree of machines: one command records a directory of machines, each at its location, and starts the ones that always run.
 
     # schedules/evening.yaml
     statechart: evening
+    lifetime: singleton
     initial: waiting
     states:
       waiting:
@@ -19,34 +20,43 @@ A directory of machines: one command brings the runs of directories into line wi
     corbie init --ceiling all
     corbie start &
     corbie run submit schedules
-    corbie run ls
+      /schedules/evening   singleton   started <id>
+    corbie run show <id>
 
 Submit again after a change: nothing else watches the files.
 
 Reference
 ---------
 
-  corbie run submit <directory>...                 brings their runs into line
-  corbie test <directory>...                       reads every machine, and starts nothing
-  corbie run submit <directory>... --again <file>  starts a machine whose run has ended
+  corbie run submit <directory> --at <prefix>   records the directory as a tree at the prefix
+  corbie test <directory>...                    reads every machine, and starts nothing
 
-It reads every *.yaml in the directories and those below them, but for .git, whose first key gives a type of machine. Any other holds data, or fields to include.
+It reads every *.yaml in the directory and below it, but for .git. A file whose first key gives a type of machine has a location: its path under the prefix, without .yaml. Any other file is a piece, which a machine reads by including it.
 
-  a machine with no run                        is started
-  its latest run is at another hash            that run is cancelled, and another started
-  its latest run is at its hash                is left as it is, running or ended
-  its file has gone                            its run is cancelled
-  its file has a problem                       the problem is reported, and its run is left as it is
-  its file is empty, or holds no machine now   the same
+  schedules/evening.yaml at /schedules   /schedules/evening
+  house/devices/boiler.yaml at /home     /home/devices/boiler
 
-- The current directory is the context: `corbie manual definitions` says how paths read from it. A directory given is in the context.
-- A run has the key file:<path>, and the labels machine and hash. The hash is the SHA-256 of every file the machine was read from. Submitting twice starts nothing new.
-- A run that ended, failed or was cancelled stays that way until its files change, so a stop holds. To stop a machine for good, move its file out of the directory.
-- A run is found from its record, which lasts as long as its keep: says. Once the record has gone, the next submit starts the machine again.
-- Every machine in a directory given is started, so keep a machine that only another machine runs elsewhere.
-- A machine is given no input, and one that needs some is refused, and reported. It reads the context's absolute path as ${run.context}.
-- A file named on its own starts a run each time, as `corbie run submit` always does.
-- corbie test cannot tell a mistyped first key from a file of data, which it does not list. A submit reports it once the file reads as a machine.
+`lifetime:` says how a location's runs start:
+
+  singleton             the submit starts its one run, when none is running
+  keyed                 a send to a key with no running run starts one
+  transient, default    corbie run submit <location> starts one
+
+What the submit does at a location:
+
+  a new singleton                    starts its run
+  a changed file, update: restart    cancels its runs, and starts a singleton again
+  a changed file, update: drain      leaves its runs on the definition they started with
+  a file gone from the tree          cancels every run at its location
+  a file with a problem              reports it, and the location keeps what was recorded before
+
+- `--at` is / and the directory's name by default. A tree is not inside or above another, and / is never a tree.
+- A tree belongs to the client that first submitted it. Only that client starts, reads and cancels the runs at its locations.
+- The client's ceiling needs an at: entry for the prefix. `corbie init` gives its client at:/**.
+- drain is the default for keyed and transient files. A singleton always restarts, once its old run has ended.
+- A file beside a directory of the same name, as boiler.yaml beside boiler/, is refused: a location has nothing below it.
+- A singleton is given no input. A run reads the directory's absolute path as ${run.context}, and its location as ${run.location}.
+- The submit prints the secrets and values the files use that are not set at their locations or above.
 
 To have a machine come back when it ends, run it as a job with restart:. `corbie manual definitions` gives the fields.
 
@@ -65,5 +75,3 @@ To have a machine come back when it ends, run it as a job with restart:. `corbie
 
     // one.js
     return 1
-
-Keep hear.yaml outside the directories you submit, since a submit starts every machine it finds in them.

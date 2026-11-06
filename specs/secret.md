@@ -15,6 +15,7 @@ corbie controller secret set BOILER_PASSWORD --at /home/devices/boiler
 - A run uses the secrets set at its location or above, and the one set nearest its location wins. A run at `/work/agents/support` gets the second `ANTHROPIC_KEY`, and a run at `/home/devices/boiler` gets the first.
 - A secret can be set before any tree is submitted at its location.
 - The owner sets it again with the same command, removes it with `corbie controller secret remove NAME --at <location>`, and lists the names and locations with `corbie controller secret list`.
+- A remove fails when the name is not set at the location given.
 
 A machine only ever holds a secret's name. A file brought in by `include:` is part of the machine that includes it, so its secret names are looked up at that machine's location.
 
@@ -30,7 +31,7 @@ BOILER_PASSWORD is not set at /home/thermostats/kitchen or above
 
 ## Values
 
-A value is plain text, set at a location as a secret is. It is not a secret and is not masked.
+A value is plain text, set at a location as a secret is. It is not a secret and is not masked. It is kept sealed so only the controller can read it, and its name follows the rule for a secret's name.
 
 ```
 corbie controller value set HUB 192.0.2.8:8123 --at /home

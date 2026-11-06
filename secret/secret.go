@@ -29,7 +29,7 @@ func Set(ctx context.Context, s store.Store, ctl *identity.Identity, at, name, v
 	if err := permission.CheckSecretName(name); err != nil {
 		return err
 	}
-	return keep(ctx, s, ctl, store.Secret(ctl.Name, at, name), at, value)
+	return keep(ctx, s, ctl, "secret", name, at, store.Secret(ctl.Name, at, name), value)
 }
 
 // SetValue keeps a value at a location, in place of any kept there before
@@ -38,19 +38,37 @@ func SetValue(ctx context.Context, s store.Store, ctl *identity.Identity, at, na
 	if err := checkValueName(name); err != nil {
 		return err
 	}
-	return keep(ctx, s, ctl, store.Value(ctl.Name, at, name), at, value)
+	return keep(ctx, s, ctl, "value", name, at, store.Value(ctl.Name, at, name), value)
 }
 
-func keep(ctx context.Context, s store.Store, ctl *identity.Identity, name, at, value string) error {
+func keep(ctx context.Context, s store.Store, ctl *identity.Identity, kind, name, at, path, value string) error {
 	if err := store.CheckLocation(at); err != nil {
 		return err
 	}
-	data, err := ctl.Write(name, time.Now(), time.Time{}, value, ctl.Card)
+	if _, err := held(ctx, s, ctl, kind, name, at, path); err != nil {
+		return err
+	}
+	data, err := ctl.Write(path, time.Now(), time.Time{}, value, ctl.Card)
 	if err != nil {
 		return err
 	}
-	_, err = s.Write(ctx, name, data, store.Overwrite)
+	_, err = s.Write(ctx, path, data, store.Overwrite)
 	return err
+}
+
+// held says whether a secret or a value is kept under a path. On a file
+// system that ignores case, /Work and /work are one directory: it refuses
+// where what is kept there was set at a location of another case.
+func held(ctx context.Context, s store.Store, ctl *identity.Identity, kind, name, at, path string) (bool, error) {
+	data, mark, err := s.Read(ctx, path)
+	if err != nil || mark == store.None {
+		return false, err
+	}
+	if v, err := identity.Parse(data); err == nil && v.At != path && strings.EqualFold(v.At, path) {
+		other, _, _ := store.ParseLocation(ctl.Name, v.At)
+		return true, fmt.Errorf("the %s %s is set at %s, which this store keeps in the same file as %s because its file system ignores case", kind, name, other, at)
+	}
+	return true, nil
 }
 
 // Get reads the secret a run at a location uses: the one set nearest it,
@@ -139,7 +157,7 @@ func Remove(ctx context.Context, s store.Store, ctl *identity.Identity, at, name
 	if err := permission.CheckSecretName(name); err != nil {
 		return err
 	}
-	return remove(ctx, s, store.Secret(ctl.Name, at, name), at)
+	return remove(ctx, s, ctl, "secret", name, at, store.Secret(ctl.Name, at, name))
 }
 
 // RemoveValue removes a value set at a location. One set above it is then
@@ -148,20 +166,28 @@ func RemoveValue(ctx context.Context, s store.Store, ctl *identity.Identity, at,
 	if err := checkValueName(name); err != nil {
 		return err
 	}
-	return remove(ctx, s, store.Value(ctl.Name, at, name), at)
+	return remove(ctx, s, ctl, "value", name, at, store.Value(ctl.Name, at, name))
 }
 
-func remove(ctx context.Context, s store.Store, name, at string) error {
+func remove(ctx context.Context, s store.Store, ctl *identity.Identity, kind, name, at, path string) error {
 	if err := store.CheckLocation(at); err != nil {
 		return err
 	}
-	_, err := s.Delete(ctx, name, store.Overwrite)
+	set, err := held(ctx, s, ctl, kind, name, at, path)
+	if err != nil {
+		return err
+	}
+	if !set {
+		return fmt.Errorf("the %s %s is not set at %s", kind, name, at)
+	}
+	_, err = s.Delete(ctx, path, store.Overwrite)
 	return err
 }
 
 // List gives the names of the secrets set at every location, and where
 // each is set. There is no index of them: it lists every location's
-// entries.
+// entries, files, blobs and keys among them, and a directory store reads
+// every file it lists.
 func List(ctx context.Context, s store.Store, ctl string) ([]Entry, error) {
 	return list(ctx, s, ctl, "secrets")
 }

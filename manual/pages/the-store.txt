@@ -35,7 +35,11 @@ Layout
 
 `<client>/<run>` is a run's ID. `<run>` begins with the time the run was
 named, and a child run has the `<client>` of its parent. What is set at `/`
-is under `locations/+/`.
+is under `locations/+/`. A part of a location that starts with a dot is kept
+after a `#`: `/project/.rook` is under `locations/project/#.rook/+/`.
+
+In a directory on macOS or Windows, `/Work` and `/work` are one directory, and
+a secret or a value set at one is refused while the other has that name set.
 
 Who may read and write
 ----------------------

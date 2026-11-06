@@ -55,7 +55,7 @@ version                                  the layout's version
 
 The version is written once, when the store is first set up, and a Corbie that does not know it refuses to use the store. An instance's name begins with the client that owns its root's tree and carries the time it was named, so anything that names an instance says where its head and record are and how old it is.
 
-A location's entries are under `+` after its path, and `+` is never a part of a location. A tree's entry is at its prefix. Secrets and values may be set at a path above a location as well, and those set at `/` are under `locations/+/`. For example, these commands:
+A location's entries are under `+` after its path. No part of a location is empty, `.`, `..` or `+`, and none holds `#`. A part that starts with a dot, as `.rook` does, is kept after a `#`, as `locations/#.rook/`, so that a directory does not hide it. A tree's entry is at its prefix. Secrets and values may be set at a path above a location as well, and those set at `/` are under `locations/+/`. For example, these commands:
 
 ```
 corbie run submit house --at /home
@@ -92,6 +92,8 @@ Blobs are encrypted and their keys travel only in sealed messages, so the right 
 A store is a directory, a directory served to other computers, a bucket or memory, chosen by its address.
 
 A **directory** is for one computer. Every value is a plain file, so a person can look at an instance with ordinary tools. A listing reads every file it lists. A change the directory has answered is on disk: a computer that loses power comes back with everything it said it had written, and nothing it said it had deleted. Windows cannot sync a directory, so there a name made or removed just before the power went may be lost, as far as NTFS keeps it. Every party on the computer can read and write all of it. A directory keeps no party out of anything, and Corbie says so.
+
+On a file system that ignores case, as macOS's and Windows's do by default, `/Work` and `/work` are one directory. A secret or a value set at one of them is refused while the other has that name set, and so is a remove. Listing the secrets or the values reads every file under `locations/`.
 
 A **served directory** is for a few computers of one's own, with nothing rented and nothing else installed. The computer that holds the directory and the controller serves it, and a party on another computer reaches it at `corbie://host:port`. Roles on the serving computer use the directory as it is.
 

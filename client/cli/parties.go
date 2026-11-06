@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/zummed/corbie/client"
 	"github.com/zummed/corbie/identity"
@@ -738,7 +739,7 @@ func atFlag(e *Env) *string {
 // checkAt refuses a location a secret or a value cannot be set at.
 func checkAt(at string) error {
 	if err := store.CheckLocation(at); err != nil {
-		return Mistake("--at %q: a location starts with /, as /home/devices/boiler, and no part of it is empty, starts with a dot, is + or holds #", at)
+		return Mistake("--at %q: a location starts with /, as /home/devices/boiler, and no part of it is empty, ., .. or +, or holds #", at)
 	}
 	return nil
 }
@@ -914,7 +915,11 @@ func cmdValueList(e *Env, args []string) error {
 	printed, rows := []listed{}, [][]string{}
 	for _, entry := range entries {
 		printed = append(printed, listed{entry.Name, entry.At, entry.Value})
-		rows = append(rows, []string{entry.Name, entry.At, entry.Value})
+		value := entry.Value
+		if strings.ContainsFunc(value, unicode.IsControl) {
+			value = strconv.Quote(value)
+		}
+		rows = append(rows, []string{entry.Name, entry.At, value})
 	}
 	return e.Print(printed, func() string { return aligned(rows) })
 }

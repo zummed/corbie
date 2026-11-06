@@ -263,6 +263,7 @@ A tree belongs to the client that first submitted it. Every run keeps the defini
 - A submit at a prefix inside or above another tree is refused, naming that tree. `/` is never a tree.
 - A submit at a tree another client owns is refused, naming the owner.
 - A submit at a prefix that no `at:` entry of the client's ceiling matches is refused.
+- A file under a directory whose name starts with a dot is read as any other: `.rook/review.yaml` submitted at `/project` is at `/project/.rook/review`.
 - A file beside a directory of the same name, as `boiler.yaml` beside `boiler/x.yaml`, is refused, because a location has nothing below it.
 - A file with a problem is reported, and its location keeps what was recorded before. A problem with one file leaves the rest done.
 - A singleton is given no input, and one that needs some is refused, and reported. It reads the context's absolute path as `${run.context}`.

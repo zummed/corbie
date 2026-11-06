@@ -341,7 +341,7 @@ func Test_ctl_answer_of_a_made_machine_uses_no_key(t *testing.T) {
 			t.Fatalf("%s: the run with the key took %d steps", lie[0], len(steps))
 		}
 		for _, op := range w.noted() {
-			if strings.Contains(op.Name, "/+/keys/") {
+			if strings.Contains(op.Name, "/keys/") {
 				t.Fatalf("%s: the answer led to a look at %s", lie[0], op.Name)
 			}
 		}

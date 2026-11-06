@@ -6,6 +6,7 @@ import (
 	"errors"
 	"maps"
 	"slices"
+	"strings"
 	"testing"
 
 	"github.com/zummed/corbie/identity"
@@ -139,5 +140,87 @@ func TestSecretAndValueSealedToTheController(t *testing.T) {
 	}
 	if _, err := secret.Values(ctx, s, ctl, "/home/devices/boiler"); !errors.Is(err, identity.ErrAltered) {
 		t.Errorf("a value moved to another location was read: %v", err)
+	}
+}
+
+// Removing a name that is not set at the location given says so, and
+// leaves the one set elsewhere.
+func TestRemoveWhereNothingIsSet(t *testing.T) {
+	ctl, s := newController(t)
+	if err := secret.Set(ctx, s, ctl, "/work", "K", "k"); err != nil {
+		t.Fatal(err)
+	}
+	if err := secret.SetValue(ctx, s, ctl, "/work", "V", "v"); err != nil {
+		t.Fatal(err)
+	}
+	if err := secret.Remove(ctx, s, ctl, "/wrok", "K"); err == nil || err.Error() != "the secret K is not set at /wrok" {
+		t.Errorf("removing a secret where none is set gave %v", err)
+	}
+	if err := secret.RemoveValue(ctx, s, ctl, "/", "V"); err == nil || err.Error() != "the value V is not set at /" {
+		t.Errorf("removing a value where none is set gave %v", err)
+	}
+	if _, set, _ := secret.Get(ctx, s, ctl, "/work", "K"); !set {
+		t.Error("the secret set at /work went")
+	}
+}
+
+// On a file system that ignores case, /Work and /work are one directory: a
+// set at one refuses while the other has the name set, and removes nothing.
+func TestLocationsOfOtherCaseShareAFile(t *testing.T) {
+	ctl, s := newController(t)
+	if err := secret.Set(ctx, s, ctl, "/work", "K", "work"); err != nil {
+		t.Fatal(err)
+	}
+	if err := secret.SetValue(ctx, s, ctl, "/work", "V", "work"); err != nil {
+		t.Fatal(err)
+	}
+	// As a file system that ignores case shows them.
+	for from, to := range map[string]string{
+		store.Secret("ctl", "/work", "K"): store.Secret("ctl", "/Work", "K"),
+		store.Value("ctl", "/work", "V"):  store.Value("ctl", "/Work", "V"),
+	} {
+		if _, err := s.Copy(ctx, from, to); err != nil {
+			t.Fatal(err)
+		}
+	}
+	want := "the secret K is set at /work, which this store keeps in the same file as /Work because its file system ignores case"
+	if err := secret.Set(ctx, s, ctl, "/Work", "K", "Work"); err == nil || err.Error() != want {
+		t.Errorf("a secret set at /Work over /work's gave %v", err)
+	}
+	if err := secret.Remove(ctx, s, ctl, "/Work", "K"); err == nil || err.Error() != want {
+		t.Errorf("a secret removed at /Work over /work's gave %v", err)
+	}
+	if err := secret.SetValue(ctx, s, ctl, "/Work", "V", "Work"); err == nil || !strings.HasPrefix(err.Error(), "the value V is set at /work,") {
+		t.Errorf("a value set at /Work over /work's gave %v", err)
+	}
+	if value, _, err := secret.Get(ctx, s, ctl, "/work/x", "K"); err != nil || value != "work" {
+		t.Errorf("the secret at /work reads %q (%v)", value, err)
+	}
+}
+
+// A location whose part starts with a dot, as .rook does, is kept where a
+// directory lists it.
+func TestDotLocationInADirectory(t *testing.T) {
+	ctl, _ := newController(t)
+	s, err := store.OpenDirectory(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := secret.Set(ctx, s, ctl, "/project/.rook", "K", "k"); err != nil {
+		t.Fatal(err)
+	}
+	if err := secret.SetValue(ctx, s, ctl, "/project/.rook/review", "V", "v"); err != nil {
+		t.Fatal(err)
+	}
+	listed, err := secret.List(ctx, s, ctl.Name)
+	if want := []secret.Entry{{Name: "K", At: "/project/.rook"}}; err != nil || !slices.Equal(listed, want) {
+		t.Errorf("the secrets are listed as %v (%v)", listed, err)
+	}
+	values, err := secret.ListValues(ctx, s, ctl)
+	if want := []secret.Entry{{"V", "/project/.rook/review", "v"}}; err != nil || !slices.Equal(values, want) {
+		t.Errorf("the values are listed as %v (%v)", values, err)
+	}
+	if value, _, err := secret.Get(ctx, s, ctl, "/project/.rook/review", "K"); err != nil || value != "k" {
+		t.Errorf("a run at /project/.rook/review reads %q (%v)", value, err)
 	}
 }

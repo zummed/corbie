@@ -102,7 +102,7 @@ func (w *world) entry(client, key string) *instance.KeyFile {
 // leaves it.
 func (w *world) writeEntry(client, key, run, start string) {
 	w.t.Helper()
-	at := store.Key("ctl", "/"+client, key)
+	at := store.ClientKey("ctl", client, key)
 	data, err := w.ctl.Write(at, w.now, time.Time{}, instance.KeyFile{Key: key, Run: run, Start: start}, w.ctl.Card, w.c1.Card)
 	if err != nil {
 		w.t.Fatal(err)
@@ -228,7 +228,7 @@ func Test_store_a_key_is_in_no_name(t *testing.T) {
 		t.Fatalf("the head says %q", head.Key)
 	}
 	sum := sha256.Sum256([]byte(key))
-	if name := store.Key("ctl", "/c1", key); name != "ctl/locations/c1/+/keys/"+hex.EncodeToString(sum[:]) {
+	if name := store.ClientKey("ctl", "c1", key); name != "ctl/keys/c1/"+hex.EncodeToString(sum[:]) {
 		t.Fatalf("the key's entry is under %s", name)
 	}
 	for _, name := range w.list("ctl") {
@@ -359,7 +359,7 @@ func Test_mach_key_past_its_bound_writes_nothing(t *testing.T) {
 		      go: { send: { to: { machine: ./waits.yaml, key: "${event.data}" }, event: x } }
 	`, map[string]string{"waits.yaml": waits}, nil)
 	w.settle()
-	before := w.list("ctl/locations")
+	before := w.list("ctl/keys")
 	for _, key := range []any{strings.Repeat("a", 257), "", nil, map[string]any{"a": 1.0}} {
 		if _, err := w.client.Send(ctx, sender, "go", key, time.Hour); err != nil {
 			t.Fatal(err)
@@ -370,7 +370,7 @@ func Test_mach_key_past_its_bound_writes_nothing(t *testing.T) {
 	if len(notes) != 4 || !strings.Contains(notes[0], "at most 256") || !strings.Contains(notes[1], "not empty") {
 		t.Fatalf("the record says %v", notes)
 	}
-	if got := w.list("ctl/locations"); !slices.Equal(got, before) || len(w.runsOf("waits")) != 0 || w.head(sender).Status != instance.Running {
+	if got := w.list("ctl/keys"); !slices.Equal(got, before) || len(w.runsOf("waits")) != 0 || w.head(sender).Status != instance.Running {
 		t.Fatalf("the keys are %v and the runs %v", got, w.runsOf("waits"))
 	}
 	if _, err := w.client.Send(ctx, sender, "go", strings.Repeat("é", 256), time.Hour); err != nil {
@@ -659,7 +659,7 @@ func Test_ctl_event_on_its_way_is_not_overtaken(t *testing.T) {
 		w.say(sender, "say", 1, "first")
 		w.pass()
 		// The entry goes before the sender's next event: that one starts a run.
-		if _, err := w.owner.Delete(ctx, store.Key("ctl", "/c1", "chat:1"), store.Overwrite); err != nil {
+		if _, err := w.owner.Delete(ctx, store.ClientKey("ctl", "c1", "chat:1"), store.Overwrite); err != nil {
 			t.Fatal(err)
 		}
 		w.say(sender, "say", 1, "second")
@@ -904,13 +904,13 @@ func Test_ctl_send_to_a_key_lists_nothing(t *testing.T) {
 	w.settle()
 	reads := 0
 	for _, op := range w.noted() {
-		if strings.Contains(op.Name, "/+/keys/") && op.Act == store.ActList {
+		if strings.Contains(op.Name, "/keys/") && op.Act == store.ActList {
 			t.Fatalf("a pass listed %s", op.Name)
 		}
 		if op.Act == store.ActList && op.Name != store.Inbox("ctl") && op.Name != store.Wakes("ctl") {
 			t.Fatalf("a pass listed %s", op.Name)
 		}
-		if strings.Contains(op.Name, "/+/keys/") && op.Act == store.ActRead {
+		if strings.Contains(op.Name, "/keys/") && op.Act == store.ActRead {
 			reads++
 		}
 	}
@@ -952,7 +952,7 @@ func Test_ctl_step_sends_to_any_number_of_keys(t *testing.T) {
 type delayedKeys struct{ store.Store }
 
 func (s *delayedKeys) Read(ctx context.Context, name string) ([]byte, store.Mark, error) {
-	if strings.Contains(name, "/+/keys/") {
+	if strings.Contains(name, "/keys/") {
 		time.Sleep(50 * time.Millisecond)
 	}
 	return s.Store.Read(ctx, name)
@@ -1206,7 +1206,7 @@ func Test_store_key_file_is_signed_and_sealed(t *testing.T) {
 		t.Fatal(err)
 	}
 	w.settle()
-	data, _, err := w.owner.Read(ctx, store.Key("ctl", "/c1", "chat:1"))
+	data, _, err := w.owner.Read(ctx, store.ClientKey("ctl", "c1", "chat:1"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1214,10 +1214,10 @@ func Test_store_key_file_is_signed_and_sealed(t *testing.T) {
 		t.Fatalf("the entry is written in the clear: %s", data)
 	}
 	var entry instance.KeyFile
-	if _, err := identity.Read(data, store.Key("ctl", "/c1", "chat:1"), w.ctl.Card, w.c1, &entry); err != nil || entry.Run != run {
+	if _, err := identity.Read(data, store.ClientKey("ctl", "c1", "chat:1"), w.ctl.Card, w.c1, &entry); err != nil || entry.Run != run {
 		t.Fatalf("the client reads %+v, %v", entry, err)
 	}
-	if _, err := identity.Read(data, store.Key("ctl", "/c1", "chat:2"), w.ctl.Card, w.c1, &entry); err == nil {
+	if _, err := identity.Read(data, store.ClientKey("ctl", "c1", "chat:2"), w.ctl.Card, w.c1, &entry); err == nil {
 		t.Fatal("an entry checks under another key's name")
 	}
 	// A note from a client to the controller is no message it acts on.

@@ -70,7 +70,8 @@ func Test_store_no_name_is_a_path_above_another(t *testing.T) {
 		Message("ctl", "ctl", LinkMessage(i, 3, 0, "start")),
 		ReceiptBlob("ctl", "c1", "m1", "b1"), Upload("ctl", "c1", "m2", "f1"),
 		Tree("ctl", "/home"), LocationFile("ctl", "/home/boiler"), LocationBlob("ctl", "/home/boiler", "b1"),
-		Key("ctl", "/home/boiler", ""), Key("ctl", "/home/rooms", "k"),
+		Key("ctl", "/home/boiler", ""), Key("ctl", "/home/rooms", "k"), ClientKey("ctl", "c1", "k"),
+		LocationFile("ctl", "/project/.rook/review"), LocationFile("ctl", "/project/.rook"),
 		Secret("ctl", "/", "KEY"), Secret("ctl", "/home", "KEY"), Secret("ctl", "/home", "+"),
 		Value("ctl", "/", "HUB"), Value("ctl", "/home/boiler", "HUB"),
 		// A location may be named as an entry's kind is, under a prefix
@@ -102,20 +103,21 @@ func Test_store_no_name_is_a_path_above_another(t *testing.T) {
 }
 
 // A location's entries are under "+", and no part of a location is "+": so
-// no location's entries are a path above another's.
+// no location's entries are a path above another's. A part that starts
+// with a dot is kept after a "#", which no part of a location holds.
 func Test_store_location_part_cannot_be_plus(t *testing.T) {
-	for _, location := range []string{"/", "/home", "/home/devices/boiler", "/a-b_c/d:e"} {
+	for _, location := range []string{"/", "/home", "/home/devices/boiler", "/a-b_c/d:e", "/project/.rook/review", "/.x", "/...", "/a b/%20"} {
 		if err := CheckLocation(location); err != nil {
 			t.Errorf("%s: %v", location, err)
 		}
 	}
 	for _, location := range []string{"", "home", "home/x", "/home/", "//home", "/home//x", "/+", "/home/+",
-		"/home/+/secrets", "/home/.", "/home/..", "/home/../x", "/.rook", "/a#b", "/home/a\\b", "/a\nb"} {
+		"/home/+/secrets", "/home/.", "/home/..", "/home/../x", "/.", "/a#b", "/#.rook", "/home/a\\b", "/a\nb", "/.a\nb"} {
 		if err := CheckLocation(location); err == nil {
 			t.Errorf("%q was taken as a location", location)
 		}
 	}
-	for _, location := range []string{"/", "/home", "/home/devices/boiler"} {
+	for _, location := range []string{"/", "/home", "/home/devices/boiler", "/project/.rook/review"} {
 		for _, name := range []string{LocationFile("ctl", location), Secret("ctl", location, "K"), Key("ctl", location, "k")} {
 			if at, _, ok := ParseLocation("ctl", name); !ok || at != location {
 				t.Errorf("%s is read as at %q", name, at)
@@ -131,7 +133,8 @@ func Test_store_location_part_cannot_be_plus(t *testing.T) {
 	if got := Above("/"); !slices.Equal(got, []string{"/"}) {
 		t.Errorf("above / is %v", got)
 	}
-	if Secret("ctl", "/", "K") != "ctl/locations/+/secrets/K" || Secret("ctl", "/home", "K") != "ctl/locations/home/+/secrets/K" {
+	if Secret("ctl", "/", "K") != "ctl/locations/+/secrets/K" || Secret("ctl", "/home", "K") != "ctl/locations/home/+/secrets/K" ||
+		LocationFile("ctl", "/project/.rook/review") != "ctl/locations/project/#.rook/review/+/file" {
 		t.Error("secrets are not where the layout draws them")
 	}
 	if message, ok := ReceiptMessage("ctl", ReceiptBlob("ctl", "c1", "m1", "b")); !ok || message != "m1" {

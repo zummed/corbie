@@ -85,7 +85,22 @@ func LocationDir(ctl, location string) string {
 	if location == "/" {
 		return ctl + "/locations/+"
 	}
-	return ctl + "/locations" + location + "/+"
+	parts := strings.Split(strings.TrimPrefix(location, "/"), "/")
+	for i, part := range parts {
+		parts[i] = stored(part)
+	}
+	return ctl + "/locations/" + strings.Join(parts, "/") + "/+"
+}
+
+// stored is a part of a location as it is kept in the store: one that
+// starts with a dot, as .rook does, after a "#", so that a directory does
+// not hide it. No part of a location holds "#", so no other part is kept
+// starting with one.
+func stored(part string) string {
+	if strings.HasPrefix(part, ".") {
+		return "#" + part
+	}
+	return part
 }
 
 // Tree is the name of the entry of a tree submitted at a prefix.
@@ -105,8 +120,18 @@ func Value(ctl, at, name string) string  { return Values(ctl, at) + "/" + name }
 // the name holds its hash and never the key itself. A singleton's is the
 // empty key.
 func Key(ctl, location, key string) string {
+	return Keys(ctl, location) + "/" + keyHash(key)
+}
+
+// ClientKey is the name of the file of a key a client's sends name, among
+// that client's, until a send names a location.
+func ClientKey(ctl, client, key string) string {
+	return ctl + "/keys/" + client + "/" + keyHash(key)
+}
+
+func keyHash(key string) string {
 	sum := sha256.Sum256([]byte(key))
-	return Keys(ctl, location) + "/" + hex.EncodeToString(sum[:])
+	return hex.EncodeToString(sum[:])
 }
 
 // ParseLocation reads the location out of the name of one of its entries,
@@ -121,12 +146,16 @@ func ParseLocation(ctl, name string) (location, entry string, ok bool) {
 	if at < 0 || at == len(parts)-1 {
 		return "", "", false
 	}
+	for i, part := range parts[:at] {
+		parts[i] = strings.TrimPrefix(part, "#")
+	}
 	return "/" + strings.Join(parts[:at], "/"), strings.Join(parts[at+1:], "/"), true
 }
 
 // CheckLocation says whether a text can be a location: "/", or "/" then
-// parts that are each one part of a name, none of them "+" and none holding
-// "#", which separates a key from its location.
+// parts, none of them empty, ".", ".." or "+", and none holding "#", which
+// separates a key from its location, a slash, a backslash or a control
+// character.
 func CheckLocation(location string) error {
 	if location == "/" {
 		return nil
@@ -136,8 +165,8 @@ func CheckLocation(location string) error {
 		return fmt.Errorf("%w: the location %q does not start with /", ErrName, location)
 	}
 	for part := range strings.SplitSeq(rest, "/") {
-		if CheckPart(part) != nil || part == "+" || strings.Contains(part, "#") {
-			return fmt.Errorf("%w: the location %q has the part %q: a part is not empty, does not start with a dot, is not + and holds no #", ErrName, location, part)
+		if part == "." || part == ".." || part == "+" || strings.Contains(part, "#") || CheckPart(stored(part)) != nil {
+			return fmt.Errorf("%w: the location %q has the part %q: a part is not empty, ., .. or +, and holds no #, backslash or control character", ErrName, location, part)
 		}
 	}
 	return nil

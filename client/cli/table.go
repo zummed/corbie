@@ -321,6 +321,7 @@ A value is plain text, not secret. An expression reads it as ${values.NAME},
 and a run uses the value set nearest its location.
 
   --at <location>  where the value is set; by default /, for every tree
+  --               a value that starts with - follows it, as in OFFSET -- -5
 
   corbie manual using-secrets   secrets and values`},
 		{Name: "controller value remove", Usage: "<NAME> [--at <location>]", Summary: "remove a value set at a location", Run: cmdValueRemove, Help: `

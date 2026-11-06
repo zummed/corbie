@@ -230,12 +230,24 @@ func (w *world) secret(name, value, at string) {
 // pass runs one pass of the controller.
 func (w *world) pass() time.Time {
 	w.t.Helper()
-	next, err := w.ctrl.Pass(ctx)
+	// A pass that does not end is cancelled, and the test fails: it gives no
+	// deadline, which would change what the pass takes on.
+	bounded, cancel := context.WithCancel(ctx)
+	defer cancel()
+	timer := time.AfterFunc(passLimit, cancel)
+	defer timer.Stop()
+	next, err := w.ctrl.Pass(bounded)
+	if bounded.Err() != nil {
+		w.t.Fatalf("a pass did not end within %s", passLimit)
+	}
 	if err != nil {
 		w.t.Fatal("pass:", err)
 	}
 	return next
 }
+
+// passLimit is the longest one pass of a test may take.
+const passLimit = 30 * time.Second
 
 // settle runs passes until one changes nothing.
 func (w *world) settle() {

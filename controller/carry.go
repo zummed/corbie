@@ -599,46 +599,52 @@ func (p *pass) head(inst string, step *instance.Step) error {
 
 	running, finished := store.RunningHead(p.ctl, inst), store.FinishedHead(p.ctl, inst)
 	if st.Status != instance.Running {
-		if _, err := p.write(finished, noEnd, head); err != nil {
+		// A note written in the record after the end moves the finished
+		// head on with it.
+		if _, err := p.forward(finished, head); err != nil {
 			return err
 		}
 		_, err := p.store.Delete(p.ctx, running, store.Overwrite)
 		return err
 	}
+	made, err := p.forward(running, head)
+	if err != nil || !made {
+		return err
+	}
+	// There was no running head: the instance is new, or it has ended and a
+	// later step moved its head. Which of the two is asked only once the head
+	// is written: an instance that has ended, however lately, is then sure to
+	// be found among the finished, and the head just written is taken away
+	// again.
+	if _, ended, err := p.store.Read(p.ctx, finished); err != nil || ended == store.None {
+		return err
+	}
+	_, err = p.store.Delete(p.ctx, running, store.Overwrite)
+	return err
+}
+
+// forward writes a head only-if-unchanged and only forward: a head already
+// at the step or past it stays. It says whether there was no head before.
+func (p *pass) forward(at string, head *instance.Head) (made bool, err error) {
+	signed, err := p.c.ID.Write(at, p.now, noEnd, head)
+	if err != nil {
+		return false, err
+	}
 	for {
-		data, mark, err := p.store.Read(p.ctx, running)
+		data, mark, err := p.store.Read(p.ctx, at)
 		if err != nil {
-			return err
+			return false, err
 		}
-		if mark == store.None {
-			// No running head: the instance is new, or it has ended and a
-			// later step moved its head. Which of the two is asked only once
-			// the head is written: an instance that has ended, however
-			// lately, is then sure to be found among the finished, and the
-			// head just written is taken away again.
-			done, err := p.write(running, noEnd, head)
-			if err != nil {
-				return err
+		how := store.OnlyIfNew
+		if mark != store.None {
+			var current instance.Head
+			if _, err := identity.Read(data, at, p.c.ID.Card, nil, &current); err == nil && current.Step >= head.Step {
+				return false, nil
 			}
-			if !done {
-				continue
-			}
-			if _, ended, err := p.store.Read(p.ctx, finished); err != nil || ended == store.None {
-				return err
-			}
-			_, err = p.store.Delete(p.ctx, running, store.Overwrite)
-			return err
+			how = store.OnlyIfUnchanged(mark)
 		}
-		var current instance.Head
-		if _, err := identity.Read(data, running, p.c.ID.Card, nil, &current); err == nil && current.Step >= step.Number {
-			return nil // the head is already at this step or past it
-		}
-		signed, err := p.c.ID.Write(running, p.now, noEnd, head)
-		if err != nil {
-			return err
-		}
-		if done, err := p.store.Write(p.ctx, running, signed, store.OnlyIfUnchanged(mark)); err != nil || done {
-			return err
+		if done, err := p.store.Write(p.ctx, at, signed, how); err != nil || done {
+			return done && mark == store.None, err
 		}
 		// The head changed under the write: read it again.
 	}

@@ -4,6 +4,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/zummed/corbie/client"
 	"github.com/zummed/corbie/instance"
@@ -306,6 +307,46 @@ func Test_ctl_undelivered_note_reaches_an_ended_sender(t *testing.T) {
 	steps := w.steps(run)
 	if last := steps[len(steps)-1]; last.State.Status != instance.Done {
 		t.Fatalf("the note's step left the flow %s", last.State.Status)
+	}
+}
+
+// An ended run whose record has a note after its end takes what arrives
+// later as any ended run does: a cancel and an event are refused, a second
+// note is written after the first, and the head follows the latest step.
+func Test_ctl_ended_run_with_a_note_takes_what_comes_later(t *testing.T) {
+	w := newWorld(t)
+	w.rooms(map[string]string{
+		"/t/poke": `
+			flow: poke
+			allow: ["send:**"]
+			stages:
+			  poke: { job: { send: { to: { at: picky, key: k1 }, event: said, data: { text: hi } } } }
+		`,
+		"/t/picky": strings.Replace(talk, "statechart: talk", "statechart: picky\n\treceive: [client:nobody]", 1),
+	})
+	run := w.startAt(w.client, "/t/poke", client.Start{})
+	w.settle()
+	if notes := w.keyNotes(run); len(notes) != 1 {
+		t.Fatalf("the ended flow's record says %v", notes)
+	}
+	if _, err := w.client.Cancel(ctx, run, 0); err != nil {
+		t.Fatal(err)
+	}
+	w.settle()
+	w.put(w.ctl, "second.note", &instance.Message{Kind: instance.KindNote, Instance: run, From: run, Note: "a second note"}, w.ctl.Card, time.Time{})
+	w.settle()
+	if _, err := w.client.Send(ctx, machine.Address{Run: run}, "late", nil, 0); err != nil {
+		t.Fatal(err)
+	}
+	w.settle()
+	notes := w.keyNotes(run)
+	if len(notes) != 2 || notes[1] != "a second note" {
+		t.Fatalf("the ended flow's record says %v", notes)
+	}
+	steps := w.steps(run)
+	last := steps[len(steps)-1]
+	if head := w.head(run); head.Status != instance.Done || head.Step != last.Number || last.State.Status != instance.Done {
+		t.Fatalf("the head is at step %d and %s; the latest step is %d and %s", head.Step, head.Status, last.Number, last.State.Status)
 	}
 }
 

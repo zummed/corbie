@@ -346,6 +346,17 @@ func Test_ctl_event_from_is_the_senders_address(t *testing.T) {
 	if got := w.told(asker); len(got) != 1 || !strings.Contains(got[0], "key:k1") {
 		t.Fatalf("the reply to the keyed run was %v", got)
 	}
+	keyed := false
+	for run := range w.at("/t/bell") {
+		for _, step := range w.steps(run) {
+			for _, ask := range step.Asks {
+				keyed = keyed || ask.Kind == instance.AskEvent && ask.To == asker && ask.Key == "k1"
+			}
+		}
+	}
+	if !keyed {
+		t.Fatal("the bell's record does not name the key of the run its reply went to")
+	}
 	r := w.clientSend(w.client, "/t/bell", "rang", nil)
 	if !r.Taken {
 		t.Fatalf("the client's send was refused: %s", r.Refused)

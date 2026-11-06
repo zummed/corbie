@@ -361,7 +361,7 @@ func (b *build) addressAt(addr *machine.Address) (at, why string) {
 func (b *build) aim(ask *instance.Ask, s *machine.Send, at, why string) {
 	addr := s.At
 	ask.Location, ask.Client = at, addr.Client
-	if addr.Run == "" && at != "" {
+	if at != "" {
 		ask.Key = keyOf(addr)
 	}
 	undelivered := func(format string, args ...any) {

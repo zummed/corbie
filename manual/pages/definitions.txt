@@ -326,7 +326,8 @@ The controller sends events to a machine. An event has a name, a source and data
             address, or a value a job emitted with emit(name, value)
 
 No client, machine or script can send an event named `start`, `done`, `failed`
-or `timer`.
+or `timer`. A send under one of the receiver's timer or ticket names is noted
+as undelivered.
 
 A failed job's status is `error`, `timeout`, `denied` or `cancelled`, and
 `denied` adds `refused`, `layer` and `fix` to the data. Each type's page lists

@@ -37,9 +37,12 @@ type taken struct {
 type dropped struct {
 	a       *arrival
 	receipt *instance.Receipt
-	// move says it is an event sent to a key, which goes on to the run that
-	// has the key.
+	// move says it is an event sent to { at } or { at, key }, which goes on
+	// to the run that has the key.
 	move bool
+	// note says why an event sent to an address was not delivered: its
+	// sender is told.
+	note string
 }
 
 // The names of what a wake is for.
@@ -67,7 +70,10 @@ type build struct {
 	held    []*instance.Going           // the jobs of this step that wait for the ask
 	read    *stepOut                    // what the step read of the definition
 	asks    map[string]*machine.JobSpec // the asks the definition writes, read once a step
-	keys    map[string]string           // the run each key a step sent to goes to
+	targets map[addressed]*target       // what each key a step sends to has
+	// fromLocation says the run starts from its location's file, which its
+	// first step copies into its record.
+	fromLocation bool
 	// err is the store failing while the step was worked out: the step is
 	// not one that failed, and nothing is written for it.
 	err error
@@ -103,10 +109,12 @@ func (p *pass) take(inst string, latest *instance.Step, waiting []*arrival) (*ta
 	if st.Status != instance.Running {
 		for _, a := range waiting {
 			switch {
-			case a.isKeyed() && (heard(&st, a) || a.starts(inst)):
+			case a.isSend() && (heard(&st, a) || a.starts(inst)):
 				b.drop(a)
-			case a.isKeyed():
+			case a.movable():
 				b.move(a)
+			case a.isSend():
+				b.undeliver(a, fmt.Sprintf("the run %s has ended", inst))
 			default:
 				b.refuse(a, "the run has ended (it is %s)", st.Status)
 			}
@@ -136,10 +144,10 @@ func (p *pass) take(inst string, latest *instance.Step, waiting []*arrival) (*ta
 		b.out.rest = append(slices.Clone(waiting[:i]), waiting[i+1:]...)
 		return b.done()
 	}
-	// An event sent to a key is first in its step: nothing before it can end
-	// the run with the event given and not acted on.
+	// An event sent to { at } or { at, key } is first in its step: nothing
+	// before it can end the run with the event given and not acted on.
 	for i, a := range waiting {
-		if a.isKeyed() && len(b.out.used) > 0 {
+		if a.movable() && len(b.out.used) > 0 {
 			b.out.rest = waiting[i:]
 			break
 		}
@@ -170,8 +178,11 @@ func (b *build) done() (*taken, error) {
 	// answered and deleted only once the entry is the one that was written.
 	for _, d := range b.out.dropped {
 		b.step.Used = append(b.step.Used, d.a.name)
-		if d.receipt != nil {
-			b.ask(instance.Ask{Kind: instance.AskReceipt, Sender: d.a.sender, Message: d.a.name, Receipt: d.receipt})
+		switch client, message, _ := d.a.client(); {
+		case d.note != "":
+			b.told(d.a, d.note)
+		case d.receipt != nil:
+			b.ask(instance.Ask{Kind: instance.AskReceipt, Sender: client, Message: message, Receipt: d.receipt})
 		}
 	}
 	b.out.dropped = nil
@@ -234,7 +245,7 @@ func (b *build) drop(a *arrival) { b.out.dropped = append(b.out.dropped, dropped
 // refuse drops a message and, for a client's, says why in its receipt.
 func (b *build) refuse(a *arrival, format string, args ...any) {
 	d := dropped{a: a}
-	if !a.wake && a.kind == identity.Client {
+	if _, _, ok := a.client(); ok {
 		d.receipt = &instance.Receipt{Refused: fmt.Sprintf(format, args...)}
 	}
 	b.out.dropped = append(b.out.dropped, d)
@@ -282,8 +293,8 @@ func (b *build) arrive(a *arrival) error {
 	case instance.KindEmit:
 		b.emit(a)
 	case instance.KindSend:
-		if a.isKeyed() {
-			b.keyed(a)
+		if a.isSend() {
+			b.sent(a)
 		} else {
 			b.drop(a)
 		}
@@ -303,8 +314,8 @@ func (b *build) arrive(a *arrival) error {
 	return nil
 }
 
-// eventFrom takes a named event sent to the instance: by the client that
-// started it, which stands where a parent would, or by its parent.
+// eventFrom takes a named event a parent sent the instance. Any other
+// sender sends to a run by its address.
 func (b *build) eventFrom(a *arrival) {
 	msg := a.msg
 	if msg.Event == nil || msg.Event.Name == "" {
@@ -315,34 +326,17 @@ func (b *build) eventFrom(a *arrival) {
 		b.refuse(a, "no event can be sent under the name %q, which Corbie gives a machine itself", msg.Event.Name)
 		return
 	}
-	from := ""
-	switch {
-	case a.kind == identity.Client && a.sender == store.InstanceClient(b.inst):
-		// A message a client sent that has its receipt has been taken
-		// already: sent again, it gets the same answer and no second step.
-		answered, err := b.p.answered(a)
-		if err != nil {
-			b.err = err
-			return
-		}
-		if answered {
-			b.drop(a)
-			return
-		}
-		from = "client"
-	case a.kind == identity.Controller && msg.From != "" && msg.From == b.st.Above.Parent:
-		// From the parent: the controller may write one of these again
-		// when it repeats a carry-out, and it arrives once.
-		if !b.hear(a) {
-			b.drop(a)
-			return
-		}
-		from = machine.Parent
-	default:
-		b.refuse(a, "only the client that started a run may send it events")
+	if a.kind != identity.Controller || msg.From == "" || msg.From != b.st.Above.Parent {
+		b.refuse(a, "an event is sent to a run by its address: its location, with its key or its ID")
 		return
 	}
-	b.give(machine.Event{Name: msg.Event.Name, From: from, Data: msg.Event.Data}, a)
+	// From the parent: the controller may write one of these again when it
+	// repeats a carry-out, and it arrives once.
+	if !b.hear(a) {
+		b.drop(a)
+		return
+	}
+	b.give(machine.Event{Name: msg.Event.Name, From: machine.Parent, Data: msg.Event.Data}, a)
 }
 
 // hear says whether a message the controller wrote on behalf of a run is one
@@ -352,8 +346,9 @@ func (b *build) hear(a *arrival) bool {
 	if heard(b.st, a) {
 		return false
 	}
-	b.st.Heard = slices.DeleteFunc(b.st.Heard, func(last instance.Heard) bool { return last.From == a.msg.From })
-	b.st.Heard = append(b.st.Heard, instance.Heard{From: a.msg.From, Message: a.name[strings.LastIndexByte(a.name, '/')+1:]})
+	from := senderOf(a.msg)
+	b.st.Heard = slices.DeleteFunc(b.st.Heard, func(last instance.Heard) bool { return last.From == from })
+	b.st.Heard = append(b.st.Heard, instance.Heard{From: from, Message: a.name[strings.LastIndexByte(a.name, '/')+1:]})
 	if len(b.st.Heard) > instance.MaxHeard {
 		b.st.Heard = b.st.Heard[1:]
 	}
@@ -363,8 +358,8 @@ func (b *build) hear(a *arrival) bool {
 // heard says whether a message does not sort after the last one taken from
 // its sender.
 func heard(st *instance.State, a *arrival) bool {
-	name := a.name[strings.LastIndexByte(a.name, '/')+1:]
-	return slices.ContainsFunc(st.Heard, func(last instance.Heard) bool { return last.From == a.msg.From && name <= last.Message })
+	name, from := a.name[strings.LastIndexByte(a.name, '/')+1:], senderOf(a.msg)
+	return slices.ContainsFunc(st.Heard, func(last instance.Heard) bool { return last.From == from && name <= last.Message })
 }
 
 // answer takes an answer to a ticket. The ticket is the authority: any
@@ -677,15 +672,19 @@ func (b *build) machine() error {
 	}
 	var receipts []instance.Ask
 	for i, a := range b.sources {
-		if a.wake || a.kind != identity.Client {
+		client, message, ok := a.client()
+		if !ok {
 			continue
 		}
 		receipt := &instance.Receipt{Taken: true}
-		if a.msg.Kind == instance.KindEvent && stepped {
-			acted := !slices.Contains(ignored, i)
-			receipt.Acted = &acted
+		if a.isSend() {
+			receipt.Run = b.inst
+			if stepped {
+				acted := !slices.Contains(ignored, i)
+				receipt.Acted = &acted
+			}
 		}
-		receipts = append(receipts, instance.Ask{Kind: instance.AskReceipt, Sender: a.sender, Message: a.name, Receipt: receipt})
+		receipts = append(receipts, instance.Ask{Kind: instance.AskReceipt, Sender: client, Message: message, Receipt: receipt})
 	}
 	b.step.Asks = slices.Insert(b.step.Asks, min(at, len(b.step.Asks)), receipts...)
 	return nil
@@ -791,7 +790,7 @@ func (b *build) run() machine.Run {
 // readAllow fills in the allow list written for the whole definition, for
 // the scripts of a step and for an ask of the machine's own.
 func (b *build) readAllow(read *stepOut) {
-	if !slices.ContainsFunc(read.Requests, func(r machine.Request) bool { return r.Job != nil }) {
+	if !slices.ContainsFunc(read.Requests, func(r machine.Request) bool { return r.Job != nil || sendsTo(r) }) {
 		return
 	}
 	var err error
@@ -873,11 +872,11 @@ func (b *build) message(what string) string {
 
 // apply turns what a machine asked for into what the controller will do.
 func (b *build) apply(requests []machine.Request) error {
-	if b.st.Above.Made && slices.ContainsFunc(requests, usesKey) {
-		b.end(instance.Failed, nil, b.p.failf("a machine made while running sends to no key and gives no job a key"))
+	if b.st.Above.Made && slices.ContainsFunc(requests, sendsTo) {
+		b.end(instance.Failed, nil, b.p.failf("a machine made while running sends only to its parent and its children"))
 		return nil
 	}
-	if err := b.readKeys(requests); err != nil {
+	if err := b.readAddresses(requests); err != nil {
 		return err
 	}
 	// A send to a child waits until the step's jobs have been taken: one
@@ -905,6 +904,12 @@ func (b *build) apply(requests []machine.Request) error {
 				if job.Held {
 					b.unhold(job)
 				}
+			}
+		case sendsTo(r):
+			if b.sendTo(r.Send) {
+				// The run was denied the send: nothing after it is done.
+				down = nil
+				return nil
 			}
 		case r.Send != nil && r.Send.To != machine.Parent:
 			down = append(down, r.Send)
@@ -1079,12 +1084,6 @@ func (b *build) launch(job *instance.Going) {
 	full := job.Full()
 	job.Began = b.time
 	if job.IsMachine() {
-		if key := job.RunKey; key != nil {
-			if err := machine.CheckKey(*key); err != nil {
-				b.fail(job, "%v", err)
-				return
-			}
-		}
 		job.Child = store.ChildInstance(b.inst, b.time, full)
 		b.ask(instance.Ask{Kind: instance.AskChild, Name: full, Job: &job.Job, Attempt: job.Attempt, Child: job.Child,
 			Message: b.message("start")})
@@ -1150,15 +1149,11 @@ func (b *build) cancel(job *instance.Going) {
 	}
 }
 
-// send takes a machine's request to send an event: up to its parent, down
-// to a child, or to a key. A root's parent is its client, and what a root
-// sends up is only written in its record. An event for a child that is not
-// running is noted as undelivered and fails nothing.
+// send takes a machine's request to send an event up to its parent or down
+// to a child. A root's parent is its client, and what a root sends up is
+// only written in its record. An event for a child that is not running is
+// noted as undelivered and fails nothing.
 func (b *build) send(s *machine.Send) {
-	if s.Key != nil {
-		b.sendToKey(s)
-		return
-	}
 	event := &machine.Event{Name: s.Event, Data: s.Data}
 	if s.To == machine.Parent {
 		ask := instance.Ask{Kind: instance.AskEvent, Event: event}
@@ -1205,7 +1200,7 @@ func (b *build) end(status string, output any, e *machine.Error) {
 	// failure.
 	if st.Above.StartedBy != "" && status == instance.Failed && b.step.Number == 1 {
 		b.ask(instance.Ask{Kind: instance.AskTell, To: st.Above.StartedBy, Message: b.message("tell"),
-			Text: fmt.Sprintf("the run %s, started for the key %q, failed as it started: %s", b.inst, st.Key, e.Error)})
+			Text: fmt.Sprintf("the run %s, started by a send to %s#%s, failed as it started: %s", b.inst, st.Location, st.Key, e.Error)})
 	}
 }
 
@@ -1245,12 +1240,16 @@ func (p *pass) begin(inst string, waiting []*arrival) (*taken, error) {
 	}
 	if start == nil {
 		// Nothing will ever take a message or a wake for an instance that
-		// does not exist, but an event sent to a key goes on.
+		// does not exist, but an event sent to { at } or { at, key } goes
+		// on.
 		b.out.rest = nil
 		for _, a := range waiting {
-			if a.isKeyed() {
+			switch {
+			case a.movable():
 				b.move(a)
-			} else {
+			case a.isSend():
+				b.undeliver(a, fmt.Sprintf("there is no such run as %s", inst))
+			default:
 				b.refuse(a, "there is no such run")
 			}
 		}
@@ -1267,7 +1266,7 @@ func (p *pass) begin(inst string, waiting []*arrival) (*taken, error) {
 	case start.kind == identity.Client && s.Location == "":
 		b.refuse(start, "a client's start names a location: a run starts at the location of a file in a tree")
 		return &b.out, nil
-	case s.Location != "" && s.Above == nil && (start.kind == identity.Client || start.kind == identity.Controller):
+	case start.isSend() || s.Location != "" && s.Above == nil && (start.kind == identity.Client || start.kind == identity.Controller):
 		// A start of a location: the run begins from the file recorded there.
 		var err error
 		if s, err = b.located(start); err != nil || s == nil {
@@ -1288,13 +1287,13 @@ func (p *pass) begin(inst string, waiting []*arrival) (*taken, error) {
 		// A child runs at its parent's location.
 		st.Location, st.Tree = s.Location, s.Tree
 	}
-	if start.isKeyed() {
+	if start.isSend() {
 		// The data of the event is the run's input, and the event its first
 		// after its start.
 		copied := *s
 		s, copied.Input = &copied, start.msg.Event.Data
 		st.Input = s.Input
-		b.events = []machine.Event{{Name: start.msg.Event.Name, From: start.msg.From, Data: start.msg.Event.Data}}
+		b.events = []machine.Event{sentEvent(start.msg)}
 		b.hear(start)
 	}
 	refused, err := b.first(s, start)
@@ -1307,9 +1306,14 @@ func (p *pass) begin(inst string, waiting []*arrival) (*taken, error) {
 	return b.done()
 }
 
+// sentEvent is the event a message sent to an address gives the run.
+func sentEvent(msg *instance.Message) machine.Event {
+	return machine.Event{Name: msg.Event.Name, Data: msg.Event.Data, Sender: msg.Sender}
+}
+
 // first takes the first step of an instance from the point where its
-// definition is read, and says whether a client's start was refused before
-// any instance exists.
+// definition is read, and says whether its start was refused, or left for
+// another run, before any instance exists.
 func (b *build) first(s *instance.Start, start *arrival) (refused bool, err error) {
 	p, st := b.p, b.st
 
@@ -1326,6 +1330,48 @@ func (b *build) first(s *instance.Start, start *arrival) (refused bool, err erro
 		return false, err
 	}
 	b.def = def
+	// A run a send starts takes the event only where its location's file
+	// takes it.
+	if start.isSend() {
+		if why := b.refuses(start.msg, def); why != "" {
+			b.undeliver(start, why)
+			return true, nil
+		}
+	}
+	// The key is taken before anything of the run is written, so a run that
+	// loses it has done nothing.
+	if st.Lifetime == machine.LifetimeKeyed || st.Lifetime == machine.LifetimeSingleton {
+		inUse, err := p.claim(b.inst, store.Key(p.ctl, st.Location, s.Key), s.Key, start.name)
+		if err != nil {
+			return false, err
+		}
+		switch {
+		case inUse != "" && start.isSend():
+			b.move(start)
+			return true, nil
+		case inUse != "":
+			// A later submit started the singleton again: this start is left.
+			b.drop(start)
+			return true, nil
+		}
+	}
+	// A run started at a location keeps its own copy of the file recorded
+	// there, and of what that names.
+	gone := false
+	if b.fromLocation {
+		copied, err := blob.CopyWhole(p.ctx, p.store, s.Definition, p.ctl, store.Blobs(p.ctl, b.inst))
+		switch {
+		case err == nil:
+			st.Definition = copied
+		case p.blobError(err) != nil:
+			return false, p.blobError(err)
+		case start.kind == identity.Client:
+			b.refuse(start, "the file at %s is no longer in the store", st.Location)
+			return true, nil
+		default:
+			gone = true
+		}
+	}
 	st.Machine, st.Type = def.Name, def.Type
 	// A machine made while running has no ask of its own, and what it wrote
 	// of one is not kept.
@@ -1334,7 +1380,7 @@ func (b *build) first(s *instance.Start, start *arrival) (refused bool, err erro
 	}
 	st.Keep = machine.Duration(p.keepFor(def, &st.Above))
 	st.Above.AskAbout = append(slices.Clone(st.Above.AskAbout), def.AskAbout...)
-	if len(read.Problems) == 0 {
+	if len(read.Problems) == 0 && !gone {
 		if read, err = b.readStep(s, start); err != nil || read == nil {
 			return false, err
 		}
@@ -1349,30 +1395,13 @@ func (b *build) first(s *instance.Start, start *arrival) (refused bool, err erro
 	if len(problems) == 0 {
 		st.Input, st.Title = read.Input, read.Title
 	}
-	// The key is taken before the step is written, so a run that loses it
-	// has done nothing.
-	inUse := ""
-	if s.Key != "" || st.Lifetime == machine.LifetimeSingleton {
-		if inUse, err = p.claim(b.inst, p.keyAt(b.inst, st.Lifetime, st.Location, s.Key), s.Key, start.name); err != nil {
-			return false, err
-		}
-	}
-	switch {
-	case inUse != "" && start.isKeyed():
-		b.move(start)
-		return true, nil
-	case inUse != "" && st.Lifetime == machine.LifetimeSingleton:
-		// A later submit started the singleton again: this start is left.
-		b.drop(start)
-		return true, nil
-	}
 	b.use(start)
 	b.record(machine.Event{Name: machine.Start, Data: st.Input}, start, false)
-	if start.isKeyed() {
-		b.record(machine.Event{Name: start.msg.Event.Name, From: start.msg.From, Data: start.msg.Event.Data}, start, false)
+	if start.isSend() {
+		b.record(sentEvent(start.msg), start, false)
 	}
 	if start.kind == identity.Client || st.Lifetime != "" {
-		// A root a client or a submit starts counts its depth from its own
+		// A root started at its location counts its depth from its own
 		// file.
 		st.Above.MaxDepth = machine.DefaultDepth
 		if def.Depth != nil {
@@ -1388,15 +1417,34 @@ func (b *build) first(s *instance.Start, start *arrival) (refused bool, err erro
 			st.Above.Layers = []permission.Layer{layer}
 		}
 	}
-	if len(problems) > 0 {
+	answer := func(ignored []int, stepped bool) {
+		// A client whose send started the run is told the run took it.
+		client, message, ok := start.client()
+		if !ok || !start.isSend() {
+			return
+		}
+		receipt := &instance.Receipt{Taken: true, Run: b.inst}
+		if stepped {
+			acted := !slices.Contains(ignored, 1)
+			receipt.Acted = &acted
+		}
+		b.ask(instance.Ask{Kind: instance.AskReceipt, Sender: client, Message: message, Receipt: receipt})
+	}
+	switch {
+	case gone:
+		answer(nil, false)
+		b.end(instance.Failed, nil, b.p.failf("its machine is no longer in the store"))
+		return false, nil
+	case len(problems) > 0:
+		answer(nil, false)
 		b.end(instance.Failed, nil, b.p.failf("the definition did not pass its check: %s", strings.ReplaceAll(problems.Error(), "\n", "; ")))
 		return false, nil
-	}
-	if inUse != "" {
-		b.end(instance.Failed, nil, b.p.failf("the key %q is in use by the run %s", s.Key, inUse))
+	case st.Above.Depth > st.Above.MaxDepth:
+		answer(nil, false)
+		b.end(instance.Failed, nil, b.p.failf("depth limit reached: the run counts %d levels below the run that began its chain of sends, and its file allows %d", st.Above.Depth, st.Above.MaxDepth))
 		return false, nil
-	}
-	if read.Failure != "" {
+	case read.Failure != "":
+		answer(nil, false)
 		_, _, err = b.follow(read)
 		return false, err
 	}
@@ -1410,7 +1458,8 @@ func (b *build) first(s *instance.Start, start *arrival) (refused bool, err erro
 		st.TimeoutAt = b.time.Add(time.Duration(limit))
 		b.ask(instance.Ask{Kind: instance.AskWake, At: st.TimeoutAt, What: wakeTimeout})
 	}
-	_, _, err = b.follow(read)
+	ignored, stepped, err := b.follow(read)
+	answer(ignored, stepped)
 	return false, err
 }
 

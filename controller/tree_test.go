@@ -432,7 +432,7 @@ func Test_ctl_values_are_read_at_the_first_step(t *testing.T) {
 		return run
 	}
 	end := func(run string) *instance.State {
-		if _, err := w.client.Send(ctx, run, "end", nil, 0); err != nil {
+		if _, err := w.client.Send(ctx, w.to(run), "end", nil, 0); err != nil {
 			t.Fatal(err)
 		}
 		w.settle()

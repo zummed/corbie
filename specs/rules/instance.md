@@ -118,8 +118,8 @@ The detailed rules behind the [Instances overview](../instance.md).
 **R-inst-58** For every message a client sends, the controller writes a receipt under the same name, saying that the message was taken or why it was refused. A start that is refused has a receipt saying why and no instance exists for it; an answer to a ticket for a run the client did not start has a receipt saying whether it was the one taken.
 *Accept:* a start, a cancel, an event and an answer that the controller takes each get a receipt saying taken. A cancel for a run the client did not start gets a receipt saying why it was refused. A start whose definition does not pass its check gets a receipt listing what is wrong, and no head and no record exist under the name the client chose. Client `c2`, which can read nothing of `c1`'s run, answers a ticket of that run: its receipt says the answer was the one taken, and a second answer to the same ticket gets a receipt saying it was not.
 
-**R-inst-61** The receipt for an event says whether the machine acted on it or had no rule for it.
-*Accept:* send `go` to a statechart in a state with a rule for `go`: the receipt says it was acted on. Send `go` again while the chart is busy in a state with no such rule: the receipt says there was no rule for it.
+**R-inst-61** The receipt for an event names the run that took it and says whether the machine acted on it or had no rule for it.
+*Accept:* send `go` to a statechart in a state with a rule for `go`: the receipt names the run and says it was acted on. Send `go` again while the chart is busy in a state with no such rule: the receipt says there was no rule for it.
 
 **R-inst-62** A receipt is sealed to the client that sent the message and is kept for a day, a taken call's as R-inst-69 says.
 *Accept:* a receipt for a refused start, whose text quotes the definition, shows none of that text when read raw from the store, and another client handed the raw value cannot open it. A receipt can be read twenty-three hours after it was written, and is gone after a day and a housekeeping pass.

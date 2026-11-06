@@ -294,8 +294,8 @@ func TestHelpIsAskedForWithTheFlag(t *testing.T) {
   submit   record a tree, or start a run of a location and print its ID
   ls       list runs
   show     show one run: its status and its result
-  cancel   cancel a run that this client started
-  send     send an event to a run that this client started
+  cancel   cancel a run in a tree of this client's
+  send     send an event to a run by its address
   reply    answer a ticket that a run waits on
 
 corbie run <command> --help prints a command's help.

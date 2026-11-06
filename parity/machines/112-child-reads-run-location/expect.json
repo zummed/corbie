@@ -1,0 +1,5 @@
+{
+  "status": "done",
+  "output": { "where": "/case/root" },
+  "note": "R-mach-24, R-ctl-113: a child runs at its parent's location, which run.location reads."
+}

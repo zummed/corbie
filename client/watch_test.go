@@ -52,7 +52,7 @@ func TestStandingChartIsFoundAndUsed(t *testing.T) {
 		t.Fatalf("another label found %d runs", len(runs))
 	}
 	for n := 1; n <= 2; n++ {
-		message, _ := l.Send(ctx, id, "go", map[string]any{"n": n}, 0)
+		message, _ := l.Send(ctx, addressOf(t, l.Client, id), "go", map[string]any{"n": n}, 0)
 		waitFor(t, l, func([]*client.Run) string {
 			if r, _ := l.Receipt(ctx, message); r != nil && r.Acted != nil && *r.Acted {
 				return "acted"
@@ -68,7 +68,7 @@ func TestStandingChartIsFoundAndUsed(t *testing.T) {
 			return ""
 		})
 	}
-	l.Send(ctx, id, "stop", nil, 0)
+	l.Send(ctx, addressOf(t, l.Client, id), "stop", nil, 0)
 	r := wait(t, l, id)
 	check(t, r.Status, r.Output, "done", `{"did": 2}`)
 }
@@ -116,7 +116,7 @@ func TestWatchingAListing(t *testing.T) {
 		}
 		return false
 	})
-	l.Send(ctx, first, "stop", nil, 0)
+	l.Send(ctx, addressOf(t, l.Client, first), "stop", nil, 0)
 	seen(func(u []client.Update) bool {
 		for _, one := range u[2:] {
 			if one.Run != nil && one.Run.ID == first && !one.New && one.Run.Status == "done" {

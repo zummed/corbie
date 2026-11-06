@@ -1,4 +1,5 @@
-statechart: wait
+statechart: room
+lifetime: keyed
 initial: open
 states:
   open: { on: { go: over } }

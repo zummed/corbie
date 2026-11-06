@@ -1,0 +1,7 @@
+statechart: boiler
+lifetime: singleton
+allow: [send:root]
+initial: idle
+states:
+  idle:
+    on: { set: { send: { to: "${event.from}", event: applied, data: { target: "${event.data.target}" } } } }

@@ -170,7 +170,9 @@ Addresses and `receive:` are written as machine.md says.
 1. While the sender's step is worked out, the controller checks `send:` in every permission layer of the sender. A refusal is `denied` (see permission.md).
 2. It names the receiving run, and writes the message when it carries out the step.
 3. The receiving run takes the message only if its `receive:` lists the sender, by default every location and the client of its own tree. A run checks the definition it started with, and a run about to start checks its location's file.
-4. The controller writes the sender into `event.from`: `{ at, run }`, with `key` for a keyed run, or `{ client }`.
+4. The controller writes the sender into `event.from`: `{ at, run }`, with `key` for a keyed run, or `{ client }`, whatever a client wrote.
+
+The sender's record names the run the step named, or the run the send started. A run that ended first passes the event on, and the receiving run's record names the sender. A client's send is routed the same way, and its receipt names the run that took it. The tree's client names a run of its own by its ID alone.
 
 These sends are noted as undelivered in the sender's record and fail nothing:
 
@@ -178,6 +180,7 @@ These sends are noted as undelivered in the sender's record and fail nothing:
 - No run at the address is running, or the run is a flow or an agent.
 - The key has no running run and its location has `limits: { runs }` running already.
 - The event is named `start`, `done`, `failed`, a timer's name or a ticket's name.
+- The address names a run by its ID that is not at the location the address gives, or a client.
 - A run that had kept the event under `defer:` was cancelled.
 
 An undelivered message is deleted, and then a note goes to the sender's record. A controller stopped between the two writes no note. Events from one run to one run arrive once each, in the order sent, and nothing is promised between two senders.
@@ -201,9 +204,9 @@ A called run's held jobs go only to its own file's `ask:`, and are denied when i
 
 A key's file is at its location (see store.md), named by the SHA-256 of the key. It holds the key, the run and the message that starts the run, signed by the controller and sealed to it. A singleton's run is named the same way, by the file of the empty key, which the submit writes as it starts the run. A send to `{ at }` never starts a run: with no running singleton it is noted as undelivered.
 
-1. A send reads the file once, while the step is worked out, and the step names the run the event goes to: the run with the key or, when none has it at a keyed location, a new run. A carry-out done again goes to the same run.
-2. A message carries the event, and the start of the new run from the location's file. The start and the event are one message, so the new run's first step takes both.
-3. A run checks `receive:`, then takes its key, only-if-new, after its definition has been read and before its first step is written. A run that is refused or loses has done nothing.
+1. A send reads the file once, while the step is worked out, and the step names the run the event goes to: the run the file names or, when it names none at a keyed location, a new run. A carry-out done again goes to the same run.
+2. A message to a key carries the event, and what would start a run there. The new run's first step takes both, and the run with the key takes the event alone.
+3. A run checks `receive:`, then takes its key, only-if-new, after its definition has been read and before anything of the run is written. It then copies its location's file into its record. A run that is refused or loses has done nothing.
 4. A run's last step is written, then its key's file is deleted, then the step is carried out.
 
 The message of an event sent to a key is deleted only when a step of a running run has used it. A run that cannot take it, because it has ended, never began or lost the key, leaves it in the inbox, and the controller rewrites it in place, one write, to name the run that has the key or, with none at a keyed location, the run it starts. A message rewritten in place keeps its name, so it sorts as it did. A run that ended with the event in its record has taken it, and the message is dropped.
@@ -217,11 +220,11 @@ A message that would start a run that exists is that run's own start written aga
 | a run that has ended | the file is replaced, only-if-unchanged |
 | a run with no step and no start | the file is replaced, only-if-unchanged |
 
-An event sent to a key is the first event of its step. The events of a step after one that ends the machine are not acted on, and this one has to be. It waits for the next pass while an earlier event from the same run to the same key is on its way to another run, so no event is taken before one sent ahead of it.
+An event sent to a key is the first event of its step. The events of a step after one that ends the machine are not acted on, and this one has to be. It waits for the next pass while an earlier event from the same sender to the same key is on its way to another run, so no event is taken before one sent ahead of it. An event sent to a run by its ID waits the same way behind an earlier one from the same sender to that location.
 
 An instance remembers the last message taken from each of its 64 most recent senders, and one that does not sort after it is a copy from a carry-out done again.
 
-`limits: { runs }` is checked while the sender's step is worked out, by listing the key files at the location. Sends from several runs at once may each find room, so the count can pass the cap by a few.
+`limits: { runs }` is checked while the sender's step is worked out, by listing the key files at the location, and again when a message moves on to start a run. Sends from several runs at once may each find room, so the count can pass the cap by a few.
 
 A send costs one read of the file, and one of the location's file when it starts a run. It lists nothing when the location has no `limits: { runs }`. A step's files are read side by side, since a step that does not fit in a pass is never written. Taking a key costs a read and a write, and reading the run it names when another has it. Freeing one costs a read and a delete.
 

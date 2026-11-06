@@ -91,8 +91,8 @@ A statechart state with `ticket: <name>` issues a ticket, and
 started the run can print the ticket, with `corbie run show <id> --tickets`.
 
 A statechart with no final state keeps running. With `lifetime: singleton` the
-submit starts its one run, and a client sends it an event each time there is
-work.
+submit starts its one run, and a client sends it an event at its location each
+time there is work.
 
     # reports.yaml
     statechart: reports
@@ -115,13 +115,13 @@ work.
     corbie start &
     corbie run submit reports.yaml
       /reports   singleton   started <id>
-    corbie run send <id> work '"q3"'
-      taken; the machine acted on it
-    corbie run send <id> pause
-      taken; the machine had no rule for it
+    corbie run send /reports work '"q3"'
+      taken by <id>; the machine acted on it
+    corbie run send /reports pause
+      taken by <id>; the machine had no rule for it
     corbie run show <id> --record
       step 1  <- start
-      step 2  <- work from client "q3"
+      step 2  <- work from client:laptop-client "q3"
       step 2  -> job working: a script, on laptop-runner
     corbie run cancel <id>
       taken

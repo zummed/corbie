@@ -32,8 +32,6 @@ type Message struct {
 	// From is, in a message the controller sends itself, the instance it
 	// is sent on behalf of.
 	From string `json:"from,omitzero"`
-	// Key is the key an event was sent to.
-	Key string `json:"key,omitzero"`
 	// To is the address an event is sent to or a call starts a run at, and
 	// Sender the run or client it is from. Only the controller writes
 	// Sender.
@@ -78,7 +76,7 @@ type Start struct {
 	// Location is the location the run is started at: its machine is the
 	// file recorded there.
 	Location string `json:"location,omitzero"`
-	// Key is the key a job gives the run it starts.
+	// Key is, for an event sent to a key, the key of the run it starts.
 	Key string `json:"key,omitzero"`
 	// Tree is the prefix of the tree the location is in, for a child, which
 	// runs at its parent's location.
@@ -86,8 +84,9 @@ type Start struct {
 	// Replaces is, for a singleton a submit starts again, the run it
 	// replaces: the new run starts once that one has ended.
 	Replaces string `json:"replaces,omitzero"`
-	// Run is the run an event sent to a key starts: the event's data is its
-	// input. What a client or a job starts is the message's own instance.
+	// Run is the run an event sent to a key starts, where it names one: the
+	// event's data is its input. What a client or a job starts is the
+	// message's own instance.
 	Run string `json:"run,omitzero"`
 }
 

@@ -1,0 +1,9 @@
+{
+  "status": "done",
+  "record": [
+    { "machine": "room", "event": { "name": "set", "sender": { "at": "/case/root" } } },
+    { "machine": "room", "event": { "name": "stop" }, "absent": true },
+    { "machine": "sender", "ask": { "kind": "note", "text": { "<contains>": "does not receive stop" } } }
+  ],
+  "note": "R-ctl-120, R-mach-156: a receive: mapping lists the senders of each event by its name."
+}

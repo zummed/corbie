@@ -463,13 +463,11 @@ func (s *stepper) send(holder, place string, sends []Send) error {
 		if err != nil {
 			return err
 		}
-		out := &machine.Send{To: send.To, Machine: send.Machine, Event: send.Event, Data: data}
-		if send.Key != "" {
-			key, err := s.eval.Key(send.Key, s.scope(holder), fmt.Sprintf("%s[%d].to.key", place, i))
-			if err != nil {
+		out := &machine.Send{To: send.To, Event: send.Event, Data: data}
+		if send.Address != nil {
+			if out.At, err = send.Address.Fill(s.eval, s.scope(holder), fmt.Sprintf("%s[%d].to", place, i)); err != nil {
 				return err
 			}
-			out.Key = &key
 		}
 		s.request(machine.Request{Send: out})
 	}
@@ -543,6 +541,20 @@ func (s *stepper) scope(holder string) machine.Scope {
 		}
 	}
 	event := map[string]any{"name": s.event.Name, "from": s.event.From, "data": s.event.Data}
+	if a := s.event.Sender; a != nil {
+		// A sent event's from is its sender's address, which a reply is
+		// sent to.
+		from := map[string]any{}
+		for name, part := range map[string]string{"at": a.At, "run": a.Run, "client": a.Client} {
+			if part != "" {
+				from[name] = part
+			}
+		}
+		if a.Key != nil {
+			from["key"] = *a.Key
+		}
+		event["from"] = from
+	}
 	return machine.Scope{"input": s.in.Input, "states": states, "event": event, "tickets": tickets}
 }
 

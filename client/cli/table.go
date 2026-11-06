@@ -220,9 +220,10 @@ with status waiting, which no controller has started, is not listed.
                       or ends
 
   corbie manual runs   a run as it is printed, and with --json`},
-		{Name: "run show", Usage: "<id> [--record | --watch | --wait | --tickets | --step n | --definition | --save <directory>]", Summary: "show one run: its status and its result", Run: cmdShow, Help: `
+		{Name: "run show", Usage: "<id> | <location>[#key] [--record | --watch | --wait | --tickets | --step n | --definition | --save <directory>]", Summary: "show one run: its status and its result", Run: cmdShow, Help: `
 It prints the run's status and input, and its output or its error when it has
-ended. It takes one of these flags at most.
+ended. A location, or a location and a key, names the one run of this
+client's running there. It takes one of these flags at most.
 
   --record             print each entry of the run's record so far, child
                        runs' included, then the run
@@ -239,16 +240,24 @@ ended. It takes one of these flags at most.
 With --watch or --wait the command fails unless the run ends with status done.
 
   corbie manual runs   the statuses, a failure, and a blob in a result`},
-		{Name: "run cancel", Usage: "<id> [--life 5m]", Summary: "cancel a run that this client started", Run: cmdCancel, Help: `
+		{Name: "run cancel", Usage: "<id> | <location> [--life 5m]", Summary: "cancel a run in a tree of this client's", Run: cmdCancel, Help: `
 It sends the cancel to the controller and prints the answer: taken, or refused
-with the reason. It fails if the cancel is refused.
+with the reason. It fails if the cancel is refused. A location cancels every
+run of this client's running there, each with a cancel of its own; a run that
+starts there meanwhile is not cancelled.
 
   --life <time>   how long the cancel is valid while no controller takes it,
                   and how long the command waits for the answer; default 5m`},
-		{Name: "run send", Usage: "<id> <event> [data] [--life 5m]", Summary: "send an event to a run that this client started", Run: cmdSend, Help: `
-The data is JSON, or plain text if it does not parse as JSON. The command
-prints whether the machine acted on the event or had no rule for it, or
-refused with the reason. It fails if the event is refused.
+		{Name: "run send", Usage: "<id> | <location>[#key] <event> [data] [--life 5m]", Summary: "send an event to a run by its address", Run: cmdSend, Help: `
+The address is the run's ID, a singleton's location, or a keyed location and
+a key as /location#key, which starts a run when none has the key. The data is
+JSON, or plain text if it does not parse as JSON. The command prints the run
+that took the event and whether the machine acted on it or had no rule for
+it, or the reason it was not delivered. It fails if the event is not
+delivered.
+
+A run in another client's tree needs send:<location> in this client's
+ceiling and client:<name> in the file's receive:.
 
   --life <time>   how long the event is valid while no controller takes it,
                   and how long the command waits for the answer; default 5m`},

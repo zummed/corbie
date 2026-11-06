@@ -1,0 +1,10 @@
+# A send no send: entry of the chart allows fails the chart as denied, naming
+# the line that allows it.
+statechart: thermostat
+allow: [net:example.com]
+initial: asking
+states:
+  asking:
+    entry: { send: { to: { at: boiler }, event: set } }
+    on: { applied: finished }
+  finished: { end: done }

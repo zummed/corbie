@@ -44,7 +44,7 @@ func TestWhatEveryRunKeepsTo(t *testing.T) {
 	door := w.submit(door, nil, map[string]any{"greeting": marker})
 	fam := w.submit(family, nil, map[string]any{"note": marker})
 	w.settle()
-	w.client.Send(ctx, door, "open", map[string]any{"said": marker}, 0)
+	w.client.Send(ctx, w.to(door), "open", map[string]any{"said": marker}, 0)
 	w.settle()
 	var ticket string
 	for _, k := range w.latest(door).State.Tickets {

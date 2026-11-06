@@ -349,7 +349,7 @@ func Test_ctl_stopped_between_last_events_and_ending_parent_sees_events_first(t 
 			  over: { end: done }
 		`, nil, nil)
 		w.settle()
-		w.client.Send(ctx, parent, "finish", nil, 0)
+		w.client.Send(ctx, w.to(parent), "finish", nil, 0)
 		return w
 	}
 	// What the parent was given, step by step.
@@ -628,7 +628,7 @@ func TestEventTooLargeToSendFailsItsJob(t *testing.T) {
 		if w.head(run).Status != instance.Running || w.head(kid).Status != instance.Running {
 			t.Fatalf("%s: before the event the two are %s and %s", direction, w.head(run).Status, w.head(kid).Status)
 		}
-		w.client.Send(ctx, run, "poke", nil, 0)
+		w.client.Send(ctx, w.to(run), "poke", nil, 0)
 		w.settle()
 		last := w.latest(run)
 		if head := w.head(run); head.Status != instance.Failed || last.State.Error == nil ||

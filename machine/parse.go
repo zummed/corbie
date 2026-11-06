@@ -364,7 +364,6 @@ func (p *Parser) Job(place string, written any) *JobSpec {
 		s.Call = &AddressSpec{At: cf.Text("at")}
 		cf.Done()
 	}
-	s.Key = f.Text("key")
 	s.Input, _ = f.Value("input")
 	s.Allow = f.Strings("allow")
 	s.Deny = f.Strings("deny")

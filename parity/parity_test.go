@@ -59,6 +59,7 @@
 //	  "remember": "k",                 keep the instance and ticket found, under a name
 //	  "remembered": "k",               reply to, send to or cancel the instance kept under a name
 //	  "event": "go", "data": …,        an event to send, to the machine waited for
+//	  "to": "/case/room#k",            send: the address it goes to in place of that, /location or /location#key
 //	  "dir": "changed",                submit: the directory inside the case submitted at /case in its place
 //	  "file": "room.yaml",             remove: the file left out when the tree is submitted again
 //	  "name": "HUB", "at": "/case",    value, secret: the name, and the location it is set at, by default /
@@ -88,6 +89,7 @@ import (
 
 	"github.com/zummed/corbie/client"
 	"github.com/zummed/corbie/instance"
+	"github.com/zummed/corbie/machine"
 	"github.com/zummed/corbie/permission"
 	"github.com/zummed/corbie/runner"
 
@@ -180,6 +182,7 @@ type drive struct {
 	File            string `json:"file"`
 	Name            string `json:"name"`
 	At              string `json:"at"`
+	To              string `json:"to"`
 	Finding         string `json:"finding"`
 }
 
@@ -664,7 +667,11 @@ func (d *driver) take(step drive) string {
 		}
 		message, err = d.l.Reply(d.ctx, id, ticket, step.Value, 0)
 	case "send":
-		message, err = d.l.Send(d.ctx, id, step.Event, step.Data, 0)
+		to, wrong := d.address(id, step.To)
+		if wrong != nil {
+			return wrong.Error()
+		}
+		message, err = d.l.Send(d.ctx, to, step.Event, step.Data, 0)
 	case "cancel":
 		if step.Remembered == "" {
 			id = d.root
@@ -703,6 +710,15 @@ func (d *driver) take(step drive) string {
 		return fmt.Sprintf("the receipt for the %s says %q, which does not hold %q", step.Do, receipt.Refused, step.RefusedContains)
 	}
 	return ""
+}
+
+// address gives the address a send goes to: the one the step writes as
+// /location or /location#key, or the run waited for, at its location.
+func (d *driver) address(id, to string) (machine.Address, error) {
+	if to == "" {
+		to = id
+	}
+	return d.l.Address(d.ctx, to)
 }
 
 // record reads the record of the run and of everything below it, and says

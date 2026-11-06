@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"path"
 	"slices"
-	"strconv"
 	"strings"
 	"time"
 
@@ -47,6 +46,7 @@ type treeEntry struct {
 type treeFile struct {
 	Hash     string `json:"hash"`
 	Lifetime string `json:"lifetime"`
+	Runs     int    `json:"runs,omitzero"`
 }
 
 // does is what a submit does, worked out once.
@@ -71,6 +71,9 @@ type located struct {
 	Definition blob.Ref `json:"definition"`
 	Hash       string   `json:"hash"`
 	Lifetime   string   `json:"lifetime"`
+	// Runs is how many runs of a keyed file may be running at once: no
+	// limit where it is none.
+	Runs int `json:"runs,omitzero"`
 }
 
 // What a submit did at a location.
@@ -161,10 +164,7 @@ func (p *pass) checkTree(a *arrival, msg *instance.Submit) (string, error) {
 	if !client.Trusted() {
 		return fmt.Sprintf("the client %s is not trusted", a.sender), nil
 	}
-	ceiling := client.Ceiling
-	ceiling.Name = "the ceiling of the client " + strconv.Quote(a.sender)
-	ceiling.Fix = fmt.Sprintf("the controller's owner runs: corbie controller enrol %s --allow %%s", a.sender)
-	if r := (&permission.Set{Layers: []permission.Layer{ceiling}}).Check(permission.At, msg.Prefix); r != nil {
+	if r := (&permission.Set{Layers: []permission.Layer{ceilingOf(client)}}).Check(permission.At, msg.Prefix); r != nil {
 		return r.Error(), nil
 	}
 	// No tree is above it, and none below.
@@ -253,7 +253,7 @@ func (p *pass) plan(a *arrival, base string, before *treeEntry) (*treeEntry, err
 		if lifetime == "" {
 			lifetime = machine.LifetimeTransient
 		}
-		entry.Files[location] = treeFile{Hash: file.Hash, Lifetime: lifetime}
+		entry.Files[location] = treeFile{Hash: file.Hash, Lifetime: lifetime, Runs: def.Runs}
 		// Every file is recorded, so its location has the lines it is
 		// written at; one whose machine is the same is not changed.
 		d.Copy = append(d.Copy, location)
@@ -324,7 +324,7 @@ func (p *pass) holds(location string) (bool, error) {
 func (p *pass) carryTree(a *arrival, base string, entry *treeEntry) error {
 	msg, d := a.msg.Submit, &entry.Does
 	err := p.each(len(d.Copy), func(i int) error {
-		return p.record(msg.Prefix, entry.Client, d.Copy[i], msg.Files[d.Copy[i]], entry.Files[d.Copy[i]].Lifetime)
+		return p.record(msg.Prefix, entry.Client, d.Copy[i], msg.Files[d.Copy[i]], entry.Files[d.Copy[i]])
 	})
 	if err != nil {
 		return err
@@ -366,7 +366,7 @@ func (p *pass) carryTree(a *arrival, base string, entry *treeEntry) error {
 
 // record copies a file a submit uploaded to its location, writes the
 // location's entry, and removes the blobs the location no longer names.
-func (p *pass) record(tree, client, location string, file instance.SubmitFile, lifetime string) error {
+func (p *pass) record(tree, client, location string, file instance.SubmitFile, kept treeFile) error {
 	// A carry-out done again finds this upload recorded already.
 	recorded, err := p.readLocated(location)
 	if err != nil && !isAltered(err) {
@@ -383,7 +383,7 @@ func (p *pass) record(tree, client, location string, file instance.SubmitFile, l
 			return err
 		}
 		at := store.LocationFile(p.ctl, location)
-		data, err := p.c.ID.Write(at, p.now, noEnd, located{Tree: tree, Client: client, Definition: def, Hash: file.Hash, Lifetime: lifetime}, p.c.ID.Card)
+		data, err := p.c.ID.Write(at, p.now, noEnd, located{Tree: tree, Client: client, Definition: def, Hash: file.Hash, Lifetime: kept.Lifetime, Runs: kept.Runs}, p.c.ID.Card)
 		if err != nil {
 			return err
 		}
@@ -577,18 +577,27 @@ func (p *pass) readLocated(location string) (*located, error) {
 }
 
 // located gives the start of a run at a location, from the file recorded
-// there: copied into the run's record, with the directory last submitted at
-// its tree and the values set at the location or above, read once here. It
+// there, which the run's first step copies into its record; with the
+// directory last submitted at its tree and the values set at the location
+// or above, read once here. A send to a key starts a run as a client's
+// start does, and keeps the depth and the sender its message gives. It
 // gives nil where the start is refused, or waits for a later pass.
 func (b *build) located(start *arrival) (*instance.Start, error) {
 	p, s := b.p, *start.msg.Start
-	if err := store.CheckLocation(s.Location); err != nil {
-		b.refuse(start, "%v", err)
+	sent := start.isSend()
+	no := func(format string, args ...any) (*instance.Start, error) {
+		if sent {
+			b.undeliver(start, fmt.Sprintf(format, args...))
+		} else {
+			b.refuse(start, format, args...)
+		}
 		return nil, nil
 	}
-	if s.Key != "" || s.Run != "" {
-		b.refuse(start, "a start of a location names no key")
-		return nil, nil
+	if err := store.CheckLocation(s.Location); err != nil {
+		return no("%v", err)
+	}
+	if !sent && (s.Key != "" || s.Run != "") {
+		return no("a start of a location names no key")
 	}
 	file, err := p.readLocated(s.Location)
 	if err != nil && !isAltered(err) {
@@ -596,17 +605,16 @@ func (b *build) located(start *arrival) (*instance.Start, error) {
 	}
 	switch {
 	case file == nil:
-		b.refuse(start, "nothing is recorded at %s: a run starts at the location of a file in a tree", s.Location)
-		return nil, nil
+		return no("nothing is recorded at %s: a run starts at the location of a file in a tree", s.Location)
 	case store.InstanceClient(b.inst) != file.Client:
-		b.refuse(start, "%s is in a tree of the client %s, and only that client starts a run there", s.Location, file.Client)
-		return nil, nil
+		return no("%s is in a tree of the client %s, and only that client starts a run there", s.Location, file.Client)
+	case sent && file.Lifetime != machine.LifetimeKeyed:
+		return no("%s is not keyed", s.Location)
+	case sent:
 	case start.kind == identity.Client && file.Lifetime == machine.LifetimeSingleton:
-		b.refuse(start, "the file at %s is a singleton: its run starts when its tree is submitted", s.Location)
-		return nil, nil
+		return no("the file at %s is a singleton: its run starts when its tree is submitted", s.Location)
 	case start.kind == identity.Client && file.Lifetime == machine.LifetimeKeyed:
-		b.refuse(start, "the file at %s is keyed: a run starts there when an event is sent to a key", s.Location)
-		return nil, nil
+		return no("the file at %s is keyed: a run starts there when an event is sent to a key", s.Location)
 	case start.kind == identity.Controller && file.Lifetime != machine.LifetimeSingleton:
 		b.drop(start)
 		return nil, nil
@@ -628,30 +636,19 @@ func (b *build) located(start *arrival) (*instance.Start, error) {
 		// A client's input is the blob its start names in the run's record.
 		in := s.InputBlob
 		if in.At != store.Blob(p.ctl, b.inst, path.Base(in.At)) {
-			b.refuse(start, "a client's start names its input, written in the run's record")
-			return nil, nil
+			return no("a client's start names its input, written in the run's record")
 		}
 		data, err := blob.ReadAll(p.ctx, p.store, in, blob.StepLimit)
 		if err != nil {
 			if err = p.blobError(err); err != nil {
 				return nil, err
 			}
-			b.refuse(start, "the start's input cannot be read")
-			return nil, nil
+			return no("the start's input cannot be read")
 		}
 		s.Input = nil
 		if err := identity.Decode(data, &s.Input); err != nil {
-			b.refuse(start, "the start's input is not JSON")
-			return nil, nil
+			return no("the start's input is not JSON")
 		}
-	}
-	def, err := blob.CopyWhole(p.ctx, p.store, file.Definition, p.ctl, store.Blobs(p.ctl, b.inst))
-	if err != nil {
-		if err = p.blobError(err); err != nil {
-			return nil, err
-		}
-		b.refuse(start, "the file at %s is no longer in the store", s.Location)
-		return nil, nil
 	}
 	tree, _, err := p.readTree(file.Tree)
 	if err != nil && !isAltered(err) {
@@ -662,14 +659,18 @@ func (b *build) located(start *arrival) (*instance.Start, error) {
 		if !isAltered(err) {
 			return nil, err
 		}
-		b.refuse(start, "the values set at %s or above cannot be read: %v", s.Location, err)
-		return nil, nil
+		return no("the values set at %s or above cannot be read: %v", s.Location, err)
 	}
 	above := &instance.Above{Values: values}
+	if sent && s.Above != nil {
+		// A run a send starts is a root: it takes from its sender how far
+		// down it is and who sent, and nothing else.
+		above.Depth, above.StartedBy = s.Above.Depth, s.Above.StartedBy
+	}
 	if tree != nil {
 		above.Context = tree.Directory
 	}
-	s.Definition, s.Above, s.Tree = def, above, file.Tree
-	b.st.Lifetime = file.Lifetime
+	s.Definition, s.Above, s.Tree = file.Definition, above, file.Tree
+	b.st.Lifetime, b.fromLocation = file.Lifetime, true
 	return &s, nil
 }

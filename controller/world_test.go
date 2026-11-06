@@ -42,6 +42,8 @@ type world struct {
 	ops    []store.Op
 	// placed counts the trees submitted, so that each has a prefix of its own.
 	placed int
+	// located gives the location of each run a test started.
+	located map[string]string
 }
 
 func newWorld(t *testing.T) *world {
@@ -160,6 +162,7 @@ func (w *world) place(c *client.Client, src string, files map[string]string) (at
 		for _, done := range r.Tree.Locations {
 			run = done.Run
 		}
+		w.locate(run, at)
 		return at, run
 	}
 	w.t.Fatalf("the submit of %s has no receipt", at)
@@ -174,7 +177,35 @@ func (w *world) startAt(c *client.Client, at string, start client.Start) string 
 	if err != nil {
 		w.t.Fatal(err)
 	}
+	w.locate(run, at)
 	return run
+}
+
+// locate notes the location of a run a test started.
+func (w *world) locate(run, at string) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	if w.located == nil {
+		w.located = map[string]string{}
+	}
+	if run != "" {
+		w.located[run] = at
+	}
+}
+
+// to gives the address of one run: at the location a test started it at, or
+// the one its head names.
+func (w *world) to(run string) machine.Address {
+	w.t.Helper()
+	w.mu.Lock()
+	at, ok := w.located[run]
+	w.mu.Unlock()
+	if !ok {
+		if head := w.head(run); head != nil {
+			at = head.Location
+		}
+	}
+	return machine.Address{At: at, Run: run}
 }
 
 // input writes a start's input into a run's record, as a client does

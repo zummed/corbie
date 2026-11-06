@@ -198,7 +198,8 @@ func Test_blob_trim_follows_references_inside_blobs(t *testing.T) {
 	}
 	for range 5 {
 		k.later(13 * time.Hour)
-		k.client.Send(ctx, run, "tick", nil, 0)
+		to, _ := k.client.Address(ctx, run)
+		k.client.Send(ctx, to, "tick", nil, 0)
 		k.later(0)
 	}
 	// The older history has been trimmed, and the blobs nothing refers to

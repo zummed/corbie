@@ -216,7 +216,7 @@ func TestStartCarriesABlobFromAnotherRun(t *testing.T) {
 	if _, err := l.Show(ctx, a.ID); !errors.Is(err, client.ErrNoRun) {
 		t.Fatalf("the first run, removed, is shown as %v", err)
 	}
-	if _, err := l.Send(ctx, b, "go", nil, 0); err != nil {
+	if _, err := l.Send(ctx, addressOf(t, l.Client, b), "go", nil, 0); err != nil {
 		t.Fatal(err)
 	}
 	r := wait(t, l, b)

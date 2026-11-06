@@ -1,5 +1,0 @@
-{
-  "status": "done",
-  "output": { "child": true },
-  "note": "R-mach-24, R-mach-140: a job gives its machine a key, and the machine reads its own ID."
-}

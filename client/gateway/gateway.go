@@ -351,7 +351,13 @@ func (g *Gateway) run(w http.ResponseWriter, r *http.Request, id string, rest []
 	case what == "events" && r.Method == http.MethodPost:
 		var e event
 		if read(w, r, &e) {
-			g.receipt(w, r, e.Life, func(life time.Duration) (string, error) { return g.Client.Send(ctx, id, e.Event, e.Data, life) })
+			g.receipt(w, r, e.Life, func(life time.Duration) (string, error) {
+				to, err := g.Client.Address(ctx, id)
+				if err != nil {
+					return "", err
+				}
+				return g.Client.Send(ctx, to, e.Event, e.Data, life)
+			})
 		}
 	case what == "tickets" && r.Method == http.MethodPost:
 		var a answer

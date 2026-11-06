@@ -81,7 +81,6 @@ type JobSpec struct {
 	Machine string       `json:"machine,omitzero"` // a name in Machines, or exactly one expression that gives a stored definition
 	Send    *SendSpec    `json:"send,omitzero"`    // an event sent to a run by its address
 	Call    *AddressSpec `json:"call,omitzero"`    // a location whose run the job starts and waits for
-	Key     string       `json:"key,omitzero"`     // the key a machine is started with: text, or expressions
 	Input   any          `json:"input,omitzero"`
 	Allow   []string     `json:"allow,omitzero"`
 	Deny    []string     `json:"deny,omitzero"`
@@ -181,13 +180,6 @@ func (s *JobSpec) Fill(e *Evaluator, scope Scope, place, name string) (*Job, err
 	}
 	if job.Timeout, err = e.Duration(s.Timeout, scope, place+".timeout"); err != nil {
 		return nil, err
-	}
-	if s.Key != "" {
-		key, err := e.Key(s.Key, scope, place+".key")
-		if err != nil {
-			return nil, err
-		}
-		job.RunKey = &key
 	}
 	if s.Send != nil {
 		to, err := s.Send.To.Fill(e, scope, place+".send.to")
@@ -407,8 +399,8 @@ func (c *Checker) Job(place string, s *JobSpec, names ...string) {
 	case kinds == 0:
 		c.Problem(place, "a job needs a script, a machine, a send or a call")
 	case s.IsSend():
-		if s.Input != nil || s.Timeout != "" || s.Restart != nil || s.Memory != 0 || len(s.Tags) > 0 || len(s.Files) > 0 || s.Key != "" {
-			c.Problem(place, "a send takes to, event and data, and approve, allow and deny: it has no input, timeout, restart, memory, tags, files or key")
+		if s.Input != nil || s.Timeout != "" || s.Restart != nil || s.Memory != 0 || len(s.Tags) > 0 || len(s.Files) > 0 {
+			c.Problem(place, "a send takes to, event and data, and approve, allow and deny: it has no input, timeout, restart, memory, tags or files")
 		}
 		c.Address(place+".send.to", &s.Send.To, names...)
 		switch e := s.Send.Event; {
@@ -419,8 +411,8 @@ func (c *Checker) Job(place string, s *JobSpec, names ...string) {
 		}
 		c.Value(place+".send.data", s.Send.Data, names...)
 	case s.IsCall():
-		if s.Memory != 0 || len(s.Tags) > 0 || len(s.Files) > 0 || s.Key != "" {
-			c.Problem(place, "memory, tags and files belong to a script, and a key to a machine; a call has none")
+		if s.Memory != 0 || len(s.Tags) > 0 || len(s.Files) > 0 {
+			c.Problem(place, "memory, tags and files belong to a script; a call has none")
 		}
 		c.Address(place+".call", s.Call, names...)
 		if s.Call.Key != "" || s.Call.Run != "" || s.Call.Expr != "" {
@@ -436,12 +428,8 @@ func (c *Checker) Job(place string, s *JobSpec, names ...string) {
 		for i, file := range s.Files {
 			c.named(fmt.Sprintf("%s.files[%d]", place, i), file, "file", c.def.Scripts, nil)
 		}
-		if s.Key != "" {
-			c.Problem(place+".key", "a key names a run, and only a machine is one")
-		}
 	}
 	c.Value(place+".input", s.Input, names...)
-	c.Value(place+".key", s.Key, names...)
 	c.Duration(place+".timeout", s.Timeout, names...)
 	c.permissions(place, s.Allow, s.Deny)
 	for i, tag := range s.Tags {
@@ -495,16 +483,6 @@ func (c *Checker) Address(place string, s *AddressSpec, names ...string) {
 			c.Problem(place+".run", "%v", err)
 		}
 	}
-}
-
-// Machine checks a machine a send names, which is written out: only a job
-// takes a stored one.
-func (c *Checker) Machine(place, name string) {
-	if HasExpr(name) {
-		c.Problem(place, "%q: a send names a machine of the definition, written out", name)
-		return
-	}
-	c.named(place, name, "machine", c.def.Machines, nil)
 }
 
 // named checks the path of a script or the name of a machine: a name of the
@@ -589,7 +567,7 @@ func (d *Draft) Values() []string {
 // Values gives the names of the values a job's expressions read, in order.
 func (s *JobSpec) Values() []string {
 	all := map[string]bool{}
-	written := []any{s.Script, s.Machine, s.Input, s.Timeout, s.Key}
+	written := []any{s.Script, s.Machine, s.Input, s.Timeout}
 	for _, entry := range s.Allow {
 		written = append(written, entry)
 	}

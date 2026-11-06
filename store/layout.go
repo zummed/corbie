@@ -139,12 +139,6 @@ func Key(ctl, location, key string) string {
 	return Keys(ctl, location) + "/" + keyHash(key)
 }
 
-// ClientKey is the name of the file of a key a client's sends name, among
-// that client's, until a send names a location.
-func ClientKey(ctl, client, key string) string {
-	return ctl + "/keys/" + client + "/" + keyHash(key)
-}
-
 func keyHash(key string) string {
 	sum := sha256.Sum256([]byte(key))
 	return hex.EncodeToString(sum[:])

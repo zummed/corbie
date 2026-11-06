@@ -1,0 +1,5 @@
+# A child started by machine: runs at its parent's location, and reads it.
+flow: asker
+stages:
+  where: { job: { machine: ./child.yaml } }
+output: { where: "${stages.where.output.where}" }

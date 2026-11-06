@@ -1,0 +1,11 @@
+# The receiver's receive: does not list the sender: the send is noted as
+# undelivered in the sender's record, and fails nothing.
+statechart: sender
+allow: [send:room]
+initial: sending
+states:
+  sending:
+    entry: { send: { to: { at: room, key: k }, event: hi } }
+    timers: { pause: 1s }
+    on: { pause: finished }
+  finished: { end: done }

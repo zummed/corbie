@@ -345,10 +345,56 @@ func (c *Client) Cancel(ctx context.Context, run string, life time.Duration) (st
 	return c.sendNext(ctx, life, &instance.Message{Kind: instance.KindCancel, Instance: run})
 }
 
-// Send sends a named event to a run.
-func (c *Client) Send(ctx context.Context, run, event string, data any, life time.Duration) (string, error) {
-	return c.sendNext(ctx, life, &instance.Message{Kind: instance.KindEvent, Instance: run,
-		Event: &machine.Event{Name: event, Data: data}})
+// Send sends a named event to a run by its address. The controller takes it
+// as it takes a run's send, and its receipt names the run that took it.
+func (c *Client) Send(ctx context.Context, to machine.Address, event string, data any, life time.Duration) (string, error) {
+	if err := c.identity(); err != nil {
+		return "", err
+	}
+	own := to.At == "" && to.Run != "" && c.mine(to.Run)
+	switch {
+	case own:
+		if err := store.CheckInstance(to.Run); err != nil {
+			return "", err
+		}
+	case to.Check() != nil:
+		return "", to.Check()
+	case to.Client != "" || !strings.HasPrefix(to.At, "/"):
+		return "", fmt.Errorf("an address a client sends to names a location in full, from /")
+	}
+	name := c.sender.Next(c.Now())
+	return name, c.send(ctx, name, life, &instance.Message{Kind: instance.KindSend, To: &to, Event: &machine.Event{Name: event, Data: data}})
+}
+
+// Address reads the address of a run as a client writes it: a location from
+// /, a location and a key as /location#key, or a run's ID, which is at the
+// location its head names. A run of the client's own is named by its ID
+// alone until it has a head.
+func (c *Client) Address(ctx context.Context, text string) (machine.Address, error) {
+	if strings.HasPrefix(text, "/") {
+		at, key, keyed := strings.Cut(text, "#")
+		to := machine.Address{At: at}
+		if keyed {
+			to.Key = &key
+		}
+		return to, to.Check()
+	}
+	if err := store.CheckInstance(text); err != nil {
+		return machine.Address{}, fmt.Errorf("%q is neither a location, which starts with /, nor a run's ID", text)
+	}
+	head, _, err := instance.ReadHead(ctx, c.Store, c.Controller, text)
+	if err != nil {
+		return machine.Address{}, err
+	}
+	if head != nil {
+		return machine.Address{At: head.Location, Run: text}, nil
+	}
+	// A run of this client's that has no head yet is sent to by its ID
+	// alone: the controller finds it.
+	if c.mine(text) {
+		return machine.Address{Run: text}, nil
+	}
+	return machine.Address{}, fmt.Errorf("%w: the run %s has not started", ErrNoRun, text)
 }
 
 // Reply answers a ticket of a run. The ticket is the authority: any client

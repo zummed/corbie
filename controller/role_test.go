@@ -126,7 +126,7 @@ func Test_role_empty_pass_only_lists(t *testing.T) {
 	// later.
 	run := w.submit(door, nil, map[string]any{"greeting": "x"})
 	w.settle()
-	w.client.Send(ctx, run, "open", nil, 0)
+	w.client.Send(ctx, w.to(run), "open", nil, 0)
 	w.settle()
 	if head := w.head(run); head.Timers != 1 || len(head.Tickets) != 1 {
 		t.Fatalf("the run waits as %+v", head)

@@ -330,6 +330,8 @@ type Ask struct {
 	Location string `json:"location,omitzero"`
 	Key      string `json:"key,omitzero"`
 	Run      string `json:"run,omitzero"`
+	// Direct says the event was sent to one run by its ID, which is To.
+	Direct bool `json:"direct,omitzero"`
 	// Undelivered says the event was for a child that is not running, or
 	// for an address that names no running run able to take it.
 	Undelivered bool `json:"undelivered,omitzero"`
@@ -359,6 +361,8 @@ type Receipt struct {
 	// Acted says, for an event, whether the machine acted on it or had no
 	// rule for it.
 	Acted *bool `json:"acted,omitzero"`
+	// Run is, for an event sent to an address, the run that took it.
+	Run string `json:"run,omitzero"`
 }
 
 // Submitted is what a submit did: what became of each location of the

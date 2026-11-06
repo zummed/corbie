@@ -55,8 +55,8 @@ A ticket is a random value that lets whoever holds it answer once.
 - Only the client that started the run can print the ticket. It hands the
   value to whoever should answer.
 - A ticket is answered once. Its rule takes only the ticket's answer: an event
-  named `verdict` from the parent, a child, the client or the state's own job
-  finds no rule. A timer's rule takes only the timer.
+  named `verdict` from the parent, a child or the state's own job finds no
+  rule, and one sent by address is not delivered. A timer's rule takes only the timer.
 - A statechart run as a child hands the ticket to its parent with a send,
   such as `send: { to: parent, event: review_wanted, data: "${tickets.verdict}" }`.
 
@@ -94,8 +94,8 @@ The events under `on:` are these.
   failed     a job has failed
   <timer>    a timer of the state is due
   <ticket>   the state's ticket is answered
-  <other>    an event from the parent, a child or the client, or a value a
-             job emitted
+  <other>    an event from the parent or a child, one sent to the run by its
+             address, or a value a job emitted
 
 Transitions
 -----------
@@ -107,17 +107,20 @@ first one whose `when:` is true is taken.
   when    a condition, one expression: "${event.data.ok}", in quotes
           between { }
   send    one send or a list: { to, event, data }, where `to:` is parent,
-          the state or named job whose job is a machine, or { key, machine }
+          the state or named job whose job is a machine, or an address
 
-A send to a key names the run that has the key, as in `corbie manual
-definitions`.
+An address names a run at a location, as in `corbie manual
+machines-together`.
 
-  to: { key: "chat:${event.data.id}" }                         the run with the key
-  to: { machine: ./chat.yaml, key: "chat:${event.data.id}" }   that run, or a new run of the machine
+  to: { at: devices/boiler }                           the singleton at the location
+  to: { at: rooms/room, key: "${event.data.room}" }    the run for the key, started if none is running
+  to: { at: rooms/room, run: "${event.data.run}" }     one run by its ID
+  to: "${event.from}"                                  the sender of the event being taken
 
-  key      the key of the run
-  machine  a file or a definition written in place, with no expression; a new
-           run gets the event's data as its input
+- A send to an address needs `send:<location>` in the statechart's `allow:`.
+  A send it does not allow fails the statechart as `denied`.
+- A send that no run takes is noted in the record as undelivered, and fails
+  nothing.
 
 - An event that the active state has no transition for goes to the state it
   is inside, and so on outward.
@@ -128,9 +131,9 @@ definitions`.
   started. An `exit:` send cannot go to it.
 - When a client started the run, a send to parent is only written to the
   record. That client sends an event with `corbie run send <id> <event> <data>`.
-- A ticket's name is used once in a statechart.
+- A ticket's name is used once in a statechart. No send to the statechart is
+  taken under a ticket's or a timer's name.
 - A send cannot be named start, done, failed or timer.
-- `to: { key }` naming no running run is noted in the record as undelivered.
 
 A timer's time is one of these.
 
@@ -144,7 +147,7 @@ What an expression reads
 ------------------------
 
   input                   the statechart's input
-  run                     the run's id and key
+  run                     the run's id and location
   states.<name>.output    the state's last output
   tickets.<name>          a ticket of this state, or of a state it is inside
   event                   the event that caused the transition:
@@ -158,8 +161,8 @@ What an expression reads
   a value a job emitted        the value                    the state or named job
   an event from a child        its data                     the state or named job
   an event from the parent     its data                     "parent"
-  an event from the client     its data                     "client"
-  an event sent to the key     its data                     the sender's run ID
+  an event sent by address     its data                     the sender: { at, run }, with
+                                                            key for a keyed run, or { client }
 
 The state that a transition enters reads the same `event` in its job's input,
 its `entry:` and its `output:`. A final state returns a ticket's answer with

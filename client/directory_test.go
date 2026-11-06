@@ -133,7 +133,7 @@ func TestDrainLeavesRunsOnTheirDefinition(t *testing.T) {
 		if err := l.Taken(ctx, id, interval); err != nil {
 			t.Fatal(err)
 		}
-		if _, err := l.Send(ctx, id, "go", nil, 0); err != nil {
+		if _, err := l.Send(ctx, addressOf(t, l.Client, id), "go", nil, 0); err != nil {
 			t.Fatal(err)
 		}
 	}

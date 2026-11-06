@@ -40,8 +40,8 @@ The detailed rules behind the [Statechart overview](../statechart.md). Area code
 **R-chart-22** A state's rule for `done` is taken when the state's jobs finish, or when the states inside it reach a final state, and the event carries the output; its rule for `failed` is taken when a job fails, and the event carries the error.
 *Accept:* parity case 16: the rules for `done` and `failed` each taken, the state entered reading the event's error and its name. Parity case 18: the holder's rule for `done` is given the final state's output.
 
-**R-chart-25** A state's rules are under `on:`, by the name of the event: `done`, `failed`, a timer's name, an answer to a ticket, an event sent by the parent or by a child, a value a job emitted.
-*Accept:* an answer to a ticket: parity case 21. An event from the parent and one from a child: parity case 33. An emitted value: parity case 26.
+**R-chart-25** A state's rules are under `on:`, by the name of the event: `done`, `failed`, a timer's name, an answer to a ticket, an event sent by the parent, by a child or to the run by its address, a value a job emitted.
+*Accept:* an answer to a ticket: parity case 21. An event from the parent and one from a child: parity case 33. An emitted value: parity case 26. An event sent by address: parity case 114.
 
 **R-chart-27** A transition names the state to go to, may have a condition and may send events; where several are listed, the first whose condition holds is taken, and a transition that names its own state leaves the state and enters it again.
 *Accept:* parity case 16: the rule for `done` goes to `finished` once its condition holds, and to `working` until then, leaving and entering `working` each round. Parity case 35's parent sends five events from one transition, and the child receives all five.
@@ -75,21 +75,30 @@ The detailed rules behind the [Statechart overview](../statechart.md). Area code
 **R-chart-39** Each state's latest output is remembered and can be read by name from any expression; a job that fails leaves it as it was, and a state that has produced no output reads as nothing.
 *Accept:* parity case 20: the final state reads the output of `inner`, a state held by another and left earlier. Parity case 16: after the third round's job fails, the output read for `working` is the second round's. Parity case 26: the output read for `leaving_on_emit`, whose job was cancelled, is null.
 
-**R-chart-42** An expression reads the chart's input and the event that caused the current move.
+**R-chart-42** An expression reads the chart's input and the event that caused the current move: its name, where it came from and its data.
 *Accept:* the review chart's writer is started with the document the chart was started with. Parity case 16: `recovering`'s input is filled from the error and the name of the event that entered it.
 
 ## Sending
 
-**R-chart-45** The only action a chart has is to send an event, to its parent, to one of its children, named by the state or the named job that started it, or to a key; a send to anything else is refused when the definition is checked.
+**R-chart-45** The only action a chart has is to send an event, to its parent, to one of its children, named by the state or the named job that started it, or to a run by its address; a send to anything else is refused when the definition is checked.
 *Accept:* a chart whose entry, exit or transition holds anything but sends is refused when checked. Parity case 33: the child's send reaches its parent, and the parent's send reaches the child named by its state. A state has the named jobs `a` and `b`, both charts; a send addressed to `b` arrives at `b` and not at `a`. A send to a state whose job is a script, a send to a state with no job and a send to a name the chart does not have are each refused.
 
-**R-chart-74** A send `to: { key }` delivers its event to the run with that key, and one that names no running run is noted in the sender's record as undelivered and fails nothing. `event.from` in the run that takes the event is the sender's run ID.
-*Accept:* a chart sends `said` to `chat:1`, which no run has: its record notes the event as undelivered and it goes on. A run with the key then starts, and the next send is given to it, from the sender's ID. Parity cases 108 and 109. *Test:* `chart_send_to_a_key_no_run_has_is_undelivered`
+**R-chart-76** `to:` may be an address, `{ at }`, `{ at, key }` or `{ at, run }`, or exactly one expression that gives one, filled in as the send is made. A key with no location, a key and a run both, a location with `..` or an empty name, and an expression that is not the whole address are refused when the definition is checked.
+*Accept:* parity case 108. *Test:* `chart_send_fills_each_address_form` and `chart_send_to_is_checked`
 
-**R-chart-75** A send `to: { machine, key }` delivers its event to the run with that key, or starts the machine with that key when no run has it. `machine:` is a file or a definition written in place, and holds no expression.
-*Accept:* a chart sends to `chat:1` with `machine: ./talk.yaml` twice: the first starts a run and the second is delivered to it. `to: { machine: "${input.m}", key: k }` and a `to:` that holds a machine and no key are refused when checked. Parity case 108. *Test:* `chart_send_to_a_key_starts_a_run_then_delivers` and `chart_send_to_is_checked`
+**R-chart-77** `event.from` of an event sent to the run by its address is the sender's address, as the controller wrote it: `{ at, run }`, with `key` for a keyed run, or `{ client }`. Of any other event it is the parent, the job or the state it came from. `to: "${event.from}"` replies to the sender.
+*Accept:* parity cases 108, 114 and 121. *Test:* `chart_reply_to_event_from_gives_the_senders_address` and `chart_event_from_is_unchanged_for_jobs_timers_tickets_and_parent`
 
-**C-chart-14** No send can be named `start`, `done`, `failed` or `timer`. Those are the events Corbie gives a machine, and `start` sent by another run would enter a chart's first state again. *Test:* `chart_send_to_a_key_cannot_take_an_events_own_name`
+**R-chart-78** A send to an address that a layer of the chart does not allow with `send:` ends the chart as failed with the status `denied`, and nothing after the send in that step is done.
+*Accept:* parity case 118. `Test_ctl_send_denied_by_a_layer_fails_the_chart`.
+
+**R-chart-79** The names of a chart's timers and tickets are its own: an event sent to the chart by its address under one is not delivered, and its sender is told.
+*Accept:* parity case 120. *Test:* `chart_owns_its_timer_and_ticket_names`
+
+**R-chart-80** A send to an address that no run takes is noted as undelivered in the chart's record and fails nothing.
+*Accept:* parity cases 109, 116 and 119.
+
+**C-chart-14** No send can be named `start`, `done`, `failed` or `timer`. Those are the events Corbie gives a machine, and `start` sent by another run would enter a chart's first state again. *Test:* `chart_send_cannot_take_an_events_own_name`
 
 **R-chart-51** A send made on entering a state to that state's own child is delivered once the child has started.
 *Accept:* parity case 36's chart is run with its send on leaving removed; the child receives `hello` after its `start` and finishes on it.
@@ -113,7 +122,7 @@ The detailed rules behind the [Statechart overview](../statechart.md). Area code
 *Accept:* a statechart in which two states issue tickets named `answer` is refused when checked, and so is one in which a state issues the ticket `late` and another has a timer named `late`. A state issues `withdraw` and a state inside it issues `answer`; each entry send reads its own ticket and sends it up, and the two values differ. An answer to `withdraw` is offered to the outer state, and the inner state's rule for `answer` is not taken.
 
 **R-chart-70** An event with a ticket's name is taken only as that ticket's answer, and one with a timer's name only as that timer being due; a rule under such a name in a state that neither issues or starts it nor holds that state is refused when the definition is checked.
-*Accept:* a state issues `verdict`, has the timer `too_long` and a job, and has a rule for each; an event named `verdict` or `too_long` sent by the client, sent by the parent or emitted by the state's own job finds no rule, and the client's receipt says so. The ticket's answer and the timer each take their rule. A chart with a rule for `verdict` in a state beside the one that issues it is refused, and the refusal names both states and says where the rule belongs.
+*Accept:* a state issues `verdict`, has the timer `too_long` and a job, and has a rule for each; an event named `verdict` or `too_long` sent to the run by its address is not delivered and its sender is told, and one sent by the parent or emitted by the state's own job finds no rule. The ticket's answer and the timer each take their rule. A chart with a rule for `verdict` in a state beside the one that issues it is refused, and the refusal names both states and says where the rule belongs.
 
 **R-chart-64** Each of a state's `timers:` starts when the state is entered and is cancelled when the state is left, and a timer that is due arrives as an event of its name; a timer that had come due when its state was left does nothing, and a timer on a state that holds states stands while any state inside it is active.
 *Accept:* parity case 19: the eight-second timer never arrives. Parity case 22's chart is run with both timers due before one step; `first` is entered and `second` never is. Parity case 20.
@@ -149,7 +158,7 @@ Uses:
 - **Machines.** Values and expressions, jobs and their names, events and their order, children, tickets and their answers, approval, failure and attempts, and limits. A chart adds `states`, `event` and `tickets` to what an expression reads.
 - **Controller.** Takes the chart's steps, keeps and delivers its timers (R-ctl-69), makes its tickets and takes their answers, starts and cancels its children, and carries its sends up and down.
 - **Instances.** The head counts the chart's timers and names the tickets it waits on; a root's sends to its parent are written in its record; a client's event is answered by a receipt saying whether the chart acted on it.
-- **Client.** Finds a standing chart by its label, sends it events and answers its tickets.
+- **Client.** Sends a chart events by its address and answers its tickets.
 
 Used by:
 

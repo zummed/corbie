@@ -1,0 +1,15 @@
+# A send to a key starts a run, which ends on the event. The next send to the
+# key starts a fresh run.
+statechart: twice
+allow: [send:room]
+initial: first
+states:
+  first:
+    entry: { send: { to: { at: room, key: k }, event: go } }
+    timers: { pause1: 1s }
+    on: { pause1: second }
+  second:
+    entry: { send: { to: { at: room, key: k }, event: go } }
+    timers: { pause2: 1s }
+    on: { pause2: finished }
+  finished: { end: done }

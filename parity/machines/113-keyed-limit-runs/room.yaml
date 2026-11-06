@@ -1,0 +1,7 @@
+statechart: room
+lifetime: keyed
+limits: { runs: 1 }
+initial: open
+states:
+  open: { timers: { linger: 2s }, on: { hi: open, linger: over } }
+  over: { end: done }

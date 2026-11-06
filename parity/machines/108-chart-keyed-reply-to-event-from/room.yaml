@@ -1,0 +1,9 @@
+statechart: room
+lifetime: keyed
+allow: [send:root]
+input: { by: string }
+initial: closed
+states:
+  closed:
+    on: { knock: { go: opened, send: { to: "${event.from}", event: open, data: { at: "${event.from.at}", run: "${event.from.run}" } } } }
+  opened: { end: done }

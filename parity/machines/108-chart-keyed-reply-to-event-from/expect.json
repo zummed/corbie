@@ -1,0 +1,9 @@
+{
+  "status": "done",
+  "output": { "at": "/case/root", "run": "<any>" },
+  "record": [
+    { "machine": "room", "event": { "name": "knock", "sender": { "at": "/case/root", "run": "<any>" } } },
+    { "machine": "clerk", "ask": { "kind": "event", "location": "/case/room", "run": "<any>", "to": "<any>" } }
+  ],
+  "note": "R-chart-76, R-chart-77, R-ctl-119, R-ctl-126: a send to a key starts a run with the event's data as its input, and that run replies to event.from."
+}

@@ -35,7 +35,7 @@ func TestFinishedInstanceGoesWhenItsKeepHasPassed(t *testing.T) {
 	w := newWorld(t)
 	run := w.submit(kept, nil, nil)
 	w.settle()
-	w.client.Send(ctx, run, "stop", nil, 0)
+	w.client.Send(ctx, w.to(run), "stop", nil, 0)
 	w.settle()
 	if head := w.head(run); head == nil || head.Status != instance.Done || head.Keep.String() != "24h0m0s" {
 		t.Fatalf("the run ended with the head %+v", head)
@@ -65,7 +65,7 @@ func TestOlderHistoryOfARunningInstanceIsTrimmed(t *testing.T) {
 	w.settle()
 	for range 30 {
 		w.tick(2 * time.Hour)
-		w.client.Send(ctx, run, "tick", nil, 0)
+		w.client.Send(ctx, w.to(run), "tick", nil, 0)
 		w.settle()
 	}
 	steps := w.list(store.Steps("ctl", run))
@@ -73,7 +73,7 @@ func TestOlderHistoryOfARunningInstanceIsTrimmed(t *testing.T) {
 		t.Fatalf("after sixty hours with a keep of a day, %d steps remain", len(steps))
 	}
 	// It carries on correctly from what is left.
-	w.client.Send(ctx, run, "stop", nil, 0)
+	w.client.Send(ctx, w.to(run), "stop", nil, 0)
 	w.settle()
 	if head := w.head(run); head.Status != instance.Done || head.Step != 32 {
 		t.Fatalf("after trimming the run ended as %+v", head)
@@ -87,7 +87,7 @@ func TestReceiptsAndUploadsNeverStartedGo(t *testing.T) {
 	w := newWorld(t)
 	run := w.submit(kept, nil, nil)
 	w.settle()
-	message, _ := w.client.Send(ctx, run, "tick", nil, 0)
+	message, _ := w.client.Send(ctx, w.to(run), "tick", nil, 0)
 	// A message under a name that carries no time gets a receipt too.
 	w.leave(w.c1, "a-name-of-the-clients-own", &instance.Message{Kind: instance.KindEvent, Instance: run, Event: &machine.Event{Name: "tick"}})
 	w.settle()
@@ -180,7 +180,7 @@ func Test_ctl_housekeeping_gets_through_all_across_fresh_starts(t *testing.T) {
 	for range 50 {
 		run := w.startAt(w.client, at, client.Start{})
 		w.settle()
-		w.client.Send(ctx, run, "stop", nil, 0)
+		w.client.Send(ctx, w.to(run), "stop", nil, 0)
 		w.settle()
 		w.tick(time.Second)
 	}
@@ -360,7 +360,7 @@ func Test_inst_removal_takes_children_first(t *testing.T) {
 	w.settle()
 	middle := w.below(top)
 	bottom := w.below(middle)
-	w.client.Send(ctx, top, "end", nil, 0)
+	w.client.Send(ctx, w.to(top), "end", nil, 0)
 	w.settle()
 	for _, inst := range []string{top, middle, bottom} {
 		if head := w.head(inst); head.Status != instance.Done {
@@ -453,13 +453,13 @@ func Test_inst_removal_takes_children_first(t *testing.T) {
 		kid := w.below(top)
 		for range 30 {
 			w.tick(2 * time.Hour)
-			w.client.Send(ctx, top, "tick", nil, 0)
+			w.client.Send(ctx, w.to(top), "tick", nil, 0)
 			w.settle()
 		}
 		if steps := w.list(store.Steps("ctl", top)); len(steps) == 0 || store.Number(steps[0]) == 1 {
 			t.Fatalf("the step that started the machine below was not trimmed: %v", steps)
 		}
-		w.client.Send(ctx, top, "end", nil, 0)
+		w.client.Send(ctx, w.to(top), "end", nil, 0)
 		w.settle()
 		if a, b := w.head(top), w.head(kid); a.Status != instance.Done || !a.Ended.Equal(b.Ended) {
 			t.Fatalf("the two ended as %+v and %+v", a, b)
@@ -511,7 +511,7 @@ func Test_inst_trim_spares_blob_of_a_recent_entry(t *testing.T) {
 	recent := w.blob(run, started.Add(52*time.Hour), "made lately")
 	for range 36 {
 		w.tick(2 * time.Hour)
-		w.client.Send(ctx, run, "tick", nil, 0)
+		w.client.Send(ctx, w.to(run), "tick", nil, 0)
 		w.settle()
 	}
 	// Three days on, with a keep of a day, the history was last trimmed at
@@ -575,7 +575,7 @@ func Test_inst_trim_keeps_blob_a_grandchild_uses(t *testing.T) {
 	middle := w.below(top)
 	bottom := w.below(middle)
 	file := w.blob(top, w.clock(), "handed down")
-	w.client.Send(ctx, top, "file", file.Value(), 0)
+	w.client.Send(ctx, w.to(top), "file", file.Value(), 0)
 	w.settle()
 	holds := func(inst string) bool {
 		data, err := identity.Encode(w.latest(inst).State)
@@ -591,7 +591,7 @@ func Test_inst_trim_keeps_blob_a_grandchild_uses(t *testing.T) {
 	// bottom's job reads it.
 	for range 36 {
 		w.tick(2 * time.Hour)
-		w.client.Send(ctx, top, "tick", nil, 0)
+		w.client.Send(ctx, w.to(top), "tick", nil, 0)
 		w.settle()
 	}
 	if steps := w.list(store.Steps("ctl", top)); store.Number(steps[0]) == 1 {
@@ -602,7 +602,7 @@ func Test_inst_trim_keeps_blob_a_grandchild_uses(t *testing.T) {
 	}
 	// The two below end; a keep later nothing refers to the file, and it
 	// goes.
-	w.client.Send(ctx, top, "end", nil, 0)
+	w.client.Send(ctx, w.to(top), "end", nil, 0)
 	w.settle()
 	if head := w.head(bottom); head.Status != instance.Done || w.head(top).Status != instance.Running {
 		t.Fatalf("the bottom ended as %+v", head)
@@ -622,7 +622,7 @@ func TestHousekeepingIsDoneALittleAtATime(t *testing.T) {
 	for range runs {
 		run := w.submit(kept, nil, nil)
 		w.settle()
-		w.client.Send(ctx, run, "stop", nil, 0)
+		w.client.Send(ctx, w.to(run), "stop", nil, 0)
 		w.settle()
 	}
 	w.tick(26 * time.Hour)

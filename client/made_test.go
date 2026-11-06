@@ -157,7 +157,7 @@ states:
 	}
 	deadline := time.Now().Add(20 * time.Second)
 	for {
-		if _, err := l.Send(ctx, id, "nudge", nil, 0); err != nil {
+		if _, err := l.Send(ctx, addressOf(t, l.Client, id), "nudge", nil, 0); err != nil {
 			t.Fatal(err)
 		}
 		time.Sleep(100 * time.Millisecond)

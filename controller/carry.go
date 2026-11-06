@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"slices"
-	"strconv"
 	"strings"
 	"time"
 
@@ -28,8 +27,8 @@ func errorsIs(err, target error) bool { return errors.Is(err, target) }
 func (p *pass) finish(inst string, step *instance.Step) error {
 	// The step that ends a run frees its key before anything else: a
 	// singleton's is the empty key.
-	if st := &step.State; st.Status != instance.Running && (st.Key != "" || st.Lifetime == machine.LifetimeSingleton) {
-		if err := p.free(inst, p.keyAt(inst, st.Lifetime, st.Location, st.Key), st.Key); err != nil {
+	if st := &step.State; st.Status != instance.Running && (st.Lifetime == machine.LifetimeKeyed || st.Lifetime == machine.LifetimeSingleton) {
+		if err := p.free(inst, store.Key(p.ctl, st.Location, st.Key), st.Key); err != nil {
 			return err
 		}
 	}
@@ -228,8 +227,8 @@ func (p *pass) carry(inst string, step *instance.Step, ask *instance.Ask) error 
 		return p.tell(ask.To, inst, ask.Message, ask.Text)
 
 	case instance.AskEvent:
-		if ask.Key != "" {
-			return p.toKey(inst, step, ask)
+		if ask.Location != "" {
+			return p.toAddress(inst, step, ask)
 		}
 		if ask.To == "" || ask.Undelivered {
 			return nil // written in the record, and nowhere else
@@ -413,16 +412,8 @@ func (p *pass) job(inst string, step *instance.Step, ask *instance.Ask) (*instan
 	// Every layer the controller knows of, each by name: the job in its
 	// definition, the start, each parent's job, and the client's ceiling.
 	job.Layers = append([]permission.Layer{ownLayer(asked)}, layersAbove(st, asked)...)
-	ceiling := client.Ceiling
-	ceiling.Name = "the ceiling of the client " + strconv.Quote(client.Card.Name)
-	ceiling.Fix = fmt.Sprintf("the controller's owner runs: corbie controller enrol %s --allow %%s", client.Card.Name)
-	job.Layers = append(job.Layers, ceiling)
-
-	// A run started with no location reads the secrets set at "/".
+	job.Layers = append(job.Layers, ceilingOf(client))
 	location := st.Location
-	if location == "" {
-		location = "/"
-	}
 
 	// The values of the secrets the job names, and no others: those set
 	// nearest the run's location. One that a layer does not let travel at
@@ -533,15 +524,13 @@ func (p *pass) child(inst string, step *instance.Step, ask *instance.Ask) *insta
 	// A child runs at its parent's location.
 	start := &instance.Start{Definition: job.Found.Blob, Input: job.Input, Labels: st.Labels, Timeout: job.Timeout,
 		Seed: mac.Sum(nil), Above: above, Location: st.Location, Tree: st.Tree}
-	if job.RunKey != nil {
-		start.Key = *job.RunKey
-	}
 	return start
 }
 
 // receipt answers a client's message that led to no step.
 func (p *pass) receipt(a *arrival, r *instance.Receipt) error {
-	return p.writeReceipt(a.sender, a.name, r)
+	client, message, _ := a.client()
+	return p.writeReceipt(client, message, r)
 }
 
 // writeReceipt writes the answer to a client's message under the message's

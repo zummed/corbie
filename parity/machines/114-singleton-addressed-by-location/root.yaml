@@ -1,0 +1,10 @@
+# A send to { at } goes to the location's singleton, which replies to
+# event.from and runs on.
+statechart: thermostat
+allow: [send:boiler]
+initial: asking
+states:
+  asking:
+    entry: { send: { to: { at: boiler }, event: set, data: { target: 21 } } }
+    on: { applied: finished }
+  finished: { end: done, output: "${event.data}" }

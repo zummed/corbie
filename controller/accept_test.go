@@ -124,7 +124,7 @@ func Test_id_message_checked_before_contents_read(t *testing.T) {
 	// name, is not a second message.
 	run = w.submit(kept, nil, nil)
 	w.settle()
-	event, _ := w.client.Send(ctx, run, "tick", nil, 0)
+	event, _ := w.client.Send(ctx, w.to(run), "tick", nil, 0)
 	raw, _, _ = w.owner.Read(ctx, store.Message("ctl", "c1", event))
 	w.owner.Write(ctx, store.Message("ctl", "c1", event+"-again"), raw, store.Overwrite)
 	w.settle()
@@ -170,7 +170,7 @@ func Test_id_removal_holds_in_every_copy_at_next_pass(t *testing.T) {
 	for i, c := range copies {
 		before := len(w.list(store.Running("ctl"))) + len(w.list(store.Finished("ctl")))
 		started := w.startAt(w.client, keptAt, client.Start{})
-		w.client.Send(ctx, waiting[i], "tick", nil, 0)
+		w.client.Send(ctx, w.to(waiting[i]), "tick", nil, 0)
 		w.result(r1, waiting[i], "working", instance.Result{Attempt: 1, Status: instance.Done, Output: "from a runner that was removed"})
 		if _, err := c.Pass(ctx); err != nil {
 			t.Fatal(err)

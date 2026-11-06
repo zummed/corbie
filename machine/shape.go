@@ -221,7 +221,6 @@ var JobShape = &Shape{Name: "job", What: "a job", Fields: []Field{
 	{Name: "machine", Kind: KindValue, Path: true, Like: "./child.yaml", Does: "a machine, which the controller starts as a child: a definition beside this one, or written in place"},
 	{Name: "send", Kind: KindFields, Of: SendShape, Like: "{ to: { at: devices/boiler }, event: set }", Does: "an event sent to a run by its address; the job ends done once it is sent"},
 	{Name: "call", Kind: KindFields, Of: CallShape, Like: "{ at: services/weather }", Does: "a location whose run is started with the input; the job waits, and its output is that run's result"},
-	{Name: "key", Kind: KindWord, Like: "question:${run.id}", Does: "the key the machine is started with, which names its run among this client's running runs"},
 	{Name: "input", Kind: KindValue, Like: `{ url: "${item}" }`, Does: "what the script, the machine or the called run is given"},
 	{Name: "allow", Kind: KindList, Like: "[net:example.com]", Does: "what the job may do, with the definition's allow; for a machine, it narrows everything the child does"},
 	{Name: "deny", Kind: KindList, Like: "[exec]", Does: "what the job may not do"},

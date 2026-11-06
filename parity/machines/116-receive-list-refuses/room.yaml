@@ -1,0 +1,6 @@
+statechart: room
+lifetime: keyed
+receive: [other/*]
+initial: open
+states:
+  open: { on: { hi: open } }

@@ -1,0 +1,8 @@
+{
+  "status": "done",
+  "record": [
+    { "machine": "sender", "ask": { "kind": "note", "text": { "<contains>": "/case/room does not receive hi from the run" } } },
+    { "machine": "room", "event": { "name": "hi" }, "absent": true }
+  ],
+  "note": "R-ctl-120, R-mach-156: a written receive: replaces the default with exactly its list."
+}

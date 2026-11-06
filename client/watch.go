@@ -28,6 +28,8 @@ type Filter struct {
 	Status string
 	// Parent keeps the runs this instance started.
 	Parent string
+	// Location keeps the runs at a location.
+	Location string
 	// Finished takes in the runs that have ended and are still kept.
 	Finished bool
 }
@@ -41,6 +43,9 @@ func (f Filter) keeps(r *Run) bool {
 		return false
 	}
 	if f.Parent != "" && r.Parent != f.Parent {
+		return false
+	}
+	if f.Location != "" && r.Location != f.Location {
 		return false
 	}
 	for name, want := range f.Labels {

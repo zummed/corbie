@@ -1,0 +1,11 @@
+# A receive: mapping lists who may send each event: set is taken from the
+# root, and stop from no run.
+statechart: sender
+allow: [send:room]
+initial: sending
+states:
+  sending:
+    entry: { send: [{ to: { at: room, key: k }, event: set }, { to: { at: room, key: k }, event: stop }] }
+    timers: { pause: 1s }
+    on: { pause: finished }
+  finished: { end: done }

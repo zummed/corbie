@@ -266,7 +266,7 @@ func Test_mach_a_job_calls(t *testing.T) {
 		t.Errorf("the call was filled as %+v (%v)", job, err)
 	}
 	got := problems(t, "probe: p\nwork:\n  a: { call: { at: x }, tags: [gpu] }\n  b: { call: { at: \"x/../y\" } }\n", nil)
-	for _, want := range []string{"work.a: memory, tags and files belong to a script, and a key to a machine; a call has none", `work.b.call.at: "x/../y"`} {
+	for _, want := range []string{"work.a: memory, tags and files belong to a script; a call has none", `work.b.call.at: "x/../y"`} {
 		if !strings.Contains(got, want) {
 			t.Errorf("the mistake %q is not said in:\n%s", want, got)
 		}

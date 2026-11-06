@@ -1,0 +1,6 @@
+# A child sends to the flow above it by its ID: a flow takes no sent event,
+# so the send is noted as undelivered in the child's record.
+flow: work
+stages:
+  tell: { job: { machine: ./sender.yaml, input: { run: "${run.id}" } } }
+output: { fine: true }

@@ -1,4 +1,0 @@
-statechart: child
-initial: over
-states:
-  over: { end: done, output: { id: "${run.id}" } }

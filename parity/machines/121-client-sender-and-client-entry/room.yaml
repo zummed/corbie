@@ -1,0 +1,7 @@
+statechart: room
+lifetime: keyed
+receive: [nobody/*]
+initial: open
+states:
+  open:
+    on: { set: { send: { to: "${event.from}", event: applied } } }

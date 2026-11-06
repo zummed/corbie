@@ -1,0 +1,7 @@
+statechart: room
+lifetime: keyed
+receive: { set: [root], stop: [] }
+initial: open
+states:
+  open: { on: { set: open, stop: over } }
+  over: { end: done }

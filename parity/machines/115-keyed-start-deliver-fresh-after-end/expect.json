@@ -1,0 +1,9 @@
+{
+  "status": "done",
+  "record": [
+    { "machine": "room", "order": ["go", "go"] },
+    { "machine": "room", "status": "done" },
+    { "machine": "twice", "ask": { "kind": "event", "location": "/case/room", "key": "k", "run": "<any>" } }
+  ],
+  "note": "R-ctl-126: a send to a key with no running run starts one; once it ends, the next starts a fresh one."
+}

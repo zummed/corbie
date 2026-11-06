@@ -1,0 +1,11 @@
+# A keyed location with limits: { runs: 1 } takes a send to a first key and
+# notes a send to a second as undelivered.
+statechart: sender
+allow: [send:room]
+initial: sending
+states:
+  sending:
+    entry: { send: [{ to: { at: room, key: a }, event: hi }, { to: { at: room, key: b }, event: hi }] }
+    timers: { pause: 1s }
+    on: { pause: finished }
+  finished: { end: done }

@@ -1,0 +1,10 @@
+# The clerk sends to a key at a keyed location, which starts a run there. That
+# run replies to event.from, which the controller wrote: the clerk's address.
+statechart: clerk
+allow: [send:room]
+initial: waiting
+states:
+  waiting:
+    entry: { send: { to: { at: room, key: "${run.id}" }, event: knock, data: { by: "${run.id}" } } }
+    on: { open: finished }
+  finished: { end: done, output: "${event.data}" }

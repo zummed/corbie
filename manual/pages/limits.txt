@@ -68,19 +68,21 @@ These are true of definitions.
   256 KiB of numbers against 1800 types                119 seconds
   forty $refs that each name the next twice            never ends
 
-These are true of keys.
+These are true of sends to addresses.
 
 - A key is any text of at most 256 characters, and anyone who can list runs can
   read it.
-- A run a send starts counts as one level below its sender, so a chain of
-  sends that each start a run ends at `limits: { depth: }`, 16 by default.
+- A run a send starts counts as one level below its sender, and fails as it
+  starts past its own file's `limits: { depth: }`, 16 by default.
+- `limits: { runs: }` is counted as a send is made, so sends from several runs
+  at once can pass it by a few.
 - A run remembers the last message of each of its 64 most recent senders. A
   controller stopped while it sends, with 64 others heard before it resumes,
   can deliver an event twice.
-- An event sent with `machine` to a run that ends before taking it is lost if
-  the sender's record has been removed, since that record holds the definition.
-- A controller stopped as it deletes an event no run has writes no note of it
-  in the sender's record.
+- A controller stopped as it deletes an event no run takes writes no note of
+  it in the sender's record.
+- Anything about the sender in an event's data is only the sender's claim:
+  `${event.from}` is what the controller wrote.
 
 These are true of the store.
 

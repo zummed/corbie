@@ -332,8 +332,8 @@ func (b *build) wrong(out *stepOut, size int) *machine.Error {
 		if r.Job != nil && (r.Job.Name == instance.AskName || strings.HasSuffix(r.Job.Name, cancelSuffix)) {
 			return b.p.failf("the step gave the name %.40q, which no definition holds", r.Job.Name)
 		}
-		if r.Send != nil && r.Send.Key != nil && !machine.SendsToKeys(b.def) {
-			return b.p.failf("the step sent to a key, which no definition of this type can ask for")
+		if r.Send != nil && r.Send.At != nil && !machine.SendsToAddresses(b.def) {
+			return b.p.failf("the step sent to an address, which no definition of this type can ask for")
 		}
 		if r.End != nil && r.End.Error != nil && !slices.Contains(endings, r.End.Error.Status) {
 			return b.p.failf("the step gave the status %.40q, which is no way to fail", r.End.Error.Status)

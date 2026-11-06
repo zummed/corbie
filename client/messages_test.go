@@ -9,6 +9,7 @@ import (
 	"github.com/zummed/corbie/client"
 	"github.com/zummed/corbie/identity"
 	"github.com/zummed/corbie/instance"
+	"github.com/zummed/corbie/machine"
 	"github.com/zummed/corbie/store"
 )
 
@@ -36,8 +37,10 @@ func TestWaitForAReceiptEndsWhenTheMessageIsNoLongerGood(t *testing.T) {
 		return value.Until.Sub(value.Sent)
 	}
 	for what, send := range map[string]func(life time.Duration) (string, error){
-		"a cancel":  func(life time.Duration) (string, error) { return a.Cancel(ctx, run, life) },
-		"an event":  func(life time.Duration) (string, error) { return a.Send(ctx, run, "go", nil, life) },
+		"a cancel": func(life time.Duration) (string, error) { return a.Cancel(ctx, run, life) },
+		"an event": func(life time.Duration) (string, error) {
+			return a.Send(ctx, machine.Address{At: "/x", Run: run}, "go", nil, life)
+		},
 		"an answer": func(life time.Duration) (string, error) { return a.Reply(ctx, run, "the-key", true, life) },
 	} {
 		for _, life := range []time.Duration{0, 10 * time.Second} {

@@ -136,16 +136,16 @@ The detailed rules behind the [Machines overview](../machine.md). Area code: `ma
 **R-mach-51** A script sends an event up while it runs by emitting a named value, and a child machine by sending to its parent; the two arrive the same way, as an event with that name from that job.
 *Accept:* parity case 26 with the emitted value's own name in `on:`. A parent chart has a rule for `page` on a state with a job; once with the job a script that emits `page`, and once with the job a child chart that sends `page` to its parent, the parent's record shows an event of the same shape and the same transition taken.
 
-**R-mach-53** A parent can send a named event down to a child machine, and a machine talks only to its parent, its own children and a run it knows by its key; siblings go through the parent. No client, machine or script can send an event named `start`, `done`, `failed` or `timer`.
+**R-mach-53** A parent can send a named event down to a child machine, and any other run is sent to by its address. No client, machine or script can send an event named `start`, `done`, `failed` or `timer`.
 *Accept:* parity case 33. Parity case 38: the bottom chart's event reaches the top only because the middle chart passes it on, and the answer comes down the same way. *Test:* `mach_no_event_takes_a_name_of_corbies`, `mach_emitted_value_takes_no_name_of_corbies` and `run_emit_cannot_take_a_name_of_corbies`
 
 **R-mach-55** A value a script emits goes to the machine that asked for the script, and to no machine above it unless that machine sends it on.
 *Accept:* parity case 37: the child chart's script emits two values, and the parent, which has a rule for them on the state that runs the child, never takes it.
 
-**R-mach-56** The client that started a root stands where a parent would: it can send the root named events, and what the root sends up is written in its record, where the client and any watcher can see it.
-*Accept:* a client sends `go` with data to a root chart that has a rule for it; the chart receives an event named `go`, from the client, with that data, and takes the rule. Parity case 23's chart is run; its record holds the three events it sent to its parent, in the order sent, and a client following the record sees each.
+**R-mach-56** The client that owns a root's tree stands where a parent would: it can send the root named events by its address, and what the root sends up is written in its record, where the client and any watcher can see it.
+*Accept:* a client sends `go` with data to a root chart that has a rule for it; the chart receives an event named `go`, from `{ client }`, with that data, and takes the rule. Parity case 23's chart is run; its record holds the three events it sent to its parent, in the order sent, and a client following the record sees each.
 
-**R-mach-58** Events sent between a parent and a child arrive once each and in the order they were sent, across steps as well as within one.
+**R-mach-58** Events sent from one run to another, between a parent and a child or by address, arrive once each and in the order they were sent, across steps as well as within one.
 *Accept:* a controller is stopped after carrying out half of a step that sends an event to a child, and the next pass repeats the step's work; the child's record shows the event once. Parity case 35's charts are run twenty times; each time the parent receives `up1` to `up5` in that order, and the child receives the five sent down in the order written. A child sends `begin` in one step and `end` in its next; the parent receives `begin` first, however the controller's passes fall.
 
 **R-mach-61** An event sent to a child the sender knows is not running is noted in the sender's record as undelivered and fails nothing; one sent to a child that has ended before the sender has heard so is dropped by the child.
@@ -187,19 +187,9 @@ The detailed rules behind the [Machines overview](../machine.md). Area code: `ma
 **R-mach-160** A job may be `call: { at }` with an input: it starts a run of that location and waits, and its output is that run's result. A call names its location with `at` alone, and takes no memory, tags, files or key.
 *Accept:* a call filled from the input names `services/weather` with its input and is no machine; a call with `tags:` and one at `x/../y` are refused. *Test:* `mach_a_job_calls`
 
-## Keys
+**C-mach-32** A key is any text of 1 to 256 characters. Past that, or empty, the send is noted as undelivered in the sender's record, and nothing is read or written for it. A key comes from outside, so one that is wrong fails the send and not the machine. *Test:* `mach_key_past_its_bound_writes_nothing`
 
-**R-mach-140** A key names a run. A run may be started with a key by a job that starts a machine, in any type, or by a send, and among one client's running runs a key names at most one run. A key is free again once its run ends.
-*Accept:* a send starts a chart with the key `chat:1`: the entry for `chat:1` names it, and its head says `chat:1`. A flow's job, an agent's tool and a chart's state each start a machine with a key the same way. When the run ends the entry is gone, and a new send to `chat:1` starts a run. Parity cases 107 and 108. *Test:* `chart_send_to_a_key_starts_a_run_then_delivers`, `ctl_key_is_free_once_its_run_ends` and `ctl_job_with_a_key_in_use_fails`
-
-**R-mach-141** A job with a key in use fails with a reason, and only a send with `machine` joins a running run.
-*Accept:* a flow whose job gives `k` fails, its error naming the run with `k`. A send with `machine` to `k` is delivered to the run with `k`, and no run starts. Parity case 110. *Test:* `ctl_job_with_a_key_in_use_fails` and `chart_send_to_a_key_starts_a_run_then_delivers`
-
-**R-mach-142** A run started by a send is a root of the sender's client that records the sender, gets the event's data as its input and is then given the event, whatever its type, and ending the sender does not cancel it. A run started by a job with a key is an ordinary child of that job, cancelled with it.
-*Accept:* a chart sends to `chat:1` with a statechart's definition and with a flow's: each run has no parent in its head, names the sender, has the event's data as its input, and is given the event. Data that does not fit the machine's input fails the send in the sender's record. The sender ends, and the run goes on. A job's child with a key is cancelled when its parent is. *Test:* `chart_send_to_a_key_starts_a_run_then_delivers`, `ctl_send_starts_a_machine_of_any_type`, `ctl_send_whose_data_does_not_fit_fails_in_the_senders_record` and `ctl_job_with_a_key_in_use_fails`
-
-**R-mach-143** A key names only runs of the client whose run sends.
-*Accept:* clients `c1` and `c2` each hold `k`. A run of `c1` that sends to `k` is delivered to `c1`'s run, and `c2`'s run takes no step. *Test:* `ctl_a_key_names_only_runs_of_its_client`
+## Include
 
 **R-mach-144** A mapping read by a shape, or a mapping of names, may name files with `include:`, one or a list, and a name may end in `#path` to take the value at that path. The client writes the definition out before it sends it: in a mapping the included fields are merged in at every depth. A value the including file writes wins, a file's values win over those of the files it includes and an earlier file's over a later one's, and where the two values are not both mappings the winner's is taken whole, so a list or a text the including file writes replaces the included one. A file merged in whole by two routes is merged once. The stored definition holds no `include:`, and `include:` in what a shape gives as a value stays as written.
 *Accept:* `stages:` includes `./first.yaml` and `./second.yaml` and writes `own`; `first.yaml` writes `a` and `own` and includes `./inner.yaml`, which writes `a` and `b`; `second.yaml` writes `b` and `c`. The flow runs its own `own`, `first.yaml`'s `a`, `inner.yaml`'s `b` and `second.yaml`'s `c`. An agent writes `model: { effort: high }` and includes a file whose `model:` gives `name` and `secret`: its model has all three. A tool it writes with `does:` keeps the `job:` the included tool of that name gives. A flow, a chart, an agent, a part and an agent written in place each take fields from a file, and a machine written in place takes its type from a file it includes. `include:` under a job's `input:`, in `meta:` and as a field of an input's shape stays as written. *Test:* `mach_include_merges_at_every_depth`
@@ -227,9 +217,6 @@ The detailed rules behind the [Machines overview](../machine.md). Area code: `ma
 **C-mach-34** A definition and what is below it include at most 1,000 files, and the rest are refused. Files that each include the next twice grow past what a process can hold from a few bytes each, and they do not lead back to themselves. *Test:* `mach_includes_are_limited`
 
 **C-mach-35** A problem in an included file names that file, and a problem in what a definition writes itself does not. A place alone would send an author to the wrong file. *Test:* `mach_include_problems_name_the_file`
-
-
-**C-mach-32** A key is any text of 1 to 256 characters. Past that, or empty, the send or the job fails with a reason in the sender's record, and nothing is written to the store. A key comes from outside, so one that is wrong fails the send and not the machine. *Test:* `mach_key_past_its_bound_writes_nothing`
 
 ## Children
 

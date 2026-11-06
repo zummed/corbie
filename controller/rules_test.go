@@ -35,8 +35,8 @@ func Test_ctl_start_taken_alone_before_other_messages(t *testing.T) {
 	w := newWorld(t)
 	run := w.submit(kept, nil, nil)
 	// Events are waiting with the start, before any pass.
-	w.client.Send(ctx, run, "tick", nil, 0)
-	w.client.Send(ctx, run, "tick", nil, 0)
+	w.client.Send(ctx, w.to(run), "tick", nil, 0)
+	w.client.Send(ctx, w.to(run), "tick", nil, 0)
 	w.settle()
 	steps := w.steps(run)
 	if len(steps) != 2 || events(steps[0]) != "start" || events(steps[1]) != "tick tick" {
@@ -54,7 +54,7 @@ func Test_ctl_events_on_one_link_arrive_in_order_sent(t *testing.T) {
 	`, nil, nil)
 	w.settle()
 	for _, name := range []string{"a", "b", "c", "b", "a"} {
-		w.client.Send(ctx, run, name, nil, 0)
+		w.client.Send(ctx, w.to(run), name, nil, 0)
 	}
 	w.settle()
 	if got := events(w.latest(run)); got != "a b c b a" {
@@ -66,7 +66,7 @@ func Test_ctl_cancel_or_timeout_beats_events_in_one_step(t *testing.T) {
 	w := newWorld(t)
 	run := w.submit(kept, nil, nil)
 	w.settle()
-	event, _ := w.client.Send(ctx, run, "tick", nil, 0) // sorts ahead of the cancel
+	event, _ := w.client.Send(ctx, w.to(run), "tick", nil, 0) // sorts ahead of the cancel
 	w.client.Cancel(ctx, run, 0)
 	w.settle()
 	steps := w.steps(run)
@@ -181,7 +181,7 @@ func Test_ctl_message_for_removed_instance_dropped(t *testing.T) {
 	w.leave(r1, "20261010T120000.000000Z-late", &instance.Message{Kind: instance.KindResult, Instance: gone,
 		Result: &instance.Result{Job: "x", Status: instance.Done}})
 	w.owner.Write(ctx, store.Wake("ctl", w.clock().Add(-time.Second), gone, "timer.x~1"), []byte("\n"), store.OnlyIfNew)
-	message, _ := w.client.Send(ctx, gone, "tick", nil, 0)
+	message, _ := w.client.Send(ctx, machine.Address{At: "/nowhere", Run: gone}, "tick", nil, 0)
 	w.settle()
 	if left := append(w.list(store.Inbox("ctl")), w.wakes()...); len(left) != 0 {
 		t.Fatalf("messages and wakes for an instance that is gone were left: %v", left)
@@ -195,12 +195,12 @@ func Test_ctl_refusal_receipt_written_before_message_deleted(t *testing.T) {
 	w := newWorld(t)
 	run := w.submit(kept, nil, nil)
 	w.settle()
-	w.client.Send(ctx, run, "stop", nil, 0)
+	w.client.Send(ctx, w.to(run), "stop", nil, 0)
 	w.settle()
 	w.mu.Lock()
 	w.ops = nil
 	w.mu.Unlock()
-	message, _ := w.client.Send(ctx, run, "tick", nil, 0) // for a run that has ended
+	message, _ := w.client.Send(ctx, w.to(run), "tick", nil, 0) // for a run that has ended
 	w.settle()
 	receiptAt, deleteAt := -1, -1
 	w.mu.Lock()
@@ -208,7 +208,9 @@ func Test_ctl_refusal_receipt_written_before_message_deleted(t *testing.T) {
 		if op.Done && op.Act == store.ActAdd && op.Name == store.Receipt("ctl", "c1", message) {
 			receiptAt = i
 		}
-		if op.Done && op.Act == store.ActDelete && strings.HasSuffix(op.Name, "/inbox/c1/"+message) {
+		// The client's event is routed to the run as the controller's own
+		// message, which is refused.
+		if op.Done && op.Act == store.ActDelete && strings.HasSuffix(op.Name, "/inbox/ctl/client.c1."+message) {
 			deleteAt = i
 		}
 	}
@@ -222,7 +224,7 @@ func Test_ctl_repeated_message_recognised_by_fresh_controller(t *testing.T) {
 	w := newWorld(t)
 	run := w.submit(kept, nil, nil)
 	w.settle()
-	message, _ := w.client.Send(ctx, run, "tick", nil, 0)
+	message, _ := w.client.Send(ctx, w.to(run), "tick", nil, 0)
 	w.settle()
 	// A controller started afresh, which remembers nothing, is given the
 	// same message again; and the same start again.
@@ -352,7 +354,7 @@ func Test_mach_undelivered_event_is_named_in_record(t *testing.T) {
 		    job: { machine: { statechart: kid, states: { k: { end: done } } } }
 	`, nil, nil)
 	w.settle()
-	w.client.Send(ctx, run, "poke", nil, 0)
+	w.client.Send(ctx, w.to(run), "poke", nil, 0)
 	w.settle()
 	found := false
 	for _, ask := range w.latest(run).Asks {
@@ -369,7 +371,7 @@ func Test_mach_ticket_not_derivable_from_public_names(t *testing.T) {
 	w := newWorld(t)
 	run := w.submit(door, nil, map[string]any{"greeting": "x"})
 	w.settle()
-	w.client.Send(ctx, run, "open", nil, 0)
+	w.client.Send(ctx, w.to(run), "open", nil, 0)
 	w.settle()
 	var ticket string
 	for _, k := range w.latest(run).State.Tickets {
@@ -387,7 +389,7 @@ func Test_mach_ticket_not_derivable_from_public_names(t *testing.T) {
 	// Two runs of one chart get different tickets.
 	other := w.submit(door, nil, map[string]any{"greeting": "x"})
 	w.settle()
-	w.client.Send(ctx, other, "open", nil, 0)
+	w.client.Send(ctx, w.to(other), "open", nil, 0)
 	w.settle()
 	for _, k := range w.latest(other).State.Tickets {
 		if k.Value == ticket {
@@ -697,7 +699,7 @@ func Test_ctl_head_write_that_finds_a_change_reads_again(t *testing.T) {
 			return name == store.RunningHead("ctl", run) && how != store.OnlyIfNew
 		},
 		then: func() {
-			w.client.Send(ctx, run, "tick", nil, 0)
+			w.client.Send(ctx, w.to(run), "tick", nil, 0)
 			for range 3 {
 				if _, err := other.Pass(ctx); err != nil {
 					t.Error(err)
@@ -708,7 +710,8 @@ func Test_ctl_head_write_that_finds_a_change_reads_again(t *testing.T) {
 			}
 		}}
 	w.afresh(slow)
-	w.client.Send(ctx, run, "tick", nil, 0)
+	w.client.Send(ctx, w.to(run), "tick", nil, 0)
+	w.pass() // routed to the run
 	w.noted()
 	w.pass()
 	if head := w.head(run); head.Step != 3 {

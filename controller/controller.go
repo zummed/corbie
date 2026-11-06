@@ -148,7 +148,7 @@ func (c *Controller) Pass(ctx context.Context) (next time.Time, err error) {
 		return next, err
 	}
 	waiting := map[string][]*arrival{}
-	sending := map[sendingTo]string{}
+	sending := &ahead{to: map[sendingTo]string{}, held: map[sendingTo]bool{}, at: map[sendingAt]map[string]bool{}}
 	var order, house []string
 	var kept []*arrival // the instances' own wakes for housekeeping, soonest first
 	add := func(inst string, a *arrival) {
@@ -166,8 +166,17 @@ func (c *Controller) Pass(ctx context.Context) (next time.Time, err error) {
 			}
 		}
 	}
+	// A client's sends to addresses are routed next, each client's in the
+	// order it sent them. Each is taken by its run in the next pass.
 	for _, a := range messages {
-		if a != nil && a.msg.Kind != instance.KindSubmit && !p.behind(a, sending) {
+		if a != nil && routed(a) {
+			if err := p.route(a); err != nil {
+				return next, err
+			}
+		}
+	}
+	for _, a := range messages {
+		if a != nil && a.msg.Kind != instance.KindSubmit && !routed(a) && !p.behind(a, sending) {
 			add(a.msg.Instance, a)
 		}
 	}
@@ -270,10 +279,20 @@ func (p *pass) accept(name string, data []byte) (*arrival, error) {
 	if v.Open(p.c.ID, &msg) != nil || !whole(&msg) {
 		return nil, nil
 	}
-	// A submit is for no instance, and only a client sends one.
+	// A submit is for no instance, and only a client sends one; so is a
+	// client's send to an address, which the controller routes.
+	clientSend := kind == identity.Client && msg.Kind == instance.KindSend
 	if msg.Kind == instance.KindSubmit && (kind != identity.Client || msg.Instance != "") ||
-		msg.Kind != instance.KindSubmit && store.CheckInstance(msg.Instance) != nil {
+		clientSend && msg.Instance != "" ||
+		msg.Kind != instance.KindSubmit && !clientSend && store.CheckInstance(msg.Instance) != nil {
 		return nil, nil
+	}
+	// Only the controller says who sent an event.
+	switch kind {
+	case identity.Client:
+		msg.Sender = &machine.Address{Client: sender}
+	case identity.Runner:
+		msg.Sender = nil
 	}
 	sent := v.Sent
 	if sent.After(p.now) {
@@ -290,8 +309,10 @@ func whole(msg *instance.Message) bool {
 		return msg.Submit != nil
 	case instance.KindStart:
 		return msg.Start != nil
-	case instance.KindEvent, instance.KindSend:
+	case instance.KindEvent:
 		return msg.Event != nil && msg.Event.Name != ""
+	case instance.KindSend:
+		return msg.Event != nil && msg.Event.Name != "" && msg.To != nil
 	case instance.KindAnswer:
 		return msg.Answer != nil
 	case instance.KindResult:
@@ -303,6 +324,10 @@ func whole(msg *instance.Message) bool {
 	}
 	return false
 }
+
+// routed says a message is a client's send to an address, which the
+// controller routes to the run it goes to.
+func routed(a *arrival) bool { return a.kind == identity.Client && a.msg.Kind == instance.KindSend }
 
 // trusted reads what the controller holds about a party, from where trust
 // is kept, once in this pass.

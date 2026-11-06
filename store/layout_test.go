@@ -70,7 +70,7 @@ func Test_store_no_name_is_a_path_above_another(t *testing.T) {
 		Message("ctl", "ctl", LinkMessage(i, 3, 0, "start")),
 		ReceiptBlob("ctl", "c1", "m1", "b1"), Result("ctl", "c1", "m1"), Upload("ctl", "c1", "m2", "f1"),
 		Tree("ctl", "/home"), LocationFile("ctl", "/home/boiler"), LocationBlob("ctl", "/home/boiler", "b1"),
-		Key("ctl", "/home/boiler", ""), Key("ctl", "/home/rooms", "k"), ClientKey("ctl", "c1", "k"),
+		Key("ctl", "/home/boiler", ""), Key("ctl", "/home/rooms", "k"),
 		LocationFile("ctl", "/project/.rook/review"), LocationFile("ctl", "/project/.rook"),
 		Secret("ctl", "/", "KEY"), Secret("ctl", "/home", "KEY"), Secret("ctl", "/home", "+"),
 		Value("ctl", "/", "HUB"), Value("ctl", "/home/boiler", "HUB"),

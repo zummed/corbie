@@ -483,7 +483,6 @@ func TestTitleIsFilledInWhenTheRunStarts(t *testing.T) {
 		        flow: inner
 		        title: "inner ${input.n}"
 		        stages: { s: { job: { script: ./add.js, input: { n: 2 } } } }
-		      key: inner-key
 		      input: { n: 3 }
 		output: ${stages.check.output}
 	`
@@ -508,18 +507,31 @@ func TestTitleIsFilledInWhenTheRunStarts(t *testing.T) {
 
 	sender := `
 		statechart: sender
+		allow: ["send:keyed"]
 		initial: a
 		states:
 		  a:
 		    job: ./echo.js
-		    on: { done: { go: z, send: { to: { machine: ./keyed.yaml, key: keyed-1 }, event: hello, data: { x: "a\n\n b" } } } }
+		    on: { done: { go: z, send: { to: { at: keyed, key: keyed-1 }, event: hello, data: { x: "a\n\n b" } } } }
 		  z: { end: done }
 	`
-	files := map[string]string{"echo.js": scripts["echo.js"], "keyed.yaml": "flow: keyed\ntitle: \"keyed ${input.x}\"\nstages: { s: { job: ./echo.js } }\n"}
-	run(t, l, sender, files, nil)
+	keyedSrc := "statechart: keyed\nlifetime: keyed\ntitle: \"keyed ${input.x}\"\ninitial: a\nstates: { a: { on: { hello: b } }, b: { end: done } }\n"
+	files := map[string]string{"echo.js": scripts["echo.js"]}
+	message, err := l.Submit(ctx, &client.Tree{Prefix: "/titles", Machines: []*client.Machine{
+		{Path: "sender.yaml", Location: "/titles/sender", Draft: draft(t, sender, files)},
+		{Path: "keyed.yaml", Location: "/titles/keyed", Draft: draft(t, keyedSrc, nil)}}}, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if r, err := l.WaitReceipt(ctx, message, 0, 20*time.Millisecond); err != nil || !r.Taken {
+		t.Fatalf("the tree's receipt is %+v: %v", r, err)
+	}
+	if _, err := l.Start(ctx, client.Start{At: "/titles/sender"}); err != nil {
+		t.Fatal(err)
+	}
 	keyed := waitForFinished(t, l, "keyed")
-	if got, err := l.Show(ctx, keyed); err != nil || got.Title != "keyed a b" {
-		t.Errorf("a run a send started has the title %q: %v", got.Title, err)
+	if got, err := l.Show(ctx, keyed); err != nil || got.Title != "keyed a b" || got.Location != "/titles/keyed" || got.Key != "keyed-1" {
+		t.Errorf("a run a send started is shown as %+v: %v", got, err)
 	}
 
 	long := run(t, l, "flow: long\ntitle: \"${'x'.repeat(300)}é\"\nstages: { s: { job: ./echo.js } }\n", scripts, nil)

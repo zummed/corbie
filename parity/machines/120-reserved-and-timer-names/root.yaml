@@ -1,0 +1,11 @@
+# A run's own timer and ticket names cannot be sent to it: those sends are
+# noted as undelivered, and an event of any other name is taken.
+statechart: sender
+allow: [send:room]
+initial: sending
+states:
+  sending:
+    entry: { send: [{ to: { at: room, key: k }, event: tick }, { to: { at: room, key: k }, event: ok }, { to: { at: room, key: k }, event: hello }] }
+    timers: { pause: 1s }
+    on: { pause: finished }
+  finished: { end: done }

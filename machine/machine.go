@@ -110,8 +110,6 @@ type Job struct {
 	// is asked for: what carries it out reads no definition.
 	Found *Found `json:"found,omitzero"`
 
-	// RunKey is the key a machine is started with.
-	RunKey *string `json:"key,omitzero"`
 	// Send is an event the job sends to a run by its address, and Call a
 	// location whose run the job starts and waits for.
 	Send *Send    `json:"send,omitzero"`
@@ -227,18 +225,13 @@ func Resolve(prefix, loc string) string {
 	return strings.TrimSuffix(prefix, "/") + "/" + loc
 }
 
-// A Send is a request to send a named event to the parent, to a child, to
-// the run a key names, or to a run by its address.
+// A Send is a request to send a named event to the parent, to a child, or
+// to a run by its address.
 type Send struct {
-	To string   `json:"to,omitzero"` // "parent", or the name of the job that started the child
-	At *Address `json:"at,omitzero"` // the run it is sent to, in place of To
-	// Key names the run it is sent to, in place of To, and Machine is the
-	// machine started with that key when no run has it, by its name in the
-	// definition.
-	Key     *string `json:"key,omitzero"`
-	Machine string  `json:"machine,omitzero"`
-	Event   string  `json:"event"`
-	Data    any     `json:"data,omitzero"`
+	To    string   `json:"to,omitzero"` // "parent", or the name of the job that started the child
+	At    *Address `json:"at,omitzero"` // the run it is sent to, in place of To
+	Event string   `json:"event"`
+	Data  any      `json:"data,omitzero"`
 }
 
 // Parent is where a send to the machine's parent is addressed.
@@ -373,16 +366,31 @@ func Receives(def *Definition) bool {
 	return ok
 }
 
-// A KeySender is a type whose definitions can send an event to a key.
-type KeySender interface {
-	SendsToKeys()
+// An AddressSender is a type whose definitions can send an event to a run
+// by its address.
+type AddressSender interface {
+	SendsToAddresses()
 }
 
-// SendsToKeys says a definition's type can send an event to a key.
-func SendsToKeys(def *Definition) bool {
+// SendsToAddresses says a definition's type can send an event to a run by
+// its address.
+func SendsToAddresses(def *Definition) bool {
 	t, _ := TypeOf(def.Type)
-	_, ok := t.(KeySender)
+	_, ok := t.(AddressSender)
 	return ok
+}
+
+// An Owner is a type that gives events names of its own, such as a timer's
+// or a ticket's, which no sender may take.
+type Owner interface {
+	Owns(def *Definition, name string) bool
+}
+
+// Owns says whether a name is one a definition gives its own events.
+func Owns(def *Definition, name string) bool {
+	t, _ := TypeOf(def.Type)
+	o, ok := t.(Owner)
+	return ok && o.Owns(def, name)
 }
 
 // Asks gives the asks a definition writes, by place.

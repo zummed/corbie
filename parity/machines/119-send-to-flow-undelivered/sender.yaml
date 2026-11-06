@@ -1,0 +1,10 @@
+statechart: sender
+allow: [send:root]
+input: { run: string }
+initial: sending
+states:
+  sending:
+    entry: { send: { to: { at: root, run: "${input.run}" }, event: hello } }
+    timers: { pause: 1s }
+    on: { pause: finished }
+  finished: { end: done }

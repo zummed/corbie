@@ -60,4 +60,6 @@ A client's start of a location in a tree it does not own is a call. The client c
 
 The result is sealed to the client that called. The receipt of a taken call is kept while its run is running, and the receipt and the result are deleted together a day after the result is written. When the controller holds no card for the client as the run ends, it writes no result and deletes the receipt.
 
-A message is good for as long as its sender says, a few minutes unless it says otherwise. A controller refuses a client's message past that time by its own clock, so what a client reports is what the controller does, where their clocks agree. Until the controller has taken a start there is no receipt and no head, and a client that asks is told the run is waiting to start. Once a start is past its time with no receipt, the run is no longer waiting: it was never taken up.
+A message is good for as long as its sender says, a few minutes unless it says otherwise. A controller refuses a message past its time and the clock allowance of five minutes, by its own clock. Until the controller has taken a start there is no receipt and no head, and a client that asks is told the run is waiting to start.
+
+A client waits for a receipt until its message is past its time and twice the clock allowance, since the controller's clock may be five minutes behind its own. A start with no receipt by then was never taken up, and no controller takes it later.

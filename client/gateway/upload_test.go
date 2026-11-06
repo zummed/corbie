@@ -232,11 +232,34 @@ func TestStartLeavesNothingOfItsUploadsBehind(t *testing.T) {
 	}
 }
 
+// sentThenLooking calls looked at the first read of a receipt after a
+// message is written to the controller's inbox.
+type sentThenLooking struct {
+	store.Store
+	sent   *atomic.Bool
+	looked func()
+}
+
+func (l sentThenLooking) Write(ctx context.Context, name string, data []byte, how store.How) (bool, error) {
+	done, err := l.Store.Write(ctx, name, data, how)
+	if strings.HasPrefix(name, store.Inbox("controller")+"/") {
+		l.sent.Store(true)
+	}
+	return done, err
+}
+
+func (l sentThenLooking) Read(ctx context.Context, name string) ([]byte, store.Mark, error) {
+	if strings.Contains(name, "/receipts/") && l.sent.Swap(false) {
+		l.looked()
+	}
+	return l.Store.Read(ctx, name)
+}
+
 // A cancel, an event and an answer each take a life: with no controller
-// running, each is answered once that life has passed, saying the message
-// was not taken up, and what was sent is good for that life.
+// running, each is answered once no controller may take it, saying the
+// message was not taken up, and what was sent is good for that life.
 func TestCancelEventAndAnswerTakeALife(t *testing.T) {
-	mem, _, c := aloneOn(t)
+	mem, local, c := aloneOn(t)
 	owner := mem.As(store.Party{Kind: store.Owner})
 	ctx := context.Background()
 	goodFor := func(message string) time.Duration {
@@ -256,11 +279,20 @@ func TestCancelEventAndAnswerTakeALife(t *testing.T) {
 	if sent, err := store.Names(owner.List(ctx, store.Inbox("controller"))); err != nil || len(sent) != 1 || goodFor(sent[0]) != 90*time.Second {
 		t.Fatalf("a start with a life of 90s left %v in the inbox (%v)", sent, err)
 	}
+	// The first look for a receipt after a message is sent moves the clock
+	// on by the time a controller may take it: the life and twice the clock
+	// allowance.
+	var ahead atomic.Int64
+	local.Now = func() time.Time { return time.Now().Add(time.Duration(ahead.Load())) }
+	local.Store = sentThenLooking{local.Store, &atomic.Bool{}, func() {
+		ahead.Add(int64(200*time.Millisecond + 2*identity.ClockAllowance + time.Second))
+	}}
 	for path, body := range map[string]string{
 		"/cancel":  `{"life": "200ms"}`,
 		"/events":  `{"event": "open", "life": "200ms"}`,
 		"/tickets": `{"ticket": "the-ticket", "value": true, "life": "200ms"}`,
 	} {
+		ahead.Store(0)
 		before, err := store.Names(owner.List(ctx, store.Inbox("controller")))
 		if err != nil {
 			t.Fatal(err)

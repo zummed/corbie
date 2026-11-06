@@ -213,7 +213,7 @@ func (c *Client) unstarted(ctx context.Context, id string) (*Run, error) {
 	// dated further ahead than clocks may differ is no start of this
 	// client's.
 	named, _ := store.InstanceTime(id)
-	if age := c.Now().Sub(named); age > instance.MessageLife+2*identity.ClockAllowance || age < -identity.ClockAllowance {
+	if age := c.Now().Sub(named); age > taking(0) || age < -identity.ClockAllowance {
 		return nil, ErrNeverTaken
 	}
 	return &Run{ID: id, Status: instance.Waiting}, nil
@@ -244,12 +244,13 @@ func (c *Client) Wait(ctx context.Context, id string, interval time.Duration) (*
 
 // Taken stays until a run has been taken up: it is no longer waiting to
 // start. A run the controller starts, as a submit starts a singleton, has
-// nothing in its record until then. A run is waited for while its start is
-// good: for the life it was sent with, a few minutes if none.
+// nothing in its record until then. A run is waited for while a controller
+// may take its start: for the life it was sent with, a few minutes if none,
+// and the allowance for clocks.
 func (c *Client) Taken(ctx context.Context, id string, life, interval time.Duration) error {
 	notice, stop := c.Store.Notice(c.ctl())
 	defer stop()
-	until := c.Now().Add(good(life))
+	until := c.Now().Add(taking(life))
 	for {
 		run, err := c.Show(ctx, id)
 		switch {

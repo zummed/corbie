@@ -447,7 +447,8 @@ func (e *Env) startAt(s *starting, location, at string) error {
 }
 
 // started prints the ID of a run that was started, or stays until it ends:
-// first for no longer than its start, sent with the life given, is good.
+// first for no longer than a controller may take its start, sent with the
+// life given.
 func (e *Env) started(c *client.Client, id string, s *starting, life time.Duration) error {
 	if !s.wait && !s.watch {
 		// The ID and nothing else: other commands take it.
@@ -1128,8 +1129,8 @@ func value(args []string, at int) any {
 }
 
 // answered sends a message and prints what became of it: the receipt. The
-// message is good for the life given with --life, and the command waits no
-// longer than that for its receipt.
+// message is good for the life given with --life, and the command waits for
+// its receipt no longer than a controller may take it.
 func (e *Env) answered(args []string, usage string, takes func(n int) bool, send func(c *client.Client, rest []string, life time.Duration) (string, error)) error {
 	var lifeText string
 	e.Flags.StringVar(&lifeText, "life", "", "")

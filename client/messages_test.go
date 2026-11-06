@@ -16,7 +16,8 @@ import (
 // A cancel, an event and an answer are each good for the life they are
 // given, or for a few minutes when given none; and with no controller
 // running, a caller waiting for the receipt of one is told it was not taken
-// up once that life has passed, and not before.
+// up once that life and twice the clock allowance have passed, and not
+// before: a controller whose clock is behind may take it until then.
 func TestWaitForAReceiptEndsWhenTheMessageIsNoLongerGood(t *testing.T) {
 	a := arrange(t)
 	var ahead atomic.Int64
@@ -75,19 +76,21 @@ func TestWaitForAReceiptEndsWhenTheMessageIsNoLongerGood(t *testing.T) {
 				ended <- err
 			}()
 			<-looks
-			// While the message is good the wait goes on, look after look.
-			ahead.Store(int64(want - time.Second))
+			// While a controller may take the message the wait goes on, look
+			// after look.
+			wait := want + 2*identity.ClockAllowance
+			ahead.Store(int64(wait - time.Second))
 			for range 3 {
 				select {
 				case <-looks:
 				case err := <-ended:
-					t.Fatalf("a second before %s stops being good, the wait for its receipt ended: %v", what, err)
+					t.Fatalf("a second before a controller stops taking %s, the wait for its receipt ended: %v", what, err)
 				case <-time.After(5 * time.Second):
 					t.Fatalf("the wait for the receipt of %s stopped looking", what)
 				}
 			}
-			// Once it is no longer good, the wait ends and says so.
-			ahead.Store(int64(want + time.Second))
+			// Once no controller takes it, the wait ends and says so.
+			ahead.Store(int64(wait + time.Second))
 			select {
 			case err := <-ended:
 				if !errors.Is(err, client.ErrNotTaken) {

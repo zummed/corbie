@@ -119,12 +119,12 @@ func Test_id_message_checked_before_contents_read(t *testing.T) {
 	if _, mark, _ := w.owner.Read(ctx, late); mark != store.None {
 		t.Fatal("a start past its time was left in the inbox")
 	}
-	// A client gives up on its message once its time has passed, so the
-	// controller takes it no later, whatever it allows for clocks.
+	// A client's start a second past its time is within the allowance for
+	// clocks, as any party's message is, and is taken.
 	run, msg = w.start("c1", keptAt)
 	w.put(w.c1, "j-start", msg, w.ctl.Card, w.clock().Add(-time.Second))
 	w.settle()
-	if r := w.receipt("j-start"); w.head(run) != nil || r == nil || r.Taken || !strings.Contains(r.Refused, "too late") {
+	if r := w.receipt("j-start"); w.head(run) == nil || r == nil || !r.Taken {
 		t.Fatalf("c1's start, a second past its time, got %+v", r)
 	}
 

@@ -49,12 +49,18 @@ type machine struct {
 // said along the way.
 func (m machine) run(stdin string, args ...string) (int, string, string) {
 	m.t.Helper()
+	return m.runFor(30*time.Second, stdin, args...)
+}
+
+// runFor runs corbie as run does, stopping it after a time.
+func (m machine) runFor(limit time.Duration, stdin string, args ...string) (int, string, string) {
+	m.t.Helper()
 	var out, said bytes.Buffer
 	full := append(args, "--config", m.config)
 	// Not a deadline: a runner takes a context's deadline for its host's
 	// limit, and takes no job it could not finish before it.
 	ctx, cancel := context.WithCancel(context.Background())
-	defer time.AfterFunc(30*time.Second, cancel).Stop()
+	defer time.AfterFunc(limit, cancel).Stop()
 	defer cancel()
 	status := cli.Run(ctx, full, strings.NewReader(stdin), &out, &said)
 	return status, out.String(), said.String()

@@ -441,6 +441,13 @@ func good(life time.Duration) time.Duration {
 	return life
 }
 
+// taking is how long after it is sent a controller may still take a
+// message: its life and the allowance for clocks, by a controller's clock
+// that may be the allowance behind this client's.
+func taking(life time.Duration) time.Duration {
+	return good(life) + 2*identity.ClockAllowance
+}
+
 // send writes one message into the controller's inbox, signed by this
 // client and sealed to the controller.
 func (c *Client) send(ctx context.Context, name string, life time.Duration, msg *instance.Message) error {
@@ -478,13 +485,13 @@ var ErrNotTaken = errors.New("the message was not taken up: it is no longer good
 
 // WaitReceipt stays until the controller has answered a message this
 // client has just sent, and gives the receipt. life is the life the message
-// was sent with. Once the message is no longer good and no receipt has
+// was sent with. Once no controller may take the message and no receipt has
 // come, the wait ends, saying the message was not taken up. It looks again
 // when this process writes to the store, and otherwise at the interval.
 func (c *Client) WaitReceipt(ctx context.Context, message string, life, interval time.Duration) (*instance.Receipt, error) {
 	notice, stop := c.Store.Notice(c.ctl())
 	defer stop()
-	until := c.Now().Add(good(life))
+	until := c.Now().Add(taking(life))
 	for {
 		receipt, err := c.Receipt(ctx, message)
 		if err != nil || receipt != nil {

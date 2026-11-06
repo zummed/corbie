@@ -293,6 +293,7 @@ func TestBlobsAreCopiedBetweenAreas(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	uploaded := def
 	run := "c1/20261010T120000.000Z-run"
 	var copies []Ref
 	for _, dir := range []string{
@@ -324,14 +325,26 @@ func TestBlobsAreCopiedBetweenAreas(t *testing.T) {
 	if again, err := CopyWhole(ctx, s, copies[0], "ctl", store.LocationBlobs("ctl", "/home/.rook/boiler")); err != nil || again != copies[0] {
 		t.Fatalf("a copy into where it is: %v", err)
 	}
+	if again, err := CopyWhole(ctx, s, uploaded, "ctl", store.LocationBlobs("ctl", "/home/.rook/boiler")); err != nil || again != copies[0] {
+		t.Fatalf("a copy into another area, done again: %v, %v", again, err)
+	}
 	if after, _ := store.Names(s.List(ctx, "ctl")); len(after) != len(before) {
 		t.Fatal("a second copy wrote more blobs")
+	}
+	// A blob at the root location is copied.
+	root := write(t, s, store.LocationBlob("ctl", "/", NewName()), []byte("x"))
+	if path.Dir(root.At) != "ctl/locations/+/blobs" {
+		t.Fatalf("the root location's blob is at %s", root.At)
+	}
+	if _, err := Copy(ctx, s, root, "ctl", store.Blobs("ctl", run)); err != nil {
+		t.Errorf("a blob of the root location: %v", err)
 	}
 	// Nothing but a blob kept where blobs are is copied.
 	for _, at := range []string{
 		store.LocationFile("ctl", "/home/boiler"), store.Receipt("ctl", "c2", "m2"), store.Result("ctl", "c2", "m2"),
 		store.Tree("ctl", "/home"), store.Value("ctl", "/home", "HUB"), store.Step("ctl", run, 1), "ctl/uploads/c1/m1",
-		"ctl/receipts/c2/m2/blobs", "ctl/elsewhere/c1/m1/x",
+		"ctl/receipts/c2/m2/blobs", "ctl/elsewhere/c1/m1/x", "ctl/running/c1/20261010T120000.000Z-run/blobs/x",
+		"ctl/locations/#a/+/blobs/x",
 	} {
 		s.Write(ctx, at, []byte("sealed"), store.Overwrite)
 		if _, err := Copy(ctx, s, Ref{At: at, Size: 6, Key: NewKey()}, "ctl", store.Blobs("ctl", run)); err != ErrGone {

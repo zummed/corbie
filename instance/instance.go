@@ -178,7 +178,8 @@ type Above struct {
 	// Context is the directory last submitted at the run's tree.
 	Context string `json:"context,omitzero"`
 	// Values are the values set at the root's location or above, as they
-	// were at the root's first step, by name.
+	// were at the root's first step, by name. A run a send or a call
+	// started takes those of its own location, never its sender's.
 	Values map[string]string `json:"values,omitzero"`
 	// Keep is the longest the instance may be kept after it ends: no
 	// longer than what started it, so a child's record goes no later than
@@ -366,7 +367,8 @@ type CallResult struct {
 	Error  *machine.Error `json:"error,omitzero"`
 }
 
-// ReceiptLife is how long a receipt is kept, and a call's result.
+// ReceiptLife is how long a receipt is kept, and a call's receipt and
+// result after the result is written.
 const ReceiptLife = 24 * time.Hour
 
 // An Emit is one emit entry of a record: values a job emitted, in the

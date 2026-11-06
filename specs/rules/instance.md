@@ -121,7 +121,7 @@ The detailed rules behind the [Instances overview](../instance.md).
 **R-inst-61** The receipt for an event says whether the machine acted on it or had no rule for it.
 *Accept:* send `go` to a statechart in a state with a rule for `go`: the receipt says it was acted on. Send `go` again while the chart is busy in a state with no such rule: the receipt says there was no rule for it.
 
-**R-inst-62** A receipt is sealed to the client that sent the message and is kept for a day.
+**R-inst-62** A receipt is sealed to the client that sent the message and is kept for a day, a taken call's as R-inst-69 says.
 *Accept:* a receipt for a refused start, whose text quotes the definition, shows none of that text when read raw from the store, and another client handed the raw value cannot open it. A receipt can be read twenty-three hours after it was written, and is gone after a day and a housekeeping pass.
 
 **R-inst-64** A message sent twice gets the same answer twice.
@@ -133,8 +133,8 @@ The detailed rules behind the [Instances overview](../instance.md).
 **R-inst-67** A message is good for as long as its sender says, and for a few minutes when the sender says nothing. Until the controller has taken a start there is no receipt and no head, and a client that asks is told the run is waiting to start.
 *Accept:* a start sent with a life of an hour is taken by a controller that first looks fifty minutes later; a start sent with no life given, found by a controller that first looks an hour later, is not taken, and its receipt says it came too late. With the controller stopped, `corbie run submit` prints the run's name and `corbie run show` on it says `waiting`, and the store holds the start message and its uploads and nothing else of the run.
 
-**R-inst-69** A client that calls a location in a tree it does not own is given the call's receipt at once, saying it was taken or why it was refused, and, when a taken call's run ends, the call's result beside the receipt: the run's status, its output or error, and the blobs the output names. The result is sealed to that client and kept for a day after the run ends.
-*Accept:* client `c2` calls a location in `c1`'s tree whose run ends with a marker string and a file in its output. The receipt says taken before the run ends, and no result is there until it ends. Then the result says `done` and holds the output, the file opens from the receipt's `blobs/` after `c1`'s run has been removed, and the result read raw shows no marker and does not open for `c1`. A call the receiver's `receive:` refuses has a receipt saying why and no result. The result of a call whose run took two days can be read twenty-three hours after the run ended, and is gone after a day and a housekeeping pass.
+**R-inst-69** A client that calls a location in a tree it does not own is given the call's receipt at once, saying it was taken or why it was refused, and, when a taken call's run ends, the call's result beside the receipt: the run's status, its output or error, and the blobs the output names. The result is sealed to that client. The receipt of a taken call is kept while its run is running, and the receipt and the result are deleted together a day after the result is written.
+*Accept:* client `c2` calls a location in `c1`'s tree whose run ends with a marker string and a file in its output. The receipt says taken before the run ends, and no result is there until it ends. Then the result says `done` and holds the output, the file opens from the receipt's `blobs/` after `c1`'s run has been removed, and the result read raw shows no marker and does not open for `c1`. A call the receiver's `receive:` refuses has a receipt saying why and no result. For a call whose run takes two days, the receipt can be read on the second day while the run is running; the receipt and the result can be read twenty-three hours after the result was written, and both are gone after a day and a housekeeping pass.
 
 **R-inst-70** A client that calls a location in a tree it does not own uploads the input's files under the call's name, and the controller copies them into the new run's record.
 *Accept:* on a memory store that notes every write, `c2`'s call with two files writes two names under `<controller>/uploads/c2/<the call's name>/` and then the call. The run's input refers to two blobs in its own record, written by the controller, and its jobs read the files.
@@ -144,7 +144,7 @@ The detailed rules behind the [Instances overview](../instance.md).
 Uses:
 
 - **Store**: heads under `running/` and `finished/`, records under `records/`, receipts and the results of calls under `receipts/`, the files sent with a message under `uploads/`, each within the table of who may touch what; ordered listing, each name with what a read of it gives; the notice a directory or memory store gives a watcher in the same process.
-- **Identity**: the controller's signature on a head; the sealing of record entries to the controller and the root's client, and of a receipt to its client; the signature of a runner on what it emits.
+- **Identity**: the controller's signature on a head; the sealing of record entries to the controller and the root's client, and of a receipt and a call's result to the client that sent the message; the signature of a runner on what it emits.
 - **Blobs**: the larger values a record's entries refer to, where they live in the record, and the rules for when a blob in a record goes.
 
 Used by:

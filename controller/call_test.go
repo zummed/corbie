@@ -422,6 +422,32 @@ func Test_ctl_client_call_is_refused(t *testing.T) {
 	}
 }
 
+// What is at a location is not secret: a client whose ceiling allows it no
+// send there learns from a refused start whether a file is recorded, its
+// lifetime and the client whose tree it is in.
+func Test_ctl_refused_start_says_what_is_at_a_location(t *testing.T) {
+	w := newWorld(t)
+	tree := w.tree("/t", "/srv/t", map[string]string{
+		"/t/s": strings.Replace(lookup, "initial: a", "lifetime: singleton\n\treceive: [client:nobody]\n\tinitial: a", 1)}, nil)
+	if r := w.submitTree(w.client, tree); !r.Taken {
+		t.Fatalf("the tree was refused: %s", r.Refused)
+	}
+	c3 := w.other("c3", "network")
+	for at, want := range map[string]string{
+		"/t/s":    "/t/s is in a tree of the client c1, and is singleton",
+		"/t/none": "nothing is recorded at /t/none",
+	} {
+		id, err := c3.Start(ctx, client.Start{At: at})
+		if err != nil {
+			t.Fatal(err)
+		}
+		w.settle()
+		if r, err := c3.Receipt(ctx, strings.SplitN(id, "/", 2)[1]); err != nil || r == nil || !strings.Contains(r.Refused, want) {
+			t.Fatalf("a start of %s gave %+v, %v", at, r, err)
+		}
+	}
+}
+
 // A call's receipt goes when its client is removed from trust while the
 // run is running, or when the controller no longer holds the client at all:
 // a day after the result, or when the run ends with no one to write it to.

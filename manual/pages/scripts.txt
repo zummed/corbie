@@ -30,6 +30,7 @@ What a script has
   require("http")          the same plugin or library, by name
   require("./lib.js")      one of the job's `files:`, which assigns to `exports`
   require("./data.yaml")   the data of one of the job's `files:` of YAML or JSON
+  require("./prompt.md")   the text of one of the job's other `files:`
 
     # double.yaml
     flow: double

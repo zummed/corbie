@@ -286,7 +286,8 @@ func (e *engine) load(name, source string, exports *goja.Object) error {
 // require gives the require of the file at a path: a plugin or a library
 // by its bare name, or one of the job's files by its path from that file's
 // directory. A path is looked up only among the job's files, never on the
-// runner's disk. A file of YAML or JSON gives its data.
+// runner's disk. A file of YAML or JSON gives its data, a .js file runs,
+// and any other file gives its text.
 func (e *engine) require(from string) func(goja.FunctionCall) goja.Value {
 	return func(call goja.FunctionCall) goja.Value {
 		name := call.Argument(0).String()
@@ -319,6 +320,12 @@ func (e *engine) require(from string) func(goja.FunctionCall) goja.Value {
 			if err != nil {
 				e.throw(err)
 			}
+			e.modules[file] = value
+			return value
+		case ".js":
+			// A script, which runs below.
+		default:
+			value := e.vm.ToValue(source)
 			e.modules[file] = value
 			return value
 		}

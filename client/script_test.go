@@ -342,6 +342,25 @@ func TestRequireOfADataFileGivesItsData(t *testing.T) {
 	wantError(t, run(t, l, def, files, nil), "error", `the file "./bridge/bad.yml" cannot be read: the document cannot be read: line`)
 }
 
+// require of one of the job's files that is not JavaScript, YAML or JSON
+// gives its text as written, with no permission.
+func TestRequireOfAnotherFileGivesItsText(t *testing.T) {
+	l := local(t)
+	def := `
+		flow: prompt
+		stages:
+		  it: { job: { script: ./it.js, files: [./prompts/system.md, ./notes] } }
+		output: ${stages.it.output}
+	`
+	files := map[string]string{
+		"it.js":             `return { system: require("./prompts/system.md"), notes: require("./notes"), same: require("./notes") === require("./notes") }`,
+		"prompts/system.md": "# House\n\nAnswer for ${input.room}.\n",
+		"notes":             "plain\n",
+	}
+	r := run(t, l, def, files, nil)
+	check(t, r.Status, r.Output, "done", `{"system": "# House\n\nAnswer for ${input.room}.\n", "notes": "plain\n", "same": true}`)
+}
+
 // A map read from YAML or JSON keeps its keys in the order they were
 // written, as Node's JSON.parse gives them.
 func TestDataReadKeepsTheOrderOfItsKeys(t *testing.T) {

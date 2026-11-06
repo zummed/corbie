@@ -98,7 +98,7 @@ allow:
 - A file is read as a definition is: a number is a number, and a value YAML would read as a date stays the text written. An empty file is refused.
 - A path in a file reads as any path does, and `./` from that file's own directory. What a shape gives as a value, such as `input:` or `meta:`, stays as it is written, whatever it holds.
 - A problem in an included file names that file: `parts/home/part.yaml: open.home.colour: …`.
-- More than 1,000 files included by one definition, and what is below it, are refused.
+- More than 1,000 includes written out by one definition, and what is below it, are refused. A file reached by two routes counts each time, though its values are merged once.
 
 A definition is checked as a whole, and everything wrong with it is reported together. Each problem names its place, and its file when the problem is in a child's file, as a path from the definition's directory: `kids/kid.yaml: value: …`. The client checks it before sending, so mistakes are found at once, and the controller checks it again with the same code, because it does not take a client's word.
 
@@ -118,12 +118,12 @@ A client submits a directory at a prefix, and the directory becomes a tree (see 
 
 ```
 $ corbie run submit house --at /home
-
-  house/devices/boiler.yaml       /home/devices/boiler       singleton: this submit starts its run
-  house/rooms/thermostat.yaml     /home/rooms/thermostat     keyed: a run for each room a send names
-  house/services/weather.yaml     /home/services/weather     transient: a run for each call
-  house/base.yaml                 no location                a piece
+/home/devices/boiler     singleton   started <id>
+/home/rooms/thermostat   keyed       recorded
+/home/services/weather   transient   recorded
 ```
+
+The submit starts the boiler's run. The thermostat starts a run for each room a send names, and the weather service one for each call. `house/base.yaml` has no type line: it is a piece, has no location and is not listed.
 
 Every run has a location, and its authority comes from it: its file's `allow:` and `ask:`, its tree client's ceiling, and the secrets and values set at its location or above (see permission.md and secret.md).
 

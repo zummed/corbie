@@ -88,6 +88,29 @@ func Test_mach_runs_limits_a_keyed_file(t *testing.T) {
 	}
 }
 
+// A runs that is no whole number is reported once, as that.
+func Test_mach_runs_not_whole_reported_once(t *testing.T) {
+	got := problems(t, "listener: l\nlifetime: keyed\nlimits: { runs: 1.5 }\n", nil)
+	if !strings.Contains(got, "limits.runs: this should be a whole number") || strings.Contains(got, "at least 1") {
+		t.Errorf("runs: 1.5 gave:\n%s", got)
+	}
+}
+
+// A singleton is given no input: one whose input needs a value is refused.
+func Test_mach_singleton_needing_input_refused(t *testing.T) {
+	got := problems(t, "probe: p\nlifetime: singleton\ninput: { name: string }\n", nil)
+	if !strings.Contains(got, "input: a singleton is given no input, and this input needs some") {
+		t.Errorf("a singleton needing input gave:\n%s", got)
+	}
+	for _, src := range []string{
+		"probe: p\nlifetime: singleton\ninput:\n  name: string?\n",
+		"probe: p\nlifetime: singleton\ninput: { type: object, properties: { days: { type: number, default: 3 } }, required: [days] }\n",
+		"probe: p\ninput: { name: string }\n",
+	} {
+		parsed(t, src, nil)
+	}
+}
+
 // receive: is a list for every event, or a mapping from an event's name to a
 // list; an entry is a location pattern or client:<name>.
 func Test_mach_receive_says_who_may_send(t *testing.T) {

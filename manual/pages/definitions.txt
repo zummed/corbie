@@ -69,10 +69,12 @@ file or a list. A name may end in `#path` to take one part of a file.
   file's over a later one's.
 - `${…}` in an included text is an expression. A literal `${` is written
   `${'${'}`.
-- A path in a file is read from the file's directory.
+- A path in a file is read from the context, and a path starting `./` from
+  that file's directory, as for a job.
 - What is a value, such as `input:` or `meta:`, stays as it is written.
 - A problem in a file names the file.
-- More than 1,000 files included by one definition are refused.
+- More than 1,000 includes written out by one definition are refused. A file
+  reached by two routes counts each time, though its values are merged once.
 - `corbie test <file> --definition` prints the definition written out, each
   value with its file and line, and runs nothing.
 

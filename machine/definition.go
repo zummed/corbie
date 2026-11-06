@@ -617,6 +617,11 @@ func check(def *Definition) *Checker {
 			for _, problem := range misplacedDefaults(schema) {
 				c.Problem("input", "%s", problem)
 			}
+			if def.Lifetime == LifetimeSingleton {
+				if err := Fits(schema, withDefaults(schema, map[string]any{})); err != nil {
+					c.Problem("input", "a singleton is given no input, and this input needs some: %v", err)
+				}
+			}
 		}
 	}
 	c.Duration("limits.timeout", def.Timeout, "input")

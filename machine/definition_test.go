@@ -458,3 +458,17 @@ func TestDurations(t *testing.T) {
 		}
 	}
 }
+
+// A file that is not YAML names the line its problem is on, whether the
+// YAML reader's parser or its scanner found it.
+func Test_mach_not_yaml_names_its_line(t *testing.T) {
+	for src, line := range map[string]string{
+		"probe: p\n# c\n# c\ninput: { days: number? }\n": "line 4:",
+		"probe: p\nmeta: [1, 2\n":                        "line 2:",
+		"probe: p\nmeta:\n\t- x\n":                       "line 3:",
+	} {
+		if got := problems(t, src, nil); !strings.Contains(got, "this is not YAML that can be read: "+line) {
+			t.Errorf("%q gave:\n%s", src, got)
+		}
+	}
+}

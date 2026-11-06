@@ -214,7 +214,7 @@ The detailed rules behind the [Machines overview](../machine.md). Area code: `ma
 
 **C-mach-33** An included file is read as a definition is: a number is a number, a plain value YAML would read as a date or a time stays the text written, and an empty file is refused, as an empty definition is. A file that is a list is included only into a list. Read otherwise, `restart: { limit: 2 }` in a job is refused and an unquoted `2026-01-02` changes before any expression sees it. *Test:* `mach_included_file_is_read_as_a_definition_is`
 
-**C-mach-34** A definition and what is below it include at most 1,000 files, and the rest are refused. Files that each include the next twice grow past what a process can hold from a few bytes each, and they do not lead back to themselves. *Test:* `mach_includes_are_limited`
+**C-mach-34** A definition and what is below it write out at most 1,000 includes, a file reached by two routes counting each time, and the rest are refused. Files that each include the next twice grow past what a process can hold from a few bytes each, and they do not lead back to themselves. *Test:* `mach_includes_are_limited`
 
 **C-mach-35** A problem in an included file names that file, and a problem in what a definition writes itself does not. A place alone would send an author to the wrong file. *Test:* `mach_include_problems_name_the_file`
 

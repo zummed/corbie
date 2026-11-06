@@ -125,7 +125,7 @@ func (p *Parser) parse(src []byte, place string) (draft *Draft, needsAsk bool) {
 func (p *Parser) fill(written map[string]any, first, place string) (draft *Draft, needsAsk bool) {
 	t, ok := TypeOf(first)
 	if !ok {
-		p.Problem(place, "the first line gives %q, which is not a type of machine: a definition begins with its type and its name, such as \"flow: digest\" (the types are: %s)",
+		p.Problem(place, "the first line gives %q, which is not a type of machine: a definition begins with its type and its name, such as \"flow: digest\" (the types are: %s); a file in a tree without one is a piece, which a machine includes",
 			first, strings.Join(Types(), ", "))
 		return nil, false
 	}
@@ -231,8 +231,12 @@ func (p *Parser) location(def *Definition, f, limits *Fields) {
 		def.Lifetime, def.Update, def.Runs, def.Receive = "", "", 0, nil
 		return
 	}
-	if limits.Has("runs") && def.Runs < 1 {
-		p.Problem("limits.runs", "runs is at least 1")
+	// A runs that is no whole number has had its problem: 0 is no reading
+	// of it.
+	if limits.Has("runs") {
+		if n, ok := limits.m["runs"].(float64); ok && n == math.Trunc(n) && n < 1 {
+			p.Problem("limits.runs", "runs is at least 1")
+		}
 	}
 	if def.Lifetime == "" {
 		def.Lifetime = LifetimeTransient
@@ -947,11 +951,7 @@ func readYAML(src []byte, file string) (*node, string, error) {
 func nodeYAML(src []byte, file string) (*node, *yaml.Node, error) {
 	var doc yaml.Node
 	if err := yaml.Unmarshal(src, &doc); err != nil {
-		text := oneLine(strings.TrimPrefix(err.Error(), "yaml: "))
-		if strings.Contains(string(src), "${") {
-			text += ` (if a value starts with ${ or holds one beside a colon or a brace, put it in quotes: "${…}")`
-		}
-		return nil, nil, fmt.Errorf("this is not YAML that can be read: %s", text)
+		return nil, nil, NotYAML(err, src)
 	}
 	if doc.Kind == 0 || len(doc.Content) == 0 {
 		return nil, nil, nil
@@ -966,6 +966,32 @@ func nodeYAML(src []byte, file string) (*node, *yaml.Node, error) {
 	}
 	n, err := fromYAML(top, file)
 	return n, top, err
+}
+
+// NotYAML gives the problem of a file the YAML reader refused, naming the
+// line it is on.
+func NotYAML(err error, src []byte) error {
+	text := oneLine(strings.TrimPrefix(err.Error(), "yaml: "))
+	// The reader counts lines from 0 for a problem its parser finds, and
+	// from 1 for one its scanner finds.
+	if at, problem, ok := strings.Cut(text, ": "); ok && parserProblems[problem] {
+		if line, err := strconv.Atoi(strings.TrimPrefix(at, "line ")); err == nil && strings.HasPrefix(at, "line ") {
+			text = fmt.Sprintf("line %d: %s", line+1, problem)
+		}
+	}
+	if strings.Contains(string(src), "${") {
+		text += ` (if a value starts with ${ or holds one beside a colon or a brace, put it in quotes: "${…}")`
+	}
+	return fmt.Errorf("this is not YAML that can be read: %s", text)
+}
+
+// parserProblems are the problems the YAML reader's parser finds.
+var parserProblems = map[string]bool{
+	"did not find expected node content": true, "did not find expected '-' indicator": true,
+	"did not find expected key": true, "did not find expected ',' or ']'": true, "did not find expected ',' or '}'": true,
+	"did not find expected <stream-start>": true, "did not find expected <document start>": true,
+	"found undefined tag handle": true, "found duplicate %YAML directive": true,
+	"found incompatible YAML document": true, "found duplicate %TAG directive": true,
 }
 
 // aliased says whether a node is an alias or holds one.

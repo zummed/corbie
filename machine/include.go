@@ -12,9 +12,10 @@ import (
 // takes. Every mapping read by a shape has it, and no shape names it.
 const includeField = "include"
 
-// mostIncludes is how many files a definition and what is below it may
-// include. A file that includes itself would never end, and files that
-// include one another twice over grow faster than anyone could write.
+// mostIncludes is how many includes a definition and what is below it may
+// write out, a file reached by two routes counting each time. A file that
+// includes itself would never end, and files that include one another twice
+// over grow faster than anyone could write.
 const mostIncludes = 1000
 
 // A node is one value of a definition as a file writes it, with the file and
@@ -272,8 +273,10 @@ func includes(n *node) (string, bool) {
 
 // text writes out a text: one text, a list of pieces joined by one empty
 // line, or { include: <file> }, a text of one piece. A piece is a text or
-// { include: <file> }, which gives the file's text as it is written, or
-// { include: <file>#<path> }, which gives the text at that path.
+// { include: <file> }, which gives the file's text, or
+// { include: <file>#<path> }, which gives the text at that path. Each
+// piece's empty lines at its start and end are left out, so pieces are
+// joined by exactly one.
 func (p *Parser) text(n *node, place string, chain []string) *node {
 	if !n.list && !n.isMap() {
 		return asWritten(n, chain)
@@ -301,7 +304,9 @@ func (p *Parser) text(n *node, place string, chain []string) *node {
 		if first == nil {
 			first = piece
 		}
-		joined = append(joined, piece.value.(string))
+		if text := strings.Trim(piece.value.(string), "\n"); text != "" {
+			joined = append(joined, text)
+		}
 	}
 	if first == nil {
 		return asWritten(n, chain)
@@ -323,7 +328,7 @@ func (p *Parser) includeText(n *node, name, place string, chain []string) *node 
 		if !ok {
 			return nil
 		}
-		return &node{value: strings.TrimRight(string(src), "\n"), file: full, line: 1}
+		return &node{value: string(src), file: full, line: 1}
 	}
 	v, _ := p.include(n, name, place, chain)
 	if v == nil {
@@ -351,7 +356,7 @@ func (p *Parser) including(n *node, file, place string, chain []string) (string,
 		return "", false
 	}
 	if *p.includes++; *p.includes > mostIncludes {
-		p.problemIn(n.file, place, "more than %d files are included", mostIncludes)
+		p.problemIn(n.file, place, "more than %d includes are written out: a file reached by two routes counts each time", mostIncludes)
 		return "", false
 	}
 	return full, true

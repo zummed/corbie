@@ -248,7 +248,7 @@ func Test_mach_includes_are_limited(t *testing.T) {
 	}
 	began := time.Now()
 	_, err := machineParse("flow: f\nstages: { include: ./f0.yaml }\n", files)
-	if err == nil || !strings.Contains(err.Error(), "more than 1000 files are included") {
+	if err == nil || !strings.Contains(err.Error(), "more than 1000 includes are written out") {
 		t.Errorf("got: %v", err)
 	}
 	if took := time.Since(began); took > 5*time.Second {
@@ -486,8 +486,11 @@ func TestIncludeFromAFileInADirectory(t *testing.T) {
 // A text may be a list of pieces, each a text or { include: … }, joined by one
 // empty line, and { include: <file> } alone is a text of one piece.
 func Test_mach_text_is_joined_from_pieces(t *testing.T) {
-	files := map[string]string{"intro.md": "Be brief.\n\nBe kind.\n", "base.yaml": "words: { closing: Thank you. }\n"}
+	files := map[string]string{"intro.md": "Be brief.\n\nBe kind.\n", "base.yaml": "words: { closing: Thank you. }\n",
+		"trail.md": "Line one.\n\n\n\n", "lead.md": "\n\nLead.\n"}
 	for def, want := range map[string]string{
+		"flow: f\nstages: { one: { job: ./a.js } }\ntitle: [{ include: ./trail.md }, { include: ./lead.md }, plain]\n":                       `"title":"Line one.\n\nLead.\n\nplain"`,
+		"flow: f\nstages: { one: { job: ./a.js } }\ntitle:\n  - |\n    Block one.\n  - |\n    Block two.\n  - plain\n":                       `"title":"Block one.\n\nBlock two.\n\nplain"`,
 		"flow: f\nstages: { one: { job: ./a.js } }\ntitle: [{ include: ./intro.md }, Then go on., { include: ./base.yaml#words.closing }]\n": `"title":"Be brief.\n\nBe kind.\n\nThen go on.\n\nThank you."`,
 		"flow: f\nstages: { one: { job: ./a.js } }\ntitle: { include: ./intro.md }\n":                                                        `"title":"Be brief.\n\nBe kind."`,
 	} {

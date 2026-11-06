@@ -128,8 +128,8 @@ The detailed rules behind the [Runner overview](../runner.md).
 
 **C-run-34** A job's emit entries are numbered from one with none left out, an entry may carry several emits in the order they were made, and each attempt, being sent to a runner separately, begins again at one. A watcher and the controller tell what they have seen, and what they have missed, by the number alone. *Test:* `run_emit_entries_numbered_from_one_without_gaps`
 
-**R-run-54** `require` of one of the job's files whose path ends in `.yaml`, `.yml` or `.json` gives the file's data, read as the `yaml` plugin reads a document, and needs no permission.
-*Accept:* a job allowed nothing names `./bridge/who.js` and lists `./people.yaml` and `./bridge/groups.json`: `require("../people.yaml")` gives its data, with a date left as the text written, `require("./groups.json")` gives its list, and two requires of one file give the same value. A listed `.yml` file that is not YAML fails the call with an error naming the file and the line.
+**R-run-54** `require` of one of the job's files whose path ends in `.yaml`, `.yml` or `.json` gives the file's data, read as the `yaml` plugin reads a document; of one ending in `.js`, its `exports`; of any other, its text as written. None needs a permission.
+*Accept:* a job allowed nothing names `./bridge/who.js` and lists `./people.yaml` and `./bridge/groups.json`: `require("../people.yaml")` gives its data, with a date left as the text written, `require("./groups.json")` gives its list, and two requires of one file give the same value. A listed `.yml` file that is not YAML fails the call with an error naming the file and the line. A listed `./prompts/system.md` holding `${input.room}` gives its text with the `${` left as written, and a listed file with no extension gives its text.
 
 **C-run-35** `require` looks a path up only among the files the job lists, and never on the runner's disk. A path that reaches the disk is a file read outside every permission check. *Test:* `run_require_reads_only_listed_files`
 

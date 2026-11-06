@@ -100,7 +100,7 @@ Used by:
 
 - **Controller**: copies up what a child hands to its parent, before the parent is told (R-blob-23); copies uploads to locations and into records, a location's file into each run's record, and a called run's output beside the call's result (R-blob-19); removes uploads that were never taken as part of housekeeping; reads and writes the small blobs a step needs.
 - **Runner**: reads a job's script, files and input by reference from records; writes the blobs in a job's emits and output into the instance's record.
-- **Client**: uploads the files of a start, copies a value from one run to another, shows a blob as type, size and path in the one shape (C-client-16), and fetches contents for whoever may have them.
+- **Client**: uploads a submit's files under `uploads/`, writes a start's input and its files into the record of the run it names (R-inst-65), copies a value from one run to another, shows a blob as type, size and path in the one shape (C-client-16), and fetches contents for whoever may have them.
 - **Machines**: a value handed down is a reference into the parent's record; a value handed up is a reference into the receiver's own.
 - **Flow**: the items of a blob, read by a job.
 - **Agent**: handles shown to a model in place of references (R-agent-47), and the tools that read blobs in part.

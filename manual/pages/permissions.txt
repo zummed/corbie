@@ -35,30 +35,36 @@ A group is an entry with no scope.
 Layers
 ------
 
-Several layers limit a job. A call is allowed only if every layer allows it.
+Several layers limit a job. A script's call is allowed only if every layer
+allows it.
 
   the job in its definition    allow: [network, fs.read:/srv/**, exec:git]
-  the start message            corbie run submit --allow network --allow 'fs.read:/srv/reports/**'
+  the start message            corbie run submit /digest --allow network --allow 'fs.read:/srv/reports/**'
   each parent's job            the `allow:` of a job that started a child run, if it has one
   the client's ceiling         corbie controller enrol <client> --ceiling network,disk
   the runner's ceiling         corbie runner trust <controller> --ceiling disk,exec
 
-Each layer is an allow list and a deny list. It refuses a call that its deny
-list matches, allows a call that its allow list matches, and refuses every
-other call.
+Each layer is an allow list and a deny list. It refuses what its deny list
+matches, allows what its allow list matches, and refuses everything else.
 
 - A layer can limit the layers before it and cannot add to them.
 - The controller's owner sets a client's ceiling, and the runner's owner sets
   the runner's ceiling. Under `corbie test` both allow everything.
+- The client's ceiling that applies is that of the client that owns the run's
+  tree, whoever started the run.
 - On a command line, each `--deny <entry>` adds one deny entry, beside
   `--allow` or `--ceiling`.
 - A child run that a definition names has what its own definition allows,
   unless the job that starts it has an `allow:` list.
 - A machine that a script made has only what the job that starts it lists.
   See `corbie manual machines`.
-- In a definition, the scope of an `allow:` entry may read the run's input, as
-  in `fs.read:${input.dir}/**`. Every other layer still applies, so an input
-  cannot raise a limit.
+- In a definition, the scope of an `allow:` entry may read the run's input or
+  a value, as in `fs.read:${input.dir}/**` or `net:${values.HUB}`. Every other
+  layer still applies, so an input cannot raise a limit.
+- A send or a call needs `send:` for the location in every layer of the
+  sender but the runner's ceiling, and the receiver's `receive:` must accept
+  the sender (`corbie manual definitions`). A client needs neither for the
+  runs of its own trees. The sender adds nothing to the receiving run's layers.
 
 Refusals
 --------

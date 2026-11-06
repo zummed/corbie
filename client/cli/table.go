@@ -212,8 +212,9 @@ location, and the secrets and values the files use that are not set.
   corbie manual a-directory   a tree of machines
 ` + scripts},
 		{Name: "run ls", Usage: "[--watch] [--all] [--label k=v] [--status <status>] [--parent <id>]", Summary: "list runs", Run: cmdLs, Help: `
-It lists this client's runs that are in progress, child runs included. A run
-with status waiting, which no controller has started, is not listed.
+It lists the runs of this client's trees that are in progress, child runs
+included. A run with status waiting, which no controller has started, is not
+listed.
 
   --all               include runs that have ended and are still in the store
   --label k=v         only runs with this label; --label k takes any value;
@@ -300,9 +301,10 @@ address. corbie runner trust and corbie client trust take those two lines.
   <name>   a runner or client already enrolled: sets its ceiling or tags
            again
 
-  --ceiling <list>   sets a client's ceiling, the most any run it starts may
-                     be allowed: entries separated by commas; none removes
-                     it; without the flag it stays as it is
+  --ceiling <list>   sets a client's ceiling, the most any run in its trees
+                     may be allowed, with at:<prefix> for where it may
+                     submit trees: entries separated by commas; none
+                     removes it; without the flag it stays as it is
   --allow <entry>    adds one entry to the client's ceiling; repeatable
   --deny <entry>     adds one permission the client's ceiling refuses,
                      whatever it allows; repeatable
@@ -360,7 +362,7 @@ process reads and writes.
   --viewer   a key that can only list runs and read their status
 
   corbie manual bucket   creating the keys`},
-		{Name: "controller cancel", Usage: "<id>", Summary: "cancel any run, whichever client started it", Run: cmdControllerCancel, Help: `
+		{Name: "controller cancel", Usage: "<id>", Summary: "cancel any run, in any client's tree", Run: cmdControllerCancel, Help: `
 It writes the cancel to the controller's inbox and does not wait. The
 controller cancels the run the next time it polls.`},
 

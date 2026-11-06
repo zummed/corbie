@@ -1,7 +1,7 @@
 Machines together: a job can be another machine, so a statechart can run a flow and an agent can use a flow as a tool.
 
-Both examples use `title.yaml` from `corbie manual first-machine`. Record
-lines are shown without their time and run number, and `<id>` is the child
+The first two examples use `title.yaml` from `corbie manual first-machine`.
+Record lines are shown without their time and run number, and `<id>` is a
 run's ID.
 
 A statechart runs the flow
@@ -123,5 +123,5 @@ second goes to that run, and nothing is recorded at `/house/bell`.
 - `limits: { runs: 50 }` in a keyed file caps how many of its runs are
   running at once; a send to a new key past it is not delivered.
 
-Next: `corbie manual a-real-run` runs `title.yaml` on a controller and a
-runner.
+Next: `corbie manual install` covers running Corbie on several computers, on a
+bucket and as serverless functions.

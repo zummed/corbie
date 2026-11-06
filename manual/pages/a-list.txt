@@ -65,5 +65,5 @@ and run number.
 The first `get_title` job starts at step 2, while `list_pages` is still
 emitting.
 
-Next: `corbie manual machines-together` runs a flow from a statechart and from
-an agent.
+Next: `corbie manual a-real-run` runs `title.yaml` on a controller and a
+runner.

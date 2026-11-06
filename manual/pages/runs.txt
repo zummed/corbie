@@ -9,10 +9,10 @@ Commands
 
   corbie run submit <file or directory>   records a tree, and starts its singletons
   corbie run submit <location>            starts a run there and prints its ID
-  corbie run ls                           lists this client's runs in progress, with child runs
+  corbie run ls                           lists the runs of this client's trees in progress
   corbie run show <id>                    prints one run's status, input and output
-  corbie run cancel <id>                  cancels a run in one of this client's trees
-  corbie run send <id> <event> [data]     sends an event to a run
+  corbie run cancel <id>                  cancels a run in this client's trees; a location cancels each run there
+  corbie run send <id> <event> [data]     sends an event to a run; a location, or location#key, names one too
   corbie run reply <id> <ticket> [value]  answers a ticket the run waits on
   corbie controller cancel <id>           cancels any run, with the controller's config
 
@@ -28,7 +28,7 @@ here.
    "used":["net:example.com:443"],"step":2,
    "started":"2026-10-13T18:51:26.25Z","ended":"2026-10-13T18:51:27.31Z"}
 
-  id                    the name of the client that started it, a slash, the time and a random part
+  id                    the name of the client that owns its tree, a slash, the time and a random part
   machine, type         the definition's name, and flow, statechart or agent
   title                 the definition's `title:`, filled in when the run started
   status                waiting until a controller starts it, then running, done, failed or cancelled
@@ -69,7 +69,7 @@ blob's place in the run.
   definition/machines.<name>            a machine that the definition names
 
 To give a blob of one run to another run, write it in the new input with the
-first run's ID added. Both runs must be this client's. Corbie copies the blob
+first run's ID added. Both runs must be in this client's trees. Corbie copies the blob
 into the new run's record, so it remains after the first run is deleted.
 
   corbie run submit /next --input '{"doc": {"$blob": "report", "run": "<id>"}}'
@@ -91,7 +91,7 @@ Events and tickets
 
 A statechart state with `ticket: <name>` issues a ticket, and
 `corbie run reply` answers it (`corbie manual statechart`). Only the client that
-started the run can print the ticket, with `corbie run show <id> --tickets`.
+owns the run's tree can print the ticket, with `corbie run show <id> --tickets`.
 
 A statechart with no final state keeps running. With `lifetime: singleton` the
 submit starts its one run, and a client sends it an event at its location each

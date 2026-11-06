@@ -134,7 +134,7 @@ Used by:
 - **Controller**: asks whether a sender is trusted, reads a client's ceiling and a runner's tags, opens messages sealed to it, signs heads, and seals jobs and receipts; which of a client's accepted messages it then acts on, and how a late one is answered, are its own (R-ctl-07, R-inst-67).
 - **Runner**: opens jobs and cancels, applies the ceiling it gave the controller that signed a job, signs what it adds to a record, and seals results.
 - **Client**: signs and seals what it sends, opens its receipts and records, and checks heads against the controller's card.
-- **Instance**: a head carries the controller's signature; record entries are sealed to the controller and to the client that started the root.
+- **Instance**: a head carries the controller's signature; record entries are sealed to the controller and to the client that owns the root's tree.
 - **Blob**: a reference travels only inside something sealed.
 - **Secret**: a controller secret is sealed so that only the controller's key opens it.
 - **Role**: `corbie start` loads the identity of each role it is started with.

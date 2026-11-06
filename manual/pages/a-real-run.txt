@@ -61,5 +61,4 @@ The record is files in `~/.config/corbie/store`, which `corbie run show` reads.
 Stop `corbie start` with Ctrl-C and `corbie run show <id>` prints the same
 result. A run submitted while no controller is running is shown as `waiting`.
 
-Next: `corbie manual install` covers running Corbie on several computers, on a
-bucket and as serverless functions.
+Next: `corbie manual a-directory` records a directory of machines.

@@ -340,12 +340,12 @@ Uses:
 - **Secrets.** A definition names the secrets a job uses; a machine holds only the names.
 - **Blobs.** A value may hold a reference to a blob; a value handed up from a child is copied into the parent's record before the parent sees it.
 - **Plugins.** A script defines a machine at run time through the `machines` plugin; a machine type is added as an extension.
-- **Store.** Writes a draft's files and definitions into an instance's record, a bounded number at a time.
+- **Store.** Writes a draft's files and definitions a bounded number at a time, among a submit's uploads or into the record of the run that made the machine, and reads a stored definition back.
 
 Used by:
 
 - **Flow, Statechart, Agent.** Each supplies the six things a type supplies, and takes from this area values and expressions, jobs and their names, events, children, tickets, approval, failure and limits.
-- **Client.** Fills out and checks a definition with this area's code before sending it; sends events and answers to tickets.
+- **Client.** Writes out each file's includes, fills out and checks the definition with this area's code before submitting it, and prints it written out with each value's file and line; sends events and answers to tickets.
 - **Controller.** Checks a definition with this area's code before starting it, and calls a type's step. It gives a run its location and its values, reads a location in an address from the tree's prefix, and carries out a send and a call.
 - **Manual.** Prints each type's page.
 - **Applications.** A Go program using Corbie as a library lists a definition's jobs, each with its place.

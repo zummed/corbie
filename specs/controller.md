@@ -232,7 +232,7 @@ A send costs one read of the file, and one of the location's file when it starts
 
 ## Housekeeping
 
-The controller removes what is past keeping: finished instances after the time their definition gives, the older history of instances still running, receipts with the results of calls and their blobs beside them, and uploads for runs that never started and for submits never taken. It does this a little at a time as part of its passes, and a pass that is busy with machines does not put it first. What is due to go is brought up by a wake, as everything owed to time is: each instance has its own for its history and for its end, and the controller sets one for itself, once an hour, for receipts, results and uploads.
+The controller removes what is past keeping: finished instances after the time their definition gives, the older history of instances still running, receipts with the results of calls and their blobs beside them, and uploads for runs that never started and for submits never taken. It does this a little at a time as part of its passes, and a pass that is busy with machines does not put it first. What is due to go is brought up by a wake, as everything owed to time is: each instance has its own for its history and for its end, and the controller sets one for itself, once an hour, for receipts and uploads.
 
 ## When things go wrong
 

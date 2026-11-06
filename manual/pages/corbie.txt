@@ -60,8 +60,8 @@ How it runs
 -----------
 
 Corbie is one binary that runs as three kinds of process. A controller executes
-machine definitions, runners execute scripts, and a client submits a machine
-and reads its result. They communicate only by writing files to one shared
+machine definitions, runners execute scripts, and a client submits machines,
+starts runs and reads their results. They communicate only by writing files to one shared
 store, which is a directory or an S3 bucket. `corbie test` runs all three in
 one process.
 

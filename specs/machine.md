@@ -238,7 +238,7 @@ A `timeout:` with an expression is filled in when its job is asked for, and `lim
 
 A job may be written where it is used or kept in its own file. A script is a file named by its path, and its job lists the files the script loads; a client sends them along with the definition.
 
-The context is the directory a client submits from, or a file's own directory for a file submitted from outside it. Every file a definition names is in it or below it, and nothing outside it is read. A machine made while running has the files it was given as its context.
+The context is the directory a client submits as a tree. For a single file it is the directory the client submits from, or the file's own directory for a file outside it. Every file a definition names is in it or below it, and nothing outside it is read. A machine made while running has the files it was given as its context.
 
 | A path written as | Is read from |
 |---|---|

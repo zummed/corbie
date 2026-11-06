@@ -159,8 +159,8 @@ The detailed rules behind the [Statechart overview](../statechart.md). Area code
 Uses:
 
 - **Machines.** Values and expressions, jobs and their names, events and their order, children, tickets and their answers, approval, failure and attempts, and limits. A chart adds `states`, `event` and `tickets` to what an expression reads.
-- **Controller.** Takes the chart's steps, keeps and delivers its timers (R-ctl-69), makes its tickets and takes their answers, starts and cancels its children, and carries its sends up and down.
-- **Instances.** The head counts the chart's timers and names the tickets it waits on; a root's sends to its parent are written in its record; a client's event is answered by a receipt saying whether the chart acted on it.
+- **Controller.** Takes the chart's steps, keeps and delivers its timers (R-ctl-69), makes its tickets and takes their answers, starts and cancels its children, and carries its sends to its parent, its children and runs by their address.
+- **Instances.** The head counts the chart's timers and names the tickets it waits on; a root's sends to its parent, and each send to an address that was not delivered, are written in its record; a client's event is answered by a receipt saying whether the chart acted on it.
 - **Client.** Sends a chart events by its address and answers its tickets.
 
 Used by:

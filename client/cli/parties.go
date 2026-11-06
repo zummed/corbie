@@ -934,7 +934,7 @@ func cmdValueList(e *Env, args []string) error {
 	return e.Print(printed, func() string { return aligned(rows) })
 }
 
-// cmdControllerCancel cancels any run, whichever client started it, with
+// cmdControllerCancel cancels any run, in any client's tree, with
 // the controller's own key.
 func cmdControllerCancel(e *Env, args []string) error {
 	rest, err := e.Parse(args)

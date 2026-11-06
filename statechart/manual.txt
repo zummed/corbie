@@ -52,11 +52,12 @@ A ticket is a random value that lets whoever holds it answer once.
 3. Whoever has the value answers with `corbie run reply`, from any client.
 4. The answer arrives as the event `verdict`, with the answer as its data.
 
-- Only the client that started the run can print the ticket. It hands the
+- Only the client that owns the run's tree can print the ticket. It hands the
   value to whoever should answer.
 - A ticket is answered once. Its rule takes only the ticket's answer: an event
   named `verdict` from the parent, a child or the state's own job finds no
-  rule, and one sent by address is not delivered. A timer's rule takes only the timer.
+  rule, and one sent by address is not delivered. A timer's rule takes only
+  the timer.
 - A statechart run as a child hands the ticket to its parent with a send,
   such as `send: { to: parent, event: review_wanted, data: "${tickets.verdict}" }`.
 
@@ -131,8 +132,8 @@ machines-together`.
   record of the run that sent it.
 - An `entry:` send to the state's own child arrives once the child has
   started. An `exit:` send cannot go to it.
-- When a client started the run, a send to parent is only written to the
-  record. That client sends an event with `corbie run send <id> <event> <data>`.
+- In a run with no parent, a send to `parent` is only written to the record.
+  A client sends the run an event with `corbie run send <id> <event> <data>`.
 - A ticket's name is used once in a statechart. No send to the statechart is
   taken under a ticket's or a timer's name.
 - A send cannot be named start, done, failed or timer.
@@ -149,7 +150,8 @@ What an expression reads
 ------------------------
 
   input                   the statechart's input
-  run                     the run's id and location
+  values                  the values set at the run's location or above
+  run                     the run's id, location and context
   states.<name>.output    the state's last output
   tickets.<name>          a ticket of this state, or of a state it is inside
   event                   the event that caused the transition:

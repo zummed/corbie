@@ -102,7 +102,7 @@ The detailed rules behind the [Flow overview](../flow.md). Area code: `flow`. Wh
 Uses:
 
 - **Machines.** Values and expressions, jobs and their names, events, children, approval, failure and attempts, and limits. A flow adds `stages` and, in a per-item stage, `item` to what an expression reads.
-- **Controller.** Takes the flow's steps, makes each stage's attempts, starts and cancels its children, and passes on the emitted values the flow has said it wants.
+- **Controller.** Takes the flow's steps, makes each stage's attempts, starts and cancels its children, carries out a stage's send and call jobs, and passes on the emitted values the flow has said it wants.
 - **Runner.** Executes each script stage's job, including the job that reads a blob into items.
 - **Blobs.** A blob's type sets what its items are; the reading is done by a job and not by a step.
 

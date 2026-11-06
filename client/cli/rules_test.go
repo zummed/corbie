@@ -163,13 +163,11 @@ func Test_client_flag_without_effect_refused(t *testing.T) {
 		"--memory applies only to a script file": {"run", "submit", definition, "--memory", "64MB"},
 		"--tag applies only to a script file":    {"run", "submit", definition, "--tag", "gpu"},
 		// A location's file gives its jobs their own. A start carries no
-		// secret and no key.
+		// secret.
 		"--memory does not apply to a start of a location": {"run", "submit", "/hello", "--memory", "64MB"},
 		"--tag does not apply to a start of a location":    {"run", "submit", "/hello", "--tag", "gpu"},
 		"flag provided but not defined: -secret-env":       {"run", "submit", "/hello", "--secret-env", "HOME"},
 		"flag provided but not defined: -secret\n":         {"run", "submit", "/hello", "--secret", "CORBIE_TEST_TOKEN"},
-		"flag provided but not defined: -key":              {"run", "submit", "/hello", "--key", "k"},
-		"flag provided but not defined: -key\n":            {"run", "send", "--key", "k", "open"},
 		// The submit starts a singleton, and a start carries nothing to it.
 		"--deny, --input does not apply to a singleton": {"test", filepath.Join(dir, "steady.yaml"), "--deny", "net:*", "--input", "{}"},
 		// A file is recorded at --at, and a location is where it was.
@@ -1299,11 +1297,10 @@ return input.at + " " + input.host + " " + r.body`,
 		t.Fatalf("a test given no value ended %d: %s", status, out)
 	}
 	for says, flags := range map[string][]string{
-		"--value takes NAME=VALUE":            {"--value", "HOST"},
-		`the value "HOST" is given twice`:     {"--value", "HOST=a", "--value", "HOST=b"},
-		"--value: ":                           {"--value", "A B=c"},
-		"--value applies to one definition":   {dir, "--value", "HOST=a"},
-		"flag provided but not defined: -key": {"--key", "k"},
+		"--value takes NAME=VALUE":          {"--value", "HOST"},
+		`the value "HOST" is given twice`:   {"--value", "HOST=a", "--value", "HOST=b"},
+		"--value: ":                         {"--value", "A B=c"},
+		"--value applies to one definition": {dir, "--value", "HOST=a"},
 	} {
 		args := append([]string{"test", uses}, flags...)
 		if flags[0] == dir {

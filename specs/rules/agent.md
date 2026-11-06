@@ -164,8 +164,8 @@ The detailed rules behind the [Agent overview](../agent.md). Area code: `agent`.
 Uses:
 
 - **Machines.** Values and expressions, jobs and their names, events, children, approval, failure and attempts, and limits. An agent adds `args` to what an expression in a tool's job reads, and `tool` in the job of an entry with a list.
-- **Models.** A turn is a call to a model through the `llm` plugin: the conversation, the tools on offer and the shape wanted go in, every shape in full form; what the model said, the tools it asked for, why it stopped and the tokens used come back. Why it stopped is how a reply cut short is told from one that was finished. What a turn is permitted, the connection and the key, is written by the client when the definition is sent (R-model-15).
-- **Controller.** Takes the agent's steps, starts each turn and each tool as a job, and holds the calls that need approval for their ask.
+- **Models.** A turn is a call to a model through the `llm` plugin: the conversation, the tools on offer and the shape wanted go in, every shape in full form; what the model said, the tools it asked for, why it stopped and the tokens used come back. Why it stopped is how a reply cut short is told from one that was finished. What a turn is permitted, the connection and the key, is written by the client when the file is submitted (R-model-15).
+- **Controller.** Takes the agent's steps, starts each turn and each tool as a job, a tool's send and call included, and holds the tool calls that need approval for their ask.
 - **Runner.** Executes the jobs of turns, lists, tools, the blob tools and previews.
 - **Blobs.** A reference stands for a blob everywhere but in front of the model, where a handle stands for it; a large result is a blob in the agent's record, and a preview is in the turn that first shows its handle.
 - **Plugins.** The supplied turn script and the blob tools are libraries that come with Corbie.

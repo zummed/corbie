@@ -14,8 +14,8 @@ How it works
 3. The program asks for the run by its ID, and gets its status and output as
    JSON.
 
-Every request carries the gateway's token. Every run is the gateway's own
-client's run, limited by that client's ceiling, which no request can raise.
+Every request carries the gateway's token. Every request acts as the gateway's
+client, limited by that client's ceiling, which no request can raise.
 
 Start the gateway
 -----------------

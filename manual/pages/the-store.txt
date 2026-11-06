@@ -60,7 +60,7 @@ Who may read and write
 
   all       reads, writes and deletes
   adds      writes a new file, and cannot change or delete one
-  its own   the files of the runs the client started
+  its own   the files of the runs in the client's trees
   viewer    reads the status files only, for a dashboard
 
 A runner can add to any run's record. Each file it adds names a job, and

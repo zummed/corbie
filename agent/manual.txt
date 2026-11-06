@@ -94,8 +94,9 @@ Tools
 
   does    what the tool does: the model chooses a tool by this text
   args    the shape of its arguments: { name: type }, or JSON Schema
-  job     a script, a machine, a call or a send, as in `corbie manual definitions`; it reads
-          `input`, the agent's input, and `args`, the model's arguments
+  job     a script, a machine, a call or a send, as in
+          `corbie manual definitions`; it reads `input`, the agent's input,
+          and `args`, the model's arguments
   list    a job that returns tools, [{ name, does, args }], in place of
           `does:` and `args:`; `job:` runs each, and reads `tool`, its name
 

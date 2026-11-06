@@ -25,8 +25,8 @@ expressions read `input`, `values` and `run`.
 
 - A title is one line of at most 200 characters. Each run of white space,
   line breaks among it, becomes one space, and a longer title is cut.
-- Only the client that started the run sees its title. `corbie run ls` does
-  not print it.
+- Only the client that owns the run's tree sees its title. `corbie run ls`
+  does not print it.
 - A title that cannot be filled in fails the run, as an input that does not
   fit does.
 
@@ -56,7 +56,7 @@ file or a list. A name may end in `#path` to take one part of a file.
     - { include: ./base.yaml#allow }         base.yaml's allow: list, item by item
     - net:devices.lan
 
-1. The client reads each file when it sends the definition.
+1. The client reads each file when it submits the tree.
 2. In a mapping, it merges in the included fields at every depth.
 3. In a list or a text, it replaces `{ include: <file> }` with the file's list
    or text, and `{ include: <file>#<path> }` with the value at that path.
@@ -192,8 +192,9 @@ another run, as below.
   job: ./fetch.js                                         short for job: { script: ./fetch.js }
   job: { machine: "${stages.make.output.definition}" }    exactly one expression in place of a path
 
-- The context is the directory you submit from, or a file's own directory for a
-  file outside it. Every file is in the context, or below it.
+- The context is the directory you submit as a tree. For a single file it is
+  the directory you submit from, or the file's own directory for a file
+  outside it. Every file is in the context, or below it.
 - A path is read from the context, and a path starting `./` from the directory
   of the file it is written in: a definition, a machine kept in its own file,
   or an included file. `../` is refused.
@@ -370,8 +371,8 @@ value, approves nothing.
   use it.
 - A machine run as an ask uses no `ask:` and no `ask_about:` from above it.
 - A run started by a send or a call uses only its own file's `ask:`.
-- `corbie run submit` refuses a definition that can hold a job and has no
-  `ask:` in it or above it.
+- A run of a definition that can hold a job and has no `ask:` in it or above
+  it is refused as it starts.
 
 A script ask runs alone under `corbie test`. This one approves a job only if
 its `allow:` list has no `fs.write` entry.

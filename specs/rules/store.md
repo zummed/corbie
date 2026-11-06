@@ -206,8 +206,8 @@ Used by:
 - **Roles**: a pass lists an inbox and the due wakes and does all its work through the three ways of writing; a store in the same process wakes a role when another role writes what it reads.
 - **Controller**: owns every name in its area, trees, locations, keys and uploads among them; writes jobs and cancels into runners' inboxes.
 - **Runner**: reads its inbox, writes marks, emits, blobs and results, each within its row of the table.
-- **Client**: writes messages and its uploads under `uploads/`, and reads its receipts, heads and records.
-- **Machines**: a draft's files and definitions are written into a record side by side, under the store's bound.
+- **Client**: writes messages, a submit's files under `uploads/` and a start's input into the record of the run it names, and reads its receipts, the results of its calls, heads and records.
+- **Machines**: a draft's files and definitions are written side by side, under the store's bound, among a submit's uploads or into a record.
 - **Secrets**: secrets and values are under `locations/<location>/+/secrets/` and `values/`, sealed to the controller.
 - **Plugins**: an extension may add a kind of store, which must pass the checks of R-store-13.
 - **Manual**: carries the list of bucket services Corbie is tested against and the statement that a directory keeps no party out.

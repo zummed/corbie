@@ -67,10 +67,9 @@ denied.
 
 A machine with no `ask:` uses the ask of the machine above it. A run that a
 send or a call started has no machine above it, and uses only its own file's
-`ask:`. `ask_about: [send:…]` holds a call job, and never a statechart's
-`send:` action. A job of an
-agent's set, and every machine below it, use the `ask:` of the set, or of the
-nearest set it is inside that has one.
+`ask:`. `ask_about: [send:…]` holds a call or a send job, and never a
+statechart's `send:` action. A job of an agent's set, and every machine below
+it, use the `ask:` of the set, or of the nearest set it is inside that has one.
 
 A machine made while running has no ask of its own, and one that writes an
 `ask:` fails as it starts, saying so. Its held jobs go to the nearest `ask:`

@@ -52,6 +52,8 @@ Errors:
 
 The child run is allowed only what the job that starts it lists in allow:,
 whatever its definition allows. With no allow: there, it is allowed nothing.
+It runs at that job's location, sends events only to its parent and its
+children, and calls no location.
 
 Needs nothing: every job may define machines.
 

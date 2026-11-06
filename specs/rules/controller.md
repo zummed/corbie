@@ -324,11 +324,11 @@ Uses:
 
 - **Store**: reads and writes everything in its own area with the three ways of writing, lists its inbox and its wakes in order, and writes jobs and cancels into runners' inboxes.
 - **Role**: is run as passes, and is told how long a pass may take; starts the process of a step of a machine made while running.
-- **Identity**: asks whether a sender is trusted, reads a client's ceiling and a runner's tags, opens messages sealed to it, signs heads, and seals jobs, cancels and receipts; a message it does not accept is deleted without a receipt (R-id-47).
-- **Instance**: writes heads, step entries and receipts in the form that area gives, moves a head from running to finished, and removes what is past keeping by that area's rules.
-- **Machine**: gives a type's step the definition, the state before and the events, and takes back the new state and the requests; checks a definition with the same code as the client (R-mach-17); starts children, counts depth and jobs, makes tickets and takes their answers, and holds jobs for the ask, as the Machines rules state (R-mach-65 to R-mach-115).
-- **Blob**: copies what a child hands up into the parent's record, once and for every type (R-blob-23), and reads the small blobs a step needs.
-- **Permission**: puts each layer that applies into a job by name, and reads the permissions a job declares against the lists of those to be asked about (R-perm-42).
+- **Identity**: asks whether a sender is trusted, reads a client's ceiling and a runner's tags, opens messages sealed to it, signs heads, and seals jobs, cancels, receipts and the results of calls; a message it does not accept is deleted without a receipt (R-id-47).
+- **Instance**: writes heads, step entries, receipts and the results of calls in the form that area gives, moves a head from running to finished, and removes what is past keeping by that area's rules.
+- **Machine**: gives a type's step the definition, the state before and the events, and takes back the new state and the requests; checks a definition with the same code as the client (R-mach-17); starts children, counts depth and jobs, makes tickets and takes their answers, and holds jobs for the ask, as the Machines rules state (R-mach-65 to R-mach-115); gives a run its location and values, and carries out sends and calls to addresses (R-mach-153 to R-mach-160).
+- **Blob**: copies what a child hands up into the parent's record, once and for every type (R-blob-23); copies a submit's uploads to their locations, a location's file into each run's record and a called run's output beside the call's result (R-blob-19); reads the small blobs a step needs.
+- **Permission**: puts each layer that applies into a job by name, and reads the permissions a job declares against the lists of those to be asked about (R-perm-42); checks `send:` against a sender's layers and the receiver's `receive:` for a send or a call, and `at:` against the client's ceiling at a submit.
 - **Secret**: puts into a job the values of the secrets it names and every layer allows, set nearest its run's location (R-sec-14); fails a job that names a secret that is not set (R-sec-20), and denies one that names a secret a layer does not allow; reads a run's values at its first step, and the secrets and values a submit's files use that are not set.
 
 Used by:

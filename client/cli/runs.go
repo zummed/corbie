@@ -124,11 +124,19 @@ func (s *starting) read(file string) (*machine.Draft, string, string, error) {
 }
 
 // record reads a file as a tree of one file at the prefix at: by default /
-// and the file's name without its extension. Nothing is uploaded and
-// nothing is sent if anything is wrong.
-func (s *starting) record(file, at string) (*client.Tree, error) {
+// and the file's name without its extension. takesAt says whether the
+// command takes --at. Nothing is uploaded and nothing is sent if anything
+// is wrong.
+func (s *starting) record(file, at string, takesAt bool) (*client.Tree, error) {
 	if at == "" {
 		at = "/" + strings.TrimSuffix(strings.TrimSuffix(filepath.Base(file), ".js"), ".yaml")
+		if err := store.CheckLocation(at); err != nil || at == "/" {
+			fix := "give the file another name"
+			if takesAt {
+				fix += ", or give --at"
+			}
+			return nil, Mistake("the file's name gives the location %s, which cannot be one: %s", at, fix)
+		}
 	}
 	if err := store.CheckLocation(at); err != nil || at == "/" {
 		return nil, Mistake("--at %s: a prefix is / and the names of one or more directories, as /home, and is not / alone", at)
@@ -303,9 +311,16 @@ func cmdTest(e *Env, args []string) error {
 		set[name] = value
 	}
 	defer s.close()
-	tree, err := s.record(files[0], "")
+	tree, err := s.record(files[0], "", false)
 	if err != nil {
 		return err
+	}
+	// A singleton is started by the submit, and a start carries nothing to
+	// it.
+	if tree.Machines[0].Draft.Definition.Lifetime == machine.LifetimeSingleton {
+		if given := given(e, []string{"input", "input-file", "label", "allow", "deny", "timeout"}); len(given) > 0 {
+			return Mistake("%s does not apply to a singleton: the submit starts its run", strings.Join(given, ", "))
+		}
 	}
 	start, err := s.start(e, isScript(files[0]))
 	if err != nil {
@@ -358,7 +373,9 @@ func cmdSubmit(e *Env, args []string) error {
 	name := names[0]
 	info, err := os.Stat(name)
 	switch {
-	case errors.Is(err, fs.ErrNotExist) && strings.HasPrefix(name, "/"):
+	case errors.Is(err, fs.ErrNotExist) && strings.HasPrefix(name, "/") && !strings.HasSuffix(name, ".yaml") && !isScript(name):
+		// A location. A file's name that is not there is reported as
+		// not found.
 		return e.startAt(&s, name, at)
 	case err != nil:
 		return err
@@ -380,7 +397,7 @@ func cmdSubmit(e *Env, args []string) error {
 	}
 	starts := given(e, flags)
 	if len(starts) == 0 {
-		tree, err := s.record(name, at)
+		tree, err := s.record(name, at, true)
 		if err != nil {
 			return err
 		}
@@ -413,7 +430,7 @@ func cmdSubmit(e *Env, args []string) error {
 // startAt starts a run of a location.
 func (e *Env) startAt(s *starting, location, at string) error {
 	if at != "" {
-		return Mistake("--at applies to a directory or a file, and %s is a location", location)
+		return Mistake("--at applies to a file or a directory, and %s is a location", location)
 	}
 	if given := given(e, []string{"memory", "tag", "key", "secret", "secret-env"}); len(given) > 0 {
 		return Mistake("%s does not apply to a start of a location: the file recorded there gives its jobs their own, and its secrets are set at the location", strings.Join(given, ", "))

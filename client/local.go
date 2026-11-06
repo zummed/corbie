@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"fmt"
+	"reflect"
 	"slices"
 	"time"
 
@@ -104,7 +105,8 @@ func (l *Local) Run(ctx context.Context, draft *machine.Draft, start Start) (str
 
 // RunTree submits a tree of one file and gives the run at its location: the
 // one the submit starts for a singleton, and otherwise one started there
-// with what start carries.
+// with what start carries. A start that carries anything but its life to a
+// singleton is an error.
 func (l *Local) RunTree(ctx context.Context, tree *Tree, start Start) (string, error) {
 	message, err := l.Submit(ctx, tree, start.Life)
 	if err != nil {
@@ -118,9 +120,15 @@ func (l *Local) RunTree(ctx context.Context, tree *Tree, start Start) (string, e
 		return "", fmt.Errorf("%w: the submit was refused: %s", ErrStart, receipt.Refused)
 	}
 	for _, done := range receipt.Tree.Locations {
-		if done.Run != "" {
-			return done.Run, nil
+		if done.Run == "" {
+			continue
 		}
+		carried := start
+		carried.Life = 0
+		if !reflect.DeepEqual(carried, Start{}) {
+			return "", fmt.Errorf("%w: the submit started the singleton at %s, and a start carries nothing to it", ErrStart, done.Location)
+		}
+		return done.Run, nil
 	}
 	start.At = tree.Machines[0].Location
 	return l.Start(ctx, nil, start)

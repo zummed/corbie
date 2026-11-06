@@ -23,12 +23,11 @@ Corbie has no scheduler: recurring work is a statechart with two states.
     corbie init --ceiling all
     corbie start &
     corbie run submit nightly.yaml
+      /nightly   singleton   started <id>
     corbie run show <id>
 
-`lifetime: singleton` makes `corbie run submit` start the schedule's one run
-and print its ID, which `<id>` stands for.
-
-At 18:00 UTC the timer `evening` is due and the statechart moves to `working`,
+`lifetime: singleton` makes the submit start the run, and keeps one run at the
+location. At 18:00 UTC the timer `evening` is due and the statechart moves to `working`,
 and back to `idle` when the job ends. Without `failed: idle`, a job that fails
 ends the run as failed and the schedule stops. `corbie run show <id>` prints
 the run as `running`, with `waiting on 1 timer`, until `corbie run cancel <id>`

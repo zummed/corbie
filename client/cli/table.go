@@ -179,7 +179,8 @@ machine has a problem.
 		{Name: "run submit", Usage: "<directory or file> [--at <prefix>] | <location> [--input <json>] [--wait | --watch]", Summary: "record a tree, or start a run of a location and print its ID", Run: cmdSubmit, Help: `
 Given a location, it starts a run of the file recorded there: it uploads the
 input's files and sends the start message. It prints the run's ID and exits,
-unless --wait or --watch is given.
+unless --wait or --watch is given. A location starts with /, does not end in
+.yaml or .js, and is no file or directory on this computer.
 ` + starts + `
   --wait                   wait until the run ends, then print it
   --watch                  print each entry of the run's record as it is

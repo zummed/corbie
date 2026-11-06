@@ -8,6 +8,7 @@ import (
 	"io/fs"
 	"mime/multipart"
 	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -151,7 +152,8 @@ func Test_client_flag_without_effect_refused(t *testing.T) {
 	m := machine{t, filepath.Join(t.TempDir(), "config")}
 	storeDir := filepath.Join(t.TempDir(), "store")
 	m.ok("", "init", "--store", storeDir, "--name", "box")
-	dir := files(t, map[string]string{"hello.yaml": hello, "greet.js": `return 1`})
+	dir := files(t, map[string]string{"hello.yaml": hello, "greet.js": `return 1`,
+		"steady.yaml": "statechart: steady\nlifetime: singleton\ninitial: waiting\nstates:\n  waiting: {}\n", "a#b.yaml": hello})
 	definition := filepath.Join(dir, "hello.yaml")
 	// With no controller, the start waits.
 	id := strings.TrimSpace(m.ok("", "run", "submit", "/hello", "--input", `{"name": "x"}`))
@@ -165,9 +167,15 @@ func Test_client_flag_without_effect_refused(t *testing.T) {
 		"--memory does not apply to a start of a location":     {"run", "submit", "/hello", "--memory", "64MB"},
 		"--secret-env does not apply to a start of a location": {"run", "submit", "/hello", "--secret-env", "HOME"},
 		"--key does not apply to a start of a location":        {"run", "submit", "/hello", "--key", "k"},
+		"--tag does not apply to a start of a location":        {"run", "submit", "/hello", "--tag", "gpu"},
+		"--secret does not apply to a start of a location":     {"run", "submit", "/hello", "--secret", "CORBIE_TEST_TOKEN"},
+		// The submit starts a singleton, and a start carries nothing to it.
+		"--deny, --input does not apply to a singleton": {"test", filepath.Join(dir, "steady.yaml"), "--deny", "net:*", "--input", "{}"},
 		// A file is recorded at --at, and a location is where it was.
-		"--at applies to a directory or a file":                          {"run", "submit", "/hello", "--at", "/other"},
-		"--input applies to a start; a file given with --at is recorded": {"run", "submit", definition, "--at", "/other", "--input", "{}"},
+		"--at applies to a file or a directory":                                                  {"run", "submit", "/hello", "--at", "/other"},
+		"gives the location /a#b, which cannot be one: give the file another name, or give --at": {"run", "submit", filepath.Join(dir, "a#b.yaml")},
+		"gives the location /a#b, which cannot be one: give the file another name\n":             {"test", filepath.Join(dir, "a#b.yaml")},
+		"--input applies to a start; a file given with --at is recorded":                         {"run", "submit", definition, "--at", "/other", "--input", "{}"},
 		// test always stays until the run ends.
 		"-wait": {"test", definition, "--wait"},
 		// A role's flag written after another role.
@@ -190,6 +198,10 @@ func Test_client_flag_without_effect_refused(t *testing.T) {
 		if status != 2 || out != "" || !strings.Contains(errOut, flag) || !strings.Contains(errOut, "usage: corbie "+mistaken[0]) {
 			t.Errorf("corbie %s ended %d: %s%s", strings.Join(mistaken, " "), status, out, errOut)
 		}
+	}
+	// A file's name that is not there is no location, and starts nothing.
+	if status, out, said := m.run("", "run", "submit", filepath.Join(dir, "helo.yaml")); status != 1 || out != "" || !strings.Contains(said, "no such file") {
+		t.Errorf("a file that is not there submitted ended %d: %s%s", status, out, said)
 	}
 	if after := stored(t, storeDir); !slices.Equal(before, after) {
 		t.Fatalf("a command with a flag of no effect did something all the same: %v", after)
@@ -454,6 +466,9 @@ func Test_client_secret_value_never_on_command_line(t *testing.T) {
 	refused("", `standard input gave no value for the secret "CORBIE_TEST_TOKEN"`, append(set, "CORBIE_TEST_TOKEN", "-")...)
 	refused("", `the secret "CORBIE_TEST_TOKEN" is given twice: give it once`, append(test, "--secret-env", "CORBIE_TEST_TOKEN", "--secret", "CORBIE_TEST_TOKEN")...)
 	refused("", `the secret "CORBIE_TEST_TOKEN" is given twice: give it once`, append(test, "--secret-env", "CORBIE_TEST_TOKEN", "--secret-env", "CORBIE_TEST_TOKEN")...)
+	// corbie test runs on a store in memory: what is compared here is what
+	// controller secret set sent, and a refused corbie test shows by its
+	// status that it ran nothing.
 	if after := stored(t, storeDir); !slices.Equal(before, after) {
 		t.Fatalf("a secret that could not be read was sent all the same: %v", after)
 	}
@@ -1247,21 +1262,35 @@ func Test_client_model_told_which_commands_stay(t *testing.T) {
 }
 
 // corbie test sets each --value, --secret and --secret-env at / of the
-// controller it runs in, so every run there reads them.
+// controller it runs in, so every run there reads them. The job sends the
+// secret to a server, which says whether it is the value set.
 func Test_client_test_sets_values_and_secrets_at_the_top(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Authorization") == "the token" {
+			io.WriteString(w, "matched")
+		} else {
+			io.WriteString(w, "differs")
+		}
+	}))
+	t.Cleanup(server.Close)
 	m := machine{t, t.TempDir()}
 	dir := files(t, map[string]string{
-		"uses.yaml": `flow: uses
+		"uses.yaml": strings.NewReplacer("ADDRESS", strings.TrimPrefix(server.URL, "http://"), "URL", server.URL).Replace(`flow: uses
 stages:
-  it: { job: { script: ./it.js, input: { host: "${values.HOST}", at: "${run.location}" }, allow: ["secret:CORBIE_TEST_TOKEN_OF_TEST@*"] } }
+  it:
+    job:
+      script: ./it.js
+      input: { host: "${values.HOST}", at: "${run.location}", url: "URL" }
+      allow: ["net:ADDRESS", "secret:CORBIE_TEST_TOKEN_OF_TEST@*"]
 output: ${stages.it.output}
-`,
-		"it.js": `secrets.get("CORBIE_TEST_TOKEN_OF_TEST"); return input.at + " " + input.host`,
+`),
+		"it.js": `const r = http.post(input.url, { headers: { Authorization: secrets.get("CORBIE_TEST_TOKEN_OF_TEST") }, body: "" })
+return input.at + " " + input.host + " " + r.body`,
 	})
 	t.Setenv("CORBIE_TEST_TOKEN_OF_TEST", "the token")
 	uses := filepath.Join(dir, "uses.yaml")
 	out := m.ok("", "test", uses, "--value", "HOST=db.lan", "--value", "EMPTY=", "--secret-env", "CORBIE_TEST_TOKEN_OF_TEST", "--json")
-	if !strings.Contains(out, `"status":"done"`) || !strings.Contains(out, `"output":"/uses db.lan"`) {
+	if !strings.Contains(out, `"status":"done"`) || !strings.Contains(out, `"output":"/uses db.lan matched"`) {
 		t.Fatalf("a test given a value and a secret printed %s", out)
 	}
 	// Without the value the run fails, naming it and where it was looked for.

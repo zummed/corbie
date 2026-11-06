@@ -125,7 +125,7 @@ corbie controller value set DB_HOST db.prod.lan --at /prod
 corbie controller value list
 ```
 
-A file given alone is a tree of one file, at `--at`, by default `/` and the file's name without its extension. An argument that is no file or directory on this computer is read as a location.
+A file given alone is a tree of one file, at `--at`, by default `/` and the file's name without its extension. An argument that starts with `/`, does not end in `.yaml` or `.js`, and is no file or directory on this computer is read as a location. A file's name that is not there is reported as not found.
 
 A script file can be submitted as it is. The package wraps it in a flow of one stage, with the permissions it may use and its limits, which the command line takes as flags.
 
@@ -210,7 +210,7 @@ A program's word that is itself a role's or a program's name begins the next nam
 - When `corbie start` is stopped, it interrupts each program and waits for it, for up to ten seconds before killing it.
 - On a serverless host, `corbie start` refuses a program before anything starts.
 
-`corbie test` is an ordinary run: the same roles, in one process, on a store in memory, with ceilings that allow everything. It records the file as a tree of one file and starts it. `corbie test <file> --definition` prints the machine as the client writes it out, each value with its file and line, and runs nothing.
+`corbie test` is an ordinary run: the same roles, in one process, on a store in memory, with ceilings that allow everything. It records the file as a tree of one file and starts it. A singleton is started by that submit, so a flag of a start given with one is a mistake. `corbie test <file> --definition` prints the machine as the client writes it out, each value with its file and line, and runs nothing.
 
 `corbie test` sets values and secrets at `/` of the controller in its process, read from the sources `controller value set` and `controller secret set` read:
 

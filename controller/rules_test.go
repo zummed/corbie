@@ -445,6 +445,8 @@ func TestJobThatCannotBeBuiltFails(t *testing.T) {
 	for job, want := range map[string]string{
 		`{ script: ./work.js, allow: ["secret:NONE@net:api.example"] }`:                                  `NONE is not set at / or above`,
 		`{ machine: { statechart: kid, states: { k: { end: done } } }, input: "${'x'.repeat(300000)}" }`: "pass large values as blobs",
+		`{ send: { to: { at: devices/boiler }, event: set } }`:                                           "a send or a call is not carried out yet",
+		`{ call: { at: services/weather }, input: { days: 2 } }`:                                         "a send or a call is not carried out yet",
 	} {
 		id := w.submit(strings.Replace(chart, "JOB", job, 1), map[string]string{"work.js": "return 1"}, nil)
 		w.settle()

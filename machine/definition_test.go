@@ -344,7 +344,7 @@ func TestPermissionScopeReadsOnlyTheInput(t *testing.T) {
 		t.Fatalf("a scope filled from the input: %v", err)
 	}
 	got := problems(t, strings.Replace(def, "WHAT", "item", 1), js)
-	for _, want := range []string{"work.a.allow[0]", `"fs.read:${item}/**"`, "from the machine's input and from nothing else", `reads "item"`} {
+	for _, want := range []string{"work.a.allow[0]", `"fs.read:${item}/**"`, "from the machine's input and its values, and from nothing else", `reads "item"`} {
 		if !strings.Contains(got, want) {
 			t.Errorf("a scope filled from an item was reported without %q:\n%s", want, got)
 		}

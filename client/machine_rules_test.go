@@ -47,7 +47,7 @@ func TestPermissionScopeFilledFromAnythingButTheInputIsRefused(t *testing.T) {
 			t.Errorf("%s passed the check", c.entry)
 			continue
 		}
-		for _, want := range []string{c.place, `"` + c.entry + `"`, "from the machine's input and from nothing else"} {
+		for _, want := range []string{c.place, `"` + c.entry + `"`, "from the machine's input and its values, and from nothing else"} {
 			if !strings.Contains(err.Error(), want) {
 				t.Errorf("%s was refused without %q:\n%v", c.entry, want, err)
 			}
@@ -709,12 +709,48 @@ func Test_mach_run_is_read_in_every_type(t *testing.T) {
 			t.Fatalf("%s: the run %s ended %s and read %v: %s", name, r.ID, r.Status, r.Output, r.Error)
 		}
 	}
+	// Each type reads the run's location where it reads its ID, and the
+	// location is the run's.
+	for name, def := range map[string]string{
+		"a flow's output": `
+			flow: f
+			stages:
+			  a: { job: { script: ./turn.js } }
+			output: "${run.location}"
+		`,
+		"a statechart's final state": `
+			statechart: s
+			initial: b
+			states:
+			  b: { end: done, output: "${run.location}" }
+		`,
+		"an agent's prompt": `
+			agent: g
+			model: { name: scripted, service: anthropic }
+			turn: ./turn.js
+			prompt: "${run.location}"
+		`,
+		"a timeout": `
+			flow: f
+			limits: { timeout: "${run.location ? '1m' : '1s'}" }
+			stages:
+			  a: { job: { script: ./turn.js, timeout: "${run.location ? '1m' : '1s'}" } }
+		`,
+	} {
+		if _, err := machineParse(def, map[string]string{"turn.js": "return {}"}); err != nil {
+			t.Errorf("%s does not read run.location: %v", name, err)
+		}
+	}
+	located := machine.NewEvaluator(time.Now(), []byte("seed"), machine.Run{ID: "r1", Location: "/home/devices/boiler"})
+	if got, err := located.Text("${run.location}", machine.Scope{"input": nil}, "output"); err != nil || got != "/home/devices/boiler" {
+		t.Errorf("run.location gives %v (%v)", got, err)
+	}
 	_, err := machineParse(`
 		flow: f
 		stages:
 		  a: { job: { script: ./echo.js, allow: ["fs.read:${run.id}/**"] } }
 	`, echo)
-	if err == nil || !strings.Contains(err.Error(), "from the machine's input and from nothing else") {
+	if err == nil || !strings.Contains(err.Error(), "from the machine's input and its values, and from nothing else") {
 		t.Fatalf("a permission's scope read the run: %v", err)
 	}
 }

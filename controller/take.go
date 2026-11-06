@@ -989,6 +989,10 @@ func (b *build) begin(req *machine.Job, earlier *instance.Going) error {
 		job.Allow = append(slices.Clone(b.read.Allow), job.Allow...)
 		job.Deny = append(slices.Clone(b.def.Deny), job.Deny...)
 	}
+	if job.IsSend() || job.IsCall() {
+		b.fail(job, "a send or a call is not carried out yet")
+		return nil
+	}
 	var err error
 	if job.Found, err = found(&job.Job, b.def, b.st.Definition); err != nil {
 		b.fail(job, "%v", err)

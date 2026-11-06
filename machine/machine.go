@@ -13,6 +13,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/zummed/corbie/blob"
+	"github.com/zummed/corbie/store"
 )
 
 // An Event is anything that reaches a machine: a name, where it came from,
@@ -21,6 +22,9 @@ type Event struct {
 	Name string `json:"name"`
 	From string `json:"from,omitzero"`
 	Data any    `json:"data,omitzero"`
+	// Sender is the run or the client that sent the event to the run by
+	// its address. Only the controller sets it.
+	Sender *Address `json:"sender,omitzero"`
 	// Answer says the event is the answer to a ticket. Only the controller
 	// sets it, when it takes an answer.
 	Answer bool `json:"answer,omitzero"`
@@ -108,6 +112,10 @@ type Job struct {
 
 	// RunKey is the key a machine is started with.
 	RunKey *string `json:"key,omitzero"`
+	// Send is an event the job sends to a run by its address, and Call a
+	// location whose run the job starts and waits for.
+	Send *Send    `json:"send,omitzero"`
+	Call *Address `json:"call,omitzero"`
 
 	Input   any      `json:"input,omitzero"`
 	Allow   []string `json:"allow,omitzero"`
@@ -149,10 +157,81 @@ type Found struct {
 // IsMachine says whether the job is a machine, started as a child.
 func (r *Job) IsMachine() bool { return r.Machine != "" || isDefinition(r.Stored) }
 
-// A Send is a request to send a named event to the parent, to a child, or
-// to the run a key names.
+// IsSend says whether the job sends an event to a run, and IsCall whether it
+// calls a location.
+func (r *Job) IsSend() bool { return r.Send != nil }
+func (r *Job) IsCall() bool { return r.Call != nil }
+
+// An Address names a run: the run of a singleton location, the run for a key
+// at a keyed location, or one run by its ID. As the sender of an event it may
+// name a client instead. A key is kept as it was filled in, empty or past
+// KeyLimit included: such a send is undelivered, and fails nothing.
+type Address struct {
+	At     string  `json:"at,omitzero"`
+	Key    *string `json:"key,omitzero"`
+	Run    string  `json:"run,omitzero"`
+	Client string  `json:"client,omitzero"`
+}
+
+// Check says what is wrong with an address once it is filled in. One that
+// names a run and a key, as the sender of an event from a keyed run does,
+// goes to the run. Its key is checked where it is delivered.
+func (a *Address) Check() error {
+	switch {
+	case a.Client != "" && (a.At != "" || a.Key != nil || a.Run != ""):
+		return errors.New("an address names a client or a location, not both")
+	case a.Client != "":
+		return nil
+	case a.Run != "":
+		if err := store.CheckInstance(a.Run); err != nil {
+			return err
+		}
+	}
+	return CheckLocation(a.At)
+}
+
+// CheckLocation says what is wrong with a location as an address or a
+// receive: entry writes it: a path under the tree's prefix, or a full path
+// from /.
+func CheckLocation(loc string) error { return checkLocation(loc, false) }
+
+// CheckPattern says what is wrong with a pattern of locations, where * is
+// any part of one name and ** any number of names.
+func CheckPattern(pattern string) error { return checkLocation(pattern, true) }
+
+func checkLocation(loc string, pattern bool) error {
+	if loc == "" {
+		return errors.New("a location is not empty")
+	}
+	for _, part := range strings.Split(strings.TrimPrefix(loc, "/"), "/") {
+		switch {
+		case part == "":
+			return fmt.Errorf("%q: a location has no empty name and does not end with /", loc)
+		case part == "." || part == "..":
+			return fmt.Errorf("%q: a location is read from the tree's prefix, or from / in full, and has no . or .. in it", loc)
+		case part == "+" || strings.Contains(part, "#"):
+			return fmt.Errorf("%q: a name in a location is not + and holds no #", loc)
+		case !pattern && strings.Contains(part, "*"):
+			return fmt.Errorf("%q: a location holds no *", loc)
+		}
+	}
+	return nil
+}
+
+// Resolve gives a location from a tree's prefix: one written from / is a
+// full path, and any other is read from the prefix.
+func Resolve(prefix, loc string) string {
+	if strings.HasPrefix(loc, "/") {
+		return loc
+	}
+	return strings.TrimSuffix(prefix, "/") + "/" + loc
+}
+
+// A Send is a request to send a named event to the parent, to a child, to
+// the run a key names, or to a run by its address.
 type Send struct {
-	To string `json:"to,omitzero"` // "parent", or the name of the job that started the child
+	To string   `json:"to,omitzero"` // "parent", or the name of the job that started the child
+	At *Address `json:"at,omitzero"` // the run it is sent to, in place of To
 	// Key names the run it is sent to, in place of To, and Machine is the
 	// machine started with that key when no run has it, by its name in the
 	// definition.
@@ -279,6 +358,19 @@ func Lists(def *Definition) bool {
 	t, _ := TypeOf(def.Type)
 	r, ok := t.(Reader)
 	return ok && r.Lists(def)
+}
+
+// A Receiver is a type whose runs take events sent to them by their address,
+// and so may be keyed.
+type Receiver interface {
+	Receives()
+}
+
+// Receives says a definition's type takes events sent to its runs.
+func Receives(def *Definition) bool {
+	t, _ := TypeOf(def.Type)
+	_, ok := t.(Receiver)
+	return ok
 }
 
 // A KeySender is a type whose definitions can send an event to a key.

@@ -129,7 +129,8 @@ Every run has a location, and its authority comes from it: its file's `allow:` a
 
 - A child started by `machine:` runs at its parent's location.
 - A machine made while running has no file of its own. It runs at the location of the job that starts it, narrowed by that job's list.
-- `limits: { runs: N }` on a keyed file caps how many of its runs are running at once (see statechart.md).
+- `limits: { runs: N }` on a keyed file caps how many of its runs are running at once (see statechart.md). N is at least 1, and `runs` on a file that is not keyed is refused.
+- `lifetime:`, `update:`, `receive:` and `limits: { runs: }` belong to a file at a location, and are refused in a machine written in place or made while running.
 
 A run keeps the definition it started with, and a submit changes what new runs get. `update:` says what a changed file does to the runs already running at its location:
 
@@ -138,6 +139,7 @@ A run keeps the definition it started with, and a submit changes what new runs g
 | `restart` | are cancelled; a singleton starts again on the new definition, and a keyed run starts fresh on the next send to its key |
 | `drain` | finish on the definition they started with; the default for keyed and transient |
 
+- A file is changed when the machine written out from it differs. Where its values are written takes no part, so moving a line changes nothing.
 - A singleton always restarts, and `update: drain` on one is refused.
 - Removing a file from a tree, by deleting or renaming it and submitting, cancels every run at its location.
 - After a submit, `corbie run cancel <location>` ends a `drain` file's runs, so the next ones start on the new definition.
@@ -157,6 +159,8 @@ Expressions are JavaScript. They read `input`, which is what the machine was sta
 ```
 
 Everything else that varies from one run of a definition to the next comes in through `input`, and from one tree to the next through `values`.
+
+A value is read by its name, as `values.HUB`. `values[name]` and `values` alone are refused, so the values a file reads can be listed. An expression that reads a value not set at the run's location or above fails, naming the value and the location.
 
 Some fields are names, not values, and an expression in them is refused: a thing's name, a type, a permission's kind, a deny entry, a secret's name, a tag, a ticket's name. The path of a script or a machine is a name too, with one exception: it may be exactly one expression that gives a stored definition or script.
 
@@ -295,8 +299,9 @@ job: { send: { to: { at: devices/boiler }, event: set, data: { target: 12 } } }
 job: { call: { at: services/weather }, input: { days: 2 } }
 ```
 
-- A location in an address, a `send:` entry or a `receive:` entry is read from the tree's prefix, unless it starts with `/`, which is a full path into any tree. `../` is refused.
-- `job: { send: … }` ends `done` once the message is written.
+- A location in an address, a `send:` entry or a `receive:` entry is read from the tree's prefix, unless it starts with `/`, which is a full path into any tree. A name in it is not empty, `.`, `..` or `+`, and holds no `#`.
+- `job: { send: … }` ends `done`, with no output, once the message is written. Beside `send:` it takes `approve:`, `allow:` and `deny:`, and no other field of a job.
+- `at`, `key` and `run` may hold expressions, and `to` may be one expression that gives an address. An address is checked once it is filled in.
 - `job: { call: { at }, input }` starts a run of a `transient` location and waits. The job's output is that run's result. The job fails if the receiver refuses it, if the location is not `transient`, or if the run fails.
 - A key is any text of 1 to 256 characters. It is written in the run's head, as a label is, so anyone who can list runs can read it, and it holds no secret.
 
@@ -314,7 +319,7 @@ receive: { set: [thermostats/*, client:panel], stop: [client:panel] }  # by even
 - A written `receive:` replaces that with exactly its list. The tree's own client is accepted whatever the list says.
 - An entry is a location pattern or `client:<name>`.
 
-The controller writes the sender into `event.from`: `{ at, run }`, with `key` for a keyed run, or `{ client }`. Anything about the sender in the data is only the sender's claim.
+The controller writes the sender into `event.from`: `{ at, run }`, with `key` for a keyed run, or `{ client }`. A send to it is a reply, and an address that names both a run and a key goes to the run. Anything about the sender in the data is only the sender's claim.
 
 | What happens to a send | Result |
 |---|---|
@@ -323,7 +328,7 @@ The controller writes the sender into `event.from`: `{ at, run }`, with `key` fo
 | no running statechart can take it: it names a flow or an agent run, a run that has ended, or a key that is empty or past 256 characters | noted as undelivered |
 | a keyed location is at its `limits: { runs: }` and no run has the key | noted as undelivered |
 | a run kept it under `defer:` and was cancelled or restarted | noted as undelivered |
-| it is named `start`, `done`, `failed`, a timer's name or a ticket's name | noted as undelivered |
+| it is named `start`, `done`, `failed`, `timer`, a timer's name or a ticket's name | noted as undelivered |
 
 An undelivered send fails nothing, and the sender goes on.
 

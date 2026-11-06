@@ -142,7 +142,7 @@ const slowFamily = `
 // cancelled too, and a job is stopped where it runs.
 func TestCancelReachesEverythingBelow(t *testing.T) {
 	l := local(t, "all")
-	id, err := l.Start(ctx, draft(t, strings.Replace(slowFamily, "DEADLINE", "", 1),
+	id, err := l.Run(ctx, draft(t, strings.Replace(slowFamily, "DEADLINE", "", 1),
 		map[string]string{"slow.js": `exec.run("sleep", { args: ["30"], timeout: 60 }); return "finished"`}), client.Start{})
 	if err != nil {
 		t.Fatal(err)
@@ -183,7 +183,7 @@ func TestCancelReachesEverythingBelow(t *testing.T) {
 // everything below it is cancelled.
 func TestTimeout(t *testing.T) {
 	l := local(t, "all")
-	id, err := l.Start(ctx, draft(t, strings.Replace(slowFamily, "DEADLINE", "limits: { timeout: 1s }", 1),
+	id, err := l.Run(ctx, draft(t, strings.Replace(slowFamily, "DEADLINE", "limits: { timeout: 1s }", 1),
 		map[string]string{"slow.js": `exec.run("sleep", { args: ["30"], timeout: 60 }); return "finished"`}), client.Start{})
 	if err != nil {
 		t.Fatal(err)
@@ -471,7 +471,7 @@ func countAsks(t *testing.T, l *client.Local, id string) int {
 // A cancel is never restarted, so a child cancelled by hand stays stopped.
 func Test_ctl_a_cancelled_job_is_not_restarted(t *testing.T) {
 	l := local(t)
-	id, err := l.Start(ctx, draft(t, `
+	id, err := l.Run(ctx, draft(t, `
 		flow: parent
 		stages:
 		  kid:

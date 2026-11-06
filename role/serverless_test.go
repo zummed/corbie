@@ -147,7 +147,8 @@ func calls(t *testing.T, n int, done func(), answered func(body string)) *httpte
 }
 
 // setUp sets up one machine's config and a store with corbie init, and
-// leaves a start waiting in the store.
+// leaves a start waiting in the store: a file given with a flag of a start
+// is started as it is, with no controller to record it.
 func setUp(t *testing.T, address string) (config string) {
 	t.Helper()
 	config = filepath.Join(t.TempDir(), "config")
@@ -156,7 +157,7 @@ func setUp(t *testing.T, address string) (config string) {
 	}
 	definition := filepath.Join(t.TempDir(), "waits.yaml")
 	os.WriteFile(definition, []byte("statechart: waits\ninitial: waiting\nstates:\n  waiting: { ticket: word }\n"), 0o600)
-	if status, said := corbie(ctx, "run", "submit", definition, "--config", config); status != 0 {
+	if status, said := corbie(ctx, "run", "submit", definition, "--input", "{}", "--config", config); status != 0 {
 		t.Fatalf("corbie run submit: %s", said)
 	}
 	return config

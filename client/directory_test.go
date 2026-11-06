@@ -322,11 +322,8 @@ func TestRequireFindsWhatAJobNames(t *testing.T) {
 		"blocks/near.js":  "exports.value = 'near'",
 		"on/start.yaml":   "flow: start\nstages:\n  s: { job: { machine: blocks/who.yaml } }\noutput: ${stages.s.output}\n",
 	})
-	draft, err := client.ReadMachine(dir, "on/start.yaml")
-	if err != nil {
-		t.Fatal(err)
-	}
-	id, err := l.Start(context.Background(), draft, client.Start{})
+	submitTree(t, l, dir, "/require")
+	id, err := l.Start(context.Background(), nil, client.Start{At: "/require/on/start"})
 	if err != nil {
 		t.Fatal(err)
 	}

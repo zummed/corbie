@@ -18,18 +18,12 @@ const starts = `
                            repeatable
   --label k=v              a label on the run, readable by anyone who can
                            list runs; repeatable
-  --key <key>              the key that names the run among this client's
-                           running runs; refused if a running run has it
   --allow <entry>          one permission the run's jobs may use; with
                            --allow or --deny they may use no other; repeatable
   --deny <entry>           one permission the run's jobs are refused,
                            whatever is allowed; repeatable
   --timeout <time>         the longest the run may take, such as 1h; it
                            cannot extend the definition's timeout
-  --secret NAME            a run secret, its value typed at the terminal and
-                           not shown; repeatable
-  --secret-env NAME        a run secret, its value read from the environment
-                           variable NAME; repeatable
   --life <time>            how long the start message is valid while no
                            controller takes it; default 5m`
 
@@ -159,13 +153,22 @@ The check reads only the store, so it is the same wherever Corbie runs.
                   default 90s
 
   corbie manual functions   the calls a serverless host must make`},
-		{Name: "test", Usage: "<definition or script> [--input <json>] [--watch] | <directory>...", Summary: "run a definition or a script in this process, with no setup", Stays: true, Run: cmdTest, Help: `
+		{Name: "test", Usage: "<definition or script> [--input <json>] [--value NAME=VALUE] [--watch] | <directory>...", Summary: "run a definition or a script in this process, with no setup", Stays: true, Run: cmdTest, Help: `
 It runs a controller, a runner and a client in this process with the store in
-memory, waits until the run ends and prints it. It reads no config and keeps
-nothing. It fails unless the run ends with status done.
+memory, records the file as a tree of one file, starts it, waits until the run
+ends and prints it. It reads no config and keeps nothing. It fails unless the
+run ends with status done.
 
 The ceilings allow everything. Each job's own allow: list still applies.
 ` + starts + `
+  --value NAME=VALUE       a value, set at / of the controller in this
+                           process; repeatable
+  --secret NAME            a secret set at / of the controller in this
+                           process, its value typed at the terminal and not
+                           shown; repeatable
+  --secret-env NAME        a secret set at / of the controller in this
+                           process, its value read from the environment
+                           variable NAME; repeatable
   --watch                  print each entry of the run's record as it is
                            written
 
@@ -173,16 +176,27 @@ Given directories, it reads every machine in them as corbie run submit does,
 prints each one ok or its problems, and starts nothing. It fails when a
 machine has a problem.
 ` + scripts},
-		{Name: "run submit", Usage: "<definition or script> [--input <json>] [--wait | --watch] | <directory> [--at <prefix>]", Summary: "start a run and print its ID, or record a tree", Run: cmdSubmit, Help: `
-It reads the definition and the files it names, reports every fault in them
-together, uploads the files and sends the start message. It prints the run's
-ID and exits, unless --wait or --watch is given.
+		{Name: "run submit", Usage: "<directory or file> [--at <prefix>] | <location> [--input <json>] [--wait | --watch]", Summary: "record a tree, or start a run of a location and print its ID", Run: cmdSubmit, Help: `
+Given a location, it starts a run of the file recorded there: it uploads the
+input's files and sends the start message. It prints the run's ID and exits,
+unless --wait or --watch is given.
 ` + starts + `
   --wait                   wait until the run ends, then print it
   --watch                  print each entry of the run's record as it is
                            written, until the run ends
 
 With --wait or --watch the command fails unless the run ends with status done.
+
+Given a file, it records it as a tree of one file, at --at: by default / and
+the file's name without its extension. A file given with a flag of a start is
+started as it is, and may carry these as well:
+
+  --key <key>              the key that names the run among this client's
+                           running runs; refused if a running run has it
+  --secret NAME            a run secret, its value typed at the terminal and
+                           not shown; repeatable
+  --secret-env NAME        a run secret, its value read from the environment
+                           variable NAME; repeatable
 
 Given a directory, it records it as a tree. Each *.yaml in it and below it, but
 for .git, whose first key gives a type of machine has a location: its path
@@ -193,7 +207,7 @@ location keeps what was recorded before. It prints what it did at each
 location, and the secrets and values the files use that are not set.
 
   --at <prefix>   where the tree is recorded; by default / and the
-                  directory's name
+                  directory's name, or the file's name
 
   corbie manual a-directory   a tree of machines
 ` + scripts},

@@ -39,7 +39,7 @@ func Test_blob_reference_inside_contents_hides_key(t *testing.T) {
 	}
 
 	// Displayed: in a result, and in a line a job logged.
-	id, err := l.Start(ctx, draft(t, `
+	id, err := l.Run(ctx, draft(t, `
 		flow: within
 		stages:
 		  make: { job: { script: ./make.js, input: { text: inner text } } }

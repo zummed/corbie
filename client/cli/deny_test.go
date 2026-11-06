@@ -43,7 +43,7 @@ func TestCeilingIsGivenADenyList(t *testing.T) {
 	// command line, and gives which layers refused the file, if any did.
 	reads := func(file string) string {
 		t.Helper()
-		_, out, said := m.run("", "run", "submit", script, "--allow", "all", "--input", inputOf(file), "--wait", "--json")
+		_, out, said := m.run("", "run", "submit", m.recorded(script, "--allow", "all"), "--input", inputOf(file), "--wait", "--json")
 		var run struct{ Status, Refused, Layer string }
 		if err := json.Unmarshal([]byte(out), &run); err != nil {
 			t.Fatalf("submit printed %q and said %q", out, said)

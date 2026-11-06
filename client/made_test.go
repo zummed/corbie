@@ -121,7 +121,7 @@ func Test_ctl_made_step_of_a_definition_stored_as_a_blob(t *testing.T) {
 // timer.
 func Test_ctl_made_statechart_waits_across_steps(t *testing.T) {
 	l := contained(t)
-	id, err := l.Start(ctx, draft(t, `
+	id, err := l.Run(ctx, draft(t, `
 		statechart: holder
 		input: { text: any }
 		initial: making
@@ -181,8 +181,9 @@ func Test_ctl_made_agent_works_as_any_other(t *testing.T) {
 	l := contained(t, "all")
 	text := "agent: sums\nmodel: { name: test-model, service: anthropic, address: " + m.URL + ", secret: TEST_KEY }\nprompt: what is 41 plus one?\n" +
 		"tools:\n  add:\n    does: Add one to a number\n    args: { n: number }\n    job: { script: ./step.js, input: { n: \"${args.n}\" } }\n"
-	id, err := l.Start(ctx, draft(t, strings.Replace(maker, `machine: "${stages.make.output}"`, `machine: "${stages.make.output}", allow: [all]`, 1), makes),
-		client.Start{Input: map[string]any{"text": text}, Secrets: map[string]string{"TEST_KEY": "sk-test-key"}})
+	setSecret(t, l, "TEST_KEY", "sk-test-key")
+	id, err := l.Run(ctx, draft(t, strings.Replace(maker, `machine: "${stages.make.output}"`, `machine: "${stages.make.output}", allow: [all]`, 1), makes),
+		client.Start{Input: map[string]any{"text": text}})
 	if err != nil {
 		t.Fatal(err)
 	}

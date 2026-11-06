@@ -142,7 +142,7 @@ func Test_client_step_moved_between_records_not_believed(t *testing.T) {
 func Test_client_waiting_status_only_before_taken_up(t *testing.T) {
 	// With no controller, a run that has been sent is waiting to start.
 	a := arrange(t)
-	sent, err := a.Start(ctx, draft(t, standing, map[string]string{"work.js": "return 1"}), client.Start{})
+	sent, err := a.Start(ctx, nil, client.Start{At: "/standing"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -167,7 +167,7 @@ func Test_client_waiting_status_only_before_taken_up(t *testing.T) {
 		}
 	}
 	// Waiting on a key and a timer.
-	held, err := l.Start(ctx, draft(t, `
+	held, err := l.Run(ctx, draft(t, `
 		statechart: held
 		initial: asking
 		states:
@@ -187,7 +187,7 @@ func Test_client_waiting_status_only_before_taken_up(t *testing.T) {
 		t.Fatalf("a run waiting on a ticket and a timer is shown as %+v", run)
 	}
 	// Waiting on a job.
-	busy, err := l.Start(ctx, draft(t, `
+	busy, err := l.Run(ctx, draft(t, `
 		flow: busy
 		stages:
 		  spin: { job: { script: ./spin.js, timeout: 30s } }
@@ -247,8 +247,7 @@ func TestUnstartedRunIsWaitingOnlyWhileItsStartIsGood(t *testing.T) {
 		}
 		cancel()
 	}
-	d := draft(t, standing, map[string]string{"work.js": "return 1"})
-	sent, err := a.Start(ctx, d, client.Start{})
+	sent, err := a.Start(ctx, nil, client.Start{At: "/standing"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -256,7 +255,7 @@ func TestUnstartedRunIsWaitingOnlyWhileItsStartIsGood(t *testing.T) {
 		t.Fatalf("a start just sent is shown as %+v, %v", run, err)
 	}
 	// One named a day ahead of the clock was not named by this client.
-	ahead, err := a.Start(ctx, d, client.Start{Run: "client/" + store.Stamp(time.Now().Add(24*time.Hour)) + "-0000000001"})
+	ahead, err := a.Start(ctx, nil, client.Start{At: "/standing", Run: "client/" + store.Stamp(time.Now().Add(24*time.Hour)) + "-0000000001"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -319,9 +318,9 @@ func (u *uploads) Write(ctx context.Context, name string, value []byte, how stor
 	return u.Store.Write(ctx, name, value, how)
 }
 
-// A start's uploads, the definition, its files and the input's files, are
-// made side by side, a bounded number at a time, and the start is sent once
-// every one is in the store.
+// A submit's uploads, the definition and its files, are made side by side, a
+// bounded number at a time, and the submit is sent once every one is in the
+// store. So are a start's, the input's files.
 func Test_client_start_uploads_side_by_side(t *testing.T) {
 	const scripts, inner = 40, 3
 	var src strings.Builder
@@ -336,56 +335,67 @@ func Test_client_start_uploads_side_by_side(t *testing.T) {
 		fmt.Fprintf(&src, "          k%d: { job: { script: ./k%d.js } }\n", i, i)
 		files[fmt.Sprintf("k%d.js", i)] = "return 2"
 	}
-	d := draft(t, src.String(), files)
+	tree := &client.Tree{Prefix: "/wide", Machines: []*client.Machine{{Path: "wide.yaml", Location: "/wide", Draft: draft(t, src.String(), files)}}}
 	input := func() map[string]any {
 		file := func(name string) client.InputFile {
 			return client.InputFile{Name: name, Contents: strings.NewReader(name)}
 		}
 		return map[string]any{"one": file("one.txt"), "more": []any{file("two.txt"), map[string]any{"three": file("three.txt")}}}
 	}
-	const blobs = scripts + inner + 2 + 3 // the two definitions and the input's files
+	const definitions = scripts + inner + 2 // the two definitions and their scripts
+	const inputs = 3 + 1                    // the input's files, and the blob that shows the start was sent
 
 	a := arrange(t)
 	u := &uploads{Store: a.hooked}
 	c := client.New(a.ID, a.ctl.Card, u)
-	run, err := c.Start(ctx, d, client.Start{Input: input()})
+	message, err := c.Submit(ctx, tree, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if most := u.most.Load(); most < 2 || most > store.SideBySide {
+		t.Fatalf("a submit wrote %d blobs at once; the bound is %d", most, store.SideBySide)
+	}
+	if u.messages.Load() != 1 || u.openAt.Load() != 0 || u.madeAt.Load() != definitions {
+		t.Fatalf("the submit was sent with %d blob writes open and %d of %d made", u.openAt.Load(), u.madeAt.Load(), definitions)
+	}
+	if names, err := a.owner.List(ctx, store.Uploaded("controller", "client", message)); err != nil || len(names) != definitions {
+		t.Fatalf("the submit's uploads are %d blobs, %v", len(names), err)
+	}
+	u = &uploads{Store: a.hooked}
+	c = client.New(a.ID, a.ctl.Card, u)
+	run, err := c.Start(ctx, nil, client.Start{At: "/wide", Input: input()})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if most := u.most.Load(); most < 2 || most > store.SideBySide {
 		t.Fatalf("a start wrote %d blobs at once; the bound is %d", most, store.SideBySide)
 	}
-	if u.messages.Load() != 1 || u.openAt.Load() != 0 || u.madeAt.Load() != blobs {
-		t.Fatalf("the start was sent with %d blob writes open and %d of %d made", u.openAt.Load(), u.madeAt.Load(), blobs)
+	if u.messages.Load() != 1 || u.openAt.Load() != 0 || u.madeAt.Load() != inputs {
+		t.Fatalf("the start was sent with %d blob writes open and %d of %d made", u.openAt.Load(), u.madeAt.Load(), inputs)
 	}
-	if names, err := a.owner.List(ctx, store.Blobs("controller", run)); err != nil || len(names) != blobs {
+	if names, err := a.owner.List(ctx, store.Blobs("controller", run)); err != nil || len(names) != inputs {
 		t.Fatalf("the run's record holds %d blobs, %v", len(names), err)
 	}
 
-	// A write that fails is the start's error, and nothing is sent.
+	// A write that fails is the submit's error, and nothing is sent.
 	refused := errors.New("refused")
 	u = &uploads{Store: a.hooked, fail: refused}
 	c = client.New(a.ID, a.ctl.Card, u)
-	if _, err := c.Start(ctx, d, client.Start{Input: input()}); !errors.Is(err, refused) || u.messages.Load() != 0 {
-		t.Fatalf("a start whose upload failed gave %v and sent %d messages", err, u.messages.Load())
+	if _, err := c.Submit(ctx, tree, 0); !errors.Is(err, refused) || u.messages.Load() != 0 {
+		t.Fatalf("a submit whose upload failed gave %v and sent %d messages", err, u.messages.Load())
 	}
 }
 
-// A start's key is bounded, and a start past the bound sends nothing. A
-// send to a key no run has says so.
+// A send to a key no run has says so, and an empty key is not sent to.
 func Test_client_start_and_send_hold_a_key_to_its_bound(t *testing.T) {
 	l := local(t)
-	draft, err := machineParse("flow: f\nstages:\n  a: { job: ./add.js }\n", scripts)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := l.Start(ctx, draft, client.Start{Key: strings.Repeat("a", 257)}); !errors.Is(err, client.ErrStart) {
-		t.Fatalf("a key of 257 characters: %v", err)
-	}
 	if _, err := l.SendToKey(ctx, "nobody", "e", nil, 0); !errors.Is(err, client.ErrNoKey) {
 		t.Fatalf("a key no run has: %v", err)
 	}
 	if _, err := l.SendToKey(ctx, "", "e", nil, 0); err == nil {
 		t.Fatal("an empty key was sent to")
+	}
+	if _, err := l.SendToKey(ctx, strings.Repeat("a", 257), "e", nil, 0); err == nil {
+		t.Fatal("a key of 257 characters was sent to")
 	}
 }

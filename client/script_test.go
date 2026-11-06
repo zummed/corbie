@@ -66,7 +66,7 @@ func TestScriptIsWrappedInAFlowOfOneStage(t *testing.T) {
 		t.Fatal(err)
 	}
 	l := local(t)
-	id, err := l.Start(ctx, draft, client.Start{Input: 21})
+	id, err := l.Run(ctx, draft, client.Start{Input: 21})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -208,7 +208,7 @@ func Test_run_plugin_values_show_only_listed_calls(t *testing.T) {
 
 func Test_run_emit_entries_numbered_from_one_without_gaps(t *testing.T) {
 	l := local(t)
-	id, err := l.Start(ctx, draft(t, `
+	id, err := l.Run(ctx, draft(t, `
 		flow: emits
 		stages:
 		  it: { job: { script: ./it.js } }

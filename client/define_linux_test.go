@@ -46,7 +46,7 @@ func Test_run_define_stops_at_its_jobs_time_limit(t *testing.T) {
 	l := local(t)
 	next := "flow: next\nstages:\n  add: { job: { script: ./add.js, input: { n: 1 } } }\noutput: ${stages.add.output}\n"
 	before := spent(t)
-	id, err := l.Start(ctx, draft(t, "flow: maker\nstages:\n  make: { job: { script: ./make.js, timeout: 100ms } }\n", map[string]string{"make.js": costlyDefine}), client.Start{})
+	id, err := l.Run(ctx, draft(t, "flow: maker\nstages:\n  make: { job: { script: ./make.js, timeout: 100ms } }\n", map[string]string{"make.js": costlyDefine}), client.Start{})
 	if err != nil {
 		t.Fatal(err)
 	}

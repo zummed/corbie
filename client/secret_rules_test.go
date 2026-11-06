@@ -37,21 +37,23 @@ func init() {
 	}})
 }
 
-// withSecrets runs one script as a job that is allowed what is listed and
-// was started with the secrets given, and gives the run with what it
-// logged.
+// withSecrets sets the secrets given at /, runs one script as a job that is
+// allowed what is listed, and gives the run with what it logged.
 func withSecrets(t *testing.T, l *client.Local, source string, secrets map[string]string, allow ...string) (*client.Run, []string) {
 	t.Helper()
 	list := make([]string, len(allow))
 	for i, entry := range allow {
 		list[i] = fmt.Sprintf("%q", entry)
 	}
-	id, err := l.Start(ctx, draft(t, `
+	for name, value := range secrets {
+		setSecret(t, l, name, value)
+	}
+	id, err := l.Run(ctx, draft(t, `
 		flow: one
 		stages:
 		  it: { job: { script: ./it.js, timeout: 20s, allow: [`+strings.Join(list, ", ")+`] } }
 		output: ${stages.it.output}
-	`, map[string]string{"it.js": source}), client.Start{Secrets: secrets})
+	`, map[string]string{"it.js": source}), client.Start{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -261,7 +263,7 @@ func Test_sec_name_splits_one_way(t *testing.T) {
 	}
 	// A name is not empty, holds no @, no :, no slash and no blank, and
 	// does not start with - or ., by one rule wherever one is written: for
-	// a controller secret, in an entry, with a start.
+	// a controller secret, a controller value and in an entry.
 	for _, name := range []string{"", "A@B", "A:B", "A B", " A", "A ", "A\tB", "A\nB", "A\rB", "A\u00a0B", "A\x00B", "-", "-A", "--env", "A=B", ".A", "A/B", "A\\B"} {
 		if err := permission.CheckSecretName(name); err == nil {
 			t.Errorf("%q was taken as a secret's name", name)
@@ -269,15 +271,14 @@ func Test_sec_name_splits_one_way(t *testing.T) {
 		if err := secret.Set(ctx, l.Memory.As(ownerOf()), l.Controller.ID, "/", name, "value"); err == nil {
 			t.Errorf("a controller secret was set under the name %q", name)
 		}
+		if err := l.SetValue(ctx, "/", name, "value"); err == nil {
+			t.Errorf("a controller value was set under the name %q", name)
+		}
 		if err := permission.CheckWritten("secret:" + name + "@*"); err == nil {
 			t.Errorf("the entry %q was taken", "secret:"+name+"@*")
 		}
 		if _, err := machineParse(fmt.Sprintf(def, fmt.Sprintf("%q", "secret:"+name+"@net:api.example")), files); err == nil {
 			t.Errorf("a definition with an entry for the name %q passed its check", name)
-		}
-		id, err := l.Start(ctx, draft(t, fmt.Sprintf(def, ""), files), client.Start{Secrets: map[string]string{name: "value"}})
-		if err == nil {
-			t.Errorf("a run was started with a secret named %q: %s", name, id)
 		}
 	}
 	if names, _ := secret.List(ctx, l.Memory.As(ownerOf()), l.Controller.ID.Name); len(names) != 0 {

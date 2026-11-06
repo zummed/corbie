@@ -210,7 +210,15 @@ A program's word that is itself a role's or a program's name begins the next nam
 - When `corbie start` is stopped, it interrupts each program and waits for it, for up to ten seconds before killing it.
 - On a serverless host, `corbie start` refuses a program before anything starts.
 
-`corbie test` is an ordinary run: the same roles, in one process, on a store in memory, with ceilings that allow everything. `corbie test <file> --definition` prints the machine as the client writes it out, each value with its file and line, and runs nothing.
+`corbie test` is an ordinary run: the same roles, in one process, on a store in memory, with ceilings that allow everything. It records the file as a tree of one file and starts it. `corbie test <file> --definition` prints the machine as the client writes it out, each value with its file and line, and runs nothing.
+
+`corbie test` sets values and secrets at `/` of the controller in its process, read from the sources `controller value set` and `controller secret set` read:
+
+```
+--value NAME=VALUE    a value
+--secret NAME         a secret, typed at the terminal, not shown
+--secret-env NAME     a secret, from the environment variable NAME
+```
 
 ## A tree
 

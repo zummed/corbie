@@ -674,7 +674,7 @@ func TestRunTakenBetweenTwoLooksIsShownFromItsRecord(t *testing.T) {
 // is; and so is a script of the definition.
 func TestBlobShownInAnEntryIsFetchedByItsPath(t *testing.T) {
 	l := local(t)
-	id, err := l.Start(ctx, draft(t, `
+	id, err := l.Run(ctx, draft(t, `
 		flow: files
 		stages:
 		  make: { job: { script: ./make.js, input: { given: "${input.given}" } } }

@@ -447,3 +447,43 @@ func Test_client_wait_cut_short_answers_as_it_stands(t *testing.T) {
 		}
 	}
 }
+
+// A gateway whose client does not own a location's tree starts a run there
+// as a call. The run is answered from the call's result: its status and its
+// output, whose files are fetched as any run's are, and nothing of its
+// record.
+func Test_client_gateway_call_is_answered_from_its_result(t *testing.T) {
+	local, owner := served(t)
+	ctx := context.Background()
+	gw, err := identity.New("gw", identity.Client)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := identity.WriteTrust(ctx, local.Controller.Store, local.Controller.ID, identity.Trust{Card: gw.Card, Ceiling: permission.Layer{Allow: []string{"send:/**"}}}); err != nil {
+		t.Fatal(err)
+	}
+	c := serve(t, client.New(gw, local.Controller.ID.Card, local.Memory.As(store.Party{Kind: store.Client, Name: "gw", Controller: local.Controller.ID.Name})))
+	at := owner.place(`
+statechart: echo
+receive: [client:gw]
+initial: over
+states:
+  over: { end: done, output: "${input}" }
+`, nil)
+	status, started, text := c.upload(part{name: "start", contents: `{"at": "` + at + `", "input": {"n": 1}}`},
+		part{name: "input:file", filename: "a.txt", contents: "called"})
+	id, _ := started["id"].(string)
+	if status != 200 || id == "" {
+		t.Fatalf("the call was answered %d %s", status, text)
+	}
+	status, run, text := c.do("GET", "/runs/"+id+"?wait", "")
+	if status != 200 || run["status"] != "done" || run["called"] == nil || run["output"].(map[string]any)["n"] != 1.0 {
+		t.Fatalf("the call was answered %d %s", status, text)
+	}
+	if status, _, text := c.do("GET", "/runs/"+id+"/files/file", ""); status != 200 || text != "called" {
+		t.Fatalf("the call's file was answered %d %s", status, text)
+	}
+	if status, record, text := c.do("GET", "/runs/"+id+"/record", ""); status != 200 || len(record["entries"].([]any)) != 0 {
+		t.Fatalf("the record of a call was answered %d %s", status, text)
+	}
+}

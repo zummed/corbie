@@ -58,6 +58,19 @@ ends.
      "type":"flow","status":"done","input":{"url":"https://example.com"},
      "output":{"title":"Example Domain","url":"https://example.com"}, …}
 
+A run in another client's tree
+------------------------------
+
+The gateway's client starts a transient location of another client's tree as
+a call. The location's file lists the gateway's client in `receive:`, and that
+client's ceiling holds `send:` for the location.
+
+  receive: [client:laptop-client]
+
+The run is answered by its status, its output or error and the files the
+output names, under the `id` the start gave. Its record is the other client's
+and is not shown.
+
 Other requests
 --------------
 

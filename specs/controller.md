@@ -10,7 +10,7 @@ Everything that makes a machine move arrives as a message in the controller's in
 
 A message comes from a client submitting a tree, starting a run, cancelling one, sending an event, calling a location or answering a ticket; from a runner returning a job's result or passing on an emit the machine wants; or from the controller itself, which is how a child's start, a child's ending, events between a parent and a child, and sends and calls between runs travel. A wake is anything owed to time: a machine's timer, a machine's timeout, a job's result falling due, the next attempt at a job.
 
-The controller accepts a message only from a party it trusts, signed by that party and sealed to itself. A client may cancel only runs at its own trees' locations, and may answer any ticket it holds. It starts a run in another client's tree only by calling a transient location. A client's send or call is checked as a run's is (see Sending and calling). A result or an emit is accepted only for a job the instance is still waiting on, from the runner the job was sent to.
+The controller accepts a message only from a party it trusts, signed by that party and sealed to itself. A client may cancel only runs at its own trees' locations, and may answer any ticket it holds. It starts a run in another client's tree only by calling a transient location: its start of a location in another client's tree is a call. A client's send or call is checked as a run's is (see Sending and calling). A result or an emit is accepted only for a job the instance is still waiting on, from the runner the job was sent to.
 
 A sender's messages are named so that they sort in the order they were sent, and the controller takes them in that order.
 
@@ -185,7 +185,7 @@ These sends are noted as undelivered in the sender's record and fail nothing:
 
 An undelivered message is deleted, and then a note goes to the sender's record. A controller stopped between the two writes no note. Events from one run to one run arrive once each, in the order sent, and nothing is promised between two senders.
 
-A call is a job the controller carries out itself:
+A call is a job the controller carries out itself, and a client's start of a location in another client's tree is one too:
 
 ```yaml
 job:
@@ -194,11 +194,13 @@ job:
 ```
 
 1. The controller starts a run of the `transient` location with the input, as a root of that location's tree client.
-2. The job's output is that run's result.
+2. The job's output is that run's result, and a client's call has the result written beside its receipt (see instance.md).
 3. The job fails if `receive:` refuses the caller, the location is not `transient`, or the run fails.
-4. Cancelling the calling job cancels the run.
+4. Cancelling the calling job, or ending the run that holds it, cancels the run.
 
-A called run's held jobs go only to its own file's `ask:`, and are denied when it has none.
+- The caller's record names the run it called, and that run's head names the caller.
+- A call is checked against a `receive:` list. A mapping names events, and takes a call only from the tree's client.
+- A called run's held jobs go only to its own file's `ask:`, and are denied when it has none.
 
 ## Keyed runs
 
@@ -230,7 +232,7 @@ A send costs one read of the file, and one of the location's file when it starts
 
 ## Housekeeping
 
-The controller removes what is past keeping: finished instances after the time their definition gives, the older history of instances still running, receipts, the results of calls clients made into trees they do not own, and uploads for runs that never started and for submits never taken. It does this a little at a time as part of its passes, and a pass that is busy with machines does not put it first. What is due to go is brought up by a wake, as everything owed to time is: each instance has its own for its history and for its end, and the controller sets one for itself, once an hour, for receipts, results and uploads.
+The controller removes what is past keeping: finished instances after the time their definition gives, the older history of instances still running, receipts with the results of calls and their blobs beside them, and uploads for runs that never started and for submits never taken. It does this a little at a time as part of its passes, and a pass that is busy with machines does not put it first. What is due to go is brought up by a wake, as everything owed to time is: each instance has its own for its history and for its end, and the controller sets one for itself, once an hour, for receipts, results and uploads.
 
 ## When things go wrong
 

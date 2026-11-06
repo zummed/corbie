@@ -45,14 +45,18 @@ type Run struct {
 	Ended   time.Time `json:"ended,omitzero"`
 	Parent  string    `json:"parent,omitzero"`
 	// Location is where the run's machine lives, Key is the run's key at a
-	// keyed location, and StartedBy the run whose send started it.
-	Location  string            `json:"location,omitzero"`
-	Key       string            `json:"key,omitzero"`
-	StartedBy string            `json:"started_by,omitzero"`
-	Jobs      int               `json:"jobs,omitzero"`
-	Timers    int               `json:"timers,omitzero"`
-	Tickets   []string          `json:"tickets,omitzero"`
-	Labels    map[string]string `json:"labels,omitzero"`
+	// keyed location, and StartedBy the run whose send or call started it.
+	Location  string `json:"location,omitzero"`
+	Key       string `json:"key,omitzero"`
+	StartedBy string `json:"started_by,omitzero"`
+	// Called is, for a start of a location in a tree another client owns,
+	// the run the call started there. The client is shown only its status
+	// and its output or error, from the call's result.
+	Called  string            `json:"called,omitzero"`
+	Jobs    int               `json:"jobs,omitzero"`
+	Timers  int               `json:"timers,omitzero"`
+	Tickets []string          `json:"tickets,omitzero"`
+	Labels  map[string]string `json:"labels,omitzero"`
 }
 
 // Ended says whether the run has ended.
@@ -172,6 +176,9 @@ func (c *Client) unstarted(ctx context.Context, id string) (*Run, error) {
 			run.Error += ":\n" + receipt.Problems.Error()
 		}
 		return run, nil
+	}
+	if receipt != nil && receipt.Run != "" && receipt.Run != id {
+		return c.call(ctx, id, receipt.Run)
 	}
 	if receipt != nil {
 		return nil, nil
@@ -293,4 +300,37 @@ func (c *Client) Tickets(ctx context.Context, id string) (map[string]string, err
 		tickets[ticket.Name] = ticket.Value
 	}
 	return tickets, nil
+}
+
+// call shows a start that was a call into another client's tree: running
+// until its result is beside its receipt, and then as the result says.
+func (c *Client) call(ctx context.Context, id, called string) (*Run, error) {
+	run := &Run{ID: id, Status: instance.Running, Called: called}
+	result, err := c.result(ctx, id)
+	if err != nil || result == nil {
+		return run, err
+	}
+	run.Status, run.Output = result.Status, blob.Show(result.Output)
+	if e := result.Error; e != nil {
+		run.Error, run.Refused, run.Layer, run.Fix = e.Error, e.Refused, e.Layer, e.Fix
+		if result.Status == instance.Failed {
+			run.Failure = e.Status
+		}
+	}
+	return run, nil
+}
+
+// result reads what became of a run this client called, beside the call's
+// receipt: nil while the run is running.
+func (c *Client) result(ctx context.Context, id string) (*instance.CallResult, error) {
+	at := store.Result(c.ctl(), c.ID.Name, startMessage(id))
+	data, mark, err := c.Store.Read(ctx, at)
+	if err != nil || mark == store.None {
+		return nil, err
+	}
+	var result instance.CallResult
+	if _, err := identity.Read(data, at, c.Controller, c.ID, &result); err != nil {
+		return nil, fmt.Errorf("the result of the call %s: %w", id, err)
+	}
+	return &result, nil
 }

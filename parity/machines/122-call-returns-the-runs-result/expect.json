@@ -1,0 +1,9 @@
+{
+  "status": "done",
+  "output": { "got": 7, "at": "/case/lookup" },
+  "record": [
+    { "machine": "caller", "ask": { "kind": "call", "location": "/case/lookup", "run": "<any>" } },
+    { "machine": "lookup", "status": "done" }
+  ],
+  "note": "R-ctl-127, R-flow-46: a call job's output is the called run's result; the run is a root at its own location."
+}

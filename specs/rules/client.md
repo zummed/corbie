@@ -194,6 +194,9 @@ The detailed rules behind [the Client overview](../client.md).
 **R-client-160** `corbie run submit <location>` starts a run at the location. A location starts with `/`, does not end in `.yaml` or `.js`, and is no file or directory on this computer; a file's name that is not there is reported as not found, and nothing is sent. `--at`, `--memory` and `--tag` are refused with a location: the file recorded there gives its jobs their own. A start carries no key and no secret: secrets are set at the location.
 *Accept:* after `corbie run submit hello.yaml`, `corbie run submit /hello --input '{"name": "world"}'` prints a run's ID, and the run ends with the output `"hello, world"`. `corbie run submit /hello --key k` and `--secret-env HOME` are refused as mistakes, and so is `run submit /tmp/helo.yaml` when there is no such file. `corbie run submit /broken --wait`, where nothing is recorded, fails naming `/broken`. *Test:* `TestSubmitRecordsAFileAndStartsALocation`
 
+**R-client-161** A client that starts a location in a tree another client owns calls it: under the ID it chose, `run show`, `--wait` and the package's show give the call's status and its output or error from the call's result, the run the call started, and the files the output names.
+*Accept:* `Test_ctl_taken_call_receipt_waits_for_its_result`: `c2`'s start of `c1`'s location is shown `running` with the run it started, then `done`, and its output's file is fetched by its path. `Test_ctl_client_call_is_refused`.
+
 **C-client-55** A path in a machine may name a file of the context and none outside it, by a link or otherwise, so a directory's machines are what its files say. Tests: `TestPathsReadFromTheContext`, `TestLinksStayInTheContext`.
 
 ## The gateway
@@ -203,6 +206,9 @@ The detailed rules behind [the Client overview](../client.md).
 
 **R-client-152** The gateway starts a run at a location a request names, with an input, as `corbie run submit <location>` does. A request carries no definition, no file of one and no secret: a part or a field for any of them is refused, naming it.
 *Accept:* after the gateway's client submits `door.yaml` at `/door-1`, a start whose part `start` is `{"at": "/door-1"}` starts a run of `door`. A start with no `at`, one with `at` that is no location, one with a part `definition` or `file:./a.js`, and one whose `start` holds `secrets` are each refused naming what is wrong, and nothing is uploaded and nothing sent. *Test:* `TestGateway` and `TestStartThatIsNoUploadFormIsRefused`
+
+**R-client-162** A gateway's start of a location in a tree its client does not own is a call, and the run is answered from the call's result: its status, its output or error, and the files the output names, with a record that holds no entry.
+*Accept:* `Test_client_gateway_call_is_answered_from_its_result`: the gateway's client `gw` starts a location of another client's tree whose `receive:` lists `client:gw`, with a file in its input; `GET /runs/<id>?wait` gives `done`, the output and the run the call started, the file comes from `files/file`, and the record has no entries.
 
 **R-client-115** A stream of a record says when the run has ended and how, so its end is told apart from a connection that was lost.
 *Accept:* the stream of a run that finishes carries a last message giving the run as `done` before it closes; a stream cut by a failing network carries no such message.

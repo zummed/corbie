@@ -311,6 +311,14 @@ func Test_agent_shape_ref_outside_the_shape_is_refused(t *testing.T) {
 func Test_agent_tool_reading_unnamed_argument_is_refused(t *testing.T) {
 	agentRefused(t, strings.Replace(agentDef("http://127.0.0.1:1", ""), `input: { n: "${args.n}" }`, `input: { n: "${args.other}" }`, 1),
 		`reads "args.other", which the tool's args do not name`)
+	// So does a call's location, and a send's address and data.
+	for _, job := range []string{
+		`job: { call: { at: "${args.where}" } }`,
+		`job: { send: { to: { at: room, key: "${args.who}" }, event: set, data: { n: "${args.n}" } } }`,
+	} {
+		agentRefused(t, strings.Replace(agentDef("http://127.0.0.1:1", ""), `job: { script: ./add.js, input: { n: "${args.n}" } }`, job, 1),
+			`which the tool's args do not name`)
+	}
 }
 
 func Test_agent_tool_cannot_take_an_agents_own_job_name(t *testing.T) {
@@ -990,5 +998,53 @@ func TestAgentWithTheToolsOfAnMCPServer(t *testing.T) {
 	}
 	if shown := lastShown(m.Calls[1]); !strings.Contains(shown, "2 notes: tea at 4, tea at 5") {
 		t.Errorf("the call gave %s", shown)
+	}
+}
+
+// A tool whose job is a call is shown to the model as the whole of the
+// called run's result, and a called run that fails as its error.
+func Test_agent_tool_that_calls_shows_the_whole_result(t *testing.T) {
+	for _, end := range []string{"done", "failed"} {
+		m := newModel(t, calls("call_1", "look", `{"n": 41}`), says("found it"))
+		l := local(t, "all")
+		setSecret(t, l, "TEST_KEY", "sk-test-key")
+		sums := strings.Replace(agentDef(m.URL, ""), `  add:
+		    does: Add one to a number
+		    args: { n: number }
+		    job: { script: ./add.js, input: { n: "${args.n}" } }`, `  look:
+		    does: Look a number up
+		    args: { n: number }
+		    job: { call: { at: lookup }, input: { n: "${args.n}" }, allow: ["send:lookup"] }`, 1)
+		tree := &client.Tree{Prefix: "/a", Machines: []*client.Machine{
+			{Path: "sums.yaml", Location: "/a/sums", Draft: draft(t, sums, nil)},
+			{Path: "lookup.yaml", Location: "/a/lookup"},
+		}}
+		tree.Machines[1].Draft = draft(t, strings.Replace(`
+			statechart: lookup
+			initial: a
+			states:
+			  a: { end: END, output: { got: "${input.n}", from: lookup } }
+		`, "END", end, 1), nil)
+		message, err := l.Submit(ctx, tree, 0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if r, err := l.WaitReceipt(ctx, message, 0, client.LocalInterval); err != nil || !r.Taken {
+			t.Fatalf("the tree: %+v %v", r, err)
+		}
+		id, err := l.Start(ctx, client.Start{At: "/a/sums", Input: map[string]any{"question": "what is 41?"}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if r := wait(t, l, id); r.Status != "done" {
+			t.Fatalf("the agent ended %s: %s", r.Status, r.Error)
+		}
+		shown := jsonOf(m.Calls[1])
+		if !strings.Contains(shown, `\"from\":\"lookup\"`) || !strings.Contains(shown, `\"got\":41`) {
+			t.Fatalf("with the run %s the model was shown %s", end, shown)
+		}
+		if failed := strings.Contains(shown, "end: failed"); failed != (end == "failed") {
+			t.Fatalf("with the run %s the model was shown %s", end, shown)
+		}
 	}
 }

@@ -1,0 +1,10 @@
+{
+  "status": "done",
+  "record": [
+    { "machine": "caller", "ask": { "kind": "hold" } },
+    { "machine": "caller", "ask": { "kind": "call", "location": "/case/lookup" } },
+    { "machine": "room", "event": { "name": "hi" } },
+    { "machine": "lookup", "status": "done" }
+  ],
+  "note": "R-perm-69: ask_about: [send:…] holds a call job, and never a send action."
+}

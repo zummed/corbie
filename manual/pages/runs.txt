@@ -41,6 +41,9 @@ here.
   step                  the number of its latest step
   started, ended        times in UTC
   parent                for a child run, the ID of the run that started it
+  location, key         where its machine lives, and its key at a keyed location
+  started_by            the run whose send or call started it
+  called                for a start in another client's tree, the run the call started there
   jobs, timers          how many of its script jobs are on a runner, and how many timers it waits for
   tickets               the names of the tickets it waits on
   labels                the labels it was started with

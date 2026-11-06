@@ -1,0 +1,8 @@
+{
+  "status": "done",
+  "output": { "<contains>": "end: failed" },
+  "record": [
+    { "machine": "lookup", "status": "failed" }
+  ],
+  "note": "R-ctl-128, R-flow-46: a called run that fails fails its call job."
+}

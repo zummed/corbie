@@ -149,16 +149,24 @@ func (p *pass) remove(inst string) error {
 // written reads when a signed value was written from its frame, which is
 // its first line, without opening it.
 func (p *pass) written(name string) (time.Time, error) {
+	sent, _, err := p.frame(name)
+	return sent, err
+}
+
+// frame reads when a signed value was written, and until when it is good,
+// from its first line, without opening it.
+func (p *pass) frame(name string) (sent, until time.Time, err error) {
 	part, err := p.store.ReadPart(p.ctx, name, 0, 512)
 	if err != nil || part == nil {
-		return time.Time{}, err
+		return time.Time{}, time.Time{}, err
 	}
 	line, _, _ := strings.Cut(string(part), "\n")
 	var frame struct {
-		Sent time.Time `json:"sent"`
+		Sent  time.Time `json:"sent"`
+		Until time.Time `json:"until"`
 	}
 	json.Unmarshal([]byte(line), &frame)
-	return frame.Sent, nil
+	return frame.Sent, frame.Until, nil
 }
 
 // trim removes the older history of an instance that is still running: its
@@ -277,8 +285,9 @@ func (p *pass) referred(inst string, latest *instance.Step) (map[string]bool, er
 }
 
 // hourly removes what no instance's wake brings to the controller's
-// attention: receipts kept longer than a day, and uploads for runs that
-// never started within a day. It has a wake of its own, once an hour. It is
+// attention: receipts kept longer than a day, with the results of calls
+// beside them, and uploads for runs that never started and messages never
+// taken within a day. It has a wake of its own, once an hour. It is
 // given the housekeeping wakes the pass read.
 func (p *pass) hourly(wakes []string, busy bool) error {
 	next := store.Wake(p.ctl, p.now.Truncate(time.Hour).Add(time.Hour), store.House(p.ctl), "keep")
@@ -299,10 +308,15 @@ func (p *pass) hourly(wakes []string, busy bool) error {
 		p.due(p.now.Truncate(time.Hour).Add(time.Hour))
 		return err
 	}
-	gone, more, err := p.pastReceipts()
+	beside, receipts, more, err := p.pastReceipts()
 	if err != nil {
 		return err
 	}
+	gone, err := p.pastUploads()
+	if err != nil {
+		return err
+	}
+	gone = append(gone, beside...)
 	// An upload for a run that has not started within a day: a record that
 	// holds blobs and no step, under a name older than a day.
 	records, err := store.Names(p.store.List(p.ctx, store.Records(p.ctl)))
@@ -326,11 +340,16 @@ func (p *pass) hourly(wakes []string, busy bool) error {
 		}
 		gone = append(gone, names...)
 	}
-	err = p.each(len(gone), func(i int) error {
-		_, err := p.store.Delete(p.ctx, gone[i], store.Overwrite)
-		return err
-	})
-	if err != nil || more {
+	for _, names := range [][]string{gone, receipts} {
+		err = p.each(len(names), func(i int) error {
+			_, err := p.store.Delete(p.ctx, names[i], store.Overwrite)
+			return err
+		})
+		if err != nil {
+			return err
+		}
+	}
+	if more {
 		// With more that is due, the wake stays and the next pass goes on.
 		return err
 	}
@@ -348,40 +367,122 @@ func (p *pass) hourly(wakes []string, busy bool) error {
 	return nil
 }
 
-// pastReceipts gives the receipts kept longer than a day. A receipt's name
+// pastReceipts gives the receipts kept longer than a day, each with
+// everything in its directory: those last, the rest first, so a pass
+// stopped between the two leaves the receipt for the next. A receipt's name
 // is its message's, which carries the time it was sent, so each client's
 // list oldest first and a batch of them is read: the cost follows what is
-// due, not how many are kept. more says a whole batch was due.
-func (p *pass) pastReceipts() (gone []string, more bool, err error) {
+// due, not how many are kept. A taken call's receipt has no end of its own:
+// it stays while there is no result beside it, and the two go a day after
+// the result was written. more says a whole batch was due.
+func (p *pass) pastReceipts() (beside, receipts []string, more bool, err error) {
 	parties, err := p.parties()
 	if err != nil {
-		return nil, false, err
+		return nil, nil, false, err
 	}
 	for _, party := range parties {
 		if party.Card.Kind != identity.Client {
 			continue
 		}
-		names, err := store.Names(p.store.First(p.ctx, store.Receipts(p.ctl, party.Card.Name), wakeBatch))
+		client := party.Card.Name
+		names, err := store.Names(p.store.First(p.ctx, store.Receipts(p.ctl, client), wakeBatch))
 		if err != nil {
-			return nil, false, err
+			return nil, nil, false, err
+		}
+		var order []string
+		held := map[string][]string{}
+		for _, name := range names {
+			message, ok := store.ReceiptMessage(p.ctl, name)
+			if !ok {
+				continue
+			}
+			if _, seen := held[message]; !seen {
+				order = append(order, message)
+			}
+			held[message] = append(held[message], name)
+		}
+		if full := len(names) == wakeBatch; full && len(order) > 1 {
+			// The batch may end part of the way into the last directory.
+			order = order[:len(order)-1]
 		}
 		past := 0
-		for _, name := range names {
-			message, _ := store.ReceiptMessage(p.ctl, name)
-			at, err := time.Parse("20060102T150405", message[:min(15, len(message))])
+		for _, message := range order {
+			gone, err := p.pastReceipt(client, message, held[message])
 			if err != nil {
-				// A client may name a message as it likes. Where the name
-				// carries no time, the receipt says when it was written.
-				if at, err = p.written(name); err != nil {
-					return nil, false, err
+				return nil, nil, false, err
+			}
+			if !gone {
+				continue
+			}
+			past++
+			for _, name := range held[message] {
+				if name == store.Receipt(p.ctl, client, message) {
+					receipts = append(receipts, name)
+				} else {
+					beside = append(beside, name)
 				}
 			}
-			if !at.IsZero() && p.now.Sub(at) > instance.ReceiptLife+identity.ClockAllowance {
-				gone = append(gone, name)
-				past++
-			}
 		}
-		more = more || past == wakeBatch
+		more = more || past == len(order) && len(names) == wakeBatch
 	}
-	return gone, more, nil
+	return beside, receipts, more, nil
+}
+
+// pastReceipt says whether the directory of one message's receipt is past
+// keeping. Only one that is a day old by its name is read.
+func (p *pass) pastReceipt(client, message string, names []string) (bool, error) {
+	at, err := time.Parse("20060102T150405", message[:min(15, len(message))])
+	receipt, result := store.Receipt(p.ctl, client, message), store.Result(p.ctl, client, message)
+	if err != nil {
+		// A client may name a message as it likes. Where the name carries
+		// no time, the receipt says when it was written.
+		if at, _, err = p.frame(receipt); err != nil {
+			return false, err
+		}
+	}
+	if at.IsZero() || !p.past(at) {
+		return false, nil
+	}
+	switch {
+	case slices.Contains(names, result):
+		written, _, err := p.frame(result)
+		return !written.IsZero() && p.past(written), err
+	case slices.Contains(names, receipt):
+		_, until, err := p.frame(receipt)
+		// A taken call's receipt waits for its result.
+		return !until.IsZero(), err
+	}
+	return true, nil // what is left of a directory whose receipt has gone
+}
+
+// past says whether something written at a time is past a day's keeping.
+func (p *pass) past(at time.Time) bool {
+	return p.now.Sub(at) > instance.ReceiptLife+identity.ClockAllowance
+}
+
+// pastUploads gives the uploads of messages the controller never took that
+// are a day old: a message's uploads go as it is carried out. A message's
+// name carries the time it was sent; where it does not, an upload's name
+// says when it was made.
+func (p *pass) pastUploads() ([]string, error) {
+	names, err := store.Names(p.store.List(p.ctx, p.ctl+"/uploads"))
+	if err != nil {
+		return nil, err
+	}
+	var gone []string
+	for _, name := range names {
+		parts := strings.Split(strings.TrimPrefix(name, p.ctl+"/uploads/"), "/")
+		if len(parts) < 3 {
+			continue
+		}
+		message := parts[1]
+		at, err := time.Parse("20060102T150405", message[:min(15, len(message))])
+		if err != nil {
+			at = blob.Made(name)
+		}
+		if !at.IsZero() && p.past(at) {
+			gone = append(gone, name)
+		}
+	}
+	return gone, nil
 }

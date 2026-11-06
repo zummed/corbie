@@ -37,6 +37,7 @@ Start a run
   life       "10m": how long the start is valid if no controller reads it, default 5m
 
 - The machine is the file recorded at `at`. The gateway's client submits its tree, as `corbie manual a-directory` shows.
+- In a tree another client owns, the start is a call: `GET /runs/<id>` gives the status, the output or error and `called`, the run it started there, and the record has no entries. It takes no `labels`, `allow` or `deny`.
 - A part can be sent as a form field or as a file.
 - With an `input:<name>` part, `input` is an object or absent, with no value under that name.
 

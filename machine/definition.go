@@ -571,6 +571,19 @@ func (d *Draft) Values() []string {
 	return sortedKeys(all)
 }
 
+// Addressed gives what a send or a call job writes beside its input: the
+// address and the event's data, each of which may hold expressions.
+func (s *JobSpec) Addressed() []any {
+	var written []any
+	if s.Send != nil {
+		written = append(written, s.Send.To.At, s.Send.To.Key, s.Send.To.Run, s.Send.To.Expr, s.Send.Data)
+	}
+	if s.Call != nil {
+		written = append(written, s.Call.At)
+	}
+	return written
+}
+
 // Values gives the names of the values a job's expressions read, in order.
 func (s *JobSpec) Values() []string {
 	all := map[string]bool{}
@@ -578,12 +591,7 @@ func (s *JobSpec) Values() []string {
 	for _, entry := range s.Allow {
 		written = append(written, entry)
 	}
-	if s.Send != nil {
-		written = append(written, s.Send.To.At, s.Send.To.Key, s.Send.To.Run, s.Send.To.Expr, s.Send.Data)
-	}
-	if s.Call != nil {
-		written = append(written, s.Call.At)
-	}
+	written = append(written, s.Addressed()...)
 	for _, read := range ReadsIn(written, ValuesName) {
 		if read.Name != "*" {
 			all[read.Name] = true

@@ -1,0 +1,10 @@
+# A flow's stage calls a transient location and waits. The stage's output is
+# the called run's result. The called run is a root of the tree's client, one
+# level below the flow, and its head names the flow as the run that called
+# it.
+flow: caller
+allow: [send:lookup]
+input: { n: number }
+stages:
+  look: { job: { call: { at: lookup }, input: { n: "${input.n}" } } }
+output: ${stages.look.output}

@@ -1,0 +1,4 @@
+statechart: lookup
+initial: broken
+states:
+  broken: { end: failed, output: { why: broken } }

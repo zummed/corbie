@@ -66,7 +66,8 @@ func senderOf(msg *instance.Message) string {
 const clientPrefix = "client."
 
 // client gives the client a message answers to and the name of its message:
-// a client's own, or the one the controller wrote for a client's send.
+// a client's own, or the one the controller wrote for a client's send or
+// call.
 func (a *arrival) client() (sender, message string, ok bool) {
 	switch {
 	case a.wake:
@@ -76,6 +77,10 @@ func (a *arrival) client() (sender, message string, ok bool) {
 	case a.isSend() && a.msg.Sender != nil && a.msg.Sender.Client != "":
 		base := a.name[strings.LastIndexByte(a.name, '/')+1:]
 		return a.msg.Sender.Client, strings.TrimPrefix(base, clientPrefix+a.msg.Sender.Client+"."), true
+	case a.kind == identity.Controller && a.msg.Kind == instance.KindStart && isCall(a.msg.Start) && a.msg.Start.Above.CallReceipt != nil:
+		// The start of a run a client called answers the client's call.
+		call := a.msg.Start.Above.CallReceipt
+		return call.Client, call.Message, true
 	}
 	return "", "", false
 }
@@ -266,17 +271,16 @@ func sendsTo(r machine.Request) bool { return r.Send != nil && r.Send.At != nil 
 
 // refusedSend says why a send to a location is refused, if it is: a layer
 // of the run refuses it, or its tree client is not known to the controller.
-// The layers are the definition's own lists and those the run was started
+// The layers are the sender's own lists, those of the definition for a send
+// action and those of the job for a call, and the lists the run was started
 // under, read from the tree's prefix, and then its tree client's ceiling,
 // which is written in full. The runner's ceiling takes no part: no runner
 // carries a send.
-func (b *build) refusedSend(at string) (*machine.Error, error) {
+func (b *build) refusedSend(at string, own permission.Layer) (*machine.Error, error) {
 	denied := func(r *permission.Refusal) *machine.Error {
 		return &machine.Error{Status: machine.StatusDenied, Error: r.Error(), Refused: r.What, Layer: r.Layer, Fix: r.Fix}
 	}
-	own := fmt.Sprintf("the definition of %q", b.def.Name)
-	layers := []permission.Layer{{Name: own, Allow: b.read.Allow, Deny: b.def.Deny, Fix: "add the line %s to the allow list of " + own}}
-	layers = append(layers, b.st.Above.Layers...)
+	layers := append([]permission.Layer{own}, b.st.Above.Layers...)
 	if r := (&permission.Set{Layers: layers, Prefix: b.st.Tree}).Check(permission.Send, at); r != nil {
 		return denied(r), nil
 	}
@@ -334,7 +338,8 @@ func (b *build) sendTo(s *machine.Send) (denied bool) {
 		b.end(instance.Failed, nil, b.p.failf("%s", b.read.Unfilled))
 		return true
 	}
-	refused, err := b.refusedSend(at)
+	own := fmt.Sprintf("the definition of %q", b.def.Name)
+	refused, err := b.refusedSend(at, permission.Layer{Name: own, Allow: b.read.Allow, Deny: b.def.Deny, Fix: "add the line %s to the allow list of " + own})
 	if err != nil {
 		b.err = err
 		return true

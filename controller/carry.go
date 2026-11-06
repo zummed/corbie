@@ -219,9 +219,19 @@ func (p *pass) carry(inst string, step *instance.Step, ask *instance.Ask) error 
 			_, err = p.send(store.Message(ask.Runner, p.ctl, ask.Message), ask.At, msg, to.Card)
 			return err
 		}
-		msg := &instance.Message{Kind: instance.KindCancel, Instance: ask.Child, From: inst}
+		to := ask.Child
+		if ask.Run != "" {
+			to = ask.Run // a run a call started
+		}
+		msg := &instance.Message{Kind: instance.KindCancel, Instance: to, From: inst}
 		_, err := p.send(store.Message(p.ctl, p.ctl, ask.Message), noEnd, msg, p.c.ID.Card)
 		return err
+
+	case instance.AskCall:
+		return p.called(inst, step, ask)
+
+	case instance.AskResult:
+		return p.result(ask)
 
 	case instance.AskTell:
 		return p.tell(ask.To, inst, ask.Message, ask.Text)
@@ -269,7 +279,12 @@ func (p *pass) carry(inst string, step *instance.Step, ask *instance.Ask) error 
 		return err
 
 	case instance.AskEnd:
-		result := &instance.Result{Job: ask.Name, Status: instance.Done, Used: st.Used}
+		result := &instance.Result{Job: ask.Name, Status: instance.Done}
+		if st.Above.Parent != "" {
+			// What a child used is its parent's; a called run's is its own
+			// tree's.
+			result.Used = st.Used
+		}
 		output, err := p.handUp(ask.Output, ask.To)
 		if err != nil {
 			return err
@@ -292,6 +307,11 @@ func (p *pass) carry(inst string, step *instance.Step, ask *instance.Ask) error 
 		return err
 
 	case instance.AskReceipt:
+		if ask.Run != "" {
+			// A taken call's receipt is kept until its result has been
+			// written a day, and so has no end of its own.
+			return p.answer(ask.Sender, ask.Message, noEnd, ask.Receipt)
+		}
 		return p.writeReceipt(ask.Sender, ask.Message, ask.Receipt)
 	}
 	return nil
@@ -537,12 +557,17 @@ func (p *pass) receipt(a *arrival, r *instance.Receipt) error {
 // own name, sealed to the client that sent it. A message sent twice gets
 // the same answer twice: the first receipt stands.
 func (p *pass) writeReceipt(sender, message string, r *instance.Receipt) error {
+	return p.answer(sender, message, p.now.Add(instance.ReceiptLife), r)
+}
+
+// answer writes a receipt good until a time: none for a taken call's.
+func (p *pass) answer(sender, message string, until time.Time, r *instance.Receipt) error {
 	to, err := p.trusted(sender)
 	if err != nil || to == nil {
 		return err
 	}
 	name := store.Receipt(p.ctl, sender, message[strings.LastIndexByte(message, '/')+1:])
-	_, err = p.write(name, p.now.Add(instance.ReceiptLife), r, to.Card)
+	_, err = p.write(name, until, r, to.Card)
 	return err
 }
 

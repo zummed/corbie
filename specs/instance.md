@@ -52,10 +52,10 @@ For every message a client sends, the controller writes a receipt under the same
 
 A client chooses a run's name before starting it, because a start's input goes into the run's record before the start is sent: the input's files, then the input itself, which the start names and the controller reads. A run whose record holds nothing was never sent. An application that must survive its own restart notes the name before it sends.
 
-A client that calls a location in a tree it does not own cannot read the run's record:
+A client's start of a location in a tree it does not own is a call. The client cannot read the run's record:
 
-1. It uploads the input's files under the call's name, and the controller copies them into the new run's record.
-2. The controller writes the call's receipt at once: taken, or refused and why.
+1. It writes the input under the name it chose, as for any start, and the controller copies the input into the new run's record, named under the tree's client.
+2. The controller writes the call's receipt at once: taken, naming the run, or refused and why.
 3. When the run ends, the controller writes the call's result beside the receipt: the run's status, and its output or error, with the blobs the output names.
 
 The result is sealed to the client that called. The receipt of a taken call is kept while its run is running, and the receipt and the result are deleted together a day after the result is written.

@@ -46,7 +46,7 @@ Fields
 
 A stage has these fields.
 
-  job              a script or a machine: see `corbie manual definitions`
+  job              a script, a machine or a call: see `corbie manual definitions`
   when             a condition, one expression: ${stages.fetch.failed}; if it
                    is false, the stage is skipped
   follows          stages it runs after without reading them: [fetch]
@@ -58,6 +58,10 @@ An expression reads `input`, `run` and these.
   stages.<name>.failed     true if the stage failed
   stages.<name>.error      the error's text, if it failed
   stages.<name>.skipped    true if the stage was skipped
+
+A stage whose job is `call: { at: services/weather }` starts a run of that
+transient location and waits. Its output is that run's result, and it fails
+when that run fails.
   stages.<name>.emitted    the values its job has emitted so far
 
 Handling a failure

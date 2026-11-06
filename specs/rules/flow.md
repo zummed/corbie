@@ -91,8 +91,11 @@ The detailed rules behind the [Flow overview](../flow.md). Area code: `flow`. Wh
 **R-flow-42** A flow's `emit:` can name one stage whose emitted items it emits to its own parent as they arrive, which is how a flow gives partial results; a flow that names no such stage emits nothing.
 *Accept:* a child flow names its emitting stage, which emits three values; the parent flow's per-item stage that follows the child's stage starts its first item before the child has finished, and runs three items in all. A root flow names a stage that emits three values a second apart; a client following the record sees each value as an event sent up, before the flow has ended. Parity cases 57 and 45, where nothing is named and nothing is emitted.
 
-**R-flow-45** A flow does not wait on tickets or timers, and ignores events sent down to it.
-*Accept:* a flow written with a `ticket:` or a `timers:` is refused when checked; a running flow's head never names a ticket or counts a timer. Parity case 45: the flow receives the event, carries on and finishes. For a root flow, the receipt of the client that sent the event says the flow had no rule for it.
+**R-flow-45** A flow does not wait on tickets or timers, and ignores events sent down to it. A send to a flow run by its address is noted as undelivered in the sender's record.
+*Accept:* a flow written with a `ticket:` or a `timers:` is refused when checked; a running flow's head never names a ticket or counts a timer. Parity case 45: the flow receives the event, carries on and finishes. For a root flow, the receipt of the client that sent the event says the flow had no rule for it. Parity case 119: a send to a flow run by its address is noted as undelivered.
+
+**R-flow-46** A stage's job may call a location: it starts a run of the `transient` location and waits, and the stage's output is that run's result. The call fails if the receiver refuses it, if the location is not `transient`, or if the called run fails, and a stage that reads the failure runs. The called run is a root of its own tree's client, one level below the flow, and is cancelled with the stage's job.
+*Accept:* parity cases 122, 123, 125 and 126.
 
 ## Interfaces
 

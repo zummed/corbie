@@ -1,0 +1,5 @@
+statechart: lookup
+initial: waiting
+states:
+  waiting: { on: { go: over } }
+  over: { end: done }

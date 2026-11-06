@@ -90,6 +90,12 @@ func (p *pass) advance(inst string, waiting []*arrival) error {
 				}
 				continue
 			}
+			if d.failed != "" {
+				if err := p.callFailed(d.a, d.failed); err != nil {
+					return err
+				}
+				continue
+			}
 			if d.receipt != nil {
 				if err := p.receipt(d.a, d.receipt); err != nil {
 					return err

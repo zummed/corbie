@@ -1,0 +1,6 @@
+# The called location's receive: does not list the caller: the call job
+# fails, and no run of the location starts.
+flow: caller
+allow: [send:lookup]
+stages:
+  look: { job: { call: { at: lookup }, input: { n: 1 } } }

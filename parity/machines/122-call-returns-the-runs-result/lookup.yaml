@@ -1,0 +1,5 @@
+statechart: lookup
+input: { n: number }
+initial: found
+states:
+  found: { end: done, output: { got: "${input.n}", at: "${run.location}" } }

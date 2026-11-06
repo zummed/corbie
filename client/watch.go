@@ -731,6 +731,25 @@ func (c *Client) Fetch(ctx context.Context, id, path string) (io.Reader, File, e
 // find gives the reference of the blob a path names.
 func (c *Client) find(ctx context.Context, id, path string) (blob.Ref, error) {
 	latest, err := c.current(ctx, id)
+	if errors.Is(err, ErrNoRecord) {
+		// A call's result is beside its receipt, and only its output can be
+		// read.
+		output, called, callErr := c.calledOutput(ctx, id)
+		switch {
+		case callErr != nil:
+			return blob.Ref{}, callErr
+		case !called:
+			return blob.Ref{}, err
+		}
+		data, err := plain(output)
+		if err != nil {
+			return blob.Ref{}, err
+		}
+		if ref, ok := blob.Find(data, path); ok {
+			return ref, nil
+		}
+		return blob.Ref{}, fmt.Errorf("%w %q", ErrNoFile, path)
+	}
 	if err != nil {
 		return blob.Ref{}, err
 	}
@@ -777,17 +796,44 @@ func (c *Client) find(ctx context.Context, id, path string) (blob.Ref, error) {
 // name it has in the value that holds it. It lists every blob a path of the
 // result fetches: one written out inside a text is among them.
 func (c *Client) Files(ctx context.Context, id string) (map[string]File, error) {
+	var given any
 	latest, err := c.current(ctx, id)
-	if err != nil {
+	switch {
+	case errors.Is(err, ErrNoRecord):
+		output, called, callErr := c.calledOutput(ctx, id)
+		if callErr != nil {
+			return nil, callErr
+		}
+		if !called {
+			return nil, err
+		}
+		given = output
+	case err != nil:
 		return nil, err
+	default:
+		given = latest.State.Output
 	}
-	output, err := plain(latest.State.Output)
+	output, err := plain(given)
 	if err != nil {
 		return nil, err
 	}
 	files := map[string]File{}
 	named(output, "", "", files)
 	return files, nil
+}
+
+// calledOutput gives the output of a call into another client's tree, from
+// its result. called says the run is such a call and its result is there.
+func (c *Client) calledOutput(ctx context.Context, id string) (output any, called bool, err error) {
+	run, err := c.Show(ctx, id)
+	if err != nil || run.Called == "" || !run.HasEnded() {
+		return nil, false, err
+	}
+	result, err := c.result(ctx, id)
+	if err != nil || result == nil {
+		return nil, false, err
+	}
+	return result.Output, true, nil
 }
 
 // named lists the blobs of a value, each under the path it is shown with.

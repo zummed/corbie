@@ -579,16 +579,21 @@ func (p *pass) readLocated(location string) (*located, error) {
 // located gives the start of a run at a location, from the file recorded
 // there, which the run's first step copies into its record; with the
 // directory last submitted at its tree and the values set at the location
-// or above, read once here. A send to a key starts a run as a client's
-// start does, and keeps the depth and the sender its message gives. It
-// gives nil where the start is refused, or waits for a later pass.
+// or above, read once here. A send to a key, or a call, starts a run as a
+// client's start does, and keeps the depth, the sender and the call its
+// message gives. A client's start of a location in another client's tree
+// is a call. It gives nil where the start is refused, is a call, or waits
+// for a later pass.
 func (b *build) located(start *arrival) (*instance.Start, error) {
 	p, s := b.p, *start.msg.Start
-	sent := start.isSend()
+	sent, call := start.isSend(), isCall(&s)
 	no := func(format string, args ...any) (*instance.Start, error) {
-		if sent {
+		switch {
+		case sent:
 			b.undeliver(start, fmt.Sprintf(format, args...))
-		} else {
+		case call:
+			b.noCall(start, fmt.Sprintf(format, args...))
+		default:
 			b.refuse(start, format, args...)
 		}
 		return nil, nil
@@ -606,11 +611,16 @@ func (b *build) located(start *arrival) (*instance.Start, error) {
 	switch {
 	case file == nil:
 		return no("nothing is recorded at %s: a run starts at the location of a file in a tree", s.Location)
+	case start.kind == identity.Client && file.Client != start.sender:
+		return nil, b.callIn(start, file, &s)
 	case store.InstanceClient(b.inst) != file.Client:
 		return no("%s is in a tree of the client %s, and only that client starts a run there", s.Location, file.Client)
 	case sent && file.Lifetime != machine.LifetimeKeyed:
 		return no("%s is not keyed", s.Location)
 	case sent:
+	case call && file.Lifetime != machine.LifetimeTransient:
+		return no("%s is %s: a call starts a run only of a transient location", s.Location, file.Lifetime)
+	case call:
 	case start.kind == identity.Client && file.Lifetime == machine.LifetimeSingleton:
 		return no("the file at %s is a singleton: its run starts when its tree is submitted", s.Location)
 	case start.kind == identity.Client && file.Lifetime == machine.LifetimeKeyed:
@@ -633,22 +643,14 @@ func (b *build) located(start *arrival) (*instance.Start, error) {
 		}
 	}
 	if start.kind == identity.Client {
-		// A client's input is the blob its start names in the run's record.
-		in := s.InputBlob
-		if in.At != store.Blob(p.ctl, b.inst, path.Base(in.At)) {
-			return no("a client's start names its input, written in the run's record")
-		}
-		data, err := blob.ReadAll(p.ctx, p.store, in, blob.StepLimit)
-		if err != nil {
-			if err = p.blobError(err); err != nil {
-				return nil, err
+		input, why, err := b.clientInput(&s)
+		if err != nil || why != "" {
+			if why != "" {
+				return no("%s", why)
 			}
-			return no("the start's input cannot be read")
+			return nil, err
 		}
-		s.Input = nil
-		if err := identity.Decode(data, &s.Input); err != nil {
-			return no("the start's input is not JSON")
-		}
+		s.Input = input
 	}
 	tree, _, err := p.readTree(file.Tree)
 	if err != nil && !isAltered(err) {
@@ -662,10 +664,12 @@ func (b *build) located(start *arrival) (*instance.Start, error) {
 		return no("the values set at %s or above cannot be read: %v", s.Location, err)
 	}
 	above := &instance.Above{Values: values}
-	if sent && s.Above != nil {
-		// A run a send starts is a root: it takes from its sender how far
-		// down it is and who sent, and nothing else.
+	if (sent || call) && s.Above != nil {
+		// A run a send or a call starts is a root: it takes from its sender
+		// how far down it is, who sent, and the call it answers, and
+		// nothing else.
 		above.Depth, above.StartedBy = s.Above.Depth, s.Above.StartedBy
+		above.CallJob, above.CallReceipt = s.Above.CallJob, s.Above.CallReceipt
 	}
 	if tree != nil {
 		above.Context = tree.Directory
@@ -673,4 +677,24 @@ func (b *build) located(start *arrival) (*instance.Start, error) {
 	s.Definition, s.Above, s.Tree = file.Definition, above, file.Tree
 	b.st.Lifetime, b.fromLocation = file.Lifetime, true
 	return &s, nil
+}
+
+// clientInput reads a client's input: the blob its start names in the
+// record of the run it names. It gives why it cannot be read, if it cannot.
+func (b *build) clientInput(s *instance.Start) (input any, why string, err error) {
+	p, in := b.p, s.InputBlob
+	if in.At != store.Blob(p.ctl, b.inst, path.Base(in.At)) {
+		return nil, "a client's start names its input, written in the run's record", nil
+	}
+	data, err := blob.ReadAll(p.ctx, p.store, in, blob.StepLimit)
+	if err != nil {
+		if err = p.blobError(err); err != nil {
+			return nil, "", err
+		}
+		return nil, "the start's input cannot be read", nil
+	}
+	if err := identity.Decode(data, &input); err != nil {
+		return nil, "the start's input is not JSON", nil
+	}
+	return input, "", nil
 }

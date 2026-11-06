@@ -337,6 +337,17 @@ func Test_flow_reference_to_missing_stage_is_refused(t *testing.T) {
 		  a: { job: { script: ./add.js, input: { n: 1 } } }
 		output: ${stages["nowhere"].output}
 	`, scripts, `no stage named "nowhere"`)
+	// A send's data and a call's location are read as an input is.
+	flowRefused(t, `
+		flow: bad
+		stages:
+		  a: { job: { send: { to: { at: room, key: k }, event: set, data: "${stages.gone.output}" } } }
+	`, scripts, `no stage named "gone"`)
+	flowRefused(t, `
+		flow: bad
+		stages:
+		  a: { job: { call: { at: "${stages.away.output}" } } }
+	`, scripts, `no stage named "away"`)
 	// A flow with a cycle is refused, and the refusal names both stages.
 	flowRefused(t, `
 		flow: circle

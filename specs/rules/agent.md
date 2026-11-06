@@ -42,11 +42,14 @@ The detailed rules behind the [Agent overview](../agent.md). Area code: `agent`.
 
 ## Tools
 
-**R-agent-22** A tool is a named job, a script or a machine, with a description, the shape of its arguments, and its own permissions; its job reads the agent's input and the arguments the model supplied.
+**R-agent-22** A tool is a named job, a script, a machine, a call or a send, with a description, the shape of its arguments, and its own permissions; its job reads the agent's input and the arguments the model supplied.
 *Accept:* parity case 85: one tool that is a script, one that is a flow and one that is a chart. The librarian is started with the directory `/srv/library` and its model calls `shelf` with the shelf `B`; the tool's job is given that directory and that shelf as its input, and may read under `/srv/library` and nowhere else.
 
 **R-agent-54** A tool whose job is an agent is shown to the model as what that agent replied. The sub-agent's conversation and its count of tokens stay in its own record.
 *Accept:* an agent calls a tool that is another agent; its next turn is shown that agent's reply as the tool's result, and neither its conversation nor its tokens.
+
+**R-agent-64** A tool whose job is a call is shown to the model as the whole of the called run's result, or as its error when the run fails. The called run's record belongs to its own tree's client.
+*Accept:* `Test_agent_tool_that_calls_shows_the_whole_result`: the model is shown the called chart's whole output, and with the chart ending failed, its error with that output.
 
 **R-agent-27** A tool that fails goes back to the model as an error, with whatever output it still gave, and the agent carries on.
 *Accept:* parity case 85: the third turn is shown both errors, and the agent ends well; in the result for the chart's call the model sees `reached gave_up` and the failed final state's output.
@@ -60,7 +63,7 @@ The detailed rules behind the [Agent overview](../agent.md). Area code: `agent`.
 **R-agent-34** A call to a tool the agent does not have, or with arguments that do not fit the tool's shape, runs nothing and goes back to the model as an error.
 *Accept:* a scripted model calls `shelf` with a number for the shelf and calls a tool named `burn`; no job is sent for either, and the next turn is shown an error for each.
 
-**C-agent-06** A tool's job that reads an argument that is not a key of its shape's `properties` is refused when the definition is checked, whatever else the shape allows. The model is never told of that argument, so the value would always be missing. *Test:* `agent_tool_reading_unnamed_argument_is_refused`
+**C-agent-06** A tool's job that reads an argument that is not a key of its shape's `properties`, in its input, a call's location or a send's address or data, is refused when the definition is checked, whatever else the shape allows. The model is never told of that argument, so the value would always be missing. *Test:* `agent_tool_reading_unnamed_argument_is_refused`
 
 **R-agent-57** A tool entry may give a `list:` job in place of `does:` and `args:`. The job runs once, before the first turn, and returns the tools, each with a name, what it does and the shape of its arguments; the list is kept in the agent's record and is the same for every turn. The model is shown each tool under the entry's name and its own joined by `_`, and a call to one runs the entry's `job:` with `tool` the tool's own name.
 *Accept:* an agent's entry `files` has a list script that returns `read` and `write`. The first turn is offered `files_read` and `files_write`, with the descriptions and shapes the list gave. The model calls `files_write`; the entry's job is given `write` as `${tool}` and the arguments sent, and has the entry's permissions. The agent takes three turns, and the record shows one job named `files`, before the first turn. A second run started with the first one's conversation runs the list again.

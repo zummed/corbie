@@ -285,6 +285,8 @@ for the result.
   `data`, `approve`, `allow` and `deny`, and nothing else.
 - A call job's output is the called run's result. It fails if the receiver
   refuses it, if the location is not transient, or if the run fails.
+- The called run belongs to its own tree's client. Cancelling the call job
+  cancels it.
 - A key is any text of 1 to 256 characters. Anyone who can list runs can read
   it, so put no secret in a key.
 
@@ -295,6 +297,8 @@ and the receiver's `receive:` to accept the sender.
   receive: { set: [thermostats/*, client:panel], stop: [client:panel] }   by event name
 
 - With no `receive:`, a file accepts its own tree and its tree's client.
+- A call is checked against a list. A mapping takes a call only from the
+  tree's client.
 - The run reads the sender as `event.from`: `{ at, run }`, with `key` for a
   keyed run, or `{ client }`.
 - A send the receiver refuses, or that no running statechart can take, is
@@ -330,6 +334,7 @@ holds a job in two cases.
 - The job's `allow:` list declares a permission that `ask_about:` lists, in
   its definition or in one above it. Two entries match when they have the same
   kind and either scope covers the other, or when one is a group of that kind.
+  A call job declares `send:` for its location as well.
 
 The ask is a job, and the controller adds two fields to its input.
 
@@ -362,6 +367,7 @@ value, approves nothing.
   agent's. The controller starts each ask once for the jobs of one step that
   use it.
 - A machine run as an ask uses no `ask:` and no `ask_about:` from above it.
+- A run started by a send or a call uses only its own file's `ask:`.
 - `corbie run submit` refuses a definition that can hold a job and has no
   `ask:` in it or above it.
 

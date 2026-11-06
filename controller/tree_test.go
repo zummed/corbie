@@ -406,7 +406,8 @@ func Test_ctl_client_starts_its_own_transient_locations(t *testing.T) {
 			t.Errorf("the start of %s gave %q", at, refused)
 		}
 	}
-	if refused := start(w.clientOf(c2), "/t/a"); !strings.Contains(refused, "/t/a is in a tree of the client c1") {
+	// Another client's start is a call, which /t/a's receive: refuses.
+	if refused := start(w.clientOf(c2), "/t/a"); !strings.Contains(refused, "/t/a does not receive a call from client:c2") {
 		t.Fatalf("another client's start gave %q", refused)
 	}
 }

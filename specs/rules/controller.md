@@ -247,6 +247,22 @@ The detailed rules behind the [Controller overview](../controller.md). What the 
 **R-ctl-125** A run started by a send is a root of its location's tree client, started from the file recorded there. It counts one level below its sender, and fails as it starts if that passes its own file's depth limit, and a run that fails as it starts adds the reason to its sender's record.
 *Accept:* `Test_ctl_chain_of_sends_ends_at_the_depth_limit`, `Test_ctl_send_whose_data_does_not_fit_fails_in_the_senders_record` and `Test_ctl_sent_root_fails_at_start_and_tells_its_sender`.
 
+**R-ctl-127** A call job starts a run of a `transient` location with the job's input, a root of that location's tree client and one level below its caller, and the job's output is that run's result. The blobs the input names are copied into the called run's record before it starts, and those its result names into the caller's record. The caller's record names the run it called, and that run's head names the caller.
+*Accept:* parity case 122. `Test_ctl_call_returns_the_runs_result` and `Test_ctl_call_copies_blobs_both_ways`.
+
+**R-ctl-128** A call job fails when nothing is recorded at its location, when the location is not `transient`, when a layer of the caller refuses `send:` for it (`denied`), when the receiver's `receive:` does not list the caller, when the called run fails as it starts or past its own file's depth limit, and when the called run fails. A call is checked against a `receive:` list; a mapping takes a call only from the tree's client. A call no run takes leaves no run.
+*Accept:* parity cases 123, 124 and 125. `Test_ctl_call_fails_its_job` and `Test_ctl_call_counts_one_level_below_its_caller`.
+
+**R-ctl-129** Cancelling a calling job, or ending the run that holds it, cancels the run it called.
+*Accept:* parity case 126. `Test_ctl_cancelling_a_call_cancels_the_run`.
+
+**R-ctl-130** A client's start of a location in a tree another client owns is a call. It needs `send:` for the location in the client's ceiling, a `transient` location, and no labels or allow list, and the receiver's `receive:` must list `client:<name>`; otherwise the start's receipt refuses it. A call that is taken has a receipt naming the run, written as that run starts, and its result beside the receipt when that run ends (R-inst-69).
+*Accept:* `Test_ctl_taken_call_receipt_waits_for_its_result`, `Test_ctl_client_call_is_refused` and `Test_ctl_client_starts_its_own_transient_locations`.
+
+**C-ctl-82** A step names the run a call started by `Run`, never by `Child`, so removing the caller past keeping, and trimming what is below a running caller, never follows it. The called run is a root of another tree's client, and its record would otherwise go with its caller's. *Test:* `ctl_removing_a_caller_leaves_the_run_it_called`
+
+**C-ctl-83** A taken call's receipt is written with no end in its frame, and housekeeping reads only that frame to keep it until its result has been written a day. A receipt is sealed to its client alone, and a call that runs past a day would otherwise lose its receipt while its run is running. *Test:* `ctl_taken_call_receipt_waits_for_its_result`
+
 ## Keyed runs
 
 **R-ctl-126** A send to a key at a keyed location with no running run starts one, with the event's data as its input, and then gives it the event. Further sends to the key go to that run. When it ends, the next send to the key starts a fresh one.
@@ -276,7 +292,7 @@ The detailed rules behind the [Controller overview](../controller.md). What the 
 
 ## Housekeeping
 
-**R-ctl-98** The controller removes what is past keeping (finished instances, the older history of instances still running, receipts, and uploads for runs that never started) a little at a time as part of its passes, and a pass that has machines to advance does that first.
+**R-ctl-98** The controller removes what is past keeping (finished instances, the older history of instances still running, receipts with the results of calls and their blobs, and uploads for runs that never started and for submits never taken) a little at a time as part of its passes, and a pass that has machines to advance does that first.
 *Accept:* with ten thousand finished instances past keeping and messages waiting, every waiting message is handled in the pass before anything is removed, each pass ends within its time having removed some, and after enough passes all are gone. What is removed and when is as the Instances rules say (R-inst-33 to R-inst-41, R-inst-62, R-blob-29).
 
 **C-ctl-44** How far housekeeping has got is not kept in memory: a controller started afresh for each pass still gets through all of it. On a serverless host every pass is a fresh start, and housekeeping that begins again from the first name each time never reaches the last. *Test:* `ctl_housekeeping_gets_through_all_across_fresh_starts`

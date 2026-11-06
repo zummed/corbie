@@ -116,7 +116,7 @@ A send or a call is checked on both sides:
 | `[thermostats/*, client:panel]` | those senders, for every event |
 | `{ set: [thermostats/*, client:panel], stop: [client:panel] }` | each event from its own list only |
 
-An entry is a location, read as in a definition, or `client:<name>`. It matches the sender's location or the client that sent, never a run's ID. A written `receive:` replaces the default whole, so an event a mapping does not name is accepted from no sender but the tree's client.
+An entry is a location, read as in a definition, or `client:<name>`. It matches the sender's location or the client that sent, never a run's ID. A written `receive:` replaces the default whole, so an event a mapping does not name, and a call, are accepted from no sender but the tree's client.
 
 ```yaml
 # work/services/lookup.yaml             location /work/services/lookup

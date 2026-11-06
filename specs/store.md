@@ -46,7 +46,7 @@ version                                  the layout's version
       keys/<hash>                        which run a key names, by the SHA-256 of the key; a singleton's is the empty key
       secrets/<name>                     a secret set at the location
       values/<name>                      a value set at the location
-  uploads/<client>/<message>/<name>      the files a client sends with a submit, or with a call into a tree it does not own
+  uploads/<client>/<message>/<name>      the files a client sends with a submit
   trust/<party>                          who the controller trusts
 
 <runner>/

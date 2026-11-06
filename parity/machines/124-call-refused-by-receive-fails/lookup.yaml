@@ -1,0 +1,5 @@
+statechart: lookup
+receive: [others/*]
+initial: found
+states:
+  found: { end: done, output: found }

@@ -1,0 +1,6 @@
+flow: lookup
+ask: ./yes.js
+input: { n: number }
+stages:
+  guarded: { job: { script: ./add.js, input: { n: "${input.n}" }, approve: true } }
+output: ${stages.guarded.output}

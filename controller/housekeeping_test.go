@@ -97,9 +97,14 @@ func TestReceiptsAndUploadsNeverStartedGo(t *testing.T) {
 	// An upload for a run that is never started.
 	orphan, _ := w.client.NewRun()
 	w.blob(orphan, w.clock(), "left behind")
+	// An upload for a submit that is never sent.
+	unsent := store.Upload("ctl", "c1", w.clock().Format("20060102T150405.000000Z")+"-abcdef", blob.NewName())
+	if _, err := blob.Write(ctx, w.owner, unsent, "text/plain", blob.NewKey(), strings.NewReader("never sent")); err != nil {
+		t.Fatal(err)
+	}
 	w.tick(23 * time.Hour)
 	w.settle()
-	if w.receipt(message) == nil || w.receipt("a-name-of-the-clients-own") == nil || len(w.list(store.Record("ctl", orphan))) != 1 {
+	if w.receipt(message) == nil || w.receipt("a-name-of-the-clients-own") == nil || len(w.list(store.Record("ctl", orphan))) != 1 || len(w.list(store.Uploads("ctl", "c1"))) != 1 {
 		t.Fatal("a receipt or an upload went within the day")
 	}
 	w.tick(2 * time.Hour)
@@ -109,6 +114,9 @@ func TestReceiptsAndUploadsNeverStartedGo(t *testing.T) {
 	}
 	if got := w.list(store.Record("ctl", orphan)); len(got) != 0 {
 		t.Fatalf("an upload that never started is still there: %v", got)
+	}
+	if got := w.list(store.Uploads("ctl", "c1")); len(got) != 0 {
+		t.Fatalf("an upload for a submit never sent is still there: %v", got)
 	}
 	// The uploads of the run that did start are untouched.
 	if def, err := w.client.Definition(ctx, run); err != nil || def == nil {

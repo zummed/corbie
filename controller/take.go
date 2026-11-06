@@ -43,6 +43,9 @@ type dropped struct {
 	// note says why an event sent to an address was not delivered: its
 	// sender is told.
 	note string
+	// failed says why the run a call job called did not start: the job
+	// fails.
+	failed string
 }
 
 // The names of what a wake is for.
@@ -226,13 +229,13 @@ func (b *build) ending(a *arrival) (string, endText) {
 // mayCancel says whether a cancel is from one who may cancel the instance:
 // the client that owns its root's tree, the controller's owner with the
 // controller's own key, the controller for a submit, or the controller on
-// behalf of the instance above.
+// behalf of the instance above or of the run whose call started it.
 func (b *build) mayCancel(a *arrival) bool {
 	switch a.kind {
 	case identity.Client:
 		return a.sender == store.InstanceClient(b.inst)
 	case identity.Controller:
-		return a.msg.From == "" || a.msg.From == b.st.Above.Parent
+		return a.msg.From == "" || a.msg.From == b.st.Above.Parent || b.st.Above.CallJob != "" && a.msg.From == b.st.Above.StartedBy
 	}
 	return false
 }
@@ -399,7 +402,7 @@ func mark(ticket string) string {
 
 // jobOf finds the job a result or an emit is for: one the instance is
 // still waiting on, from the runner the job was sent to, or from the child
-// that is the job.
+// or the called run that is the job.
 func (b *build) jobOf(a *arrival, full string) *instance.Going {
 	for _, job := range b.st.Jobs {
 		if job.Full() != full || job.Held {
@@ -413,7 +416,7 @@ func (b *build) jobOf(a *arrival, full string) *instance.Going {
 		case identity.Controller:
 			// From a child that is the job, or from the instance itself for
 			// a job that failed before anything was sent.
-			if a.msg.From == b.inst || (job.Child != "" && job.Child == a.msg.From) {
+			if a.msg.From == b.inst || (job.Child != "" && job.Child == a.msg.From) || (job.Called != "" && job.Called == a.msg.From) {
 				return job
 			}
 		}
@@ -486,7 +489,7 @@ func (b *build) restart(job *instance.Going, event machine.Event, a *arrival) {
 	}
 	var wait time.Duration
 	wait, job.Doubled = job.Restart.Wait(job.Doubled, b.time.Sub(job.Began))
-	job.Runner, job.Child, job.Due = "", "", noEnd
+	job.Runner, job.Child, job.Called, job.Due = "", "", "", noEnd
 	job.Again = b.time.Add(wait)
 	job.Wake = b.wakeFor(wakeAgain, job.Key())
 	b.ask(instance.Ask{Kind: instance.AskWake, At: job.Again, What: job.Wake})
@@ -873,8 +876,8 @@ func (b *build) message(what string) string {
 
 // apply turns what a machine asked for into what the controller will do.
 func (b *build) apply(requests []machine.Request) error {
-	if b.st.Above.Made && slices.ContainsFunc(requests, sendsTo) {
-		b.end(instance.Failed, nil, b.p.failf("a machine made while running sends only to its parent and its children"))
+	if b.st.Above.Made && slices.ContainsFunc(requests, addresses) {
+		b.end(instance.Failed, nil, b.p.failf("a machine made while running sends only to its parent and its children, and calls nothing"))
 		return nil
 	}
 	if err := b.readAddresses(requests); err != nil {
@@ -996,14 +999,29 @@ func (b *build) begin(req *machine.Job, earlier *instance.Going) error {
 		job.Allow = append(slices.Clone(b.read.Allow), job.Allow...)
 		job.Deny = append(slices.Clone(b.def.Deny), job.Deny...)
 	}
-	if job.IsSend() || job.IsCall() {
-		b.fail(job, "a send or a call is not carried out yet")
+	if job.IsSend() {
+		b.fail(job, "a send job is not carried out yet")
 		return nil
 	}
-	var err error
-	if job.Found, err = found(&job.Job, b.def, b.st.Definition); err != nil {
-		b.fail(job, "%v", err)
-		return nil
+	if job.IsCall() {
+		// A call is checked as a send is, against every layer of the run
+		// and the job's own lists, while the step is worked out.
+		at, failure, err := b.callTo(job)
+		if err != nil {
+			b.err = err
+			return nil
+		}
+		if failure != nil {
+			b.ask(instance.Ask{Kind: instance.AskFail, Name: job.Full(), Message: b.message("fail"), Error: failure})
+			return nil
+		}
+		job.Call = &machine.Address{At: at}
+	} else {
+		var err error
+		if job.Found, err = found(&job.Job, b.def, b.st.Definition); err != nil {
+			b.fail(job, "%v", err)
+			return nil
+		}
 	}
 	switch {
 	case b.def.Jobs > 0 && b.st.JobsStarted > b.def.Jobs:
@@ -1075,7 +1093,7 @@ func (b *build) definitionAllow() ([]string, error) {
 // machine as a result does, as a message the carry-out writes, and the job
 // is not tried again.
 func (b *build) fail(job *instance.Going, format string, args ...any) {
-	job.Runner, job.Child = "", ""
+	job.Runner, job.Child, job.Called = "", "", ""
 	b.ask(instance.Ask{Kind: instance.AskFail, Name: job.Full(), Message: b.message("fail"), Error: b.p.failf(format, args...)})
 }
 
@@ -1084,6 +1102,10 @@ func (b *build) fail(job *instance.Going, format string, args ...any) {
 func (b *build) launch(job *instance.Going) {
 	full := job.Full()
 	job.Began = b.time
+	if job.IsCall() {
+		b.call(job)
+		return
+	}
 	if job.IsMachine() {
 		job.Child = store.ChildInstance(b.inst, b.time, full)
 		b.ask(instance.Ask{Kind: instance.AskChild, Name: full, Job: &job.Job, Attempt: job.Attempt, Child: job.Child,
@@ -1147,6 +1169,10 @@ func (b *build) cancel(job *instance.Going) {
 			Message: store.JobMessage(b.inst, job.Full()) + cancelSuffix})
 	case job.Child != "":
 		b.ask(instance.Ask{Kind: instance.AskCancel, Name: job.Full(), Child: job.Child, Message: b.message("cancel")})
+	case job.Called != "":
+		// The run a call started is no child: it is named by Run, which
+		// nothing that removes what is below a run follows.
+		b.ask(instance.Ask{Kind: instance.AskCancel, Name: job.Full(), Run: job.Called, Message: b.message("cancel")})
 	}
 }
 
@@ -1193,13 +1219,27 @@ func (b *build) end(status string, output any, e *machine.Error) {
 	// sooner for each machine above it, so that what is below is due first.
 	gone := b.time.Add(time.Duration(st.Keep) - time.Duration(st.Above.Depth)*time.Millisecond)
 	b.ask(instance.Ask{Kind: instance.AskWake, At: gone, What: wakeRemove})
-	if st.Above.Parent != "" {
+	switch {
+	case st.Above.Parent != "":
 		b.ask(instance.Ask{Kind: instance.AskEnd, To: st.Above.Parent, Name: st.Above.Job, Output: output, Error: e,
 			Message: b.message("result")})
+	case st.Above.CallJob != "":
+		// A called run's end is its call job's result.
+		b.ask(instance.Ask{Kind: instance.AskEnd, To: st.Above.StartedBy, Name: st.Above.CallJob, Output: output, Error: e,
+			Message: b.message("result")})
+	case st.Above.CallReceipt != nil:
+		// Written beside the receipt of the client that called.
+		result := &instance.CallResult{Status: status, Output: output}
+		if e != nil {
+			failure := *e
+			failure.Output = nil
+			result.Error = &failure
+		}
+		b.ask(instance.Ask{Kind: instance.AskResult, Sender: st.Above.CallReceipt.Client, Message: st.Above.CallReceipt.Message, Result: result})
 	}
 	// A run that a send started and that fails as it starts is that send's
 	// failure.
-	if st.Above.StartedBy != "" && status == instance.Failed && b.step.Number == 1 {
+	if st.Above.StartedBy != "" && st.Above.CallJob == "" && status == instance.Failed && b.step.Number == 1 {
 		b.ask(instance.Ask{Kind: instance.AskTell, To: st.Above.StartedBy, Message: b.message("tell"),
 			Text: fmt.Sprintf("the run %s, started by a send to %s#%s, failed as it started: %s", b.inst, st.Location, st.Key, e.Error)})
 	}
@@ -1267,8 +1307,10 @@ func (p *pass) begin(inst string, waiting []*arrival) (*taken, error) {
 	case start.kind == identity.Client && s.Location == "":
 		b.refuse(start, "a client's start names a location: a run starts at the location of a file in a tree")
 		return &b.out, nil
-	case start.isSend() || s.Location != "" && s.Above == nil && (start.kind == identity.Client || start.kind == identity.Controller):
-		// A start of a location: the run begins from the file recorded there.
+	case start.isSend() || s.Location != "" && (s.Above == nil || isCall(s)) && (start.kind == identity.Client || start.kind == identity.Controller):
+		// A start of a location: the run begins from the file recorded
+		// there. A client's start of a location in another client's tree
+		// is a call, which starts a run under that client.
 		var err error
 		if s, err = b.located(start); err != nil || s == nil {
 			return &b.out, err
@@ -1339,6 +1381,14 @@ func (b *build) first(s *instance.Start, start *arrival) (refused bool, err erro
 			return true, nil
 		}
 	}
+	// A call is taken only where its location's file takes the caller. Its
+	// receive: is read as for every event: a mapping, which names events,
+	// takes a call from no one but the tree's client.
+	call := isCall(s)
+	if call && len(read.Problems) == 0 && !b.receives(def, start.msg.Sender, "") {
+		b.noCall(start, fmt.Sprintf("%s does not receive a call from %s", st.Location, addressText(start.msg.Sender)))
+		return true, nil
+	}
 	// The key is taken before anything of the run is written, so a run that
 	// loses it has done nothing.
 	if st.Lifetime == machine.LifetimeKeyed || st.Lifetime == machine.LifetimeSingleton {
@@ -1366,8 +1416,8 @@ func (b *build) first(s *instance.Start, start *arrival) (refused bool, err erro
 			st.Definition = copied
 		case p.blobError(err) != nil:
 			return false, p.blobError(err)
-		case start.kind == identity.Client:
-			b.refuse(start, "the file at %s is no longer in the store", st.Location)
+		case start.kind == identity.Client || call:
+			b.noCall(start, fmt.Sprintf("the file at %s is no longer in the store", st.Location))
 			return true, nil
 		default:
 			gone = true
@@ -1387,8 +1437,13 @@ func (b *build) first(s *instance.Start, start *arrival) (refused bool, err erro
 		}
 	}
 	problems := read.Problems
-	if len(problems) > 0 && start.kind == identity.Client {
+	switch {
+	case len(problems) > 0 && start.callJob():
 		// Refused before any instance exists.
+		b.noCall(start, fmt.Sprintf("the definition did not pass its check: %s", strings.ReplaceAll(problems.Error(), "\n", "; ")))
+		return true, nil
+	case len(problems) > 0 && (start.kind == identity.Client || call):
+		// Refused before any instance exists, in the receipt.
 		b.out.dropped = append(b.out.dropped, dropped{a: start, receipt: &instance.Receipt{
 			Refused: "the definition did not pass its check", Problems: problems}})
 		return true, nil
@@ -1408,6 +1463,12 @@ func (b *build) first(s *instance.Start, start *arrival) (refused bool, err erro
 		if def.Depth != nil {
 			st.Above.MaxDepth = *def.Depth
 		}
+	}
+	if call && st.Above.CallReceipt != nil {
+		// The client that called is told the call was taken, and which run
+		// it started.
+		b.ask(instance.Ask{Kind: instance.AskReceipt, Sender: st.Above.CallReceipt.Client, Message: st.Above.CallReceipt.Message,
+			Run: b.inst, Receipt: &instance.Receipt{Taken: true, Run: b.inst}})
 	}
 	if start.kind == identity.Client {
 		b.ask(instance.Ask{Kind: instance.AskReceipt, Sender: start.sender, Message: start.name, Receipt: &instance.Receipt{Taken: true}})
@@ -1469,7 +1530,12 @@ func (b *build) first(s *instance.Start, start *arrival) (refused bool, err erro
 // above it, lists as one to be asked about. Whether it is held depends on
 // what it declares alone, before anything is sent.
 func (b *build) holds(job *instance.Going) bool {
-	return job.Approve || permission.Declares(job.Allow, b.st.Above.AskAbout, "")
+	declared := job.Allow
+	if job.IsCall() {
+		// A call is a send to its location.
+		declared = append(slices.Clone(declared), permission.Send+":"+job.Call.At)
+	}
+	return job.Approve || permission.Declares(declared, b.st.Above.AskAbout, b.st.Tree)
 }
 
 // startAsk starts each ask once for the jobs this step held that go to

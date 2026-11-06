@@ -53,6 +53,8 @@ Besides plugins, a script has a few things of its own:
 - `job` says which request this is. Every attempt after a failure has the same request name, so a script can use it to avoid doing something twice. A restart after a job ended well has a new one.
 - `require` loads something by name or by path. A bare name is a plugin or a library that comes with the binary. A path starting `./` or `../` is read from the directory of the file that calls it, and is one of the files the job lists. A file whose path ends in `.yaml`, `.yml` or `.json` gives its data, read as the `yaml` plugin reads a document, so a script loads data shipped with its definition with no permission and on any host.
 
+A job's input and output pass through the store as JSON, so their maps reach the next script with their keys sorted.
+
 A script cannot start jobs, whether scripts or machines. Deciding what runs is a machine's work.
 
 ## Programs a job starts

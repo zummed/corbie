@@ -66,6 +66,7 @@ one value, then named options.
 - A call refuses an option it does not know.
 - Arguments and results are plain data: text, numbers, lists, maps, bytes (a
   `Uint8Array`), blobs and handles to secrets.
+- A map read from YAML, JSON or a table keeps its keys in the order written.
 - A call that fails throws an error with a `code`.
 
   not_found        what the call asked for does not exist

@@ -328,3 +328,37 @@ func TestRequireOfADataFileGivesItsData(t *testing.T) {
 	files["bridge/who.js"] = `return require("./bad.yml")`
 	wantError(t, run(t, l, def, files, nil), "error", `the file "./bridge/bad.yml" cannot be read: the document cannot be read: line`)
 }
+
+// A map read from YAML or JSON keeps its keys in the order they were
+// written, as Node's JSON.parse gives them.
+func TestDataReadKeepsTheOrderOfItsKeys(t *testing.T) {
+	l := local(t)
+	def := `
+		flow: order
+		stages:
+		  it: { job: { script: ./it.js, files: [./data.yaml, ./data.json] } }
+		output: ${stages.it.output}
+	`
+	files := map[string]string{
+		"it.js": `
+			const table = blobs.make("z,a\n1,2\n", { type: "text/csv" })
+			const list = blobs.make('[{"z": 1, "a": {"y": 2, "b": 3}}]', { type: "application/json" })
+			return {
+				required_yaml: Object.keys(require("./data.yaml")),
+				required_json: Object.keys(require("./data.json").m),
+				parsed: Object.keys(yaml.parse("z: 1\na: 2\nm: 3\n")),
+				json_parse: Object.keys(JSON.parse('{"z": 1, "a": 2}')),
+				json_blob: Object.keys(blobs.read(list, { as: "json" })[0].a),
+				json_items: Object.keys([...blobs.items(list)][0]),
+				csv_row: Object.keys([...blobs.items(table)][0]),
+			}`,
+		"data.yaml": "z: 1\na: { y: 2 }\nm: 3\n",
+		"data.json": `{"m": {"z": 1, "a": 2}}`,
+	}
+	r := run(t, l, def, files, nil)
+	if r.Status != "done" {
+		t.Fatalf("%s: %s", r.Status, r.Error)
+	}
+	check(t, r.Status, r.Output, "done", `{"required_yaml": ["z", "a", "m"], "required_json": ["z", "a"], "parsed": ["z", "a", "m"],
+		"json_parse": ["z", "a"], "json_blob": ["y", "b"], "json_items": ["z", "a"], "csv_row": ["z", "a"]}`)
+}

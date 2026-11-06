@@ -47,6 +47,34 @@ type Object struct {
 // Bytes is the one type bytes have everywhere.
 type Bytes []byte
 
+// Ordered is a map read from a document, whose keys keep the order they
+// were written in. A plugin gives it to a script, which holds it as an
+// object with its keys in that order, as Node's JSON.parse gives them.
+type Ordered struct {
+	Keys   []string
+	Values map[string]any
+}
+
+// NewOrdered gives an empty Ordered.
+func NewOrdered() *Ordered { return &Ordered{Values: map[string]any{}} }
+
+// Set sets a key's value. A key set again keeps its first place.
+func (o *Ordered) Set(key string, value any) {
+	if _, ok := o.Values[key]; !ok {
+		o.Keys = append(o.Keys, key)
+	}
+	o.Values[key] = value
+}
+
+// String writes the map as fmt writes one, with its keys in order.
+func (o *Ordered) String() string {
+	parts := make([]string, len(o.Keys))
+	for i, k := range o.Keys {
+		parts[i] = fmt.Sprintf("%s:%v", k, o.Values[k])
+	}
+	return "map[" + strings.Join(parts, " ") + "]"
+}
+
 var modules = map[string]*Module{}
 
 // own are the names of a script's own things, which no module can take.

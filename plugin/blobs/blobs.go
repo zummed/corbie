@@ -6,7 +6,6 @@ import (
 	"bytes"
 	"encoding/csv"
 	"encoding/json/jsontext"
-	"encoding/json/v2"
 	"errors"
 	"io"
 	"strings"
@@ -184,8 +183,8 @@ func items(job *plugin.Job, first any) (next func() (any, bool, error), err erro
 					return nil, false, nil
 				}
 				done = true
-				var v any
-				if err := json.UnmarshalDecode(dec, &v); err != nil {
+				v, err := plugin.ReadJSON(dec)
+				if err != nil {
 					return nil, false, notJSON(err)
 				}
 				return v, true, nil
@@ -200,8 +199,8 @@ func items(job *plugin.Job, first any) (next func() (any, bool, error), err erro
 				}
 				return nil, false, nil
 			}
-			var v any
-			if err := json.UnmarshalDecode(dec, &v); err != nil {
+			v, err := plugin.ReadJSON(dec)
+			if err != nil {
 				return nil, false, notJSON(err)
 			}
 			return v, true, nil
@@ -216,8 +215,8 @@ func items(job *plugin.Job, first any) (next func() (any, bool, error), err erro
 				if strings.TrimSpace(text) == "" {
 					continue
 				}
-				var v any
-				if err := json.Unmarshal([]byte(text), &v); err != nil {
+				v, err := plugin.ParseJSON([]byte(text))
+				if err != nil {
 					return nil, false, plugin.Errorf(plugin.BadInput, "a line of the blob is not JSON: %v", err)
 				}
 				return v, true, nil
@@ -252,9 +251,9 @@ func items(job *plugin.Job, first any) (next func() (any, bool, error), err erro
 				}
 				return nil, false, plugin.Errorf(plugin.BadInput, "the table cannot be read: %v", err)
 			}
-			row := map[string]any{}
+			row := plugin.NewOrdered()
 			for i, name := range header {
-				row[name] = record[i]
+				row.Set(name, record[i])
 			}
 			return row, true, nil
 		}

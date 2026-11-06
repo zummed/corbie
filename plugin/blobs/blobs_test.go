@@ -64,13 +64,16 @@ func TestItemsOfEachType(t *testing.T) {
 		{"text/plain", "one\r\ntwo\n\nfour", "one|two||four"},
 		{"text/plain", "\xEF\xBB\xBFone\ntwo\n", "one|two"},
 		{"text/plain", "", ""},
-		{"text/csv", "name,n\na,1\n\"b, c\",2\n", "map[n:1 name:a]|map[n:2 name:b, c]"},
+		{"text/csv", "name,n\na,1\n\"b, c\",2\n", "map[name:a n:1]|map[name:b, c n:2]"},
 		{"text/csv", "name,n\n", ""},
-		{"text/tab-separated-values", "name\tn\na\t1\n", "map[n:1 name:a]"},
+		{"text/tab-separated-values", "name\tn\na\t1\n", "map[name:a n:1]"},
 		{"application/json", `[1, "two", {"three": 3}, [4]]`, "1|two|map[three:3]|[4]"},
 		{"application/json", `[]`, ""},
 		{"application/json", `{"only": "one"}`, "map[only:one]"},
 		{"application/jsonl", "{\"a\":1}\n\n{\"a\":2}\n", "map[a:1]|map[a:2]"},
+		// A map's keys are in the order they were written.
+		{"application/json", `[{"b": 1, "a": {"z": 2, "y": 3}}]`, "map[b:1 a:map[z:2 y:3]]"},
+		{"application/jsonl", "{\"b\":1,\"a\":2}\n", "map[b:1 a:2]"},
 	} {
 		got, err := walk(t, c.typ, c.contents, nil)
 		if err != nil || strings.Join(got, "|") != c.want {

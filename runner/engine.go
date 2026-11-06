@@ -689,17 +689,19 @@ func (e *engine) toJS(v any, text func(string) string) (goja.Value, error) {
 		}
 		return e.vm.NewArray(items...), nil
 	case map[string]any:
-		if ref, ok := blob.AsRef(v); ok {
-			return e.toJS(plugin.StoredBlob(ref), text)
-		}
-		obj := e.vm.NewObject()
 		keys := make([]string, 0, len(v))
 		for k := range v {
 			keys = append(keys, k)
 		}
 		slices.Sort(keys)
-		for _, k := range keys {
-			value, err := e.toJS(v[k], text)
+		return e.toJS(&plugin.Ordered{Keys: keys, Values: v}, text)
+	case *plugin.Ordered:
+		if ref, ok := blob.AsRef(v.Values); ok {
+			return e.toJS(plugin.StoredBlob(ref), text)
+		}
+		obj := e.vm.NewObject()
+		for _, k := range v.Keys {
+			value, err := e.toJS(v.Values[k], text)
 			if err != nil {
 				return nil, err
 			}

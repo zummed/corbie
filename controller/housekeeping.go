@@ -173,7 +173,7 @@ func (p *pass) frame(name string) (sent, until time.Time, err error) {
 // step and emit entries older than its keep, its latest step excepted, and
 // the blobs that are older than the keep and that the current state of the
 // instance, and of every instance running below it, no longer refers to.
-// The definition, its scripts and the run's secrets always stay.
+// The definition and its scripts always stay.
 func (p *pass) trim(inst string, latest *instance.Step, keep time.Duration) error {
 	before := p.now.Add(-keep)
 	names, err := store.Names(p.store.List(p.ctx, store.Record(p.ctl, inst)))

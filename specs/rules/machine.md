@@ -33,7 +33,7 @@ The detailed rules behind the [Machines overview](../machine.md). Area code: `ma
 **R-mach-10** The controller fills in each missing name of an instance's input that has a `default` in the definition's `input:`, in the input and in each object that `properties` and `items` lead to, and checks the filled input against `input:`; an input that does not fit fails the instance at its first step, naming each place, and starts nothing. The filled input is the data of the `start` event.
 *Accept:* parity case 14. Parity case 105: a flow started with `{urls: [a], fetch: {timeout: 5}, pages: [{}, {size: 3}]}` gives its stage `depth: 2`, `fetch: {retries: 3, timeout: 5}` and `pages: [{size: 10}, {size: 3}]` from the defaults of its `input:`.
 
-**R-mach-137** A definition's `input:`, a tool's `args:` and an agent's `reply:` are each a shape: a JSON Schema of an object, 2020-12 unless its `$schema` names another dialect, written in full with `type: object` or in the short form, which the client fills out when the definition is sent. The short form of `input:` takes a name it does not give, and a `blob` there is the blob itself.
+**R-mach-137** A definition's `input:`, a tool's `args:` and an agent's `reply:` are each a shape: a JSON Schema of an object, 2020-12 unless its `$schema` names another dialect, written in full with `type: object` or in the short form, which the client fills out when the definition is submitted. The short form of `input:` takes a name it does not give, and a `blob` there is the blob itself.
 *Accept:* a flow with `input: { n: number, report: "blob?" }` started with `{n: 1, more: true}` ends done, and so does one started with a file as `report`; started with `{n: "one", report: "a report"}`, it fails with an error naming `/n` and `/report`.
 
 **R-mach-138** A `default` in `input:` that `properties` and `items` do not lead to from the top, outside an entry of `$defs` that no `$ref` names, and a default that does not fit its own place, are each refused when the definition is checked.
@@ -303,7 +303,7 @@ The detailed rules behind the [Machines overview](../machine.md). Area code: `ma
 **R-mach-113** A job that starts a child is held like any other, before the child exists.
 *Accept:* parity case 96.
 
-**R-mach-114** A definition sent by a client whose approvals have no ask to go to is refused when checked as it starts. A file in a tree is recorded all the same, since it may run as another machine's child, under that machine's ask.
+**R-mach-114** A definition submitted by a client whose approvals have no ask to go to is refused when checked as it starts. A file in a tree is recorded all the same, since it may run as another machine's child, under that machine's ask.
 *Accept:* a root flow that marks a stage for approval and has no ask is refused when started, and nothing is started; submitted in a tree, it is recorded at its location.
 
 **R-mach-115** A machine run as an ask takes no ask from above it: one that needs approval and has no ask of its own is refused.

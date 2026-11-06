@@ -182,7 +182,7 @@ input: { urls: list, depth: number? }
   ? after the type          the name may be left out
 ```
 
-A shape with `type: object` is the full form, and any other is the short form. The client fills out the short form when the definition is sent. The short form of `args:` and `reply:` refuses a name it does not give, and that of `input:` takes it.
+A shape with `type: object` is the full form, and any other is the short form. The client fills out the short form when the definition is submitted. The short form of `args:` and `reply:` refuses a name it does not give, and that of `input:` takes it.
 
 A `$ref` resolves only within its own shape. One that names a file or an address is refused when the definition is checked.
 

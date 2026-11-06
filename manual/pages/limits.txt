@@ -46,8 +46,6 @@ These are true of definitions.
   4 MiB of YAML that writes [1,1,...]           2.3 seconds, 660 MiB
   14 levels of files that name the next twice   3.9 seconds, 230 MiB
 
-- Whoever holds a gateway's token calls every location that accepts the
-  gateway's client, with any input.
 - Each step of a machine made while running, and each step after the first of
   an agent with a `list:` tool, is taken in a process of its own, and may use
   10 seconds and 1 GiB of memory. Past either, that machine fails and nothing

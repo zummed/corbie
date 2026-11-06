@@ -68,7 +68,8 @@ func TestAgentToolScopeIsFilledFromTheAgentsInput(t *testing.T) {
 	os.WriteFile(filepath.Join(dir, "note.txt"), []byte("the note"), 0o600)
 	m := newModel(t, calls("c1", "look", `{"name": "note.txt"}`), says("done"))
 	l := local(t, "all")
-	id, err := l.Start(ctx, draft(t, `
+	setSecret(t, l, "TEST_KEY", "sk-test-key")
+	id, err := l.Run(ctx, draft(t, `
 		agent: reader
 		input: { dir: any }
 		model: { name: test-model, service: anthropic, address: `+m.URL+`, secret: TEST_KEY }
@@ -79,7 +80,7 @@ func TestAgentToolScopeIsFilledFromTheAgentsInput(t *testing.T) {
 		    args: { name: string }
 		    job: { script: ./look.js, input: { path: "${input.dir}/${args.name}" }, allow: ["fs.read:${input.dir}/**"] }
 	`, map[string]string{"look.js": `return fs.read(input.path)`}), client.Start{
-		Input: map[string]any{"dir": dir}, Secrets: map[string]string{"TEST_KEY": "sk-test-key"}})
+		Input: map[string]any{"dir": dir}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -261,7 +262,7 @@ func TestControllerRefusesWhatTheClientLetThroughInTheSameWords(t *testing.T) {
 		t.Fatal("the altered definition is not one the check refuses")
 	}
 	l := local(t)
-	id, startErr := l.Start(ctx, d, client.Start{})
+	id, startErr := l.Run(ctx, d, client.Start{})
 	if startErr != nil {
 		t.Fatal(startErr)
 	}

@@ -328,9 +328,9 @@ output: ${stages.read.output}
 	}
 }
 
-// One start carries a definition, its script, an input, a label, a run
-// secret, a narrowing list and a timeout, and each is in effect for the
-// run it starts.
+// One start carries a definition, its script, an input, a label, a
+// narrowing list and a timeout, and each is in effect for the run it starts,
+// which reads a secret set at /.
 func TestStartCarriesEverythingAStartMay(t *testing.T) {
 	local, err := client.NewLocal(context.Background(), permission.Layer{Allow: []string{"all"}}, nil)
 	if err != nil {
@@ -338,6 +338,9 @@ func TestStartCarriesEverythingAStartMay(t *testing.T) {
 	}
 	local.Runner.Command = []string{os.Args[0], runner.JobArg}
 	t.Cleanup(local.Close)
+	if err := local.SetSecret(context.Background(), "/", "TOKEN", "the token set at /"); err != nil {
+		t.Fatal(err)
+	}
 	c := serve(t, local.Client)
 	var shown atomic.Value
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -366,14 +369,14 @@ output: ${stages.call.output}
 			if (input.n === 3) for (;;) {}
 			return { status, n: input.n }`},
 			"input":  map[string]any{"url": server.URL, "host": host, "n": n},
-			"labels": map[string]string{"team": "docs"}, "secrets": map[string]string{"TOKEN": "the-start's-own-token"},
-			"allow": []string{"net:" + host, "secret:TOKEN@*", "fs.read:/srv/reports/**"},
-			"deny":  []string{"fs.read:/srv/reports/kept/**"}, "timeout": timeout})
+			"labels": map[string]string{"team": "docs"},
+			"allow":  []string{"net:" + host, "secret:TOKEN@*", "fs.read:/srv/reports/**"},
+			"deny":   []string{"fs.read:/srv/reports/kept/**"}, "timeout": timeout})
 		_, run, text := c.do("GET", "/runs/"+id+"?wait", "")
 		return run, text
 	}
 	run, text := started(1, "30s")
-	if run["status"] != "done" || quotedAny(run["output"]) != `{"n":1,"status":200}` || run["labels"].(map[string]any)["team"] != "docs" || shown.Load() != "the-start's-own-token" {
+	if run["status"] != "done" || quotedAny(run["output"]) != `{"n":1,"status":200}` || run["labels"].(map[string]any)["team"] != "docs" || shown.Load() != "the token set at /" {
 		t.Fatalf("the run ended %s, and its job showed the token %q", text, shown.Load())
 	}
 	if _, _, listed := c.do("GET", "/runs?all&label=team=docs", ""); !strings.Contains(listed, run["id"].(string)) {

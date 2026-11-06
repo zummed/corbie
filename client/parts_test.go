@@ -87,7 +87,8 @@ func startHelper(t *testing.T, l *client.Local, def string, input map[string]any
 
 func startWith(t *testing.T, l *client.Local, def string, files map[string]string, input map[string]any) string {
 	t.Helper()
-	id, err := l.Start(ctx, draft(t, def, files), client.Start{Input: input, Secrets: map[string]string{"TEST_KEY": "sk-test-key"}})
+	setSecret(t, l, "TEST_KEY", "sk-test-key")
+	id, err := l.Run(ctx, draft(t, def, files), client.Start{Input: input})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -200,8 +201,9 @@ func TestAgentPartOpenWaitsForTheAsk(t *testing.T) {
 		return { approve: fits.map((j) => j.name), note: "the ask was shown " + JSON.stringify(input.jobs.map((j) => j.asked)) }`
 	m := newModel(t, calls("c1", "open", `{"part": "net"}`), calls("c2", "open", `{"part": "payments"}`), calls("c3", "pay", `{"to": "me"}`), says("done"))
 	l := local(t, "all")
-	id, err := l.Start(ctx, draft(t, strings.Replace(def, "ADDR", m.URL, 1), files), client.Start{
-		Input: map[string]any{"question": "q"}, Secrets: map[string]string{"TEST_KEY": "sk-test-key"}})
+	setSecret(t, l, "TEST_KEY", "sk-test-key")
+	id, err := l.Run(ctx, draft(t, strings.Replace(def, "ADDR", m.URL, 1), files), client.Start{
+		Input: map[string]any{"question": "q"}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -216,8 +218,9 @@ func TestAgentPartOpenWaitsForTheAsk(t *testing.T) {
 	// An ask that approves nothing leaves the part closed.
 	files["ask.js"] = `return { approve: [], note: "not today" }`
 	m = newModel(t, calls("c1", "open", `{"part": "net"}`), says("done"))
-	id, err = l.Start(ctx, draft(t, strings.Replace(def, "ADDR", m.URL, 1), files), client.Start{
-		Input: map[string]any{"question": "q"}, Secrets: map[string]string{"TEST_KEY": "sk-test-key"}})
+	setSecret(t, l, "TEST_KEY", "sk-test-key")
+	id, err = l.Run(ctx, draft(t, strings.Replace(def, "ADDR", m.URL, 1), files), client.Start{
+		Input: map[string]any{"question": "q"}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -264,8 +267,9 @@ func TestAgentPartHasItsOwnAsk(t *testing.T) {
 	showAndSneak := llmstandin.Reply{Calls: []llmstandin.ToolCall{{ID: "c3", Name: "show", Args: `{"command": "show route"}`}, {ID: "c4", Name: "sneak", Args: `{}`}}}
 	m := newModel(t, openAndAdd, showAndSneak, says("done"))
 	l := local(t, "all")
-	id, err := l.Start(ctx, draft(t, strings.Replace(def, "ADDR", m.URL, 1), files), client.Start{
-		Input: map[string]any{"question": "q"}, Secrets: map[string]string{"TEST_KEY": "sk-test-key"}})
+	setSecret(t, l, "TEST_KEY", "sk-test-key")
+	id, err := l.Run(ctx, draft(t, strings.Replace(def, "ADDR", m.URL, 1), files), client.Start{
+		Input: map[string]any{"question": "q"}})
 	if err != nil {
 		t.Fatal(err)
 	}

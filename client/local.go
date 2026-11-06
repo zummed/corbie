@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"fmt"
+	"reflect"
 	"slices"
 	"time"
 
@@ -94,14 +95,20 @@ func (l *Local) SetValue(ctx context.Context, at, name, value string) error {
 }
 
 // Run submits a definition as a tree of one file, at a prefix of its own
-// that begins with the machine's name, and gives the run it starts there:
-// the one the submit starts for a singleton, and otherwise one started at
-// the location with what start carries.
+// that begins with the machine's name, and gives the run RunTree gives.
 func (l *Local) Run(ctx context.Context, draft *machine.Draft, start Start) (string, error) {
 	random := make([]byte, 3)
 	rand.Read(random)
 	at := "/" + draft.Definition.Name + "-" + hex.EncodeToString(random)
-	message, err := l.Submit(ctx, &Tree{Prefix: at, Machines: []*Machine{{Path: draft.Definition.Name + ".yaml", Location: at, Draft: draft}}}, start.Life)
+	return l.RunTree(ctx, &Tree{Prefix: at, Machines: []*Machine{{Path: draft.Definition.Name + ".yaml", Location: at, Draft: draft}}}, start)
+}
+
+// RunTree submits a tree of one file and gives the run at its location: the
+// one the submit starts for a singleton, and otherwise one started there
+// with what start carries. A start that carries anything but its life to a
+// singleton is an error.
+func (l *Local) RunTree(ctx context.Context, tree *Tree, start Start) (string, error) {
+	message, err := l.Submit(ctx, tree, start.Life)
 	if err != nil {
 		return "", err
 	}
@@ -113,11 +120,17 @@ func (l *Local) Run(ctx context.Context, draft *machine.Draft, start Start) (str
 		return "", fmt.Errorf("%w: the submit was refused: %s", ErrStart, receipt.Refused)
 	}
 	for _, done := range receipt.Tree.Locations {
-		if done.Run != "" {
-			return done.Run, nil
+		if done.Run == "" {
+			continue
 		}
+		carried := start
+		carried.Life = 0
+		if !reflect.DeepEqual(carried, Start{}) {
+			return "", fmt.Errorf("%w: the submit started the singleton at %s, and a start carries nothing to it", ErrStart, done.Location)
+		}
+		return done.Run, nil
 	}
-	start.At = at
+	start.At = tree.Machines[0].Location
 	return l.Start(ctx, nil, start)
 }
 

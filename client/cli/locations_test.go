@@ -42,10 +42,7 @@ states:
 		says string
 		args []string
 	}{
-		{"--key does not apply to a start of a location", []string{"run", "submit", "/hello", "--key", "k"}},
-		{"--secret-env does not apply to a start of a location", []string{"run", "submit", "/hello", "--secret-env", "HOME"}},
 		{"--at applies to a file or a directory, and /hello is a location", []string{"run", "submit", "/hello", "--at", "/x"}},
-		{"--input applies to a start; a file given with --at is recorded as a tree", []string{"run", "submit", filepath.Join(dir, "hello.yaml"), "--at", "/x", "--input", "{}"}},
 		{"--at /: a prefix is / and the names", []string{"run", "submit", filepath.Join(dir, "hello.yaml"), "--at", "/"}},
 	} {
 		if status, _, said := m.run("", mistake.args...); status != 2 || !strings.Contains(said, mistake.says) {

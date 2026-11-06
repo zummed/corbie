@@ -84,7 +84,7 @@ func Test_model_local_program_starts_bare(t *testing.T) {
 		printed("let me see", `[{"name":"add","input":{"n":41}},{"name":"add","input":{"n":1}}]`),
 		printed("It is 42.", `[]`))
 	l := local(t, "all")
-	id, err := l.Start(ctx, draft(t, strings.Replace(programAgent, "MORE", "", 1), scripts), client.Start{Input: map[string]any{"question": "what is 41 plus one?"}})
+	id, err := l.Run(ctx, draft(t, strings.Replace(programAgent, "MORE", "", 1), scripts), client.Start{Input: map[string]any{"question": "what is 41 plus one?"}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -200,7 +200,7 @@ func Test_model_programs_own_tool_needs_its_whole_group(t *testing.T) {
 	// Where the whole network is allowed, the program has those tools and
 	// no others, and still none of the user's settings.
 	l = local(t, "exec", "env", "network")
-	id, err := l.Start(ctx, draft(t, def, scripts), client.Start{Input: map[string]any{"question": "q"}})
+	id, err := l.Run(ctx, draft(t, def, scripts), client.Start{Input: map[string]any{"question": "q"}})
 	if err != nil {
 		t.Fatal(err)
 	}

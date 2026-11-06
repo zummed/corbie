@@ -179,7 +179,7 @@ func TestStartCarriesABlobFromAnotherRun(t *testing.T) {
 		return { doc: blobs.read(input.doc), type: input.doc.type, more: blobs.read(input.more[0]), inside: blobs.read(input.inside), plain: input.plain }
 	`})
 	before := len(writes.names())
-	b, err := l.Start(ctx, d, client.Start{Input: input})
+	b, err := l.Run(ctx, d, client.Start{Input: input})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -248,7 +248,7 @@ func TestStartCarryingABlobThatIsNotThereSendsNothing(t *testing.T) {
 	writes := &ordered{Store: l.Client.Store}
 	l.Client.Store = writes
 	a := made(t, l)
-	d := draft(t, reads, map[string]string{"read.js": `return 1`})
+	at := recorded(t, l, draft(t, reads, map[string]string{"read.js": `return 1`}))
 	before := len(writes.names())
 	for what, shown := range map[string]map[string]any{
 		"a path that names nothing":  {"$blob": "nothing", "run": a.ID},
@@ -258,7 +258,7 @@ func TestStartCarryingABlobThatIsNotThereSendsNothing(t *testing.T) {
 	} {
 		// A good one beside it is not copied either.
 		input := map[string]any{"good": map[string]any{"$blob": "report", "run": a.ID}, "bad": shown}
-		if id, err := l.Start(ctx, d, client.Start{Input: input}); err == nil {
+		if id, err := l.Start(ctx, nil, client.Start{At: at, Input: input}); err == nil {
 			t.Errorf("a start carrying %s was sent as %s", what, id)
 		} else if what == "a path that names nothing" && !errors.Is(err, client.ErrNoFile) {
 			t.Errorf("a start carrying %s was refused with %v", what, err)
@@ -289,7 +289,7 @@ func TestStartGivesAFileAsInput(t *testing.T) {
 		const bytes = blobs.read(input.report, { as: "bytes" })
 		return { type: input.report.type, size: input.report.size, sum: crypto.hash(bytes), n: input.n }
 	`})
-	id, err := l.Start(ctx, d, client.Start{Input: map[string]any{"n": 3,
+	id, err := l.Run(ctx, d, client.Start{Input: map[string]any{"n": 3,
 		"report": client.InputFile{Name: "report.pdf", Contents: bytes.NewReader(pdf)}}})
 	if err != nil {
 		t.Fatal(err)
@@ -327,7 +327,7 @@ func TestStartGivesAFileAsInput(t *testing.T) {
 	}
 
 	// A file stands in the input as deep as it is given.
-	id, err = l.Start(ctx, draft(t, `
+	id, err = l.Run(ctx, draft(t, `
 		flow: deep
 		stages:
 		  read: { job: { script: ./read.js, input: "${input}" } }
@@ -344,18 +344,19 @@ func TestStartGivesAFileAsInput(t *testing.T) {
 	if r := wait(t, l, id); r.Status != instance.Done || jsonOf(r.Output) != jsonOf(want) {
 		t.Fatalf("a run given a file at input.attachments[0].data ended %s with %s (%s); want %s", r.Status, jsonOf(r.Output), r.Error, jsonOf(want))
 	}
-	if blobs, _ := store.Names(l.Memory.As(ownerOf()).List(ctx, store.Blobs("controller", id))); len(blobs) != 3 {
-		t.Fatalf("the run's record holds %d blobs; its definition, its script and the file are three", len(blobs))
+	if blobs, _ := store.Names(l.Memory.As(ownerOf()).List(ctx, store.Blobs("controller", id))); len(blobs) != 4 {
+		t.Fatalf("the run's record holds %d blobs; its definition, its script, the file and the one the client wrote with the start are four", len(blobs))
 	}
 	// A file in a value of another type cannot be found, and is refused
 	// before anything is written.
+	location := recorded(t, l, d)
 	writes := &ordered{Store: l.Client.Store}
 	l.Client.Store = writes
-	_, err = l.Start(ctx, d, client.Start{Input: map[string]client.InputFile{"report": {Name: "report.pdf", Contents: bytes.NewReader(pdf)}}})
+	_, err = l.Start(ctx, nil, client.Start{At: location, Input: map[string]client.InputFile{"report": {Name: "report.pdf", Contents: bytes.NewReader(pdf)}}})
 	if !errors.Is(err, client.ErrStart) || len(writes.names()) != 0 {
 		t.Errorf("a file in a map of files: %v, and %d values written", err, len(writes.names()))
 	}
-	_, err = l.Start(ctx, d, client.Start{Input: client.InputFile{Name: "report.pdf", Contents: bytes.NewReader(pdf)}})
+	_, err = l.Start(ctx, nil, client.Start{At: location, Input: client.InputFile{Name: "report.pdf", Contents: bytes.NewReader(pdf)}})
 	if !errors.Is(err, client.ErrStart) || len(writes.names()) != 0 {
 		t.Errorf("a file as the whole input: %v, and %d values written", err, len(writes.names()))
 	}
@@ -386,7 +387,7 @@ func TestFilesJoinTheInputUnderTheirNames(t *testing.T) {
 // is shown it without its input.
 func TestRunIsShownWithItsInput(t *testing.T) {
 	l := local(t)
-	id, err := l.Start(ctx, draft(t, `
+	id, err := l.Run(ctx, draft(t, `
 		flow: counts
 		stages:
 		  count: { job: { script: ./count.js, input: "${input}" } }
@@ -437,9 +438,9 @@ func TestAgentCarriesOnFromAnotherRunsConversation(t *testing.T) {
 	if len(so) != 2 {
 		t.Fatalf("the first agent's conversation is %s", jsonOf(so))
 	}
-	id, err := l.Start(ctx, draft(t, agentDef(m.URL, "conversation: ${input.so}"), scripts), client.Start{
-		Input:   map[string]any{"question": "and one more?", "so": carried(first.Output.(map[string]any)["conversation"], first.ID)},
-		Secrets: map[string]string{"TEST_KEY": "sk-test-key"}})
+	setSecret(t, l, "TEST_KEY", "sk-test-key")
+	id, err := l.Run(ctx, draft(t, agentDef(m.URL, "conversation: ${input.so}"), scripts), client.Start{
+		Input: map[string]any{"question": "and one more?", "so": carried(first.Output.(map[string]any)["conversation"], first.ID)}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -494,7 +495,7 @@ func TestFileGivenTwiceIsOneBlob(t *testing.T) {
 	l := local(t)
 	text := strings.Repeat("all of it ", 20000)
 	file := client.InputFile{Name: "notes.txt", Contents: strings.NewReader(text)}
-	id, err := l.Start(ctx, draft(t, `
+	id, err := l.Run(ctx, draft(t, `
 		flow: twice
 		stages:
 		  read: { job: { script: ./read.js, input: "${input}" } }
@@ -510,7 +511,7 @@ func TestFileGivenTwiceIsOneBlob(t *testing.T) {
 	if r := wait(t, l, id); r.Status != instance.Done || jsonOf(r.Output) != jsonOf(want) {
 		t.Fatalf("a run given one file at two places ended %s with %s (%s); want %s", r.Status, jsonOf(r.Output), r.Error, jsonOf(want))
 	}
-	if blobs, _ := l.Memory.As(ownerOf()).List(ctx, store.Blobs("controller", id)); len(blobs) != 3 {
-		t.Fatalf("the run's record holds %d blobs; its definition, its script and the file are three", len(blobs))
+	if blobs, _ := l.Memory.As(ownerOf()).List(ctx, store.Blobs("controller", id)); len(blobs) != 4 {
+		t.Fatalf("the run's record holds %d blobs; its definition, its script, the file and the one the client wrote with the start are four", len(blobs))
 	}
 }

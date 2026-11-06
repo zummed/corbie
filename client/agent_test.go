@@ -91,8 +91,9 @@ func carried(v any, run string) any {
 
 func runAgent(t *testing.T, l *client.Local, def string, files map[string]string) *client.Run {
 	t.Helper()
-	id, err := l.Start(ctx, draft(t, def, files), client.Start{
-		Input: map[string]any{"question": "what is 41 plus one?"}, Secrets: map[string]string{"TEST_KEY": "sk-test-key"}})
+	setSecret(t, l, "TEST_KEY", "sk-test-key")
+	id, err := l.Run(ctx, draft(t, def, files), client.Start{
+		Input: map[string]any{"question": "what is 41 plus one?"}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -434,8 +435,9 @@ func TestModelTextIsSeenWhileItIsWritten(t *testing.T) {
 	m := newModel(t, llmstandin.Reply{Text: reply, Hold: hold})
 	waited := false
 	l := local(t, "all")
-	id, err := l.Start(ctx, draft(t, agentDef(m.URL, ""), scripts), client.Start{
-		Input: map[string]any{"question": "what is 41 plus one?"}, Secrets: map[string]string{"TEST_KEY": "sk-test-key"}})
+	setSecret(t, l, "TEST_KEY", "sk-test-key")
+	id, err := l.Run(ctx, draft(t, agentDef(m.URL, ""), scripts), client.Start{
+		Input: map[string]any{"question": "what is 41 plus one?"}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -491,13 +493,14 @@ func TestHandleSaysItemsCostAndThePreviewOnce(t *testing.T) {
 		    args: { it: blob }
 		    job: { script: ./again.js, input: { it: "${args.it}" } }
 `, 1)
-	id, err := l.Start(ctx, draft(t, def, map[string]string{"add.js": scripts["add.js"],
+	setSecret(t, l, "TEST_KEY", "sk-test-key")
+	id, err := l.Run(ctx, draft(t, def, map[string]string{"add.js": scripts["add.js"],
 		"again.js": `return { same: input.it }`,
 		"table.js": `
 			let text = "city,amount\n"
 			for (let i = 0; i < input.rows; i++) text += "city-" + (i % 10) + "," + i + "\n"
 			return { table: blobs.make(text, { type: "text/csv" }) }
-		`}), client.Start{Input: map[string]any{"question": "q"}, Secrets: map[string]string{"TEST_KEY": "sk-test-key"}})
+		`}), client.Start{Input: map[string]any{"question": "q"}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -797,8 +800,9 @@ const fileTools = `[
 func TestAgentListedTools(t *testing.T) {
 	m := newModel(t, calls("c1", "files_read", `{"path": "a.txt"}`), calls("c2", "files_open_recent", `{}`), says("done"))
 	l := local(t, "all")
-	id, err := l.Start(ctx, draft(t, listed(m.URL, fileTools), listedScripts),
-		client.Start{Input: map[string]any{"question": "q"}, Secrets: map[string]string{"TEST_KEY": "sk-test-key"}})
+	setSecret(t, l, "TEST_KEY", "sk-test-key")
+	id, err := l.Run(ctx, draft(t, listed(m.URL, fileTools), listedScripts),
+		client.Start{Input: map[string]any{"question": "q"}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -840,9 +844,9 @@ func TestAgentListedTools(t *testing.T) {
 	}
 	// A run that carries the conversation on lists the tools again.
 	m2 := newModel(t, says("done again"))
-	id, err = l.Start(ctx, draft(t, listed(m2.URL, fileTools)+"\n\t\tconversation: ${input.so}\n", listedScripts), client.Start{
-		Input:   map[string]any{"question": "and again?", "so": carried(r.Output.(map[string]any)["conversation"], r.ID)},
-		Secrets: map[string]string{"TEST_KEY": "sk-test-key"}})
+	setSecret(t, l, "TEST_KEY", "sk-test-key")
+	id, err = l.Run(ctx, draft(t, listed(m2.URL, fileTools)+"\n\t\tconversation: ${input.so}\n", listedScripts), client.Start{
+		Input: map[string]any{"question": "and again?", "so": carried(r.Output.(map[string]any)["conversation"], r.ID)}})
 	if err != nil {
 		t.Fatal(err)
 	}

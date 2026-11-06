@@ -69,6 +69,15 @@ func (m machine) ok(stdin string, args ...string) string {
 	return out
 }
 
+// recorded records a file as a tree of one file, as corbie run submit does,
+// with the flags given, and gives its location: / and the file's name
+// without its extension. A run of it is started by its location.
+func (m machine) recorded(file string, flags ...string) string {
+	m.t.Helper()
+	m.ok("", append([]string{"run", "submit", file}, flags...)...)
+	return "/" + strings.TrimSuffix(strings.TrimSuffix(filepath.Base(file), ".js"), ".yaml")
+}
+
 func files(t *testing.T, contents map[string]string) string {
 	dir := t.TempDir()
 	for name, text := range contents {
@@ -136,23 +145,33 @@ func TestInitRunSubmitStart(t *testing.T) {
 		}
 	}
 	dir := files(t, map[string]string{"hello.yaml": hello, "greet.js": `return { text: "hello " + input.name }`})
+	roles := make(chan int, 1)
+	var stop context.CancelFunc
+	start := func() {
+		var ctx context.Context
+		ctx, stop = context.WithCancel(context.Background())
+		go func() {
+			var out, said bytes.Buffer
+			roles <- cli.Run(ctx, []string{"start", "controller", "--interval", "200ms", "runner", "--interval", "200ms", "--config", m.config}, strings.NewReader(""), &out, &said)
+		}()
+	}
+	start()
+	defer func() { stop() }()
+	if out := m.ok("", "run", "submit", filepath.Join(dir, "hello.yaml")); out != "/hello   transient   recorded\n" {
+		t.Fatalf("the file was recorded as %q", out)
+	}
+	stop()
+	<-roles
 
-	// With the controller stopped, a submitted run is waiting to start.
-	id := strings.TrimSpace(m.ok("", "run", "submit", filepath.Join(dir, "hello.yaml"), "--input", `{"name": "directory"}`, "--label", "team=ops"))
+	// With the controller stopped, a run started is waiting to start.
+	id := strings.TrimSpace(m.ok("", "run", "submit", "/hello", "--input", `{"name": "directory"}`, "--label", "team=ops"))
 	if strings.ContainsAny(id, " \n") || !strings.HasPrefix(id, "box-client/") {
 		t.Fatalf("submit printed %q", id)
 	}
 	if out := m.ok("", "run", "show", id); !strings.Contains(out, "waiting") {
 		t.Fatalf("before any controller ran, show printed %s", out)
 	}
-
-	roles := make(chan int, 1)
-	ctx, stop := context.WithCancel(context.Background())
-	defer stop()
-	go func() {
-		var out, said bytes.Buffer
-		roles <- cli.Run(ctx, []string{"start", "controller", "--interval", "200ms", "runner", "--interval", "200ms", "--config", m.config}, strings.NewReader(""), &out, &said)
-	}()
+	start()
 	if out := m.ok("", "run", "show", id, "--wait", "--json"); !strings.Contains(out, `"status":"done"`) || !strings.Contains(out, "hello directory") {
 		t.Fatalf("the run ended as %s", out)
 	}
@@ -171,13 +190,13 @@ func TestInitRunSubmitStart(t *testing.T) {
 	// names the command that changes it. The script's own list allowed it,
 	// so nothing is said of adding to the command line.
 	reads := files(t, map[string]string{"reads.js": `return fs.read("/etc/hostname")`})
-	_, out, _ = m.run("", "run", "submit", filepath.Join(reads, "reads.js"), "--allow", "disk", "--wait")
+	_, out, _ = m.run("", "run", "submit", m.recorded(filepath.Join(reads, "reads.js"), "--allow", "disk"), "--wait")
 	if !strings.Contains(out, "denied") || !strings.Contains(out, "corbie controller enrol box-client --allow fs.read:/etc/hostname") || strings.Contains(out, "add to the command") {
 		t.Fatalf("a denied run printed %s", out)
 	}
 	m.ok("", "controller", "enrol", "box-client", "--allow", "fs.read:/etc/hostname")
 	m.ok("", "runner", "trust", "box-controller", "--allow", "fs.read:/etc/hostname")
-	if _, out, _ := m.run("", "run", "submit", filepath.Join(reads, "reads.js"), "--allow", "disk", "--wait"); !strings.Contains(out, "done") {
+	if _, out, _ := m.run("", "run", "submit", "/reads", "--wait"); !strings.Contains(out, "done") {
 		t.Fatalf("after the ceilings were raised: %s", out)
 	}
 	stop()
@@ -199,7 +218,7 @@ func TestInitWithNoStoreSetsItUpInTheConfig(t *testing.T) {
 	}
 	m.staying("start", "controller", "--interval", "20ms", "runner", "--interval", "20ms")
 	dir := files(t, map[string]string{"one.js": `return 1`})
-	if out := m.ok("", "run", "submit", filepath.Join(dir, "one.js"), "--wait", "--json"); !strings.Contains(out, `"status":"done"`) || !strings.Contains(out, `"output":1`) {
+	if out := m.ok("", "run", "submit", m.recorded(filepath.Join(dir, "one.js")), "--wait", "--json"); !strings.Contains(out, `"status":"done"`) || !strings.Contains(out, `"output":1`) {
 		t.Fatalf("the run ended as %s", out)
 	}
 }
@@ -430,13 +449,13 @@ func TestViewerNeedsNoIdentity(t *testing.T) {
 	storeDir := filepath.Join(t.TempDir(), "store")
 	m.ok("", "init", "--store", storeDir, "--name", "box")
 	dir := files(t, map[string]string{"hello.yaml": hello, "greet.js": `return 1`})
-	id := strings.TrimSpace(m.ok("", "run", "submit", filepath.Join(dir, "hello.yaml"), "--input", `{"name": "x"}`))
 	ctx, stop := context.WithCancel(context.Background())
 	done := make(chan int, 1)
 	go func() {
 		var out, said bytes.Buffer
 		done <- cli.Run(ctx, []string{"start", "controller", "--interval", "100ms", "runner", "--interval", "100ms", "--config", m.config}, strings.NewReader(""), &out, &said)
 	}()
+	id := strings.TrimSpace(m.ok("", "run", "submit", m.recorded(filepath.Join(dir, "hello.yaml")), "--input", `{"name": "x"}`))
 	m.ok("", "run", "show", id, "--wait")
 	// The record says the run has ended a moment before its head does:
 	// let the controller finish the step before it is stopped.

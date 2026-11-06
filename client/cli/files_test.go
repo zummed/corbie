@@ -26,8 +26,9 @@ func TestSubmitGivesAFileAsInput(t *testing.T) {
 	}
 	dir := files(t, map[string]string{"read.js": reading, "report.pdf": string(pdf)})
 	sum := sha256.Sum256(pdf)
-	for _, command := range [][]string{{"run", "submit", "--wait"}, {"test"}} {
-		out := m.ok("", append(command, filepath.Join(dir, "read.js"), "--input-file", "report="+filepath.Join(dir, "report.pdf"), "--input", `{"n": 3}`, "--json")...)
+	read := m.recorded(filepath.Join(dir, "read.js"))
+	for _, command := range [][]string{{"run", "submit", read, "--wait"}, {"test", filepath.Join(dir, "read.js")}} {
+		out := m.ok("", append(command, "--input-file", "report="+filepath.Join(dir, "report.pdf"), "--input", `{"n": 3}`, "--json")...)
 		run := lines(t, out)[0]
 		got, _ := run["output"].(map[string]any)
 		if run["status"] != "done" || got["type"] != "application/pdf" || got["size"] != 3000.0 || got["sum"] != hex.EncodeToString(sum[:]) || got["n"] != 3.0 {
@@ -36,10 +37,11 @@ func TestSubmitGivesAFileAsInput(t *testing.T) {
 		if command[0] != "run" {
 			continue
 		}
-		// The definition, the script and the file: three blobs, in the
-		// record of the run that was started.
+		// The definition, the script, the file and the one the client wrote
+		// with the start: four blobs, in the record of the run that was
+		// started.
 		blobs, err := os.ReadDir(filepath.Join(storeDir, "box-controller", "records", filepath.FromSlash(run["id"].(string)), "blobs"))
-		if err != nil || len(blobs) != 3 {
+		if err != nil || len(blobs) != 4 {
 			t.Fatalf("the new run's record holds %d blobs (%v)", len(blobs), err)
 		}
 	}
@@ -50,15 +52,15 @@ func TestSubmitGivesAFileAsInput(t *testing.T) {
 		2: {"--input-file", "report"},
 		1: {"--input-file", "report=" + filepath.Join(dir, "missing.pdf")},
 	} {
-		if got, out, said := m.run("", append([]string{"run", "submit", filepath.Join(dir, "read.js")}, flags...)...); got != status || out != "" {
+		if got, out, said := m.run("", append([]string{"run", "submit", read}, flags...)...); got != status || out != "" {
 			t.Errorf("corbie run submit %s ended %d: %s%s", strings.Join(flags, " "), got, out, said)
 		}
 	}
-	twice := []string{"run", "submit", filepath.Join(dir, "read.js"), "--input-file", "report=" + filepath.Join(dir, "report.pdf"), "--input-file", "report=" + filepath.Join(dir, "read.js")}
+	twice := []string{"run", "submit", read, "--input-file", "report=" + filepath.Join(dir, "report.pdf"), "--input-file", "report=" + filepath.Join(dir, "read.js")}
 	if got, _, said := m.run("", twice...); got != 2 || !strings.Contains(said, "report") {
 		t.Errorf("two files under one name ended %d: %s", got, said)
 	}
-	if got, _, said := m.run("", "run", "submit", filepath.Join(dir, "read.js"), "--input-file", "report="+filepath.Join(dir, "report.pdf"), "--input", `[1]`); got != 1 || !strings.Contains(said, "not a map") {
+	if got, _, said := m.run("", "run", "submit", read, "--input-file", "report="+filepath.Join(dir, "report.pdf"), "--input", `[1]`); got != 1 || !strings.Contains(said, "not a map") {
 		t.Errorf("a file given with an input that is a list ended %d: %s", got, said)
 	}
 	if after := len(stored(t, storeDir)); after != before {
@@ -74,20 +76,21 @@ func TestSubmitCarriesAFileFromAnotherRun(t *testing.T) {
 		"make.js": `return { report: blobs.make("the report", { type: "text/markdown" }) }`,
 		"read.js": `return { text: blobs.read(input.doc), type: input.doc.type }`,
 	})
-	first := lines(t, m.ok("", "run", "submit", filepath.Join(dir, "make.js"), "--wait", "--json"))[0]
+	first := lines(t, m.ok("", "run", "submit", m.recorded(filepath.Join(dir, "make.js")), "--wait", "--json"))[0]
 	id, _ := first["id"].(string)
 	shown, _ := first["output"].(map[string]any)["report"].(map[string]any)
 	if first["status"] != "done" || shown["$blob"] != "report" {
 		t.Fatalf("the first run was printed as %v", first)
 	}
 	input := `{"doc": {"$blob": "report", "type": "text/markdown", "size": 10, "run": "` + id + `"}}`
-	out := m.ok("", "run", "submit", filepath.Join(dir, "read.js"), "--input", input, "--wait", "--json")
+	read := m.recorded(filepath.Join(dir, "read.js"))
+	out := m.ok("", "run", "submit", read, "--input", input, "--wait", "--json")
 	if got, _ := lines(t, out)[0]["output"].(map[string]any); got["text"] != "the report" || got["type"] != "text/markdown" {
 		t.Fatalf("the second run printed %s", out)
 	}
 	// One that is not there fails the command, which says which.
 	missing := strings.Replace(input, `"report"`, `"nothing"`, 1)
-	if status, out, said := m.run("", "run", "submit", filepath.Join(dir, "read.js"), "--input", missing); status != 1 || out != "" || !strings.Contains(said, `"nothing"`) || !strings.Contains(said, id) {
+	if status, out, said := m.run("", "run", "submit", read, "--input", missing); status != 1 || out != "" || !strings.Contains(said, `"nothing"`) || !strings.Contains(said, id) {
 		t.Fatalf("a start carrying a file that is not there ended %d: %s%s", status, out, said)
 	}
 }

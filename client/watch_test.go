@@ -33,7 +33,7 @@ const standing = `
 // A chart that is started once and used many times, found by its label.
 func TestStandingChartIsFoundAndUsed(t *testing.T) {
 	l := local(t)
-	id, err := l.Start(ctx, draft(t, standing, map[string]string{"work.js": `return { did: input.n }`}),
+	id, err := l.Run(ctx, draft(t, standing, map[string]string{"work.js": `return { did: input.n }`}),
 		client.Start{Labels: map[string]string{"role": "nightly"}})
 	if err != nil {
 		t.Fatal(err)
@@ -75,7 +75,7 @@ func TestStandingChartIsFoundAndUsed(t *testing.T) {
 
 func TestWatchingAListing(t *testing.T) {
 	l := local(t)
-	first, _ := l.Start(ctx, draft(t, standing, map[string]string{"work.js": "return 1"}), client.Start{})
+	first, _ := l.Run(ctx, draft(t, standing, map[string]string{"work.js": "return 1"}), client.Start{})
 	waitFor(t, l, func(runs []*client.Run) string {
 		if len(runs) == 1 {
 			return "there"
@@ -107,7 +107,7 @@ func TestWatchingAListing(t *testing.T) {
 	}
 	// What already existed, then the mark of the end of the first listing.
 	seen(func(u []client.Update) bool { return len(u) >= 2 && u[0].New && u[0].Run.ID == first && u[1].Listed })
-	second, _ := l.Start(ctx, draft(t, standing, map[string]string{"work.js": "return 1"}), client.Start{})
+	second, _ := l.Run(ctx, draft(t, standing, map[string]string{"work.js": "return 1"}), client.Start{})
 	seen(func(u []client.Update) bool {
 		for _, one := range u[2:] {
 			if one.Run != nil && one.Run.ID == second && one.New {
@@ -161,7 +161,7 @@ func Test_client_start_receipt_found_from_run_name(t *testing.T) {
 	// The definition is spoilt after the client's own check, as a client
 	// that does not check would send it.
 	good.Definition.Body = []byte(strings.Replace(string(good.Definition.Body), `"go":"stopped"`, `"go":"nowhere"`, 1))
-	id, err := l.Start(ctx, good, client.Start{})
+	id, err := l.Run(ctx, good, client.Start{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -233,7 +233,7 @@ func Test_client_file_named_twice_uploaded_once(t *testing.T) {
 		t.Fatal(r.Error)
 	}
 	blobs, _ := store.Names(l.Memory.As(store.Party{Kind: store.Owner}).List(ctx, "controller/records/"+r.ID+"/blobs"))
-	if len(blobs) != 2 { // the script, and the definition
+	if len(blobs) != 3 { // the script, the definition, and the one the client wrote with the start
 		t.Fatalf("a script used by three stages left %d blobs in the record", len(blobs))
 	}
 }
@@ -243,7 +243,7 @@ func Test_client_file_named_twice_uploaded_once(t *testing.T) {
 // failure, the list of its files, and its definition.
 func Test_client_blob_in_package_value_has_no_key(t *testing.T) {
 	l := local(t)
-	id, err := l.Start(ctx, draft(t, `
+	id, err := l.Run(ctx, draft(t, `
 		flow: files
 		stages:
 		  make: { job: { script: ./make.js } }
@@ -321,7 +321,7 @@ func Test_blob_reference_to_nothing_handed_up_opens_nothing(t *testing.T) {
 		return fmt.Sprintf(`{ "$blob": %q, type: %q, size: 4, key: %q }`, at, typ, key)
 	}
 	trust := store.Trust("controller", "client")
-	id, err := l.Start(ctx, draft(t, `
+	id, err := l.Run(ctx, draft(t, `
 		flow: outer
 		stages:
 		  kid: { job: { machine: ./kid.yaml } }

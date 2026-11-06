@@ -106,13 +106,10 @@ func ReadTree(dir, at string) (*Tree, error) {
 }
 
 // ReadFile reads the file at rel in the context dir as a tree of its own,
-// whose prefix is the file's location: at, by default / and the file's name
-// without its extension. A script file is wrapped as Script wraps it. A file
-// that cannot be read as a machine is given with its Problem.
-func ReadFile(dir, rel, at string) (*Tree, error) {
-	if at == "" {
-		at = "/" + strings.TrimSuffix(path.Base(rel), path.Ext(rel))
-	}
+// whose prefix at is the file's location. A script file is wrapped as Script
+// wraps it, with job. A file that cannot be read as a machine is given with
+// its Problem.
+func ReadFile(dir, rel, at string, job ScriptJob) (*Tree, error) {
 	if err := store.CheckLocation(at); err != nil || at == "/" {
 		return nil, fmt.Errorf("--at %s: a prefix is / and the names of one or more directories, as /home, and is not / alone", at)
 	}
@@ -122,7 +119,7 @@ func ReadFile(dir, rel, at string) (*Tree, error) {
 		if err != nil {
 			return nil, err
 		}
-		m.Draft, m.Problem = Script(path.Base(rel), src, ScriptJob{})
+		m.Draft, m.Problem = Script(path.Base(rel), src, job)
 	} else {
 		m.Draft, m.Problem = readMachine(dir, rel, machine.ParseAt)
 	}

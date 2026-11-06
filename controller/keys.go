@@ -307,74 +307,107 @@ func ceilingOf(client *identity.Trust) permission.Layer {
 }
 
 // sendTo takes a machine's request to send an event to a run by its
-// address. It works out the run the event goes to, once for each key in a
-// step: the run with the key or, with none at a keyed location, the run this
-// send starts. A send the run's own layers refuse ends the run as denied,
-// and it says so; what cannot be delivered is noted in the record and fails
+// address. A send the run's own layers refuse ends the run as denied, and it
+// says so; what cannot be delivered is noted in the record and fails
 // nothing.
 func (b *build) sendTo(s *machine.Send) (denied bool) {
 	ask := instance.Ask{Kind: instance.AskEvent, Event: &machine.Event{Name: s.Event, Data: s.Data}}
-	undelivered := func(format string, args ...any) bool {
-		ask.Undelivered, ask.Text = true, fmt.Sprintf(format, args...)
-		b.ask(ask)
-		return false
+	at, why := b.addressAt(s.At)
+	if why == "" {
+		if b.read.Unfilled != "" {
+			b.end(instance.Failed, nil, b.p.failf("%s", b.read.Unfilled))
+			return true
+		}
+		own := fmt.Sprintf("the definition of %q", b.def.Name)
+		refused, err := b.refusedSend(at, permission.Layer{Name: own, Allow: b.read.Allow, Deny: b.def.Deny, Fix: "add the line %s to the allow list of " + own})
+		if err != nil {
+			b.err = err
+			return true
+		}
+		if refused != nil {
+			b.end(instance.Failed, nil, refused)
+			return true
+		}
 	}
+	b.aim(&ask, s, at, why)
+	return false
+}
+
+// addressAt gives the location an address names, read from the run's tree,
+// or why a send to it is not delivered.
+func (b *build) addressAt(addr *machine.Address) (at, why string) {
+	switch {
+	case addr.Client != "":
+		return "", "a client has no inbox"
+	case !strings.HasPrefix(addr.At, "/") && b.st.Tree == "":
+		return "", fmt.Sprintf("%s is read from the tree's prefix, and the run is in no tree", addr.At)
+	}
+	at = machine.Resolve(b.st.Tree, addr.At)
+	if err := store.CheckLocation(at); err != nil {
+		return at, err.Error()
+	}
+	return at, ""
+}
+
+// aim asks for a send, its layers passed, to the run it goes to: the run
+// with the key or, with none at a keyed location, the run this send starts,
+// worked out once for each key in a step. why says it is not delivered,
+// which is noted in the record. A send job's ask names its message before,
+// since its result follows from it, delivered or not.
+func (b *build) aim(ask *instance.Ask, s *machine.Send, at, why string) {
 	addr := s.At
-	if addr.Client != "" {
-		return undelivered("a client has no inbox")
-	}
-	if !strings.HasPrefix(addr.At, "/") && b.st.Tree == "" {
-		return undelivered("%s is read from the tree's prefix, and the run is in no tree", addr.At)
-	}
-	at := machine.Resolve(b.st.Tree, addr.At)
 	ask.Location = at
-	if addr.Run == "" {
+	if addr.Run == "" && at != "" {
 		ask.Key = keyOf(addr)
 	}
-	if err := store.CheckLocation(at); err != nil {
-		return undelivered("%v", err)
+	undelivered := func(format string, args ...any) {
+		ask.Undelivered, ask.Text = true, fmt.Sprintf(format, args...)
+		b.ask(*ask)
 	}
-	if b.read.Unfilled != "" {
-		b.end(instance.Failed, nil, b.p.failf("%s", b.read.Unfilled))
-		return true
+	switch {
+	case why != "":
+		undelivered("%s", why)
+		return
+	case machine.Reserved(s.Event):
+		undelivered("no event can be sent under the name %q, which Corbie gives a machine itself", s.Event)
+		return
 	}
-	own := fmt.Sprintf("the definition of %q", b.def.Name)
-	refused, err := b.refusedSend(at, permission.Layer{Name: own, Allow: b.read.Allow, Deny: b.def.Deny, Fix: "add the line %s to the allow list of " + own})
-	if err != nil {
-		b.err = err
-		return true
-	}
-	if refused != nil {
-		b.end(instance.Failed, nil, refused)
-		return true
-	}
-	if machine.Reserved(s.Event) {
-		return undelivered("no event can be sent under the name %q, which Corbie gives a machine itself", s.Event)
+	name := func() {
+		if ask.Message == "" {
+			ask.Message = b.message("send")
+		}
 	}
 	if addr.Run != "" {
-		ask.Direct, ask.To, ask.Message = true, addr.Run, b.message("send")
-		b.ask(ask)
-		return false
+		name()
+		ask.Direct, ask.To = true, addr.Run
+		b.ask(*ask)
+		return
 	}
 	keyed := addr.Key != nil
 	if keyed {
 		if err := machine.CheckKey(*addr.Key); err != nil {
-			return undelivered("%v", err)
+			undelivered("%v", err)
+			return
 		}
+	}
+	if b.targets == nil {
+		b.targets = map[addressed]*target{}
 	}
 	t := b.targets[addressed{at, ask.Key}]
 	if t == nil {
+		var err error
 		if t, err = b.p.aimAt(at, ask.Key, keyed, false); err != nil {
 			b.err = err
-			return true
+			return
 		}
 		b.targets[addressed{at, ask.Key}] = t
 	}
 	to, starts, why := t.aim(at, keyed)
 	if why != "" {
-		return undelivered("%s", why)
+		undelivered("%s", why)
+		return
 	}
-	ask.Message = b.message("send")
+	name()
 	if starts {
 		// Named under the tree's client, from the sender's message, so a
 		// carry-out done again names the same run. A second send in the
@@ -389,8 +422,7 @@ func (b *build) sendTo(s *machine.Send) (denied bool) {
 		}
 	}
 	ask.To = to
-	b.ask(ask)
-	return false
+	b.ask(*ask)
 }
 
 // sent takes an event sent to the run by its address.
@@ -563,18 +595,46 @@ func (p *pass) free(inst, at, key string) error {
 	return err
 }
 
-// toAddress carries out a send to a run by its address. What the event
+// toAddress carries out a send action to a run by its address. An event
+// that cannot be written is noted in the sender's record.
+func (p *pass) toAddress(inst string, step *instance.Step, ask *instance.Ask) error {
+	msg, failure, err := p.addressed(inst, step, ask)
+	if err != nil || failure == nil {
+		return err
+	}
+	return p.tell(inst, inst, ask.Message+".note", notDelivered(msg, failure.Error))
+}
+
+// sendJob carries out a send job: its event, and then its result, done with
+// no output. An event that cannot be written fails the job.
+func (p *pass) sendJob(inst string, step *instance.Step, ask *instance.Ask) error {
+	_, failure, err := p.addressed(inst, step, ask)
+	if err != nil {
+		return err
+	}
+	if failure != nil {
+		failure.Error = fmt.Sprintf("the event %s could not be sent: %s", ask.Event.Name, failure.Error)
+		return p.failJob(inst, ask.Name, ask.Message+".failed", failure)
+	}
+	msg := &instance.Message{Kind: instance.KindResult, Instance: inst, From: inst,
+		Result: &instance.Result{Job: ask.Name, Status: instance.Done, Final: true}}
+	_, err = p.send(store.Message(p.ctl, p.ctl, ask.Message+".done"), noEnd, msg, p.c.ID.Card)
+	return err
+}
+
+// addressed writes an event sent to a run by its address. What the event
 // names is in the record of the run it goes to before that run is told. An
 // event sent to a key carries the start of a run, so one that arrives after
-// the run with the key has ended starts a fresh one.
-func (p *pass) toAddress(inst string, step *instance.Step, ask *instance.Ask) error {
+// the run with the key has ended starts a fresh one. It gives the message,
+// and why it could not be written, if it could not.
+func (p *pass) addressed(inst string, step *instance.Step, ask *instance.Ask) (*instance.Message, *machine.Error, error) {
 	if ask.To == "" || ask.Undelivered {
-		return nil // written in the record, and nowhere else
+		return nil, nil, nil // written in the record, and nowhere else
 	}
 	st := &step.State
 	data, err := p.handUp(ask.Event.Data, ask.To)
 	if err != nil {
-		return err
+		return nil, nil, err
 	}
 	sender := &machine.Address{At: st.Location, Run: inst}
 	if st.Lifetime == machine.LifetimeKeyed {
@@ -596,10 +656,7 @@ func (p *pass) toAddress(inst string, step *instance.Step, ask *instance.Ask) er
 			Above: &instance.Above{Depth: st.Above.Depth + 1, StartedBy: inst}}
 	}
 	failure, err := p.send(store.Message(p.ctl, p.ctl, ask.Message), noEnd, msg, p.c.ID.Card)
-	if err != nil || failure == nil {
-		return err
-	}
-	return p.tell(inst, inst, ask.Message+".note", notDelivered(msg, failure.Error))
+	return msg, failure, err
 }
 
 // tell writes a note into a run's record, as a step of the controller's own.

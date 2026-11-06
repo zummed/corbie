@@ -158,7 +158,7 @@ A submit changes no other tree. Only the tree's client reads and cancels the run
 | a changed file with `update: drain` | leaves its runs to finish on the definition they started with |
 | a file gone from the tree | cancels every run at its location |
 
-- `drain` is the default for keyed and transient files. A singleton is always `restart`, and its new run starts once the old one has ended.
+- `drain` is the default for keyed and transient files. A singleton is always `restart`, and its new run starts once every run it replaces has ended.
 - A keyed run cancelled by a restart starts fresh at the next send to its key.
 - Events a cancelled run had kept under `defer:` are noted as undelivered in each sender's record.
 - The controller finds a location's runs by listing its tree client's running heads, each of which names its location.

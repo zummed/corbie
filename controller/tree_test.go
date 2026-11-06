@@ -2,11 +2,13 @@ package controller_test
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"path"
 	"slices"
 	"sort"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -670,5 +672,129 @@ func Test_ctl_submit_reads_only_its_own_uploads(t *testing.T) {
 	w.settle()
 	if r := w.receipt(name); r == nil || r.Taken || !strings.Contains(r.Refused, "the file at /o names a blob that is not among the submit's uploads") {
 		t.Fatalf("the submit gave %+v", r)
+	}
+}
+
+// stopAfter is a store that stops once a value is written under a name, as
+// a controller stopped just after that write leaves it.
+type stopAfter struct {
+	stopping
+	name string
+}
+
+func (s *stopAfter) Write(ctx context.Context, name string, value []byte, how store.How) (bool, error) {
+	done, err := s.stopping.Write(ctx, name, value, how)
+	if name == s.name {
+		s.stopped.Store(true)
+	}
+	return done, err
+}
+
+// readThen is a store through which a copy reads a name, and something else
+// happens before it goes on.
+type readThen struct {
+	store.Store
+	name string
+	once sync.Once
+	then func()
+}
+
+func (r *readThen) Read(ctx context.Context, name string) ([]byte, store.Mark, error) {
+	data, mark, err := r.Store.Read(ctx, name)
+	if name == r.name {
+		r.once.Do(r.then)
+	}
+	return data, mark, err
+}
+
+// Two copies take an earlier and a later submit of one tree at once. One
+// writes the earlier submit's entry and stops; the other, whose write of
+// that entry lost, comes to the later submit. It waits for the earlier one
+// to be carried out, and so the restart the earlier one was to make is
+// made.
+func Test_ctl_submit_waits_for_an_earlier_one_carried_out(t *testing.T) {
+	w := newWorld(t)
+	old := w.submitTree(w.client, w.tree("/s", "", map[string]string{"/s": waiting}, nil)).Tree.Locations[0].Run
+	changed := strings.Replace(waiting, "initial: w", "initial: w\n\ttitle: changed", 1)
+	var messages []string
+	for range 2 {
+		w.tick(time.Second)
+		message, err := w.client.Submit(ctx, w.tree("/s", "", map[string]string{"/s": changed}, nil), 0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		messages = append(messages, message)
+	}
+	entry := store.Tree("ctl", "/s")
+	a := &stopAfter{stopping: stopping{Store: w.ctrl.Store}, name: entry}
+	a.left.Store(1 << 40)
+	first := controller.New(w.ctl, a)
+	first.Now = w.clock
+	b := &readThen{Store: w.ctrl.Store, name: entry, then: func() { first.Pass(ctx) }}
+	second := controller.New(w.ctl, b)
+	second.Now = w.clock
+	if _, err := second.Pass(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if !a.stopped.Load() {
+		t.Fatal("the first copy did not write the entry")
+	}
+	for range 6 {
+		w.settle()
+		w.tick(time.Second)
+	}
+	for i, message := range messages {
+		if r := w.receipt(message); !r.Taken {
+			t.Fatalf("submit %d was refused: %s", i, r.Refused)
+		}
+	}
+	runs := w.at("/s")
+	var running string
+	for run, status := range runs {
+		if status == instance.Running {
+			running = run
+		}
+	}
+	if runs[old] != instance.Cancelled || running == "" || w.latest(running).State.Title != "changed" {
+		t.Fatalf("the runs at /s are %v", runs)
+	}
+}
+
+// A transient file changed to a singleton cancels every run at its location,
+// and the singleton starts only once all of them have ended.
+func Test_ctl_singleton_waits_for_every_run_it_replaces(t *testing.T) {
+	w := newWorld(t)
+	transient := strings.Replace(waiting, "lifetime: singleton", "", 1)
+	w.submitTree(w.client, w.tree("/s", "", map[string]string{"/s": transient}, nil))
+	one, two := w.startAt(w.client, "/s", client.Start{}), w.startAt(w.client, "/s", client.Start{})
+	w.settle()
+	message, err := w.client.Submit(ctx, w.tree("/s", "", map[string]string{"/s": waiting}, nil), 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The cancel of the second run is not seen for a while.
+	inner := w.ctrl.Store
+	w.afresh(&hiding{Store: inner, hide: func(name string) bool {
+		return strings.Contains(name, store.JobMessage(two, "")) && strings.HasSuffix(name, ".cancel")
+	}})
+	for range 4 {
+		w.pass()
+		w.tick(time.Second)
+	}
+	r := w.receipt(message)
+	if r == nil || !r.Taken || len(r.Tree.Cancelled) != 2 {
+		t.Fatalf("the submit gave %+v", r)
+	}
+	single := r.Tree.Locations[0].Run
+	if w.head(one).Status != instance.Cancelled || w.head(two).Status != instance.Running || w.head(single) != nil {
+		t.Fatalf("with one run still running the runs at /s are %v", w.at("/s"))
+	}
+	w.afresh(inner)
+	for range 4 {
+		w.settle()
+		w.tick(time.Second)
+	}
+	if runs := w.at("/s"); runs[two] != instance.Cancelled || runs[single] != instance.Running {
+		t.Fatalf("the runs at /s are %v", runs)
 	}
 }

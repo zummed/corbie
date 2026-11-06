@@ -129,9 +129,9 @@ A file given alone is a tree of one file, at `--at`, by default `/` and the file
 
 A script file can be submitted as it is. The package wraps it in a flow of one stage, with the permissions it may use and its limits, which the command line takes as flags.
 
-`corbie check` is the last step of setting anything up. It submits a small transient machine of its own as a tree at `/corbie-check`, starts a run of it, which asks for one job and sets one timer, follows it as any client does, and reports each thing that had to happen, with how long it took. While it waits it says what for.
+`corbie check` is the last step of setting anything up. It submits a small transient machine of its own as a tree at `/corbie-check/<client>`, so several clients can check one controller, starts a run of it, which asks for one job and sets one timer, follows it as any client does, and reports each thing that had to happen, with how long it took. While it waits it says what for.
 
-The client's ceiling needs an `at:` entry that matches `/corbie-check`. Without one, the check's first line is the refused submit, with the line to add.
+The client's ceiling needs an `at:` entry that matches `/corbie-check/<client>`. Without one, the check's first line is the refused submit, with the line to add.
 
 ```
 corbie check
@@ -210,7 +210,7 @@ A program's word that is itself a role's or a program's name begins the next nam
 - When `corbie start` is stopped, it interrupts each program and waits for it, for up to ten seconds before killing it.
 - On a serverless host, `corbie start` refuses a program before anything starts.
 
-`corbie test` is an ordinary run: the same roles, in one process, on a store in memory, with ceilings that allow everything. It records the file as a tree of one file and starts it. A singleton is started by that submit, so a flag of a start given with one is a mistake. `corbie test <file> --definition` prints the machine as the client writes it out, each value with its file and line, and runs nothing.
+`corbie test` is an ordinary run: the same roles, in one process, on a store in memory, with ceilings that allow everything. It records the file as a tree of one file and starts it. A singleton is started by that submit, so a flag of a start given with one is a mistake. A keyed file is refused: its runs start when an event is sent to a key. `corbie test <file> --definition` prints the machine as the client writes it out, each value with its file and line, runs nothing, and takes no flag of a start.
 
 `corbie test` sets values and secrets at `/` of the controller in its process, read from the sources `controller value set` and `controller secret set` read:
 

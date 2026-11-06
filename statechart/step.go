@@ -579,4 +579,14 @@ func (chartType) Show(def *machine.Definition, raw jsontext.Value) any {
 	return map[string]any{"states": st.Active}
 }
 
+// Kept gives the events a chart's state keeps under defer:, in the order
+// they arrived.
+func (chartType) Kept(raw jsontext.Value) []machine.Event {
+	var st state
+	if raw == nil || json.Unmarshal(raw, &st) != nil {
+		return nil
+	}
+	return st.Kept
+}
+
 func (chartType) Manual() string { return manual }

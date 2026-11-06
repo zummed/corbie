@@ -1,0 +1,8 @@
+{
+  "status": "done",
+  "record": [
+    { "machine": "answer", "status": "cancelled" },
+    { "machine": "asker", "ask": { "kind": "event", "location": "/case/answer", "undelivered": true } }
+  ],
+  "note": "R-ctl-116: a file gone from the tree has its singleton cancelled, and a send to its location is then undelivered."
+}

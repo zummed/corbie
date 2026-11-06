@@ -1,0 +1,22 @@
+# The asker asks the singleton at /case/answer once. While it waits on go,
+# the tree is submitted again without answer.yaml: the singleton is
+# cancelled, and the asker's second question, a second later, is noted as
+# undelivered.
+statechart: asker
+allow: [send:answer]
+initial: first
+states:
+  first:
+    entry: { send: { to: { at: answer }, event: ask } }
+    on: { said: waiting }
+  waiting:
+    ticket: go
+    on: { go: pausing }
+  pausing:
+    timers: { pause: 1s }
+    on: { pause: second }
+  second:
+    entry: { send: { to: { at: answer }, event: ask } }
+    timers: { pause: 1s }
+    on: { pause: finished }
+  finished: { end: done }

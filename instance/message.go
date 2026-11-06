@@ -81,9 +81,9 @@ type Start struct {
 	// Tree is the prefix of the tree the location is in, for a child, which
 	// runs at its parent's location.
 	Tree string `json:"tree,omitzero"`
-	// Replaces is, for a singleton a submit starts again, the run it
-	// replaces: the new run starts once that one has ended.
-	Replaces string `json:"replaces,omitzero"`
+	// Replaces is, for a singleton a submit starts again, the runs it
+	// replaces: the new run starts once every one has ended.
+	Replaces []string `json:"replaces,omitzero"`
 	// Run is the run an event sent to a key starts, where it names one: the
 	// event's data is its input. What a client or a job starts is the
 	// message's own instance.

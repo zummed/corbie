@@ -130,6 +130,19 @@ func (p *pass) submit(a *arrival) error {
 	case entry != nil && entry.Submit > base:
 		return p.refuseSubmit(a, base, fmt.Sprintf("a later submit of the tree %s was taken before this one", msg.Prefix))
 	}
+	if entry != nil {
+		// The submit the entry names is carried out first: worked out
+		// against what it is still to do, this one would leave undone a
+		// restart that one was to make.
+		waiting, err := p.store.ReadPart(p.ctx, store.Message(p.ctl, entry.Client, entry.Submit), 0, 1)
+		if err != nil {
+			return err
+		}
+		if waiting != nil {
+			p.later()
+			return nil
+		}
+	}
 	fresh, err := p.plan(a, base, entry)
 	if err != nil {
 		return err
@@ -456,8 +469,8 @@ func (p *pass) cancelAt(client, base string, locations []string, starts map[stri
 }
 
 // startSingleton starts a location's singleton: its start, which waits for
-// the run it replaces to end, and then its key's file, which names it. The
-// run it replaces is one running at the location, which the submit has
+// the runs it replaces to end, and then its key's file, which names it. The
+// runs it replaces are those running at the location, which the submit has
 // cancelled; with none, the run its key's file names, if that run has the
 // key. A start still waiting is never the one replaced: it waits itself, and
 // is left once the key's file names this one.
@@ -472,16 +485,14 @@ func (p *pass) startSingleton(base string, done instance.Recorded, running []str
 		if file != nil && file.Run == done.Run {
 			return nil
 		}
-		replaces := ""
-		if len(running) > 0 {
-			replaces = running[0]
-		} else if file != nil {
+		replaces := running
+		if len(replaces) == 0 && file != nil {
 			live, err := p.live(file)
 			if err != nil {
 				return err
 			}
 			if live {
-				replaces = file.Run
+				replaces = []string{file.Run}
 			}
 		}
 		// The start is written only-if-new: one written before stands, with
@@ -629,14 +640,14 @@ func (b *build) located(start *arrival) (*instance.Start, error) {
 		b.drop(start)
 		return nil, nil
 	}
-	if s.Replaces != "" {
-		head, _, err := instance.ReadHead(p.ctx, p.store, p.c.ID.Card, s.Replaces)
+	for _, replaced := range s.Replaces {
+		head, _, err := instance.ReadHead(p.ctx, p.store, p.c.ID.Card, replaced)
 		if err != nil && !isAltered(err) {
 			return nil, err
 		}
 		if head != nil && head.Status == instance.Running {
-			// A singleton started again waits for the run it replaces to
-			// end, and so does everything waiting for it.
+			// A singleton started again waits for every run it replaces
+			// to end, and so does everything waiting for it.
 			b.out.rest = nil
 			p.due(p.now.Add(time.Second))
 			return nil, nil

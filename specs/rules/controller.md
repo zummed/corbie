@@ -130,7 +130,7 @@ The detailed rules behind the [Controller overview](../controller.md). What the 
 **R-ctl-71** A machine whose timeout has passed is ended by the controller, fails as out of time, and everything below it is cancelled.
 *Accept:* parity case 98: the bottom chart ends with the status timeout and an error saying its timeout passed. Parity case 13's flow is run: the flow ends as out of time, and its child is listed as `cancelled`.
 
-**C-ctl-35** The n-th value of a name that a later attempt emits is taken to be the n-th an earlier attempt emitted, and is passed to the machine only if no attempt has delivered an n-th before. A script that is run again emits its values again from the first, and a machine that starts work for each one would do every item's work twice. *Test:* `ctl_later_attempt_emits_not_delivered_twice`
+**C-ctl-35** An attempt's n-th value of a name is passed to the machine once, however many times its message arrives, and a value from an attempt that another has followed is not passed. The next attempt's values count from the first and are each passed. A runner may pass on one emit twice, and an attempt that a later one has replaced would otherwise mix its values into the later one's. *Test:* `ctl_later_attempt_emits_not_delivered_twice`
 
 **C-ctl-36** The names of events sent on one link sort in the order the step asked for them, and after the names of every earlier step's events on that link. The receiver takes messages in the order of their names and has nothing else to order them by. *Test:* `ctl_events_on_one_link_arrive_in_order_sent`
 
@@ -215,12 +215,14 @@ The detailed rules behind the [Controller overview](../controller.md). What the 
 ## A changed or removed file
 
 **R-ctl-115** A changed file with `update: restart` has its root runs cancelled, and a singleton is started again on the new file. A file whose lifetime changed counts as removed and recorded anew. With `update: drain` the runs finish on the definition they started with.
-*Accept:* `Test_ctl_singleton_restart_has_no_overlap`.
+*Accept:* parity case 131. `Test_ctl_singleton_restart_has_no_overlap` and `Test_ctl_restart_starts_a_singleton_again_and_notes_kept_events`.
 
 **R-ctl-116** A file gone from the tree has every root run at its location cancelled, and its location removed. A child running at the location ends with its parent.
-*Accept:* `Test_ctl_removal_cancels_only_root_runs`.
+*Accept:* parity cases 132 and 136. `Test_ctl_removal_cancels_only_root_runs`.
 
-**C-ctl-80** A singleton started again starts once the run it replaces has ended: the start names the run running at its location, or with none the run its key's file names, and waits while that run is running. A later submit's start of the same singleton takes its key's file, and an earlier start that finds it so is left. Two runs of one singleton would act on the same thing at once. *Test:* `ctl_singleton_restart_has_no_overlap`
+**C-ctl-80** A singleton started again starts once every run it replaces has ended: the start names each run running at its location, or with none the run its key's file names, and waits while any of them is running. A later submit's start of the same singleton takes its key's file, and an earlier start that finds it so is left. Two runs of one singleton would act on the same thing at once, and a transient file changed to a singleton may have many runs. *Test:* `ctl_singleton_restart_has_no_overlap` and `ctl_singleton_waits_for_every_run_it_replaces`
+
+**C-ctl-85** A submit whose tree's entry names an earlier submit still in the inbox waits until that submit has been carried out, and is then worked out against the entry it left. Two controller copies can take an earlier and a later submit of one tree at once, and the later one worked out against an entry not yet carried out would find the changed files recorded and leave their runs as they were. *Test:* `ctl_submit_waits_for_an_earlier_one_carried_out`
 
 **C-ctl-81** The runs a submit cancels are found among its tree client's running heads, by their location, and only roots are sent a cancel. A child runs at its parent's location, and a cancel of its own would end it while its parent waits on it. *Test:* `ctl_removal_cancels_only_root_runs`
 
@@ -259,6 +261,9 @@ The detailed rules behind the [Controller overview](../controller.md). What the 
 **R-ctl-130** A client's start of a location in a tree another client owns is a call. It needs `send:` for the location in the client's ceiling, a `transient` location, and no labels or allow list, and the receiver's `receive:` must list `client:<name>`; otherwise the start's receipt refuses it. A call that is taken has a receipt naming the run, written as that run starts, and its result beside the receipt when that run ends (R-inst-69).
 *Accept:* `Test_ctl_taken_call_receipt_waits_for_its_result`, `Test_ctl_client_call_is_refused` and `Test_ctl_client_starts_its_own_transient_locations`.
 
+**R-ctl-131** A send job, `job: { send }`, is checked as a send action is, against its own lists and the definition's, the lists the run was started under and its tree client's ceiling, and a refusal fails the job `denied`. Its event is written as the step is carried out, and then the job ends `done` with no output. A send job whose event is not delivered is noted in the record and ends `done` all the same.
+*Accept:* parity case 129. `Test_ctl_send_job_is_done_once_written` and `TestJobThatCannotBeBuiltFails`.
+
 **C-ctl-82** A step names the run a call started by `Run`, never by `Child`, so removing the caller past keeping, and trimming what is below a running caller, never follows it. The called run is a root of another tree's client, and its record would otherwise go with its caller's. *Test:* `ctl_removing_a_caller_leaves_the_run_it_called`
 
 **C-ctl-83** A taken call's receipt is written with no end in its frame, and housekeeping reads only that frame to keep it until its result has been written a day. Housekeeping passes over such receipts, however many there are, to those past keeping, and when the run ends with no card held for the client the receipt is deleted. A receipt is sealed to its client alone, and a call that runs past a day would otherwise lose its receipt while its run is running. *Test:* `ctl_taken_call_receipt_waits_for_its_result`, `ctl_receipts_past_keeping_behind_running_calls_go` and `ctl_taken_call_receipt_goes_when_its_client_is_gone`
@@ -288,7 +293,7 @@ The detailed rules behind the [Controller overview](../controller.md). What the 
 
 **C-ctl-75** A step of a machine whose type cannot send to an address cannot say it does: the machine fails. A listed agent's answer is the agent's word, and no agent's definition sends. *Test:* `ctl_answer_of_a_listed_agent_cannot_send_to_an_address`
 
-**C-ctl-76** A machine made while running that asks to send to an address fails, whatever the job above it lists and whatever its answer says of itself. It may have been written by a model, and a forged event sent to a keyed run looks like any other to that run. *Test:* `ctl_made_machine_sends_to_no_address` and `ctl_answer_of_a_made_machine_sends_to_no_address`
+**C-ctl-76** A machine made while running that asks to send to an address or to call fails, whatever the job above it lists and whatever its answer says of itself. It may have been written by a model, and a forged event sent to a keyed run looks like any other to that run. *Test:* `ctl_made_machine_sends_to_no_address` and `ctl_answer_of_a_made_machine_sends_to_no_address`
 
 **C-ctl-77** A step's events are written one after another in the order sent, after what the step's other asks write. A run takes a message that sorts before one it has heard as a copy, so an event written out of order by a controller stopped between two writes would be lost. *Test:* `ctl_events_of_a_step_stopped_after_every_write`
 

@@ -153,11 +153,14 @@ The check reads only the store, so it is the same wherever Corbie runs.
                   default 90s
 
   corbie manual functions   the calls a serverless host must make`},
-		{Name: "test", Usage: "<definition or script> [--input <json>] [--value NAME=VALUE] [--watch] | <directory>...", Summary: "run a definition or a script in this process, with no setup", Stays: true, Run: cmdTest, Help: `
+		{Name: "test", Usage: "<definition or script> [--input <json>] [--value NAME=VALUE] [--watch] | <definition> --definition | <directory>...", Summary: "run a definition or a script in this process, with no setup", Stays: true, Run: cmdTest, Help: `
 It runs a controller, a runner and a client in this process with the store in
 memory, records the file as a tree of one file, starts it, waits until the run
 ends and prints it. It reads no config and keeps nothing. It fails unless the
 run ends with status done.
+
+A singleton is started by the submit, and takes no flag of a start. A keyed
+file is refused: its runs start when an event is sent to a key.
 
 The ceilings allow everything. Each job's own allow: list still applies.
 ` + starts + `
@@ -171,6 +174,9 @@ The ceilings allow everything. Each job's own allow: list still applies.
                            variable NAME; repeatable
   --watch                  print each entry of the run's record as it is
                            written
+
+With --definition, it prints the definition as the client writes it out,
+each value with its file and line, and runs nothing.
 
 Given directories, it reads every machine in them as corbie run submit does,
 prints each one ok or its problems, and starts nothing. It fails when a

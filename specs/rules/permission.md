@@ -97,7 +97,7 @@ The detailed rules behind the [Permissions overview](../permission.md). Requirem
 *Accept:* a caller whose own layers allow `all` calls a location whose file allows `fs.read:${input.dir}/**`, with `dir: /srv/reports`: the called run reads `/srv/reports/a` and is refused `/etc/hosts`. A caller allowed only `send:` entries calls the same location, and the called run reads `/srv/reports/a`.
 
 **R-perm-64** A child started by `machine:` runs at its parent's location. A machine made while running runs at the location of the job that starts it, and sends only to its parent and its children.
-*Accept:* a child of `/home/devices/boiler` reads the secrets set at `/home/devices`. A made machine whose layers allow `send:/home/**` has a send to `/home/devices/boiler` refused, and its send to its parent is delivered.
+*Accept:* a child of `/home/devices/boiler` reads the secrets set at `/home/devices`. A made machine whose layers allow `send:/home/**` has a send to `/home/devices/boiler` refused, and its send to its parent is delivered. Parity case 133.
 
 **R-perm-65** A tree belongs to the client that first submitted it: only that client submits there, reads the runs at its locations and cancels them, and a client submits trees only at prefixes its ceiling's `at:` entries match.
 *Accept:* the work client, with `at:/work` in its ceiling, submits a tree at `/work`. The shop client's submit at `/work` is refused, naming the work client, and its cancel of a run at `/work/services/lookup` is refused. The work client's submit at `/shop` is refused, naming its ceiling and the line `at:/shop`.

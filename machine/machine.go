@@ -381,6 +381,20 @@ func SendsToAddresses(def *Definition) bool {
 	return ok
 }
 
+// A Keeper is a type whose runs keep events sent to them to take later.
+type Keeper interface {
+	Kept(state jsontext.Value) []Event
+}
+
+// Kept gives the events a run of a type keeps, by its state.
+func Kept(typ string, state jsontext.Value) []Event {
+	t, _ := TypeOf(typ)
+	if k, ok := t.(Keeper); ok {
+		return k.Kept(state)
+	}
+	return nil
+}
+
 // An Owner is a type that gives events names of its own, such as a timer's
 // or a ticket's, which no sender may take.
 type Owner interface {

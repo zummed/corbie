@@ -430,6 +430,53 @@ func Test_mach_emit_delivered_twice_is_taken_once(t *testing.T) {
 	}
 }
 
+// A value an attempt emits is given to the machine once, and one from an
+// attempt that another has followed is not given at all. The next attempt's
+// values count from the first, and are given again.
+func Test_ctl_later_attempt_emits_not_delivered_twice(t *testing.T) {
+	w := newWorld(t)
+	r1 := w.party("r1", identity.Runner)
+	w.enrol(r1, permission.Layer{}, nil)
+	run := w.submit(`
+		statechart: listens
+		initial: working
+		states:
+		  working:
+		    job: { script: ./work.js, restart: { limit: 1 } }
+		    on: { page: { send: { to: parent, event: saw, data: "${event.data}" } } }
+	`, map[string]string{"work.js": "return 1"}, nil)
+	w.settle()
+	emit := func(name, job string, index int, data string) {
+		w.leave(r1, name, &instance.Message{Kind: instance.KindEmit, Instance: run, Emit: &instance.EmitNote{Job: job, Name: "page", Index: index, Data: data}})
+		w.settle()
+	}
+	emit("20261010T120001.000000Z-a", "working", 1, "first, once")
+	w.leave(r1, "20261010T120002.000000Z-b", &instance.Message{Kind: instance.KindResult, Instance: run,
+		Result: &instance.Result{Job: "working", Attempt: 1, Status: machine.StatusError, Error: &machine.Error{Status: machine.StatusError, Error: "broke"}}})
+	w.settle()
+	for i := 0; i < 60 && w.latest(run).State.Jobs["working"].Runner == ""; i++ {
+		w.tick(time.Second)
+		w.settle()
+	}
+	if job := w.latest(run).State.Jobs["working"]; job == nil || job.Attempt != 2 {
+		t.Fatalf("the job is %+v", job)
+	}
+	emit("20261010T120003.000000Z-c", "working", 2, "first, late")
+	emit("20261010T120004.000000Z-d", "working@2", 1, "second")
+	emit("20261010T120005.000000Z-e", "working@2", 1, "second")
+	var saw []any
+	for _, step := range w.steps(run) {
+		for _, ask := range step.Asks {
+			if ask.Kind == instance.AskEvent && ask.Event.Name == "saw" {
+				saw = append(saw, ask.Event.Data)
+			}
+		}
+	}
+	if !slices.Equal(saw, []any{"first, once", "second"}) {
+		t.Fatalf("the machine was given %v", saw)
+	}
+}
+
 // A job that cannot be built, whether it is a script or a child, fails,
 // and the machine is told as it is of any failure: nothing is sent, and
 // nothing is left waiting.
@@ -448,7 +495,7 @@ func TestJobThatCannotBeBuiltFails(t *testing.T) {
 	for job, want := range map[string]string{
 		`{ script: ./work.js, allow: ["secret:NONE@net:api.example"] }`:                                  `NONE is not set at /unbuilt-`,
 		`{ machine: { statechart: kid, states: { k: { end: done } } }, input: "${'x'.repeat(300000)}" }`: "pass large values as blobs",
-		`{ send: { to: { at: devices/boiler }, event: set } }`:                                           "a send job is not carried out yet",
+		`{ send: { to: { at: devices/boiler }, event: set } }`:                                           `was refused by the job "s"`,
 		`{ call: { at: services/weather }, input: { days: 2 }, allow: ["send:**"] }`:                     "nothing is recorded at /unbuilt-",
 	} {
 		id := w.submit(strings.Replace(chart, "JOB", job, 1), map[string]string{"work.js": "return 1"}, nil)

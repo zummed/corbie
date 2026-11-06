@@ -84,7 +84,7 @@ func Test_client_check_is_an_ordinary_run(t *testing.T) {
 	}
 	// A listing reads heads, and a head may be a moment behind the record
 	// the check followed.
-	var runs []struct{ Machine, Type, Status string }
+	var runs []struct{ Machine, Type, Status, Location string }
 	for end := time.Now().Add(5 * time.Second); ; time.Sleep(20 * time.Millisecond) {
 		if err := json.Unmarshal([]byte(m.ok("", "run", "ls", "--all", "--json")), &runs); err != nil {
 			t.Fatal(err)
@@ -93,7 +93,7 @@ func Test_client_check_is_an_ordinary_run(t *testing.T) {
 			break
 		}
 	}
-	if len(runs) != 1 || runs[0].Machine != "check" || runs[0].Type != "statechart" || runs[0].Status != "done" {
+	if len(runs) != 1 || runs[0].Machine != "check" || runs[0].Type != "statechart" || runs[0].Status != "done" || runs[0].Location != "/corbie-check/box-client" {
 		t.Fatalf("after a check the runs listed were %+v", runs)
 	}
 }
@@ -104,7 +104,7 @@ func TestCheckOfASubmitThatIsRefused(t *testing.T) {
 	m, _ := working(t, "")
 	m.ok("", "controller", "enrol", "box-client", "--ceiling", "network")
 	status, out, said := m.run("", "check", "--wait", "5s")
-	if status == 0 || !strings.HasPrefix(out, "refused: ") || !strings.Contains(out, "/corbie-check") {
+	if status == 0 || !strings.HasPrefix(out, "refused: ") || !strings.Contains(out, "at:/corbie-check/box-client") {
 		t.Fatalf("a check whose submit was refused ended %d, printed %q and said %q", status, out, said)
 	}
 }

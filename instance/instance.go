@@ -141,8 +141,8 @@ type State struct {
 	// repeats a carry-out: one that does not sort after the last taken from
 	// its sender has been taken already.
 	Heard []Heard `json:"heard,omitzero"`
-	// Emitted counts, for each job and name, the values given to the
-	// machine, so a later attempt's are not given twice.
+	// Emitted counts, for each job and name, the values of its attempt
+	// given to the machine, so one that arrives twice is given once.
 	Emitted map[string]int `json:"emitted,omitzero"`
 	// Sent counts the events the instance has sent up to its parent.
 	Sent int `json:"sent,omitzero"`

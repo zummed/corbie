@@ -63,6 +63,25 @@ func (b *build) callTo(job *instance.Going) (string, *machine.Error, error) {
 	return at, refused, err
 }
 
+// sendJobTo works out the location a send job sends to, which its job then
+// names in full, and checks it as callTo does. A send that is not delivered
+// is no failure: it is noted as the job is carried out.
+func (b *build) sendJobTo(job *instance.Going) (*machine.Error, error) {
+	at, why := b.addressAt(job.Send.At)
+	if why != "" {
+		return nil, nil
+	}
+	own := permission.Layer{Name: fmt.Sprintf("the job %q in the definition of %q", job.Name, b.def.Name), Allow: job.Allow, Deny: job.Deny}
+	own.Fix = "add the line %s to the allow list of " + own.Name
+	refused, err := b.refusedSend(at, own)
+	if refused == nil && err == nil {
+		to := *job.Send.At
+		to.At = at
+		job.Send = &machine.Send{At: &to, Event: job.Send.Event, Data: job.Send.Data}
+	}
+	return refused, err
+}
+
 // call starts the run a call job calls: a root of the location's tree
 // client, named from the message that starts it. A location with nothing
 // recorded, or one that is not transient, fails the job before anything is

@@ -518,3 +518,53 @@ func TestTestReadsADirectory(t *testing.T) {
 		t.Fatalf("with its script gone, corbie test on ended %d and printed %q", status, out)
 	}
 }
+
+// corbie test runs a file by its lifetime: a transient file with its input,
+// a singleton started by its submit, and a keyed file not at all.
+func TestTestRunsEachLifetime(t *testing.T) {
+	m := machine{t, t.TempDir()}
+	dir := files(t, map[string]string{"hello.yaml": hello, "greet.js": `return { text: "hello " + input.name }`,
+		"once.yaml": "statechart: once\nlifetime: singleton\ninitial: over\nstates:\n  over: { end: done, output: once }\n",
+		"room.yaml": "statechart: room\nlifetime: keyed\ninitial: open\nstates:\n  open: { on: { said: open } }\n"})
+	if out := m.ok("", "test", filepath.Join(dir, "hello.yaml"), "--input", `{"name": "x"}`, "--json"); !strings.Contains(out, `"text":"hello x"`) {
+		t.Fatalf("a transient file printed %s", out)
+	}
+	if out := m.ok("", "test", filepath.Join(dir, "once.yaml"), "--json"); !strings.Contains(out, `"output":"once"`) {
+		t.Fatalf("a singleton printed %s", out)
+	}
+	status, out, said := m.run("", "test", filepath.Join(dir, "room.yaml"))
+	if status != 1 || out != "" || !strings.Contains(said, "room.yaml is keyed: a run starts there when an event is sent to a key") {
+		t.Fatalf("a keyed file ended %d: %s%s", status, out, said)
+	}
+}
+
+// corbie test --definition prints the definition written out, each value
+// with its file and line, and runs nothing; a flag of a start beside it is
+// a mistake.
+func Test_client_test_definition_prints_file_and_line(t *testing.T) {
+	m := machine{t, t.TempDir()}
+	dir := files(t, map[string]string{
+		"base.yaml":   "allow: [net:example.com]\ntitle: base\n",
+		"family.yaml": "flow: family\ninclude: base.yaml\nstages:\n  greet: { job: ./greet.js }\n",
+		"greet.js":    "this script would fail: (",
+	})
+	out := m.ok("", "test", filepath.Join(dir, "family.yaml"), "--definition")
+	for _, line := range []string{"flow: family", "# family.yaml:1", "net:example.com", "# base.yaml:1", "title: base", "# base.yaml:2", "job: ./greet.js", "# family.yaml:4"} {
+		if !strings.Contains(out, line) {
+			t.Fatalf("--definition printed no %q:\n%s", line, out)
+		}
+	}
+	var def map[string]any
+	if err := json.Unmarshal([]byte(m.ok("", "test", filepath.Join(dir, "family.yaml"), "--definition", "--json")), &def); err != nil || def["name"] != "family" || def["lines"] == nil {
+		t.Fatalf("--definition --json printed %v (%v)", def, err)
+	}
+	for _, flags := range [][]string{{"--input", "{}"}, {"--watch"}, {"--value", "A=b"}} {
+		args := append([]string{"test", filepath.Join(dir, "family.yaml"), "--definition"}, flags...)
+		if status, out, said := m.run("", args...); status != 2 || out != "" || !strings.Contains(said, "--definition runs nothing") {
+			t.Errorf("corbie %s ended %d: %s%s", strings.Join(args, " "), status, out, said)
+		}
+	}
+	if status, _, said := m.run("", "test", dir, "--definition"); status != 2 || !strings.Contains(said, "--definition applies to one definition") {
+		t.Fatalf("a directory with --definition ended %d: %s", status, said)
+	}
+}

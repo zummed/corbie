@@ -144,6 +144,9 @@ func (p *pass) take(inst string, latest *instance.Step, waiting []*arrival) (*ta
 			b.ask(instance.Ask{Kind: instance.AskReceipt, Sender: a.sender, Message: a.name, Receipt: &instance.Receipt{Taken: true}})
 		}
 		b.end(status, nil, &machine.Error{Status: text.status, Error: text.text})
+		if status == instance.Cancelled {
+			b.unkept()
+		}
 		b.out.rest = append(slices.Clone(waiting[:i]), waiting[i+1:]...)
 		return b.done()
 	}
@@ -1000,10 +1003,18 @@ func (b *build) begin(req *machine.Job, earlier *instance.Going) error {
 		job.Deny = append(slices.Clone(b.def.Deny), job.Deny...)
 	}
 	if job.IsSend() {
-		b.fail(job, "a send job is not carried out yet")
-		return nil
-	}
-	if job.IsCall() {
+		// A send job is checked as a send action is, against every layer of
+		// the run and the job's own lists, while the step is worked out.
+		failure, err := b.sendJobTo(job)
+		if err != nil {
+			b.err = err
+			return nil
+		}
+		if failure != nil {
+			b.ask(instance.Ask{Kind: instance.AskFail, Name: job.Full(), Message: b.message("fail"), Error: failure})
+			return nil
+		}
+	} else if job.IsCall() {
 		// A call is checked as a send is, against every layer of the run
 		// and the job's own lists, while the step is worked out.
 		at, failure, err := b.callTo(job)
@@ -1104,6 +1115,15 @@ func (b *build) launch(job *instance.Going) {
 	job.Began = b.time
 	if job.IsCall() {
 		b.call(job)
+		return
+	}
+	if job.IsSend() {
+		// Its result, done with no output, follows the event, delivered or
+		// not.
+		at, why := b.addressAt(job.Send.At)
+		ask := instance.Ask{Kind: instance.AskEvent, Name: full, Job: &job.Job, Message: b.message("send"),
+			Event: &machine.Event{Name: job.Send.Event, Data: job.Send.Data}}
+		b.aim(&ask, job.Send, at, why)
 		return
 	}
 	if job.IsMachine() {
@@ -1242,6 +1262,19 @@ func (b *build) end(status string, output any, e *machine.Error) {
 	if st.Above.StartedBy != "" && st.Above.CallJob == "" && status == instance.Failed && b.step.Number == 1 {
 		b.ask(instance.Ask{Kind: instance.AskTell, To: st.Above.StartedBy, Message: b.message("tell"),
 			Text: fmt.Sprintf("the run %s, started by a send to %s#%s, failed as it started: %s", b.inst, st.Location, st.Key, e.Error)})
+	}
+}
+
+// unkept notes, in the record of each run that sent one, the events a
+// cancelled run kept to take later: they are not delivered.
+func (b *build) unkept() {
+	at := addressText(&machine.Address{At: b.st.Location, Run: b.inst})
+	for _, event := range machine.Kept(b.st.Type, b.st.Inner) {
+		if event.Sender == nil || event.Sender.Run == "" {
+			continue
+		}
+		b.ask(instance.Ask{Kind: instance.AskTell, To: event.Sender.Run, Message: b.message("tell"),
+			Text: fmt.Sprintf("the event %s sent to %s was not delivered: the run was cancelled while it kept the event under defer:", event.Name, at)})
 	}
 }
 
@@ -1531,9 +1564,12 @@ func (b *build) first(s *instance.Start, start *arrival) (refused bool, err erro
 // what it declares alone, before anything is sent.
 func (b *build) holds(job *instance.Going) bool {
 	declared := job.Allow
-	if job.IsCall() {
+	switch {
+	case job.IsCall():
 		// A call is a send to its location.
 		declared = append(slices.Clone(declared), permission.Send+":"+job.Call.At)
+	case job.IsSend() && strings.HasPrefix(job.Send.At.At, "/"):
+		declared = append(slices.Clone(declared), permission.Send+":"+job.Send.At.At)
 	}
 	return job.Approve || permission.Declares(declared, b.st.Above.AskAbout, b.st.Tree)
 }

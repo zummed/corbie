@@ -128,7 +128,8 @@ func (l *Local) RunTree(ctx context.Context, tree *Tree, start Start) (string, e
 		if !reflect.DeepEqual(carried, Start{}) {
 			return "", fmt.Errorf("%w: the submit started the singleton at %s, and a start carries nothing to it", ErrStart, done.Location)
 		}
-		return done.Run, nil
+		// The singleton has nothing to read until its start is taken.
+		return done.Run, l.Taken(ctx, done.Run, LocalInterval)
 	}
 	start.At = tree.Machines[0].Location
 	return l.Start(ctx, start)

@@ -1,0 +1,4 @@
+[
+  { "wait": { "machine": "asker", "ticket": "go" }, "do": "submit", "dir": "changed" },
+  { "wait": { "machine": "asker", "ticket": "go" }, "do": "reply", "value": {} }
+]

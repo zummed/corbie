@@ -1,0 +1,10 @@
+{
+  "status": "done",
+  "output": "told",
+  "record": [
+    { "machine": "maker", "event": { "name": "failed", "from": "sending", "data": { "error": { "<contains>": "sends only to its parent and its children" } } } },
+    { "machine": "maker", "event": { "name": "failed", "from": "calling", "data": { "error": { "<contains>": "sends only to its parent and its children" } } } },
+    { "machine": "maker", "event": { "name": "hello" } }
+  ],
+  "note": "R-perm-64, C-ctl-76: a machine made while running that sends to an address or calls fails; one that sends to its parent is heard."
+}

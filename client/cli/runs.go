@@ -251,10 +251,12 @@ const interval = time.Second
 func cmdTest(e *Env, args []string) error {
 	var s starting
 	var values list
+	var definition bool
 	s.flags(e)
 	e.Flags.Var(&values, "value", "")
 	e.Flags.Var(&s.secrets, "secret", "")
 	e.Flags.Var(&s.secretsFromEnv, "secret-env", "")
+	e.Flags.BoolVar(&definition, "definition", false, "")
 	files, err := e.Parse(args)
 	if err != nil {
 		return err
@@ -263,14 +265,18 @@ func cmdTest(e *Env, args []string) error {
 	if err != nil {
 		return err
 	}
+	ofAStart := append(slices.Clone(startOnly), "value", "secret", "secret-env")
 	if dirs {
-		if given := given(e, append(slices.Clone(startOnly), "value", "secret", "secret-env")); len(given) > 0 {
+		if given := given(e, append(ofAStart, "definition")); len(given) > 0 {
 			return Mistake("%s applies to one definition; a directory takes no flag of a start", strings.Join(given, ", "))
 		}
 		return e.checkMachines(files)
 	}
 	if len(files) != 1 {
 		return Mistake("name directories, or one definition, or one script file")
+	}
+	if definition {
+		return e.printDefinition(files[0], given(e, ofAStart))
 	}
 	// Each value is NAME=VALUE, and is set with the secrets at / of the
 	// controller in this process.
@@ -294,8 +300,11 @@ func cmdTest(e *Env, args []string) error {
 		return err
 	}
 	// A singleton is started by the submit, and a start carries nothing to
-	// it.
-	if tree.Machines[0].Draft.Definition.Lifetime == machine.LifetimeSingleton {
+	// it. A keyed file's runs start only at a send.
+	switch tree.Machines[0].Draft.Definition.Lifetime {
+	case machine.LifetimeKeyed:
+		return fmt.Errorf("%s is keyed: a run starts there when an event is sent to a key, so corbie test starts none; submit it in a tree with the machine that sends to it", files[0])
+	case machine.LifetimeSingleton:
 		if given := given(e, []string{"input", "input-file", "label", "allow", "deny", "timeout"}); len(given) > 0 {
 			return Mistake("%s does not apply to a singleton: the submit starts its run", strings.Join(given, ", "))
 		}
@@ -334,6 +343,26 @@ func cmdTest(e *Env, args []string) error {
 		return err
 	}
 	return e.await(local.Client, id, s.watch, isScript(files[0]))
+}
+
+// printDefinition prints a definition file written out, each value with
+// its file and line, and runs nothing.
+func (e *Env) printDefinition(file string, starts []string) error {
+	if len(starts) > 0 {
+		return Mistake("%s applies to a run; --definition runs nothing", strings.Join(starts, ", "))
+	}
+	if isScript(file) {
+		return Mistake("--definition prints a definition written out, and %s is a script file", file)
+	}
+	context, rel, err := contextOf(file)
+	if err != nil {
+		return err
+	}
+	draft, err := client.ReadMachine(context, rel)
+	if err != nil {
+		return err
+	}
+	return e.Print(draft.Definition, func() string { return string(draft.WrittenOut()) })
 }
 
 func cmdSubmit(e *Env, args []string) error {

@@ -1,0 +1,5 @@
+[
+  { "wait": { "machine": "worker", "ticket": "hold" }, "remember": "worker", "do": "nothing" },
+  { "wait": { "machine": "boss", "ticket": "go" }, "remembered": "worker", "do": "cancel" },
+  { "wait": { "machine": "boss", "ticket": "go" }, "do": "reply", "value": {} }
+]

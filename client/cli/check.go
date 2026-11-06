@@ -13,8 +13,8 @@ import (
 	"github.com/zummed/corbie/machine"
 )
 
-// checkPrefix is the prefix the check's machine is submitted at, and the
-// location its run starts at.
+// checkPrefix is where each client's check is submitted: at the client's
+// name below it, which is the location its run starts at.
 const checkPrefix = "/corbie-check"
 
 // The check's run asks for one job and sets one timer, so that everything a
@@ -211,8 +211,9 @@ func cmdCheck(e *Env, args []string) error {
 	// nothing running does not look like a command that has hung.
 	waiting := func(leg string) { e.Say("waiting up to %s %s", wait, legWaits[leg]) }
 	waiting(legs[0])
-	// The check's machine is submitted as a tree of one file, and its run
-	// started there once the submit is taken. The submit, and then each leg,
+	// The check's machine is submitted as a tree of one file at the
+	// client's own prefix, so several clients can check one controller, and
+	// its run started there once the submit is taken. The submit, and then each leg,
 	// is waited for this long from the one before it. The run is followed as any run is, and
 	// what the check reports is what turned up in the store: it asks the
 	// host nothing.
@@ -220,7 +221,8 @@ func cmdCheck(e *Env, args []string) error {
 	defer stop()
 	sent := time.Now()
 	giveUp := time.AfterFunc(time.Duration(patience), stop)
-	message, err := c.Submit(e.ctx, &client.Tree{Prefix: checkPrefix, Machines: []*client.Machine{{Path: "check.yaml", Location: checkPrefix, Draft: draft}}}, 0)
+	at := checkPrefix + "/" + c.ID.Card.Name
+	message, err := c.Submit(e.ctx, &client.Tree{Prefix: at, Machines: []*client.Machine{{Path: "check.yaml", Location: at, Draft: draft}}}, 0)
 	if err != nil {
 		return err
 	}
@@ -243,7 +245,7 @@ func cmdCheck(e *Env, args []string) error {
 	// The first leg is the start alone: it is timed from here.
 	sent = time.Now()
 	giveUp.Reset(time.Duration(patience))
-	id, err := c.Start(e.ctx, client.Start{At: checkPrefix})
+	id, err := c.Start(e.ctx, client.Start{At: at})
 	if err != nil {
 		return err
 	}

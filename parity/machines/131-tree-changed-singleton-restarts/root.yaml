@@ -1,0 +1,18 @@
+# The asker asks the singleton at /case/answer, which says old. While the
+# asker waits on go, the directory changed is submitted at /case: its
+# answer.yaml says new, and a singleton always restarts, so the asker's
+# second question is answered by the run started on the new file.
+statechart: asker
+allow: [send:answer]
+initial: first
+states:
+  first:
+    entry: { send: { to: { at: answer }, event: ask } }
+    on: { said: waiting }
+  waiting:
+    ticket: go
+    on: { go: second }
+  second:
+    entry: { send: { to: { at: answer }, event: ask } }
+    on: { said: finished }
+  finished: { end: done, output: "${event.data}" }

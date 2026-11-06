@@ -237,6 +237,9 @@ func (p *pass) carry(inst string, step *instance.Step, ask *instance.Ask) error 
 		return p.tell(ask.To, inst, ask.Message, ask.Text)
 
 	case instance.AskEvent:
+		if ask.Job != nil {
+			return p.sendJob(inst, step, ask)
+		}
 		if ask.Location != "" {
 			return p.toAddress(inst, step, ask)
 		}

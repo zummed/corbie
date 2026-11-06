@@ -1,0 +1,5 @@
+statechart: boiler
+lifetime: singleton
+initial: idle
+states:
+  idle: { on: { set: idle } }

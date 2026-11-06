@@ -145,7 +145,8 @@ func (p *pass) take(inst string, latest *instance.Step, waiting []*arrival) (*ta
 		return b.done()
 	}
 	// An event sent to { at } or { at, key } is first in its step: nothing
-	// before it can end the run with the event given and not acted on.
+	// before it can end the run with the event given and not acted on. One
+	// sent to the run by its ID is the run's to take, acted on or not.
 	for i, a := range waiting {
 		if a.movable() && len(b.out.used) > 0 {
 			b.out.rest = waiting[i:]
@@ -1331,8 +1332,8 @@ func (b *build) first(s *instance.Start, start *arrival) (refused bool, err erro
 	}
 	b.def = def
 	// A run a send starts takes the event only where its location's file
-	// takes it.
-	if start.isSend() {
+	// takes it. One whose file cannot be read fails as it starts.
+	if start.isSend() && len(read.Problems) == 0 {
 		if why := b.refuses(start.msg, def); why != "" {
 			b.undeliver(start, why)
 			return true, nil

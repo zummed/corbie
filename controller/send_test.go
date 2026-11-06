@@ -1,6 +1,7 @@
 package controller_test
 
 import (
+	"fmt"
 	"slices"
 	"strings"
 	"testing"
@@ -11,6 +12,7 @@ import (
 	"github.com/zummed/corbie/instance"
 	"github.com/zummed/corbie/machine"
 	"github.com/zummed/corbie/permission"
+	"github.com/zummed/corbie/store"
 )
 
 // bell is a singleton that takes rang and any event, and answers its sender.
@@ -213,6 +215,25 @@ func Test_ctl_send_denied_by_a_layer_fails_the_chart(t *testing.T) {
 	}
 	if len(w.runsOf("talk")) != 0 {
 		t.Fatalf("a denied send started %v", w.runsOf("talk"))
+	}
+
+	// A run whose tree client the controller no longer knows has no
+	// ceiling to send under: its send fails it.
+	w = newWorld(t)
+	w.rooms(nil)
+	run = w.startAt(w.client, "/t/router", client.Start{})
+	w.settle()
+	w.say(run, "say", 1, "one")
+	w.pass()
+	if _, err := w.ctrl.Store.Delete(ctx, store.Trust("ctl", "c1"), store.Overwrite); err != nil {
+		t.Fatal(err)
+	}
+	w.settle()
+	if st := w.latest(run).State; st.Status != instance.Failed || !strings.Contains(st.Error.Error, `the client "c1" is not known to the controller`) {
+		t.Fatalf("the chart is %s: %+v", st.Status, st.Error)
+	}
+	if len(w.runsOf("talk")) != 0 {
+		t.Fatalf("a send with no ceiling started %v", w.runsOf("talk"))
 	}
 }
 
@@ -487,5 +508,79 @@ func Test_ctl_client_cannot_write_its_sender(t *testing.T) {
 	}
 	if w.head(runs[0]).StartedBy != "" {
 		t.Fatalf("the run names %s as its sender", w.head(runs[0]).StartedBy)
+	}
+}
+
+// A client's send to a location no store can hold is refused, and the
+// controller's passes go on.
+func Test_ctl_client_send_to_a_location_no_store_holds_is_refused(t *testing.T) {
+	for i, at := range []string{"/t/ro\x01om", "/t/ro\\om"} {
+		w := newWorld(t)
+		w.rooms(nil)
+		message := fmt.Sprintf("20261010T120000.000000Z-bad%d", i)
+		w.leave(w.c1, message, &instance.Message{Kind: instance.KindSend,
+			To: &machine.Address{At: at}, Event: &machine.Event{Name: "said"}})
+		for range 3 {
+			w.pass()
+		}
+		if r := w.receipt(message); r == nil || r.Taken || !strings.Contains(r.Refused, "backslash or control character") {
+			t.Fatalf("%q: the receipt is %+v", at, r)
+		}
+		if left := w.list(store.Inbox("ctl")); len(left) != 0 {
+			t.Fatalf("%q: left waiting: %v", at, left)
+		}
+	}
+}
+
+// A client's sends, with the controller stopped after any single write and
+// the sends' lives run out before it starts again: each receipt says what
+// happened to its event, and no event is given twice.
+func Test_ctl_client_send_stopped_after_every_write(t *testing.T) {
+	for n := int64(0); ; n++ {
+		w := newWorld(t)
+		w.rooms(nil)
+		key := "k"
+		texts := []string{"one", "bye", "two"}
+		var messages []string
+		for _, text := range texts {
+			message, err := w.client.Send(ctx, machine.Address{At: "/t/room", Key: &key}, "said", map[string]any{"text": text}, time.Hour)
+			if err != nil {
+				t.Fatal(err)
+			}
+			messages = append(messages, message)
+		}
+		inner := w.ctrl.Store
+		s := &stopping{Store: inner}
+		s.left.Store(n)
+		w.afresh(s)
+		for range 12 {
+			if _, err := w.ctrl.Pass(ctx); err != nil {
+				break
+			}
+		}
+		if !s.stopped.Load() {
+			if n < 10 {
+				t.Fatalf("the workload took only %d writes", n)
+			}
+			return
+		}
+		w.afresh(inner)
+		w.tick(2 * time.Hour)
+		w.settle()
+		told := map[string]int{}
+		for _, run := range w.runsOf("talk") {
+			for _, text := range w.told(run) {
+				told[text]++
+			}
+		}
+		for i, text := range texts {
+			r := w.receipt(messages[i])
+			if r == nil || r.Taken != (told[text] == 1) || told[text] > 1 {
+				t.Fatalf("stopped after %d writes, %s was given %d times and its receipt is %+v", n, text, told[text], r)
+			}
+		}
+		if left := w.list(store.Inbox("ctl")); len(left) != 0 {
+			t.Fatalf("stopped after %d writes, left waiting: %v", n, left)
+		}
 	}
 }

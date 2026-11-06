@@ -220,7 +220,7 @@ A message that would start a run that exists is that run's own start written aga
 | a run that has ended | the file is replaced, only-if-unchanged |
 | a run with no step and no start | the file is replaced, only-if-unchanged |
 
-An event sent to a key is the first event of its step. The events of a step after one that ends the machine are not acted on, and this one has to be. It waits for the next pass while an earlier event from the same sender to the same key is on its way to another run, so no event is taken before one sent ahead of it. An event sent to a run by its ID waits the same way behind an earlier one from the same sender to that location.
+An event sent to a key is the first event of its step. The events of a step after one that ends the machine are not acted on, and this one has to be. An event sent to a run by its ID is taken in such a step and not acted on, as an event with no rule is. It waits for the next pass while an earlier event from the same sender to the same key is on its way to another run, so no event is taken before one sent ahead of it. An event sent to a run by its ID waits the same way behind an earlier one from the same sender to that location.
 
 An instance remembers the last message taken from each of its 64 most recent senders, and one that does not sort after it is a copy from a carry-out done again.
 

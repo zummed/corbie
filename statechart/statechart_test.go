@@ -823,10 +823,10 @@ func addressText(a *machine.Address) string {
 	switch {
 	case a.Client != "":
 		return "client:" + a.Client
-	case a.Key != nil:
-		return a.At + "#" + *a.Key
 	case a.Run != "":
 		return a.At + "~" + a.Run
+	case a.Key != nil:
+		return a.At + "#" + *a.Key
 	}
 	return a.At
 }
@@ -846,11 +846,15 @@ states:
 					- { to: { at: rooms/room, key: "${event.data.room}" }, event: set }
 					- { to: { at: /work/jobs, run: "${event.data.run}" }, event: set }
 					- { to: "${event.data.back}", event: set }
+					- { to: "${event.data.from}", event: set }
 `)
 	c.give(start())
+	// An address with both a key and a run, as event.from is for a keyed
+	// run, goes to the run.
 	c.want(c.give(machine.Event{Name: "go", Data: map[string]any{"room": "kitchen", "run": "c1/20261013T170000.000Z-ab12",
-		"back": map[string]any{"at": "/t/x", "key": "k"}}}),
-		"send set to devices/boiler", "send set to rooms/room#kitchen", "send set to /work/jobs~c1/20261013T170000.000Z-ab12", "send set to /t/x#k")
+		"back": map[string]any{"at": "/t/x", "key": "k"}, "from": map[string]any{"at": "/t/y", "key": "k", "run": "c1/20261013T170000.000Z-cd34"}}}),
+		"send set to devices/boiler", "send set to rooms/room#kitchen", "send set to /work/jobs~c1/20261013T170000.000Z-ab12", "send set to /t/x#k",
+		"send set to /t/y~c1/20261013T170000.000Z-cd34")
 }
 
 // A reply to ${event.from} goes to the address of the run or the client that
@@ -867,7 +871,7 @@ states:
 	c.give(start())
 	key := "kitchen"
 	c.want(c.give(machine.Event{Name: "knock", Sender: &machine.Address{At: "/t/clerk", Run: "c1/20261013T170000.000Z-ab12", Key: &key}}),
-		"send opened to /t/clerk#kitchen")
+		"send opened to /t/clerk~c1/20261013T170000.000Z-ab12")
 	if data := c.out.Requests[0].Send.Data; !reflect.DeepEqual(data, map[string]any{"at": "/t/clerk"}) {
 		t.Fatalf("the reply's data is %v", data)
 	}

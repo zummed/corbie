@@ -277,7 +277,8 @@ for the result.
   send: { to: "${event.from}", event: applied }    a reply to the sender
 
 - A location is read from the tree's prefix, or in full when it starts with
-  `/`. A name in it is not empty, `.`, `..` or `+`, and holds no `#`.
+  `/`. A name in it is not empty, `.`, `..` or `+`, and holds no `#`,
+  backslash or control character.
 - `at`, `key` and `run` may hold expressions, and `to` may be one expression
   that gives an address. The address is checked once it is filled in.
 - A send job ends `done` once the event is written. It takes `to`, `event`,

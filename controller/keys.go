@@ -264,23 +264,34 @@ func (b *build) readAddresses(requests []machine.Request) error {
 // sendsTo says a request sends to a run by its address.
 func sendsTo(r machine.Request) bool { return r.Send != nil && r.Send.At != nil }
 
-// refusedSend says which layer of the run refuses a send to a location, if
-// one does: the definition's own lists and those the run was started under,
-// read from the tree's prefix, and then its tree client's ceiling, which is
-// written in full. The runner's ceiling takes no part: no runner carries a
-// send.
-func (b *build) refusedSend(at string) (*permission.Refusal, error) {
+// refusedSend says why a send to a location is refused, if it is: a layer
+// of the run refuses it, or its tree client is not known to the controller.
+// The layers are the definition's own lists and those the run was started
+// under, read from the tree's prefix, and then its tree client's ceiling,
+// which is written in full. The runner's ceiling takes no part: no runner
+// carries a send.
+func (b *build) refusedSend(at string) (*machine.Error, error) {
+	denied := func(r *permission.Refusal) *machine.Error {
+		return &machine.Error{Status: machine.StatusDenied, Error: r.Error(), Refused: r.What, Layer: r.Layer, Fix: r.Fix}
+	}
 	own := fmt.Sprintf("the definition of %q", b.def.Name)
 	layers := []permission.Layer{{Name: own, Allow: b.read.Allow, Deny: b.def.Deny, Fix: "add the line %s to the allow list of " + own}}
 	layers = append(layers, b.st.Above.Layers...)
 	if r := (&permission.Set{Layers: layers, Prefix: b.st.Tree}).Check(permission.Send, at); r != nil {
-		return r, nil
+		return denied(r), nil
 	}
-	client, err := b.p.trusted(store.InstanceClient(b.inst))
-	if err != nil || client == nil {
+	name := store.InstanceClient(b.inst)
+	client, err := b.p.trusted(name)
+	if err != nil {
 		return nil, err
 	}
-	return (&permission.Set{Layers: []permission.Layer{ceilingOf(client)}}).Check(permission.Send, at), nil
+	if client == nil {
+		return b.p.failf("the client %q is not known to the controller", name), nil
+	}
+	if r := (&permission.Set{Layers: []permission.Layer{ceilingOf(client)}}).Check(permission.Send, at); r != nil {
+		return denied(r), nil
+	}
+	return nil, nil
 }
 
 // ceilingOf is a client's ceiling as a layer, by name.
@@ -323,13 +334,13 @@ func (b *build) sendTo(s *machine.Send) (denied bool) {
 		b.end(instance.Failed, nil, b.p.failf("%s", b.read.Unfilled))
 		return true
 	}
-	r, err := b.refusedSend(at)
+	refused, err := b.refusedSend(at)
 	if err != nil {
 		b.err = err
 		return true
 	}
-	if r != nil {
-		b.end(instance.Failed, nil, &machine.Error{Status: machine.StatusDenied, Error: r.Error(), Refused: r.What, Layer: r.Layer, Fix: r.Fix})
+	if refused != nil {
+		b.end(instance.Failed, nil, refused)
 		return true
 	}
 	if machine.Reserved(s.Event) {
@@ -689,6 +700,16 @@ func (p *pass) route(a *arrival) error {
 	if err != nil {
 		return err
 	}
+	name := clientPrefix + a.sender + "." + base
+	if !answered {
+		// Routed before the controller stopped: the run takes what was
+		// written, whatever has changed since.
+		_, mark, err := p.store.Read(p.ctx, store.Message(p.ctl, p.ctl, name))
+		if err != nil {
+			return err
+		}
+		answered = mark != store.None
+	}
 	if answered {
 		_, err := p.store.Delete(p.ctx, a.name, store.Overwrite)
 		return err
@@ -713,6 +734,8 @@ func (p *pass) route(a *arrival) error {
 		return refuse("a client has no inbox")
 	case !strings.HasPrefix(to.At, "/"):
 		return refuse("%s: a client names a location in full, from /", to.At)
+	case store.CheckLocation(to.At) != nil:
+		return refuse("%v", store.CheckLocation(to.At))
 	}
 	if machine.Reserved(msg.Event.Name) {
 		return refuse("no event can be sent under the name %q, which Corbie gives a machine itself", msg.Event.Name)
@@ -735,7 +758,6 @@ func (p *pass) route(a *arrival) error {
 		}
 	}
 	out := &instance.Message{Kind: instance.KindSend, To: to, Sender: &machine.Address{Client: a.sender}, Event: msg.Event}
-	name := clientPrefix + a.sender + "." + base
 	if to.Run != "" {
 		out.Instance = to.Run
 	} else {

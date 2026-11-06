@@ -10,6 +10,7 @@ import (
 	"sort"
 	"strings"
 	"time"
+	"unicode"
 	"unicode/utf8"
 
 	"github.com/zummed/corbie/blob"
@@ -207,8 +208,8 @@ func checkLocation(loc string, pattern bool) error {
 			return fmt.Errorf("%q: a location has no empty name and does not end with /", loc)
 		case part == "." || part == "..":
 			return fmt.Errorf("%q: a location is read from the tree's prefix, or from / in full, and has no . or .. in it", loc)
-		case part == "+" || strings.Contains(part, "#"):
-			return fmt.Errorf("%q: a name in a location is not + and holds no #", loc)
+		case part == "+" || strings.ContainsAny(part, "#\\") || strings.ContainsFunc(part, unicode.IsControl):
+			return fmt.Errorf("%q: a name in a location is not + and holds no #, backslash or control character", loc)
 		case !pattern && strings.Contains(part, "*"):
 			return fmt.Errorf("%q: a location holds no *", loc)
 		}

@@ -116,7 +116,7 @@ func Test_mach_receive_says_who_may_send(t *testing.T) {
 		"receive.set[1]: client: names a client",
 		`receive.set[2]: "../up": a location is read from the tree's prefix`,
 		`receive.set[3]: "a//b": a location has no empty name`,
-		`receive.set[4]: "x#y": a name in a location is not + and holds no #`,
+		`receive.set[4]: "x#y": a name in a location is not + and holds no #, backslash or control character`,
 		`receive.set[5]: "+/z"`,
 		`receive.done: "done": no run is sent an event named`,
 	} {
@@ -191,6 +191,15 @@ func Test_mach_address_names_a_run(t *testing.T) {
 	}
 	if _, err := (&AddressSpec{Expr: "${input}"}).Fill(eval(t), Scope{"input": "x"}, "to"); err == nil || !strings.Contains(err.Error(), "an address is") {
 		t.Errorf("an expression that gives text gave: %v", err)
+	}
+	if _, err := (&AddressSpec{Expr: "${input}"}).Fill(eval(t), Scope{"input": map[string]any{"at": "/x", "room": "k"}}, "to"); err == nil || !strings.Contains(err.Error(), "an address is") {
+		t.Errorf("an expression that gives a field no address has gave: %v", err)
+	}
+	// A location holds no name the store cannot hold.
+	for _, at := range []string{"/t/ro\\om", "/t/ro\x01om"} {
+		if _, err := spec.Fill(eval(t), Scope{"input": map[string]any{"at": at}}, "to"); err == nil || !strings.Contains(err.Error(), "backslash or control character") {
+			t.Errorf("%q filled in gave: %v", at, err)
+		}
 	}
 	for loc, want := range map[string]string{"devices/boiler": "/home/devices/boiler", "/work/x": "/work/x"} {
 		if got := Resolve("/home", loc); got != want {

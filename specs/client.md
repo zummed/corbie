@@ -100,7 +100,7 @@ Following from a terminal is one flag, `--watch`. It prints what the command pri
 
 ```
 <id>                  one run, by its ID
-/home/devices/boiler  the singleton at a location; for run cancel, every run there
+/home/devices/boiler  the singleton at a location; for run show, the one run of this client's running there; for run cancel, every run there
 /home/chats#alice     the running run of key alice at a keyed location
 ```
 

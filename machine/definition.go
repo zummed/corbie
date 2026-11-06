@@ -128,12 +128,19 @@ func (s *AddressSpec) Fill(e *Evaluator, scope Scope, place string) (*Address, e
 		}
 		m, ok := v.(map[string]any)
 		var key string
+		known := 0
 		for name, field := range map[string]*string{"at": &a.At, "key": &key, "run": &a.Run, "client": &a.Client} {
+			if _, has := m[name]; has {
+				known++
+			}
 			if text, isText := m[name].(string); isText {
 				*field = text
 			} else if m[name] != nil {
 				ok = false
 			}
+		}
+		if known != len(m) {
+			ok = false // a field no address has
 		}
 		if _, isText := m["key"].(string); isText {
 			a.Key = &key

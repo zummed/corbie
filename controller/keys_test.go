@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"slices"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -1217,6 +1218,31 @@ func Test_ctl_keyed_event_is_never_given_after_the_run_ends(t *testing.T) {
 	}
 }
 
+// An event sent to a run by its ID that arrives in the step that ends the
+// run is taken there and not acted on, as an event with no rule is: it is
+// in the run's record, and its sender is not told it was undelivered.
+func Test_ctl_direct_event_with_the_runs_end_is_taken_and_not_acted_on(t *testing.T) {
+	w := newWorld(t)
+	sender := w.rooms(nil)
+	w.say(sender, "say", 1, "one")
+	w.settle()
+	run := w.runsOf("talk")[0]
+	w.tell(sender, "poke", map[string]any{"at": "room", "run": run, "text": "bye"})
+	w.tell(sender, "poke", map[string]any{"at": "room", "run": run, "text": "late"})
+	w.settle()
+	steps := w.steps(run)
+	last := steps[len(steps)-1]
+	if got := w.told(run); !slices.Equal(got, []string{"one", "bye", "late"}) || events(last) != "said said" || last.State.Status != instance.Done {
+		t.Fatalf("the run was told %v, its last step took %q and is %s", got, events(last), last.State.Status)
+	}
+	if notes := w.keyNotes(sender); len(notes) != 0 {
+		t.Fatalf("the sender's notes are %q", notes)
+	}
+	if left := w.list(store.Inbox("ctl")); len(left) != 0 {
+		t.Fatalf("left waiting: %v", left)
+	}
+}
+
 // The event names Corbie gives a machine cannot be sent, and a run's own
 // timer and ticket names are undelivered at the run.
 func Test_chart_send_cannot_take_an_events_own_name(t *testing.T) {
@@ -1597,5 +1623,72 @@ func Test_ctl_event_another_copy_moved_on_is_not_noted_as_lost(t *testing.T) {
 	w.pass()
 	if notes := w.keyNotes(sender); len(notes) != 0 {
 		t.Fatalf("the record says %v", notes)
+	}
+}
+
+// emptying deletes what is under a name once a write is made under another.
+type emptying struct {
+	store.Store
+	when, under string
+	done        atomic.Bool
+}
+
+func (e *emptying) Write(ctx context.Context, name string, value []byte, how store.How) (bool, error) {
+	written, err := e.Store.Write(ctx, name, value, how)
+	if err == nil && strings.HasPrefix(name, e.when) && !e.done.Swap(true) {
+		names, err := store.Names(e.Store.List(ctx, e.under))
+		if err != nil {
+			return false, err
+		}
+		for _, n := range names {
+			if _, err := e.Store.Delete(ctx, n, store.Overwrite); err != nil {
+				return false, err
+			}
+		}
+	}
+	return written, err
+}
+
+// A run a send starts that fails as it starts, for a definition that is no
+// longer in the store, for its depth or for its input, adds the reason to
+// its sender's record. Its first step is failed, and its key is free.
+func Test_ctl_sent_root_fails_at_start_and_tells_its_sender(t *testing.T) {
+	for _, c := range []struct {
+		name string
+		when string // the definition's blobs go once a write is made under it
+		want string
+	}{
+		{"gone before it starts", store.Inbox("ctl") + "/ctl/", "its machine is no longer in the store"},
+		{"gone after its key is taken", store.Keys("ctl", "/t/room"), "its machine is no longer in the store"},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			w := newWorld(t)
+			sender := w.rooms(nil)
+			w.ctrl.Store = &emptying{Store: w.ctrl.Store, when: c.when, under: store.LocationBlobs("ctl", "/t/room")}
+			w.say(sender, "say", 1, "one")
+			w.settle()
+			notes := w.keyNotes(sender)
+			if len(notes) != 1 || !strings.Contains(notes[0], c.want) {
+				t.Fatalf("the sender's record says %q", notes)
+			}
+			var runs []string
+			for _, at := range w.list(store.Finished("ctl")) {
+				if run := store.InstanceOf("ctl", at); w.head(run).Location == "/t/room" && !slices.Contains(runs, run) {
+					runs = append(runs, run)
+				}
+			}
+			if len(runs) != 1 {
+				t.Fatalf("the runs at /t/room are %v", runs)
+			}
+			if st := w.latest(runs[0]).State; st.Status != instance.Failed || !strings.Contains(st.Error.Error, c.want) {
+				t.Fatalf("the run is %s: %+v", st.Status, st.Error)
+			}
+			if entry := w.entry("/t/room", "chat:1"); entry != nil {
+				t.Fatalf("the key is held by %+v", entry)
+			}
+			if left := w.list(store.Inbox("ctl")); len(left) != 0 {
+				t.Fatalf("left waiting: %v", left)
+			}
+		})
 	}
 }

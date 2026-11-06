@@ -134,8 +134,8 @@ func (p *pass) called(inst string, step *instance.Step, ask *instance.Ask) error
 }
 
 // callIn takes a client's start of a location in a tree another client
-// owns: it is a call. The controller checks the client's ceiling, and
-// writes to itself the start of a run named under the tree's client, with
+// owns: it is a call. The controller checks the client's ceiling first,
+// then the location's lifetime, and writes to itself the start of a run named under the tree's client, with
 // the client's input copied into that run's record. That run answers the
 // client: its first step writes the receipt, and its end the result beside
 // it. A call done again writes the same start.
@@ -158,14 +158,6 @@ func (b *build) callIn(start *arrival, file *located, s *instance.Start) error {
 		b.drop(start)
 		return nil
 	}
-	switch {
-	case file.Lifetime != machine.LifetimeTransient:
-		b.refuse(start, "%s is in a tree of the client %s, and is %s: another client starts a run there only by calling a transient location", s.Location, file.Client, file.Lifetime)
-		return nil
-	case len(s.Labels) > 0 || s.Allow != nil:
-		b.refuse(start, "%s is in a tree of the client %s: a call gives an input and a timeout, and labels and an allow list are for runs of the client's own trees", s.Location, file.Client)
-		return nil
-	}
 	client, err := p.trusted(start.sender)
 	if err != nil || client == nil {
 		return err
@@ -173,6 +165,14 @@ func (b *build) callIn(start *arrival, file *located, s *instance.Start) error {
 	if r := (&permission.Set{Layers: []permission.Layer{ceilingOf(client)}}).Check(permission.Send, s.Location); r != nil {
 		b.out.dropped = append(b.out.dropped, dropped{a: start, receipt: &instance.Receipt{Refused: r.Error(),
 			Denied: &machine.Error{Status: machine.StatusDenied, Error: r.Error(), Refused: r.What, Layer: r.Layer, Fix: r.Fix}}})
+		return nil
+	}
+	switch {
+	case file.Lifetime != machine.LifetimeTransient:
+		b.refuse(start, "%s is in a tree of the client %s, and is %s: another client starts a run there only by calling a transient location", s.Location, file.Client, file.Lifetime)
+		return nil
+	case len(s.Labels) > 0 || s.Allow != nil:
+		b.refuse(start, "%s is in a tree of the client %s: a call gives an input and a timeout, and labels and an allow list are for runs of the client's own trees", s.Location, file.Client)
 		return nil
 	}
 	input, why, err := b.clientInput(s)

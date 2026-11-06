@@ -210,7 +210,7 @@ A script cannot reach outside itself except through the kinds above, and those a
 ```
 
 - Whoever holds a gateway's token calls every location that accepts the gateway's client, with any input.
-- What is at a location is not secret from those who may send there. A run whose layers allow `send:` to a location learns from an undelivered note or a failed call, before `receive:` is read, whether a file is recorded there, its lifetime, whether its singleton is running and whether a keyed location is at its `limits: { runs }`. A client learns from a refused start or call whether a file is recorded at a location, its lifetime and the client whose tree it is in, whatever its ceiling.
+- What is at a location is not secret from those who may send there. A run whose layers allow `send:` to a location learns from an undelivered note or a failed call, before `receive:` is read, whether a file is recorded there, its lifetime, whether its singleton is running and whether a keyed location is at its `limits: { runs }`. A client learns from a refused start or call whether a file is recorded at a location and the client whose tree it is in, whatever its ceiling, and the location's lifetime when its ceiling allows `send:` there.
 - Machines made while running that each use a step's whole time delay other machines: a pass waits for four of those steps at a time, up to 10 seconds, and every other run pays that in each pass it needs. Beside four such machines, a run of 20 ms took 10 seconds.
 - A step that asks for as much as fits in its 4 MiB delays other machines for as long as carrying it out takes.
 - A host with less memory than four steps' 4 GiB stops a step's process or the whole controller. The step is then taken once more, and its machine fails.

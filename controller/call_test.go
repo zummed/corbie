@@ -432,18 +432,28 @@ func Test_ctl_refused_start_says_what_is_at_a_location(t *testing.T) {
 	if r := w.submitTree(w.client, tree); !r.Taken {
 		t.Fatalf("the tree was refused: %s", r.Refused)
 	}
-	c3 := w.other("c3", "network")
-	for at, want := range map[string]string{
-		"/t/s":    "/t/s is in a tree of the client c1, and is singleton",
-		"/t/none": "nothing is recorded at /t/none",
+	c3 := w.other("c3", "network", "send:/t/**")
+	c4 := w.other("c4", "network")
+	for _, c := range []struct {
+		c        *client.Client
+		at, want string
+	}{
+		{c3, "/t/s", "/t/s is in a tree of the client c1, and is singleton"},
+		{c3, "/t/none", "nothing is recorded at /t/none"},
+		{c4, "/t/none", "nothing is recorded at /t/none"},
+		{c4, "/t/s", "send:/t/s"},
 	} {
-		id, err := c3.Start(ctx, client.Start{At: at})
+		id, err := c.c.Start(ctx, client.Start{At: c.at})
 		if err != nil {
 			t.Fatal(err)
 		}
 		w.settle()
-		if r, err := c3.Receipt(ctx, strings.SplitN(id, "/", 2)[1]); err != nil || r == nil || !strings.Contains(r.Refused, want) {
-			t.Fatalf("a start of %s gave %+v, %v", at, r, err)
+		r, err := c.c.Receipt(ctx, strings.SplitN(id, "/", 2)[1])
+		if err != nil || r == nil || !strings.Contains(r.Refused, c.want) {
+			t.Fatalf("a start of %s gave %+v, %v", c.at, r, err)
+		}
+		if c.c == c4 && strings.Contains(r.Refused, "singleton") {
+			t.Fatalf("a client its ceiling refuses was told the lifetime: %s", r.Refused)
 		}
 	}
 }

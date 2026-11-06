@@ -749,7 +749,7 @@ func atFlag(e *Env) *string {
 // checkAt refuses a location a secret or a value cannot be set at.
 func checkAt(at string) error {
 	if err := store.CheckLocation(at); err != nil {
-		return Mistake("--at %q: a location starts with /, as /home/devices/boiler, and no part of it is empty, ., .. or +, or holds #", at)
+		return Mistake("--at %q: a location starts with /, as /home/devices/boiler, and no part of it is empty, ., .. or +, or holds # or *", at)
 	}
 	return nil
 }

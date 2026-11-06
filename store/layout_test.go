@@ -112,7 +112,7 @@ func Test_store_location_part_cannot_be_plus(t *testing.T) {
 		}
 	}
 	for _, location := range []string{"", "home", "home/x", "/home/", "//home", "/home//x", "/+", "/home/+",
-		"/home/+/secrets", "/home/.", "/home/..", "/home/../x", "/.", "/a#b", "/#.rook", "/home/a\\b", "/a\nb", "/.a\nb"} {
+		"/home/+/secrets", "/home/.", "/home/..", "/home/../x", "/.", "/a#b", "/#.rook", "/home/a\\b", "/a\nb", "/.a\nb", "/sta*", "/home/*", "/home/**", "/a*b/c"} {
 		if err := CheckLocation(location); err == nil {
 			t.Errorf("%q was taken as a location", location)
 		}

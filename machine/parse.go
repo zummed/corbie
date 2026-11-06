@@ -985,7 +985,9 @@ func NotYAML(err error, src []byte) error {
 	return fmt.Errorf("this is not YAML that can be read: %s", text)
 }
 
-// parserProblems are the problems the YAML reader's parser finds.
+// parserProblems are the problems the YAML reader's parser finds, as the
+// texts of go.yaml.in/yaml/v3 v3.0.5 give them (parserc.go). A new version
+// of the reader is checked against this list.
 var parserProblems = map[string]bool{
 	"did not find expected node content": true, "did not find expected '-' indicator": true,
 	"did not find expected key": true, "did not find expected ',' or ']'": true, "did not find expected ',' or '}'": true,

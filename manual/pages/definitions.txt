@@ -66,6 +66,8 @@ file or a list. A name may end in `#path` to take one part of a file.
 
 - A value the file writes wins over an included one. A list or a text it
   writes replaces the included one whole.
+- A name written as `null` removes the value it would win over:
+  `tools: { include: ./tools.yaml, write: null }` takes every tool but `write`.
 - A file's values win over those of the files it includes, and an earlier
   file's over a later one's.
 - `${…}` in an included text is an expression. A literal `${` is written

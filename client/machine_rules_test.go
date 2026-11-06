@@ -481,7 +481,7 @@ func TestTitleIsFilledInWhenTheRunStarts(t *testing.T) {
 		    job:
 		      machine:
 		        flow: inner
-		        title: "${run.key} ${input.n}"
+		        title: "inner ${input.n}"
 		        stages: { s: { job: { script: ./add.js, input: { n: 2 } } } }
 		      key: inner-key
 		      input: { n: 3 }
@@ -495,7 +495,7 @@ func TestTitleIsFilledInWhenTheRunStarts(t *testing.T) {
 	if err != nil || len(children) != 1 {
 		t.Fatalf("the run's children are %v: %v", children, err)
 	}
-	if child, err := l.Show(ctx, children[0].ID); err != nil || child.Title != "inner-key 3" {
+	if child, err := l.Show(ctx, children[0].ID); err != nil || child.Title != "inner 3" {
 		t.Fatalf("the child's title is %q: %v", child.Title, err)
 	}
 	if children[0].Title != "" {
@@ -515,10 +515,10 @@ func TestTitleIsFilledInWhenTheRunStarts(t *testing.T) {
 		    on: { done: { go: z, send: { to: { machine: ./keyed.yaml, key: keyed-1 }, event: hello, data: { x: "a\n\n b" } } } }
 		  z: { end: done }
 	`
-	files := map[string]string{"echo.js": scripts["echo.js"], "keyed.yaml": "flow: keyed\ntitle: \"${run.key} ${input.x}\"\nstages: { s: { job: ./echo.js } }\n"}
+	files := map[string]string{"echo.js": scripts["echo.js"], "keyed.yaml": "flow: keyed\ntitle: \"keyed ${input.x}\"\nstages: { s: { job: ./echo.js } }\n"}
 	run(t, l, sender, files, nil)
 	keyed := waitForFinished(t, l, "keyed")
-	if got, err := l.Show(ctx, keyed); err != nil || got.Title != "keyed-1 a b" {
+	if got, err := l.Show(ctx, keyed); err != nil || got.Title != "keyed a b" {
 		t.Errorf("a run a send started has the title %q: %v", got.Title, err)
 	}
 
@@ -671,34 +671,34 @@ func Test_mach_run_is_read_in_every_type(t *testing.T) {
 			flow: f
 			stages:
 			  a: { job: { script: ./echo.js, input: { id: "${run.id}" } } }
-			output: { id: "${stages.a.output.id}", same: "${run.id}", key: "${run.key}" }
+			output: { id: "${stages.a.output.id}", same: "${run.id}" }
 		`,
 		"a statechart's job and final state": `
 			statechart: s
 			initial: a
 			states:
 			  a: { job: { script: ./echo.js, input: { id: "${run.id}" } }, on: { done: b } }
-			  b: { end: done, output: { id: "${states.a.output.id}", same: "${run.id}", key: "${run.key}" } }
+			  b: { end: done, output: { id: "${states.a.output.id}", same: "${run.id}" } }
 		`,
 		"an agent's prompt": `
 			agent: g
 			model: { name: scripted, service: anthropic }
 			turn: ./turn.js
 			prompt: "${run.id}"
-			reply: { id: string, same: string, key: string }
+			reply: { id: string, same: string }
 		`,
 		"a timeout read from the run": `
 			flow: f
 			limits: { timeout: "${run.id ? '1m' : '1s'}" }
 			stages:
 			  a: { job: { script: ./echo.js, input: { id: "${run.id}" }, timeout: "${run.id ? '1m' : '1s'}" } }
-			output: { id: "${stages.a.output.id}", same: "${run.id}", key: "${run.key}" }
+			output: { id: "${stages.a.output.id}", same: "${run.id}" }
 		`,
 	} {
 		files := map[string]string{"echo.js": echo["echo.js"], "turn.js": `
 			const said = require("agents").conversation(input)
 			const id = said[said.length - 1].content
-			const answer = { role: "assistant", content: JSON.stringify({ id, same: id, key: "" }), calls: [] }
+			const answer = { role: "assistant", content: JSON.stringify({ id, same: id }), calls: [] }
 			return { turn: blobs.make([answer], { type: "application/json" }), text: answer.content, calls: [], stop: "end", usage: { input: 1, output: 1 } }
 		`}
 		r := run(t, l, def, files, nil)
@@ -706,7 +706,7 @@ func Test_mach_run_is_read_in_every_type(t *testing.T) {
 		if reply, ok := out["reply"].(map[string]any); ok {
 			out = reply
 		}
-		if r.Status != "done" || out["id"] != r.ID || out["same"] != r.ID || out["key"] != "" {
+		if r.Status != "done" || out["id"] != r.ID || out["same"] != r.ID {
 			t.Fatalf("%s: the run %s ended %s and read %v: %s", name, r.ID, r.Status, r.Output, r.Error)
 		}
 	}

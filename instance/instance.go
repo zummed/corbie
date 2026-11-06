@@ -176,8 +176,6 @@ type Above struct {
 	// running: its job gave a stored definition. The controller sets it when
 	// it starts a child, and a definition has no say in it.
 	Made bool `json:"made,omitzero"`
-	// Secrets are the run's own secrets, sent with the root's start.
-	Secrets map[string]string `json:"secrets,omitzero"`
 	// Context is the directory last submitted at the run's tree.
 	Context string `json:"context,omitzero"`
 	// Values are the values set at the root's location or above, as they

@@ -26,10 +26,10 @@ type list []string
 func (l *list) String() string     { return strings.Join(*l, ",") }
 func (l *list) Set(v string) error { *l = append(*l, v); return nil }
 
-// starting is everything a start may be given on the command line.
+// starting is everything a start may be given on the command line, and
+// the secrets corbie test sets.
 type starting struct {
 	input, life, timeout, memory     string
-	key                              string
 	labels, allow, deny, tags, files list
 	secrets, secretsFromEnv          list
 	wait, watch                      bool
@@ -50,8 +50,6 @@ func (s *starting) flags(e *Env) {
 	e.Flags.Var(&s.labels, "label", "")
 	e.Flags.Var(&s.allow, "allow", "")
 	e.Flags.Var(&s.deny, "deny", "")
-	e.Flags.Var(&s.secrets, "secret", "")
-	e.Flags.Var(&s.secretsFromEnv, "secret-env", "")
 	e.Flags.StringVar(&s.life, "life", "", "")
 	e.Flags.StringVar(&s.timeout, "timeout", "", "")
 	e.Flags.StringVar(&s.memory, "memory", "", "")
@@ -59,10 +57,10 @@ func (s *starting) flags(e *Env) {
 	e.Flags.BoolVar(&s.watch, "watch", false, "")
 }
 
-// startOnly lists the flags that are for starting one definition, and
-// scriptOnly those that set a script file's job.
+// startOnly lists the flags that are for starting a run, and scriptOnly
+// those that set a script file's job.
 var (
-	startOnly  = []string{"input", "input-file", "label", "key", "allow", "deny", "secret", "secret-env", "life", "timeout", "memory", "tag", "watch", "wait"}
+	startOnly  = []string{"input", "input-file", "label", "allow", "deny", "life", "timeout", "memory", "tag", "watch", "wait"}
 	scriptOnly = []string{"allow", "deny", "timeout", "memory", "tag"}
 )
 
@@ -81,19 +79,6 @@ func given(e *Env, names []string) []string {
 // of one stage.
 func isScript(file string) bool { return strings.HasSuffix(file, ".js") }
 
-// addSecret puts a run secret into a start, its value read by read.
-func addSecret(start *client.Start, name string, read func(string) (string, error)) error {
-	value, err := read(name)
-	if err != nil {
-		return err
-	}
-	if start.Secrets == nil {
-		start.Secrets = map[string]string{}
-	}
-	start.Secrets[name] = value
-	return nil
-}
-
 // job gives what a script file's job may do and its limits, which the
 // command line gives. A flag that has no effect on what was given is a
 // mistake.
@@ -106,30 +91,6 @@ func (s *starting) job(file string) (client.ScriptJob, error) {
 		}
 	}
 	return client.ScriptJob{Allow: s.allow, Deny: s.deny, Timeout: s.timeout, Memory: s.memory, Tags: s.tags}, nil
-}
-
-// read reads the definition or the script a command names, with the files
-// beside it, fills it out and checks it. It gives the definition and the
-// directory it was read in.
-func (s *starting) read(file string) (*machine.Draft, string, error) {
-	job, err := s.job(file)
-	if err != nil {
-		return nil, "", err
-	}
-	context, rel, err := contextOf(file)
-	if err != nil {
-		return nil, "", err
-	}
-	if isScript(file) {
-		src, err := os.ReadFile(file)
-		if err != nil {
-			return nil, "", err
-		}
-		draft, err := client.Script(filepath.Base(file), src, job)
-		return draft, context, err
-	}
-	draft, err := client.ReadMachine(context, rel)
-	return draft, context, err
 }
 
 // record reads a file as a tree of one file at the prefix at: by default /
@@ -164,21 +125,6 @@ func (s *starting) record(file, at string, takesAt bool) (*client.Tree, error) {
 		return nil, problem
 	}
 	return tree, nil
-}
-
-// prepare reads the definition or the script a command names, with the
-// files beside it, fills it out and checks it, and gathers what the start
-// carries. Nothing is uploaded and nothing is sent if anything is wrong.
-func (s *starting) prepare(e *Env, file string) (*machine.Draft, client.Start, error) {
-	draft, context, err := s.read(file)
-	if err != nil {
-		return nil, client.Start{}, err
-	}
-	start, err := s.start(e, isScript(file))
-	if !isScript(file) {
-		start.Context = context
-	}
-	return draft, start, err
 }
 
 // start gathers what a start carries. For a script file --allow, --deny and
@@ -228,12 +174,6 @@ func (s *starting) start(e *Env, script bool) (client.Start, error) {
 	if start.Input, err = client.WithFiles(start.Input, files); err != nil {
 		return start, err
 	}
-	if e.Given("key") {
-		if err := machine.CheckKey(s.key); err != nil {
-			return start, Mistake("--key: %v", err)
-		}
-		start.Key = s.key
-	}
 	for _, label := range s.labels {
 		name, value, _ := strings.Cut(label, "=")
 		if start.Labels == nil {
@@ -258,32 +198,38 @@ func (s *starting) start(e *Env, script bool) (client.Start, error) {
 			start.Life = time.Duration(d)
 		}
 	}
-	// The secrets come last, and the variables before anything is typed, so
-	// that every other mistake is found before a person types a value.
-	given := map[string]bool{}
+	return start, nil
+}
+
+// testSecrets reads the secrets corbie test is given: the variables before
+// anything is typed. It comes after every other flag is read, so that every
+// other mistake is found before a person types a value.
+func (s *starting) testSecrets(e *Env) (map[string]string, error) {
+	given := map[string]string{}
 	for _, name := range slices.Concat(s.secretsFromEnv, s.secrets) {
 		if err := checkSecretName(name); err != nil {
-			return start, err
+			return nil, err
 		}
-		if given[name] {
-			return start, Mistake("the secret %q is given twice: give it once", name)
+		if _, twice := given[name]; twice {
+			return nil, Mistake("the secret %q is given twice: give it once", name)
 		}
-		given[name] = true
+		given[name] = ""
 	}
 	for _, name := range s.secretsFromEnv {
-		if err := addSecret(&start, name, secretFromEnv); err != nil {
-			return start, err
+		value, err := secretFromEnv(name)
+		if err != nil {
+			return nil, err
 		}
-	}
-	typed := func(name string) (string, error) {
-		return secretTyped(e, name, "--secret-env reads it from the environment variable")
+		given[name] = value
 	}
 	for _, name := range s.secrets {
-		if err := addSecret(&start, name, typed); err != nil {
-			return start, err
+		value, err := secretTyped(e, name, "--secret-env reads it from the environment variable")
+		if err != nil {
+			return nil, err
 		}
+		given[name] = value
 	}
-	return start, nil
+	return given, nil
 }
 
 // isLocation says whether an argument names a location: it starts with /,
@@ -307,6 +253,8 @@ func cmdTest(e *Env, args []string) error {
 	var values list
 	s.flags(e)
 	e.Flags.Var(&values, "value", "")
+	e.Flags.Var(&s.secrets, "secret", "")
+	e.Flags.Var(&s.secretsFromEnv, "secret-env", "")
 	files, err := e.Parse(args)
 	if err != nil {
 		return err
@@ -316,7 +264,7 @@ func cmdTest(e *Env, args []string) error {
 		return err
 	}
 	if dirs {
-		if given := given(e, append(slices.Clone(startOnly), "value")); len(given) > 0 {
+		if given := given(e, append(slices.Clone(startOnly), "value", "secret", "secret-env")); len(given) > 0 {
 			return Mistake("%s applies to one definition; a directory takes no flag of a start", strings.Join(given, ", "))
 		}
 		return e.checkMachines(files)
@@ -356,8 +304,10 @@ func cmdTest(e *Env, args []string) error {
 	if err != nil {
 		return err
 	}
-	secrets := start.Secrets
-	start.Secrets = nil
+	secrets, err := s.testSecrets(e)
+	if err != nil {
+		return err
+	}
 	// Everything in this process, the store in memory, nothing set up: the
 	// ceilings allow everything, and the definition's own permissions
 	// still apply.
@@ -390,7 +340,6 @@ func cmdSubmit(e *Env, args []string) error {
 	var s starting
 	var at string
 	s.flags(e)
-	e.Flags.StringVar(&s.key, "key", "", "")
 	e.Flags.BoolVar(&s.wait, "wait", false, "")
 	e.Flags.StringVar(&at, "at", "", "")
 	names, err := e.Parse(args)
@@ -419,41 +368,22 @@ func cmdSubmit(e *Env, args []string) error {
 		return e.submit(tree)
 	}
 	// A file is recorded as a tree of one file. A script file's flags set
-	// its job. A file given with a flag of a start is started as it is.
-	flags := startOnly
+	// its job, and any other flag of a start is for a start of a location.
+	// --memory and --tag with a definition are reported as for a script
+	// file only, when the file is read.
+	setsJob := []string{"memory", "tag"}
 	if isScript(name) {
-		flags = slices.DeleteFunc(slices.Clone(startOnly), func(f string) bool { return slices.Contains(scriptOnly, f) })
+		setsJob = scriptOnly
 	}
-	starts := given(e, flags)
-	if len(starts) == 0 {
-		tree, err := s.record(name, at, true)
-		if err != nil {
-			return err
-		}
-		return e.submit(tree)
+	flags := slices.DeleteFunc(slices.Clone(startOnly), func(f string) bool { return slices.Contains(setsJob, f) })
+	if starts := given(e, flags); len(starts) > 0 {
+		return Mistake("%s applies to a start of a location; a file is recorded as a tree, which takes only --at, and corbie run submit <location> starts a run there", strings.Join(starts, ", "))
 	}
-	if at != "" {
-		return Mistake("%s applies to a start; a file given with --at is recorded as a tree, which takes only --at", strings.Join(starts, ", "))
-	}
-	if s.wait && s.watch {
-		return Mistake("--wait and --watch are two ways of staying; give one")
-	}
-	defer s.close()
-	// The client comes first, so that nobody types a secret's value for a
-	// start that cannot be sent.
-	c, err := e.Client()
+	tree, err := s.record(name, at, true)
 	if err != nil {
 		return err
 	}
-	draft, start, err := s.prepare(e, name)
-	if err != nil {
-		return err
-	}
-	id, err := c.Start(e.ctx, draft, start)
-	if err != nil {
-		return err
-	}
-	return e.started(c, id, &s, isScript(name))
+	return e.submit(tree)
 }
 
 // startAt starts a run of a location.
@@ -461,7 +391,7 @@ func (e *Env) startAt(s *starting, location, at string) error {
 	if at != "" {
 		return Mistake("--at applies to a file or a directory, and %s is a location", location)
 	}
-	if given := given(e, []string{"memory", "tag", "key", "secret", "secret-env"}); len(given) > 0 {
+	if given := given(e, []string{"memory", "tag"}); len(given) > 0 {
 		return Mistake("%s does not apply to a start of a location: the file recorded there gives its jobs their own, and its secrets are set at the location", strings.Join(given, ", "))
 	}
 	if s.wait && s.watch {
@@ -477,7 +407,7 @@ func (e *Env) startAt(s *starting, location, at string) error {
 		return err
 	}
 	start.At = location
-	id, err := c.Start(e.ctx, nil, start)
+	id, err := c.Start(e.ctx, start)
 	if err != nil {
 		return err
 	}
@@ -1171,19 +1101,10 @@ func cmdCancel(e *Env, args []string) error {
 }
 
 func cmdSend(e *Env, args []string) error {
-	var key string
-	e.Flags.StringVar(&key, "key", "", "")
-	return e.answered(args, "name a run, or give --key; then an event, and optionally its data", func(n int) bool {
-		if e.Given("key") {
-			return n == 1 || n == 2
-		}
-		return n == 2 || n == 3
-	}, func(c *client.Client, rest []string, life time.Duration) (string, error) {
-		if e.Given("key") {
-			return c.SendToKey(e.ctx, key, rest[0], value(rest, 1), life)
-		}
-		return c.Send(e.ctx, rest[0], rest[1], value(rest, 2), life)
-	})
+	return e.answered(args, "name a run, then an event, and optionally its data", func(n int) bool { return n == 2 || n == 3 },
+		func(c *client.Client, rest []string, life time.Duration) (string, error) {
+			return c.Send(e.ctx, rest[0], rest[1], value(rest, 2), life)
+		})
 }
 
 func cmdReply(e *Env, args []string) error {

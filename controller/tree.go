@@ -198,6 +198,9 @@ func (p *pass) checkTree(a *arrival, msg *instance.Submit) (string, error) {
 		if location != msg.Prefix && !strings.HasPrefix(location, msg.Prefix+"/") {
 			return fmt.Sprintf("the location %s is not in the tree %s", location, msg.Prefix), nil
 		}
+		if location == msg.Prefix && len(locations) > 1 {
+			return fmt.Sprintf("the location %s is the tree's prefix, which only a tree of one file has", location), nil
+		}
 		if i > 0 && strings.HasPrefix(location, locations[i-1]+"/") {
 			return fmt.Sprintf("the location %s is below %s, and a location has nothing below it", location, locations[i-1]), nil
 		}

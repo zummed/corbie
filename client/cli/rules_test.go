@@ -162,20 +162,22 @@ func Test_client_flag_without_effect_refused(t *testing.T) {
 		// For a script file only: a definition gives its jobs their own.
 		"--memory applies only to a script file": {"run", "submit", definition, "--memory", "64MB"},
 		"--tag applies only to a script file":    {"run", "submit", definition, "--tag", "gpu"},
-		// A location's file gives its jobs their own, and its secrets are
-		// set at the location.
-		"--memory does not apply to a start of a location":     {"run", "submit", "/hello", "--memory", "64MB"},
-		"--secret-env does not apply to a start of a location": {"run", "submit", "/hello", "--secret-env", "HOME"},
-		"--key does not apply to a start of a location":        {"run", "submit", "/hello", "--key", "k"},
-		"--tag does not apply to a start of a location":        {"run", "submit", "/hello", "--tag", "gpu"},
-		"--secret does not apply to a start of a location":     {"run", "submit", "/hello", "--secret", "CORBIE_TEST_TOKEN"},
+		// A location's file gives its jobs their own. A start carries no
+		// secret and no key.
+		"--memory does not apply to a start of a location": {"run", "submit", "/hello", "--memory", "64MB"},
+		"--tag does not apply to a start of a location":    {"run", "submit", "/hello", "--tag", "gpu"},
+		"flag provided but not defined: -secret-env":       {"run", "submit", "/hello", "--secret-env", "HOME"},
+		"flag provided but not defined: -secret\n":         {"run", "submit", "/hello", "--secret", "CORBIE_TEST_TOKEN"},
+		"flag provided but not defined: -key":              {"run", "submit", "/hello", "--key", "k"},
+		"flag provided but not defined: -key\n":            {"run", "send", "--key", "k", "open"},
 		// The submit starts a singleton, and a start carries nothing to it.
 		"--deny, --input does not apply to a singleton": {"test", filepath.Join(dir, "steady.yaml"), "--deny", "net:*", "--input", "{}"},
 		// A file is recorded at --at, and a location is where it was.
 		"--at applies to a file or a directory":                                                  {"run", "submit", "/hello", "--at", "/other"},
 		"gives the location /a#b, which cannot be one: give the file another name, or give --at": {"run", "submit", filepath.Join(dir, "a#b.yaml")},
 		"gives the location /a#b, which cannot be one: give the file another name\n":             {"test", filepath.Join(dir, "a#b.yaml")},
-		"--input applies to a start; a file given with --at is recorded":                         {"run", "submit", definition, "--at", "/other", "--input", "{}"},
+		"--input applies to a start of a location; a file is recorded as a tree":                 {"run", "submit", definition, "--at", "/other", "--input", "{}"},
+		"--wait applies to a start of a location; a file is recorded as a tree":                  {"run", "submit", definition, "--wait"},
 		// test always stays until the run ends.
 		"-wait": {"test", definition, "--wait"},
 		// A role's flag written after another role.
@@ -338,9 +340,7 @@ func Test_client_run_name_is_one_field_everywhere(t *testing.T) {
 	m.ok("", "run", "show", one, "--wait")
 	var request bytes.Buffer
 	form := multipart.NewWriter(&request)
-	form.WriteField("definition", hello)
-	form.WriteField("file:./greet.js", "return 1")
-	form.WriteField("start", `{"input": {"name": "y"}}`)
+	form.WriteField("start", `{"at": "`+location+`", "input": {"name": "y"}}`)
 	form.Close()
 	kind = form.FormDataContentType()
 	started := get("POST", "/runs", request.String())
@@ -447,7 +447,7 @@ func Test_client_secret_value_never_on_command_line(t *testing.T) {
 		refused("", "never given on the command line", append(test, flag, "CORBIE_TEST_TOKEN=hunter2-on-the-line")...)
 	}
 	// A run's secrets are set at its location, and a start carries none.
-	refused("", "does not apply to a start of a location", "run", "submit", "/hello", "--secret-env", "CORBIE_TEST_TOKEN")
+	refused("", "flag provided but not defined: -secret-env", "run", "submit", "/hello", "--secret-env", "CORBIE_TEST_TOKEN")
 	set := []string{"controller", "secret", "set"}
 	refused("", `the environment variable "CORBIE_TEST_TOKEN" is not set`, append(set, "CORBIE_TEST_TOKEN", "--env")...)
 	refused("hunter2-on-standard-input\n", `the secret "CORBIE_TEST_TOKEN" is typed at a terminal, and there is none`, append(set, "CORBIE_TEST_TOKEN")...)

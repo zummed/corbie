@@ -56,9 +56,11 @@ type Message struct {
 // nothing.
 const MessageLife = 5 * time.Minute
 
-// A Start starts a run.
+// A Start starts a run. A client's start names a location; Definition is
+// written by the controller, from the file recorded there or from the job
+// that starts a child.
 type Start struct {
-	Definition blob.Ref          `json:"definition"`
+	Definition blob.Ref          `json:"definition,omitzero"`
 	Input      any               `json:"input,omitzero"`
 	Labels     map[string]string `json:"labels,omitzero"`
 	// Allow is the start's own list, which narrows the root and everything
@@ -66,8 +68,6 @@ type Start struct {
 	Allow *permission.Layer `json:"allow,omitzero"`
 	// Timeout is how long the run may take, if the start says.
 	Timeout machine.Duration `json:"timeout,omitzero"`
-	// Secrets are the run's own secrets, for it and everything below it.
-	Secrets map[string]string `json:"secrets,omitzero"`
 	// Seed is the secret the instance's tickets and random numbers follow
 	// from.
 	Seed []byte `json:"seed"`
@@ -76,13 +76,11 @@ type Start struct {
 	// Location is the location the run is started at: its machine is the
 	// file recorded there.
 	Location string `json:"location,omitzero"`
-	// Key is the run's key at a keyed location.
+	// Key is the key a job gives the run it starts.
 	Key string `json:"key,omitzero"`
 	// Tree is the prefix of the tree the location is in, for a child, which
 	// runs at its parent's location.
 	Tree string `json:"tree,omitzero"`
-	// Context is the directory last submitted at the run's tree.
-	Context string `json:"context,omitzero"`
 	// Replaces is, for a singleton a submit starts again, the run it
 	// replaces: the new run starts once that one has ended.
 	Replaces string `json:"replaces,omitzero"`

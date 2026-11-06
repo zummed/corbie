@@ -30,7 +30,7 @@ const talk = `
 	      said:
 	        - { go: over, when: "${event.data.text == 'bye'}" }
 	        - { go: open }
-	  over: { end: done, output: "${run.key}" }
+	  over: { end: done }
 `
 
 // router sends what it is told to the run of a chat.

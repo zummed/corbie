@@ -169,7 +169,7 @@ func (w *world) place(c *client.Client, src string, files map[string]string) (at
 func (w *world) startAt(c *client.Client, at string, start client.Start) string {
 	w.t.Helper()
 	start.At = at
-	run, err := c.Start(ctx, nil, start)
+	run, err := c.Start(ctx, start)
 	if err != nil {
 		w.t.Fatal(err)
 	}

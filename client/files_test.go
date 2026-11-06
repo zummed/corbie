@@ -258,7 +258,7 @@ func TestStartCarryingABlobThatIsNotThereSendsNothing(t *testing.T) {
 	} {
 		// A good one beside it is not copied either.
 		input := map[string]any{"good": map[string]any{"$blob": "report", "run": a.ID}, "bad": shown}
-		if id, err := l.Start(ctx, nil, client.Start{At: at, Input: input}); err == nil {
+		if id, err := l.Start(ctx, client.Start{At: at, Input: input}); err == nil {
 			t.Errorf("a start carrying %s was sent as %s", what, id)
 		} else if what == "a path that names nothing" && !errors.Is(err, client.ErrNoFile) {
 			t.Errorf("a start carrying %s was refused with %v", what, err)
@@ -352,11 +352,11 @@ func TestStartGivesAFileAsInput(t *testing.T) {
 	location := recorded(t, l, d)
 	writes := &ordered{Store: l.Client.Store}
 	l.Client.Store = writes
-	_, err = l.Start(ctx, nil, client.Start{At: location, Input: map[string]client.InputFile{"report": {Name: "report.pdf", Contents: bytes.NewReader(pdf)}}})
+	_, err = l.Start(ctx, client.Start{At: location, Input: map[string]client.InputFile{"report": {Name: "report.pdf", Contents: bytes.NewReader(pdf)}}})
 	if !errors.Is(err, client.ErrStart) || len(writes.names()) != 0 {
 		t.Errorf("a file in a map of files: %v, and %d values written", err, len(writes.names()))
 	}
-	_, err = l.Start(ctx, nil, client.Start{At: location, Input: client.InputFile{Name: "report.pdf", Contents: bytes.NewReader(pdf)}})
+	_, err = l.Start(ctx, client.Start{At: location, Input: client.InputFile{Name: "report.pdf", Contents: bytes.NewReader(pdf)}})
 	if !errors.Is(err, client.ErrStart) || len(writes.names()) != 0 {
 		t.Errorf("a file as the whole input: %v, and %d values written", err, len(writes.names()))
 	}

@@ -189,15 +189,8 @@ unless --wait or --watch is given. A location starts with /, does not end in
 With --wait or --watch the command fails unless the run ends with status done.
 
 Given a file, it records it as a tree of one file, at --at: by default / and
-the file's name without its extension. A file given with a flag of a start is
-started as it is, and may carry these as well:
-
-  --key <key>              the key that names the run among this client's
-                           running runs; refused if a running run has it
-  --secret NAME            a run secret, its value typed at the terminal and
-                           not shown; repeatable
-  --secret-env NAME        a run secret, its value read from the environment
-                           variable NAME; repeatable
+the file's name without its extension. A flag of a start given with a file is
+refused, but for a script file's flags below.
 
 Given a directory, it records it as a tree. Each *.yaml in it and below it, but
 for .git, whose first key gives a type of machine has a location: its path
@@ -252,12 +245,11 @@ with the reason. It fails if the cancel is refused.
 
   --life <time>   how long the cancel is valid while no controller takes it,
                   and how long the command waits for the answer; default 5m`},
-		{Name: "run send", Usage: "<id> <event> [data] [--life 5m] | --key <key> <event> [data] [--life 5m]", Summary: "send an event to a run that this client started", Run: cmdSend, Help: `
+		{Name: "run send", Usage: "<id> <event> [data] [--life 5m]", Summary: "send an event to a run that this client started", Run: cmdSend, Help: `
 The data is JSON, or plain text if it does not parse as JSON. The command
 prints whether the machine acted on the event or had no rule for it, or
 refused with the reason. It fails if the event is refused.
 
-  --key <key>     send to the run with this key, in place of naming its ID
   --life <time>   how long the event is valid while no controller takes it,
                   and how long the command waits for the answer; default 5m`},
 		{Name: "run reply", Usage: "<id> <ticket> [value] [--life 5m]", Summary: "answer a ticket that a run waits on", Run: cmdReply, Help: `

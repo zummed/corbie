@@ -425,24 +425,19 @@ func (p *pass) job(inst string, step *instance.Step, ask *instance.Ask) (*instan
 	}
 
 	// The values of the secrets the job names, and no others: those set
-	// nearest the run's location, or a run secret the start gave. One that a
-	// layer does
-	// not let travel at all is not sent, and the job is refused as its
-	// script would be on using it.
+	// nearest the run's location. One that a layer does not let travel at
+	// all is not sent, and the job is refused as its script would be on
+	// using it.
 	for _, name := range secret.Named(asked.Allow) {
 		if r := refusedSecret(job.Layers, asked.Allow, name); r != nil {
 			return nil, none, &machine.Error{Status: machine.StatusDenied, Error: r.Error(), Refused: r.What, Layer: r.Layer, Fix: r.Fix}, nil
 		}
-		value, ok := st.Above.Secrets[name]
-		if !ok {
-			kept, found, err := secret.Get(p.ctx, p.store, p.c.ID, location, name)
-			if err != nil && !isAltered(err) {
-				return nil, none, nil, err
-			}
-			value = kept
-			if !found {
-				return nil, none, p.failf("%s is not set at %s or above (the controller's owner sets it with: corbie controller secret set %s%s)", name, location, name, atFlag(location)), nil
-			}
+		value, found, err := secret.Get(p.ctx, p.store, p.c.ID, location, name)
+		if err != nil && !isAltered(err) {
+			return nil, none, nil, err
+		}
+		if !found {
+			return nil, none, p.failf("%s is not set at %s or above (the controller's owner sets it with: corbie controller secret set %s%s)", name, location, name, atFlag(location)), nil
 		}
 		if job.Secrets == nil {
 			job.Secrets = map[string]string{}
@@ -516,7 +511,7 @@ func (p *pass) child(inst string, step *instance.Step, ask *instance.Ask) *insta
 	}
 	above := &instance.Above{Parent: inst, Job: ask.Name, Depth: st.Above.Depth + 1, MaxDepth: st.Above.MaxDepth,
 		Layers:   layers,
-		AskAbout: st.Above.AskAbout, Ask: st.Above.Ask, Secrets: st.Above.Secrets, Context: st.Above.Context, Values: st.Above.Values,
+		AskAbout: st.Above.AskAbout, Ask: st.Above.Ask, Context: st.Above.Context, Values: st.Above.Values,
 		IsAsk: job.Name == instance.AskName,
 		Made:  made || st.Above.Made && !job.Above, Keep: st.Keep}
 	// The nearest ask above the child is the one its job goes to: an ask

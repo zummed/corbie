@@ -785,7 +785,7 @@ func (b *build) readDefinition(s *instance.Start) *stepOut {
 
 // run is what an expression reads of the instance.
 func (b *build) run() machine.Run {
-	return machine.Run{ID: b.inst, Key: b.st.Key, Location: b.st.Location, Context: b.st.Above.Context, Values: b.st.Above.Values}
+	return machine.Run{ID: b.inst, Location: b.st.Location, Context: b.st.Above.Context, Values: b.st.Above.Values}
 }
 
 // readAllow fills in the allow list written for the whole definition, for
@@ -1257,16 +1257,15 @@ func (p *pass) begin(inst string, waiting []*arrival) (*taken, error) {
 		return &b.out, nil
 	}
 	s, above := start.msg.Start, &instance.Above{}
-	badKey := error(nil)
-	if s.Key != "" {
-		badKey = machine.CheckKey(s.Key)
-	}
 	switch {
 	case !start.good(p.now):
 		b.refuse(start, "the start came too late: it was good until %s, and the run was never taken up", start.until.Format(time.RFC3339))
 		return &b.out, nil
 	case start.kind == identity.Client && (start.sender != store.InstanceClient(inst) || s.Above != nil):
 		b.refuse(start, "a run's name begins with the name of the client that starts it")
+		return &b.out, nil
+	case start.kind == identity.Client && s.Location == "":
+		b.refuse(start, "a client's start names a location: a run starts at the location of a file in a tree")
 		return &b.out, nil
 	case s.Location != "" && s.Above == nil && (start.kind == identity.Client || start.kind == identity.Controller):
 		// A start of a location: the run begins from the file recorded there.
@@ -1275,21 +1274,11 @@ func (p *pass) begin(inst string, waiting []*arrival) (*taken, error) {
 			return &b.out, err
 		}
 		above = s.Above
-	case start.kind == identity.Client && !strings.HasPrefix(s.Definition.At, store.Blob(p.ctl, inst, "")):
-		b.refuse(start, "a client starts a run from a definition in that run's own record")
-		return &b.out, nil
-	case start.kind == identity.Client && badKey != nil:
-		b.refuse(start, "%v", badKey)
-		return &b.out, nil
 	case start.kind == identity.Controller && s.Above != nil:
 		above = s.Above
-	case start.kind != identity.Client:
+	default:
 		b.drop(start)
 		return &b.out, nil
-	}
-	if start.kind == identity.Client && s.Location == "" {
-		// Set here, since the first step's expressions read it.
-		above.Context = s.Context
 	}
 	b.time = start.sent
 	b.step.Time = b.time
@@ -1369,9 +1358,6 @@ func (b *build) first(s *instance.Start, start *arrival) (refused bool, err erro
 		}
 	}
 	switch {
-	case inUse != "" && start.kind == identity.Client:
-		b.refuse(start, "the key %q is in use by the run %s", s.Key, inUse)
-		return true, nil
 	case inUse != "" && start.isKeyed():
 		b.move(start)
 		return true, nil
@@ -1401,7 +1387,6 @@ func (b *build) first(s *instance.Start, start *arrival) (refused bool, err erro
 			layer.Fix = "start the run with %s in its list as well (corbie run submit --allow)"
 			st.Above.Layers = []permission.Layer{layer}
 		}
-		st.Above.Secrets = s.Secrets
 	}
 	if len(problems) > 0 {
 		b.end(instance.Failed, nil, b.p.failf("the definition did not pass its check: %s", strings.ReplaceAll(problems.Error(), "\n", "; ")))

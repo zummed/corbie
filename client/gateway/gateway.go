@@ -16,7 +16,6 @@ import (
 	"mime/multipart"
 	"net/http"
 	"net/url"
-	"path"
 	"slices"
 	"strings"
 	"time"
@@ -39,14 +38,15 @@ type Gateway struct {
 }
 
 // start is what the part named start of a request to start a run holds,
-// as JSON. A field the gateway does not know is refused.
+// as JSON: the location and what the start carries. A field the gateway
+// does not know is refused.
 type start struct {
+	At      string            `json:"at"`
 	Input   any               `json:"input,omitzero"`
 	Labels  map[string]string `json:"labels,omitzero"`
 	Allow   []string          `json:"allow,omitzero"`
 	Deny    []string          `json:"deny,omitzero"`
 	Timeout machine.Duration  `json:"timeout,omitzero"`
-	Secrets map[string]string `json:"secrets,omitzero"`
 	Life    machine.Duration  `json:"life,omitzero"`
 }
 
@@ -198,17 +198,15 @@ func partsOf(form *multipart.Form) (map[string]part, error) {
 	return parts, nil
 }
 
-// start starts a run from an upload form. Its parts are:
+// start starts a run of a location from an upload form. Its parts are:
 //
-//	definition      the definition
-//	file:<path>     a file beside the definition, at the path it names it by
+//	start           the location and everything else a start carries, as JSON
 //	input:<name>    a file given as input under that name; the part's file
 //	                name says what type of file it is
-//	start           everything else a start may carry, as JSON
 //
 // A part the gateway does not know is refused, and so is one given twice.
 func (g *Gateway) start(w http.ResponseWriter, r *http.Request) {
-	const shape = "a start is an upload form (multipart/form-data) whose parts are definition, file:<path>, input:<name> and start"
+	const shape = "a start is an upload form (multipart/form-data) whose parts are start and input:<name>"
 	if err := r.ParseMultipartForm(held); err != nil {
 		fail(w, http.StatusBadRequest, fmt.Errorf("%s: %v", shape, err))
 		return
@@ -221,21 +219,17 @@ func (g *Gateway) start(w http.ResponseWriter, r *http.Request) {
 		fail(w, http.StatusBadRequest, err)
 		return
 	}
-	if _, given := parts["definition"]; !given {
-		fail(w, http.StatusBadRequest, fmt.Errorf("the form has no part named definition; %s", shape))
+	if _, given := parts["start"]; !given {
+		fail(w, http.StatusBadRequest, fmt.Errorf("the form has no part named start; %s", shape))
 		return
 	}
 	var s start
 	var st client.Start
-	var definition string
-	beside := map[string]string{}
 	files := map[string]client.InputFile{}
 	for name, p := range parts {
 		kind, rest, _ := strings.Cut(name, ":")
 		var err error
 		switch {
-		case name == "definition":
-			definition, err = p.text()
 		case name == "start":
 			var text string
 			if text, err = p.text(); err == nil {
@@ -244,8 +238,6 @@ func (g *Gateway) start(w http.ResponseWriter, r *http.Request) {
 					return
 				}
 			}
-		case kind == "file" && rest != "":
-			beside[rest], err = p.text()
 		case kind == "input" && rest != "":
 			var contents io.ReadCloser
 			if contents, err = p.open(); err == nil {
@@ -261,28 +253,8 @@ func (g *Gateway) start(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	// Only the files given with the definition are read, and each path
-	// names one thing: not a file and a directory both, nor one file twice.
-	given := map[string]string{}
-	for name := range beside {
-		clean := path.Clean(name)
-		if other, twice := given[clean]; twice {
-			fail(w, http.StatusBadRequest, fmt.Errorf("the files %q and %q are one path, given twice", other, name))
-			return
-		}
-		given[clean] = name
-	}
-	for clean, name := range given {
-		for dir := path.Dir(clean); dir != "." && dir != "/"; dir = path.Dir(dir) {
-			if file, both := given[dir]; both {
-				fail(w, http.StatusBadRequest, fmt.Errorf("%q is given as a file, and as a directory by %q: a path names one or the other", file, name))
-				return
-			}
-		}
-	}
-	draft, err := machine.Parse([]byte(definition), machine.Given(beside))
-	if err != nil {
-		fail(w, http.StatusBadRequest, err)
+	if err := store.CheckLocation(s.At); err != nil {
+		fail(w, http.StatusBadRequest, fmt.Errorf("the part start names the location the run starts at, as at: %v", err))
 		return
 	}
 	// An input of null is no input.
@@ -290,7 +262,7 @@ func (g *Gateway) start(w http.ResponseWriter, r *http.Request) {
 		fail(w, http.StatusBadRequest, err)
 		return
 	}
-	st.Labels, st.Secrets = s.Labels, s.Secrets
+	st.At, st.Labels = s.At, s.Labels
 	st.Timeout, st.Life = time.Duration(s.Timeout), time.Duration(s.Life)
 	// The start's own list, which narrows the run and everything below.
 	if len(s.Allow)+len(s.Deny) > 0 {
@@ -300,7 +272,7 @@ func (g *Gateway) start(w http.ResponseWriter, r *http.Request) {
 		}
 		st.Allow = &permission.Layer{Allow: s.Allow, Deny: s.Deny}
 	}
-	id, err := g.Client.Start(r.Context(), draft, st)
+	id, err := g.Client.Start(r.Context(), st)
 	reply(w, map[string]any{"id": id}, err)
 }
 

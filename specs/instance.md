@@ -50,7 +50,7 @@ A client acts by writing a message into the controller's inbox: submit a tree, s
 
 For every message a client sends, the controller writes a receipt under the same name, saying that the message was taken or why it was refused. This is how a client learns that a start was refused before any instance existed, and how a client that answers a ticket for a run it did not start learns that its answer was taken. The receipt for an event also says whether the machine acted on it or had no rule for it. A receipt is sealed to the client that sent the message and is kept for a day, a taken call's for longer, as below. A message sent twice gets the same answer twice. Everything else a client learns, it learns from heads, records and the results of its calls.
 
-A client chooses a run's name before starting it, because files it sends along go into the run's record first. An application that must survive its own restart notes the name before it sends.
+A client chooses a run's name before starting it, because a start's input goes into the run's record before the start is sent: the input's files, then the input itself. A run whose record holds anything was sent. An application that must survive its own restart notes the name before it sends.
 
 A client that calls a location in a tree it does not own cannot read the run's record:
 

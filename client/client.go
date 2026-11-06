@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/rand"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"io"
@@ -49,10 +50,10 @@ func (c *Client) identity() error {
 	return nil
 }
 
-// A Start is what a start may carry besides its definition.
+// A Start is what a start of a location carries.
 type Start struct {
-	// At is the location the run is started at, from the file recorded
-	// there: a start of a location is given no definition.
+	// At is the location the run is started at: the run's machine is the
+	// file recorded there.
 	At string
 	// Run is the run's name, if it was chosen beforehand with NewRun.
 	Run string
@@ -66,17 +67,10 @@ type Start struct {
 	// input.
 	Input  any
 	Labels map[string]string
-	// Key names the run among this client's running runs.
-	Key string
-	// Context is the directory the run was submitted from, which its machines
-	// read as run.context.
-	Context string
 	// Allow narrows what the run, and everything below it, may do.
 	Allow *permission.Layer
 	// Timeout is how long the run may take.
 	Timeout time.Duration
-	// Secrets are the run's own secrets.
-	Secrets map[string]string
 	// Life is how long the start is good for; a few minutes if it says
 	// nothing.
 	Life time.Duration
@@ -133,21 +127,15 @@ func (c *Client) NewRun() (string, error) {
 	return store.NewInstance(c.ID.Name, c.Now()), nil
 }
 
-// Start starts a run of a location, or of a definition that has been filled
-// out and checked. The definition, if one is given, and the files of the
-// input are written into the run's record first, and then the start is sent.
-// It gives the run's name.
-func (c *Client) Start(ctx context.Context, draft *machine.Draft, start Start) (string, error) {
+// Start starts a run of a location. The files of the input, and then the
+// input itself, are written into the run's record first, and then the start
+// is sent. It gives the run's name.
+func (c *Client) Start(ctx context.Context, start Start) (string, error) {
 	if err := c.identity(); err != nil {
 		return "", err
 	}
-	if start.At != "" {
-		if err := store.CheckLocation(start.At); err != nil {
-			return "", fmt.Errorf("%w: %w", ErrStart, err)
-		}
-		if draft != nil || start.Key != "" || start.Context != "" || len(start.Secrets) > 0 {
-			return "", fmt.Errorf("%w: a start of a location is given no definition, key, context or secrets", ErrStart)
-		}
+	if err := store.CheckLocation(start.At); err != nil {
+		return "", fmt.Errorf("%w: a start names a location: %w", ErrStart, err)
 	}
 	run := start.Run
 	if run == "" {
@@ -155,16 +143,6 @@ func (c *Client) Start(ctx context.Context, draft *machine.Draft, start Start) (
 	}
 	if err := store.CheckInstance(run); err != nil || store.InstanceClient(run) != c.ID.Name {
 		return "", fmt.Errorf("%w: %q is not a name this client can give a run", ErrStart, run)
-	}
-	if start.Key != "" {
-		if err := machine.CheckKey(start.Key); err != nil {
-			return "", fmt.Errorf("%w: %w", ErrStart, err)
-		}
-	}
-	for name := range start.Secrets {
-		if err := permission.CheckSecretName(name); err != nil {
-			return "", fmt.Errorf("%w: %w", ErrStart, err)
-		}
 	}
 	if file, whole := start.Input.(InputFile); whole {
 		return "", fmt.Errorf("%w: the file %q is the whole input; a file goes in a map[string]any or a []any of it", ErrStart, file.Name)
@@ -176,28 +154,12 @@ func (c *Client) Start(ctx context.Context, draft *machine.Draft, start Start) (
 	if err != nil {
 		return "", err
 	}
-	// Every upload is made side by side, under one bound: the definition
-	// and its files, a copy of each blob carried over from another run
-	// (every blob lives in the record of one instance), and a blob for each
-	// file of the input. made is what stands at each blob's name in the
-	// input once they are done.
+	// Every upload is made side by side, under one bound: a copy of each
+	// blob carried over from another run (every blob lives in the record of
+	// one instance), and a blob for each file of the input. made is what
+	// stands at each blob's name in the input once they are done.
 	s := store.Bounded(c.Store, store.SideBySide)
-	var ref blob.Ref
 	var uploads []func() error
-	if draft != nil {
-		uploads = append(uploads, func() (err error) {
-			ref, err = draft.Store(ctx, s, c.ctl(), run)
-			return err
-		})
-	} else {
-		// The controller copies a location's file into the run's record. An
-		// empty blob is written there first, so the run's record shows the
-		// start was sent.
-		uploads = append(uploads, func() error {
-			_, err := blob.Write(ctx, s, store.Blob(c.ctl(), run, blob.NewName()), "", blob.NewKey(), bytes.NewReader(nil))
-			return err
-		})
-	}
 	made := map[string]*blob.Ref{}
 	for _, carried := range blob.Refs(input) {
 		if made[carried.At] == nil {
@@ -241,11 +203,24 @@ func (c *Client) Start(ctx context.Context, draft *machine.Draft, start Start) (
 	if input, err = blob.Walk(input, func(_ string, at blob.Ref) (any, error) { return made[at.At].Value(), nil }); err != nil {
 		return "", err
 	}
+	// The input is written into the run's record last, {} when there is
+	// none, so a run whose record holds anything was sent.
+	written := input
+	if written == nil {
+		written = map[string]any{}
+	}
+	data, err := json.Marshal(written, json.Deterministic(true))
+	if err != nil {
+		return "", err
+	}
+	if _, err := blob.Write(ctx, c.Store, store.Blob(c.ctl(), run, blob.NewName()), blob.TypeOf("input.json"), blob.NewKey(), bytes.NewReader(data)); err != nil {
+		return "", err
+	}
 	seed := make([]byte, 32)
 	rand.Read(seed)
 	msg := &instance.Message{Kind: instance.KindStart, Instance: run, Start: &instance.Start{
-		Definition: ref, Location: start.At, Input: input, Labels: start.Labels, Key: start.Key, Context: start.Context, Allow: start.Allow,
-		Timeout: machine.Duration(start.Timeout), Secrets: start.Secrets, Seed: seed}}
+		Location: start.At, Input: input, Labels: start.Labels, Allow: start.Allow,
+		Timeout: machine.Duration(start.Timeout), Seed: seed}}
 	return run, c.send(ctx, startMessage(run), start.Life, msg)
 }
 
@@ -376,27 +351,6 @@ func (c *Client) Cancel(ctx context.Context, run string, life time.Duration) (st
 func (c *Client) Send(ctx context.Context, run, event string, data any, life time.Duration) (string, error) {
 	return c.sendNext(ctx, life, &instance.Message{Kind: instance.KindEvent, Instance: run,
 		Event: &machine.Event{Name: event, Data: data}})
-}
-
-// ErrNoKey is a key that names no run of this client's.
-var ErrNoKey = errors.New("no run has the key")
-
-// SendToKey sends a named event to the run with a key.
-func (c *Client) SendToKey(ctx context.Context, key, event string, data any, life time.Duration) (string, error) {
-	if err := c.identity(); err != nil {
-		return "", err
-	}
-	if err := machine.CheckKey(key); err != nil {
-		return "", err
-	}
-	entry, _, err := instance.ReadKey(ctx, c.Store, c.Controller, c.ID, store.ClientKey(c.ctl(), c.ID.Name, key), key)
-	if err != nil {
-		return "", err
-	}
-	if entry == nil {
-		return "", fmt.Errorf("%w: %q", ErrNoKey, key)
-	}
-	return c.Send(ctx, entry.Run, event, data, life)
 }
 
 // Reply answers a ticket of a run. The ticket is the authority: any client

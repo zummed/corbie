@@ -3,6 +3,7 @@ package cli
 import (
 	"context"
 	"encoding/json/v2"
+	"errors"
 	"fmt"
 	"slices"
 	"strings"
@@ -11,6 +12,10 @@ import (
 	"github.com/zummed/corbie/client"
 	"github.com/zummed/corbie/machine"
 )
+
+// checkPrefix is the prefix the check's machine is submitted at, and the
+// location its run starts at.
+const checkPrefix = "/corbie-check"
 
 // The check's run asks for one job and sets one timer, so that everything a
 // setup has to do for a run happens once.
@@ -202,22 +207,42 @@ func cmdCheck(e *Env, args []string) error {
 	if err != nil {
 		return err
 	}
-	id, err := c.Start(e.ctx, draft, client.Start{})
-	if err != nil {
-		return err
-	}
-	e.Say("%s", id)
 	// What is being waited for is said as the wait begins, so a setup with
 	// nothing running does not look like a command that has hung.
 	waiting := func(leg string) { e.Say("waiting up to %s %s", wait, legWaits[leg]) }
 	waiting(legs[0])
-	// Each leg is waited for this long from the one before it. The run is
-	// followed as any run is, and what the check reports is what turned up
-	// in the store: it asks the host nothing.
+	// The check's machine is submitted as a tree of one file, and its run
+	// started there once the submit is taken. Each leg is waited for this
+	// long from the one before it. The run is followed as any run is, and
+	// what the check reports is what turned up in the store: it asks the
+	// host nothing.
 	ctx, stop := context.WithCancel(e.ctx)
 	defer stop()
 	sent := time.Now()
 	giveUp := time.AfterFunc(time.Duration(patience), stop)
+	message, err := c.Submit(e.ctx, &client.Tree{Prefix: checkPrefix, Machines: []*client.Machine{{Path: "check.yaml", Location: checkPrefix, Draft: draft}}}, 0)
+	if err != nil {
+		return err
+	}
+	receipt, err := c.WaitReceipt(ctx, message, 0, checkLooks)
+	switch {
+	case err != nil && ctx.Err() == nil && !errors.Is(err, client.ErrNotTaken):
+		return err
+	case err != nil:
+		checked := Checked{Legs: []Leg{{Leg: legStart, Status: legNever, Seconds: seconds(time.Since(sent)), Why: why(legStart, legNever, c.Controller.Name, "")}}}
+		if err := e.Print(checked, func() string { return checkedText(checked) }); err != nil {
+			return err
+		}
+		return errRunFailed
+	case !receipt.Taken:
+		e.Print(receipt, func() string { return "refused: " + receipt.Refused + "\n" })
+		return errRunFailed
+	}
+	id, err := c.Start(e.ctx, client.Start{At: checkPrefix})
+	if err != nil {
+		return err
+	}
+	e.Say("%s", id)
 	seen := map[string]time.Time{}
 	runner := "the runner"
 	run, err := c.Follow(ctx, id, checkLooks, func(entry client.Entry) {
@@ -242,28 +267,30 @@ func cmdCheck(e *Env, args []string) error {
 		return err
 	}
 	checked := judge(sent, seen, time.Now(), run, c.Controller.Name, runner)
-	err = e.Print(checked, func() string {
-		var b strings.Builder
-		for _, leg := range checked.Legs {
-			took := fmt.Sprintf("%.1fs", leg.Seconds)
-			if leg.Status == legNever {
-				took = ""
-			}
-			fmt.Fprintf(&b, "  %-32s %-6s %s\n", legSays[leg.Leg], leg.Status, took)
-			if leg.Why != "" {
-				fmt.Fprintf(&b, "    %s\n", leg.Why)
-			}
-		}
-		if checked.Run != nil && checked.Run.HasEnded() {
-			b.WriteString(runText(checked.Run, false))
-		}
-		return b.String()
-	})
-	if err != nil {
+	if err := e.Print(checked, func() string { return checkedText(checked) }); err != nil {
 		return err
 	}
 	if !checked.OK {
 		return errRunFailed
 	}
 	return nil
+}
+
+// checkedText is what a check found, as it is printed.
+func checkedText(checked Checked) string {
+	var b strings.Builder
+	for _, leg := range checked.Legs {
+		took := fmt.Sprintf("%.1fs", leg.Seconds)
+		if leg.Status == legNever {
+			took = ""
+		}
+		fmt.Fprintf(&b, "  %-32s %-6s %s\n", legSays[leg.Leg], leg.Status, took)
+		if leg.Why != "" {
+			fmt.Fprintf(&b, "    %s\n", leg.Why)
+		}
+	}
+	if checked.Run != nil && checked.Run.HasEnded() {
+		b.WriteString(runText(checked.Run, false))
+	}
+	return b.String()
 }

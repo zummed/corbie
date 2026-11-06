@@ -63,9 +63,9 @@ var looksFiles = map[string]string{
 	"./lib/names.js": "exports.says = \"naïve \\r\\n\"",
 }
 
-// A start is an upload form: a definition, two scripts and an image as
-// input go in with the one request, whatever their bytes, and the run's
-// script reads the image's bytes unchanged. A file comes out by its path in
+// A start is an upload form: the start and an image as input go in with the
+// one request, whatever their bytes, and the run's script reads the image's
+// bytes unchanged. A file comes out by its path in
 // the result, with its type.
 func TestStartUploadsItsFilesWhateverTheirBytes(t *testing.T) {
 	_, c := served(t)
@@ -106,13 +106,12 @@ func TestStartUploadsItsFilesWhateverTheirBytes(t *testing.T) {
 // A part of the form is taken as a field or as a file alike.
 func TestStartTakesAPartAsAFieldOrAFile(t *testing.T) {
 	_, c := served(t)
+	at := c.place(looks, looksFiles)
+	start := `{"at": "` + at + `", "input": {"n": 3}}`
 	var outputs []string
 	for _, parts := range [][]part{
-		{{name: "definition", contents: looks}, {name: "file:./look.js", contents: looksFiles["./look.js"]}, {name: "file:lib/names.js", contents: looksFiles["./lib/names.js"]},
-			{name: "start", contents: `{"input": {"n": 3}}`}, {name: "input:image", filename: "a.gif", contents: "GIF89a"}},
-		{{name: "definition", filename: "looks.yaml", contents: looks}, {name: "file:look.js", filename: "look.js", contents: looksFiles["./look.js"]},
-			{name: "file:./lib/names.js", filename: "names.js", contents: looksFiles["./lib/names.js"]},
-			{name: "start", filename: "start.json", contents: `{"input": {"n": 3}}`}, {name: "input:image", filename: "a.gif", contents: "GIF89a"}},
+		{{name: "start", contents: start}, {name: "input:image", filename: "a.gif", contents: "GIF89a"}},
+		{{name: "start", filename: "start.json", contents: start}, {name: "input:image", filename: "a.gif", contents: "GIF89a"}},
 	} {
 		status, started, text := c.upload(parts...)
 		id, _ := started["id"].(string)
@@ -131,8 +130,7 @@ func TestStartTakesAPartAsAFieldOrAFile(t *testing.T) {
 		t.Fatalf("given as fields the run ended with %s, and given as files with %s", outputs[0], outputs[1])
 	}
 	// An input file given as a field has no name to take a type from.
-	status, started, text := c.upload(part{name: "definition", contents: looks}, part{name: "file:./look.js", contents: looksFiles["./look.js"]},
-		part{name: "file:./lib/names.js", contents: looksFiles["./lib/names.js"]}, part{name: "input:image", contents: "bytes"})
+	status, started, text := c.upload(part{name: "start", contents: `{"at": "` + at + `"}`}, part{name: "input:image", contents: "bytes"})
 	if status != 200 {
 		t.Fatalf("the start was answered %d %s", status, text)
 	}
@@ -145,22 +143,26 @@ func TestStartTakesAPartAsAFieldOrAFile(t *testing.T) {
 // what is wrong, and nothing is uploaded and nothing sent.
 func TestStartThatIsNoUploadFormIsRefused(t *testing.T) {
 	c0, c := alone(t)
-	definition := part{name: "definition", contents: door}
+	start := part{name: "start", contents: `{"at": "/door"}`}
 	for what, sent := range map[string]struct {
 		parts []part
 		names string
 	}{
-		"no definition":                  {[]part{{name: "start", contents: `{}`}}, "definition"},
-		"two definitions":                {[]part{definition, definition}, "more than once"},
-		"a definition as field and file": {[]part{definition, {name: "definition", filename: "door.yaml", contents: door}}, "more than once"},
-		"a file with no path":            {[]part{definition, {name: "file:", contents: "return 1"}}, `file:`},
-		"an input file with no name":     {[]part{definition, {name: "input:", filename: "a.png", contents: "x"}}, `input:`},
-		"a part it does not know":        {[]part{definition, {name: "inputs:image", filename: "a.png", contents: "x"}}, `inputs:image`},
-		"a start that is not JSON":       {[]part{definition, {name: "start", contents: `labels: {a: b}`}}, "start"},
-		"a start with nothing in it":     {[]part{definition, {name: "start"}}, "start"},
-		"a timeout that is no time":      {[]part{definition, {name: "start", contents: `{"timeout": "soon"}`}}, "soon"},
-		"a file and an input no map":     {[]part{definition, {name: "start", contents: `{"input": [1]}`}, {name: "input:image", filename: "a.png", contents: "x"}}, "not a map"},
-		"a file and a value, one name":   {[]part{definition, {name: "start", contents: `{"input": {"image": 1}}`}, {name: "input:image", filename: "a.png", contents: "x"}}, "image"},
+		"no start":                     {[]part{{name: "input:image", filename: "a.png", contents: "x"}}, "no part named start"},
+		"two starts":                   {[]part{start, start}, "more than once"},
+		"a start as field and file":    {[]part{start, {name: "start", filename: "start.json", contents: `{"at": "/door"}`}}, "more than once"},
+		"a definition":                 {[]part{start, {name: "definition", contents: door}}, `definition`},
+		"a file beside a definition":   {[]part{start, {name: "file:./a.js", contents: "return 1"}}, `file:./a.js`},
+		"an input file with no name":   {[]part{start, {name: "input:", filename: "a.png", contents: "x"}}, `input:`},
+		"a part it does not know":      {[]part{start, {name: "inputs:image", filename: "a.png", contents: "x"}}, `inputs:image`},
+		"a start that is not JSON":     {[]part{{name: "start", contents: `labels: {a: b}`}}, "start"},
+		"a start with nothing in it":   {[]part{{name: "start"}}, "start"},
+		"a start with no location":     {[]part{{name: "start", contents: `{"input": {}}`}}, "at"},
+		"a location that is no path":   {[]part{{name: "start", contents: `{"at": "door"}`}}, "door"},
+		"secrets":                      {[]part{{name: "start", contents: `{"at": "/door", "secrets": {"TOKEN": "x"}}`}}, "secrets"},
+		"a timeout that is no time":    {[]part{{name: "start", contents: `{"at": "/door", "timeout": "soon"}`}}, "soon"},
+		"a file and an input no map":   {[]part{{name: "start", contents: `{"at": "/door", "input": [1]}`}, {name: "input:image", filename: "a.png", contents: "x"}}, "not a map"},
+		"a file and a value, one name": {[]part{{name: "start", contents: `{"at": "/door", "input": {"image": 1}}`}, {name: "input:image", filename: "a.png", contents: "x"}}, "image"},
 	} {
 		if status, _, text := c.upload(sent.parts...); status != 400 || !strings.Contains(text, sent.names) {
 			t.Errorf("a start with %s was answered %d %s", what, status, text)
@@ -210,7 +212,7 @@ func TestStartLeavesNothingOfItsUploadsBehind(t *testing.T) {
 		after.Store(kept())
 	}))
 	t.Cleanup(server.Close)
-	c := caller{t: t, url: server.URL, token: "the-token"}
+	c := caller{t: t, url: server.URL, token: "the-token", client: local.Client}
 	large := image(5 << 20)
 	parts := append(form(c, map[string]any{"definition": looks, "files": looksFiles}), part{name: "input:image", filename: "scan.png", contents: large})
 	status, started, text := c.upload(parts...)
@@ -250,7 +252,7 @@ func TestCancelEventAndAnswerTakeALife(t *testing.T) {
 		return value.Until.Sub(value.Sent)
 	}
 	// A start takes one too.
-	id := c.start(map[string]any{"definition": door, "life": "90s"})
+	id := c.start(map[string]any{"at": "/door", "life": "90s"})
 	if sent, err := store.Names(owner.List(ctx, store.Inbox("controller"))); err != nil || len(sent) != 1 || goodFor(sent[0]) != 90*time.Second {
 		t.Fatalf("a start with a life of 90s left %v in the inbox (%v)", sent, err)
 	}

@@ -84,8 +84,6 @@ states:
 	id, _ := object(asked(m, "", true, "run", "submit", "/make"))["id"].(string)
 	asked(m, "", true, "run", "submit", "/make", "--wait")
 	asked(m, "", true, "run", "submit", "/make", "--watch")
-	asked(m, "", true, "run", "submit", filepath.Join(dir, "make.js"), "--wait")
-	asked(m, "", true, "run", "submit", filepath.Join(dir, "make.js"), "--watch")
 	asked(m, "", true, "run", "show", id, "--wait")
 	asked(m, "", true, "run", "show", id)
 	asked(m, "", true, "run", "show", id, "--record")

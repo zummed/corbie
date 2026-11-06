@@ -142,7 +142,7 @@ func Test_client_step_moved_between_records_not_believed(t *testing.T) {
 func Test_client_waiting_status_only_before_taken_up(t *testing.T) {
 	// With no controller, a run that has been sent is waiting to start.
 	a := arrange(t)
-	sent, err := a.Start(ctx, nil, client.Start{At: "/standing"})
+	sent, err := a.Start(ctx, client.Start{At: "/standing"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -247,7 +247,7 @@ func TestUnstartedRunIsWaitingOnlyWhileItsStartIsGood(t *testing.T) {
 		}
 		cancel()
 	}
-	sent, err := a.Start(ctx, nil, client.Start{At: "/standing"})
+	sent, err := a.Start(ctx, client.Start{At: "/standing"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -255,7 +255,7 @@ func TestUnstartedRunIsWaitingOnlyWhileItsStartIsGood(t *testing.T) {
 		t.Fatalf("a start just sent is shown as %+v, %v", run, err)
 	}
 	// One named a day ahead of the clock was not named by this client.
-	ahead, err := a.Start(ctx, nil, client.Start{At: "/standing", Run: "client/" + store.Stamp(time.Now().Add(24*time.Hour)) + "-0000000001"})
+	ahead, err := a.Start(ctx, client.Start{At: "/standing", Run: "client/" + store.Stamp(time.Now().Add(24*time.Hour)) + "-0000000001"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -343,7 +343,7 @@ func Test_client_start_uploads_side_by_side(t *testing.T) {
 		return map[string]any{"one": file("one.txt"), "more": []any{file("two.txt"), map[string]any{"three": file("three.txt")}}}
 	}
 	const definitions = scripts + inner + 2 // the two definitions and their scripts
-	const inputs = 3 + 1                    // the input's files, and the blob that shows the start was sent
+	const inputs = 3 + 1                    // the input's files, and the input itself
 
 	a := arrange(t)
 	u := &uploads{Store: a.hooked}
@@ -363,7 +363,7 @@ func Test_client_start_uploads_side_by_side(t *testing.T) {
 	}
 	u = &uploads{Store: a.hooked}
 	c = client.New(a.ID, a.ctl.Card, u)
-	run, err := c.Start(ctx, nil, client.Start{At: "/wide", Input: input()})
+	run, err := c.Start(ctx, client.Start{At: "/wide", Input: input()})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -383,19 +383,5 @@ func Test_client_start_uploads_side_by_side(t *testing.T) {
 	c = client.New(a.ID, a.ctl.Card, u)
 	if _, err := c.Submit(ctx, tree, 0); !errors.Is(err, refused) || u.messages.Load() != 0 {
 		t.Fatalf("a submit whose upload failed gave %v and sent %d messages", err, u.messages.Load())
-	}
-}
-
-// A send to a key no run has says so, and an empty key is not sent to.
-func Test_client_start_and_send_hold_a_key_to_its_bound(t *testing.T) {
-	l := local(t)
-	if _, err := l.SendToKey(ctx, "nobody", "e", nil, 0); !errors.Is(err, client.ErrNoKey) {
-		t.Fatalf("a key no run has: %v", err)
-	}
-	if _, err := l.SendToKey(ctx, "", "e", nil, 0); err == nil {
-		t.Fatal("an empty key was sent to")
-	}
-	if _, err := l.SendToKey(ctx, strings.Repeat("a", 257), "e", nil, 0); err == nil {
-		t.Fatal("a key of 257 characters was sent to")
 	}
 }

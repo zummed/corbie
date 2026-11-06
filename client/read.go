@@ -174,9 +174,8 @@ func (c *Client) unstarted(ctx context.Context, id string) (*Run, error) {
 	if receipt != nil {
 		return nil, nil
 	}
-	// A start's definition, or for a start of a location an empty blob, is
-	// written into the run's record before the start is sent, so a name
-	// with nothing in its record was never sent.
+	// A start's input is written into the run's record before the start is
+	// sent, so a name with nothing in its record was never sent.
 	uploaded, err := store.Names(c.Store.First(ctx, store.Blobs(c.ctl(), id), 1))
 	if err != nil {
 		return nil, err

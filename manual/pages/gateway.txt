@@ -9,8 +9,8 @@ How it works
 
 1. The gateway is a process that listens for HTTP requests. It is a Corbie
    client.
-2. A program sends a definition, its files and an input. The gateway submits
-   them as a run.
+2. A program names a location and gives an input. The gateway starts a run
+   there.
 3. The program asks for the run by its ID, and gets its status and output as
    JSON.
 
@@ -34,17 +34,17 @@ without the token gets 401.
 Start a run
 -----------
 
-The request is a multipart form with three kinds of part.
+The gateway starts runs at locations of its client's trees. These are the
+two files from `corbie manual first-machine`, submitted by that client.
 
-  definition     the definition
-  file:<path>    each file the definition names
-  start          JSON with the input
+  corbie run submit title.yaml
+    /title   transient   recorded
 
-These are the two files from `corbie manual first-machine`.
+The request is a multipart form. Its part `start` is JSON with the location
+and the input.
 
   curl -H "Authorization: Bearer $TOKEN" http://127.0.0.1:8371/runs \
-       -F definition=@title.yaml -F file:./fetch-title.js=@fetch-title.js \
-       -F 'start={"input": {"url": "https://example.com"}}'
+       -F 'start={"at": "/title", "input": {"url": "https://example.com"}}'
     {"id":"laptop-client/20261013T185126.250Z-571d935912"}
 
 Read the result

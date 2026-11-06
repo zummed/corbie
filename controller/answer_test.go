@@ -1038,7 +1038,7 @@ func Test_ctl_client_start_names_a_location(t *testing.T) {
 		t.Fatalf("the run at %s is of %q at %s, from the definition %s", at, st.Machine, st.Location, st.Definition.At)
 	}
 	run, r = start(&instance.Start{Definition: ref})
-	if w.head(run) != nil || r == nil || r.Taken || r.Refused == "" {
+	if w.head(run) != nil || r == nil || r.Taken || !strings.Contains(r.Refused, "names a location") {
 		t.Fatalf("the start of a definition in another record has the head %+v and the receipt %+v", w.head(run), r)
 	}
 }

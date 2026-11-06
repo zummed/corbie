@@ -139,6 +139,7 @@ func Test_ctl_submit_is_refused_naming_the_tree(t *testing.T) {
 		"/ is never a tree":                                func() *instance.Receipt { return w.submitTree(w.client, at("/", "/m")) },
 		"the location /h/a/b is below /h/a":                func() *instance.Receipt { return w.submitTree(w.client, at("/h", "/h/a", "/h/a/b")) },
 		"the location /elsewhere/m is not in the tree /in": func() *instance.Receipt { return w.submitTree(w.client, at("/in", "/elsewhere/m")) },
+		"the location /r is the tree's prefix, which only": func() *instance.Receipt { return w.submitTree(w.client, at("/r", "/r", "/r/m")) },
 	} {
 		if r := try(); r.Taken || !strings.Contains(r.Refused, refused) {
 			t.Errorf("want %q, the submit gave %+v", refused, r)
@@ -308,7 +309,7 @@ func Test_ctl_a_moved_line_is_recorded(t *testing.T) {
 	transient := strings.Replace(waiting, "lifetime: singleton", "update: restart", 1)
 	w.submitTree(w.client, w.tree("/m", "", map[string]string{"/m": transient}, nil))
 	start := func() string {
-		run, err := w.client.Start(ctx, nil, client.Start{At: "/m"})
+		run, err := w.client.Start(ctx, client.Start{At: "/m"})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -381,7 +382,7 @@ func Test_ctl_client_starts_its_own_transient_locations(t *testing.T) {
 		t.Fatalf("a file whose approvals have no ask: %+v", done.Locations)
 	}
 	start := func(c *client.Client, at string) string {
-		run, err := c.Start(ctx, nil, client.Start{At: at})
+		run, err := c.Start(ctx, client.Start{At: at})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -423,7 +424,7 @@ func Test_ctl_values_are_read_at_the_first_step(t *testing.T) {
 	transient := strings.Replace(waiting, "lifetime: singleton", "", 1)
 	w.submitTree(w.client, w.tree("/v", "", map[string]string{"/v/m": transient}, nil))
 	start := func() string {
-		run, err := w.client.Start(ctx, nil, client.Start{At: "/v/m"})
+		run, err := w.client.Start(ctx, client.Start{At: "/v/m"})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -457,7 +458,7 @@ func Test_ctl_values_are_read_at_the_first_step(t *testing.T) {
 	`
 	w.submitTree(w.client, w.tree("/p", "", map[string]string{"/p/m": parent}, nil))
 	set("/p", "parent's")
-	id, err := w.client.Start(ctx, nil, client.Start{At: "/p/m"})
+	id, err := w.client.Start(ctx, client.Start{At: "/p/m"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -488,7 +489,7 @@ func Test_ctl_values_and_secrets_by_location(t *testing.T) {
 		  s: { job: { script: ./work.js, allow: ["secret:K@net:${values.HOST}:443"] } }
 	`
 	w.submitTree(w.client, w.tree("/w", "", map[string]string{"/w/m": uses}, map[string]string{"work.js": "return 1"}))
-	if _, err := w.client.Start(ctx, nil, client.Start{At: "/w/m"}); err != nil {
+	if _, err := w.client.Start(ctx, client.Start{At: "/w/m"}); err != nil {
 		t.Fatal(err)
 	}
 	w.settle()

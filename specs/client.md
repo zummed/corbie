@@ -125,7 +125,7 @@ corbie controller value set DB_HOST db.prod.lan --at /prod
 corbie controller value list
 ```
 
-A file given alone is a tree of one file, at `--at`, by default `/` and the file's name without its extension. An argument that starts with `/`, does not end in `.yaml` or `.js`, and is no file or directory on this computer is read as a location. A file's name that is not there is reported as not found.
+A file given alone is a tree of one file, at `--at`, by default `/` and the file's name without its extension. Its location is the prefix itself, which only a tree of one file may have. An argument that starts with `/`, does not end in `.yaml` or `.js`, and is no file or directory on this computer is read as a location. A file's name that is not there is reported as not found.
 
 A script file can be submitted as it is. The package wraps it in a flow of one stage, with the permissions it may use and its limits, which the command line takes as flags.
 

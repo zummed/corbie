@@ -266,7 +266,6 @@ func (b *build) apart(s *instance.Start, start *arrival) (*stepOut, error) {
 		return nil, errLeft
 	}
 	in := &stepIn{Instance: b.inst, Definition: b.def, State: *b.st, Number: b.step.Number, Time: b.time, Events: b.events}
-	in.State.Above.Secrets = nil
 	if s != nil {
 		in.First, in.Input = true, s.Input
 	}

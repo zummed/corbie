@@ -51,7 +51,7 @@ func TestTreeStartsItsSingletons(t *testing.T) {
 		t.Fatalf("there are %d runs", len(runs))
 	}
 	// The transient file runs when its tree's client starts it.
-	id, err := l.Start(ctx, nil, client.Start{At: "/house/plain"})
+	id, err := l.Start(ctx, client.Start{At: "/house/plain"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -102,7 +102,7 @@ func TestRemovedFileCancelsItsRuns(t *testing.T) {
 	if got := show(t, l, first).Status; got != "cancelled" || done.Locations[0] != (instance.Recorded{Location: "/a/kept", Lifetime: "singleton", What: "removed"}) {
 		t.Fatalf("the run is %s, and the submit did %+v", got, done.Locations)
 	}
-	if _, err := l.Start(ctx, nil, client.Start{At: "/a/kept"}); err != nil {
+	if _, err := l.Start(ctx, client.Start{At: "/a/kept"}); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -114,7 +114,7 @@ func TestDrainLeavesRunsOnTheirDefinition(t *testing.T) {
 	waits := "statechart: waits\ninitial: w\nstates:\n  w: { on: { go: over } }\n  over: { end: done, output: %s }\n"
 	dir := house(t, map[string]string{"waits.yaml": strings.Replace(waits, "%s", "old", 1)})
 	submitTree(t, l, dir, "/d")
-	old, err := l.Start(ctx, nil, client.Start{At: "/d/waits"})
+	old, err := l.Start(ctx, client.Start{At: "/d/waits"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -125,7 +125,7 @@ func TestDrainLeavesRunsOnTheirDefinition(t *testing.T) {
 	if done := submitTree(t, l, dir, "/d"); len(done.Cancelled) > 0 {
 		t.Fatalf("a drain cancelled %v", done.Cancelled)
 	}
-	fresh, err := l.Start(ctx, nil, client.Start{At: "/d/waits"})
+	fresh, err := l.Start(ctx, client.Start{At: "/d/waits"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -176,7 +176,7 @@ func TestContextIsReadByARunAndItsChildren(t *testing.T) {
 		"one.js":    "return 1",
 	})
 	submitTree(t, l, dir, "/c")
-	id, err := l.Start(ctx, nil, client.Start{At: "/c/on/top"})
+	id, err := l.Start(ctx, client.Start{At: "/c/on/top"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -323,7 +323,7 @@ func TestRequireFindsWhatAJobNames(t *testing.T) {
 		"on/start.yaml":   "flow: start\nstages:\n  s: { job: { machine: blocks/who.yaml } }\noutput: ${stages.s.output}\n",
 	})
 	submitTree(t, l, dir, "/require")
-	id, err := l.Start(context.Background(), nil, client.Start{At: "/require/on/start"})
+	id, err := l.Start(context.Background(), client.Start{At: "/require/on/start"})
 	if err != nil {
 		t.Fatal(err)
 	}

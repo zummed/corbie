@@ -7,7 +7,7 @@ JSON, except a file and a stream, and a refusal is `{ "error": "<text>" }`.
 Routes
 ------
 
-  POST /runs                    starts a run from a form; answers { "id": "<id>" }
+  POST /runs                    starts a run of a location from a form; answers { "id": "<id>" }
   GET /runs                     lists the gateway's runs in progress, as a JSON list
   GET /runs/<id>                one run
   GET /runs/<id>/record         the record so far, child runs included: { "entries": […], "run": {…} }
@@ -25,20 +25,18 @@ Start a run
 
 `POST /runs` takes `multipart/form-data` with these parts.
 
-  definition     the definition
-  file:<path>    a file the definition names, at the path it names it by
+  start          JSON with the fields below
   input:<name>   a file that a script reads as the blob `input.<name>`; its file name sets the type
-  start          JSON with the fields below; it may be left out
 
+  at         "/title": the location the run starts at; required
   input      the run's input
   labels     { "team": "ops" }
   allow      ["net:example.com"]: entries that limit every job of the run and its child runs
   deny       entries that are refused whatever `allow` has
   timeout    "1h": how long the run may take
-  secrets    { "NAME": "value" }: secrets for this run only
   life       "10m": how long the start is valid if no controller reads it, default 5m
 
-- A definition can name only the files sent with it.
+- The machine is the file recorded at `at`. The gateway's client submits its tree, as `corbie manual a-directory` shows.
 - A part can be sent as a form field or as a file.
 - With an `input:<name>` part, `input` is an object or absent, with no value under that name.
 
@@ -64,7 +62,7 @@ controller reads the message. `life` is how long the message is valid, default 5
   { "taken": true, "acted": false }           for an event: whether a rule of the machine matched it
   { "taken": false, "refused": "<reason>" }   the controller did not act; the status is 200
 
-  400   an unknown parameter, field or part, a part sent twice, an unreadable value or a faulty definition
+  400   an unknown parameter, field or part, a part sent twice, an unreadable value or a location that cannot be one
   401   the token is missing or wrong
   404   the ID is not a run, the path is not a file of the run, or there is no such route
   409   the definition or a file of a run that is still `waiting`

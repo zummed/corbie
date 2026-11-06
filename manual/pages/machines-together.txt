@@ -80,7 +80,7 @@ A statechart sends to a run by its key
         on:
           knock: open
           leave: closed
-      closed: { end: done, output: "${run.key}" }
+      closed: { end: done }
 
     # desk.yaml
     statechart: desk

@@ -1,5 +1,5 @@
 {
   "status": "done",
-  "output": { "key": "room", "by": "clerk" },
+  "output": { "by": "clerk" },
   "note": "R-chart-74, R-chart-75, R-mach-142: a send starts a run with a key and gives it the event, and that run answers by the sender's key."
 }

@@ -131,7 +131,7 @@ func (l *Local) RunTree(ctx context.Context, tree *Tree, start Start) (string, e
 		return done.Run, nil
 	}
 	start.At = tree.Machines[0].Location
-	return l.Start(ctx, nil, start)
+	return l.Start(ctx, start)
 }
 
 // Close stops the roles and waits for them.

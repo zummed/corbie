@@ -190,7 +190,7 @@ The detailed rules behind the [Machines overview](../machine.md). Area code: `ma
 ## Keys
 
 **R-mach-140** A key names a run. A run may be started with a key by a job that starts a machine, in any type, or by a send, and among one client's running runs a key names at most one run. A key is free again once its run ends.
-*Accept:* a send starts a chart with the key `chat:1`: the entry for `chat:1` names it, its head says `chat:1`, and `${run.key}` gives `chat:1`. A flow's job, an agent's tool and a chart's state each start a machine with a key the same way. When the run ends the entry is gone, and a new send to `chat:1` starts a run. Parity cases 107 and 108. *Test:* `chart_send_to_a_key_starts_a_run_then_delivers`, `ctl_key_is_free_once_its_run_ends` and `ctl_job_with_a_key_in_use_fails`
+*Accept:* a send starts a chart with the key `chat:1`: the entry for `chat:1` names it, and its head says `chat:1`. A flow's job, an agent's tool and a chart's state each start a machine with a key the same way. When the run ends the entry is gone, and a new send to `chat:1` starts a run. Parity cases 107 and 108. *Test:* `chart_send_to_a_key_starts_a_run_then_delivers`, `ctl_key_is_free_once_its_run_ends` and `ctl_job_with_a_key_in_use_fails`
 
 **R-mach-141** A job with a key in use fails with a reason, and only a send with `machine` joins a running run.
 *Accept:* a flow whose job gives `k` fails, its error naming the run with `k`. A send with `machine` to `k` is delivered to the run with `k`, and no run starts. Parity case 110. *Test:* `ctl_job_with_a_key_in_use_fails` and `chart_send_to_a_key_starts_a_run_then_delivers`

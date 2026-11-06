@@ -337,7 +337,7 @@ func runCase(t *testing.T, dir string, want *expect) (wrong, findings []string) 
 		}
 	}
 	if id == "" {
-		if id, err = l.Start(within, nil, client.Start{At: root.Location, Input: input}); err != nil {
+		if id, err = l.Start(within, client.Start{At: root.Location, Input: input}); err != nil {
 			t.Fatal(err)
 		}
 	}

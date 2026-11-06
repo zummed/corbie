@@ -1,17 +1,18 @@
 Runs: the commands that start, list, show and cancel a run, and the fields of a run as JSON.
 
 A run is one execution of a machine. `<id>` below is the ID that
-`corbie run submit` prints. Each command has a page with its flags, such as
+`corbie run submit` prints for a run it starts. Each command has a page with its flags, such as
 `corbie manual run show`.
 
 Commands
 --------
 
-  corbie run submit <definition>          starts a run and prints its ID
+  corbie run submit <file or directory>   records a tree, and starts its singletons
+  corbie run submit <location>            starts a run there and prints its ID
   corbie run ls                           lists this client's runs in progress, with child runs
   corbie run show <id>                    prints one run's status, input and output
-  corbie run cancel <id>                  cancels a run this client started
-  corbie run send <id> <event> [data]     sends an event to a run this client started
+  corbie run cancel <id>                  cancels a run in one of this client's trees
+  corbie run send <id> <event> [data]     sends an event to a run in one of this client's trees
   corbie run reply <id> <ticket> [value]  answers a ticket the run waits on
   corbie controller cancel <id>           cancels any run, with the controller's config
 
@@ -68,7 +69,7 @@ To give a blob of one run to another run, write it in the new input with the
 first run's ID added. Both runs must be this client's. Corbie copies the blob
 into the new run's record, so it remains after the first run is deleted.
 
-  corbie run submit next.yaml --input '{"doc": {"$blob": "report", "run": "<id>"}}'
+  corbie run submit /next --input '{"doc": {"$blob": "report", "run": "<id>"}}'
 
 The record
 ----------
@@ -89,12 +90,13 @@ A statechart state with `ticket: <name>` issues a ticket, and
 `corbie run reply` answers it (`corbie manual statechart`). Only the client that
 started the run can print the ticket, with `corbie run show <id> --tickets`.
 
-A statechart with no final state keeps running. Start it once with a label,
-send it an event each time there is work, and find it later with
-`corbie run ls --label service=reports`.
+A statechart with no final state keeps running. With `lifetime: singleton` the
+submit starts its one run, and a client sends it an event each time there is
+work.
 
     # reports.yaml
     statechart: reports
+    lifetime: singleton
     initial: idle
 
     states:
@@ -111,7 +113,8 @@ send it an event each time there is work, and find it later with
 
     corbie init --ceiling all --name laptop
     corbie start &
-    corbie run submit reports.yaml --label service=reports
+    corbie run submit reports.yaml
+      /reports   singleton   started <id>
     corbie run send <id> work '"q3"'
       taken; the machine acted on it
     corbie run send <id> pause

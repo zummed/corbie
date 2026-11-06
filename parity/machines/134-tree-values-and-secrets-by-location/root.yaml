@@ -1,0 +1,16 @@
+# The value HUB is set at / and at /case, and the flow at /case/root reads
+# the one set at /case, the nearer. Its child runs at its location and reads
+# the same. The job of own names the secret TOKEN, set only at /, and is
+# sent a handle for it.
+flow: parent
+stages:
+  own:
+    job:
+      script: ./handle.js
+      input: { hub: "${values.HUB}" }
+      allow: ["secret:TOKEN@net:example.invalid"]
+  kid:
+    job: { machine: ./kid.yaml }
+output:
+  own: ${stages.own.output}
+  kid: ${stages.kid.output}

@@ -1,0 +1,8 @@
+{
+  "status": "done",
+  "output": {
+    "own": { "hub": "near", "handle": true },
+    "kid": { "hub": "near", "location": "/case/root" }
+  },
+  "note": "R-ctl-113: a run reads the value set nearest its location, a child reads its parent's, and a job is sent the secrets set at its run's location or above."
+}

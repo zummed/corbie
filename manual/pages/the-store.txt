@@ -72,7 +72,7 @@ Signing and encryption
 Every file except `version`, the blobs and the files under `wakes/` is three
 lines of text. This is the start message `corbie run submit` wrote for the run
 `<id>`, with line 1 shown one field to a row and lines 2 and 3 cut short. Its
-content is the run's input, labels and reference to the definition's blob.
+content is the run's location, input and labels.
 
   {"by":"laptop-client",                       the writer
    "at":"laptop-controller/inbox/<id>",        the path of the file
@@ -152,7 +152,7 @@ Looking for yourself
 A directory store is plain files. Set up the store of
 `corbie manual a-real-run`, stop `corbie start`, and run these.
 
-  corbie run submit title.yaml --input '{"url": "https://example.com"}'
+  corbie run submit /title --input '{"url": "https://example.com"}'
   find ~/.config/corbie/store -type f    # the start message is in laptop-controller/inbox/
   corbie start &
   find ~/.config/corbie/store -type f    # steps/, finished/, receipts/, wakes/ and taken/ have files

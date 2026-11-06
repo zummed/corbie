@@ -1,0 +1,8 @@
+{
+  "status": "cancelled",
+  "error_contains": "cancelled",
+  "record": [
+    { "machine": "child", "status": "cancelled" }
+  ],
+  "note": "R-ctl-116: a file gone from the tree has its root runs cancelled, and a child running at its location ends with its parent."
+}

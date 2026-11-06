@@ -38,10 +38,11 @@ job, so it does not poll.
 Add a client on another computer
 --------------------------------
 
-  laptop$  corbie client card | ssh desk corbie controller enrol - --ceiling network | corbie client trust -
+  laptop$  corbie client card | ssh desk corbie controller enrol - --ceiling 'network,at:/laptop' | corbie client trust -
 
-`--ceiling network` is the most any run this client starts may be allowed.
-`corbie run submit` and `corbie run show` then work on `laptop`.
+`network` is the most any run in this client's trees may be allowed, and
+`at:/laptop` lets it submit a tree at `/laptop`, as
+`corbie run submit <directory> --at /laptop` does on `laptop`.
 
 What crosses the network
 ------------------------

@@ -1,0 +1,6 @@
+# kid.yaml: a child, which reads the value and the location of its parent.
+flow: kid
+stages:
+  read:
+    job: { script: ./echo.js, input: { hub: "${values.HUB}", location: "${run.location}" } }
+output: ${stages.read.output}

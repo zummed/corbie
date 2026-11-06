@@ -85,7 +85,8 @@ Check it
 Run these where you ran `init`.
 
   corbie check
-  corbie run submit hello.js --wait
+  corbie run submit hello.js
+  corbie run submit /hello --wait
 
 If a call is missing, the check's `late` or `never` line names it.
 

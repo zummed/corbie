@@ -1,0 +1,12 @@
+# The chart waits for go, then ends with the word old. While it waits, the
+# case's directory changed is submitted at /case in place of the case's own:
+# its root.yaml ends with the word new, and says nothing of update:, so the
+# run that is waiting drains on the definition it started with.
+statechart: waiting
+initial: waiting
+states:
+  waiting:
+    on: { go: over }
+  over:
+    end: done
+    output: old

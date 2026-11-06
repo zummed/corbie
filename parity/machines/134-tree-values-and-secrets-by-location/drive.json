@@ -1,0 +1,5 @@
+[
+  { "do": "value", "name": "HUB", "value": "everywhere" },
+  { "do": "value", "name": "HUB", "value": "near", "at": "/case" },
+  { "do": "secret", "name": "TOKEN", "value": "not-a-real-token" }
+]

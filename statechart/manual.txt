@@ -29,7 +29,9 @@ Use it for work that waits, loops, branches or reacts to events.
 
     corbie init --ceiling all
     corbie start &
-    corbie run submit review.yaml --input '{"document": "the plan"}'
+    corbie run submit review.yaml
+      /review   transient   recorded
+    corbie run submit /review --input '{"document": "the plan"}'
     corbie run show <id> --tickets
     corbie run reply <id> <ticket> '{"ok": true}'
       taken
@@ -37,8 +39,8 @@ Use it for work that waits, loops, branches or reacts to events.
       output: "A draft of the plan"
 
 `review.yaml` writes a draft, then waits up to 48 hours for a verdict from
-outside the run. `<id>` is the ID that `corbie run submit` printed, and
-`<ticket>` the value that `corbie run show <id> --tickets` printed.
+outside the run. `<id>` is the ID that `corbie run submit /review` printed,
+and `<ticket>` the value that `corbie run show <id> --tickets` printed.
 
 Waiting for an answer
 ---------------------

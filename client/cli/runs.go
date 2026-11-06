@@ -2,9 +2,11 @@ package cli
 
 import (
 	"encoding/json/v2"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"slices"
@@ -78,33 +80,46 @@ func addSecret(start *client.Start, name string, read func(string) (string, erro
 // carries. Nothing is uploaded and nothing is sent if anything is wrong.
 func (s *starting) prepare(e *Env, file string) (*machine.Draft, client.Start, error) {
 	var start client.Start
-	src, err := os.ReadFile(file)
-	if err != nil {
-		return nil, start, err
-	}
 	var draft *machine.Draft
+	var src []byte
+	var err error
+	located := isLocation(file)
+	if !located {
+		if src, err = os.ReadFile(file); err != nil {
+			return nil, start, err
+		}
+	}
 	script := strings.HasSuffix(file, ".js")
-	if script {
+	switch {
+	case located:
+		// The location's file gives the run its definition and its secrets.
+		for name, given := range map[string]bool{"--memory": s.memory != "", "--tag": len(s.tags) > 0, "--key": e.Given("key"),
+			"--secret": len(s.secrets) > 0, "--secret-env": len(s.secretsFromEnv) > 0} {
+			if given {
+				return nil, start, Mistake("%s does not apply to a start of a location: the file recorded there gives its jobs their own, and its secrets are set at the location", name)
+			}
+		}
+		if err := s.narrow(&start); err != nil {
+			return nil, start, err
+		}
+		start.At = file
+	case script:
 		// What a script file may do and its limits are given on the
 		// command line.
 		draft, err = client.Script(filepath.Base(file), src, client.ScriptJob{Allow: s.allow, Deny: s.deny,
 			Timeout: s.timeout, Memory: s.memory, Tags: s.tags})
-	} else {
+		if err != nil {
+			return nil, start, err
+		}
+	default:
 		// A flag that has no effect on what was given is a mistake.
 		for name, given := range map[string]bool{"--memory": s.memory != "", "--tag": len(s.tags) > 0} {
 			if given {
 				return nil, start, Mistake("%s applies only to a script file; a definition gives its jobs their own", name)
 			}
 		}
-		// The start's own list, which narrows the run and everything below.
-		if len(s.allow)+len(s.deny) > 0 {
-			if err := permission.CheckList(s.allow); err != nil {
-				return nil, start, Mistake("--allow: %v", err)
-			}
-			if err := permission.CheckList(s.deny); err != nil {
-				return nil, start, Mistake("--deny: %v", err)
-			}
-			start.Allow = &permission.Layer{Allow: s.allow, Deny: s.deny}
+		if err := s.narrow(&start); err != nil {
+			return nil, start, err
 		}
 		context, rel, err := contextOf(file)
 		if err != nil {
@@ -115,9 +130,6 @@ func (s *starting) prepare(e *Env, file string) (*machine.Draft, client.Start, e
 			return nil, start, err
 		}
 		start.Context = context
-	}
-	if err != nil {
-		return nil, start, err
 	}
 	if s.input != "" {
 		text := []byte(s.input)
@@ -208,6 +220,32 @@ func (s *starting) prepare(e *Env, file string) (*machine.Draft, client.Start, e
 	return draft, start, nil
 }
 
+// narrow puts the start's own list into it, which narrows the run and
+// everything below it.
+func (s *starting) narrow(start *client.Start) error {
+	if len(s.allow)+len(s.deny) == 0 {
+		return nil
+	}
+	if err := permission.CheckList(s.allow); err != nil {
+		return Mistake("--allow: %v", err)
+	}
+	if err := permission.CheckList(s.deny); err != nil {
+		return Mistake("--deny: %v", err)
+	}
+	start.Allow = &permission.Layer{Allow: s.allow, Deny: s.deny}
+	return nil
+}
+
+// isLocation says whether an argument names a location: it starts with /
+// and is no file or directory on this computer.
+func isLocation(arg string) bool {
+	if !strings.HasPrefix(arg, "/") {
+		return false
+	}
+	_, err := os.Stat(arg)
+	return errors.Is(err, fs.ErrNotExist)
+}
+
 // interval is how often a command that waits looks again at a store that
 // cannot tell it when something was written.
 const interval = time.Second
@@ -271,27 +309,30 @@ func cmdSubmit(e *Env, args []string) error {
 	if err != nil {
 		return err
 	}
+	given := []string{}
+	e.Flags.Visit(func(f *flag.Flag) {
+		if slices.Contains(startOnly, f.Name) {
+			given = append(given, "--"+f.Name)
+		}
+	})
 	dirs, err := directories(files)
 	switch {
 	case err != nil:
 		return err
 	case dirs && len(files) != 1:
 		return Mistake("name one directory: each is a tree of its own, submitted at its own prefix")
-	case dirs:
-		given := []string{}
-		e.Flags.Visit(func(f *flag.Flag) {
-			if slices.Contains(startOnly, f.Name) {
-				given = append(given, "--"+f.Name)
-			}
-		})
-		if len(given) > 0 {
-			return Mistake("%s applies to one definition; a directory takes only --at", strings.Join(given, ", "))
-		}
-		return e.submitTree(files[0], at)
-	case at != "":
-		return Mistake("--at applies to a directory, and %s is not one", strings.Join(files, ", "))
 	case len(files) != 1:
-		return Mistake("name one directory, or one definition, or one script file")
+		return Mistake("name one directory, one file or one location")
+	case dirs && len(given) > 0:
+		return Mistake("%s applies to one definition; a directory takes only --at", strings.Join(given, ", "))
+	case dirs:
+		return e.submitTree(files[0], at)
+	case at != "" && isLocation(files[0]):
+		return Mistake("--at applies to a file or a directory, and %s is a location", files[0])
+	case at != "" && len(given) > 0:
+		return Mistake("%s applies to a start; a file given with --at is recorded as a tree, which takes only --at", strings.Join(given, ", "))
+	case !isLocation(files[0]) && (at != "" || len(given) == 0):
+		return e.submitFile(files[0], at)
 	}
 	if s.wait && s.watch {
 		return Mistake("--wait and --watch are two ways of staying; give one")
@@ -334,13 +375,36 @@ func directories(names []string) (bool, error) {
 	return dirs > 0, nil
 }
 
-// submitTree records a directory as a tree, and stays until each run it
-// cancelled has ended and each run it started has been taken up.
+// submitTree records a directory as a tree.
 func (e *Env) submitTree(dir, at string) error {
 	tree, err := client.ReadTree(dir, at)
 	if err != nil {
 		return Mistake("%v", err)
 	}
+	return e.submitted(tree)
+}
+
+// submitFile records one file as a tree of its own.
+func (e *Env) submitFile(file, at string) error {
+	context, rel, err := contextOf(file)
+	if err != nil {
+		return err
+	}
+	tree, err := client.ReadFile(context, rel, at)
+	if err != nil {
+		return Mistake("%v", err)
+	}
+	if problem := tree.Machines[0].Problem; problem != nil {
+		// Its location would keep what was recorded there before: nothing
+		// is sent.
+		return problem
+	}
+	return e.submitted(tree)
+}
+
+// submitted sends a tree that has been read, and stays until each run it
+// cancelled has ended and each run it started has been taken up.
+func (e *Env) submitted(tree *client.Tree) error {
 	c, err := e.Client()
 	if err != nil {
 		return err

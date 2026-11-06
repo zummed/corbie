@@ -5,6 +5,7 @@ import (
 	"io/fs"
 	"maps"
 	"os"
+	"path"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -102,6 +103,30 @@ func ReadTree(dir, at string) (*Tree, error) {
 		}
 	}
 	return t, nil
+}
+
+// ReadFile reads the file at rel in the context dir as a tree of its own,
+// whose prefix is the file's location: at, by default / and the file's name
+// without its extension. A script file is wrapped as Script wraps it. A file
+// that cannot be read as a machine is given with its Problem.
+func ReadFile(dir, rel, at string) (*Tree, error) {
+	if at == "" {
+		at = "/" + strings.TrimSuffix(path.Base(rel), path.Ext(rel))
+	}
+	if err := store.CheckLocation(at); err != nil || at == "/" {
+		return nil, fmt.Errorf("--at %s: a prefix is / and the names of one or more directories, as /home, and is not / alone", at)
+	}
+	m := &Machine{Path: rel, Location: at}
+	if strings.HasSuffix(rel, ".js") {
+		src, err := os.ReadFile(filepath.Join(dir, filepath.FromSlash(rel)))
+		if err != nil {
+			return nil, err
+		}
+		m.Draft, m.Problem = Script(path.Base(rel), src, ScriptJob{})
+	} else {
+		m.Draft, m.Problem = readMachine(dir, rel, machine.ParseAt)
+	}
+	return &Tree{Prefix: at, Directory: dir, Machines: []*Machine{m}}, nil
 }
 
 // firstKey gives the first key of a YAML file, or "" when it holds no mapping.

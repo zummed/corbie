@@ -164,7 +164,7 @@ The detailed rules behind the [Permissions overview](../permission.md). Requirem
 *Accept:* a machine lists `fs.write:/srv/out/**`, a job allows it, and the runner's ceiling does not. The job is held, the ask approves it, the job is sent, and its write is refused by the runner's ceiling. A running job that tries something no layer allows is refused at once and ends denied; no ask is started for it, and it is never seen waiting.
 
 **R-perm-69** A run started by a send or a call has its held jobs go only to its own file's `ask:`, and they are denied if it has none. A call and a `job: { send }` are jobs, so the sender's `ask_about: [send:…]` holds them. A statechart's send action is never held.
-*Accept:* parity cases 127 and 128. A called location with no `ask:` whose job is marked for approval is refused as it starts, and the call job fails, though its caller has an ask (`Test_ctl_called_runs_held_jobs_go_to_its_own_ask`). `Test_ctl_ask_about_send_holds_a_call`. A flow lists `ask_about: [send:/work/**]`, and its job `{ call: { at: /work/services/lookup } }` is held for its ask; a statechart with the same list sends to `/work/a` with no ask started.
+*Accept:* parity cases 127 and 128. A called location with no `ask:` whose job is marked for approval is refused as it starts, and the call job fails, though its caller has an ask (`Test_ctl_called_runs_held_jobs_go_to_its_own_ask`). `Test_ctl_ask_about_send_holds_a_call` and `Test_ctl_ask_about_send_holds_a_send_job`. A flow lists `ask_about: [send:/work/**]`, and its job `{ call: { at: /work/services/lookup } }` is held for its ask; a statechart with the same list sends to `/work/a` with no ask started.
 
 ## What a job used
 

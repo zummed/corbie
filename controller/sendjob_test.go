@@ -79,6 +79,79 @@ func Test_ctl_send_job_is_done_once_written(t *testing.T) {
 	}
 }
 
+// A send job whose event is too large to write fails, saying so, and
+// nothing reaches the receiver.
+func Test_ctl_send_job_too_large_to_write_fails(t *testing.T) {
+	w := newWorld(t)
+	w.rooms(map[string]string{"/t/tell": `
+		flow: tell
+		allow: ["send:**"]
+		stages:
+		  big: { job: { send: { to: { at: room, key: "chat:1" }, event: said, data: { text: "${'x'.repeat(300000)}" } } } }
+	`})
+	run := w.startAt(w.client, "/t/tell", client.Start{})
+	w.settle()
+	last := w.latest(run)
+	if head := w.head(run); head.Status != instance.Failed || last.State.Error == nil ||
+		!strings.Contains(last.State.Error.Error, "the event said could not be sent: it is too large") {
+		t.Fatalf("the flow is %s with %+v", head.Status, last.State.Error)
+	}
+	if rooms := w.runsOf("talk"); len(rooms) != 0 {
+		t.Fatalf("the event started the rooms %v", rooms)
+	}
+}
+
+// A flow's ask_about: [send:…] holds a send job to that location for its
+// ask: the event is written once the ask approves the job, and never when it
+// approves nothing.
+func Test_ctl_ask_about_send_holds_a_send_job(t *testing.T) {
+	const tell = `
+		flow: tell
+		allow: ["send:**"]
+		ask_about: ["send:/t/room"]
+		ask: ./ask.js
+		stages:
+		  tell: { job: { send: { to: { at: room, key: "chat:1" }, event: said, data: { text: hello } } } }
+	`
+	for _, approve := range []bool{true, false} {
+		w := newWorld(t)
+		r1 := w.newRunner()
+		w.roomsWith(map[string]string{"/t/tell": tell}, map[string]string{"ask.js": "return input"})
+		run := w.startAt(w.client, "/t/tell", client.Start{})
+		w.settle()
+		var holds int
+		for _, step := range w.steps(run) {
+			for _, ask := range step.Asks {
+				if ask.Kind == instance.AskHold && ask.Job.IsSend() {
+					holds++
+				}
+			}
+		}
+		if holds != 1 || len(w.sentBy(run)) != 0 || len(w.runsOf("talk")) != 0 {
+			t.Fatalf("the send job was held %d times and sent %v", holds, w.sentBy(run))
+		}
+		approved := []any{}
+		if approve {
+			approved = append(approved, "tell")
+		}
+		w.result(r1, run, instance.AskName, instance.Result{Status: instance.Done, Output: map[string]any{"approve": approved}})
+		w.settle()
+		rooms := w.runsOf("talk")
+		if !approve {
+			if head := w.head(run); len(w.sentBy(run)) != 0 || len(rooms) != 0 || head.Status != instance.Failed {
+				t.Fatalf("not approved, the job sent %v, reached %v and the flow is %s", w.sentBy(run), rooms, head.Status)
+			}
+			continue
+		}
+		if head := w.head(run); head.Status != instance.Done {
+			t.Fatalf("after the ask the flow is %s: %+v", head.Status, w.latest(run).State.Error)
+		}
+		if len(rooms) != 1 || !slices.Equal(w.told(rooms[0]), []string{"hello"}) {
+			t.Fatalf("after the ask the rooms are %v", rooms)
+		}
+	}
+}
+
 // busy is a keyed chat that keeps what is said while it works, until it is
 // told free.
 const busy = `
@@ -117,6 +190,45 @@ func Test_ctl_kept_events_of_a_cancelled_chart_are_noted(t *testing.T) {
 	}
 	if len(kept) != 2 || !strings.Contains(kept[0], "the event said sent to the run "+room+" at /t/room") {
 		t.Fatalf("the sender's record says %v", w.keyNotes(sender))
+	}
+}
+
+// An event a parent sent down that its cancelled child chart kept is noted
+// as undelivered in the parent's record.
+func Test_ctl_kept_events_a_parent_sent_are_noted_to_it(t *testing.T) {
+	w := newWorld(t)
+	run := w.submit(`
+		statechart: parent
+		initial: s
+		states:
+		  s:
+		    job:
+		      machine:
+		        statechart: kid
+		        initial: k
+		        states:
+		          k:
+		            defer: [poke]
+		            on: { go: j }
+		          j: { on: { poke: j } }
+		    on: { poke: { send: { to: s, event: poke } }, failed: t, done: t }
+		  t: { on: { never: t } }
+	`, nil, nil)
+	w.settle()
+	kid := w.below(run)
+	w.client.Send(ctx, w.to(run), "poke", nil, 0)
+	w.settle()
+	if _, err := w.client.Cancel(ctx, kid, 0); err != nil {
+		t.Fatal(err)
+	}
+	w.settle()
+	if head := w.head(kid); head.Status != instance.Cancelled {
+		t.Fatalf("the child is %s", head.Status)
+	}
+	notes := w.keyNotes(run)
+	if len(notes) != 1 || !strings.Contains(notes[0], "the event poke sent to the run "+kid) ||
+		!strings.Contains(notes[0], "was cancelled while it kept the event under defer:") {
+		t.Fatalf("the parent's record says %v", notes)
 	}
 }
 

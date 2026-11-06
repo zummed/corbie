@@ -139,7 +139,7 @@ func (p *pass) submit(a *arrival) error {
 			return err
 		}
 		if waiting != nil {
-			p.later()
+			p.due(p.now.Add(time.Second))
 			return nil
 		}
 	}

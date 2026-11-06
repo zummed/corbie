@@ -43,7 +43,7 @@ The detailed rules behind the [Agent overview](../agent.md). Area code: `agent`.
 ## Tools
 
 **R-agent-22** A tool is a named job, a script, a machine, a call or a send, with a description, the shape of its arguments, and its own permissions; its job reads the agent's input and the arguments the model supplied.
-*Accept:* parity case 85: one tool that is a script, one that is a flow and one that is a chart. The librarian is started with the directory `/srv/library` and its model calls `shelf` with the shelf `B`; the tool's job is given that directory and that shelf as its input, and may read under `/srv/library` and nowhere else.
+*Accept:* parity case 85: one tool that is a script, one that is a flow and one that is a chart. The librarian is started with the directory `/srv/library` and its model calls `shelf` with the shelf `B`; the tool's job is given that directory and that shelf as its input, and may read under `/srv/library` and nowhere else. `Test_agent_tool_that_sends_is_done_once_written`: a tool whose job is a send ends `done` with no output, its event starts the keyed run, and the model's next turn is shown an empty result.
 
 **R-agent-54** A tool whose job is an agent is shown to the model as what that agent replied. The sub-agent's conversation and its count of tokens stay in its own record.
 *Accept:* an agent calls a tool that is another agent; its next turn is shown that agent's reply as the tool's result, and neither its conversation nor its tokens.

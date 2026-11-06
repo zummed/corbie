@@ -1048,3 +1048,43 @@ func Test_agent_tool_that_calls_shows_the_whole_result(t *testing.T) {
 		}
 	}
 }
+
+// A tool whose job is a send ends done once its event is written: the event
+// reaches the keyed run, and the model is shown a result with no output.
+func Test_agent_tool_that_sends_is_done_once_written(t *testing.T) {
+	m := newModel(t, calls("call_1", "tell", `{"n": 41}`), says("told it"))
+	l := local(t, "all")
+	setSecret(t, l, "TEST_KEY", "sk-test-key")
+	sums := strings.Replace(agentDef(m.URL, ""), `  add:
+		    does: Add one to a number
+		    args: { n: number }
+		    job: { script: ./add.js, input: { n: "${args.n}" } }`, `  tell:
+		    does: Tell the room a number
+		    args: { n: number }
+		    job: { send: { to: { at: room, key: room-1 }, event: said, data: { n: "${args.n}" } }, allow: ["send:room"] }`, 1)
+	room := "statechart: room\nlifetime: keyed\ntitle: \"room ${input.n}\"\ninitial: a\nstates: { a: { on: { said: b } }, b: { end: done } }\n"
+	message, err := l.Submit(ctx, &client.Tree{Prefix: "/a", Machines: []*client.Machine{
+		{Path: "sums.yaml", Location: "/a/sums", Draft: draft(t, sums, nil)},
+		{Path: "room.yaml", Location: "/a/room", Draft: draft(t, room, nil)},
+	}}, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if r, err := l.WaitReceipt(ctx, message, 0, client.LocalInterval); err != nil || !r.Taken {
+		t.Fatalf("the tree: %+v %v", r, err)
+	}
+	id, err := l.Start(ctx, client.Start{At: "/a/sums", Input: map[string]any{"question": "tell the room 41"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if r := wait(t, l, id); r.Status != "done" || r.Output.(map[string]any)["reply"] != "told it" {
+		t.Fatalf("the agent ended %s: %s %v", r.Status, r.Error, r.Output)
+	}
+	if got, err := l.Show(ctx, waitForFinished(t, l, "room")); err != nil || got.Title != "room 41" || got.Status != "done" {
+		t.Fatalf("the room is shown as %+v: %v", got, err)
+	}
+	shown := jsonOf(m.Calls[1])
+	if !strings.Contains(shown, `{"content":"","is_error":false,"tool_use_id":"call_1","type":"tool_result"}`) {
+		t.Fatalf("the model was shown %s", shown)
+	}
+}

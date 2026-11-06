@@ -150,7 +150,7 @@ The detailed rules behind the [Statechart overview](../statechart.md). Area code
 *Accept:* charts deferring `done`, a ticket's name, a timer's name, an expression and `said` with no rule for it are each refused with a problem at the `defer:` entry. A final state with `defer:` is refused.
 
 **R-chart-81** A chart that ends drops the events it kept. One cancelled, by a client or by `update: restart`, notes each event it kept as undelivered in the record of the run that sent it.
-*Accept:* parity case 130. `Test_ctl_kept_events_of_a_cancelled_chart_are_noted` and `Test_ctl_restart_starts_a_singleton_again_and_notes_kept_events`.
+*Accept:* parity case 130. `Test_ctl_kept_events_of_a_cancelled_chart_are_noted`, `Test_ctl_kept_events_a_parent_sent_are_noted_to_it` and `Test_ctl_restart_starts_a_singleton_again_and_notes_kept_events`.
 
 **C-chart-13** A chart keeps at most 100 events; one more is dropped, and the receipt for it says the chart did not act on it. Every step reads the chart's state whole, so a sender could otherwise make each step slower than the last. *Test:* `chart_kept_events_are_bounded`
 

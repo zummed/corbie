@@ -1270,10 +1270,17 @@ func (b *build) end(status string, output any, e *machine.Error) {
 func (b *build) unkept() {
 	at := addressText(&machine.Address{At: b.st.Location, Run: b.inst})
 	for _, event := range machine.Kept(b.st.Type, b.st.Inner) {
-		if event.Sender == nil || event.Sender.Run == "" {
-			continue
+		var sender string
+		switch {
+		case event.Sender != nil:
+			sender = event.Sender.Run
+		case event.From == machine.Parent:
+			sender = b.st.Above.Parent
 		}
-		b.ask(instance.Ask{Kind: instance.AskTell, To: event.Sender.Run, Message: b.message("tell"),
+		if sender == "" {
+			continue // a client's: it has no record
+		}
+		b.ask(instance.Ask{Kind: instance.AskTell, To: sender, Message: b.message("tell"),
 			Text: fmt.Sprintf("the event %s sent to %s was not delivered: the run was cancelled while it kept the event under defer:", event.Name, at)})
 	}
 }

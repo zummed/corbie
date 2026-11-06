@@ -261,8 +261,8 @@ The detailed rules behind the [Controller overview](../controller.md). What the 
 **R-ctl-130** A client's start of a location in a tree another client owns is a call. It needs `send:` for the location in the client's ceiling, a `transient` location, and no labels or allow list, and the receiver's `receive:` must list `client:<name>`; otherwise the start's receipt refuses it. A call that is taken has a receipt naming the run, written as that run starts, and its result beside the receipt when that run ends (R-inst-69).
 *Accept:* `Test_ctl_taken_call_receipt_waits_for_its_result`, `Test_ctl_client_call_is_refused` and `Test_ctl_client_starts_its_own_transient_locations`.
 
-**R-ctl-131** A send job, `job: { send }`, is checked as a send action is, against its own lists and the definition's, the lists the run was started under and its tree client's ceiling, and a refusal fails the job `denied`. Its event is written as the step is carried out, and then the job ends `done` with no output. A send job whose event is not delivered is noted in the record and ends `done` all the same.
-*Accept:* parity case 129. `Test_ctl_send_job_is_done_once_written` and `TestJobThatCannotBeBuiltFails`.
+**R-ctl-131** A send job, `job: { send }`, is checked as a send action is, against its own lists and the definition's, the lists the run was started under and its tree client's ceiling, and a refusal fails the job `denied`. Its event is written as the step is carried out, and then the job ends `done` with no output. A send job whose event is not delivered is noted in the record and ends `done` all the same. An event too large to write fails the job, as R-ctl-101 says.
+*Accept:* parity case 129. `Test_ctl_send_job_is_done_once_written`, `Test_ctl_send_job_too_large_to_write_fails` and `TestJobThatCannotBeBuiltFails`.
 
 **C-ctl-82** A step names the run a call started by `Run`, never by `Child`, so removing the caller past keeping, and trimming what is below a running caller, never follows it. The called run is a root of another tree's client, and its record would otherwise go with its caller's. *Test:* `ctl_removing_a_caller_leaves_the_run_it_called`
 

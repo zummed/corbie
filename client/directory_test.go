@@ -106,6 +106,15 @@ func TestRemovedFileCancelsItsRuns(t *testing.T) {
 	if _, err := l.Start(ctx, client.Start{At: "/a/kept"}); err != nil {
 		t.Fatal(err)
 	}
+	// A file listed in .corbieignore after a submit is gone from the tree,
+	// as a removed file is.
+	listed := house(t, map[string]string{"kept.yaml": keptMachine})
+	second := submitTree(t, l, listed, "/b").Locations[0].Run
+	write(t, listed, ".corbieignore", "kept.yaml\n")
+	done = submitTree(t, l, listed, "/b")
+	if got := show(t, l, second).Status; got != "cancelled" || len(done.Locations) != 1 || done.Locations[0] != (instance.Recorded{Location: "/b/kept", Lifetime: "singleton", What: "removed"}) {
+		t.Fatalf("the listed file's run is %s, and the submit did %+v", got, done.Locations)
+	}
 }
 
 // A transient file changed with update: drain leaves its running runs on the

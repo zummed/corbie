@@ -46,7 +46,7 @@ func (w *world) tree(prefix, dir string, files map[string]string, scripts map[st
 				return []byte(dedent(contents)), nil
 			}
 			return nil, fmt.Errorf("no such file")
-		})
+		}, nil)
 		if err != nil {
 			w.t.Fatalf("%s does not pass:\n%v", location, err)
 		}

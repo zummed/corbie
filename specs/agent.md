@@ -61,6 +61,35 @@ tools:
 - The called run's record belongs to its own tree's client. Cancelling the call cancels the run.
 - A send ends `done` once the message is written. A send the receiver does not take is noted in the agent's record, and the model is not told.
 
+A tool written `call:` names a location in the same tree and takes its description and arguments from the machine there. The client reads that machine's file when it reads the tree. `input:` fixes part of the machine's input, and the model gives the rest.
+
+```yaml
+# toolkits/orders.yaml
+description: The orders app.
+tools:
+  read_file:   { call: gitlab/files/read,     input: { project: group/orders } }
+  change_file: { call: gitlab/commits/create, input: { project: group/orders }, approve: true }
+
+# gitlab/files/read.yaml
+flow: read
+description: Read one file of a project.
+input: { project: string, path: string, ref: "string?" }
+```
+
+- The model is offered `read_file` as `Read one file of a project.`, with the arguments `path` and `ref`. A fixed name, or a name the machine's input does not give, does not fit.
+- A call `{ path: a.txt }` starts a run of `gitlab/files/read` with `{ project: group/orders, path: a.txt }`. An argument the model leaves out is absent.
+- `input:` may read the agent's input. `approve: true` holds the call for the ask.
+- The tool has `send:` for the location, and nothing else is written for it. It has no `description:`, `args:` or `job:`.
+- A blob in the machine's input is an argument the model gives by the name it was shown. An input written as JSON Schema gives arguments only through `properties`.
+- A machine that is an agent is shown to the model as its reply.
+
+The location is written out, from the tree's prefix. These are refused when the tree is read:
+
+- a location with no machine, or a file `.corbieignore` lists;
+- a machine with no `description:`, or one that is not `transient`;
+- a fixed name the machine's input does not give;
+- a tool written `call:` in a file read alone or in a machine made while running, which have no tree.
+
 A tool may give `when:`, a condition on the agent's input. It is checked once, when the run starts, and a tool whose `when:` does not hold is not offered (see [Who is offered what](#who-is-offered-what)).
 
 A tool that needs approval goes to the agent's ask like any job. A `call:` or `send:` job is held when `approve:` names its `send:` entry. The tool calls from one turn that need it go together, and the ask is shown the arguments, the tool's description and what the model said. A tool call that needs no approval runs at once, and the next turn waits for the ask as well as for the tools. A tool call that is not approved goes back to the model as denied, with the ask's note.

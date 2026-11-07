@@ -757,9 +757,23 @@ func (s *stepper) replied(data any) error {
 			shown["entry"], shown["tool"] = entry, listedAs
 		}
 		place := s.a.Tools[entry].place(entry) + ".job"
+		if tool.Call != "" {
+			place = s.a.Tools[entry].place(entry)
+		}
 		job, err := tool.Job.Fill(s.eval, scope, place, one.Job)
 		if err != nil {
 			return err
+		}
+		// A tool that calls a machine gives it the input the tool fixes,
+		// with the model's arguments as they were given.
+		if tool.Call != "" {
+			input, _ := job.Input.(map[string]any)
+			input = maps.Clone(input)
+			if input == nil {
+				input = map[string]any{}
+			}
+			maps.Copy(input, args)
+			job.Input = input
 		}
 		// Opening a toolkit marked for approval waits for the ask, which is
 		// shown the toolkit's name and description. The open job is given

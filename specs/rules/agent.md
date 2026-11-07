@@ -51,6 +51,14 @@ The detailed rules behind the [Agent overview](../agent.md). Area code: `agent`.
 **R-agent-64** A tool whose job is a call is shown to the model as the whole of the called run's result, or as its error when the run fails. The called run's record belongs to its own tree's client.
 *Accept:* `Test_agent_tool_that_calls_shows_the_whole_result`: the model is shown the called chart's whole output, and with the chart ending failed, its error with that output.
 
+**R-agent-65** A tool written `call: <location>` takes its description from the machine at that location of the same tree, and its arguments from that machine's input without the names its `input:` fixes. The machine is started with the fixed input and the model's arguments. A location with no machine, a file `.corbieignore` lists, a machine with no `description:` or one that is not transient, and a fixed name the machine's input does not give are refused when the tree is read.
+*Accept:* `TestAgentToolCallsAMachineOfTheTree`: the model is offered `read_file` with the flow's description and its input without `project`, and the flow is given `project` with the model's `path`. `TestAgentCallToolIsRefused`: each of the refusals names the tool's place. `TestAgentToolCallsAnAgent`: a machine that is an agent is shown as its reply.
+
+**R-agent-66** A tool written `call:` has `send:` for its location and nothing else is written for it; it has no `description:`, `args:` or `job:`. It is refused in a machine made while running and in a file read alone, which have no tree.
+*Accept:* `TestAgentToolCallsAMachineOfTheTree`: an agent with no `allow:` calls both machines, and the call marked `approve: true` goes to the toolkit's ask, which is shown the machine's description, the model's arguments and the toolkit. `Test_agent_call_tool_needs_its_tree`.
+
+**C-agent-23** The arguments of a tool written `call:` are closed: a name the tool fixes, or one the machine's input does not give, from the model does not fit, and runs nothing. An argument the model leaves out is absent from the machine's input. A model could otherwise set what the tool fixes, which is how a tool is limited. *Test:* `agent_call_tool_arguments_are_closed`
+
 **R-agent-27** A tool that fails goes back to the model as an error, with whatever output it still gave, and the agent carries on.
 *Accept:* parity case 85: the third turn is shown both errors, and the agent ends well; in the result for the chart's call the model sees `reached gave_up` and the failed final state's output.
 

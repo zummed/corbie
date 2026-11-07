@@ -1036,7 +1036,7 @@ func Test_ctl_client_start_names_a_location(t *testing.T) {
 }
 
 // lister is an owner's agent with an entry that lists tools from elsewhere,
-// and a set with an ask.
+// and a toolkit with an ask.
 const lister = `
 	agent: lister
 	model: { name: m, service: anthropic, address: "http://127.0.0.1:1", secret: KEY }

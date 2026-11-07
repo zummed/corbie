@@ -36,10 +36,10 @@ type treeEntry struct {
 	Client    string              `json:"client"`
 	Directory string              `json:"directory"`
 	Files     map[string]treeFile `json:"files,omitzero"`
-	// Submit is the message of the submit that wrote the entry, and Does what
-	// that submit does.
-	Submit string `json:"submit"`
-	Does   does   `json:"does"`
+	// Submit is the message of the submit that wrote the entry, and Changes what
+	// that submit changes.
+	Submit  string  `json:"submit"`
+	Changes changes `json:"changes"`
 }
 
 // A treeFile is what the tree's entry keeps of one of its files.
@@ -49,8 +49,8 @@ type treeFile struct {
 	Runs     int    `json:"runs,omitzero"`
 }
 
-// does is what a submit does, worked out once.
-type does struct {
+// changes is what a submit changes, worked out once.
+type changes struct {
 	// Done is what the receipt says of each location.
 	Done []instance.Recorded `json:"done,omitzero"`
 	// Copy are the locations whose files are recorded, Cancel those whose
@@ -255,10 +255,10 @@ func (p *pass) plan(a *arrival, base string, before *treeEntry) (*treeEntry, err
 	if before != nil {
 		old = before.Files
 		if before.Directory != msg.Directory {
-			entry.Does.Before = before.Directory
+			entry.Changes.Before = before.Directory
 		}
 	}
-	d := &entry.Does
+	d := &entry.Changes
 	for _, location := range sortedKeys(msg.Files) {
 		file := msg.Files[location]
 		def, err := machine.Load(p.ctx, p.store, file.Definition)
@@ -345,7 +345,7 @@ func (p *pass) holds(location string) (bool, error) {
 
 // carryTree does what a submit's entry says it does.
 func (p *pass) carryTree(a *arrival, base string, entry *treeEntry) error {
-	msg, d := a.msg.Submit, &entry.Does
+	msg, d := a.msg.Submit, &entry.Changes
 	err := p.each(len(d.Copy), func(i int) error {
 		return p.record(msg.Prefix, entry.Client, d.Copy[i], msg.Files[d.Copy[i]], entry.Files[d.Copy[i]])
 	})

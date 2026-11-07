@@ -185,7 +185,7 @@ The detailed rules behind the [Controller overview](../controller.md). What the 
 ## Trees and locations
 
 **R-ctl-107** A submit records a directory as a tree at a prefix, and each file the client gives a location at it: the file's path under the prefix, without `.yaml`. A submit changes no other tree.
-*Accept:* `house/devices/boiler.yaml` submitted at `/home` is recorded at `/home/devices/boiler`, and a file `.corbieignore` lists is at no location. A second tree submitted at `/work` leaves `/home`'s locations and runs as they were.
+*Accept:* `house/devices/boiler.yaml` submitted at `/home` is recorded at `/home/devices/boiler`, and a file `.corbieignore` lists is at no location (`TestListedFileHasNoLocation`). A second tree submitted at `/work` leaves `/home`'s locations and runs as they were.
 
 **R-ctl-108** A submit is refused, with its receipt saying why, at a prefix no `at:` entry of the client's ceiling matches, inside or above another tree, at a tree another client owns, at `/`, or with a location below another's or outside the prefix. The refusal names the tree or the owner, and for the ceiling the line that allows it.
 *Accept:* `Test_ctl_submit_needs_an_at_entry` and `Test_ctl_submit_is_refused_naming_the_tree`.

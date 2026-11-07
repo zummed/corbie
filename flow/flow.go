@@ -66,22 +66,22 @@ return { count: n }
 
 // shape is what a flow's definition holds of its own.
 var shape = &machine.Shape{Name: "flow", What: "a flow", Fields: []machine.Field{
-	{Name: "stages", Kind: machine.KindNamed, Does: "its stages, each run once, in the order that follows from what they read of each other",
+	{Name: "stages", Kind: machine.KindNamed, Description: "its stages, each run once, in the order that follows from what they read of each other",
 		Of: &machine.Shape{Name: "stage", What: "a stage", Fields: []machine.Field{
-			{Name: "when", Kind: machine.KindWord, Like: "${stages.summarise.failed}", Does: "a condition, one expression: the stage runs only if it holds"},
-			{Name: "follows", Kind: machine.KindList, Like: "[fetch]", Does: "stages it runs after, though it reads nothing of them"},
-			{Name: "job", Kind: machine.KindJob, Like: "{ script: ./fetch.js }", Does: "what the stage does: a script, or a machine"},
+			{Name: "when", Kind: machine.KindWord, Like: "${stages.summarise.failed}", Description: "a condition, one expression: the stage runs only if it holds"},
+			{Name: "follows", Kind: machine.KindList, Like: "[fetch]", Description: "stages it runs after, though it reads nothing of them"},
+			{Name: "job", Kind: machine.KindJob, Like: "{ script: ./fetch.js }", Description: "what the stage does: a script, or a machine"},
 			{Name: "each", Kind: machine.KindValue, Like: "${input.urls}",
-				Does: "runs the stage once for every item, read as ${item}: { items: … }, { emitted: … } or { blob: … }, or a list or an expression that gives one",
+				Description: "runs the stage once for every item, read as ${item}: { items: … }, { emitted: … } or { blob: … }, or a list or an expression that gives one",
 				Of: &machine.Shape{Name: "each", What: "where a stage's items come from", Fields: []machine.Field{
-					{Name: "items", Kind: machine.KindValue, Like: "${input.urls}", Does: "a list, or an expression that gives one"},
-					{Name: "emitted", Kind: machine.KindWord, Like: "fetch", Does: "a stage whose emitted items the stage follows, each as it arrives"},
-					{Name: "blob", Kind: machine.KindValue, Like: "${input.file}", Does: "the blob whose items the stage follows: lines, rows, entries"},
-					{Name: "serial", Kind: machine.KindFlag, Like: "true", Does: "the items go one after another, in order"},
+					{Name: "items", Kind: machine.KindValue, Like: "${input.urls}", Description: "a list, or an expression that gives one"},
+					{Name: "emitted", Kind: machine.KindWord, Like: "fetch", Description: "a stage whose emitted items the stage follows, each as it arrives"},
+					{Name: "blob", Kind: machine.KindValue, Like: "${input.file}", Description: "the blob whose items the stage follows: lines, rows, entries"},
+					{Name: "serial", Kind: machine.KindFlag, Like: "true", Description: "the items go one after another, in order"},
 				}}},
 		}}},
-	{Name: "output", Kind: machine.KindValue, Like: "${stages.summarise.output}", Does: "the flow's result"},
-	{Name: "emit", Kind: machine.KindWord, Like: "fetch", Does: "a stage whose emitted items the flow emits to its own parent as they arrive"},
+	{Name: "output", Kind: machine.KindValue, Like: "${stages.summarise.output}", Description: "the flow's result"},
+	{Name: "emit", Kind: machine.KindWord, Like: "fetch", Description: "a stage whose emitted items the flow emits to its own parent as they arrive"},
 }}
 
 func (flowType) Shape() *machine.Shape { return shape }

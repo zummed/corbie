@@ -2,6 +2,7 @@ package client_test
 
 import (
 	"fmt"
+	"maps"
 	"slices"
 	"strings"
 	"testing"
@@ -391,6 +392,21 @@ func TestAgentWhenSaysWhatIsOffered(t *testing.T) {
 		if _, err := machineParse(d, toolkits); err == nil || !strings.Contains(err.Error(), want) {
 			t.Errorf("with when: %s, want a refusal holding %q, got: %v", when, want, err)
 		}
+	}
+	// A tool of a toolkit not offered is not shown once the toolkit is open,
+	// and a call of it runs nothing.
+	hidden := maps.Clone(toolkits)
+	hidden["toolkits/net/net.yaml"] = strings.Replace(toolkits["toolkits/net/net.yaml"], "description: Run one show command", "description: Run one show command\n\t\t    when: \"${input.question !== 'no show'}\"", 1)
+	m = newModel(t, calls("c1", "open", `{"toolkit": "net"}`), calls("c2", "show", `{"command": "x"}`), says("done"))
+	r = wait(t, l, startWith(t, l, def(m.URL, ""), hidden, map[string]any{"question": "no show"}))
+	if r.Status != "done" {
+		t.Fatalf("with show not offered, the agent ended %s: %s", r.Status, r.Error)
+	}
+	if got := offeredNames(m.Calls[1].Tools); got != "add "+blobTools+" files_read" {
+		t.Errorf("with show not offered, after the open, the turn was offered: %s", got)
+	}
+	if shown := lastShown(m.Calls[2]); !strings.Contains(shown, `there is no tool named \"show\"`) {
+		t.Errorf("a call of a toolkit's tool not offered was shown as: %s", shown)
 	}
 }
 

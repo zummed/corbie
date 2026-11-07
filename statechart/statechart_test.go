@@ -737,6 +737,26 @@ states:
 	}
 	c.at = at
 	c.want(c.give(due), "end <nil>")
+	// The state entered again has a new ticket.
+	c = newChart(t, `
+statechart: ticketed
+initial: open
+states:
+	open:
+		ticket: answer
+		on: { poke: open }
+`)
+	ticket := func() string {
+		var st state
+		json.Unmarshal(c.state, &st)
+		return st.Tickets["open"]
+	}
+	c.want(c.give(start()), "ticket open")
+	first := ticket()
+	c.want(c.give(machine.Event{Name: "poke", From: "client"}), "drop open", "ticket open")
+	if second := ticket(); first == "" || second == "" || second == first {
+		t.Fatalf("entered again, the state's ticket went from %q to %q", first, second)
+	}
 }
 
 // A recurring job is a chart that waits on a timer and starts its work as

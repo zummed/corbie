@@ -10,6 +10,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/zummed/corbie/blob"
 	"github.com/zummed/corbie/permission"
@@ -32,11 +33,22 @@ func (channel) Define(string, map[string]string) (blob.Ref, error)   { return bl
 // is sent and prints the lines it is given.
 func ask(t *testing.T, lines ...string) map[string]any {
 	t.Helper()
+	return asking(t, false, lines...)
+}
+
+// asking is ask, with a program that, when hangs is true, does not end after
+// printing its lines until it is stopped.
+func asking(t *testing.T, hangs bool, lines ...string) map[string]any {
+	t.Helper()
 	if _, err := os.Stat("/bin/sh"); err != nil {
 		t.Skip("no shell on this machine")
 	}
 	dir := t.TempDir()
-	os.WriteFile(filepath.Join(dir, "claude"), []byte("#!/bin/sh\ncat > /dev/null\ncat \"$(dirname \"$0\")/reply\"\n"), 0o755)
+	script := "#!/bin/sh\ncat > /dev/null\ncat \"$(dirname \"$0\")/reply\"\n"
+	if hangs {
+		script += "exec sleep 60\n"
+	}
+	os.WriteFile(filepath.Join(dir, "claude"), []byte(script), 0o755)
 	os.WriteFile(filepath.Join(dir, "reply"), []byte(strings.Join(lines, "\n")+"\n"), 0o600)
 	job := &plugin.Job{Context: context.Background(), Scratch: t.TempDir(), SearchPath: dir + ":/usr/bin:/bin", Channel: channel{},
 		Perms: &permission.Set{Layers: []permission.Layer{{Name: "test", Allow: []string{"exec:claude", "env:HOME"}}}}}
@@ -197,5 +209,82 @@ cat "$here/reply"
 	defs, _ := schema["$defs"].(map[string]any)
 	if _, ok := defs["person"]; !ok {
 		t.Fatalf("the program answers in %s", data)
+	}
+}
+
+// event is one stream event the program prints.
+func event(data string) string { return `{"type":"stream_event","event":` + data + `}` }
+
+func Test_model_program_direct_call_is_the_call(t *testing.T) {
+	// The model calls the offered tool look twice, as if it were the
+	// program's own, after a few words. The program would then give the
+	// model its own error and go on; what it printed after is not the reply.
+	message := []string{
+		event(`{"type":"message_start","message":{"usage":{"input_tokens":90,"cache_read_input_tokens":10,"output_tokens":1}}}`),
+		event(`{"type":"content_block_start","index":0,"content_block":{"type":"text"}}`),
+		event(`{"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Looking."}}`),
+		event(`{"type":"content_block_start","index":1,"content_block":{"type":"tool_use","name":"look"}}`),
+		event(`{"type":"content_block_delta","index":1,"delta":{"type":"input_json_delta","partial_json":"{\"at\":"}}`),
+		event(`{"type":"content_block_delta","index":1,"delta":{"type":"input_json_delta","partial_json":"\"door\"}"}}`),
+		event(`{"type":"content_block_start","index":2,"content_block":{"type":"tool_use","name":"look"}}`),
+		event(`{"type":"content_block_delta","index":2,"delta":{"type":"input_json_delta","partial_json":"{\"at\":\"window\"}"}}`),
+		event(`{"type":"message_delta","usage":{"output_tokens":20}}`),
+		event(`{"type":"message_stop"}`),
+	}
+	after := []string{starts, arriving(`{"text":"My tools are broken.","tool_calls":[]}`),
+		`{"type":"result","subtype":"success","is_error":false,"result":"","stop_reason":"end_turn","structured_output":{"text":"My tools are broken.","tool_calls":[]},"usage":{"input_tokens":300,"output_tokens":40}}`}
+	// The program does not end by itself, and is stopped once the message
+	// has ended.
+	began := time.Now()
+	got := asking(t, true, append(message, after...)...)
+	if took := time.Since(began); took > 10*time.Second {
+		t.Errorf("the program was not stopped: the call took %s", took)
+	}
+	calls, _ := got["calls"].([]any)
+	if got["stop"] != "tools" || got["text"] != "Looking." || len(calls) != 2 {
+		t.Fatalf("direct calls gave %v", got)
+	}
+	for i, at := range []string{"door", "window"} {
+		call := calls[i].(map[string]any)
+		if call["name"] != "look" || call["args"].(map[string]any)["at"] != at || !strings.HasPrefix(call["id"].(string), "call_") {
+			t.Errorf("call %d is %v", i, call)
+		}
+	}
+	if used, _ := json.Marshal(got["usage"]); string(used) != `{"input":100,"output":20}` {
+		t.Errorf("the usage is %s", used)
+	}
+
+	// A direct call cut off in the middle is not the model's request: the
+	// program goes on, and its answer is the reply.
+	cut := append(slices.Clone(message[:4]), event(`{"type":"content_block_delta","index":1,"delta":{"type":"input_json_delta","partial_json":"{\"at\":"}}`),
+		event(`{"type":"message_stop"}`))
+	got = ask(t, append(cut, after...)...)
+	if calls, _ := got["calls"].([]any); got["text"] != "My tools are broken." || len(calls) != 0 {
+		t.Errorf("a cut-off direct call gave %v", got)
+	}
+
+	// A message that holds the answer as well is finished by the program, and
+	// its answer is the reply.
+	both := append(slices.Clone(message[:8]), event(`{"type":"content_block_start","index":3,"content_block":{"type":"tool_use","name":"StructuredOutput"}}`),
+		event(`{"type":"message_stop"}`))
+	got = ask(t, append(both, `{"type":"result","subtype":"success","is_error":false,"result":"","stop_reason":"end_turn","structured_output":{"text":"Done.","tool_calls":[]},"usage":{"input_tokens":3,"output_tokens":4}}`)...)
+	if calls, _ := got["calls"].([]any); got["text"] != "Done." || len(calls) != 0 {
+		t.Errorf("a message with the answer as well gave %v", got)
+	}
+
+	// A subagent's message, and a call whose input is no object, are not the
+	// model's request.
+	sub := []string{`{"type":"stream_event","parent_tool_use_id":"toolu_1","event":{"type":"message_start","message":{"usage":{}}}}`,
+		`{"type":"stream_event","parent_tool_use_id":"toolu_1","event":{"type":"content_block_start","index":0,"content_block":{"type":"tool_use","name":"look"}}}`,
+		`{"type":"stream_event","parent_tool_use_id":"toolu_1","event":{"type":"message_stop"}}`}
+	listed := []string{event(`{"type":"message_start","message":{"usage":{}}}`),
+		event(`{"type":"content_block_start","index":0,"content_block":{"type":"tool_use","name":"look"}}`),
+		event(`{"type":"content_block_delta","index":0,"delta":{"type":"input_json_delta","partial_json":"[1]"}}`),
+		event(`{"type":"message_stop"}`)}
+	for name, lines := range map[string][]string{"a subagent's call": sub, "input that is no object": listed} {
+		got = ask(t, append(lines, after...)...)
+		if calls, _ := got["calls"].([]any); got["text"] != "My tools are broken." || len(calls) != 0 {
+			t.Errorf("%s gave %v", name, got)
+		}
 	}
 }

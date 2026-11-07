@@ -88,6 +88,7 @@ The location is written out, from the tree's prefix. These are refused when the 
 - a location with no machine, or a file `.corbieignore` lists;
 - a machine with no `description:`, or one that is not `transient`;
 - a fixed name the machine's input does not give;
+- a machine whose input is written as JSON Schema with a keyword other than `type`, `properties`, `required`, `additionalProperties`, `description` and `title`, such as `allOf` or `$ref`;
 - a tool written `call:` in a file read alone or in a machine made while running, which have no tree.
 
 A tool may give `when:`, a condition on the agent's input. It is checked once, when the run starts, and a tool whose `when:` does not hold is not offered (see [Who is offered what](#who-is-offered-what)).

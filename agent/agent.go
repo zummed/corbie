@@ -583,7 +583,7 @@ func (agentType) Fill(p *machine.Parser, f *machine.Fields) any {
 	} else if len(a.Toolkits) > 0 {
 		p.Builtin(openScript, openSource)
 		a.Tools[openTool] = &Tool{Description: openDescription, Args: filled(p, "tools."+openTool+".args", map[string]any{"toolkit": "string"}),
-			Job: &machine.JobSpec{Script: openScript, Input: map[string]any{"toolkit": "${args.toolkit}"}, Alone: true}}
+			Job: &machine.JobSpec{Script: openScript, Alone: true}}
 	}
 	// The blob tools every agent has are ordinary scripts. They need no
 	// permission, and the code tool runs what the model wrote, so they get

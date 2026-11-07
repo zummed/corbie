@@ -776,8 +776,8 @@ func (s *stepper) replied(data any) error {
 			job.Input = input
 		}
 		// Opening a toolkit marked for approval waits for the ask, which is
-		// shown the toolkit's name and description. The open job is given
-		// the toolkit's instructions, filled in now, to give back.
+		// shown the toolkit's name and description. The open job's input is
+		// the toolkit's name and its instructions, filled in now, to give back.
 		in := tool.Toolkit
 		if one.Tool == openTool {
 			in, _ = args["toolkit"].(string)

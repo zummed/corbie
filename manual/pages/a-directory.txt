@@ -45,6 +45,7 @@ It reads every *.yaml in the directory and below it as a machine, but for .git a
 - A listed file has no location: nothing runs there, and nothing can be sent to it.
 - A machine still includes a listed file, runs it with machine:, and reads it with files:.
 - A *.yaml that is no machine, such as one in .github/, is a problem until it is listed.
+- A line is a path, not a pattern: one holding *, ? or [, or starting with !, fails the submit.
 
 A file of one line places a listed machine at its own location. It takes the type, the name and every field from the listed file:
 

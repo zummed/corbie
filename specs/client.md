@@ -272,8 +272,9 @@ A submit does this, and exits when each run it cancelled has ended and each star
 `.corbieignore`, at the top of the directory, lists what in it is no machine. Only the one at the top is read.
 
 - Each line is a path from the directory. A directory, with or without `/` at its end, lists everything below it.
-- A line starting with `#` and an empty line are passed over. There are no patterns: `*` and `!` are part of a name.
+- A line starting with `#` and an empty line are passed over.
 - A line that names the directory itself, such as `.`, or has a `..` segment, a `/` at its start, a `\` or a control character fails the submit, naming the line. A line naming nothing in the directory is no fault.
+- There are no patterns, so a line holding `*`, `?` or `[`, or starting with `!`, fails the submit too.
 - A listed file has no location: nothing runs there, and a send or a call to its path is to no location. A machine still includes it, runs it with `machine:` and reads it with `files:`.
 - A file listed after a submit is gone from the tree, so the next submit removes its location and cancels its runs.
 - A `*.yaml` that is no machine, such as `.github/workflows/test.yaml` or `docker-compose.yaml`, is a file with a problem until it is listed.

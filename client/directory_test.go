@@ -410,6 +410,10 @@ func TestBadIgnoreLineFailsTheRead(t *testing.T) {
 		"a\x01b":    `.corbieignore line 2`,
 		".":         `.corbieignore line 2: ".": a line is a path inside the directory, not the directory itself`,
 		"./":        `.corbieignore line 2: "./"`,
+		"*.yaml":    `.corbieignore line 2: "*.yaml": a line is a path inside the directory, not the directory itself, with no .., no / or ! at its start, no \, *, ? or [`,
+		"a?.yaml":   `.corbieignore line 2: "a?.yaml"`,
+		"[ab].yaml": `.corbieignore line 2: "[ab].yaml"`,
+		"!keep":     `.corbieignore line 2: "!keep"`,
 	} {
 		_, err := client.ReadTree(house(t, map[string]string{".corbieignore": "ok/\n" + line + "\n"}), "/x")
 		if err == nil || !strings.HasPrefix(err.Error(), want) {

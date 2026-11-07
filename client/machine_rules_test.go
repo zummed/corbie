@@ -488,6 +488,9 @@ func Test_mach_description_is_kept_as_written(t *testing.T) {
 	if d.Definition.Description != "Adds one to n, then tells nobody." {
 		t.Fatalf("the stored definition keeps the description as %q", d.Definition.Description)
 	}
+	if len(d.Children) != 1 {
+		t.Fatalf("the draft holds %d machines written in place", len(d.Children))
+	}
 	for _, child := range d.Children {
 		if child.Definition.Description != "The machine written in place." {
 			t.Fatalf("the machine written in place keeps the description as %q", child.Definition.Description)

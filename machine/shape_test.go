@@ -55,9 +55,9 @@ func Test_mach_reader_reads_exactly_what_its_shape_names(t *testing.T) {
 	}
 }
 
-// What a definition of a type may hold is given whole: its first line and
-// what every type takes, the type's own, and each mapping's shape once, by
-// its name, so that a shape that holds itself is still finite.
+// What a definition of a type may hold is given whole: its type and name
+// field and what every type takes, the type's own, and each mapping's shape
+// once, by its name, so that a shape that holds itself is still finite.
 func Test_mach_a_type_is_described_by_what_its_reader_reads(t *testing.T) {
 	d, ok := Describe("probe")
 	if !ok {

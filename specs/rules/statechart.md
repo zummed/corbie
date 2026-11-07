@@ -149,6 +149,9 @@ The detailed rules behind the [Statechart overview](../statechart.md). Area code
 **R-chart-72** An event that no rule takes is kept when an active state names it under `defer:`, and the receipt for it says the chart acted on it; kept events are offered again in the order they arrived, each once no active state defers it and before any newer event, and one that no rule takes then is dropped.
 *Accept:* parity case 106: the parent sends `said` a, b and c and then `finish` from one entry, and the chat answers a, b and c in that order and then finishes. `TestKeptEventsGoBeforeLaterOnes`: with `said b` kept, the answer to a and `said c` arrive in one step; b is answered and c is kept. A kept `work` and a kept `stop`, and a state is entered that defers `work` and not `stop`: `stop` is taken and `work` stays kept. A kept event offered again that no rule takes is dropped, and the chart no longer keeps it. A holder's rule for `said` is taken though the state it holds defers `said`.
 
+**R-chart-83** Kept events are offered in the step in which the last state keeping them is left, so a state entered in that step is given a kept event before its own job's result or its own timer.
+*Accept:* `TestKeptEventGoesBeforeTheEnteredStatesJobAndTimer`: `work` is kept while `busy` runs; in the step that takes `busy`'s result, `ready` is entered, its job and timer are started, and the kept `work` is taken from `ready` at once, ending the chart.
+
 **R-chart-73** `defer:` cannot name `done`, `failed`, a ticket's name, a timer's name or an event no state of the chart has a rule for, and a definition that does is refused when checked.
 *Accept:* charts deferring `done`, a ticket's name, a timer's name, an expression and `said` with no rule for it are each refused with a problem at the `defer:` entry. A final state with `defer:` is refused.
 

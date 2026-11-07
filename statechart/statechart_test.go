@@ -517,6 +517,31 @@ states:
 	c.want(c.active(), "ready")
 }
 
+// Kept events are offered in the step in which the last state keeping them
+// is left, so a state entered in that step is given one before its own job's
+// result or its own timer.
+func TestKeptEventGoesBeforeTheEnteredStatesJobAndTimer(t *testing.T) {
+	c := newChart(t, `
+statechart: worker
+initial: busy
+states:
+	busy:
+		job: ./work.js
+		defer: [work]
+		on: { done: ready }
+	ready:
+		job: ./work.js
+		timers: { wait: 1m }
+		on: { work: taken, done: finished, wait: finished }
+	taken: { end: done, output: work }
+	finished: { end: done, output: ready }
+`)
+	c.give(start())
+	c.want(c.give(machine.Event{Name: "work", From: "client"}))
+	c.want(c.kept(), "work")
+	c.want(c.give(done("busy", nil)), "cancel busy", "timer wait.ready", "job ready", "cancel ready", "clear wait.ready", "end work")
+}
+
 func TestHoldersRuleIsTakenBeforeADefer(t *testing.T) {
 	c := newChart(t, `
 statechart: nested

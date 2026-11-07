@@ -57,7 +57,11 @@ One event may set off a chain of transitions. A chain that does not come to rest
 
 ## Data
 
-A chart has no variables. Each state's latest output is remembered and can be read by name from any expression, along with the chart's input and the event that caused the current move. A value built up over a loop goes through a script: in as its input and out as its output.
+A chart has no variables. Each state's latest output is remembered and can be read by name from any expression, along with the chart's input and the event that caused the current move.
+
+A state's output is set only when the state is done: by its jobs ending well, or by a final state inside it. A job that fails leaves the state's earlier output as it was.
+
+A value built up over a loop goes through a script: in as its input and out as its output.
 
 ## Sending
 
@@ -134,6 +138,7 @@ Such a chart does one piece of work at a time. An event that arrives while it is
 2. Kept events are offered again in the order they arrived, each once no active state defers it, and before any newer event.
 3. A kept event that no rule takes then is dropped.
 
+- Kept events are offered in the step in which the last state keeping them is left, so a state entered in that step is given a kept event before its own job's result or its own timer.
 - A rule of a state that holds the deferring state is taken before the event is kept.
 - A state cannot defer `done`, `failed`, a ticket's name, a timer's name, or an event no state has a rule for, and a definition that tries is refused.
 - A chart that ends drops the events it kept.

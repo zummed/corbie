@@ -5,6 +5,6 @@ turn: ./turn-good.js
 prompt: "Look into ${input.topic}."
 tools:
   add:
-    does: Add one
+    description: Add one
     args: { n: number }
     job: { script: ./add.js, input: { n: "${args.n}" } }

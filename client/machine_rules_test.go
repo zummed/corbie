@@ -76,7 +76,7 @@ func TestAgentToolScopeIsFilledFromTheAgentsInput(t *testing.T) {
 		prompt: Read the note.
 		tools:
 		  look:
-		    does: Read a file of the directory
+		    description: Read a file of the directory
 		    args: { name: string }
 		    job: { script: ./look.js, input: { path: "${input.dir}/${args.name}" }, allow: ["fs.read:${input.dir}/**"] }
 	`, map[string]string{"look.js": `return fs.read(input.path)`}), client.Start{
@@ -130,7 +130,7 @@ func TestLargeTextResultIsStoredAsText(t *testing.T) {
 	l := local(t, "all")
 	def := strings.Replace(agentDef(m.URL, ""), "tools:\n", `tools:
 		  lines:
-		    does: Give many lines
+		    description: Give many lines
 		    args: { n: number }
 		    job: { script: ./lines.js, input: { n: "${args.n}" } }
 `, 1)
@@ -581,10 +581,10 @@ func Test_mach_file_leading_back_to_itself_is_refused(t *testing.T) {
 			map[string]string{"a.yaml": "include: ./b.yaml\n", "b.yaml": "include: ./a.yaml\n"},
 			"tools.include: the definition leads back to itself: a.yaml -> b.yaml -> a.yaml"},
 		{"a file included below itself", agent + "tools: { include: ./t.yaml }\n",
-			map[string]string{"t.yaml": "t: { does: x, job: " + inPlaceAgent("tools: { include: ./t.yaml }") + " }\n"},
+			map[string]string{"t.yaml": "t: { description: x, job: " + inPlaceAgent("tools: { include: ./t.yaml }") + " }\n"},
 			"the definition leads back to itself: t.yaml -> t.yaml"},
-		{"a part's file", agent + "open:\n  s: { include: ./s.yaml }\n",
-			map[string]string{"s.yaml": "does: Loop.\ntools:\n  t: { does: x, job: " + inPlaceAgent("open: { s: { include: ./s.yaml } }") + " }\n"},
+		{"a toolkit's file", agent + "toolkits:\n  s: { include: ./s.yaml }\n",
+			map[string]string{"s.yaml": "description: Loop.\ntools:\n  t: { description: x, job: " + inPlaceAgent("toolkits: { s: { include: ./s.yaml } }") + " }\n"},
 			"the definition leads back to itself: s.yaml -> s.yaml"},
 		{"a machine file", "flow: f\nstages:\n  one: { job: { machine: ./f.yaml } }\n",
 			map[string]string{"f.yaml": "flow: g\nstages:\n  one: { job: { machine: { flow: inner, stages: { two: { job: { machine: ./f.yaml } } } } } }\n"},
@@ -592,8 +592,8 @@ func Test_mach_file_leading_back_to_itself_is_refused(t *testing.T) {
 		{"two machine files", "flow: f\nstages:\n  one: { job: { machine: ./a.yaml } }\n",
 			map[string]string{"a.yaml": "flow: a\nstages:\n  one: { job: { machine: ./b.yaml } }\n", "b.yaml": "flow: b\nstages:\n  one: { job: { machine: ./a.yaml } }\n"},
 			"b.yaml: stages.one.job.machine: the definition leads back to itself: a.yaml -> b.yaml -> a.yaml"},
-		{"an included file and a machine file", agent + "open:\n  s: { include: ./s.yaml }\n",
-			map[string]string{"s.yaml": "does: Loop.\ntools:\n  t: { does: x, job: { machine: ./b.yaml } }\n", "b.yaml": agent + "open:\n  s: { include: ./s.yaml }\n"},
+		{"an included file and a machine file", agent + "toolkits:\n  s: { include: ./s.yaml }\n",
+			map[string]string{"s.yaml": "description: Loop.\ntools:\n  t: { description: x, job: { machine: ./b.yaml } }\n", "b.yaml": agent + "toolkits:\n  s: { include: ./s.yaml }\n"},
 			"the definition leads back to itself: s.yaml -> b.yaml -> s.yaml"},
 	} {
 		began := time.Now()
@@ -611,8 +611,8 @@ func Test_mach_file_leading_back_to_itself_is_refused(t *testing.T) {
 // defined it, saying so, and the runner goes on to run the next job.
 func Test_mach_made_definition_leading_back_to_itself_fails_its_job(t *testing.T) {
 	files := map[string]string{"make.js": `
-		return machines.define("agent: a\n` + growModel + `\nprompt: hi\nopen:\n  s: { include: ./s.yaml }\n",
-			{ files: { "./s.yaml": "does: Loop.\ntools:\n  t: { does: x, job: ` + inPlaceAgent("open: { s: { include: ./s.yaml } }") + ` }\n" } })
+		return machines.define("agent: a\n` + growModel + `\nprompt: hi\ntoolkits:\n  s: { include: ./s.yaml }\n",
+			{ files: { "./s.yaml": "description: Loop.\ntools:\n  t: { description: x, job: ` + inPlaceAgent("toolkits: { s: { include: ./s.yaml } }") + ` }\n" } })
 	`}
 	l := local(t)
 	r := run(t, l, "flow: maker\nstages:\n  make: { job: ./make.js }\n", files, nil)

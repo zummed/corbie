@@ -33,11 +33,11 @@ func Test_agent_next_turn_waits_for_open_approval(t *testing.T) {
 		      decided: { end: done, output: { approve: "${input.jobs.map(r => r.name)}" } }
 		tools:
 		  add:
-		    does: Add one to a number
+		    description: Add one to a number
 		    args: { n: number }
 		    job: { script: ./add.js, input: { n: "${args.n}" } }
 		  deploy:
-		    does: Put a number out
+		    description: Put a number out
 		    args: { n: number }
 		    job: { script: ./add.js, input: { n: "${args.n}" }, approve: true }
 	`, "ADDRESS", m.URL), scripts), client.Start{})
@@ -113,11 +113,11 @@ func Test_agent_handle_name_is_stable_and_never_reused(t *testing.T) {
 	l := local(t, "all")
 	def := strings.Replace(agentDef(m.URL, ""), "tools:\n", `tools:
 		  make:
-		    does: Make a file
+		    description: Make a file
 		    args: { text: string }
 		    job: { script: ./make.js, input: { text: "${args.text}" } }
 		  again:
-		    does: Give a blob back, and beside it one never seen
+		    description: Give a blob back, and beside it one never seen
 		    args: { it: blob }
 		    job: { script: ./again.js, input: { it: "${args.it}" } }
 `, 1)

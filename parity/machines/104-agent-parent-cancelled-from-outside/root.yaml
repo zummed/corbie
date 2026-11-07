@@ -6,6 +6,6 @@ turn: ./turn.js
 prompt: Ask a person about the disk.
 tools:
   ask_person:
-    does: Ask a person and wait for the answer
+    description: Ask a person and wait for the answer
     args: { topic: string }
     job: { machine: ./child.yaml, input: { topic: "${args.topic}" } }

@@ -58,8 +58,8 @@ system:
 allow:
   - { include: ./base.yaml#allow }
   - send:devices/*
-open:
-  home: { include: ./parts/home/part.yaml, approve: true }
+toolkits:
+  home: { include: toolkits/home.yaml, approve: true }
 ```
 
 ```yaml
@@ -98,7 +98,7 @@ allow:
 
 - A file is read as a definition is: a number is a number, and a value YAML would read as a date stays the text written. An empty file is refused.
 - A path in a file reads as any path does, and `./` from that file's own directory. What a shape gives as a value, such as `input:` or `meta:`, stays as it is written, whatever it holds.
-- A problem in an included file names that file: `parts/home/part.yaml: open.home.colour: …`.
+- A problem in an included file names that file: `toolkits/home.yaml: toolkits.home.colour: …`.
 - More than 1,000 includes written out by one definition, and what is below it, are refused. A file reached by two routes counts each time, though its values are merged once.
 
 A definition is checked as a whole, and everything wrong with it is reported together. Each problem names its place, and its file when the problem is in a child's file, as a path from the definition's directory: `kids/kid.yaml: value: …`. The client checks it before sending, so mistakes are found at once, and the controller checks it again with the same code, because it does not take a client's word.
@@ -243,12 +243,12 @@ The context is the directory a client submits as a tree. For a single file it is
 
 | A path written as | Is read from |
 |---|---|
-| `parts/net/part.yaml` | the context |
+| `toolkits/net.yaml` | the context |
 | `./tools/pve.js` | the directory of the file it is written in |
 
 `../` and a path from the top of the disk are refused in a definition. A script that loads another with `require` names it from its own directory, with `./` or `../`, since a bare name there is a plugin.
 
-No file leads back to itself. A machine file or an included file that names a file already being read is refused, with machines written in place between them as well, and the refusal names the chain: `b.yaml: open.s.include: the definition leads back to itself: s.yaml -> b.yaml -> s.yaml`.
+No file leads back to itself. A machine file or an included file that names a file already being read is refused, with machines written in place between them as well, and the refusal names the chain: `b.yaml: toolkits.s.include: the definition leads back to itself: s.yaml -> b.yaml -> s.yaml`.
 
 A machine as it is stored is at most 4 MiB, as much as a step may read of one stored definition, with a reference for each of its files and child definitions. One past it is refused at its place, by the client and by a job's `define`, and nothing is stored.
 
@@ -367,9 +367,9 @@ Services that carry questions to people, such as a chat program, are clients at 
 
 ## Approval
 
-A job can be made to wait for a yes before it starts. A job is held if it is marked for approval, or if a permission it asks for is one its machine, or a machine above it, has listed as needing to be asked about. Being approved gives a job nothing it was not already allowed; approval only ever holds. What gives the yes is the machine's ask: a job of its own, a script or a machine, named at the top of the definition. That job is called `ask`, and nothing else in a definition may take the name. A machine with no ask uses the nearest one above it. A type may give some of its jobs an ask nearer than the machine's, as an agent's set does, and that ask is the nearest above every machine below those jobs.
+A job can be made to wait for a yes before it starts. A job is held if it is marked for approval, or if a permission it asks for is one its machine, or a machine above it, has listed as needing to be asked about. Being approved gives a job nothing it was not already allowed; approval only ever holds. What gives the yes is the machine's ask: a job of its own, a script or a machine, named at the top of the definition. That job is called `ask`, and nothing else in a definition may take the name. A machine with no ask uses the nearest one above it. A type may give some of its jobs an ask nearer than the machine's, as an agent's toolkit does, and that ask is the nearest above every machine below those jobs.
 
-A machine made while running has no ask of its own. What it holds goes to the nearest ask above it that was not made while running, and with none the job is denied. An ask it writes, at the top of its definition or in an agent's part, fails that machine as it starts, with the reason.
+A machine made while running has no ask of its own. What it holds goes to the nearest ask above it that was not made while running, and with none the job is denied. An ask it writes, at the top of its definition or in an agent's toolkit, fails that machine as it starts, with the reason.
 
 A run started by a send or a call has no machine above it, so its held jobs go only to its own file's `ask:`, and are denied if it has none. A call or a `job: { send }` is a job, so the sender's `ask_about: [send:…]` holds it. A statechart's send action is never held.
 

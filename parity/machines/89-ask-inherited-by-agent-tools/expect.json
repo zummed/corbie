@@ -21,7 +21,7 @@
                   "args": {
                     "n": 1
                   },
-                  "does": "Add one, once approved",
+                  "description": "Add one, once approved",
                   "said": "Two guarded calls."
                 }
               },
@@ -31,7 +31,7 @@
                   "args": {
                     "n": 2
                   },
-                  "does": "Add one, once approved",
+                  "description": "Add one, once approved",
                   "said": "Two guarded calls."
                 }
               }

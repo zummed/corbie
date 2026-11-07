@@ -180,7 +180,7 @@ func Test_ctl_made_agent_works_as_any_other(t *testing.T) {
 	m := newModel(t, calls("call_1", "add", `{"n": 41}`), says("It is 42."))
 	l := contained(t, "all")
 	text := "agent: sums\nmodel: { name: test-model, service: anthropic, address: " + m.URL + ", secret: TEST_KEY }\nprompt: what is 41 plus one?\n" +
-		"tools:\n  add:\n    does: Add one to a number\n    args: { n: number }\n    job: { script: ./step.js, input: { n: \"${args.n}\" } }\n"
+		"tools:\n  add:\n    description: Add one to a number\n    args: { n: number }\n    job: { script: ./step.js, input: { n: \"${args.n}\" } }\n"
 	setSecret(t, l, "TEST_KEY", "sk-test-key")
 	id, err := l.Run(ctx, draft(t, strings.Replace(maker, `machine: "${stages.make.output}"`, `machine: "${stages.make.output}", allow: [all]`, 1), makes),
 		client.Start{Input: map[string]any{"text": text}})

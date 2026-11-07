@@ -138,7 +138,7 @@ model: { name: claude-sonnet-5-5, secret: ANTHROPIC_KEY }
 prompt: ${input.question}
 tools:
   customer:
-    does: Look a customer up by their number.
+    description: Look a customer up by their number.
     args: { customer: string }
     job: { call: { at: /work/services/lookup }, input: { customer: "${args.customer}" }, allow: [send:/work/services/lookup] }
 ```

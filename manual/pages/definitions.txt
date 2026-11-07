@@ -156,6 +156,8 @@ It may use JavaScript's operators, `? :`, arrow functions, methods such as
 `Array`, `String`, `Number`, `RegExp`, `Map` and `Set`.
 
 - A name that is not one of these is refused when the definition is checked.
+- `when:` is a condition on a flow's stage, a statechart's transition, and an
+  agent's toolkit or tool.
 - An expression cannot change what it reads. It has no `eval`, `Function`,
   `Promise`, `require` or plugins, so it reads no file and makes no
   network connection.
@@ -361,10 +363,10 @@ The ask is a job, and the controller adds two fields to its input.
   input.asking    { machine, instance }: the machine whose jobs are held, and its run's ID
   input.jobs      [{ name, input, allow, script, machine, call or send, asked }]: each held job
 
-- A held job has `asked: { does, args, said }` only for an agent's tool call,
-  with `entry` and `tool` too for a tool from a `list:`, and `part`, the part's
-  name, for a tool of a part or for `open`. The list of an entry in a part has
-  `asked: { part }`.
+- A held job has `asked: { description, args, said }` only for an agent's tool
+  call, with `entry` and `tool` too for a tool from a `list:`, and `toolkit`,
+  the toolkit's name, for a tool of a toolkit or for `open`. The list of an
+  entry in a toolkit has `asked: { toolkit }`.
 - A held call job has `call: { at }`, and a held send job `send: { to, event, data }`.
 
 The ask returns `{ approve: [names of jobs], note: "..." }`.
@@ -380,10 +382,9 @@ value, approves nothing.
   `ask:` fails as it starts, saying so. Its held jobs go to the nearest `ask:`
   above it that was not made while running, and with none they fail with
   status `denied`.
-- The jobs of an agent's set, and the machines below them, use the `ask:`
-  of the set, or of the nearest set it is inside that has one, before the
-  agent's. The controller starts each ask once for the jobs of one step that
-  use it.
+- The jobs of an agent's toolkit, and the machines below them, use the
+  toolkit's `ask:`, when it has one, before the agent's. The controller starts
+  each ask once for the jobs of one step that use it.
 - A machine run as an ask uses no `ask:` and no `ask_about:` from above it.
 - A run started by a send or a call uses only its own file's `ask:`.
 - A run of a definition that can hold a job and has no `ask:` in it or above

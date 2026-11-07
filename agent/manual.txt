@@ -12,7 +12,7 @@ events sent to it.
 
     tools:
       shelf:
-        does: Give back every file on one shelf
+        description: Give back every file on one shelf
         args: { shelf: string }
         job:
           script: ./shelf.js
@@ -36,7 +36,7 @@ Fields
   system          the system prompt, which may hold `${input...}`
   prompt          the first message to the model, an expression of the input
   tools           the tools, by name
-  open            parts: groups of tools the model opens, as under Parts
+  toolkits        groups of tools the model opens, as under Toolkits
   reply           a shape, as under Tools: the reply is data in this shape
   conversation    the `conversation` of an earlier agent's result: this agent
                   continues it, and each blob keeps its name
@@ -92,13 +92,16 @@ another turn. A failed agent's output has `conversation` and `tokens`.
 Tools
 -----
 
-  does    what the tool does: the model chooses a tool by this text
-  args    the shape of its arguments: { name: type }, or JSON Schema
-  job     a script, a machine, a call or a send, as in
-          `corbie manual definitions`; it reads `input`, the agent's input,
-          and `args`, the model's arguments
-  list    a job that returns tools, [{ name, does, args }], in place of
-          `does:` and `args:`; `job:` runs each, and reads `tool`, its name
+  description  what the tool is for: the model chooses a tool by this text
+  args         the shape of its arguments: { name: type }, or JSON Schema
+  job          a script, a machine, a call or a send, as in
+               `corbie manual definitions`; it reads `input`, the agent's
+               input, and `args`, the model's arguments
+  list         a job that returns tools, [{ name, description, args }], in
+               place of `description:` and `args:`; `job:` runs each, and
+               reads `tool`, its name
+  when         a condition on the agent's input, checked when the run
+               starts: the tool is offered only if it holds
 
 A shape is written as `input:` is, in `corbie manual definitions`:
 `args: { shelf: string, limit: "number?" }`. A name the shape does not give is
@@ -109,9 +112,9 @@ a `description`, an `enum` or fields of its own. `format: blob` marks a blob at
 any depth.
 
 - A tool whose job has `approve: true` waits for the definition's `ask:`,
-  which gets `asked: { does, args, said }`: the tool's `does:`, the model's
-  arguments and the model's text. A call that is not approved is returned to
-  the model as denied, with the ask's note.
+  which gets `asked: { description, args, said }`: the tool's `description:`,
+  the model's arguments and the model's text. A call that is not approved is
+  returned to the model as denied, with the ask's note.
 - A tool whose job fails is returned to the model as an error.
 - A tool whose job is an agent is a sub-agent. The model gets the sub-agent's
   reply, and the sub-agent's conversation stays in its own record.
@@ -135,48 +138,72 @@ changing.
   are not JSON Schema with type: object, args that mark a blob, or a name
   that is longer than 64 characters or that another tool has.
 
-Parts
------
+Toolkits
+--------
 
-A part is a group of tools that the model is not shown until it opens the
-part. An agent with many tools shows the model the ones it has opened.
+A toolkit is a group of tools that the model is not shown until it opens the
+toolkit. An agent with many tools shows the model the ones it has opened.
 
-1. The model is shown a tool `open`, with the name and `does:` of each part
-   it has not opened.
-2. The model calls `open` with a part's name, and a job named `open` runs.
-3. From the next turn, the model is shown the part's tools as well.
+1. The model is shown a tool `open`, with the name and `description:` of each
+   toolkit it has not opened.
+2. The model calls `open` with a toolkit's name, and a job named `open` runs.
+3. `open` returns the toolkit's `instructions:` to the model.
+4. From the next turn, the model is shown the toolkit's tools as well.
 
-  open:
-    net: { does: The firewall and the switch., tools: { … } }
+  toolkits:
+    net: { description: The firewall and the switch., tools: { … } }
 
-A part is often kept in its own file, which `include:` reads, as
+A toolkit is often kept in its own file, which `include:` reads, as
 `corbie manual definitions` says.
 
-  open:
-    net: { include: ./net.yaml }
-    pay: { include: ./pay.yaml, approve: true }    its open waits for the ask
+  toolkits:
+    net: { include: toolkits/net.yaml }
+    pay: { include: toolkits/pay.yaml, approve: true }    its open waits for the ask
+    orders:
+      include: toolkits/orders.yaml
+      when: ${input.asker.scopes.includes('orders')}
 
-A part has these fields.
+A toolkit has these fields.
 
-  does     what the part is for, which the model reads before it opens it
-  tools    the part's tools, written as under Tools
-  ask      the ask for opening the part, for its tools' jobs and lists and for
-           the machines below them, before the agent's own; its expressions
-           read the agent's input
-  approve  `true` holds the part's open for the ask
-  meta     data Corbie keeps and never reads
+  description   what the toolkit is for, which the model reads before it opens it
+  instructions  what `open` returns, written as `system:` is; it may hold `${input...}`
+  ask           the ask for opening the toolkit, for its tools' jobs and lists
+                and for the machines below them, before the agent's own; its
+                expressions read the agent's input
+  approve       `true` holds the toolkit's open for the ask
+  when          a condition on the agent's input: the toolkit is offered only if it holds
+  tools         the toolkit's tools, written as under Tools
+  meta          data Corbie keeps and never reads
 
-- No tool of a part has the name of another tool of the agent.
-- The list of an entry with `list:` in a part runs before the first turn. An
-  error names it as `open.net.tools.files.list`.
-- The ask for `open` gets `asked: { part, does, args, said }`, where `does` is
-  the part's. An open that is not approved opens nothing.
-- The ask for a call of a part's tool gets `part` in `asked`, and so does the
-  ask for the list of an entry in a part.
-- A part that has an `ask:` needs no `ask:` of the agent's. The permissions of
-  the part's `ask:` are its own, as any ask's are.
-- An agent given a `conversation` opens no part: the model calls `open` for
-  each part it needs, and a part marked `approve: true` waits for the ask again.
+- With no `instructions:`, `open` returns `Opened net.`. Opening a toolkit
+  again returns its instructions again.
+- No tool of a toolkit has the name of another tool of the agent.
+- The list of an entry with `list:` in a toolkit runs before the first turn.
+  An error names it as `toolkits.net.tools.files.list`.
+- The ask for `open` gets `asked: { toolkit, description, args, said }`, where
+  `description` is the toolkit's. An open that is not approved opens nothing.
+- The ask for a call of a toolkit's tool gets `toolkit` in `asked`, and so does
+  the ask for the list of an entry in a toolkit.
+- A toolkit that has an `ask:` needs no `ask:` of the agent's. The permissions
+  of the toolkit's `ask:` are its own, as any ask's are.
+- An agent given a `conversation` opens no toolkit: the model calls `open` for
+  each toolkit it needs, and a toolkit marked `approve: true` waits for the ask
+  again.
+
+Who is offered what
+-------------------
+
+A `when:` on a toolkit or on a tool is checked once, when the run starts, on
+the agent's input. Write it on the agent's entry, beside `include:`, so the
+agent says who is offered the toolkit.
+
+- `open` does not name a toolkit whose `when:` does not hold, and a call of
+  `open` with its name is returned to the model as an error.
+- A tool whose `when:` does not hold, or that is in such a toolkit, is not
+  shown. Its `list:` does not run, and a call of it is returned to the model as
+  an error.
+- A `when:` that cannot be evaluated fails the agent before its first turn.
+- `open` and the blob tools take no `when:`.
 
 Blobs
 -----

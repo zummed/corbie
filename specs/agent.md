@@ -12,7 +12,7 @@ prompt: ${input.question}
 
 tools:
   shelf:
-    does: Give back every file on one shelf
+    description: Give back every file on one shelf
     args: { shelf: string }
     job:
       script: ./shelf.js
@@ -24,7 +24,7 @@ tools:
 
 An agent's definition names its model and may give a system text, a prompt, tools, limits and the shape of its reply.
 
-Each turn is one call to the model, made by a job named `turn`, which emits the reply under `text` (see Models). The model sees the system text, the conversation so far, and for each tool its name, what it does and what arguments it takes. It never sees how a tool is run or what the tool is permitted.
+Each turn is one call to the model, made by a job named `turn`, which emits the reply under `text` (see Models). The model sees the system text, the conversation so far, and for each tool its name, its description and what arguments it takes. It never sees how a tool is run or what the tool is permitted.
 
 The tools the model picks in one turn all run at once, and the next turn starts when every one of them has settled. A turn that fails fails the agent.
 
@@ -43,14 +43,14 @@ A call or a send names a location read from the agent's tree, and needs `send:` 
 ```yaml
 tools:
   customer:
-    does: Look a customer up by their number.
+    description: Look a customer up by their number.
     args: { customer: string }
     job:
       call: { at: services/lookup }
       input: { customer: "${args.customer}" }
       allow: [send:services/lookup]
   heating:
-    does: Set the temperature of one room.
+    description: Set the temperature of one room.
     args: { room: string, celsius: number }
     job:
       send: { to: { at: rooms/thermostat, key: "${args.room}" }, event: set, data: { celsius: "${args.celsius}" } }
@@ -61,7 +61,9 @@ tools:
 - The called run's record belongs to its own tree's client. Cancelling the call cancels the run.
 - A send ends `done` once the message is written. A send the receiver does not take is noted in the agent's record, and the model is not told.
 
-A tool that needs approval goes to the agent's ask like any job. A `call:` or `send:` job is held when `ask_about:` names its `send:` entry. The tool calls from one turn that need it go together, and the ask is shown the arguments, what the tool does and what the model said. A tool call that needs no approval runs at once, and the next turn waits for the ask as well as for the tools. A tool call that is not approved goes back to the model as denied, with the ask's note.
+A tool may give `when:`, a condition on the agent's input. It is checked once, when the run starts, and a tool whose `when:` does not hold is not offered (see [Who is offered what](#who-is-offered-what)).
+
+A tool that needs approval goes to the agent's ask like any job. A `call:` or `send:` job is held when `ask_about:` names its `send:` entry. The tool calls from one turn that need it go together, and the ask is shown the arguments, the tool's description and what the model said. A tool call that needs no approval runs at once, and the next turn waits for the ask as well as for the tools. A tool call that is not approved goes back to the model as denied, with the ask's note.
 
 ## Shared definitions
 
@@ -104,7 +106,7 @@ Read before you answer, and name the file and the line you mean.
 
 ## Listed tools
 
-A tool entry may give a `list:` job in place of `does:` and `args:`. The job returns the tools, and the entry's `job:` runs each of them. This is how an agent is given the tools of an MCP server, which change without the definition changing.
+A tool entry may give a `list:` job in place of `description:` and `args:`. The job returns the tools, and the entry's `job:` runs each of them. This is how an agent is given the tools of an MCP server, which change without the definition changing.
 
 ```yaml
 tools:
@@ -126,7 +128,7 @@ const server = mcp.connect("https://api.githubcopilot.com/mcp/", {
 return input?.tool ? server.call(input.tool, { args: input.args }) : server.tools()
 ```
 
-1. Before the first turn, the `list:` job runs and returns `[{ name, does, args }, …]`.
+1. Before the first turn, the `list:` job runs and returns `[{ name, description, args }, …]`.
 2. The model is shown each tool under the entry's name and its own, joined by `_`: `github_create_issue`.
 3. A call runs the entry's `job:`, where `${tool}` is the tool's own name, `create_issue`.
 
@@ -134,57 +136,77 @@ return input?.tool ? server.call(input.tool, { args: input.args }) : server.tool
 - Every step of the agent after its first is taken in a process of its own, since a list's shapes come from outside the definition (see Controller).
 - Every listed tool has the entry's permissions and, if the entry's job is marked for approval, its approval. The ask is shown the name the model used, the arguments, the entry's name as `entry` and the tool's own name as `tool`.
 - The model can call every tool the list gives. The `list:` script narrows that by returning fewer.
-- What a tool does and its shape are shown to the model as the list gives them.
+- A tool's description and its shape are shown to the model as the list gives them.
 - In a name the model is shown, a character other than a letter, a digit, `_` or `-` is written `_`.
 - The entry's `job:` reads `${args}` only whole, since its fields are not known until the run.
 
 A list that fails fails the agent, and so does a list in which a tool has no name, a shape that is not a JSON Schema of an object, a shape that marks a blob, or a name the model is shown that another tool has or that is longer than 64 characters.
 
-## Parts
+## Toolkits
 
-A part is a group of tools the model is not shown until it opens the part. An agent with many tools shows the model the ones it has opened.
+A toolkit is a group of tools the model is not shown until it opens the toolkit. An agent with many tools shows the model the ones it has opened.
 
 ```yaml
 agent: helper
-input: { said: string }
+input: { said: string, asker: any }
 model: { name: claude-sonnet-5-5, secret: ANTHROPIC_KEY }
 prompt: ${input.said}
-open:
-  net: { include: parts/net/part.yaml }
-  payments: { include: parts/payments/part.yaml, approve: true }
+toolkits:
+  net: { include: toolkits/net.yaml }
+  payments:
+    include: toolkits/payments.yaml
+    approve: true
+    when: ${input.asker.scopes.includes('payments')}
 ```
 
 ```yaml
-# parts/net/part.yaml
-does: The firewall and the switch, and the network's docs.
+# toolkits/net.yaml
+description: The firewall and the switch, and the network's docs.
+instructions: |
+  Run show commands only. ${input.asker.name} is asking.
 ask: { machine: ./approval.yaml }
 tools:
   show_status:
-    does: Run one read-only status command.
+    description: Run one read-only status command.
     args: { device: string, command: string }
     job: { script: ./show-status.js, input: { device: "${args.device}", command: "${args.command}" }, allow: [net:192.0.2.1:22] }
 ```
 
-1. The model is shown one more tool, `open`, with the name and `does:` of each part not yet open.
-2. The model calls `open` with a part's name, and a job named `open` runs.
-3. From the next turn, the model is shown that part's tools as well.
+1. The model is shown one more tool, `open`, with the name and `description:` of each toolkit not yet open.
+2. The model calls `open` with a toolkit's name, and a job named `open` runs.
+3. The model is shown the toolkit's `instructions:` as the result of `open`.
+4. From the next turn, the model is shown that toolkit's tools as well.
 
 | Field | What it is |
 |---|---|
-| `does:` | what the part is for, which the model reads before it opens it |
-| `tools:` | the part's tools, written as an agent's are |
-| `ask:` | the ask for the part's tools and for opening it |
-| `approve:` | `true` holds the part's open for the ask |
+| `description:` | what the toolkit is for, which the model reads before it opens it |
+| `instructions:` | the text `open` gives the model, written as `system:` is |
+| `ask:` | the ask for the toolkit's tools and for opening it |
+| `approve:` | `true` holds the toolkit's open for the ask |
+| `when:` | a condition on the agent's input: the toolkit is offered only if it holds |
+| `tools:` | the toolkit's tools, written as an agent's are |
 | `meta:` | data Corbie keeps and never reads |
 
-- A part's tools have their own permissions, as every tool has. Opening a part gives the model names and nothing else.
-- A tool of a part may not take the name of another tool of the agent.
-- `open` is supplied by Corbie, as the blob tools are, and no tool may take its name. It is not shown while no part can be opened.
-- The list of an entry with `list:` in a part is made before the first turn, as any list is. An error names it by where it is written, as `open.net.tools.files.list`.
-- A part marked `approve: true` holds its `open` job for the ask, which is shown the part's name as `part` and the part's `does:`. An open that is not approved goes back to the model as denied, with the ask's note, and opens nothing. Only an approved open opens such a part.
-- For a call of a part's tool, and for the list of an entry in a part, the ask is shown the part's name as `part`.
-- A part of an agent made while running cannot name an ask (see Machines).
-- A part may name an ask. It is the ask for the jobs and lists of the part's tools and for opening the part, before the agent's own, and the nearest ask above every machine below those tools' jobs. Its permissions are its own, as any ask's are, and its expressions read the agent's input. Like any ask, it is filled in and started once for the held calls of one turn, and one that cannot be filled in denies them.
+- A toolkit's tools have their own permissions, as every tool has. Opening a toolkit gives the model names and instructions, and nothing else.
+- The instructions are filled from the agent's input when the toolkit is opened. With none, `open` gives `Opened net.`. Opening a toolkit again gives its instructions again.
+- The result of `open` is shown to the model whole, and is never stored as a blob.
+- A tool of a toolkit may not take the name of another tool of the agent.
+- `open` is supplied by Corbie, as the blob tools are, and no tool may take its name. It is not shown while no toolkit can be opened.
+- The list of an entry with `list:` in a toolkit is made before the first turn, as any list is. An error names it by where it is written, as `toolkits.net.tools.files.list`.
+- A toolkit marked `approve: true` holds its `open` job for the ask, which is shown the toolkit's name as `toolkit` and the toolkit's `description:`. An open that is not approved goes back to the model as denied, with the ask's note, and opens nothing. Only an approved open opens such a toolkit.
+- For a call of a toolkit's tool, and for the list of an entry in a toolkit, the ask is shown the toolkit's name as `toolkit`.
+- A toolkit of an agent made while running cannot name an ask (see Machines).
+- A toolkit may name an ask. It is the ask for the jobs and lists of the toolkit's tools and for opening the toolkit, before the agent's own, and the nearest ask above every machine below those tools' jobs. Its permissions are its own, as any ask's are, and its expressions read the agent's input. Like any ask, it is filled in and started once for the held calls of one turn, and one that cannot be filled in denies them.
+
+## Who is offered what
+
+A `when:` on a toolkit or on a tool is a condition on the agent's input. It is checked once, when the run starts, and the run keeps what it found: every turn is offered the same tools. A `when:` is written on the agent's entry, beside `include:`, so the agent says who is offered a toolkit.
+
+- `open` does not name a toolkit whose `when:` does not hold. A call of `open` with its name does not fit the arguments, and goes back to the model as an error.
+- A tool whose `when:` does not hold, or that is in such a toolkit, is not shown to the model. Its `list:` does not run, and a call of it runs nothing and goes back to the model as an error.
+- A `when:` that cannot be evaluated fails the agent at its start.
+- An agent started with a conversation checks its own input.
+- `open` and the blob tools take no `when:`.
 
 ## Shapes
 
@@ -223,7 +245,7 @@ In a result the conversation is one value: its turns and the blobs the model was
 conversation: { turns: [ turn 1, turn 2, … ], blobs: { blob1: …, blob2: … } }
 ```
 
-An agent started with it carries on where the other stopped. Every name goes on meaning the blob it meant, and a blob the conversation has not shown takes a name it has not used. It opens no part: the model calls `open` for each part it needs, and a part marked `approve: true` waits for the ask again.
+An agent started with it carries on where the other stopped. Every name goes on meaning the blob it meant, and a blob the conversation has not shown takes a name it has not used. It opens no toolkit: the model calls `open` for each toolkit it needs, and a toolkit marked `approve: true` waits for the ask again.
 
 ## Blobs and the model
 

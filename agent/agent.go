@@ -657,6 +657,9 @@ func (agentType) Check(c *machine.Checker, def *machine.Definition) {
 			c.Problem(place+".description", "a toolkit says what it is for, for the model to choose by")
 			continue
 		}
+		if machine.HasExpr(toolkit.Description) {
+			c.Problem(place+".description", "a description is plain text, with no expression")
+		}
 		c.Value(place+".instructions", toolkit.Instructions, "input")
 		if toolkit.When != "" {
 			c.Cond(place+".when", toolkit.When, "input")
@@ -722,6 +725,8 @@ func checkTool(c *machine.Checker, a *Agent, name string, tool *Tool) {
 	}
 	if tool.Description == "" {
 		c.Problem(place+".description", "a tool says what it is for, for the model to choose by")
+	} else if machine.HasExpr(tool.Description) {
+		c.Problem(place+".description", "a description is plain text, with no expression")
 	}
 	if _, err := machine.CompileShape(tool.Args); err != nil {
 		c.Problem(place+".args", "%v", err)

@@ -38,7 +38,7 @@ An agent may be started with the conversation of an earlier agent's result, and 
 
 A tool is a named job, a script, a machine, a call or a send, with a description, the shape of its arguments, and its own permissions. The job reads the agent's input and the arguments the model supplied. A tool whose job is an agent is how an agent has sub-agents: the model is shown what the sub-agent replied, and the sub-agent's conversation stays in its own record.
 
-A call or a send names a location read from the agent's tree, and needs `send:` for it (see [Permissions](permission.md)).
+A tool's `description:` is plain text, and Corbie refuses an expression in it, as in a definition's. A call or a send names a location read from the agent's tree, and needs `send:` for it (see [Permissions](permission.md)).
 
 ```yaml
 tools:
@@ -212,7 +212,7 @@ tools:
 
 | Field | What it is |
 |---|---|
-| `description:` | what the toolkit is for, which the model reads before it opens it |
+| `description:` | what the toolkit is for, in plain text with no expression, which the model reads before it opens it |
 | `instructions:` | the text `open` gives the model, written as `system:` is |
 | `ask:` | the ask for the toolkit's tools and for opening it |
 | `approve:` | `true` holds the toolkit's open for the ask |

@@ -175,6 +175,12 @@ func TestAgentToolkitToolNamesAreTheirOwn(t *testing.T) {
 	nameless := map[string]string{"add.js": "", "toolkits/net/net.yaml": "tools: {}\n", "toolkits/payments/payments.yaml": "description: Payments.\ncolour: blue\n"}
 	refused(helper("http://127.0.0.1:1", ""), nameless, "toolkits.net.description: a toolkit says what it is for")
 	refused(helper("http://127.0.0.1:1", ""), nameless, `toolkits.payments.colour: "colour" is not a field that belongs here`)
+	// A description is shown to the model as written, so it holds no
+	// expression.
+	filled := map[string]string{"add.js": "", "toolkits/net/net.yaml": "description: ${input.question}\ntools: {}\n",
+		"toolkits/payments/payments.yaml": strings.Replace(toolkits["toolkits/payments/payments.yaml"], "Pay someone", "Pay ${input.so}", 1), "toolkits/payments/pay.js": ""}
+	refused(helper("http://127.0.0.1:1", ""), filled, "toolkits.net.description: a description is plain text, with no expression")
+	refused(helper("http://127.0.0.1:1", ""), filled, "toolkits.payments.tools.pay.description: a description is plain text, with no expression")
 	// The stored definition holds each toolkit's tools written out, with their
 	// paths from the agent's directory.
 	d := draft(t, helper("http://127.0.0.1:1", ""), toolkits)

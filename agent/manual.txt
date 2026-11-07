@@ -92,7 +92,8 @@ another turn. A failed agent's output has `conversation` and `tokens`.
 Tools
 -----
 
-  description  what the tool is for: the model chooses a tool by this text
+  description  what the tool is for, in plain text with no expression: the
+               model chooses a tool by this text
   args         the shape of its arguments: { name: type }, or JSON Schema
   job          a script, a machine, a call or a send, as in
                `corbie manual definitions`; it reads `input`, the agent's
@@ -195,7 +196,8 @@ A toolkit is often kept in its own file, which `include:` reads, as
 
 A toolkit has these fields.
 
-  description   what the toolkit is for, which the model reads before it opens it
+  description   what the toolkit is for, in plain text with no expression, which
+                the model reads before it opens it
   instructions  what `open` returns, written as `system:` is; it may hold `${input...}`
   ask           the ask for opening the toolkit, for its tools' jobs and lists
                 and for the machines below them, before the agent's own; its

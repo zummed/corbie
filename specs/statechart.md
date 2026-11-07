@@ -49,6 +49,8 @@ A state's `on:` says where to go on each event, by the event's name.
 
 A transition names the state to go to, and may have a condition and may send events. Where several are listed, the first whose condition holds is taken. A transition that names no state stays where it is and only sends.
 
+A transition to the state that has the rule, or to a state holding it, leaves that state and enters it again: its jobs and timers start afresh, and it has a new ticket.
+
 An event is taken by at most one rule. One the current state has no rule for is offered to the state that holds it, and so on outward. A failure nobody takes fails the chart. Any other event nobody takes is dropped.
 
 One event may set off a chain of transitions. A chain that does not come to rest fails the chart.

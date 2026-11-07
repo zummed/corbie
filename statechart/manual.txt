@@ -110,6 +110,10 @@ first one whose `when:` is true is taken.
   send    one send or a list: { to, event, data }, where `to:` is parent,
           the state or named job whose job is a machine, or an address
 
+A transition to the state that has it, or to a state holding that one,
+leaves the state and enters it again: its jobs and timers start afresh,
+and it has a new ticket.
+
 An address names a run at a location, as in `corbie manual
 machines-together`.
 

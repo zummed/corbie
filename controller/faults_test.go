@@ -142,6 +142,62 @@ func Test_ctl_wake_set_again_survives_delete_of_used_one(t *testing.T) {
 	}
 }
 
+// A timer cleared and set again in the step that set it keeps its wake, and
+// is delivered.
+func Test_ctl_wake_set_again_in_one_step_survives(t *testing.T) {
+	// A keyed chart whose first state enters itself again on the event that
+	// starts the run: the start sets the timer, the event sets it again.
+	t.Run("on the starting event", func(t *testing.T) {
+		w := newWorld(t)
+		router := w.rooms(map[string]string{"/t/room": `
+			statechart: talk
+			lifetime: keyed
+			initial: open
+			states:
+			  open: { timers: { idle: 1h }, on: { said: open, idle: over } }
+			  over: { end: done }
+		`})
+		w.say(router, "say", 1, "one")
+		w.settle()
+		run := w.runsOf("talk")[0]
+		if n := len(w.wakes()); n != 1 {
+			t.Fatalf("the run waits on its timer with %d wakes in the store", n)
+		}
+		w.tick(time.Hour)
+		w.settle()
+		if head := w.head(run); head.Status != instance.Done {
+			t.Fatalf("the timer was never delivered: %+v", head)
+		}
+	})
+	// Two events taken in one step, each entering the state again.
+	t.Run("twice in one step", func(t *testing.T) {
+		w := newWorld(t)
+		run := w.submit(`
+			statechart: talk
+			initial: open
+			states:
+			  open: { timers: { idle: 1h }, on: { said: open, idle: over } }
+			  over: { end: done }
+		`, nil, nil)
+		w.settle()
+		w.tick(10 * time.Minute)
+		w.client.Send(ctx, w.to(run), "said", "a", 0)
+		w.client.Send(ctx, w.to(run), "said", "b", 0)
+		w.settle()
+		if n := len(w.steps(run)); n != 2 {
+			t.Fatalf("the two events were taken in %d steps, want one after the start", n-1)
+		}
+		if n := len(w.wakes()); n != 1 {
+			t.Fatalf("the run waits on its timer with %d wakes in the store", n)
+		}
+		w.tick(time.Hour)
+		w.settle()
+		if head := w.head(run); head.Status != instance.Done {
+			t.Fatalf("the timer was never delivered: %+v", head)
+		}
+	})
+}
+
 // What a step refuses is answered only once the step's entry is the one
 // that was written: the receipt follows the entry.
 func Test_ctl_loser_of_step_carries_out_winners_entry(t *testing.T) {

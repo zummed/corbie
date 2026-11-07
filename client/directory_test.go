@@ -169,9 +169,9 @@ func TestContextIsReadByARunAndItsChildren(t *testing.T) {
 			stages:
 			  first: { job: { script: ./one.js, input: { at: "${run.context}" } } }
 			  kid: { job: { machine: kid.yaml } }
-			output: { first: "${stages.first.output}", mine: "${run.context}", at: "${run.location}", kid: "${stages.kid.output}" }
+			output: { first: "${stages.first.output}", mine: "${run.context}", at: "${run.location}", tree: "${run.tree}", kid: "${stages.kid.output}" }
 		`,
-		"kid.yaml":  "flow: kid\nstages:\n  a: { job: { script: ./one.js } }\noutput: [\"${run.context}\", \"${run.location}\"]\n",
+		"kid.yaml":  "flow: kid\nstages:\n  a: { job: { script: ./one.js } }\noutput: [\"${run.context}\", \"${run.location}\", \"${run.tree}\"]\n",
 		"on/one.js": "return input && input.at",
 		"one.js":    "return 1",
 	})
@@ -182,7 +182,7 @@ func TestContextIsReadByARunAndItsChildren(t *testing.T) {
 	}
 	real, _ := filepath.EvalSymlinks(dir)
 	run := wait(t, l, id)
-	if want := map[string]any{"first": real, "mine": real, "at": "/c/on/top", "kid": []any{real, "/c/on/top"}}; !reflect.DeepEqual(run.Output, want) {
+	if want := map[string]any{"first": real, "mine": real, "at": "/c/on/top", "tree": "/c", "kid": []any{real, "/c/on/top", "/c"}}; !reflect.DeepEqual(run.Output, want) {
 		t.Fatalf("the output is %v: %s", run.Output, run.Error)
 	}
 }

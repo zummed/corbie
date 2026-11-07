@@ -102,14 +102,14 @@ func Test_ctl_send_job_too_large_to_write_fails(t *testing.T) {
 	}
 }
 
-// A flow's ask_about: [send:…] holds a send job to that location for its
+// A flow's approve: [send:…] holds a send job to that location for its
 // ask: the event is written once the ask approves the job, and never when it
 // approves nothing.
-func Test_ctl_ask_about_send_holds_a_send_job(t *testing.T) {
+func Test_ctl_approve_send_holds_a_send_job(t *testing.T) {
 	const tell = `
 		flow: tell
 		allow: ["send:**"]
-		ask_about: ["send:/t/room"]
+		approve: ["send:/t/room"]
 		ask: ./ask.js
 		stages:
 		  tell: { job: { send: { to: { at: room, key: "chat:1" }, event: said, data: { text: hello } } } }
@@ -135,7 +135,7 @@ func Test_ctl_ask_about_send_holds_a_send_job(t *testing.T) {
 		if approve {
 			approved = append(approved, "tell")
 		}
-		w.result(r1, run, instance.AskName, instance.Result{Status: instance.Done, Output: map[string]any{"approve": approved}})
+		w.result(r1, run, instance.AskName, instance.Result{Status: instance.Done, Output: map[string]any{"approved": approved}})
 		w.settle()
 		rooms := w.runsOf("talk")
 		if !approve {
@@ -356,7 +356,7 @@ func Test_ctl_ask_is_told_a_held_call_or_send(t *testing.T) {
 	const tell = `
 		flow: tell
 		allow: ["send:**"]
-		ask_about: ["send:**"]
+		approve: ["send:**"]
 		ask: ./ask.js
 		stages:
 		  c: { job: { call: { at: lookup }, input: { n: 5 } } }

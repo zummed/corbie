@@ -368,7 +368,7 @@ func TestParseMadeLeavesTheAskOpen(t *testing.T) {
 	js := map[string]string{"a.js": "", "held.yaml": "probe: held\nwork:\n  a: { script: ./a.js, approve: true }\n"}
 	for _, src := range []string{
 		"probe: p\nwork:\n  a: { script: ./a.js, approve: true }\n",
-		"probe: p\nask_about: [exec]\nwork:\n  a: { script: ./a.js }\n",
+		"probe: p\napprove: [exec]\nwork:\n  a: { script: ./a.js }\n",
 		"probe: p\nwork:\n  kid: { machine: ./held.yaml }\n",
 	} {
 		if got := problems(t, src, js); !strings.Contains(got, "give the definition an ask") {

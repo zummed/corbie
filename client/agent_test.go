@@ -878,7 +878,7 @@ func TestAgentAskIsShownAListedCallsEntryAndTool(t *testing.T) {
 		const listed = (a) => a.entry === "github" && a.tool === "create_issue" && a.args.title === "Broken" && a.does === "Open an issue" && a.said === "let me see"
 		const own = (a) => !("entry" in a) && !("tool" in a) && a.args.n === 1 && a.does === "Add one to a number"
 		const fits = input.jobs.filter((j) => j.name.startsWith("github_") ? listed(j.asked) : own(j.asked))
-		return { approve: fits.map((j) => j.name), note: "the ask was shown " + JSON.stringify(input.jobs.map((j) => j.asked)) }`
+		return { approved: fits.map((j) => j.name), note: "the ask was shown " + JSON.stringify(input.jobs.map((j) => j.asked)) }`
 	if r := runAgent(t, local(t, "all"), def, files); r.Status != "done" {
 		t.Fatalf("the agent ended %s: %s", r.Status, r.Error)
 	}

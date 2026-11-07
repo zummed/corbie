@@ -765,7 +765,7 @@ func (b *build) readDefinition(s *instance.Start) *stepOut {
 		// What a machine made while running holds is denied when it is held:
 		// its definition's ask is not one that applies.
 		if len(problems) == 0 && needsAsk && !st.Above.Made && st.Ask == nil && st.Above.Ask == nil {
-			problems = machine.Problems{{Text: "a job is marked for approval, or a permission is listed to be asked about, and no ask applies: neither this definition nor any machine above it has one"}}
+			problems = machine.Problems{{Text: "a job is marked for approval, or a permission is listed in approve:, and no ask applies: neither this definition nor any machine above it has one"}}
 		}
 		if read.Problems = problems; len(problems) > 0 {
 			return read
@@ -812,7 +812,7 @@ func (b *build) readDefinition(s *instance.Start) *stepOut {
 
 // run is what an expression reads of the instance.
 func (b *build) run() machine.Run {
-	return machine.Run{ID: b.inst, Location: b.st.Location, Context: b.st.Above.Context, Values: b.st.Above.Values}
+	return machine.Run{ID: b.inst, Location: b.st.Location, Context: b.st.Above.Context, Tree: b.st.Tree, Values: b.st.Above.Values}
 }
 
 // readAllow fills in the allow list written for the whole definition, for
@@ -1491,7 +1491,7 @@ func (b *build) first(s *instance.Start, start *arrival) (refused bool, err erro
 		st.Ask = def.Ask
 	}
 	st.Keep = machine.Duration(p.keepFor(def, &st.Above))
-	st.Above.AskAbout = append(slices.Clone(st.Above.AskAbout), def.AskAbout...)
+	st.Above.Approve = append(slices.Clone(st.Above.Approve), def.Approve...)
 	if len(read.Problems) == 0 && !gone {
 		if read, err = b.readStep(s, start); err != nil || read == nil {
 			return false, err
@@ -1588,7 +1588,7 @@ func (b *build) first(s *instance.Start, start *arrival) (refused bool, err erro
 
 // holds says whether a job waits for a yes before it starts: it is marked
 // for approval, or it declares a permission that its machine, or a machine
-// above it, lists as one to be asked about. Whether it is held depends on
+// above it, lists in approve:. Whether it is held depends on
 // what it declares alone, before anything is sent.
 func (b *build) holds(job *instance.Going) bool {
 	declared := job.Allow
@@ -1599,7 +1599,7 @@ func (b *build) holds(job *instance.Going) bool {
 	case job.IsSend() && strings.HasPrefix(job.Send.At.At, "/"):
 		declared = append(slices.Clone(declared), permission.Send+":"+job.Send.At.At)
 	}
-	return job.Approve || permission.Declares(declared, b.st.Above.AskAbout, b.st.Tree)
+	return job.Approve || permission.Declares(declared, b.st.Above.Approve, b.st.Tree)
 }
 
 // startAsk starts each ask once for the jobs this step held that go to
@@ -1743,11 +1743,11 @@ func (b *build) askEnded(ask *instance.Going, outcome machine.Event, a *arrival)
 	approved := map[string]bool{}
 	reason := "the ask did not approve the job"
 	result, _ := outcome.Data.(map[string]any)
-	switch list, isList := result["approve"].([]any); {
+	switch list, isList := result["approved"].([]any); {
 	case outcome.Name == machine.Failed:
 		reason = fmt.Sprintf("the ask failed, which approves nothing: %v", result["error"])
 	case !isList:
-		reason = "the ask's result has no approve list, so nothing is approved: its result should be { approve: [names of jobs], note }"
+		reason = "the ask's result has no approved list, so nothing is approved: its result should be { approved: [names of jobs], note }"
 	default:
 		for _, name := range list {
 			if text, ok := name.(string); ok {

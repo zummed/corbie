@@ -524,8 +524,8 @@ func (p *pass) child(inst string, step *instance.Step, ask *instance.Ask) *insta
 		layers = append(layers, ownLayer(job))
 	}
 	above := &instance.Above{Parent: inst, Job: ask.Name, Depth: st.Above.Depth + 1, MaxDepth: st.Above.MaxDepth,
-		Layers:   layers,
-		AskAbout: st.Above.AskAbout, Ask: st.Above.Ask, Context: st.Above.Context, Values: st.Above.Values,
+		Layers:  layers,
+		Approve: st.Above.Approve, Ask: st.Above.Ask, Context: st.Above.Context, Values: st.Above.Values,
 		IsAsk: job.Name == instance.AskName,
 		Made:  made || st.Above.Made && !job.Above, Keep: st.Keep}
 	// The nearest ask above the child is the one its job goes to: an ask
@@ -539,8 +539,8 @@ func (p *pass) child(inst string, step *instance.Step, ask *instance.Ask) *insta
 	}
 	if above.IsAsk {
 		// A machine run as an ask takes no ask from above it, and is not
-		// held to the lists of what must be asked about above it.
-		above.Ask, above.AskAbout = nil, nil
+		// held to the approve: lists above it.
+		above.Ask, above.Approve = nil, nil
 	}
 	mac := hmac.New(sha256.New, st.Seed)
 	mac.Write([]byte("child\x00" + ask.Name))

@@ -6,5 +6,5 @@
     { "machine": "room", "event": { "name": "hi" } },
     { "machine": "lookup", "status": "done" }
   ],
-  "note": "R-perm-69: ask_about: [send:…] holds a call job, and never a send action."
+  "note": "R-perm-69: approve: [send:…] holds a call job, and never a send action."
 }

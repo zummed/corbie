@@ -76,7 +76,7 @@ func parse(src []byte, file string, load func(path string) ([]byte, error), root
 	}
 	draft, needsAsk := p.parse(src, "")
 	if draft != nil && needsAsk && root {
-		p.Problem("", "a job is marked for approval, or a permission is listed to be asked about, and there is no ask for it to go to: give the definition an ask")
+		p.Problem("", "a job is marked for approval, or a permission is listed in approve:, and there is no ask for it to go to: give the definition an ask")
 	}
 	if len(p.problems) > 0 {
 		return nil, p.problems
@@ -156,7 +156,13 @@ func (p *Parser) fill(written map[string]any, first, place string) (draft *Draft
 	def.Jobs = limits.Int("jobs")
 	def.Allow = f.Strings("allow")
 	def.Deny = f.Strings("deny")
-	def.AskAbout = f.Strings("ask_about")
+	if _, isFlag := f.m["approve"].(bool); isFlag {
+		f.take("approve", KindList)
+		p.Problem("approve", "at the top of a definition, this is a list of the permissions a job may use only after a yes, such as [exec]; approve: true marks one job, and is written in the job")
+	} else {
+		def.Approve = f.Strings("approve")
+	}
+	def.Description = f.Text("description")
 	if ask, ok := f.Value("ask"); ok {
 		def.Ask = p.Job("ask", ask)
 		p.Ask("ask", def.Ask)
@@ -199,7 +205,7 @@ func (p *Parser) fill(written map[string]any, first, place string) (draft *Draft
 	for name, child := range p.draft.Children {
 		if place, isAsk := p.draft.asks[name]; isAsk {
 			if child.needsAsk {
-				p.Problem(place, "the machine run as the ask marks a job for approval, or lists a permission to be asked about, and has no ask of its own: a machine run as an ask takes no ask from above it")
+				p.Problem(place, "the machine run as the ask marks a job for approval, or lists permissions in approve:, and has no ask of its own: a machine run as an ask takes no ask from above it")
 			}
 			continue
 		}
@@ -375,7 +381,12 @@ func (p *Parser) Job(place string, written any) *JobSpec {
 	s.Restart = p.restart(f.at("restart"), f.Fields("restart"))
 	s.Memory = f.Size("memory")
 	s.Tags = f.Strings("tags")
-	s.Approve = f.Bool("approve")
+	if _, isList := f.m["approve"].([]any); isList {
+		f.take("approve", KindFlag)
+		p.Problem(f.at("approve"), "in a job, this is true or false; the permissions a job may use only after a yes are listed in approve: at the top of the definition")
+	} else {
+		s.Approve = f.Bool("approve")
+	}
 	f.Done()
 
 	if s.Script != "" && !HasExpr(s.Script) {
@@ -490,12 +501,12 @@ func (p *Parser) restart(place string, f *Fields) *Restart {
 		return nil
 	}
 	r := &Restart{Delay: DefaultDelay, Longest: DefaultLongest}
-	switch when := f.Text("when"); when {
+	switch after := f.Text("after"); after {
 	case "", RestartFailure:
 	case RestartAlways:
 		r.Always = true
 	default:
-		p.Problem(placeOf(place, "when"), "%q: when is %s or %s", when, RestartFailure, RestartAlways)
+		p.Problem(placeOf(place, "after"), "%q: after is %s or %s", after, RestartFailure, RestartAlways)
 	}
 	if limit, ok := f.Value("limit"); ok {
 		var err error

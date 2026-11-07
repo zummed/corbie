@@ -69,7 +69,7 @@ func Test_mach_a_type_is_described_by_what_its_reader_reads(t *testing.T) {
 			names = append(names, f.Name)
 		}
 	}
-	if got := strings.Join(names, " "); got != "probe input keep limits allow deny ask_about ask title meta lifetime update receive work value" {
+	if got := strings.Join(names, " "); got != "probe description input keep limits allow deny approve ask title meta lifetime update receive work value" {
 		t.Errorf("a probe's definition holds: %s", got)
 	}
 	if d.Shapes["job"] != JobShape || d.Shapes["address"] != AddressShape || d.Shapes["limits"] == nil || len(d.Shapes) != 8 {

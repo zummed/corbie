@@ -233,7 +233,7 @@ func Test_ctl_called_runs_held_jobs_go_to_its_own_ask(t *testing.T) {
 		  s: { job: { script: ./work.js, approve: true } }
 	`
 	asking := strings.Replace(caller, "flow: caller", "flow: caller\n\task: ./ask.js", 1)
-	scripts := map[string]string{"work.js": "return 1", "ask.js": "return { approve: [] }"}
+	scripts := map[string]string{"work.js": "return 1", "ask.js": "return { approved: [] }"}
 	for _, own := range []bool{true, false} {
 		w := newWorld(t)
 		w.newRunner()
@@ -268,14 +268,14 @@ func Test_ctl_called_runs_held_jobs_go_to_its_own_ask(t *testing.T) {
 	}
 }
 
-// A caller's ask_about: [send:…] holds a call job for its ask; a
+// A caller's approve: [send:…] holds a call job for its ask; a
 // statechart's send action with the same list is never held.
-func Test_ctl_ask_about_send_holds_a_call(t *testing.T) {
+func Test_ctl_approve_send_holds_a_call(t *testing.T) {
 	w := newWorld(t)
-	held := strings.Replace(caller, "flow: caller", "flow: caller\n\task_about: [\"send:**\"]\n\task: ./ask.js", 1)
+	held := strings.Replace(caller, "flow: caller", "flow: caller\n\tapprove: [\"send:**\"]\n\task: ./ask.js", 1)
 	all := map[string]string{"/t/caller": held, "/t/lookup": lookup, "/t/room": talk,
-		"/t/router": strings.Replace(router, "statechart: router", "statechart: router\n\task_about: [\"send:**\"]\n\task: ./ask.js", 1)}
-	if r := w.submitTree(w.client, w.tree("/t", "/srv/t", all, map[string]string{"ask.js": "return { approve: [] }"})); !r.Taken {
+		"/t/router": strings.Replace(router, "statechart: router", "statechart: router\n\tapprove: [\"send:**\"]\n\task: ./ask.js", 1)}
+	if r := w.submitTree(w.client, w.tree("/t", "/srv/t", all, map[string]string{"ask.js": "return { approved: [] }"})); !r.Taken {
 		t.Fatalf("the tree was refused: %s", r.Refused)
 	}
 	run := w.startAt(w.client, "/t/caller", client.Start{})

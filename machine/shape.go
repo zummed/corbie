@@ -164,11 +164,12 @@ func (s *Shape) field(name string) *Field {
 
 // The fields every type of machine takes, after the first line.
 var shared = []Field{
+	{Name: "description", Kind: KindText, Like: "Comments on a GitLab issue.", Does: "what the machine is for, in plain text that Corbie keeps with the definition and fills nothing into"},
 	{Name: "input", Kind: KindTypes, Like: "{ urls: list, depth: number? }", Does: "the shape of its input: each name with the type of its value, or a JSON Schema with type: object"},
 	{Name: "keep", Kind: KindDuration, Like: "7d", Does: "how long its instances are kept after they end (a week)"},
 	{Name: "allow", Kind: KindList, Like: "[net:example.com]", Does: "permissions for every script the definition runs"},
 	{Name: "deny", Kind: KindList, Like: "[exec]", Does: "what no script the definition runs may do"},
-	{Name: "ask_about", Kind: KindList, Like: "[exec]", Does: "permissions that must be asked about before a job starts"},
+	{Name: "approve", Kind: KindList, Like: "[exec]", Does: "permissions a job may use only after the definition's ask approves it"},
 	{Name: "ask", Kind: KindJob, Like: "{ machine: ./ask.yaml }", Does: "the job that approves when a job needs approval"},
 	{Name: "title", Kind: KindText, Like: `"${input.channel}: ${input.said}"`, Does: "what a run is called, filled in from its input when it starts; only the client of its tree sees it"},
 	{Name: "meta", Kind: KindValue, Like: `{ on: { at: "02:00 Europe/London" } }`, Does: "data of any kind, which Corbie keeps with the definition and never reads"},
@@ -209,7 +210,7 @@ var SendShape = &Shape{Name: "sent", What: "an event a job sends", Fields: []Fie
 
 // restartShape is the shape of a job's restart policy.
 var restartShape = &Shape{Name: "restart", What: "a job's restart policy", Fields: []Field{
-	{Name: "when", Kind: KindWord, Like: "always", Does: "failure, after an error or a timeout, which is the default, or always, after the job ends well too"},
+	{Name: "after", Kind: KindWord, Like: "always", Does: "failure, after an error or a timeout, which is the default, or always, after the job ends well too"},
 	{Name: "limit", Kind: KindValue, Like: "5 in 1h", Does: "how many restarts: a number, or a number in a length of time; no limit if not given"},
 	{Name: "delay", Kind: KindWord, Like: "1s to 5m", Does: "the wait before a restart: two lengths of time double from the first to the second, and one is the same each time; 1s to 5m if not given"},
 }}
@@ -225,7 +226,7 @@ var JobShape = &Shape{Name: "job", What: "a job", Fields: []Field{
 	{Name: "allow", Kind: KindList, Like: "[net:example.com]", Does: "what the job may do, with the definition's allow; for a machine, it narrows everything the child does"},
 	{Name: "deny", Kind: KindList, Like: "[exec]", Does: "what the job may not do"},
 	{Name: "timeout", Kind: KindDuration, Like: "5m", Does: "how long it may take, five minutes by default; for a machine, the child's timeout"},
-	{Name: "restart", Kind: KindFields, Like: "{ when: always, limit: 5 in 1h, delay: 1s to 5m }", Does: "what happens when the job ends", Of: restartShape},
+	{Name: "restart", Kind: KindFields, Like: "{ after: always, limit: 5 in 1h, delay: 1s to 5m }", Does: "what happens when the job ends", Of: restartShape},
 	{Name: "memory", Kind: KindSize, Like: "256MB", Does: "the most memory the job may use"},
 	{Name: "tags", Kind: KindList, Like: "[gpu]", Does: "chooses runners: one that has every tag"},
 	{Name: "approve", Kind: KindFlag, Like: "true", Does: "wait for the definition's ask to approve it"},
@@ -241,9 +242,9 @@ func definitionShape(t Type) *Shape {
 	}
 	limit := Field{Name: "limits", Kind: KindFields, Like: "{ timeout: 1h, jobs: 100 }", Does: "how much an instance may use",
 		Of: &Shape{Name: "limits", What: "a definition's limits", Fields: own}}
-	fields := append([]Field{first}, shared[:2]...)
+	fields := append([]Field{first}, shared[:3]...)
 	fields = append(fields, limit)
-	return &Shape{Name: "definition", What: "a definition", Fields: append(fields, shared[2:]...)}
+	return &Shape{Name: "definition", What: "a definition", Fields: append(fields, shared[3:]...)}
 }
 
 // A Description is everything a definition of one type may hold: each

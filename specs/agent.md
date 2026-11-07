@@ -61,7 +61,7 @@ tools:
 - The called run's record belongs to its own tree's client. Cancelling the call cancels the run.
 - A send ends `done` once the message is written. A send the receiver does not take is noted in the agent's record, and the model is not told.
 
-A tool that needs approval goes to the agent's ask like any job. A `call:` or `send:` job is held when `ask_about:` names its `send:` entry. The tool calls from one turn that need it go together, and the ask is shown the arguments, what the tool does and what the model said. A tool call that needs no approval runs at once, and the next turn waits for the ask as well as for the tools. A tool call that is not approved goes back to the model as denied, with the ask's note.
+A tool that needs approval goes to the agent's ask like any job. A `call:` or `send:` job is held when `approve:` names its `send:` entry. The tool calls from one turn that need it go together, and the ask is shown the arguments, what the tool does and what the model said. A tool call that needs no approval runs at once, and the next turn waits for the ask as well as for the tools. A tool call that is not approved goes back to the model as denied, with the ask's note.
 
 ## Shared definitions
 

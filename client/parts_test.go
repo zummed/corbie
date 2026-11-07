@@ -198,7 +198,7 @@ func TestAgentPartOpenWaitsForTheAsk(t *testing.T) {
 	files["parts/payments/part.yaml"] = strings.Replace(parts["parts/payments/part.yaml"], `input: { to: "${args.to}" } }`, `input: { to: "${args.to}" }, approve: true }`, 1)
 	files["ask.js"] = `
 		const fits = input.jobs.filter((j) => j.name === "open" ? j.asked.part === "net" && j.asked.does === "The firewall and the switch." : j.asked.part === "payments")
-		return { approve: fits.map((j) => j.name), note: "the ask was shown " + JSON.stringify(input.jobs.map((j) => j.asked)) }`
+		return { approved: fits.map((j) => j.name), note: "the ask was shown " + JSON.stringify(input.jobs.map((j) => j.asked)) }`
 	m := newModel(t, calls("c1", "open", `{"part": "net"}`), calls("c2", "open", `{"part": "payments"}`), calls("c3", "pay", `{"to": "me"}`), says("done"))
 	l := local(t, "all")
 	setSecret(t, l, "TEST_KEY", "sk-test-key")
@@ -216,7 +216,7 @@ func TestAgentPartOpenWaitsForTheAsk(t *testing.T) {
 		}
 	}
 	// An ask that approves nothing leaves the part closed.
-	files["ask.js"] = `return { approve: [], note: "not today" }`
+	files["ask.js"] = `return { approved: [], note: "not today" }`
 	m = newModel(t, calls("c1", "open", `{"part": "net"}`), says("done"))
 	setSecret(t, l, "TEST_KEY", "sk-test-key")
 	id, err = l.Run(ctx, draft(t, strings.Replace(def, "ADDR", m.URL, 1), files), client.Start{
@@ -260,9 +260,9 @@ func TestAgentPartHasItsOwnAsk(t *testing.T) {
 	files["parts/net/ask.js"] = `
 		env.get("HOME")
 		const ok = input.who === "q" && input.jobs.every((j) => j.asked.part === "net")
-		return { approve: ok ? input.jobs.map((j) => j.name) : [], note: "the part's ask" }`
+		return { approved: ok ? input.jobs.map((j) => j.name) : [], note: "the part's ask" }`
 	def = strings.Replace(def, `input: { n: "${args.n}" } }`, `input: { n: "${args.n}" }, approve: true }`, 1)
-	files["ask.js"] = `return { approve: input.jobs.filter((j) => j.name === "add").map((j) => j.name), note: "the agent's ask" }`
+	files["ask.js"] = `return { approved: input.jobs.filter((j) => j.name === "add").map((j) => j.name), note: "the agent's ask" }`
 	openAndAdd := llmstandin.Reply{Calls: []llmstandin.ToolCall{{ID: "c1", Name: "open", Args: `{"part": "net"}`}, {ID: "c2", Name: "add", Args: `{"n": 1}`}}}
 	showAndSneak := llmstandin.Reply{Calls: []llmstandin.ToolCall{{ID: "c3", Name: "show", Args: `{"command": "show route"}`}, {ID: "c4", Name: "sneak", Args: `{}`}}}
 	m := newModel(t, openAndAdd, showAndSneak, says("done"))
@@ -336,7 +336,7 @@ func netAsking(askInput string) map[string]string {
 	}
 	net := strings.Replace(parts["parts/net/part.yaml"], "tools:\n", "ask: { script: ./ask.js, input: "+askInput+" }\n\t\ttools:\n", 1)
 	files["parts/net/part.yaml"] = strings.Replace(net, `input: { command: "${args.command}" } }`, `input: { command: "${args.command}" }, approve: true }`, 1)
-	files["parts/net/ask.js"] = `return { approve: input.jobs.map((j) => j.name), note: "net's ask" }`
+	files["parts/net/ask.js"] = `return { approved: input.jobs.map((j) => j.name), note: "net's ask" }`
 	return files
 }
 
@@ -390,7 +390,7 @@ func Test_agent_part_ask_that_cannot_be_filled_denies(t *testing.T) {
 // part's ask covers it.
 func Test_agent_part_ask_is_nearest_above_its_tools_machines(t *testing.T) {
 	def := strings.Replace(helper("ADDR", "ask: ./yes.js"), "payments: { include: parts/payments/part.yaml }", "", 1)
-	files := map[string]string{"add.js": scripts["add.js"], "yes.js": `return { approve: input.jobs.map((j) => j.name) }`}
+	files := map[string]string{"add.js": scripts["add.js"], "yes.js": `return { approved: input.jobs.map((j) => j.name) }`}
 	files["parts/net/part.yaml"] = `
 		does: The firewall and the switch.
 		ask: { script: ./ask.js, input: { who: "${input.question}" }, allow: [env:HOME] }
@@ -401,11 +401,11 @@ func Test_agent_part_ask_is_nearest_above_its_tools_machines(t *testing.T) {
 	`
 	files["parts/net/ask.js"] = `
 		env.get("HOME")
-		return { approve: input.who === "q" ? input.jobs.map((j) => j.name) : [], note: "net's ask, for " + input.asking.machine }`
+		return { approved: input.who === "q" ? input.jobs.map((j) => j.name) : [], note: "net's ask, for " + input.asking.machine }`
 	files["parts/net/outer.yaml"] = "flow: outer\nstages:\n  in: { job: { machine: ./inner.yaml } }\noutput: ${stages.in.output}\n"
 	files["parts/net/inner.yaml"] = "flow: inner\nstages:\n  work: { job: { script: ./work.js, approve: true } }\noutput: ${stages.work.output}\n"
 	files["parts/net/work.js"] = `return "worked"`
-	files["parts/net/own.js"] = `return { approve: [], note: "inner's own ask" }`
+	files["parts/net/own.js"] = `return { approved: [], note: "inner's own ask" }`
 	l := local(t, "all")
 	for _, run := range []struct {
 		question, inner, want string
@@ -462,7 +462,7 @@ func Test_agent_part_ask_is_reached_from_a_made_machine_below_its_tool(t *testin
 		    does: Do deep work
 		    job: { machine: "${input.made}" }
 	`
-	files["parts/net/ask.js"] = `return { approve: [], note: "net's ask, for " + input.asking.machine }`
+	files["parts/net/ask.js"] = `return { approved: [], note: "net's ask, for " + input.asking.machine }`
 	l := local(t, "all")
 	r := wait(t, l, startWith(t, l, def, files, nil))
 	if r.Status != "done" {
@@ -490,7 +490,7 @@ tools:
 		  go: { job: { machine: "${stages.make.output}", allow: [ all ] } }
 	`
 	files := map[string]string{
-		"human.js": `return { approve: [], note: "the owner's ask, for " + input.asking.machine }`,
+		"human.js": `return { approved: [], note: "the owner's ask, for " + input.asking.machine }`,
 		"make.js": "return machines.define(`" + made + "`, " +
 			`{ files: { "./step.js": "return 7" } })`,
 	}
@@ -514,8 +514,8 @@ func Test_agent_part_list_goes_to_the_parts_ask(t *testing.T) {
 	}
 	net := strings.Replace(parts["parts/net/part.yaml"], "tools:\n", "ask: ./ask.js\n\t\ttools:\n", 1)
 	files["parts/net/part.yaml"] = strings.Replace(net, "list: { script: ./list.js }", "list: { script: ./list.js, approve: true }", 1)
-	files["parts/net/ask.js"] = `return { approve: input.jobs.filter((j) => j.name === "files" && j.asked.part === "net").map((j) => j.name) }`
-	files["no.js"] = `return { approve: [], note: "the agent's ask" }`
+	files["parts/net/ask.js"] = `return { approved: input.jobs.filter((j) => j.name === "files" && j.asked.part === "net").map((j) => j.name) }`
+	files["no.js"] = `return { approved: [], note: "the agent's ask" }`
 	for _, extra := range []string{"", "ask: ./no.js"} {
 		m := newModel(t, calls("c1", "open", `{"part": "net"}`), calls("c2", "files_read", `{}`), says("done"))
 		l := local(t, "all")

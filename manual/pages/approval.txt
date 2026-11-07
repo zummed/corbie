@@ -34,7 +34,7 @@ refund of 100 or less.
     // ask.js
     const small = input.jobs.filter(job => job.input.amount <= 100)
 
-    return { approve: small.map(job => job.name), note: "over 100" }
+    return { approved: small.map(job => job.name), note: "over 100" }
 
     // refund.js
     return "refunded " + input.amount
@@ -49,7 +49,7 @@ The ask
 -------
 
   input.jobs    the held jobs: [{ name, input, allow, script, machine, call or send }]
-  the result    { approve: [names of jobs], note }
+  the result    { approved: [names of jobs], note }
 
 An ask is any job.
 
@@ -67,7 +67,7 @@ denied.
 
 A machine with no `ask:` uses the ask of the machine above it. A run that a
 send or a call started has no machine above it, and uses only its own file's
-`ask:`. `ask_about: [send:…]` holds a call or a send job, and never a
+`ask:`. `approve: [send:…]` holds a call or a send job, and never a
 statechart's `send:` action. A job of an agent's set, and every machine below
 it, use the `ask:` of the set, or of the nearest set it is inside that has one.
 
@@ -79,6 +79,6 @@ above it that was not made while running. With none, they fail with status
 Reference
 ---------
 
-  corbie manual definitions    the ask in full, and `ask_about:`, which holds a job by its permissions
+  corbie manual definitions    the ask in full, and `approve:`, which holds a job by its permissions
   corbie manual statechart     a statechart that waits for a person's answer
   corbie manual agent          an agent's tools

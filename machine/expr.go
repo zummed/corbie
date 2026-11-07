@@ -267,12 +267,13 @@ const (
 )
 
 // A Run is what an expression reads of the run it is in: its ID, its
-// location, the context its client submitted from, and the values set at its
-// location or above, by name.
+// location, the context its client submitted from, the prefix of its tree,
+// and the values set at its location or above, by name.
 type Run struct {
 	ID       string
 	Location string
 	Context  string
+	Tree     string
 	Values   map[string]string
 }
 
@@ -376,7 +377,7 @@ func (e *Evaluator) give(name string, v any) (goja.Value, error) {
 // Eval gives the value of one expression in a scope.
 func (e *Evaluator) Eval(src string, scope Scope) (any, error) {
 	scope = maps.Clone(scope)
-	scope[RunName] = map[string]any{"id": e.of.ID, "location": e.of.Location, "context": e.of.Context}
+	scope[RunName] = map[string]any{"id": e.of.ID, "location": e.of.Location, "context": e.of.Context, "tree": e.of.Tree}
 	values := map[string]any{}
 	for name, value := range e.of.Values {
 		values[name] = value

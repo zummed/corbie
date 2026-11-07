@@ -79,4 +79,4 @@ stages:
 - A call fails if the receiver refuses it, if the location is not `transient`, or if the called run fails.
 - The called run is a root of its own tree's client and counts one level below the flow. It is cancelled when the calling job is cancelled.
 - Both need `send:` in every layer of the flow, and the receiver's `receive:` must accept the flow (see permission.md). A refused `send:` stops the job with the status `denied`.
-- Both are jobs, so `ask_about: [send:…]` holds them.
+- Both are jobs, so `approve: [send:…]` holds them.

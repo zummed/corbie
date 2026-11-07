@@ -476,7 +476,7 @@ func (r *Restart) Wait(doubled int, up time.Duration) (time.Duration, int) {
 	return wait, doubled + 1
 }
 
-// What a restart's when: says, and the delay of a policy that gives none.
+// What a restart's after: says, and the delay of a policy that gives none.
 const (
 	RestartFailure = "failure"
 	RestartAlways  = "always"

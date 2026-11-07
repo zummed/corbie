@@ -89,7 +89,7 @@ states:
 - A send to an address needs `send:` in every layer of the chart, and the receiver's `receive:` must accept the chart (see permission.md). A send the chart's own layers refuse fails the chart with the status `denied`.
 - Any other send that is not taken is noted as undelivered in the chart's record and fails nothing. machine.md lists the cases.
 - Only a chart takes a sent event.
-- A send action is never held by `ask_about:`.
+- A send action is never held by `approve:`.
 
 ## Waiting
 

@@ -165,9 +165,9 @@ type Above struct {
 	// Layers are the permissions that narrow it: the start's own list, and
 	// the job of each parent that led to it.
 	Layers []permission.Layer `json:"layers,omitzero"`
-	// AskAbout are the lists, from the machines above, of permissions that
-	// must be asked about.
-	AskAbout []string `json:"ask_about,omitzero"`
+	// Approve are the lists, from the machines above, of permissions a job
+	// may use only after a yes.
+	Approve []string `json:"approve,omitzero"`
 	// Ask is the nearest ask above, for a machine that has none of its own.
 	Ask *AskAbove `json:"ask,omitzero"`
 	// IsAsk says the instance is itself run as an ask.

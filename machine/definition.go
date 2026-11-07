@@ -29,9 +29,13 @@ type Definition struct {
 	Jobs    int            `json:"jobs,omitzero"`    // how many jobs an instance may start
 	Allow   []string       `json:"allow,omitzero"`
 	Deny    []string       `json:"deny,omitzero"`
-	// AskAbout lists the permissions that must be asked about.
-	AskAbout []string `json:"ask_about,omitzero"`
-	Ask      *JobSpec `json:"ask,omitzero"`
+	// Approve lists the permissions a job may use only after the ask
+	// approves it.
+	Approve []string `json:"approve,omitzero"`
+	Ask     *JobSpec `json:"ask,omitzero"`
+	// Description says what the machine is for: plain text, with nothing
+	// filled in.
+	Description string `json:"description,omitzero"`
 	// Meta is data Corbie keeps with the definition and never reads: no
 	// expression in it is filled in.
 	Meta any `json:"meta,omitzero"`
@@ -543,7 +547,7 @@ func (c *Checker) permissions(place string, allow, deny []string) {
 // ask in the definition or above it.
 func Check(def *Definition) (Problems, bool) {
 	c := check(def)
-	return c.problems, c.approves || len(def.AskAbout) > 0
+	return c.problems, c.approves || len(def.Approve) > 0
 }
 
 // Jobs gives every job of a definition with its place, in the order the
@@ -635,10 +639,13 @@ func check(def *Definition) *Checker {
 	}
 	c.location(def)
 	c.permissions("", def.Allow, def.Deny)
-	for i, entry := range def.AskAbout {
-		at := fmt.Sprintf("ask_about[%d]", i)
+	if HasExpr(def.Description) {
+		c.Problem("description", "a description is plain text, with no expression")
+	}
+	for i, entry := range def.Approve {
+		at := fmt.Sprintf("approve[%d]", i)
 		if HasExpr(entry) {
-			c.Problem(at, "%q: a permission to be asked about is written out in full, with no expression", entry)
+			c.Problem(at, "%q: a permission that needs a yes is written out in full, with no expression", entry)
 		} else if err := permission.CheckWritten(entry); err != nil {
 			c.Problem(at, "%v", err)
 		}

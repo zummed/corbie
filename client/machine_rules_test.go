@@ -103,7 +103,7 @@ func TestMadeDefinitionsApprovalsAreCheckedWhereItIsStarted(t *testing.T) {
 				"flow: made\nstages:\n  held: { job: { script: ./step.js, approve: true } }\noutput: ${stages.held.output}\n",
 				{ files: { "./step.js": "return 7" } })
 		`,
-		"ask.js": `return { approve: input.jobs.map(r => r.name) }`,
+		"ask.js": `return { approved: input.jobs.map(r => r.name) }`,
 	}
 	const maker = `
 		flow: maker
@@ -466,6 +466,92 @@ func TestMetaIsKeptAndNeverRead(t *testing.T) {
 	}
 }
 
+// A definition of any type, and a machine written in place, may give
+// description:, plain text kept with the stored definition as written. An
+// expression in it is refused.
+func Test_mach_description_is_kept_as_written(t *testing.T) {
+	const description = "description: Adds one to n, then tells nobody."
+	flow := `
+		flow: adder
+		` + description + `
+		stages:
+		  inner:
+		    job:
+		      machine:
+		        flow: inner
+		        description: The machine written in place.
+		        stages: { s: { job: { script: ./add.js, input: { n: 2 } } } }
+		        output: ${stages.s.output}
+		output: ${stages.inner.output}
+	`
+	d := draft(t, flow, scripts)
+	if d.Definition.Description != "Adds one to n, then tells nobody." {
+		t.Fatalf("the stored definition keeps the description as %q", d.Definition.Description)
+	}
+	for _, child := range d.Children {
+		if child.Definition.Description != "The machine written in place." {
+			t.Fatalf("the machine written in place keeps the description as %q", child.Definition.Description)
+		}
+	}
+	r := run(t, local(t, "all"), flow, scripts, nil)
+	check(t, r.Status, r.Output, "done", `{"n": 3}`)
+	for _, def := range []string{
+		"statechart: s\n" + description + "\ninitial: a\nstates: { a: { end: done } }\n",
+		"agent: a\n" + description + "\nmodel: { name: claude-sonnet-5-5, secret: KEY }\nprompt: hello\n",
+	} {
+		d, err := machineParse(def, nil)
+		if err != nil || d.Definition.Description != "Adds one to n, then tells nobody." {
+			t.Errorf("a definition with description: was refused or lost it: %v\n%s", err, def)
+		}
+	}
+	_, err := machineParse("flow: f\ndescription: Adds ${input.n}.\nstages:\n  a: { job: ./add.js }\n", scripts)
+	if err == nil || !strings.Contains(err.Error(), "description: a description is plain text, with no expression") {
+		t.Fatalf("a description with an expression was not refused at description: %v", err)
+	}
+}
+
+// approve: at the top of a definition is a list of permissions, and in a job
+// true or false. Each written in the other's place is refused, and the
+// refusal tells the two apart.
+func Test_mach_approve_is_a_list_on_a_definition_and_a_flag_on_a_job(t *testing.T) {
+	for def, want := range map[string]string{
+		"flow: f\nask: ./ask.js\napprove: true\nstages:\n  a: { job: ./add.js }\n":                              "approve: at the top of a definition, this is a list of the permissions a job may use only after a yes",
+		"flow: f\nask: ./ask.js\nstages:\n  a: { job: { script: ./add.js, approve: [exec] } }\n":                "stages.a.job.approve: in a job, this is true or false",
+		"flow: f\nask: ./ask.js\napprove: [exec]\nstages:\n  a: { job: { script: ./add.js, approve: true } }\n": "",
+	} {
+		_, err := machineParse(def, map[string]string{"add.js": scripts["add.js"], "ask.js": "return { approved: [] }"})
+		switch {
+		case want == "" && err != nil:
+			t.Errorf("%s was refused: %v", def, err)
+		case want != "" && (err == nil || !strings.Contains(err.Error(), want)):
+			t.Errorf("%s was not refused with %q: %v", def, want, err)
+		}
+	}
+}
+
+// Every field named when, in every shape of every type, is a condition: one
+// expression, written ${…}.
+func Test_mach_every_when_is_a_condition(t *testing.T) {
+	found := 0
+	for _, name := range machine.Types() {
+		d, _ := machine.Describe(name)
+		for _, shape := range d.Shapes {
+			for _, f := range shape.Fields {
+				if f.Name != "when" {
+					continue
+				}
+				found++
+				if _, ok := machine.OneExpr(f.Like); f.Kind != machine.KindWord || !ok || !strings.HasPrefix(f.Does, "a condition, one expression") {
+					t.Errorf("%s's %s has a when: that is not a condition: %+v", name, shape.Name, f)
+				}
+			}
+		}
+	}
+	if found == 0 {
+		t.Fatal("no shape has a when:")
+	}
+}
+
 // A definition of any type may give title:, filled in from the input and
 // the run when the run starts, as one line of at most 200 characters. Only
 // the client that started the run is shown it; a viewer, who reads the
@@ -722,41 +808,44 @@ func Test_mach_run_is_read_in_every_type(t *testing.T) {
 			t.Fatalf("%s: the run %s ended %s and read %v: %s", name, r.ID, r.Status, r.Output, r.Error)
 		}
 	}
-	// Each type reads the run's location where it reads its ID, and the
-	// location is the run's.
+	// Each type reads the run's location and its tree where it reads its ID,
+	// and they are the run's.
 	for name, def := range map[string]string{
 		"a flow's output": `
 			flow: f
 			stages:
 			  a: { job: { script: ./turn.js } }
-			output: "${run.location}"
+			output: "${run.location} ${run.tree}"
 		`,
 		"a statechart's final state": `
 			statechart: s
 			initial: b
 			states:
-			  b: { end: done, output: "${run.location}" }
+			  b: { end: done, output: "${run.location} ${run.tree}" }
 		`,
 		"an agent's prompt": `
 			agent: g
 			model: { name: scripted, service: anthropic }
 			turn: ./turn.js
-			prompt: "${run.location}"
+			prompt: "${run.location} ${run.tree}"
 		`,
 		"a timeout": `
 			flow: f
-			limits: { timeout: "${run.location ? '1m' : '1s'}" }
+			limits: { timeout: "${run.location && run.tree ? '1m' : '1s'}" }
 			stages:
-			  a: { job: { script: ./turn.js, timeout: "${run.location ? '1m' : '1s'}" } }
+			  a: { job: { script: ./turn.js, timeout: "${run.location && run.tree ? '1m' : '1s'}" } }
 		`,
 	} {
 		if _, err := machineParse(def, map[string]string{"turn.js": "return {}"}); err != nil {
-			t.Errorf("%s does not read run.location: %v", name, err)
+			t.Errorf("%s does not read run.location and run.tree: %v", name, err)
 		}
 	}
-	located := machine.NewEvaluator(time.Now(), []byte("seed"), machine.Run{ID: "r1", Location: "/home/devices/boiler"})
+	located := machine.NewEvaluator(time.Now(), []byte("seed"), machine.Run{ID: "r1", Location: "/home/devices/boiler", Tree: "/home"})
 	if got, err := located.Text("${run.location}", machine.Scope{"input": nil}, "output"); err != nil || got != "/home/devices/boiler" {
 		t.Errorf("run.location gives %v (%v)", got, err)
+	}
+	if got, err := located.Text("${run.tree}", machine.Scope{"input": nil}, "output"); err != nil || got != "/home" {
+		t.Errorf("run.tree gives %v (%v)", got, err)
 	}
 	_, err := machineParse(`
 		flow: f

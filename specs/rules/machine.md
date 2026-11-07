@@ -27,6 +27,9 @@ The detailed rules behind the [Machines overview](../machine.md). Area code: `ma
 **R-mach-139** A definition of any type may carry `meta:`, with any value; Corbie keeps it with the stored definition, never reads it, and fills in no expression in it.
 *Accept:* a flow, a statechart and an agent each carry `meta:` holding text that begins `${` and does not compile, and each is accepted. The flow's stored definition holds its `meta:` as written, a machine written in place keeps its own, and the flow runs to its end as it does without it.
 
+**R-mach-161** A definition of any type may give `description:`, plain text that says what the machine is for. Corbie keeps it with the stored definition, and refuses an expression in it.
+*Accept:* a flow, a statechart, an agent and a machine written in place each give `description:`, and each stored definition holds it as written. A description holding `${input.n}` is refused at `description`. *Test:* `Test_mach_description_is_kept_as_written`
+
 **R-mach-147** A definition of any type may give `title:`, text or text with expressions that read `input`, `values` and `run`. The controller fills it in when the run starts, from the filled input, as one line of at most 200 characters, each run of white space made one space and the rest cut, and keeps it in the run's record and never in its head. A title that cannot be filled in fails the run at its first step.
 *Accept:* a flow with `title: "${input.channel}: ${input.said}"` started with `{channel: "#testing", said: "give me\n\na release card"}` is shown to its client with the title `#testing: give me a release card`, a child written in place has its own title, and a run that a send starts has the title its own definition gives, from the send's data; a viewer is shown none, and no version of any head holds the title. A title of 301 characters is shown as its first 200. A title that reads `stages` is refused at `title`. Parity case 111: a title that reads a part of the input it is not given fails the run, naming `title`, and starts no job. *Test:* `TestTitleIsFilledInWhenTheRunStarts`, `TestWhatEveryRunKeepsTo`
 
@@ -73,8 +76,8 @@ The detailed rules behind the [Machines overview](../machine.md). Area code: `ma
 **R-mach-21** A value that is exactly one expression takes the expression's value, whatever its type; text with expressions inside it is text with the values filled in; everything else is literal.
 *Accept:* `count: "${input.n}"` with the input `{ n: 3 }` gives the number 3, and with `{ n: [1, 2] }` gives the list. `"Look into ${input.topic}."` with the topic `the disk` gives `Look into the disk.` `n: 3`, `title: hello` and a nested map reach a job's input exactly as written.
 
-**R-mach-24** Expressions are JavaScript, and an expression reads `input`, `values`, `run` and what its machine's type adds, and nothing else. `run` holds the run's `id`, its `location` and its `context`.
-*Accept:* `${input.urls.filter(u => u.startsWith("https")).length}` gives the number of matching items. A flow's expression that reads `states`, and an expression that names something outside the language itself such as `require` or `process`, are each refused when the definition is checked. `${run.id}` gives the run's ID in a flow's output, a statechart's final state, an agent's prompt and a limit's `timeout`, and `${run.location}` gives `/home/devices/boiler` for a run there. *Test:* `mach_run_is_read_in_every_type`
+**R-mach-24** Expressions are JavaScript, and an expression reads `input`, `values`, `run` and what its machine's type adds, and nothing else. `run` holds the run's `id`, its `location`, its `context` and its `tree`, the prefix of its tree.
+*Accept:* `${input.urls.filter(u => u.startsWith("https")).length}` gives the number of matching items. A flow's expression that reads `states`, and an expression that names something outside the language itself such as `require` or `process`, are each refused when the definition is checked. `${run.id}` gives the run's ID in a flow's output, a statechart's final state, an agent's prompt and a limit's `timeout`, and `${run.location}` gives `/home/devices/boiler` and `${run.tree}` gives `/home` for a run there. *Test:* `mach_run_is_read_in_every_type`
 
 **R-mach-27** An expression in a field that is a name is refused: a thing's name, a type, a permission's kind, a deny entry, a secret's name, a tag, a ticket's name. The path of a script or a machine is a name too, except that it may be exactly one expression that gives a stored definition or script.
 *Accept:* seven definitions, each with `${input.x}` in one of these fields, are each refused when checked, and each refusal names the field. `machine: "${input.definition}"`, given a stored definition, runs it as a child; `script: "./${input.name}.js"` is refused when checked.
@@ -110,8 +113,8 @@ The detailed rules behind the [Machines overview](../machine.md). Area code: `ma
 **R-mach-135** A `timeout:` with an expression is filled in when its job is asked for, and `limits: { timeout: }` when the run starts; a filled value that is not a length of time fails the machine.
 *Accept:* a flow whose stage `it` has a job with `timeout: "${input.t}"` is started with `{t: "2s"}`, and its script is stopped after 2s; started with `{t: "soon"}`, the run fails, and the error names `stages.it.job.timeout`. A flow with `limits: { timeout: "${input.t}" }` started with `{t: "1s"}` fails as out of time after 1s; started with `{t: "soon"}`, it fails, and the error names `limits.timeout`.
 
-**R-mach-146** A job's `restart:` says what happens when it ends: `when:` is `failure`, its default, or `always`; `limit:` is a number, or a number in a length of time, with no limit by default; `delay:` is one length of time, or two with `to` between them, `1s to 5m` by default. A policy that cannot be read is refused at its place. A job with no policy runs once.
-*Accept:* `{ limit: 5 in 1h, delay: 2s to 1m }` reads as written, and `{ limit: 0 }`, `{ when: never }` and `{ delay: 1m to 1s }` are each refused. *Test:* `Test_mach_a_restart_reads_as_written`, `Test_mach_a_restart_is_checked`
+**R-mach-146** A job's `restart:` says what happens when it ends: `after:` is `failure`, its default, or `always`; `limit:` is a number, or a number in a length of time, with no limit by default; `delay:` is one length of time, or two with `to` between them, `1s to 5m` by default. A policy that cannot be read is refused at its place. A job with no policy runs once.
+*Accept:* `{ limit: 5 in 1h, delay: 2s to 1m }` reads as written, and `{ limit: 0 }`, `{ after: never }` and `{ delay: 1m to 1s }` are each refused. *Test:* `Test_mach_a_restart_reads_as_written`, `Test_mach_a_restart_is_checked`
 
 **R-mach-36** A job may be written where it is used or kept in its own file; a script is a file named by its path, its job lists the files the script loads, and a client sends them along with the definition. A path in a definition reads from the context, or from the directory of the file it is written in when it starts `./`. A definition keeps every path from the context.
 *Accept:* a stage whose child flow is written in place, and one that names the same flow in a file, produce records of the same shape and the same output. A job names `./fetch.js` and lists `./lib.js`: both are in the run's record before the first step is taken, and the script loads `./lib.js` and runs. A flow names the child `./kids/kid.yaml`, whose stage names `./kid.js`: the child runs `kids/kid.js`. A machine in `deep/down/` that names `lib/s.js` reads the file at the top of the context, and one that names `../s.js`, or a path from the top of the disk, is refused. *Test:* `TestPathsReadFromTheContext`, `TestRequireFindsWhatAJobNames`
@@ -271,7 +274,7 @@ The detailed rules behind the [Machines overview](../machine.md). Area code: `ma
 
 ## Approval
 
-**R-mach-91** A job marked for approval does not start until its machine's ask has approved it; a job that declares a permission listed as needing to be asked about is held the same way (see Permissions, R-perm-42).
+**R-mach-91** A job marked for approval does not start until its machine's ask has approved it; a job that declares a permission its machine lists in `approve:` is held the same way (see Permissions, R-perm-42).
 *Accept:* parity case 63.
 
 **R-mach-95** What gives the yes is the machine's ask: a job of its own, a script or a machine, named at the top of the definition. That job is called `ask`, and nothing else in a definition may take the name.
@@ -288,11 +291,11 @@ The detailed rules behind the [Machines overview](../machine.md). Area code: `ma
 **R-mach-100** The ask is told which machine is asking and, for each job, what it is and what input it would get.
 *Accept:* parity case 70: each child is named as the machine asking. Parity case 63: the ask is given the job and its input.
 
-**R-mach-102** The ask's result names the jobs it approves and may add a note. Approved jobs start; a job not approved never starts, and its machine sees it as a failed job with the status denied and the note.
+**R-mach-102** The ask's result, `{ approved: [names of jobs], note }`, names the jobs it approves and may add a note. Approved jobs start; a job not approved never starts, and its machine sees it as a failed job with the status denied and the note.
 *Accept:* parity case 66: the two approved items run, the other two appear with an error, and nothing was ever sent to a runner for them. Parity case 65: the note is in the error.
 
-**R-mach-106** An ask that cannot be filled in, that fails, or whose result does not list the jobs it approves, approves nothing.
-*Accept:* parity case 76: the first child's ask fails, the second's result lists no jobs, and neither held job starts. An agent's part whose ask's input reads a field its input does not have: the held call is denied with an error naming `open.net.ask.input`, and the agent carries on.
+**R-mach-106** An ask that cannot be filled in, that fails, or whose result has no `approved:` list, approves nothing.
+*Accept:* parity case 76: the first child's ask fails, the second's result has no `approved:` list, and neither held job starts. An agent's part whose ask's input reads a field its input does not have: the held call is denied with an error naming `open.net.ask.input`, and the agent carries on.
 
 **R-mach-109** An approval has no time limit of its own; the ask's timeout is how long it may take.
 *Accept:* an ask that is a chart with a timeout of one second waits on a ticket nobody answers; it fails as out of time and the held job is denied. The same ask with no timeout holds the job for as long as the test waits.
@@ -336,7 +339,7 @@ Uses:
 - **Controller.** Takes every step and carries out what it asks for. It gives a machine its definition, its state and its events, and takes back the new state and the requests. It makes attempts and gives the machine only the final outcome (R-ctl-53 to R-ctl-58), keeps timers and ends a machine at its timeout (R-ctl-69 to R-ctl-71), and carries out what this area states about children, tickets, limits and approval.
 - **Instances.** A step is written as a step entry in the instance's record; the head says what the instance waits for; a client's message is answered by a receipt.
 - **Runner.** A job that is a script is sent to a runner; what the script emits comes back as events, and its result as `done` or `failed`.
-- **Permissions.** A job names the permissions it may use, and a definition names those to be asked about; which jobs that holds is R-perm-42 to R-perm-47; a refusal comes back as a denial with its three parts, and passes up unchanged (R-perm-37 to R-perm-41).
+- **Permissions.** A job names the permissions it may use, and a definition's `approve:` names those that need a yes; which jobs that holds is R-perm-42 to R-perm-47; a refusal comes back as a denial with its three parts, and passes up unchanged (R-perm-37 to R-perm-41).
 - **Secrets.** A definition names the secrets a job uses; a machine holds only the names.
 - **Blobs.** A value may hold a reference to a blob; a value handed up from a child is copied into the parent's record before the parent sees it.
 - **Plugins.** A script defines a machine at run time through the `machines` plugin; a machine type is added as an extension.

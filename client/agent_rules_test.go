@@ -30,7 +30,7 @@ func Test_agent_next_turn_waits_for_open_approval(t *testing.T) {
 		      asking:
 		        ticket: verdict
 		        on: { verdict: decided }
-		      decided: { end: done, output: { approve: "${input.jobs.map(r => r.name)}" } }
+		      decided: { end: done, output: { approved: "${input.jobs.map(r => r.name)}" } }
 		tools:
 		  add:
 		    does: Add one to a number

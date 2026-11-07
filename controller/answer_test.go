@@ -119,13 +119,13 @@ func lying(kind string, args []string) {
 		out.State.Keep = machine.Duration(1000 * time.Hour)
 		out.State.TimeoutAt = time.Time{}
 		out.State.Ask = nil
-		out.State.Above.AskAbout = nil
+		out.State.Above.Approve = nil
 		out.State.Above.Keep = machine.Duration(1000 * time.Hour)
 		out.Limit = "1000h"
 
 	case "unasked":
 		// A job that an ask above must hold, with the list that holds it gone.
-		out.State.Above.AskAbout = nil
+		out.State.Above.Approve = nil
 		job := &machine.Job{Name: "x", Script: "./step.js", Allow: []string{"net:a.example"},
 			Found: &machine.Found{In: "m", Blob: in.State.Definition}}
 		out.State.Jobs = map[string]*instance.Going{"x": {Job: *job, Asked: 1, Attempt: 1, Runner: "r1", Due: soon}}
@@ -504,7 +504,7 @@ const asking = `
 	  go: { job: { machine: "${stages.make.output}" } }
 `
 
-var asked = map[string]string{"make.js": "return 1", "ok.js": "return { approve: input.jobs.map(j => j.name) }"}
+var asked = map[string]string{"make.js": "return 1", "ok.js": "return { approved: input.jobs.map(j => j.name) }"}
 
 // With an ask above, a job marked as from above would run under that ask's
 // layers, and the narrowing of a made machine would be gone.
@@ -654,19 +654,19 @@ func Test_ctl_keep_of_a_made_machine_is_no_longer_than_its_parents(t *testing.T)
 const asksFirst = `
 	flow: maker
 	ask: ./ok.js
-	ask_about: [ network ]
+	approve: [ network ]
 	stages:
 	  make: { job: ./make.js }
 	  go: { job: { machine: "${stages.make.output}" } }
 `
 
-// What an ask above must be asked about stays held, whatever the answer
-// says of the list.
+// A job that declares what an approve: list above it lists stays held,
+// whatever the answer says of the list.
 func Test_ctl_answer_cannot_clear_what_approval_holds(t *testing.T) {
 	w := newWorld(t)
 	run, r1 := w.madeUnder(asksFirst, plain, asked, "unasked")
-	if st := w.latest(w.child(run)).State; !slices.Contains(st.Above.AskAbout, "network") {
-		t.Fatalf("the list above the machine is %v", st.Above.AskAbout)
+	if st := w.latest(w.child(run)).State; !slices.Contains(st.Above.Approve, "network") {
+		t.Fatalf("the list above the machine is %v", st.Above.Approve)
 	}
 	if job := w.latest(w.child(run)).State.Jobs["x"]; job == nil || !job.Held || job.Runner != "" {
 		t.Fatalf("the job is %+v", job)
@@ -697,11 +697,11 @@ func Test_ctl_answer_cannot_fill_an_owners_ask(t *testing.T) {
 }
 
 // An owner's machine that names who decides, and starts a machine made while
-// running that is allowed what must be asked about.
+// running that is allowed what its approve: list holds.
 const humanAsks = `
 	flow: maker
 	ask: ./human.js
-	ask_about: [ "fs.read:/x/**" ]
+	approve: [ "fs.read:/x/**" ]
 	stages:
 	  make: { job: ./make.js }
 	  go: { job: { machine: "${stages.make.output}", allow: [ "fs.read:/x/**" ] } }
@@ -720,7 +720,7 @@ func (w *world) madeUnderHuman(r1 *identity.Identity, made *machine.Draft) (run,
 	}
 	w.result(r1, run, "make", instance.Result{Status: instance.Done, Output: ref.Value()})
 	w.settle()
-	w.result(r1, run, instance.AskName, instance.Result{Status: instance.Done, Output: map[string]any{"approve": []any{"go"}}})
+	w.result(r1, run, instance.AskName, instance.Result{Status: instance.Done, Output: map[string]any{"approved": []any{"go"}}})
 	w.settle()
 	w.pass()
 	w.settle()
@@ -893,7 +893,7 @@ func Test_ctl_ask_that_is_a_machine_runs_for_a_made_machine(t *testing.T) {
 	w.settle()
 	child := w.child(run)
 	st := w.latest(w.child(child)).State
-	if !st.Above.IsAsk || st.Above.Ask != nil || st.Above.AskAbout != nil || st.Machine != "asks" {
+	if !st.Above.IsAsk || st.Above.Ask != nil || st.Above.Approve != nil || st.Machine != "asks" {
 		t.Fatalf("the machine run as the ask has %+v", st)
 	}
 	for _, msg := range w.inboxOf(r1) {

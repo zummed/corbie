@@ -151,7 +151,7 @@ What an expression reads
 
   input                   the statechart's input
   values                  the values set at the run's location or above
-  run                     the run's id, location and context
+  run                     the run's id, location, context and tree
   states.<name>.output    the state's last output
   tickets.<name>          a ticket of this state, or of a state it is inside
   event                   the event that caused the transition:

@@ -541,7 +541,7 @@ func Test_mach_every_when_is_a_condition(t *testing.T) {
 					continue
 				}
 				found++
-				if _, ok := machine.OneExpr(f.Like); f.Kind != machine.KindWord || !ok || !strings.HasPrefix(f.Does, "a condition, one expression") {
+				if _, ok := machine.OneExpr(f.Like); f.Kind != machine.KindWord || !ok || !strings.HasPrefix(f.Description, "a condition, one expression") {
 					t.Errorf("%s's %s has a when: that is not a condition: %+v", name, shape.Name, f)
 				}
 			}

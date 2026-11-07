@@ -291,7 +291,7 @@ func (agentType) Name() string { return "agent" }
 
 // Limits adds an agent's turns to the limits every type takes.
 func (agentType) Limits() []machine.Field {
-	return []machine.Field{{Name: "turns", Kind: machine.KindNumber, Like: "20", Does: "how many turns it has; twenty by default"}}
+	return []machine.Field{{Name: "turns", Kind: machine.KindNumber, Like: "20", Description: "how many turns it has; twenty by default"}}
 }
 
 // Shape is what an agent's definition holds of its own. What a model may
@@ -327,54 +327,54 @@ func (agentType) Shape() *machine.Shape {
 		return llm.Of(name)
 	}
 	model := &machine.Shape{Name: "model", What: "a model", Sorts: &machine.Sorts{By: "service", Fields: sorts, Which: which}, Fields: []machine.Field{
-		{Name: "name", Kind: machine.KindWord, Like: "claude-sonnet-5-5", Does: "the model's name, as its service knows it",
+		{Name: "name", Kind: machine.KindWord, Like: "claude-sonnet-5-5", Description: "the model's name, as its service knows it",
 			Open: true, By: "service", ValuesBy: names},
-		{Name: "secret", Kind: machine.KindWord, Like: "ANTHROPIC_KEY", Does: "the name of the secret that is the service's key"},
+		{Name: "secret", Kind: machine.KindWord, Like: "ANTHROPIC_KEY", Description: "the name of the secret that is the service's key"},
 		{Name: "service", Kind: machine.KindWord, Like: "anthropic", Values: chats(),
-			Does: "which service's way of talking is spoken; it follows from the name for claude-… and gpt-… models"},
+			Description: "which service's way of talking is spoken; it follows from the name for claude-… and gpt-… models"},
 		{Name: "address", Kind: machine.KindWord, Like: "https://models.example",
-			Does: "where the service lives, for a model that is not at its service's usual place: self-hosted, or offered by a cloud"},
-		{Name: "effort", Kind: machine.KindWord, Like: "high", Does: "how much effort the model is to take", By: "service", ValuesBy: efforts},
-		{Name: "reply_tokens", Kind: machine.KindNumber, Like: "4000", Does: "the most a reply may hold, in tokens"},
+			Description: "where the service lives, for a model that is not at its service's usual place: self-hosted, or offered by a cloud"},
+		{Name: "effort", Kind: machine.KindWord, Like: "high", Description: "how much effort the model is to take", By: "service", ValuesBy: efforts},
+		{Name: "reply_tokens", Kind: machine.KindNumber, Like: "4000", Description: "the most a reply may hold, in tokens"},
 		{Name: "own", Kind: machine.KindList, Like: "[WebSearch]", Open: true, By: "service", ValuesBy: tools,
-			Does: "for a service that is a program: the tools of its own it may use. Corbie does not run them, so each needs leave for all it could do: network to browse, disk to read or write files, all for a shell or a skill"},
+			Description: "for a service that is a program: the tools of its own it may use. Corbie does not run them, so each needs leave for all it could do: network to browse, disk to read or write files, all for a shell or a skill"},
 	}}
 	when := machine.Field{Name: "when", Kind: machine.KindWord, Like: "${input.asker.scopes.includes('orders:read')}",
-		Does: "a condition, one expression of the agent's input, checked when the run starts: it is offered only if it holds"}
+		Description: "a condition, one expression of the agent's input, checked when the run starts: it is offered only if it holds"}
 	tool := &machine.Shape{Name: "tool", What: "a tool", Fields: []machine.Field{
-		{Name: "description", Kind: machine.KindText, Like: "Give back every file on one shelf", Does: "what the tool is for, for the model to choose by"},
-		{Name: "args", Kind: machine.KindTypes, Like: "{ shelf: string }", Does: "the shape of its arguments: each name with the type of its value, or a JSON Schema with type: object"},
-		{Name: "job", Kind: machine.KindJob, Like: "{ script: ./shelf.js }", Does: "the job that is started when the model picks it; it reads input and args"},
+		{Name: "description", Kind: machine.KindText, Like: "Give back every file on one shelf", Description: "what the tool is for, for the model to choose by"},
+		{Name: "args", Kind: machine.KindTypes, Like: "{ shelf: string }", Description: "the shape of its arguments: each name with the type of its value, or a JSON Schema with type: object"},
+		{Name: "job", Kind: machine.KindJob, Like: "{ script: ./shelf.js }", Description: "the job that is started when the model picks it; it reads input and args"},
 		{Name: "list", Kind: machine.KindJob, Like: "{ script: ./github.js }",
-			Does: "a job that lists tools, in place of description and args; job runs each of them, and reads tool, the name the list gave"},
+			Description: "a job that lists tools, in place of description and args; job runs each of them, and reads tool, the name the list gave"},
 		{Name: "call", Kind: machine.KindWord, Like: "gitlab/issues/read",
-			Does: "a location in the same tree, whose machine the tool calls, in place of description, args and job: the description and the arguments are that machine's"},
+			Description: "a location in the same tree, whose machine the tool calls, in place of description, args and job: the description and the arguments are that machine's"},
 		{Name: "input", Kind: machine.KindValue, Like: "{ project: group/orders }",
-			Does: "of a tool with call: the names of the machine's input the tool fixes, which the model is not given; it reads the agent's input"},
-		{Name: "approve", Kind: machine.KindFlag, Like: "true", Does: "of a tool with call: the call waits for the ask to approve it"},
+			Description: "of a tool with call: the names of the machine's input the tool fixes, which the model is not given; it reads the agent's input"},
+		{Name: "approve", Kind: machine.KindFlag, Like: "true", Description: "of a tool with call: the call waits for the ask to approve it"},
 		when,
 	}}
 	toolkit := &machine.Shape{Name: "toolkit", What: "a toolkit", Fields: []machine.Field{
-		{Name: "description", Kind: machine.KindText, Like: "The firewall and the switch", Does: "what the toolkit is for, which the model reads before it opens it"},
+		{Name: "description", Kind: machine.KindText, Like: "The firewall and the switch", Description: "what the toolkit is for, which the model reads before it opens it"},
 		{Name: "instructions", Kind: machine.KindText, Like: "{ include: ./net.md }",
-			Does: "the text the model is given when it opens the toolkit; it reads the agent's input"},
+			Description: "the text the model is given when it opens the toolkit; it reads the agent's input"},
 		{Name: "ask", Kind: machine.KindJob, Like: "{ machine: ./approval.yaml }",
-			Does: "the ask for the jobs of the toolkit's tools and for opening it, before the agent's own; it reads the agent's input"},
-		{Name: "approve", Kind: machine.KindFlag, Like: "true", Does: "opening the toolkit waits for the ask to approve it"},
+			Description: "the ask for the jobs of the toolkit's tools and for opening it, before the agent's own; it reads the agent's input"},
+		{Name: "approve", Kind: machine.KindFlag, Like: "true", Description: "opening the toolkit waits for the ask to approve it"},
 		when,
-		{Name: "tools", Kind: machine.KindNamed, Of: tool, Does: "the toolkit's tools, each a named job"},
-		{Name: "meta", Kind: machine.KindValue, Like: "{ people: [alice] }", Does: "data of any kind, which Corbie keeps and never reads"},
+		{Name: "tools", Kind: machine.KindNamed, Of: tool, Description: "the toolkit's tools, each a named job"},
+		{Name: "meta", Kind: machine.KindValue, Like: "{ people: [alice] }", Description: "data of any kind, which Corbie keeps and never reads"},
 	}}
 	return &machine.Shape{Name: "agent", What: "an agent", Fields: []machine.Field{
-		{Name: "model", Kind: machine.KindFields, Of: model, Like: "{ name: claude-sonnet-5-5, secret: ANTHROPIC_KEY }", Does: "the model its turns are sent to"},
-		{Name: "system", Kind: machine.KindText, Like: "You answer questions about a library of files.", Does: "the system text"},
-		{Name: "prompt", Kind: machine.KindValue, Like: "${input.question}", Does: "what the agent is asked; an expression of its input"},
-		{Name: "tools", Kind: machine.KindNamed, Of: tool, Does: "the tools the model may pick, each a named job"},
-		{Name: "toolkits", Kind: machine.KindNamed, Of: toolkit, Like: "{ orders: { include: toolkits/orders.yaml } }", Does: "groups of tools the model is shown once it opens them"},
-		{Name: "reply", Kind: machine.KindTypes, Like: "{ outcome: string }", Does: "the shape of its reply where it is data: each name with the type of its value, or a JSON Schema with type: object"},
+		{Name: "model", Kind: machine.KindFields, Of: model, Like: "{ name: claude-sonnet-5-5, secret: ANTHROPIC_KEY }", Description: "the model its turns are sent to"},
+		{Name: "system", Kind: machine.KindText, Like: "You answer questions about a library of files.", Description: "the system text"},
+		{Name: "prompt", Kind: machine.KindValue, Like: "${input.question}", Description: "what the agent is asked; an expression of its input"},
+		{Name: "tools", Kind: machine.KindNamed, Of: tool, Description: "the tools the model may pick, each a named job"},
+		{Name: "toolkits", Kind: machine.KindNamed, Of: toolkit, Like: "{ orders: { include: toolkits/orders.yaml } }", Description: "groups of tools the model is shown once it opens them"},
+		{Name: "reply", Kind: machine.KindTypes, Like: "{ outcome: string }", Description: "the shape of its reply where it is data: each name with the type of its value, or a JSON Schema with type: object"},
 		{Name: "conversation", Kind: machine.KindValue, Like: "${input.conversation}",
-			Does: "a conversation to carry on from: the conversation of an earlier agent's result, given whole"},
-		{Name: "turn", Kind: machine.KindJob, Like: "./turn.js", Does: "a script of its own to make each turn"},
+			Description: "a conversation to carry on from: the conversation of an earlier agent's result, given whole"},
+		{Name: "turn", Kind: machine.KindJob, Like: "./turn.js", Description: "a script of its own to make each turn"},
 	}}
 }
 

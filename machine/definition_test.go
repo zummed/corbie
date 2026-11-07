@@ -27,8 +27,8 @@ func (probe) Name() string { return "probe" }
 
 func (probe) Shape() *Shape {
 	return &Shape{Name: "probe", What: "a probe", Fields: []Field{
-		{Name: "work", Kind: KindNamed, Of: JobShape, Does: "its jobs, by name"},
-		{Name: "value", Kind: KindValue, Does: "a value of any kind"},
+		{Name: "work", Kind: KindNamed, Of: JobShape, Description: "its jobs, by name"},
+		{Name: "value", Kind: KindValue, Description: "a value of any kind"},
 	}}
 }
 

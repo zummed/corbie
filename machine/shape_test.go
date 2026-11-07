@@ -16,8 +16,8 @@ func (astray) Name() string { return "astray" }
 
 func (astray) Shape() *Shape {
 	return &Shape{Name: "astray", What: "a machine gone astray", Fields: []Field{
-		{Name: "count", Kind: KindNumber, Does: "a number, which the reader reads as text"},
-		{Name: "unread", Kind: KindWord, Does: "a field the reader never asks for"},
+		{Name: "count", Kind: KindNumber, Description: "a number, which the reader reads as text"},
+		{Name: "unread", Kind: KindWord, Description: "a field the reader never asks for"},
 	}}
 }
 
@@ -79,7 +79,7 @@ func Test_mach_a_type_is_described_by_what_its_reader_reads(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{`{"name":"work","kind":"named","does":"its jobs, by name","of":"job"}`, `{"name":"ask","kind":"job",`, `"like":"256MB"`} {
+	for _, want := range []string{`{"name":"work","kind":"named","description":"its jobs, by name","of":"job"}`, `{"name":"ask","kind":"job",`, `"like":"256MB"`} {
 		if !strings.Contains(string(sent), want) {
 			t.Errorf("a client is not given %s in\n%s", want, sent)
 		}

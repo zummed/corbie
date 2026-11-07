@@ -98,42 +98,42 @@ func (chartType) Receives() {}
 // its shape holds itself.
 var (
 	sendShape = &machine.Shape{Name: "send", What: "a send", Fields: []machine.Field{
-		{Name: "to", Kind: machine.KindValue, Of: machine.AddressShape, Like: "parent", Does: "who it is sent to: parent, a state or a named job of the chart, an address, or one expression that gives one, such as ${event.from}"},
-		{Name: "event", Kind: machine.KindWord, Like: "review_wanted", Does: "the event's name"},
-		{Name: "data", Kind: machine.KindValue, Like: `{ ticket: "${tickets.verdict}" }`, Does: "what the event carries"},
+		{Name: "to", Kind: machine.KindValue, Of: machine.AddressShape, Like: "parent", Description: "who it is sent to: parent, a state or a named job of the chart, an address, or one expression that gives one, such as ${event.from}"},
+		{Name: "event", Kind: machine.KindWord, Like: "review_wanted", Description: "the event's name"},
+		{Name: "data", Kind: machine.KindValue, Like: `{ ticket: "${tickets.verdict}" }`, Description: "what the event carries"},
 	}}
 	sends = machine.Field{Name: "send", Kind: machine.KindValue, Of: sendShape, Many: true, Like: "{ to: parent, event: review_wanted }",
-		Does: "an event to send: one, or a list"}
+		Description: "an event to send: one, or a list"}
 	actionShape     = &machine.Shape{Name: "action", What: "what a state does on entering or leaving", Fields: []machine.Field{sends}}
 	transitionShape = &machine.Shape{Name: "transition", What: "a transition", Fields: []machine.Field{
-		{Name: "go", Kind: machine.KindWord, Like: "approved", Does: "the state to go to; with none, it stays and only sends"},
-		{Name: "when", Kind: machine.KindWord, Like: "${event.data.ok}", Does: "a condition, one expression: the transition is taken only if it holds"},
+		{Name: "go", Kind: machine.KindWord, Like: "approved", Description: "the state to go to; with none, it stays and only sends"},
+		{Name: "when", Kind: machine.KindWord, Like: "${event.data.ok}", Description: "a condition, one expression: the transition is taken only if it holds"},
 		sends,
 	}}
 	stateShape = &machine.Shape{Name: "state", What: "a state"}
 	shape      = &machine.Shape{Name: "statechart", What: "a statechart", Fields: []machine.Field{
-		{Name: "initial", Kind: machine.KindWord, Like: "drafting", Does: "the state it starts in"},
-		{Name: "states", Kind: machine.KindNamed, Of: stateShape, Does: "its states"},
+		{Name: "initial", Kind: machine.KindWord, Like: "drafting", Description: "the state it starts in"},
+		{Name: "states", Kind: machine.KindNamed, Of: stateShape, Description: "its states"},
 	}}
 )
 
 func init() {
 	stateShape.Fields = []machine.Field{
-		{Name: "initial", Kind: machine.KindWord, Like: "drafting", Does: "of the states it holds, the one it starts in"},
-		{Name: "states", Kind: machine.KindNamed, Of: stateShape, Does: "states of its own"},
-		{Name: "job", Kind: machine.KindJob, Like: "{ script: ./draft.js }", Does: "a script or a machine, started on entry and cancelled on leaving"},
-		{Name: "jobs", Kind: machine.KindNamed, Of: machine.JobShape, Does: "several named jobs; the state is done when all are, and its output is each one's by name"},
-		{Name: "defer", Kind: machine.KindList, Like: "[said]", Does: "events kept while the state is active and no rule takes them, and offered again once no active state defers them"},
-		{Name: "ticket", Kind: machine.KindWord, Like: "verdict", Does: "the name of a ticket the state issues while it is active, read as ${tickets.name}; its answer is an event of that name"},
+		{Name: "initial", Kind: machine.KindWord, Like: "drafting", Description: "of the states it holds, the one it starts in"},
+		{Name: "states", Kind: machine.KindNamed, Of: stateShape, Description: "states of its own"},
+		{Name: "job", Kind: machine.KindJob, Like: "{ script: ./draft.js }", Description: "a script or a machine, started on entry and cancelled on leaving"},
+		{Name: "jobs", Kind: machine.KindNamed, Of: machine.JobShape, Description: "several named jobs; the state is done when all are, and its output is each one's by name"},
+		{Name: "defer", Kind: machine.KindList, Like: "[said]", Description: "events kept while the state is active and no rule takes them, and offered again once no active state defers them"},
+		{Name: "ticket", Kind: machine.KindWord, Like: "verdict", Description: "the name of a ticket the state issues while it is active, read as ${tickets.name}; its answer is an event of that name"},
 		{Name: "timers", Kind: machine.KindNamed, Like: "{ too_long: 48h }",
-			Does: "timers started on entry and cancelled on leaving, each a length of time (90s, 48h, 7d) or a time of day; each is an event of its name when it is due"},
-		{Name: "entry", Kind: machine.KindFields, Of: actionShape, Like: "{ send: { to: parent, event: review_wanted } }", Does: "what it does on being entered: it sends"},
-		{Name: "exit", Kind: machine.KindFields, Of: actionShape, Like: "{ send: { to: parent, event: left } }", Does: "what it does on being left: it sends"},
+			Description: "timers started on entry and cancelled on leaving, each a length of time (90s, 48h, 7d) or a time of day; each is an event of its name when it is due"},
+		{Name: "entry", Kind: machine.KindFields, Of: actionShape, Like: "{ send: { to: parent, event: review_wanted } }", Description: "what it does on being entered: it sends"},
+		{Name: "exit", Kind: machine.KindFields, Of: actionShape, Like: "{ send: { to: parent, event: left } }", Description: "what it does on being left: it sends"},
 		{Name: "on", Kind: machine.KindNamed, Of: transitionShape, Like: "{ done: waiting, failed: gave_up }",
-			Does: "where to go on each event, by its name: a state's name, one transition, or a list. done and failed are the state's jobs ending, and any other is a timer, a ticket's answer, an event from the parent or a child, or a value a job emitted"},
+			Description: "where to go on each event, by its name: a state's name, one transition, or a list. done and failed are the state's jobs ending, and any other is a timer, a ticket's answer, an event from the parent or a child, or a value a job emitted"},
 		{Name: "end", Kind: machine.KindWord, Like: "done", Values: []string{machine.Done, machine.Failed},
-			Does: "makes it a final state, which ends the state that holds it, or the chart, as done or failed"},
-		{Name: "output", Kind: machine.KindValue, Like: "${states.drafting.output}", Does: "of a final state: the result"},
+			Description: "makes it a final state, which ends the state that holds it, or the chart, as done or failed"},
+		{Name: "output", Kind: machine.KindValue, Like: "${states.drafting.output}", Description: "of a final state: the result"},
 	}
 }
 

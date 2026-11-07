@@ -496,12 +496,14 @@ func TestWorkedExample(t *testing.T) {
 		gromitRouter, opsRouter := g.router("/acme/gromit/slack/gromit").ID, g.router("/acme/ops/slack/ops").ID
 		g.edit(".rook/slack/listen.yaml", "description: Hears one Slack workspace", "description: Hears a Slack workspace")
 		g.edit(".rook/slack/chat/post.js", "return { in: input.in, text: input.text }", "return { in: input.in, text: input.text, version: 2 }")
+		g.edit(".rook/slack/chat/post.yaml", "description: Posts text in a channel or a thread.", "description: Posts text in a Slack channel or thread.")
 		done := submitTree(t, g.l, g.dir, "/acme")
 		what := map[string]string{}
 		for _, r := range done.Locations {
 			what[r.Location] = r.What
 		}
 		if what["/acme/gromit/slack/gromit"] != "restarted" || what["/acme/ops/slack/ops"] != "restarted" ||
+			what["/acme/gromit/slack/chat/post"] != "recorded" || what["/acme/ops/slack/chat/post"] != "recorded" ||
 			!slices.Contains(done.Cancelled, gromitRouter) || !slices.Contains(done.Cancelled, opsRouter) || len(done.Cancelled) != 2 {
 			t.Errorf("the submit did %v and cancelled %v", what, done.Cancelled)
 		}
@@ -512,6 +514,13 @@ func TestWorkedExample(t *testing.T) {
 			}
 			if r := wait(t, g.l, id); r.Status != "done" || r.Output.(map[string]any)["version"] != 2.0 {
 				t.Errorf("%s ended %s with %v", at, r.Status, r.Output)
+			}
+			def, err := g.l.Definition(ctx, id)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if def.Description != "Posts text in a Slack channel or thread." {
+				t.Errorf("%s was started from the description %q", at, def.Description)
 			}
 		}
 	})

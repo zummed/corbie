@@ -691,14 +691,10 @@ func timeout(job *instance.Going) machine.Duration {
 
 // machine gives the machine its events. Each client's event is then
 // answered: the machine acted on it, or had no rule for it. Its receipt
-// stands before what the step asked for.
+// stands before what the step asked for, so it is asked for first and
+// filled in once the machine has acted.
 func (b *build) machine() error {
-	at := len(b.step.Asks)
-	ignored, stepped, err := b.consult()
-	if err != nil {
-		return err
-	}
-	var receipts []instance.Ask
+	sent := map[int]*instance.Receipt{}
 	for i, a := range b.sources {
 		client, message, ok := a.client()
 		if !ok {
@@ -707,14 +703,18 @@ func (b *build) machine() error {
 		receipt := &instance.Receipt{Taken: true}
 		if a.isSend() {
 			receipt.Run = b.inst
-			if stepped {
-				acted := !slices.Contains(ignored, i)
-				receipt.Acted = &acted
-			}
+			sent[i] = receipt
 		}
-		receipts = append(receipts, instance.Ask{Kind: instance.AskReceipt, Sender: client, Message: message, Receipt: receipt})
+		b.ask(instance.Ask{Kind: instance.AskReceipt, Sender: client, Message: message, Receipt: receipt})
 	}
-	b.step.Asks = slices.Insert(b.step.Asks, min(at, len(b.step.Asks)), receipts...)
+	ignored, stepped, err := b.consult()
+	if err != nil || !stepped {
+		return err
+	}
+	for i, receipt := range sent {
+		acted := !slices.Contains(ignored, i)
+		receipt.Acted = &acted
+	}
 	return nil
 }
 

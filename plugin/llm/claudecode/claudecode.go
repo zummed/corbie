@@ -140,13 +140,23 @@ func chat(job *plugin.Job, c *llm.Call) (*llm.Reply, error) {
 		stdin.Write(said)
 		stdin.Close()
 	}()
-	result, arrived, err := read(job, stdout)
+	var offered []any
+	for _, tool := range c.Tools {
+		offered = append(offered, field(tool, "name"))
+	}
+	result, arrived, direct, err := read(job, stdout, offered)
+	if direct != nil {
+		// The program would answer the calls with an error of its own.
+		cancel()
+	}
 	waited := cmd.Wait()
 	switch {
 	case ctx.Err() == context.DeadlineExceeded:
 		return nil, plugin.Errorf(plugin.TimedOut, "the model did not answer within %s", c.Limit)
 	case err != nil:
 		return nil, err
+	case direct != nil:
+		return direct, nil
 	case result == nil:
 		return nil, plugin.Errorf(plugin.Failed, "%s ended without an answer (%v): %s", Program, waited, tail(job.Mask(errs.Text())))
 	}
@@ -182,21 +192,23 @@ func chat(job *plugin.Job, c *llm.Call) (*llm.Reply, error) {
 	if len(out.Calls) == 0 && len(out.Answer) > 0 && string(out.Answer) != "null" {
 		out.Text = string(out.Answer)
 	}
-	reply := &llm.Reply{Text: out.Text, Stop: stop, Usage: map[string]any{
-		"input":  result.Usage.Input + result.Usage.CacheMade + result.Usage.CacheRead,
-		"output": result.Usage.Output,
-	}}
+	reply := &llm.Reply{Text: out.Text, Stop: stop, Usage: result.Usage.counted()}
 	for _, made := range out.Calls {
-		// The program gives its requests no names. Each is given one that
-		// no other request in any conversation has.
-		id := make([]byte, 8)
-		rand.Read(id)
-		if made.Input == nil {
-			made.Input = map[string]any{}
-		}
-		reply.Calls = append(reply.Calls, map[string]any{"id": "call_" + hex.EncodeToString(id), "name": made.Name, "args": made.Input})
+		reply.Calls = append(reply.Calls, request(made.Name, made.Input))
 	}
 	return reply, nil
+}
+
+// request is one request of the model's for a tool. The program gives its
+// requests no names, so each is given one that no other request in any
+// conversation has.
+func request(name string, input any) map[string]any {
+	id := make([]byte, 8)
+	rand.Read(id)
+	if input == nil {
+		input = map[string]any{}
+	}
+	return map[string]any{"id": "call_" + hex.EncodeToString(id), "name": name, "args": input}
 }
 
 // line is one line of what the program prints: a piece of its reply as it
@@ -212,6 +224,11 @@ type line struct {
 	Event struct {
 		Type  string `json:"type"`
 		Index int    `json:"index"`
+		// Usage is on a message's start, and its output again on its end.
+		Message struct {
+			Usage usage `json:"usage"`
+		} `json:"message"`
+		Usage usage `json:"usage"`
 		Delta struct {
 			Type string `json:"type"`
 			Text string `json:"text"`
@@ -227,12 +244,19 @@ type line struct {
 	Result     string         `json:"result"`
 	Errors     []string       `json:"errors"`
 	Structured jsontext.Value `json:"structured_output"`
-	Usage      struct {
-		Input     float64 `json:"input_tokens"`
-		Output    float64 `json:"output_tokens"`
-		CacheMade float64 `json:"cache_creation_input_tokens"`
-		CacheRead float64 `json:"cache_read_input_tokens"`
-	} `json:"usage"`
+	Usage      usage          `json:"usage"`
+}
+
+// usage is the tokens the program counts.
+type usage struct {
+	Input     float64 `json:"input_tokens"`
+	Output    float64 `json:"output_tokens"`
+	CacheMade float64 `json:"cache_creation_input_tokens"`
+	CacheRead float64 `json:"cache_read_input_tokens"`
+}
+
+func (u usage) counted() map[string]any {
+	return map[string]any{"input": u.Input + u.CacheMade + u.CacheRead, "output": u.Output}
 }
 
 // read follows what the program prints to its end and gives its result,
@@ -241,11 +265,19 @@ type line struct {
 // that the record shows what Corbie did not run. Why the model stopped is
 // read from the result, or from the model's last message where the result
 // does not say.
-func read(job *plugin.Job, from io.Reader) (*line, string, error) {
+//
+// A model may call a tool that Corbie offers as if it were the program's
+// own, which fails in the program. Such calls are the model's request: read
+// gives them at the end of the message they are in, and reads no further.
+func read(job *plugin.Job, from io.Reader, offered []any) (*line, string, *llm.Reply, error) {
 	var result *line
 	arrived, stopped := "", ""
 	answering := map[int]*strings.Builder{} // the blocks that are the answer, as they arrive
 	told := 0                               // how much of the answer's text has been emitted
+	direct := map[int]*strings.Builder{}    // the calls of offered tools in this message, by block
+	names := map[int]string{}
+	var spoken strings.Builder // the text the model wrote in this message
+	var used usage             // what the messages so far used
 	said := job.Telling("text")
 	defer said.End()
 	in := bufio.NewReaderSize(from, 64<<10)
@@ -259,12 +291,30 @@ func read(job *plugin.Job, from io.Reader) (*line, string, error) {
 			case l.Type == "assistant" && l.Message.StopReason != "":
 				stopped = l.Message.StopReason
 			case l.Type != "stream_event":
+			case ev.Type == "message_start":
+				direct, names = map[int]*strings.Builder{}, map[int]string{}
+				spoken.Reset()
+				u := ev.Message.Usage
+				used.Input, used.CacheMade, used.CacheRead = used.Input+u.Input, used.CacheMade+u.CacheMade, used.CacheRead+u.CacheRead
+			case ev.Type == "message_delta":
+				used.Output += ev.Usage.Output
+			case ev.Type == "message_stop" && len(direct) > 0:
+				if reply := made(direct, names); reply != nil {
+					reply.Text, reply.Usage = spoken.String(), used.counted()
+					return nil, "", reply, nil
+				}
 			case ev.Type == "content_block_start" && ev.Block.Type == "tool_use" && ev.Block.Name == structured:
 				answering[ev.Index] = &strings.Builder{}
+			case ev.Type == "content_block_start" && ev.Block.Type == "tool_use" && slices.Contains(offered, any(ev.Block.Name)):
+				direct[ev.Index], names[ev.Index] = &strings.Builder{}, ev.Block.Name
 			case ev.Type == "content_block_start" && ev.Block.Type == "tool_use":
 				if job.Channel != nil {
 					job.Channel.Emit("own", map[string]any{"tool": ev.Block.Name})
 				}
+			case ev.Type == "content_block_delta" && ev.Delta.Type == "text_delta":
+				spoken.WriteString(ev.Delta.Text)
+			case ev.Type == "content_block_delta" && ev.Delta.Type == "input_json_delta" && direct[ev.Index] != nil:
+				direct[ev.Index].WriteString(ev.Delta.JSON)
 			case ev.Type == "content_block_delta" && ev.Delta.Type == "input_json_delta" && answering[ev.Index] != nil:
 				answering[ev.Index].WriteString(ev.Delta.JSON)
 				if so := textSoFar(answering[ev.Index].String()); len(so) > told {
@@ -277,12 +327,32 @@ func read(job *plugin.Job, from io.Reader) (*line, string, error) {
 			if result != nil && result.StopReason == "" {
 				result.StopReason = stopped
 			}
-			return result, arrived, nil
+			return result, arrived, nil, nil
 		}
 		if err != nil {
-			return nil, "", plugin.Errorf(plugin.Failed, "what %s printed could not be read: %v", Program, err)
+			return nil, "", nil, plugin.Errorf(plugin.Failed, "what %s printed could not be read: %v", Program, err)
 		}
 	}
+}
+
+// made gives a reply of the calls of a message, in the order the model
+// wrote them, or none when one of them was cut off: the program then goes
+// on as it would.
+func made(direct map[int]*strings.Builder, names map[int]string) *llm.Reply {
+	var order []int
+	for at := range direct {
+		order = append(order, at)
+	}
+	slices.Sort(order)
+	reply := &llm.Reply{Stop: llm.StopEnd}
+	for _, at := range order {
+		var input any = map[string]any{}
+		if raw := strings.TrimSpace(direct[at].String()); raw != "" && json.Unmarshal([]byte(raw), &input) != nil {
+			return nil
+		}
+		reply.Calls = append(reply.Calls, request(names[at], input))
+	}
+	return reply
 }
 
 var textStarts = regexp.MustCompile(`"text"\s*:\s*"`)

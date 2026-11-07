@@ -68,6 +68,8 @@ model: { name: sonnet, service: claude-code, own: [WebSearch, WebFetch] }      n
 model: { name: sonnet, service: claude-code, own: [Skill] }                    needs all
 ```
 
+A model run as a program sometimes calls a tool Corbie offers as if it were one of the program's own, which fails in the program. Corbie takes such calls as the model's request: at the end of the model's message that holds them, it stops the program and runs the tools, as it runs the tools a model asks for in its answer.
+
 ## Keys
 
 A model service's key is an ordinary secret. When an agent's definition is submitted, the client writes into each turn's permissions exactly what the turn needs: the connection to the service, and the key bound to that connection. For a model run as a program, the turn is written the start of that program in place of a connection, with the key bound to the program or, where there is none, the variable that says where the runner's user is signed in; and for each of the program's own tools that is switched on, the group it needs. A turn gets nothing else from the definition's permissions.

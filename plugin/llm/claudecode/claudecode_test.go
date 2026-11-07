@@ -199,3 +199,49 @@ cat "$here/reply"
 		t.Fatalf("the program answers in %s", data)
 	}
 }
+
+// event is one stream event the program prints.
+func event(data string) string { return `{"type":"stream_event","event":` + data + `}` }
+
+func Test_model_program_direct_call_is_the_call(t *testing.T) {
+	// The model calls the offered tool look twice, as if it were the
+	// program's own, after a few words. The program would then give the
+	// model its own error and go on; what it printed after is not the reply.
+	message := []string{
+		event(`{"type":"message_start","message":{"usage":{"input_tokens":90,"cache_read_input_tokens":10,"output_tokens":1}}}`),
+		event(`{"type":"content_block_start","index":0,"content_block":{"type":"text"}}`),
+		event(`{"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Looking."}}`),
+		event(`{"type":"content_block_start","index":1,"content_block":{"type":"tool_use","name":"look"}}`),
+		event(`{"type":"content_block_delta","index":1,"delta":{"type":"input_json_delta","partial_json":"{\"at\":"}}`),
+		event(`{"type":"content_block_delta","index":1,"delta":{"type":"input_json_delta","partial_json":"\"door\"}"}}`),
+		event(`{"type":"content_block_start","index":2,"content_block":{"type":"tool_use","name":"look"}}`),
+		event(`{"type":"content_block_delta","index":2,"delta":{"type":"input_json_delta","partial_json":"{\"at\":\"window\"}"}}`),
+		event(`{"type":"message_delta","usage":{"output_tokens":20}}`),
+		event(`{"type":"message_stop"}`),
+	}
+	after := []string{starts, arriving(`{"text":"My tools are broken.","tool_calls":[]}`),
+		`{"type":"result","subtype":"success","is_error":false,"result":"","stop_reason":"end_turn","structured_output":{"text":"My tools are broken.","tool_calls":[]},"usage":{"input_tokens":300,"output_tokens":40}}`}
+	got := ask(t, append(message, after...)...)
+	calls, _ := got["calls"].([]any)
+	if got["stop"] != "tools" || got["text"] != "Looking." || len(calls) != 2 {
+		t.Fatalf("direct calls gave %v", got)
+	}
+	for i, at := range []string{"door", "window"} {
+		call := calls[i].(map[string]any)
+		if call["name"] != "look" || call["args"].(map[string]any)["at"] != at || !strings.HasPrefix(call["id"].(string), "call_") {
+			t.Errorf("call %d is %v", i, call)
+		}
+	}
+	if used, _ := json.Marshal(got["usage"]); string(used) != `{"input":100,"output":20}` {
+		t.Errorf("the usage is %s", used)
+	}
+
+	// A direct call cut off in the middle is not the model's request: the
+	// program goes on, and its answer is the reply.
+	cut := append(slices.Clone(message[:4]), event(`{"type":"content_block_delta","index":1,"delta":{"type":"input_json_delta","partial_json":"{\"at\":"}}`),
+		event(`{"type":"message_stop"}`))
+	got = ask(t, append(cut, after...)...)
+	if calls, _ := got["calls"].([]any); got["text"] != "My tools are broken." || len(calls) != 0 {
+		t.Errorf("a cut-off direct call gave %v", got)
+	}
+}

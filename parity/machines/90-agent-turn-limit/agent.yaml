@@ -6,6 +6,6 @@ conversation: ${input.conversation}
 limits: { turns: 2 }
 tools:
   echo:
-    does: Echo
+    description: Echo
     args: { n: number }
     job: { script: ./echo.js, input: { n: "${args.n}" } }

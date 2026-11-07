@@ -5,6 +5,6 @@ turn: ./turn-helper.js
 prompt: "Add one to ${input.n}."
 tools:
   add:
-    does: Add one
+    description: Add one
     args: { n: number }
     job: { script: ./add.js, input: { n: "${args.n}" } }

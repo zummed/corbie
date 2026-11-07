@@ -65,7 +65,7 @@ const programAgent = `
 	prompt: ${input.question}
 	tools:
 	  add:
-	    does: Add one to a number
+	    description: Add one to a number
 	    args: { n: number }
 	    job: { script: ./add.js, input: { n: "${args.n}" } }
 `

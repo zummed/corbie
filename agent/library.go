@@ -32,14 +32,15 @@ return { blob, items, preview }
 `
 )
 
-// The tool that opens a part: the step shows it the parts the model may
-// open, and from the next turn shows the part's tools.
+// The tool that opens a toolkit: the step shows it the toolkits the model
+// may open, and from the next turn shows the toolkit's tools. Its result is
+// the toolkit's instructions, which the step fills in and gives it.
 const (
 	openTool   = "open"
 	openScript = "corbie:open.js"
-	openSource = `return { opened: input.part }
+	openSource = `return input.instructions || "Opened " + input.toolkit + "."
 `
-	openDoes = "Open a part of your tools. Its tools are shown to you from your next turn. The parts you can open:"
+	openDescription = "Open a toolkit. Its instructions are the result, and its tools are shown to you from your next turn. The toolkits you can open:"
 )
 
 // large is how a blob tool gives back an answer too large to be a result:
@@ -54,22 +55,22 @@ function fits(answer) {
 // blobTools are the tools every agent has for working with blobs without
 // reading them whole. They are ordinary scripts.
 var blobTools = map[string]struct {
-	does   string
-	args   map[string]any
-	input  map[string]any
-	source string
+	description string
+	args        map[string]any
+	input       map[string]any
+	source      string
 }{
 	"blob_read": {
-		does:  "Read some of a blob's items: the lines of a text, the rows of a table, the entries of a list. Gives count items starting at from (50 from the start, if not said). The blob's handle says how many items it has. Reaching an item means reading up to it, so reading far into a large blob is slow.",
-		args:  map[string]any{"blob": "blob", "from": "number?", "count": "number?"},
-		input: map[string]any{"blob": "${args.blob}", "from": "${args.from}", "count": "${args.count}"},
+		description: "Read some of a blob's items: the lines of a text, the rows of a table, the entries of a list. Gives count items starting at from (50 from the start, if not said). The blob's handle says how many items it has. Reaching an item means reading up to it, so reading far into a large blob is slow.",
+		args:        map[string]any{"blob": "blob", "from": "number?", "count": "number?"},
+		input:       map[string]any{"blob": "${args.blob}", "from": "${args.from}", "count": "${args.count}"},
 		source: large + `const from = input.from || 0
 return fits({ from, items: Array.from(blobs.items(input.blob, { from, count: input.count || 50 })) })
 `},
 	"blob_search": {
-		does:  "Search a blob's items for a text, from the item at from (the start, if not said). Gives up to 50 matching items, each with its place, and where there may be more, the place to search from next.",
-		args:  map[string]any{"blob": "blob", "find": "string", "from": "number?"},
-		input: map[string]any{"blob": "${args.blob}", "find": "${args.find}", "from": "${args.from}"},
+		description: "Search a blob's items for a text, from the item at from (the start, if not said). Gives up to 50 matching items, each with its place, and where there may be more, the place to search from next.",
+		args:        map[string]any{"blob": "blob", "find": "string", "from": "number?"},
+		input:       map[string]any{"blob": "${args.blob}", "find": "${args.find}", "from": "${args.from}"},
 		source: large + `const found = []
 const want = input.find.toLowerCase()
 let at = input.from || 0, next = null
@@ -84,9 +85,9 @@ for (const item of blobs.items(input.blob, { from: at })) {
 return fits(next === null ? { found } : { found, next })
 `},
 	"blob_code": {
-		does:  "Run a few lines of JavaScript over a blob's items and get back only the answer. The code is the body of a function of items and returns the answer. items is walked with for...of and is not a list, so a blob of any size can be gone through, as in: let n = 0; for (const r of items) if (r.total > 100) n++; return n. An answer that is large comes back as a blob.",
-		args:  map[string]any{"blob": "blob", "code": "string"},
-		input: map[string]any{"blob": "${args.blob}", "code": "${args.code}"},
+		description: "Run a few lines of JavaScript over a blob's items and get back only the answer. The code is the body of a function of items and returns the answer. items is walked with for...of and is not a list, so a blob of any size can be gone through, as in: let n = 0; for (const r of items) if (r.total > 100) n++; return n. An answer that is large comes back as a blob.",
+		args:        map[string]any{"blob": "blob", "code": "string"},
+		input:       map[string]any{"blob": "${args.blob}", "code": "${args.code}"},
 		// The model's code is given the items and nothing else: not the
 		// blob's reference, and not the tool's input.
 		source: large + `const items = blobs.items(input.blob)
@@ -174,7 +175,7 @@ A turn's input has these fields.
 
   model    { name, service, address, key, effort, reply, own }; key is a secret's name
   system   the system prompt
-  tools    [{ name, does, args }]
+  tools    [{ name, description, args }]
   turns    the blobs that hold the conversation so far
   add      the parts that this turn adds to the conversation
   blobs    the blobs the model has been shown, by the names it knows them by

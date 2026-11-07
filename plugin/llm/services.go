@@ -146,7 +146,7 @@ var anthropic = &web{
 		}
 		var tools []any
 		for _, tool := range c.Tools {
-			tools = append(tools, map[string]any{"name": field(tool, "name"), "description": field(tool, "does"),
+			tools = append(tools, map[string]any{"name": field(tool, "name"), "description": field(tool, "description"),
 				"input_schema": schema(field(tool, "args"))})
 		}
 		if tools != nil {
@@ -306,7 +306,7 @@ var openaiChat = &web{
 			// Offered without the service's strict reading of the shapes of
 			// their arguments.
 			tools = append(tools, map[string]any{"type": "function", "function": map[string]any{
-				"name": field(tool, "name"), "description": field(tool, "does"), "parameters": schema(field(tool, "args"))}})
+				"name": field(tool, "name"), "description": field(tool, "description"), "parameters": schema(field(tool, "args"))}})
 		}
 		if tools != nil {
 			body["tools"] = tools
@@ -446,7 +446,7 @@ var openaiResponses = &web{
 		}
 		var tools []any
 		for _, tool := range c.Tools {
-			tools = append(tools, map[string]any{"type": "function", "name": field(tool, "name"), "description": field(tool, "does"),
+			tools = append(tools, map[string]any{"type": "function", "name": field(tool, "name"), "description": field(tool, "description"),
 				"parameters": schema(field(tool, "args")), "strict": false})
 		}
 		if tools != nil {
@@ -526,8 +526,8 @@ Options:
                   or https://api.openai.com
   key             a handle to the secret that holds the service's key
   system          the system prompt
-  tools           the tools the model may call: [{ name, does, args }], with
-                  args a JSON Schema with type: "object"
+  tools           the tools the model may call: [{ name, description, args }],
+                  with args a JSON Schema with type: "object"
   shape           a reply that is data, as a JSON Schema with type: "object";
                   text is then JSON. A field with format: "blob" and no
                   description is described as a blob's name

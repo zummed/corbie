@@ -53,7 +53,7 @@ func agentDef(address, extra string) string {
 		EXTRA
 		tools:
 		  add:
-		    does: Add one to a number
+		    description: Add one to a number
 		    args: { n: number }
 		    job: { script: ./add.js, input: { n: "${args.n}" } }
 	`, "ADDRESS", address), "EXTRA", extra)
@@ -117,7 +117,7 @@ func TestAgentLoop(t *testing.T) {
 	if len(m.Calls) != 2 || m.Calls[0].Key != "sk-test-key" {
 		t.Fatalf("the model was called %d times: %v", len(m.Calls), m.Calls)
 	}
-	// The model was shown the tool by its name, what it does and its
+	// The model was shown the tool by its name, its description and its
 	// arguments, and nothing of how it is run.
 	first := jsonOf(m.Calls[0])
 	if !strings.Contains(first, `"name":"add"`) || !strings.Contains(first, "Add one to a number") || strings.Contains(first, "add.js") ||
@@ -237,7 +237,7 @@ func TestShapeIsJSONSchema(t *testing.T) {
 	l := local(t, "all")
 	def := strings.Replace(agentDef(m.URL, ""), "tools:\n", `tools:
 		  file:
-		    does: File an issue
+		    description: File an issue
 		    args:
 		      type: object
 		      properties:
@@ -274,11 +274,11 @@ func TestShapeMarksABlobAtAnyDepth(t *testing.T) {
 	l := local(t, "all")
 	def := strings.Replace(agentDef(m.URL, ""), "tools:\n", `tools:
 		  make:
-		    does: Make a file
+		    description: Make a file
 		    args: { text: string }
 		    job: { script: ./make.js, input: { text: "${args.text}" } }
 		  bind:
-		    does: Bind pages into a book
+		    description: Bind pages into a book
 		    args:
 		      type: object
 		      properties:
@@ -326,7 +326,7 @@ func Test_agent_tool_cannot_take_an_agents_own_job_name(t *testing.T) {
 		"turn":      `the tool "turn" has the name of a job the agent itself makes`,
 		"blob_read": `the tool "blob_read" has the name of one of the tools every agent has for blobs`,
 		"ask":       `the name "ask" is taken by the definition's ask`,
-		"open":      `the tool "open" has the name of the tool every agent with parts has for opening them`,
+		"open":      `the tool "open" has the name of the tool every agent with toolkits has for opening them`,
 	} {
 		agentRefused(t, strings.Replace(agentDef("http://127.0.0.1:1", ""), "  add:\n", "  "+name+":\n", 1), want)
 	}
@@ -402,11 +402,11 @@ func Test_agent_name_becomes_reference_only_where_shape_asks(t *testing.T) {
 	l := local(t, "all")
 	def := strings.Replace(agentDef(m.URL, ""), "tools:\n", `tools:
 		  make:
-		    does: Make a file
+		    description: Make a file
 		    args: { text: string }
 		    job: { script: ./make.js, input: { text: "${args.text}" } }
 		  echo:
-		    does: Say it back
+		    description: Say it back
 		    args: { text: string }
 		    job: { script: ./echo.js, input: { text: "${args.text}" } }
 `, 1)
@@ -493,11 +493,11 @@ func TestHandleSaysItemsCostAndThePreviewOnce(t *testing.T) {
 	l := local(t, "all")
 	def := strings.Replace(agentDef(m.URL, ""), "tools:\n", `tools:
 		  table:
-		    does: Make a table
+		    description: Make a table
 		    args: { rows: number }
 		    job: { script: ./table.js, input: { rows: "${args.rows}" } }
 		  again:
-		    does: Give a blob back
+		    description: Give a blob back
 		    args: { it: blob }
 		    job: { script: ./again.js, input: { it: "${args.it}" } }
 `, 1)
@@ -561,7 +561,7 @@ func TestLargeResultIsStoredAsABlob(t *testing.T) {
 	l := local(t, "all")
 	def := strings.Replace(agentDef(m.URL, ""), "tools:\n", `tools:
 		  lots:
-		    does: Give many things
+		    description: Give many things
 		    args: { n: number }
 		    job: { script: ./lots.js, input: { n: "${args.n}" } }
 `, 1)
@@ -586,11 +586,11 @@ func TestLargeResultIsStoredAsABlob(t *testing.T) {
 func inside(m *model) string {
 	return strings.Replace(agentDef(m.URL, ""), "tools:\n", `tools:
 		  make:
-		    does: Make a file
+		    description: Make a file
 		    args: { text: string }
 		    job: { script: ./make.js, input: { text: "${args.text}" } }
 		  wrap:
-		    does: Put a blob inside a list
+		    description: Put a blob inside a list
 		    args: { it: blob }
 		    job: { script: ./wrap.js, input: { it: "${args.it}" } }
 `, 1)
@@ -666,7 +666,7 @@ func TestModelIsSentTheFilesItsServiceTakes(t *testing.T) {
 	l := local(t, "all")
 	def := strings.Replace(agentDef(m.URL, ""), "tools:\n", `tools:
 		  fetch:
-		    does: Fetch a picture and a table
+		    description: Fetch a picture and a table
 		    args: {}
 		    job: { script: ./fetch.js }
 `, 1)
@@ -701,8 +701,8 @@ func TestAgentIncludesFilesOfTools(t *testing.T) {
 	r := runAgent(t, l, strings.Replace(agentDef(m.URL, ""), "tools:\n", "tools:\n\t\t  include: [./first.yaml, ./second.yaml]\n", 1), map[string]string{
 		"add.js":      scripts["add.js"],
 		"twice.js":    `return { n: input.n * 2 }`,
-		"first.yaml":  "half:\n  does: Halve a number\n  args: { n: number }\n  job: { script: ./twice.js, input: { n: \"${args.n}\" } }\n",
-		"second.yaml": "twice:\n  does: Double a number\n  args: { n: number }\n  job: { script: ./twice.js, input: { n: \"${args.n}\" } }\nadd:\n  does: Not the agent's own\n  args: { n: number }\n  job: { script: ./twice.js, input: { n: \"${args.n}\" } }\n",
+		"first.yaml":  "half:\n  description: Halve a number\n  args: { n: number }\n  job: { script: ./twice.js, input: { n: \"${args.n}\" } }\n",
+		"second.yaml": "twice:\n  description: Double a number\n  args: { n: number }\n  job: { script: ./twice.js, input: { n: \"${args.n}\" } }\nadd:\n  description: Not the agent's own\n  args: { n: number }\n  job: { script: ./twice.js, input: { n: \"${args.n}\" } }\n",
 	})
 	if r.Status != "done" {
 		t.Fatalf("the agent ended %s: %s", r.Status, r.Error)
@@ -729,12 +729,12 @@ func TestAgentIncludedToolsAreReadFromTheirDirectory(t *testing.T) {
 	def := strings.Replace(agentDef(m.URL, ""), "tools:\n", "tools:\n\t\t  include: [shared/tools.yaml, ./own/tools.yaml]\n", 1)
 	files := map[string]string{
 		"add.js": scripts["add.js"],
-		"shared/tools.yaml": "run:\n  does: Run\n  job: ./run.js\n" +
-			"wait:\n  does: Wait\n  job: { machine: ./wait.yaml }\n",
+		"shared/tools.yaml": "run:\n  description: Run\n  job: ./run.js\n" +
+			"wait:\n  description: Wait\n  job: { machine: ./wait.yaml }\n",
 		"shared/run.js":    `return "shared run"`,
 		"shared/wait.yaml": "flow: wait\nstages:\n  w: { job: ./w.js }\noutput: ${stages.w.output}\n",
 		"shared/w.js":      `return "shared wait"`,
-		"own/tools.yaml":   "mine:\n  does: Mine\n  job: ./run.js\n",
+		"own/tools.yaml":   "mine:\n  description: Mine\n  job: ./run.js\n",
 		"own/run.js":       `return "own run"`,
 	}
 	r := runAgent(t, l, def, files)
@@ -764,7 +764,7 @@ func TestAgentAsATool(t *testing.T) {
 	l := local(t, "all")
 	def := strings.Replace(agentDef(m.URL, ""), "tools:\n", `tools:
 		  sparks:
-		    does: Ask the electrician
+		    description: Ask the electrician
 		    args: { question: string }
 		    job: { machine: ./sparks.yaml, input: { question: "${args.question}" } }
 `, 1)
@@ -802,8 +802,8 @@ var listedScripts = map[string]string{
 }
 
 const fileTools = `[
-		      { name: read, does: Read a file, args: { type: object, properties: { path: { type: string } }, required: [path] } },
-		      { name: open.recent, does: Open the last file, args: { type: object } } ]`
+		      { name: read, description: Read a file, args: { type: object, properties: { path: { type: string } }, required: [path] } },
+		      { name: open.recent, description: Open the last file, args: { type: object } } ]`
 
 func TestAgentListedTools(t *testing.T) {
 	m := newModel(t, calls("c1", "files_read", `{"path": "a.txt"}`), calls("c2", "files_open_recent", `{}`), says("done"))
@@ -868,15 +868,15 @@ func TestAgentListedTools(t *testing.T) {
 func TestAgentAskIsShownAListedCallsEntryAndTool(t *testing.T) {
 	both := llmstandin.Reply{Text: "let me see", Calls: []llmstandin.ToolCall{{ID: "issue", Name: "github_create_issue", Args: `{"title":"Broken"}`}, {ID: "sum", Name: "add", Args: `{"n":1}`}}}
 	m := newModel(t, both, says("done"))
-	def := listed(m.URL, `[ { name: create_issue, does: Open an issue, args: { type: object } } ]`)
+	def := listed(m.URL, `[ { name: create_issue, description: Open an issue, args: { type: object } } ]`)
 	def = strings.Replace(def, "  files:\n", "  github:\n", 1)
 	def = strings.Replace(def, "\t\ttools:\n", "\t\task: ./ask.js\n\t\ttools:\n", 1)
 	def = strings.Replace(def, `args: "${args}" } }`, `args: "${args}" }, approve: true }`, 1)
 	def = strings.Replace(def, `input: { n: "${args.n}" } }`, `input: { n: "${args.n}" }, approve: true }`, 1)
 	files := maps.Clone(listedScripts)
 	files["ask.js"] = `
-		const listed = (a) => a.entry === "github" && a.tool === "create_issue" && a.args.title === "Broken" && a.does === "Open an issue" && a.said === "let me see"
-		const own = (a) => !("entry" in a) && !("tool" in a) && a.args.n === 1 && a.does === "Add one to a number"
+		const listed = (a) => a.entry === "github" && a.tool === "create_issue" && a.args.title === "Broken" && a.description === "Open an issue" && a.said === "let me see"
+		const own = (a) => !("entry" in a) && !("tool" in a) && a.args.n === 1 && a.description === "Add one to a number"
 		const fits = input.jobs.filter((j) => j.name.startsWith("github_") ? listed(j.asked) : own(j.asked))
 		return { approved: fits.map((j) => j.name), note: "the ask was shown " + JSON.stringify(input.jobs.map((j) => j.asked)) }`
 	if r := runAgent(t, local(t, "all"), def, files); r.Status != "done" {
@@ -893,7 +893,7 @@ func TestAgentAskIsShownAListedCallsEntryAndTool(t *testing.T) {
 func Test_agent_tree_shaped_tools_and_reply(t *testing.T) {
 	const tree = `{ type: object, properties: { name: { type: string }, kids: { type: array, items: { $ref: "#" } } }, required: [name] }`
 	m := newModel(t, calls("c1", "files_tree", `{"name": "a", "kids": [{"name": "b", "kids": [{"name": "c"}]}]}`), says("It is done."))
-	r := runAgent(t, local(t, "all"), listed(m.URL, `[ { name: tree, does: Takes a tree, args: `+tree+` } ]`), listedScripts)
+	r := runAgent(t, local(t, "all"), listed(m.URL, `[ { name: tree, description: Takes a tree, args: `+tree+` } ]`), listedScripts)
 	if r.Status != "done" {
 		t.Fatalf("a tool with a tree for its arguments: %s %s", r.Status, r.Error)
 	}
@@ -910,7 +910,7 @@ func Test_agent_tree_shaped_tools_and_reply(t *testing.T) {
 		reply: TREE
 		tools:
 		  add:
-		    does: Takes a tree
+		    description: Takes a tree
 		    args: TREE
 		    job: { script: ./add.js, input: { n: 1 } }
 	`, "ADDRESS", m.URL), "TREE", tree)
@@ -920,9 +920,9 @@ func Test_agent_tree_shaped_tools_and_reply(t *testing.T) {
 	}
 	// A model's arguments are checked as the shape says, at each level.
 	m = newModel(t, calls("c1", "files_tree", `{"name": "a", "kids": [{"kids": []}]}`), says("It is done."))
-	r = runAgent(t, local(t, "all"), listed(m.URL, `[ { name: tree, does: Takes a tree, args: `+tree+` } ]`), listedScripts)
+	r = runAgent(t, local(t, "all"), listed(m.URL, `[ { name: tree, description: Takes a tree, args: `+tree+` } ]`), listedScripts)
 	if r.Status != "done" || !strings.Contains(jsonOf(m.Calls[1]), "/kids/0") {
-		t.Fatalf("a tree with a part missing: %s %s: %s", r.Status, r.Error, jsonOf(m.Calls[1]))
+		t.Fatalf("a tree with a field missing: %s %s: %s", r.Status, r.Error, jsonOf(m.Calls[1]))
 	}
 }
 
@@ -932,7 +932,7 @@ func TestAgentListThatCannotBeUsedFails(t *testing.T) {
 	long := strings.Repeat("x", 60)
 	for list, want := range map[string]string{
 		`none`: "tools.files.list: the server is away",
-		`[ { does: Nameless, args: { type: object } } ]`:                                     "a tool in the list has no name",
+		`[ { description: Nameless, args: { type: object } } ]`:                              "a tool in the list has no name",
 		`[ { name: count, args: { type: string } } ]`:                                        `the tool "count"'s args`,
 		`[ { name: count } ]`:                                                                `the tool "count"'s args`,
 		`[ { name: ` + long + `, args: { type: object } } ]`:                                 "longer than 64 characters",
@@ -965,8 +965,8 @@ func Test_agent_listed_shape_marking_a_blob_fails(t *testing.T) {
 func Test_agent_listed_job_reads_args_whole(t *testing.T) {
 	agentRefused(t, strings.Replace(listed("http://127.0.0.1:1", fileTools), `args: "${args}"`, `args: "${args.path}"`, 1),
 		`it reads "args.path"; with list:, the job reads ${args} only whole`)
-	agentRefused(t, strings.Replace(listed("http://127.0.0.1:1", fileTools), "    job: { script: ./files.js", "    does: Files\n		    job: { script: ./files.js", 1),
-		"a tool with list: is given what each tool does and its args by the list")
+	agentRefused(t, strings.Replace(listed("http://127.0.0.1:1", fileTools), "    job: { script: ./files.js", "    description: Files\n		    job: { script: ./files.js", 1),
+		"a tool with list: is given each tool's description and args by the list")
 	// Only a job of an entry with a list reads tool.
 	agentRefused(t, strings.Replace(agentDef("http://127.0.0.1:1", ""), `input: { n: "${args.n}" }`, `input: { n: "${tool}" }`, 1), "tool")
 	if _, err := machineParse(listed("http://127.0.0.1:1", fileTools), listedScripts); err != nil {
@@ -1009,10 +1009,10 @@ func Test_agent_tool_that_calls_shows_the_whole_result(t *testing.T) {
 		l := local(t, "all")
 		setSecret(t, l, "TEST_KEY", "sk-test-key")
 		sums := strings.Replace(agentDef(m.URL, ""), `  add:
-		    does: Add one to a number
+		    description: Add one to a number
 		    args: { n: number }
 		    job: { script: ./add.js, input: { n: "${args.n}" } }`, `  look:
-		    does: Look a number up
+		    description: Look a number up
 		    args: { n: number }
 		    job: { call: { at: lookup }, input: { n: "${args.n}" }, allow: ["send:lookup"] }`, 1)
 		tree := &client.Tree{Prefix: "/a", Machines: []*client.Machine{
@@ -1056,10 +1056,10 @@ func Test_agent_tool_that_sends_is_done_once_written(t *testing.T) {
 	l := local(t, "all")
 	setSecret(t, l, "TEST_KEY", "sk-test-key")
 	sums := strings.Replace(agentDef(m.URL, ""), `  add:
-		    does: Add one to a number
+		    description: Add one to a number
 		    args: { n: number }
 		    job: { script: ./add.js, input: { n: "${args.n}" } }`, `  tell:
-		    does: Tell the room a number
+		    description: Tell the room a number
 		    args: { n: number }
 		    job: { send: { to: { at: room, key: room-1 }, event: said, data: { n: "${args.n}" } }, allow: ["send:room"] }`, 1)
 	room := "statechart: room\nlifetime: keyed\ntitle: \"room ${input.n}\"\ninitial: a\nstates: { a: { on: { said: b } }, b: { end: done } }\n"

@@ -6,6 +6,6 @@ turn: ./turn-lead.js
 prompt: Ask the helper.
 tools:
   helper:
-    does: Have the helper add one
+    description: Have the helper add one
     args: { n: number }
     job: { machine: ./helper.yaml, input: { n: "${args.n}" } }

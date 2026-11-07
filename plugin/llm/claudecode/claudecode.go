@@ -384,7 +384,7 @@ func system(c *llm.Call) string {
 	b.WriteString("Put anything you want to say in `text`. Each call's result comes back to you in the next message. ")
 	b.WriteString("When your reply is final, leave `tool_calls` empty.\n")
 	for _, tool := range c.Tools {
-		fmt.Fprintf(&b, "\n## %v\n\n%v\n\nInput schema: %s\n", field(tool, "name"), field(tool, "does"), must(llm.Schema(field(tool, "args"))))
+		fmt.Fprintf(&b, "\n## %v\n\n%v\n\nInput schema: %s\n", field(tool, "name"), field(tool, "description"), must(llm.Schema(field(tool, "args"))))
 	}
 	return b.String()
 }

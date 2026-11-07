@@ -259,7 +259,7 @@ func TestConversationToolsAndShapeReachEachService(t *testing.T) {
 		ask := func(more plugin.Options) map[string]any {
 			t.Helper()
 			opt := plugin.Options{"service": service, "model": "test-model", "address": s.URL, "key": "sk-test",
-				"tools": []any{map[string]any{"name": "look", "does": "Look at a shelf", "args": map[string]any{"type": "object", "properties": map[string]any{"at": map[string]any{"type": "string"}}}}}}
+				"tools": []any{map[string]any{"name": "look", "description": "Look at a shelf", "args": map[string]any{"type": "object", "properties": map[string]any{"at": map[string]any{"type": "string"}}}}}}
 			for name, value := range more {
 				opt[name] = value
 			}
@@ -299,7 +299,7 @@ func TestConversationToolsAndShapeReachEachService(t *testing.T) {
 // model was shown, and one that says something keeps what it says.
 func TestChatTakesShapesAsJSONSchemaOnly(t *testing.T) {
 	s := newStandIn(t, arriving3["anthropic"]...)
-	short := []any{map[string]any{"name": "look", "does": "Look at a shelf", "args": map[string]any{"shelf": "string"}}}
+	short := []any{map[string]any{"name": "look", "description": "Look at a shelf", "args": map[string]any{"shelf": "string"}}}
 	var refused *plugin.Error
 	if _, err := s.ask(t, "anthropic", plugin.Options{"tools": short}); !errors.As(err, &refused) || refused.Code != plugin.BadInput {
 		t.Fatalf("a tool's arguments in the short form gave: %v", err)
@@ -308,7 +308,7 @@ func TestChatTakesShapesAsJSONSchemaOnly(t *testing.T) {
 		t.Fatalf("a shape of answer in the short form gave: %v", err)
 	}
 	args := func(cover map[string]any) plugin.Options {
-		return plugin.Options{"tools": []any{map[string]any{"name": "look", "does": "Look at a shelf",
+		return plugin.Options{"tools": []any{map[string]any{"name": "look", "description": "Look at a shelf",
 			"args": map[string]any{"type": "object", "properties": map[string]any{"cover": cover}}}}}
 	}
 	s.must(t, "anthropic", args(map[string]any{"type": "string", "format": "blob"}))
@@ -338,7 +338,7 @@ func TestEffortReachesAnthropic(t *testing.T) {
 }
 
 func Test_model_openai_tools_not_strict(t *testing.T) {
-	tools := plugin.Options{"tools": []any{map[string]any{"name": "look", "does": "Look at a thing", "args": map[string]any{"type": "object", "properties": map[string]any{"at": map[string]any{"type": "string"}}}}}}
+	tools := plugin.Options{"tools": []any{map[string]any{"name": "look", "description": "Look at a thing", "args": map[string]any{"type": "object", "properties": map[string]any{"at": map[string]any{"type": "string"}}}}}}
 	s := newStandIn(t, arriving3["openai"]...)
 	s.must(t, "openai", tools)
 	if tool := list(s.sent[0]["tools"])[0]; field(tool, "strict") != false {
@@ -664,7 +664,7 @@ func Test_model_kept_parts_sent_back_unchanged(t *testing.T) {
 // to speak the first, where tools and reasoning go together.
 func Test_model_openai_two_forms(t *testing.T) {
 	more := plugin.Options{"effort": "high",
-		"tools": []any{map[string]any{"name": "look", "does": "Look at a thing", "args": map[string]any{"type": "object", "properties": map[string]any{"at": map[string]any{"type": "string"}}}}}}
+		"tools": []any{map[string]any{"name": "look", "description": "Look at a thing", "args": map[string]any{"type": "object", "properties": map[string]any{"at": map[string]any{"type": "string"}}}}}}
 	s := newStandIn(t, arriving3["openai"]...)
 	reply := s.must(t, "openai", more)
 	if reply["text"] != "Hello there." || reply["stop"] != StopTools || text(reply["calls"]) != `[{"args":{"at":"door"},"id":"t1","name":"look"}]` {

@@ -799,20 +799,20 @@ func Test_ctl_made_machine_has_no_ask_of_its_own(t *testing.T) {
 }
 
 // A machine that writes an ask is told it has none, at the top of its
-// definition or in a set, and the owner's flow carries on.
+// definition or in a toolkit, and the owner's flow carries on.
 func Test_ctl_made_machine_that_writes_an_ask_fails(t *testing.T) {
 	for what, draft := range map[string]func(w *world) *machine.Draft{
 		"at its top": func(w *world) *machine.Draft {
 			return w.draft("flow: below\nask: ./step.js\nstages:\n  b: { job: ./step.js }\n", map[string]string{"step.js": "return 1"})
 		},
-		"in a part": func(w *world) *machine.Draft {
+		"in a toolkit": func(w *world) *machine.Draft {
 			return w.draft(`
 				agent: below
 				model: { name: m, service: anthropic, address: "http://127.0.0.1:1", secret: KEY }
 				prompt: hello
-				open:
-				  s: { include: ./part.yaml }
-			`, map[string]string{"step.js": "return 1", "part.yaml": "does: Things.\nask: ./step.js\ntools:\n  t: { does: T, job: ./step.js }\n"})
+				toolkits:
+				  s: { include: ./toolkit.yaml }
+			`, map[string]string{"step.js": "return 1", "toolkit.yaml": "description: Things.\nask: ./step.js\ntools:\n  t: { description: T, job: ./step.js }\n"})
 		},
 	} {
 		w := newWorld(t)
@@ -942,7 +942,7 @@ func Test_ctl_asks_of_a_definition_are_read_once_a_step(t *testing.T) {
 
 	w := newWorld(t)
 	run, r1 := w.listed()
-	w.lieNext("after a list", "many asks", "100", "open.s.ask")
+	w.lieNext("after a list", "many asks", "100", "toolkits.s.ask")
 	w.result(r1, run, "t", oneTool)
 	w.settle()
 	if st := w.latest(run).State; len(st.Jobs) < 100 || counted.asks != 1 {
@@ -953,7 +953,7 @@ func Test_ctl_asks_of_a_definition_are_read_once_a_step(t *testing.T) {
 	w = newWorld(t)
 	r1 = w.newRunner()
 	holder := w.holder(r1)
-	w.lieNext("many asks", "100", "open.s.ask")
+	w.lieNext("many asks", "100", "toolkits.s.ask")
 	ref, err := w.draft(lister, listerFiles).Store(ctx, w.ctrl.Store, "ctl", holder)
 	if err != nil {
 		t.Fatal(err)
@@ -1046,12 +1046,12 @@ const lister = `
 	  t:
 	    list: { script: ./step.js }
 	    job: ./step.js
-	open:
-	  s: { include: ./part.yaml }
+	toolkits:
+	  s: { include: ./toolkit.yaml }
 `
 
 var listerFiles = map[string]string{"step.js": "return 1", "ok.js": "return {}", "own.js": "return {}",
-	"part.yaml": "does: Things.\nask: ./own.js\ntools:\n  u: { does: U, job: ./step.js }\n"}
+	"toolkit.yaml": "description: Things.\nask: ./own.js\ntools:\n  u: { description: U, job: ./step.js }\n"}
 
 // listed runs lister as far as the runner that has its list, and gives a tool.
 func (w *world) listed() (run string, r1 *identity.Identity) {
@@ -1064,7 +1064,7 @@ func (w *world) listed() (run string, r1 *identity.Identity) {
 }
 
 var oneTool = instance.Result{Status: instance.Done, Output: []any{
-	map[string]any{"name": "read", "does": "Read", "args": map[string]any{"type": "object"}}}}
+	map[string]any{"name": "read", "description": "Read", "args": map[string]any{"type": "object"}}}}
 
 // A list brings shapes from outside the definition, so what follows it is
 // taken in a process of its own. The first step holds nothing from outside.
@@ -1198,11 +1198,11 @@ func Test_ctl_made_definition_past_a_limit_fails_that_machine(t *testing.T) {
 // definition's words: an answer names only a place, and what is written there
 // is read from the definition and filled here. A place the definition does
 // not write gives the agent's own ask. The process can pick another place of
-// the definition, as "open.s.ask" here, for a tool outside that part: that is
+// the definition, as "toolkits.s.ask" here, for a tool outside that toolkit: that is
 // within what the specs say such a process can do (Permissions), and is no
 // more than it could do by dropping the approval.
 func Test_ctl_answer_cannot_write_a_listed_agents_ask(t *testing.T) {
-	for at, want := range map[string]string{"x": "./ok.js", "open.s.ask": "./own.js"} {
+	for at, want := range map[string]string{"x": "./ok.js", "toolkits.s.ask": "./own.js"} {
 		w := newWorld(t)
 		run, r1 := w.listed()
 		w.lieNext("after a list", "fills", at)

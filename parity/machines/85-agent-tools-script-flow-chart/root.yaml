@@ -7,14 +7,14 @@ turn: ./turn.js
 prompt: Use your tools.
 tools:
   add:
-    does: Add one
+    description: Add one
     args: { n: number }
     job: { script: ./add.js, input: { n: "${args.n}" } }
   flow_tool:
-    does: Run the child flow
+    description: Run the child flow
     args: { n: number, fail: boolean }
     job: { machine: ./kid-flow.yaml, input: { n: "${args.n}", fail: "${args.fail}" } }
   chart_tool:
-    does: Run the child chart
+    description: Run the child chart
     args: { n: number, fail: boolean }
     job: { machine: ./kid-chart.yaml, input: { n: "${args.n}", fail: "${args.fail}" } }

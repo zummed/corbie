@@ -73,7 +73,7 @@ The detailed rules behind the [Models overview](../model.md). Requirements are `
 
 **C-model-18** A tool of the program's own is allowed only where the whole of what it could use is allowed, in every layer: `network` for one that browses, `disk` for one that reads or writes files, `all` for a shell, a skill or one that is not known; and it is refused before the program is started. Corbie cannot check what such a tool does, so the only honest leave is leave for everything it could do. *Test:* `model_programs_own_tool_needs_its_whole_group`
 
-**C-model-20** A call the model makes of an offered tool as if it were the program's own is the model's request: at the end of the message that holds it, Corbie stops the program and gives the message's calls and text as the reply. Left to the program, the call fails, and the model tells the person it answers that its tools do not work. *Test:* `model_program_direct_call_is_the_call`
+**C-model-20** A call the model makes of an offered tool as if it were the program's own is the model's request: at the end of the message that holds it, Corbie stops the program and gives the message's calls and text as the reply. A message that also holds the answer, a subagent's call, and a call whose input is cut off or is not an object are left to the program. Left to the program, the call fails, and the model tells the person it answers that its tools do not work. *Test:* `model_program_direct_call_is_the_call`
 
 **C-model-13** Names made up for a local program's tool requests never repeat within a conversation, even when earlier parts of it have been dropped. Two requests under one name cannot be matched to their results. *Test:* `model_made_up_request_names_never_repeat`
 

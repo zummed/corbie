@@ -142,7 +142,9 @@ func chat(job *plugin.Job, c *llm.Call) (*llm.Reply, error) {
 	}()
 	var offered []any
 	for _, tool := range c.Tools {
-		offered = append(offered, field(tool, "name"))
+		if name := field(tool, "name"); !slices.Contains(c.Own, fmt.Sprint(name)) {
+			offered = append(offered, name)
+		}
 	}
 	result, arrived, direct, err := read(job, stdout, offered)
 	if direct != nil {
@@ -215,6 +217,8 @@ func request(name string, input any) map[string]any {
 // is written, a message of the model's, or the result at the end.
 type line struct {
 	Type string `json:"type"`
+	// Parent is set on what a subagent of the program's own writes.
+	Parent string `json:"parent_tool_use_id"`
 	// StopReason is why the model stopped, on the result; Message carries
 	// it on a message of the model's.
 	StopReason string `json:"stop_reason"`
@@ -268,7 +272,9 @@ func (u usage) counted() map[string]any {
 //
 // A model may call a tool that Corbie offers as if it were the program's
 // own, which fails in the program. Such calls are the model's request: read
-// gives them at the end of the message they are in, and reads no further.
+// gives them at the end of the message they are in, and reads no further,
+// unless that message also holds the answer, which the program finishes. A
+// subagent's message is never the model's request.
 func read(job *plugin.Job, from io.Reader, offered []any) (*line, string, *llm.Reply, error) {
 	var result *line
 	arrived, stopped := "", ""
@@ -278,6 +284,7 @@ func read(job *plugin.Job, from io.Reader, offered []any) (*line, string, *llm.R
 	names := map[int]string{}
 	var spoken strings.Builder // the text the model wrote in this message
 	var used usage             // what the messages so far used
+	answered := false          // whether this message holds the answer
 	said := job.Telling("text")
 	defer said.End()
 	in := bufio.NewReaderSize(from, 64<<10)
@@ -292,20 +299,20 @@ func read(job *plugin.Job, from io.Reader, offered []any) (*line, string, *llm.R
 				stopped = l.Message.StopReason
 			case l.Type != "stream_event":
 			case ev.Type == "message_start":
-				direct, names = map[int]*strings.Builder{}, map[int]string{}
+				direct, names, answered = map[int]*strings.Builder{}, map[int]string{}, false
 				spoken.Reset()
 				u := ev.Message.Usage
 				used.Input, used.CacheMade, used.CacheRead = used.Input+u.Input, used.CacheMade+u.CacheMade, used.CacheRead+u.CacheRead
 			case ev.Type == "message_delta":
 				used.Output += ev.Usage.Output
-			case ev.Type == "message_stop" && len(direct) > 0:
+			case ev.Type == "message_stop" && len(direct) > 0 && !answered:
 				if reply := made(direct, names); reply != nil {
 					reply.Text, reply.Usage = spoken.String(), used.counted()
 					return nil, "", reply, nil
 				}
 			case ev.Type == "content_block_start" && ev.Block.Type == "tool_use" && ev.Block.Name == structured:
-				answering[ev.Index] = &strings.Builder{}
-			case ev.Type == "content_block_start" && ev.Block.Type == "tool_use" && slices.Contains(offered, any(ev.Block.Name)):
+				answering[ev.Index], answered = &strings.Builder{}, true
+			case ev.Type == "content_block_start" && ev.Block.Type == "tool_use" && l.Parent == "" && slices.Contains(offered, any(ev.Block.Name)):
 				direct[ev.Index], names[ev.Index] = &strings.Builder{}, ev.Block.Name
 			case ev.Type == "content_block_start" && ev.Block.Type == "tool_use":
 				if job.Channel != nil {
@@ -336,8 +343,8 @@ func read(job *plugin.Job, from io.Reader, offered []any) (*line, string, *llm.R
 }
 
 // made gives a reply of the calls of a message, in the order the model
-// wrote them, or none when one of them was cut off: the program then goes
-// on as it would.
+// wrote them, or none when the input of one of them is cut off or no object:
+// the program then goes on as it would.
 func made(direct map[int]*strings.Builder, names map[int]string) *llm.Reply {
 	var order []int
 	for at := range direct {
@@ -346,7 +353,7 @@ func made(direct map[int]*strings.Builder, names map[int]string) *llm.Reply {
 	slices.Sort(order)
 	reply := &llm.Reply{Stop: llm.StopEnd}
 	for _, at := range order {
-		var input any = map[string]any{}
+		input := map[string]any{}
 		if raw := strings.TrimSpace(direct[at].String()); raw != "" && json.Unmarshal([]byte(raw), &input) != nil {
 			return nil
 		}

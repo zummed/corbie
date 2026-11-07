@@ -68,7 +68,7 @@ model: { name: sonnet, service: claude-code, own: [WebSearch, WebFetch] }      n
 model: { name: sonnet, service: claude-code, own: [Skill] }                    needs all
 ```
 
-A model run as a program sometimes calls a tool Corbie offers as if it were one of the program's own, which fails in the program. Corbie takes such calls as the model's request: at the end of the model's message that holds them, it stops the program and runs the tools, as it runs the tools a model asks for in its answer.
+A model run as a program sometimes calls a tool Corbie offers as if it were one of the program's own, which fails in the program. Corbie takes such calls as the model's request: at the end of the model's message that holds them, it stops the program and runs the tools, as it runs the tools a model asks for in its answer. A message that also holds the answer is left to the program, and so is a call by a subagent of the program's own or one whose input is not an object.
 
 ## Keys
 

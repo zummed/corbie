@@ -10,6 +10,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/zummed/corbie/blob"
 	"github.com/zummed/corbie/permission"
@@ -32,11 +33,22 @@ func (channel) Define(string, map[string]string) (blob.Ref, error)   { return bl
 // is sent and prints the lines it is given.
 func ask(t *testing.T, lines ...string) map[string]any {
 	t.Helper()
+	return asking(t, false, lines...)
+}
+
+// asking is ask, with a program that, when hangs is true, does not end after
+// printing its lines until it is stopped.
+func asking(t *testing.T, hangs bool, lines ...string) map[string]any {
+	t.Helper()
 	if _, err := os.Stat("/bin/sh"); err != nil {
 		t.Skip("no shell on this machine")
 	}
 	dir := t.TempDir()
-	os.WriteFile(filepath.Join(dir, "claude"), []byte("#!/bin/sh\ncat > /dev/null\ncat \"$(dirname \"$0\")/reply\"\n"), 0o755)
+	script := "#!/bin/sh\ncat > /dev/null\ncat \"$(dirname \"$0\")/reply\"\n"
+	if hangs {
+		script += "exec sleep 60\n"
+	}
+	os.WriteFile(filepath.Join(dir, "claude"), []byte(script), 0o755)
 	os.WriteFile(filepath.Join(dir, "reply"), []byte(strings.Join(lines, "\n")+"\n"), 0o600)
 	job := &plugin.Job{Context: context.Background(), Scratch: t.TempDir(), SearchPath: dir + ":/usr/bin:/bin", Channel: channel{},
 		Perms: &permission.Set{Layers: []permission.Layer{{Name: "test", Allow: []string{"exec:claude", "env:HOME"}}}}}
@@ -221,7 +233,13 @@ func Test_model_program_direct_call_is_the_call(t *testing.T) {
 	}
 	after := []string{starts, arriving(`{"text":"My tools are broken.","tool_calls":[]}`),
 		`{"type":"result","subtype":"success","is_error":false,"result":"","stop_reason":"end_turn","structured_output":{"text":"My tools are broken.","tool_calls":[]},"usage":{"input_tokens":300,"output_tokens":40}}`}
-	got := ask(t, append(message, after...)...)
+	// The program does not end by itself, and is stopped once the message
+	// has ended.
+	began := time.Now()
+	got := asking(t, true, append(message, after...)...)
+	if took := time.Since(began); took > 10*time.Second {
+		t.Errorf("the program was not stopped: the call took %s", took)
+	}
 	calls, _ := got["calls"].([]any)
 	if got["stop"] != "tools" || got["text"] != "Looking." || len(calls) != 2 {
 		t.Fatalf("direct calls gave %v", got)
@@ -243,5 +261,30 @@ func Test_model_program_direct_call_is_the_call(t *testing.T) {
 	got = ask(t, append(cut, after...)...)
 	if calls, _ := got["calls"].([]any); got["text"] != "My tools are broken." || len(calls) != 0 {
 		t.Errorf("a cut-off direct call gave %v", got)
+	}
+
+	// A message that holds the answer as well is finished by the program, and
+	// its answer is the reply.
+	both := append(slices.Clone(message[:8]), event(`{"type":"content_block_start","index":3,"content_block":{"type":"tool_use","name":"StructuredOutput"}}`),
+		event(`{"type":"message_stop"}`))
+	got = ask(t, append(both, `{"type":"result","subtype":"success","is_error":false,"result":"","stop_reason":"end_turn","structured_output":{"text":"Done.","tool_calls":[]},"usage":{"input_tokens":3,"output_tokens":4}}`)...)
+	if calls, _ := got["calls"].([]any); got["text"] != "Done." || len(calls) != 0 {
+		t.Errorf("a message with the answer as well gave %v", got)
+	}
+
+	// A subagent's message, and a call whose input is no object, are not the
+	// model's request.
+	sub := []string{`{"type":"stream_event","parent_tool_use_id":"toolu_1","event":{"type":"message_start","message":{"usage":{}}}}`,
+		`{"type":"stream_event","parent_tool_use_id":"toolu_1","event":{"type":"content_block_start","index":0,"content_block":{"type":"tool_use","name":"look"}}}`,
+		`{"type":"stream_event","parent_tool_use_id":"toolu_1","event":{"type":"message_stop"}}`}
+	listed := []string{event(`{"type":"message_start","message":{"usage":{}}}`),
+		event(`{"type":"content_block_start","index":0,"content_block":{"type":"tool_use","name":"look"}}`),
+		event(`{"type":"content_block_delta","index":0,"delta":{"type":"input_json_delta","partial_json":"[1]"}}`),
+		event(`{"type":"message_stop"}`)}
+	for name, lines := range map[string][]string{"a subagent's call": sub, "input that is no object": listed} {
+		got = ask(t, append(lines, after...)...)
+		if calls, _ := got["calls"].([]any); got["text"] != "My tools are broken." || len(calls) != 0 {
+			t.Errorf("%s gave %v", name, got)
+		}
 	}
 }

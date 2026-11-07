@@ -78,6 +78,8 @@ The detailed rules behind the [Controller overview](../controller.md). What the 
 
 **C-ctl-29** Deleting a wake a step used removes that wake only: a wake of the same name that the same step set again stays. A timer started afresh, or the next attempt, carries the name of the one that has just come due, and clearing by name alone removes the new with the old. *Test:* `ctl_wake_set_again_survives_delete_of_used_one`
 
+**C-ctl-86** A wake set again in the step that set it is written and comes due: one the step asked for and then no longer wants is taken out of what the step asks for, and is not named among what it used. A state entered again in the step that entered it asks for its timer's wake again under the same name, and that wake would otherwise be deleted with the one it replaces. *Test:* `ctl_wake_set_again_in_one_step_survives`
+
 ## Sending a job
 
 **R-ctl-37** A script job is sent as a message to one runner, signed by the controller and sealed to that runner, carrying everything its runner needs: with the message and the store, and nothing else from the controller, the runner can run the job.

@@ -593,11 +593,18 @@ func (b *build) unwakeJob(job *instance.Going) {
 }
 
 // unwake names a wake that is no longer wanted, so it is deleted with what
-// the step used.
+// the step used. One this step asked for is not written at all: a wake
+// asked again under the same name would otherwise be deleted with it.
 func (b *build) unwake(at time.Time, what string) {
-	if !at.IsZero() {
-		b.step.Used = append(b.step.Used, store.Wake(b.p.ctl, at, b.inst, what))
+	if at.IsZero() {
+		return
 	}
+	asked := func(a instance.Ask) bool { return a.Kind == instance.AskWake && a.At.Equal(at) && a.What == what }
+	if slices.ContainsFunc(b.step.Asks, asked) {
+		b.step.Asks = slices.DeleteFunc(b.step.Asks, asked)
+		return
+	}
+	b.step.Used = append(b.step.Used, store.Wake(b.p.ctl, at, b.inst, what))
 }
 
 // emit takes a value a job sent up. The n-th value of a name from a job is

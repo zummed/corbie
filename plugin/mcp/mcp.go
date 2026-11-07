@@ -304,7 +304,7 @@ func (s *server) list(ctx context.Context) ([]any, error) {
 		for _, item := range listed {
 			tool, _ := item.(map[string]any)
 			name, _ := tool["name"].(string)
-			does, _ := tool["description"].(string)
+			description, _ := tool["description"].(string)
 			schema, _ := tool["inputSchema"].(map[string]any)
 			// A tool whose arguments the web cannot carry in headers as it
 			// says is left out.
@@ -312,7 +312,7 @@ func (s *server) list(ctx context.Context) ([]any, error) {
 				continue
 			}
 			s.schemas[name] = schema
-			tools = append(tools, map[string]any{"name": name, "does": does, "args": schema})
+			tools = append(tools, map[string]any{"name": name, "description": description, "args": schema})
 		}
 		if cursor, _ = result["nextCursor"].(string); cursor == "" {
 			return tools, nil
@@ -607,7 +607,7 @@ const page = `mcp: this plugin is a client of an MCP server: it lists the server
 
   mcp.connect(address, { headers, client, timeout })   returns a server, over the web
   mcp.start(program, { args, env, dir, timeout })       returns a server, a program it starts
-  server.tools()                                        returns [{ name, does, args }]
+  server.tools()                                        returns [{ name, description, args }]
   server.call(name, { args, responses, state })         returns { content, data }, or { requests, state }
   server.close()                                        closes the connection, or stops the program
 

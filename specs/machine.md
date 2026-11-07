@@ -12,9 +12,11 @@ A machine runs until it reaches an end of its own, is cancelled, or passes its t
 
 ## Definitions
 
-A definition is data, written in YAML. Its first line gives its type and its name. It may give the shape of its input, how long its instances are kept, and its limits.
+A definition is data, written in YAML. Exactly one of its fields is `flow:`, `statechart:` or `agent:`, which gives its type and its name. That field may be written anywhere in the mapping, or come from a file the definition includes, and a definition with none or with two is refused. It may give the shape of its input, how long its instances are kept, and its limits.
 
 A definition may carry `meta:`, with any value. Corbie keeps it with the stored definition, never reads it, and fills in no expression in it. An application keeps its own data there, such as when to start the machine.
+
+A definition may give `description:`, plain text that says what the machine is for. Corbie keeps it with the stored definition, and refuses an expression in it.
 
 A definition may give `title:`, which names a run to a person. Its expressions read `input`, `values` and `run`, and the controller fills it in when the run starts and keeps it in the run's record, never in its head, so only the client that owns the run's tree sees it. A title is one line of at most 200 characters: each run of white space, line breaks among it, becomes one space, and a longer title is cut.
 
@@ -58,8 +60,8 @@ system:
 allow:
   - { include: ./base.yaml#allow }
   - send:devices/*
-open:
-  home: { include: ./parts/home/part.yaml, approve: true }
+toolkits:
+  home: { include: toolkits/home.yaml, approve: true }
 ```
 
 ```yaml
@@ -71,7 +73,7 @@ allow: ["fs.read:${input.dir}/**"]
 
 The client writes the definition out before it sends it:
 
-1. It reads each file the definition names. A file holds any fields, and has no type: a machine written in place writes its own.
+1. It reads each file the definition names. A file holds any fields. One may give the type, which the definition takes, and a definition that writes a type too writes the same one. `base.yaml` gives none, so in a tree it is listed in `.corbieignore` (see Locations).
 2. In a mapping, it merges in the included fields at every depth. `family.yaml`'s `model:` gets `name` and `secret` from `base.yaml`, and keeps its own `effort`.
 3. In a list or a text, it replaces an item `{ include: <file> }` with that file's list or text, and `{ include: <file>#<path> }` with the value at that path.
 4. It sends the result, which holds no `include:` and keeps each value's file and line.
@@ -81,7 +83,7 @@ The client writes the definition out before it sends it:
 - Nothing an include gives can be taken away. A file takes only part of another by naming each part with `#path`: `tools: { read: { include: ./tools.yaml#read } }` takes one tool, and a tool added to `tools.yaml` later does not reach it.
 - A text may be a list of pieces, each a text or `{ include: … }`, joined by one empty line. A single `{ include: file.md }` in a text field is a text of one piece.
 - `${…}` in an included text is an expression, filled in at run time like any text. A literal `${` is written `${'${'}`.
-- An included file is part of the machine that includes it. Its expressions read that machine's `input`, `values` and `run`, its secret names are looked up at that machine's location, and that machine's `allow:`, `deny:` and `ask_about:` cover its jobs.
+- An included file is part of the machine that includes it. Its expressions read that machine's `input`, `values` and `run`, its secret names are looked up at that machine's location, and that machine's `allow:`, `deny:` and `approve:` cover its jobs.
 - The stored definition is the one written out, so changing a file changes nothing for a run already started.
 
 `corbie test family.yaml --definition` prints the machine written out, each value with its file and line. Part of it:
@@ -98,7 +100,7 @@ allow:
 
 - A file is read as a definition is: a number is a number, and a value YAML would read as a date stays the text written. An empty file is refused.
 - A path in a file reads as any path does, and `./` from that file's own directory. What a shape gives as a value, such as `input:` or `meta:`, stays as it is written, whatever it holds.
-- A problem in an included file names that file: `parts/home/part.yaml: open.home.colour: …`.
+- A problem in an included file names that file: `toolkits/home.yaml: toolkits.home.colour: …`.
 - More than 1,000 includes written out by one definition, and what is below it, are refused. A file reached by two routes counts each time, though its values are merged once.
 
 A definition is checked as a whole, and everything wrong with it is reported together. Each problem names its place, and its file when the problem is in a child's file, as a path from the definition's directory: `kids/kid.yaml: value: …`. The client checks it before sending, so mistakes are found at once, and the controller checks it again with the same code, because it does not take a client's word.
@@ -107,7 +109,7 @@ An instance never changes its definition. A machine that wants to change how it 
 
 ## Locations
 
-A client submits a directory at a prefix, and the directory becomes a tree (see client.md). Each file in it with a type line has a location: its path under the prefix, without `.yaml`. A file without a type line is a piece: it has no location, runs nothing, and is read only by including it.
+A client submits a directory at a prefix, and the directory becomes a tree (see client.md). Each `*.yaml` in it is a machine with a location: its path under the prefix, without `.yaml`. A file the tree's `.corbieignore` lists has none: nothing runs there and nothing can be sent to it. A machine still includes it, runs it as a child and reads it with `files:`.
 
 `lifetime:` says how runs start at a location:
 
@@ -124,7 +126,7 @@ $ corbie run submit house --at /home
 /home/services/weather   transient   recorded
 ```
 
-The submit starts the boiler's run. The thermostat starts a run for each room a send names, and the weather service one for each call. `house/base.yaml` has no type line: it is a piece, has no location and is not listed.
+The submit starts the boiler's run. The thermostat starts a run for each room a send names, and the weather service one for each call. `house/.corbieignore` lists `shared/`, so `house/shared/base.yaml` has no location and is not printed.
 
 Every run has a location, and its authority comes from it: its file's `allow:` and `ask:`, its tree client's ceiling, and the secrets and values set at its location or above (see permission.md and secret.md).
 
@@ -132,6 +134,39 @@ Every run has a location, and its authority comes from it: its file's `allow:` a
 - A machine made while running has no file of its own. It runs at the location of the job that starts it, narrowed by that job's list.
 - `limits: { runs: N }` on a keyed file caps how many of its runs are running at once (see statechart.md). N is at least 1, and `runs` on a file that is not keyed is refused.
 - `lifetime:`, `update:`, `receive:` and `limits: { runs: }` belong to a file at a location, and are refused in a machine written in place or made while running.
+
+A file of one line places a machine that a listed file holds at its own location:
+
+```yaml
+# project/.corbieignore
+.rook/
+
+# project/.rook/slack/chat/post.yaml        listed: no location
+flow: post
+input: { in: string, text: string }
+receive: [gromit/gromit]
+stages:
+  post: { job: { script: ./post.js, input: "${input}", allow: [net:slack.com] } }
+
+# project/gromit/chat/post.yaml
+include: .rook/slack/chat/post.yaml
+
+# project/ops/chat/post.yaml
+include: .rook/slack/chat/post.yaml
+receive: [ops/ops]
+```
+
+```
+$ corbie run submit project --at /x
+/x/gromit/chat/post   transient   recorded
+/x/ops/chat/post      transient   recorded
+```
+
+- A placed file takes its type, its name and every field from the file it includes, `lifetime:` and `receive:` among them. Placing a singleton gives a singleton.
+- A field the placed file writes wins: `/x/ops/chat/post` receives only from `ops/ops`.
+- Two placements of one file are two locations, and the runs of both are named `post`.
+- A `./` path in the included file is read from that file's directory, so both run `.rook/slack/chat/post.js`.
+- A change to the included file changes every placement, and the next submit acts on each as on any changed file.
 
 A run keeps the definition it started with, and a submit changes what new runs get. `update:` says what a changed file does to the runs already running at its location:
 
@@ -157,6 +192,7 @@ Expressions are JavaScript. They read `input`, which is what the machine was sta
   run.id         the run's ID
   run.location   the run's location, such as /home/devices/boiler
   run.context    the absolute path of the directory last submitted at the run's tree
+  run.tree       the prefix of the run's tree, such as /home
 ```
 
 Everything else that varies from one run of a definition to the next comes in through `input`, and from one tree to the next through `values`.
@@ -243,12 +279,12 @@ The context is the directory a client submits as a tree. For a single file it is
 
 | A path written as | Is read from |
 |---|---|
-| `parts/net/part.yaml` | the context |
+| `toolkits/net.yaml` | the context |
 | `./tools/pve.js` | the directory of the file it is written in |
 
 `../` and a path from the top of the disk are refused in a definition. A script that loads another with `require` names it from its own directory, with `./` or `../`, since a bare name there is a plugin.
 
-No file leads back to itself. A machine file or an included file that names a file already being read is refused, with machines written in place between them as well, and the refusal names the chain: `b.yaml: open.s.include: the definition leads back to itself: s.yaml -> b.yaml -> s.yaml`.
+No file leads back to itself. A machine file or an included file that names a file already being read is refused, with machines written in place between them as well, and the refusal names the chain: `b.yaml: toolkits.s.include: the definition leads back to itself: s.yaml -> b.yaml -> s.yaml`.
 
 A machine as it is stored is at most 4 MiB, as much as a step may read of one stored definition, with a reference for each of its files and child definitions. One past it is refused at its place, by the client and by a job's `define`, and nothing is stored.
 
@@ -367,13 +403,13 @@ Services that carry questions to people, such as a chat program, are clients at 
 
 ## Approval
 
-A job can be made to wait for a yes before it starts. A job is held if it is marked for approval, or if a permission it asks for is one its machine, or a machine above it, has listed as needing to be asked about. Being approved gives a job nothing it was not already allowed; approval only ever holds. What gives the yes is the machine's ask: a job of its own, a script or a machine, named at the top of the definition. That job is called `ask`, and nothing else in a definition may take the name. A machine with no ask uses the nearest one above it. A type may give some of its jobs an ask nearer than the machine's, as an agent's set does, and that ask is the nearest above every machine below those jobs.
+A job can be made to wait for a yes before it starts. A job is held if it is marked for approval, or if a permission it asks for is one its machine, or a machine above it, has listed in `approve:`. Being approved gives a job nothing it was not already allowed; approval only ever holds. What gives the yes is the machine's ask: a job of its own, a script or a machine, named at the top of the definition. That job is called `ask`, and nothing else in a definition may take the name. A machine with no ask uses the nearest one above it. A type may give some of its jobs an ask nearer than the machine's, as an agent's toolkit does, and that ask is the nearest above every machine below those jobs.
 
-A machine made while running has no ask of its own. What it holds goes to the nearest ask above it that was not made while running, and with none the job is denied. An ask it writes, at the top of its definition or in an agent's part, fails that machine as it starts, with the reason.
+A machine made while running has no ask of its own. What it holds goes to the nearest ask above it that was not made while running, and with none the job is denied. An ask it writes, at the top of its definition or in an agent's toolkit, fails that machine as it starts, with the reason.
 
-A run started by a send or a call has no machine above it, so its held jobs go only to its own file's `ask:`, and are denied if it has none. A call or a `job: { send }` is a job, so the sender's `ask_about: [send:…]` holds it. A statechart's send action is never held.
+A run started by a send or a call has no machine above it, so its held jobs go only to its own file's `ask:`, and are denied if it has none. A call or a `job: { send }` is a job, and declares only `send:` to the location it names, so the sender's `approve: [send:…]` holds it when the list names that location. A statechart's send action is never held.
 
-The controller does the holding. It gathers the jobs from one step that need approval, fills in each ask they go to once, and starts it once with them. The ask is told which machine is asking and, for each job, what it is and what input it would get. Its result names the jobs it approves and may add a note. Approved jobs start. A job not approved never starts, and its machine sees it as a failed job with the status denied, which it may handle like any other failure. An ask that cannot be filled in, that fails, or whose result does not list the jobs it approves, approves nothing, and the error of each job it denies says why.
+The controller does the holding. It gathers the jobs from one step that need approval, fills in each ask they go to once, and starts it once with them. The ask is told which machine is asking and, for each job, what it is and what input it would get. Its result, `{ approved: [names of jobs], note }`, names the jobs it approves and may add a note. Approved jobs start. A job not approved never starts, and its machine sees it as a failed job with the status denied, which it may handle like any other failure. An ask that cannot be filled in, that fails, or whose result does not list the jobs it approves, approves nothing, and the error of each job it denies says why.
 
 Waiting for a person happens inside the ask, typically a statechart that issues a ticket and ends with the jobs it approves. An ask that waits for nobody, such as a model reviewing the jobs, is an ask all the same. An approval has no time limit of its own; the ask's timeout is how long it may take.
 
@@ -390,12 +426,12 @@ job: { script: ./fetch.js, restart: { limit: 2 } }
 
 job:
   machine: ./listen.yaml
-  restart: { when: always, limit: 5 in 1h, delay: 1s to 5m }
+  restart: { after: always, limit: 5 in 1h, delay: 1s to 5m }
 ```
 
 | Field | What it says | Default |
 |---|---|---|
-| `when` | `failure` restarts after an error or a timeout, and `always` after the job ends well too | `failure` |
+| `after` | `failure` restarts after an error or a timeout, and `always` after the job ends well too | `failure` |
 | `limit` | how many restarts: a number, or a number in a length of time | no limit |
 | `delay` | the wait: `1s to 5m` doubles from the first to the second, and `30s` is the same each time | `1s to 5m` |
 
@@ -404,7 +440,7 @@ job:
 - A delay that doubles starts again once an attempt has stayed up for twice its longest wait.
 - The machine sees only the final outcome, which is the last attempt's once the limit is passed. The record shows each attempt.
 - Every value an attempt emits is delivered, so a job that repeats itself delivers its values again.
-- A job with `when: always` and no limit gives its machine no outcome, so a stage that waits for it never ends.
+- A job with `after: always` and no limit gives its machine no outcome, so a stage that waits for it never ends.
 - A restart after a failure is the same job, under a yes it was already given, and is not counted against `limits: { jobs: }`.
 - A restart after a job ended well is a new job. It is held again if it needs approval, has a new request name, and counts against `limits: { jobs: }`.
 - An ask that ends well is final, whatever its policy says.

@@ -1,0 +1,14 @@
+# Stands in for Rook's Slack listener. A router runs it as a child. What Slack
+# would say is sent to it as heard (a message) and pressed (a button), and it
+# sends each to its parent as message and answer. lost ends it, as a dropped
+# connection would.
+statechart: slack-listen
+description: Hears one Slack workspace, and sends each message and each press of a button to its parent.
+initial: hearing
+states:
+  hearing:
+    on:
+      heard: { send: { to: parent, event: message, data: "${event.data}" } }
+      pressed: { send: { to: parent, event: answer, data: "${event.data}" } }
+      lost: gone
+  gone: { end: done }

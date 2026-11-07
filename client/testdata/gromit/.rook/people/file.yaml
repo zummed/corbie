@@ -1,0 +1,8 @@
+# Rook's lookup: a person's name, email and scopes, by their email in
+# people/scopes.yaml.
+flow: people-file
+description: Gives a person's name, email and scopes, found by their email in people/scopes.yaml.
+input: { email: string }
+stages:
+  find: { job: { script: ./file.js, files: [people/scopes.yaml], input: { email: "${input.email}" } } }
+output: ${stages.find.output}

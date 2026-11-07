@@ -47,7 +47,7 @@ An agent uses the flow as a tool
 
     tools:
       title:
-        does: Give the title of a web page
+        description: Give the title of a web page
         args: { url: string }
         job:
           machine: ./title.yaml

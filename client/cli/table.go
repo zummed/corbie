@@ -180,10 +180,11 @@ With --definition, it prints the definition as the client writes it out,
 each value with its file and line, and runs nothing.
 
 Given directories, it reads every machine in them as corbie run submit does,
-prints each one ok or its problems, and starts nothing. It fails when a
-machine has a problem. Each directory is a tree: a send or a call to one of
-its locations is checked against the file there and the sender's own allow:
-and deny:, and a location with no machine is printed, which fails nothing.
+prints each one ok or its problems and each path .corbieignore lists, and
+starts nothing. It fails when a machine has a problem. Each directory is a
+tree: a send or a call to one of its locations is checked against the file
+there and the sender's own allow: and deny:, and a location with no machine
+is printed, which fails nothing.
 ` + scripts},
 		{Name: "run submit", Usage: "<directory or file> [--at <prefix>] | <location> [--input <json>] [--wait | --watch]", Summary: "record a tree, or start a run of a location and print its ID", Run: cmdSubmit, Help: `
 Given a location, it starts a run of the file recorded there: it uploads the
@@ -202,8 +203,8 @@ the file's name without its extension. A flag of a start given with a file is
 refused, but for a script file's flags below.
 
 Given a directory, it records it as a tree. Each *.yaml in it and below it, but
-for .git, whose first key gives a type of machine has a location: its path
-under the prefix, without .yaml. It starts each singleton with no running run,
+for .git and what the directory's .corbieignore lists, is a machine at a
+location: its path under the prefix, without .yaml. It starts each singleton with no running run,
 and cancels the runs at a location whose file has gone. A changed file's
 running runs do as its update: says. A file with a problem is reported, and its
 location keeps what was recorded before. It prints what it did at each

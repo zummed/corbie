@@ -143,6 +143,9 @@ func TestEveryVersionOverEveryWay(t *testing.T) {
 		if err != nil || !reflect.DeepEqual(names(tools), want) {
 			t.Fatalf("%s, %q: the tools were %v, %v", w.name, w.legacy, tools, err)
 		}
+		if got := tools.([]any)[1].(map[string]any)["description"]; got != "Find the notes with a text" {
+			t.Errorf("%s, %q: the description of find_notes was %v", w.name, w.legacy, got)
+		}
 		args := tools.([]any)[1].(map[string]any)["args"].(map[string]any)
 		if args["required"].([]any)[0] != "text" || args["type"] != "object" {
 			t.Errorf("%s, %q: the args of find_notes were %v", w.name, w.legacy, args)

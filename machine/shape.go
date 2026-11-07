@@ -56,8 +56,8 @@ func (s *Shape) Sort(written map[string]any) string {
 type Field struct {
 	Name string `json:"name"`
 	Kind Kind   `json:"kind"`
-	// Does says what the field is for, in a line.
-	Does string `json:"does"`
+	// Description says what the field is for, in a line.
+	Description string `json:"description"`
 	// Like is the field as it is written, by example: what stands after
 	// its name.
 	Like string `json:"like,omitzero"`
@@ -162,106 +162,108 @@ func (s *Shape) field(name string) *Field {
 	return nil
 }
 
-// The fields every type of machine takes, after the first line.
+// The fields every type of machine takes, beside its type and its name.
 var shared = []Field{
-	{Name: "input", Kind: KindTypes, Like: "{ urls: list, depth: number? }", Does: "the shape of its input: each name with the type of its value, or a JSON Schema with type: object"},
-	{Name: "keep", Kind: KindDuration, Like: "7d", Does: "how long its instances are kept after they end (a week)"},
-	{Name: "allow", Kind: KindList, Like: "[net:example.com]", Does: "permissions for every script the definition runs"},
-	{Name: "deny", Kind: KindList, Like: "[exec]", Does: "what no script the definition runs may do"},
-	{Name: "ask_about", Kind: KindList, Like: "[exec]", Does: "permissions that must be asked about before a job starts"},
-	{Name: "ask", Kind: KindJob, Like: "{ machine: ./ask.yaml }", Does: "the job that approves when a job needs approval"},
-	{Name: "title", Kind: KindText, Like: `"${input.channel}: ${input.said}"`, Does: "what a run is called, filled in from its input when it starts; only the client of its tree sees it"},
-	{Name: "meta", Kind: KindValue, Like: `{ on: { at: "02:00 Europe/London" } }`, Does: "data of any kind, which Corbie keeps with the definition and never reads"},
+	{Name: "description", Kind: KindText, Like: "Comments on a GitLab issue.", Description: "what the machine is for, in plain text that Corbie keeps with the definition and fills nothing into"},
+	{Name: "input", Kind: KindTypes, Like: "{ urls: list, depth: number? }", Description: "the shape of its input: each name with the type of its value, or a JSON Schema with type: object"},
+	{Name: "keep", Kind: KindDuration, Like: "7d", Description: "how long its instances are kept after they end (a week)"},
+	{Name: "allow", Kind: KindList, Like: "[net:example.com]", Description: "permissions for every script the definition runs"},
+	{Name: "deny", Kind: KindList, Like: "[exec]", Description: "what no script the definition runs may do"},
+	{Name: "approve", Kind: KindList, Like: "[exec]", Description: "permissions a job may use only after the definition's ask approves it"},
+	{Name: "ask", Kind: KindJob, Like: "{ machine: ./ask.yaml }", Description: "the job that approves when a job needs approval"},
+	{Name: "title", Kind: KindText, Like: `"${input.channel}: ${input.said}"`, Description: "what a run is called, filled in from its input when it starts; only the client of its tree sees it"},
+	{Name: "meta", Kind: KindValue, Like: `{ on: { at: "02:00 Europe/London" } }`, Description: "data of any kind, which Corbie keeps with the definition and never reads"},
 	{Name: "lifetime", Kind: KindWord, Like: "singleton", Values: []string{LifetimeSingleton, LifetimeKeyed, LifetimeTransient},
-		Does: "how runs start at its location: singleton, one started by the submit; keyed, one for each key a send names; transient, the default, one for each call or start"},
+		Description: "how runs start at its location: singleton, one started by the submit; keyed, one for each key a send names; transient, the default, one for each call or start"},
 	{Name: "update", Kind: KindWord, Like: "restart", Values: []string{UpdateRestart, UpdateDrain},
-		Does: "what a changed file does to the runs already running at its location: restart cancels them; drain, the default but for a singleton, lets them finish"},
+		Description: "what a changed file does to the runs already running at its location: restart cancels them; drain, the default but for a singleton, lets them finish"},
 	{Name: "receive", Kind: KindList, Like: "[thermostats/*, client:panel]",
-		Does: "who may send to its runs or call it: locations and client:<name>, for every event or by event name; with none, its own tree and its tree's client"},
+		Description: "who may send to its runs or call it: locations and client:<name>, for every event or by event name; with none, its own tree and its tree's client"},
 }
 
 // The limits every type of machine takes. A type may add its own.
 var limits = []Field{
-	{Name: "timeout", Kind: KindDuration, Like: "1h", Does: "how long an instance may run (for ever, if not given)"},
-	{Name: "depth", Kind: KindNumber, Like: "8", Does: "how many levels of machines may be below a root (0: none)"},
-	{Name: "jobs", Kind: KindNumber, Like: "100", Does: "how many jobs an instance may start"},
-	{Name: "runs", Kind: KindNumber, Like: "50", Does: "of a keyed file: how many of its runs may be running at once (no limit, if not given)"},
+	{Name: "timeout", Kind: KindDuration, Like: "1h", Description: "how long an instance may run (for ever, if not given)"},
+	{Name: "depth", Kind: KindNumber, Like: "8", Description: "how many levels of machines may be below a root (0: none)"},
+	{Name: "jobs", Kind: KindNumber, Like: "100", Description: "how many jobs an instance may start"},
+	{Name: "runs", Kind: KindNumber, Like: "50", Description: "of a keyed file: how many of its runs may be running at once (no limit, if not given)"},
 }
 
 // AddressShape is the shape of an address: the run a send goes to.
 var AddressShape = &Shape{Name: "address", What: "an address", Fields: []Field{
-	{Name: "at", Kind: KindWord, Like: "devices/boiler", Does: "the location: read from the tree's prefix, or a full path from /"},
-	{Name: "key", Kind: KindWord, Like: "${event.data.room}", Does: "the key, at a keyed location: its run, started if none is running"},
-	{Name: "run", Kind: KindWord, Like: "${event.data.run}", Does: "one run at the location, by its ID"},
+	{Name: "at", Kind: KindWord, Like: "devices/boiler", Description: "the location: read from the tree's prefix, or a full path from /"},
+	{Name: "key", Kind: KindWord, Like: "${event.data.room}", Description: "the key, at a keyed location: its run, started if none is running"},
+	{Name: "run", Kind: KindWord, Like: "${event.data.run}", Description: "one run at the location, by its ID"},
 }}
 
 // CallShape is the shape of a call: the location whose run a job starts.
 var CallShape = &Shape{Name: "call", What: "a call", Fields: []Field{
-	{Name: "at", Kind: KindWord, Like: "services/weather", Does: "the location, which is transient: read from the tree's prefix, or a full path from /"},
+	{Name: "at", Kind: KindWord, Like: "services/weather", Description: "the location, which is transient: read from the tree's prefix, or a full path from /"},
 }}
 
 // SendShape is the shape of the event a job sends.
 var SendShape = &Shape{Name: "sent", What: "an event a job sends", Fields: []Field{
-	{Name: "to", Kind: KindValue, Of: AddressShape, Like: "{ at: devices/boiler }", Does: "the run it goes to: an address, or one expression that gives one, such as ${event.from}"},
-	{Name: "event", Kind: KindWord, Like: "set", Does: "the event's name"},
-	{Name: "data", Kind: KindValue, Like: "{ target: 12 }", Does: "what the event carries"},
+	{Name: "to", Kind: KindValue, Of: AddressShape, Like: "{ at: devices/boiler }", Description: "the run it goes to: an address, or one expression that gives one, such as ${event.from}"},
+	{Name: "event", Kind: KindWord, Like: "set", Description: "the event's name"},
+	{Name: "data", Kind: KindValue, Like: "{ target: 12 }", Description: "what the event carries"},
 }}
 
 // restartShape is the shape of a job's restart policy.
 var restartShape = &Shape{Name: "restart", What: "a job's restart policy", Fields: []Field{
-	{Name: "when", Kind: KindWord, Like: "always", Does: "failure, after an error or a timeout, which is the default, or always, after the job ends well too"},
-	{Name: "limit", Kind: KindValue, Like: "5 in 1h", Does: "how many restarts: a number, or a number in a length of time; no limit if not given"},
-	{Name: "delay", Kind: KindWord, Like: "1s to 5m", Does: "the wait before a restart: two lengths of time double from the first to the second, and one is the same each time; 1s to 5m if not given"},
+	{Name: "after", Kind: KindWord, Like: "always", Description: "failure, after an error or a timeout, which is the default, or always, after the job ends well too"},
+	{Name: "limit", Kind: KindValue, Like: "5 in 1h", Description: "how many restarts: a number, or a number in a length of time; no limit if not given"},
+	{Name: "delay", Kind: KindWord, Like: "1s to 5m", Description: "the wait before a restart: two lengths of time double from the first to the second, and one is the same each time; 1s to 5m if not given"},
 }}
 
 // JobShape is the shape of a job, wherever one is written.
 var JobShape = &Shape{Name: "job", What: "a job", Fields: []Field{
-	{Name: "script", Kind: KindWord, Path: true, Like: "./fetch.js", Does: "a script, which a runner executes: a file beside the definition"},
-	{Name: "files", Kind: KindList, Path: true, Like: "[./lib.js]", Does: "files the script loads with require"},
-	{Name: "machine", Kind: KindValue, Path: true, Like: "./child.yaml", Does: "a machine, which the controller starts as a child: a definition beside this one, or written in place"},
-	{Name: "send", Kind: KindFields, Of: SendShape, Like: "{ to: { at: devices/boiler }, event: set }", Does: "an event sent to a run by its address; the job ends done once it is sent"},
-	{Name: "call", Kind: KindFields, Of: CallShape, Like: "{ at: services/weather }", Does: "a location whose run is started with the input; the job waits, and its output is that run's result"},
-	{Name: "input", Kind: KindValue, Like: `{ url: "${item}" }`, Does: "what the script, the machine or the called run is given"},
-	{Name: "allow", Kind: KindList, Like: "[net:example.com]", Does: "what the job may do, with the definition's allow; for a machine, it narrows everything the child does"},
-	{Name: "deny", Kind: KindList, Like: "[exec]", Does: "what the job may not do"},
-	{Name: "timeout", Kind: KindDuration, Like: "5m", Does: "how long it may take, five minutes by default; for a machine, the child's timeout"},
-	{Name: "restart", Kind: KindFields, Like: "{ when: always, limit: 5 in 1h, delay: 1s to 5m }", Does: "what happens when the job ends", Of: restartShape},
-	{Name: "memory", Kind: KindSize, Like: "256MB", Does: "the most memory the job may use"},
-	{Name: "tags", Kind: KindList, Like: "[gpu]", Does: "chooses runners: one that has every tag"},
-	{Name: "approve", Kind: KindFlag, Like: "true", Does: "wait for the definition's ask to approve it"},
+	{Name: "script", Kind: KindWord, Path: true, Like: "./fetch.js", Description: "a script, which a runner executes: a file beside the definition"},
+	{Name: "files", Kind: KindList, Path: true, Like: "[./lib.js]", Description: "files the script loads with require"},
+	{Name: "machine", Kind: KindValue, Path: true, Like: "./child.yaml", Description: "a machine, which the controller starts as a child: a definition beside this one, or written in place"},
+	{Name: "send", Kind: KindFields, Of: SendShape, Like: "{ to: { at: devices/boiler }, event: set }", Description: "an event sent to a run by its address; the job ends done once it is sent"},
+	{Name: "call", Kind: KindFields, Of: CallShape, Like: "{ at: services/weather }", Description: "a location whose run is started with the input; the job waits, and its output is that run's result"},
+	{Name: "input", Kind: KindValue, Like: `{ url: "${item}" }`, Description: "what the script, the machine or the called run is given"},
+	{Name: "allow", Kind: KindList, Like: "[net:example.com]", Description: "what the job may do, with the definition's allow; for a machine, it narrows everything the child does"},
+	{Name: "deny", Kind: KindList, Like: "[exec]", Description: "what the job may not do"},
+	{Name: "timeout", Kind: KindDuration, Like: "5m", Description: "how long it may take, five minutes by default; for a machine, the child's timeout"},
+	{Name: "restart", Kind: KindFields, Like: "{ after: always, limit: 5 in 1h, delay: 1s to 5m }", Description: "what happens when the job ends", Of: restartShape},
+	{Name: "memory", Kind: KindSize, Like: "256MB", Description: "the most memory the job may use"},
+	{Name: "tags", Kind: KindList, Like: "[gpu]", Description: "chooses runners: one that has every tag"},
+	{Name: "approve", Kind: KindFlag, Like: "true", Description: "wait for the definition's ask to approve it"},
 }}
 
 // definitionShape is the shape of a definition before its type's own
-// fields: its first line, and what every type takes.
+// fields: the field that gives its type and its name, and what every type
+// takes.
 func definitionShape(t Type) *Shape {
-	first := Field{Name: t.Name(), Kind: KindWord, Like: "digest", Does: "its name: the first line gives the type and the name"}
+	first := Field{Name: t.Name(), Kind: KindWord, Like: "digest", Description: "its name: the field named for the type gives the type and the name"}
 	own := slices.Clone(limits)
 	if l, ok := t.(Limiter); ok {
 		own = append(own, l.Limits()...)
 	}
-	limit := Field{Name: "limits", Kind: KindFields, Like: "{ timeout: 1h, jobs: 100 }", Does: "how much an instance may use",
+	limit := Field{Name: "limits", Kind: KindFields, Like: "{ timeout: 1h, jobs: 100 }", Description: "how much an instance may use",
 		Of: &Shape{Name: "limits", What: "a definition's limits", Fields: own}}
-	fields := append([]Field{first}, shared[:2]...)
+	fields := append([]Field{first}, shared[:3]...)
 	fields = append(fields, limit)
-	return &Shape{Name: "definition", What: "a definition", Fields: append(fields, shared[2:]...)}
+	return &Shape{Name: "definition", What: "a definition", Fields: append(fields, shared[3:]...)}
 }
 
-// A Description is everything a definition of one type may hold: each
+// A TypeShape is everything a definition of one type may hold: each
 // mapping's shape, by its name. The definition itself is two of them
-// together, as it is read: "definition" is its first line and what every
-// type takes, and the shape named as the type is the type's own.
-type Description struct {
+// together, as it is read: "definition" is its type and its name and what
+// every type takes, and the shape named as the type is the type's own.
+type TypeShape struct {
 	Type   string            `json:"type"`
 	Shapes map[string]*Shape `json:"shapes"`
 }
 
 // Describe gives what a definition of a type may hold, as its reader reads it.
-func Describe(name string) (*Description, bool) {
+func Describe(name string) (*TypeShape, bool) {
 	t, ok := TypeOf(name)
 	if !ok {
 		return nil, false
 	}
-	d := &Description{Type: name, Shapes: map[string]*Shape{}}
+	d := &TypeShape{Type: name, Shapes: map[string]*Shape{}}
 	var add func(s *Shape)
 	add = func(s *Shape) {
 		if d.Shapes[s.Name] != nil {
@@ -290,7 +292,7 @@ func (k Kind) reads(as []Kind) bool {
 // client that shows a person what a definition has written, field by
 // field, as it will be read.
 func Written(src []byte) (map[string]any, error) {
-	n, _, err := readYAML(src, "")
+	n, err := readYAML(src, "")
 	if err != nil {
 		return nil, err
 	}

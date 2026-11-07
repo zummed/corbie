@@ -4,6 +4,6 @@ turn: ./turn.js
 prompt: Wait a while.
 tools:
   wait:
-    does: Wait a while
+    description: Wait a while
     args: {}
     job: { machine: ./sleeper.yaml }

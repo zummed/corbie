@@ -10,5 +10,5 @@ states:
   decided:
     end: done
     output:
-      approve: "${event.data.yes ? input.jobs.map(r => r.name) : []}"
+      approved: "${event.data.yes ? input.jobs.map(r => r.name) : []}"
       note: ${event.data.note}

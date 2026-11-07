@@ -44,7 +44,7 @@ func ask(t *testing.T, lines ...string) map[string]any {
 	module, _ := plugin.Find("llm")
 	out, err := module.Calls["chat"].Invoke(job, "llm", "chat", []any{map[string]any{"role": "user", "content": "Say hello."}},
 		plugin.Options{"service": "claude-code", "model": "sonnet",
-			"tools": []any{map[string]any{"name": "look", "does": "Look at a thing", "args": map[string]any{"type": "object", "properties": map[string]any{"at": map[string]any{"type": "string"}}}}}})
+			"tools": []any{map[string]any{"name": "look", "description": "Look at a thing", "args": map[string]any{"type": "object", "properties": map[string]any{"at": map[string]any{"type": "string"}}}}}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -149,7 +149,7 @@ cat "$here/reply"
 	module, _ := plugin.Find("llm")
 	if _, err := module.Calls["chat"].Invoke(job, "llm", "chat", []any{map[string]any{"role": "user", "content": "Say hello."}},
 		plugin.Options{"service": "claude-code", "model": "sonnet", "system": "You keep the house.",
-			"tools": []any{map[string]any{"name": "look", "does": "Look at a thing", "args": map[string]any{"type": "object", "properties": map[string]any{"at": map[string]any{"type": "string"}}}}}}); err != nil {
+			"tools": []any{map[string]any{"name": "look", "description": "Look at a thing", "args": map[string]any{"type": "object", "properties": map[string]any{"at": map[string]any{"type": "string"}}}}}}); err != nil {
 		t.Fatal(err)
 	}
 	args, _ := os.ReadFile(filepath.Join(dir, "args"))

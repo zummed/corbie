@@ -1,0 +1,24 @@
+# The router of Gromit in Slack. It runs the listener as a child, and sends
+# each message where it belongs and each press to the question whose button
+# was pressed.
+statechart: gromit
+description: The router of Gromit in Slack.
+lifetime: singleton
+allow: [send:conversation, send:deploys, send:gromit/slack/chat/ask]
+initial: listening
+states:
+  listening:
+    job: { machine: .rook/slack/listen.yaml, restart: { after: always } }
+    on:
+      message:
+        - when: "${event.data.place === '#deploys' && !event.data.change}"
+          send: { to: { at: deploys, key: "${event.data.chat}" }, event: message, data: "${event.data}" }
+        - when: "${event.data.change === 'reaction'}"
+          send: { to: { at: conversation, key: "${event.data.chat}" }, event: seen, data: "${event.data}" }
+        - when: "${(event.data.place === '#support' || event.data.place === 'dm') && !event.data.change}"
+          send: { to: { at: conversation, key: "${event.data.chat}" }, event: message, data: "${event.data}" }
+      # A press goes only to a question of this tree, since a send the
+      # router's allow: refuses would fail the router.
+      answer:
+        when: "${event.data.to.at === run.tree + '/gromit/slack/chat/ask'}"
+        send: { to: "${event.data.to}", event: answer, data: "${event.data}" }

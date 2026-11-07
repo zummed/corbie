@@ -1,0 +1,12 @@
+description: The orders app. How it is deployed, its settings, and changing them.
+instructions: { include: ./orders.md }
+ask:
+  machine: .rook/approval.yaml
+  input: { ask: gromit/slack/chat/ask, people: people/find, approvers: "orders:approve", in: "#orders-team", asker: "${input.asker.email}" }
+tools:
+  read_file: { call: gitlab/repository/files/read, input: { project: group/orders } }
+  change_file:
+    call: gitlab/repository/commits/create
+    input: { project: group/orders }
+    approve: true
+    when: "${input.asker.scopes.includes('orders:write')}"

@@ -49,12 +49,12 @@ func code(err error) string {
 	return ""
 }
 
-const part = `# a part
-does: The firewall and the switch.
+const toolkit = `# a toolkit
+description: The firewall and the switch.
 base: &base { timeout: 20s }
 tools:
   show_status:
-    does: >-
+    description: >-
       Run one show
       command.
     args: { device: string, n: 3, ok: true, none: ~ }
@@ -66,17 +66,17 @@ when: 2026-10-29
 `
 
 func Test_yaml_document_as_data(t *testing.T) {
-	doc, err := call(t, "parse", part)
+	doc, err := call(t, "parse", toolkit)
 	if err != nil {
 		t.Fatal(err)
 	}
 	want := map[string]any{
-		"does": "The firewall and the switch.",
-		"base": map[string]any{"timeout": "20s"},
+		"description": "The firewall and the switch.",
+		"base":        map[string]any{"timeout": "20s"},
 		"tools": map[string]any{"show_status": map[string]any{
-			"does": "Run one show command.",
-			"args": map[string]any{"device": "string", "n": 3.0, "ok": true, "none": nil},
-			"job":  map[string]any{"<<": map[string]any{"timeout": "20s"}, "script": "./tools/show-status.js", "files": []any{"./tools/status.js"}},
+			"description": "Run one show command.",
+			"args":        map[string]any{"device": "string", "n": 3.0, "ok": true, "none": nil},
+			"job":         map[string]any{"<<": map[string]any{"timeout": "20s"}, "script": "./tools/show-status.js", "files": []any{"./tools/status.js"}},
 		}},
 		"when": "2026-10-29",
 	}
@@ -84,7 +84,7 @@ func Test_yaml_document_as_data(t *testing.T) {
 		t.Fatalf("parse gave %v", doc)
 	}
 	// A map's keys are in the order the document writes them.
-	if got := fmt.Sprint(doc.(*plugin.Ordered).Keys, doc.(*plugin.Ordered).Values["base"]); got != "[does base tools when] map[timeout:20s]" {
+	if got := fmt.Sprint(doc.(*plugin.Ordered).Keys, doc.(*plugin.Ordered).Values["base"]); got != "[description base tools when] map[timeout:20s]" {
 		t.Fatalf("the keys are in the order %s", got)
 	}
 	if doc, err := call(t, "parse", "z: 1\nm: { b: 2, a: 3 }\na: 4\n"); err != nil || fmt.Sprint(doc) != "map[z:1 m:map[b:2 a:3] a:4]" {

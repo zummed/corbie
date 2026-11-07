@@ -1,6 +1,7 @@
 package client
 
 import (
+	"errors"
 	"fmt"
 	"io/fs"
 	"maps"
@@ -9,25 +10,27 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
-
-	"go.yaml.in/yaml/v3"
+	"unicode"
 
 	"github.com/zummed/corbie/machine"
 	"github.com/zummed/corbie/secret"
 	"github.com/zummed/corbie/store"
 )
 
-// A Tree is a directory read to be submitted at a prefix: each of its files
-// with a type line is a machine at a location.
+// A Tree is a directory read to be submitted at a prefix: each of its *.yaml
+// files that .corbieignore does not list is a machine at a location.
 type Tree struct {
 	Prefix string
 	// Directory is the directory's absolute path, every link followed. A
 	// machine reads it as run.context.
 	Directory string
 	Machines  []*Machine
+	// Listed is each file and directory .corbieignore lists that the
+	// directory holds, from the directory, a directory ending in /.
+	Listed []string
 }
 
-// A Machine is one machine file of a tree.
+// A Machine is one *.yaml file of a tree.
 type Machine struct {
 	Path     string // from the directory, such as devices/boiler.yaml
 	Location string // such as /home/devices/boiler
@@ -35,11 +38,12 @@ type Machine struct {
 	Problem  error // what stopped the file being read; Draft is nil
 }
 
-// ReadTree reads every machine file in dir and below it, but for .git: each
-// *.yaml whose first key gives a type of machine. Any other is a piece, which
-// a machine reads by including it. at is the prefix, by default / and the
-// directory's own name, and one that cannot be a prefix is an error. A file
-// that cannot be read, or whose path gives no location, is given with its
+// ReadTree reads every *.yaml in dir and below it as a machine, but for .git
+// and what the .corbieignore at the top of dir lists. A listed file has no
+// location, and a machine may still read it. at is the prefix, by default /
+// and the directory's own name, and one that cannot be a prefix is an error,
+// as is a line of .corbieignore that is no path in dir. A file that cannot be
+// read as a machine, or whose path gives no location, is given with its
 // Problem.
 func ReadTree(dir, at string) (*Tree, error) {
 	// A walk does not follow a link at its start, and the directory may be
@@ -60,32 +64,37 @@ func ReadTree(dir, at string) (*Tree, error) {
 	if err := store.CheckLocation(at); err != nil || at == "/" {
 		return nil, fmt.Errorf("--at %s: a prefix is / and the names of one or more directories, as /home, and is not / alone", at)
 	}
+	listed, err := readIgnore(full)
+	if err != nil {
+		return nil, err
+	}
 	t := &Tree{Prefix: at, Directory: full}
 	err = filepath.WalkDir(full, func(name string, d fs.DirEntry, err error) error {
-		switch {
-		case err != nil:
+		if err != nil {
 			return err
-		case d.IsDir() && d.Name() == ".git":
-			return filepath.SkipDir
-		case d.IsDir() || !strings.HasSuffix(d.Name(), ".yaml"):
-			return nil
 		}
 		rel, err := filepath.Rel(full, name)
 		if err != nil {
 			return err
 		}
-		m := &Machine{Path: filepath.ToSlash(rel)}
+		rel = filepath.ToSlash(rel)
+		switch {
+		case d.IsDir() && d.Name() == ".git":
+			return filepath.SkipDir
+		case listed[rel] && d.IsDir():
+			t.Listed = append(t.Listed, rel+"/")
+			return filepath.SkipDir
+		case listed[rel]:
+			t.Listed = append(t.Listed, rel)
+			return nil
+		case d.IsDir() || !strings.HasSuffix(d.Name(), ".yaml"):
+			return nil
+		}
+		m := &Machine{Path: rel}
 		m.Location = at + "/" + strings.TrimSuffix(m.Path, ".yaml")
-		key, err := firstKey(full, name)
-		if err != nil {
-			m.Problem = err
-			t.Machines = append(t.Machines, m)
-			return nil
-		}
-		if _, ok := machine.TypeOf(key); !ok {
-			return nil
-		}
-		m.Draft, m.Problem = readMachine(full, m.Path, machine.ParseAt)
+		m.Draft, m.Problem = readMachine(full, m.Path, func(file string, src []byte, load func(string) ([]byte, error)) (*machine.Draft, error) {
+			return machine.ParseAt(file, src, load, func(file string) bool { return located(listed, file) })
+		})
 		t.Machines = append(t.Machines, m)
 		return nil
 	})
@@ -133,34 +142,57 @@ func ReadFile(dir, rel, at string, job ScriptJob) (*Tree, error) {
 		}
 		m.Draft, m.Problem = Script(path.Base(rel), src, job)
 	} else {
-		m.Draft, m.Problem = readMachine(dir, rel, machine.ParseAt)
+		m.Draft, m.Problem = readMachine(dir, rel, func(file string, src []byte, load func(string) ([]byte, error)) (*machine.Draft, error) {
+			return machine.ParseAt(file, src, load, nil)
+		})
 	}
 	return &Tree{Prefix: at, Directory: dir, Machines: []*Machine{m}}, nil
 }
 
-// firstKey gives the first key of a YAML file, or "" when it holds no mapping.
-// A file that is not YAML, as one half written is, is a problem: it may be a
-// machine.
-func firstKey(dir, full string) (string, error) {
-	if err := inside(dir, full); err != nil {
-		return "", err
+// ignoreFile is the file at the top of a tree's directory that lists what
+// in it is no machine.
+const ignoreFile = ".corbieignore"
+
+// readIgnore reads the paths the .corbieignore at the top of a directory
+// lists, each from the directory: one a line, and a directory for everything
+// below it. A line starting with # and an empty line are passed over. A
+// directory with none lists nothing.
+func readIgnore(dir string) (map[string]bool, error) {
+	src, err := os.ReadFile(filepath.Join(dir, ignoreFile))
+	if errors.Is(err, fs.ErrNotExist) {
+		return nil, nil
 	}
-	src, err := os.ReadFile(full)
 	if err != nil {
-		return "", err
+		return nil, err
 	}
-	var doc yaml.Node
-	if err := yaml.Unmarshal(src, &doc); err != nil {
-		return "", machine.NotYAML(err, src)
+	listed := map[string]bool{}
+	for i, line := range strings.Split(string(src), "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		if path.IsAbs(line) || strings.HasPrefix(line, "!") || path.Clean(line) == "." || slices.Contains(strings.Split(line, "/"), "..") ||
+			strings.ContainsFunc(line, func(r rune) bool { return strings.ContainsRune(`\*?[`, r) || unicode.IsControl(r) }) {
+			return nil, fmt.Errorf("%s line %d: %q: a line is a path inside the directory, not the directory itself, with no .., no / or ! at its start, no \\, *, ? or [ and no control character", ignoreFile, i+1, line)
+		}
+		listed[path.Clean(line)] = true
 	}
-	if len(doc.Content) == 0 {
-		return "", nil
+	return listed, nil
+}
+
+// located says whether a file of a tree's directory, by its path from it,
+// is a machine at a location: a *.yaml file outside .git that .corbieignore
+// does not list, itself or by a directory above it.
+func located(listed map[string]bool, file string) bool {
+	if !strings.HasSuffix(file, ".yaml") {
+		return false
 	}
-	top := doc.Content[0]
-	if top.Kind != yaml.MappingNode || len(top.Content) == 0 {
-		return "", nil
+	for at := path.Clean(file); at != "."; at = path.Dir(at) {
+		if listed[at] || path.Base(at) == ".git" {
+			return false
+		}
 	}
-	return top.Content[0].Value, nil
+	return true
 }
 
 // inside says whether a file is in dir once every link to it is followed.

@@ -609,7 +609,7 @@ func within(dir, name string) (string, bool, error) {
 // among them the sends and calls the controller would refuse, and fails if
 // any has one.
 func (e *Env) checkMachines(dirs []string) error {
-	var paths, problems []string
+	var paths, problems, listed []string
 	nothing := map[string][]string{}
 	for _, dir := range dirs {
 		tree, err := client.ReadTree(dir, "")
@@ -631,13 +631,24 @@ func (e *Env) checkMachines(dirs []string) error {
 			paths = append(paths, filepath.ToSlash(filepath.Join(dir, m.Path)))
 			problems = append(problems, strings.Join(lines, "\n"))
 		}
+		for _, name := range tree.Listed {
+			full := filepath.ToSlash(filepath.Join(dir, name))
+			if strings.HasSuffix(name, "/") {
+				full += "/"
+			}
+			listed = append(listed, full)
+		}
 	}
 	bad := 0
 	report := struct {
 		Files   map[string]string   `json:"files"`
+		Listed  []string            `json:"listed,omitzero"`
 		Nothing map[string][]string `json:"nothing_at,omitzero"`
-	}{map[string]string{}, nothing}
+	}{map[string]string{}, listed, nothing}
 	width := 0
+	for _, path := range listed {
+		width = max(width, len(path))
+	}
 	for i, path := range paths {
 		width = max(width, len(path))
 		report.Files[path] = "ok"
@@ -657,6 +668,9 @@ func (e *Env) checkMachines(dirs []string) error {
 			for _, line := range strings.Split(problems[i], "\n") {
 				fmt.Fprintf(&b, "    %s\n", line)
 			}
+		}
+		for _, path := range listed {
+			fmt.Fprintf(&b, "%-*s  listed\n", width, path)
 		}
 		for _, at := range slices.Sorted(maps.Keys(nothing)) {
 			fmt.Fprintf(&b, "nothing in the tree is at %s, named by %s\n", at, strings.Join(nothing[at], ", "))

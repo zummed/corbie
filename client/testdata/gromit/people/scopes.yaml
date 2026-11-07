@@ -1,0 +1,4 @@
+ana@acme.example: { name: Ana, scopes: ["orders:read"] }
+bo@acme.example:  { name: Bo,  scopes: ["infra:read", "infra:approve"] }
+cy@acme.example:  { name: Cy,  scopes: ["infra:read"] }
+di@acme.example:  { name: Di,  scopes: ["deploy:approve"] }

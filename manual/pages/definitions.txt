@@ -1,19 +1,21 @@
 Definitions: every type of machine shares these fields, expressions, jobs, events and approval.
 
-A definition is a YAML file. Its first line is the machine's type and name:
-`flow: digest`, `statechart: review` or `agent: librarian`. A name is letters,
+A definition is a YAML file. One field gives the machine's type and name:
+`flow: digest`, `statechart: review` or `agent: librarian`. It may be written
+anywhere in the file, or come from a file it includes. A name is letters,
 digits, `_` and `-`, and starts with a letter. No stage, state, tool or job is
 named `ask`, the name of the definition's ask.
 
 Fields every type takes
 -----------------------
 
+  description: Sums a list.    what the machine is for, in plain text with no expression
   input: { urls: list }        the shape of a run's input, as below
   keep: 7d                     how long a run is kept after it ends; default 7d
   limits: { timeout: 1h }      how much a run may use, as below
   allow: [net:example.com]     permissions of every script job in the definition
   deny: [exec]                 what no script job in the definition may do
-  ask_about: [disk]            permissions that hold a job for approval
+  approve: [disk]              permissions that hold a job for approval
   ask: { script: ./ask.js }    the job that approves held jobs
   title: "${input.topic}"      a run's title, filled in when it starts, as below
   meta: { owner: alice }        data Corbie keeps and never reads; no expression in it is filled in
@@ -71,6 +73,9 @@ file or a list. A name may end in `#path` to take one part of a file.
   added to tools.yaml later does not reach it.
 - A file's values win over those of the files it includes, and an earlier
   file's over a later one's.
+- A file may take its type and name from a file it includes, as
+  `include: shared/post.yaml` does. A type it writes itself is the same type,
+  and its name wins.
 - `${…}` in an included text is an expression. A literal `${` is written
   `${'${'}`.
 - A path in a file is read from the context, and a path starting `./` from
@@ -146,7 +151,7 @@ An expression reads these names.
 
   input                     the run's input, in every type
   values                    the values set at the run's location or above, as `values.HUB`
-  run                       the run's `id`, `location` and `context`, in every type
+  run                       the run's `id`, `location`, `context` and `tree`, in every type
   stages, item              in a flow
   states, event, tickets    in a statechart
   args                      in an agent's tool
@@ -156,6 +161,8 @@ It may use JavaScript's operators, `? :`, arrow functions, methods such as
 `Array`, `String`, `Number`, `RegExp`, `Map` and `Set`.
 
 - A name that is not one of these is refused when the definition is checked.
+- `when:` is a condition on a flow's stage, a statechart's transition, and an
+  agent's toolkit or tool.
 - An expression cannot change what it reads. It has no `eval`, `Function`,
   `Promise`, `require` or plugins, so it reads no file and makes no
   network connection.
@@ -171,7 +178,7 @@ It may use JavaScript's operators, `? :`, arrow functions, methods such as
 - Put a value that contains `${...}` in quotes when it is inside `{ }` or `[ ]`,
   or when the expression has a colon followed by a space.
 - These take no expression: a name, a type, a permission's kind, a secret's
-  name, a `deny:` or `ask_about:` entry, a tag and a ticket's name.
+  name, a `deny:` or `approve:` entry, a description, a tag and a ticket's name.
 
 Jobs
 ----
@@ -226,10 +233,10 @@ A job with `restart:` runs again when it ends. With none it runs once.
 
   job:
     script: ./fetch.js
-    restart: { when: always, limit: 5 in 1h, delay: 1s to 5m }
+    restart: { after: always, limit: 5 in 1h, delay: 1s to 5m }
 
-  when: failure        restarts after an error or a timeout; the default
-  when: always         restarts after the job ends well too
+  after: failure       restarts after an error or a timeout; the default
+  after: always        restarts after the job ends well too
   limit: 3             at most three restarts; no limit by default
   limit: 5 in 1h       at most five in any hour
   delay: 1s to 5m      doubles from the first to the second; the default
@@ -245,7 +252,7 @@ A job with `restart:` runs again when it ends. With none it runs once.
   The run's record shows each attempt.
 - Every value an attempt emits is delivered, so a job that repeats itself
   delivers its values again.
-- With `when: always` and no limit, the machine sees no outcome, so a stage
+- With `after: always` and no limit, the machine sees no outcome, so a stage
   waiting on the job never ends.
 - A restart after a failure is the same job, under a yes it was already given.
 - A restart after a job ended well is a new job: it is held again if it needs
@@ -255,9 +262,9 @@ A job with `restart:` runs again when it ends. With none it runs once.
 Locations
 ---------
 
-Each file with a type line in a submitted directory has a location: its path
-under the prefix it was submitted at, without `.yaml`. A file without one is
-a piece, which only includes read.
+Each *.yaml in a submitted directory has a location: its path under the prefix
+it was submitted at, without `.yaml`. A file that `.corbieignore` lists has
+none, as `corbie manual a-directory` shows.
 
   lifetime: singleton    one run, started by the submit
   lifetime: keyed        one run for each key a send names; statecharts only
@@ -348,10 +355,10 @@ Approval
 holds a job in two cases.
 
 - The job has `approve: true`.
-- The job's `allow:` list declares a permission that `ask_about:` lists, in
+- The job's `allow:` list declares a permission that `approve:` lists, in
   its definition or in one above it. Two entries match when they have the same
   kind and either scope covers the other, or when one is a group of that kind.
-  A call job declares `send:` for its location as well.
+  A call or a send job declares only `send:` for its location.
 
 The ask is a job, and the controller adds two fields to its input.
 
@@ -361,13 +368,13 @@ The ask is a job, and the controller adds two fields to its input.
   input.asking    { machine, instance }: the machine whose jobs are held, and its run's ID
   input.jobs      [{ name, input, allow, script, machine, call or send, asked }]: each held job
 
-- A held job has `asked: { does, args, said }` only for an agent's tool call,
-  with `entry` and `tool` too for a tool from a `list:`, and `part`, the part's
-  name, for a tool of a part or for `open`. The list of an entry in a part has
-  `asked: { part }`.
+- A held job has `asked: { description, args, said }` only for an agent's tool
+  call, with `entry` and `tool` too for a tool from a `list:`, and `toolkit`,
+  the toolkit's name, for a tool of a toolkit or for `open`. The list of an
+  entry in a toolkit has `asked: { toolkit }`.
 - A held call job has `call: { at }`, and a held send job `send: { to, event, data }`.
 
-The ask returns `{ approve: [names of jobs], note: "..." }`.
+The ask returns `{ approved: [names of jobs], note: "..." }`.
 
   a job the ask names            starts, with no permission it did not have
   a job the ask does not name    fails with status `denied`; its error has the note
@@ -380,11 +387,10 @@ value, approves nothing.
   `ask:` fails as it starts, saying so. Its held jobs go to the nearest `ask:`
   above it that was not made while running, and with none they fail with
   status `denied`.
-- The jobs of an agent's set, and the machines below them, use the `ask:`
-  of the set, or of the nearest set it is inside that has one, before the
-  agent's. The controller starts each ask once for the jobs of one step that
-  use it.
-- A machine run as an ask uses no `ask:` and no `ask_about:` from above it.
+- The jobs of an agent's toolkit, and the machines below them, use the
+  toolkit's `ask:`, when it has one, before the agent's. The controller starts
+  each ask once for the jobs of one step that use it.
+- A machine run as an ask uses no `ask:` and no `approve:` list from above it.
 - A run started by a send or a call uses only its own file's `ask:`.
 - A run of a definition that can hold a job and has no `ask:` in it or above
   it is refused as it starts.
@@ -394,12 +400,12 @@ its `allow:` list has no `fs.write` entry.
 
     // ask.js
     return {
-      approve: input.jobs.filter(r => !r.allow.some(a => a.startsWith("fs.write"))).map(r => r.name),
+      approved: input.jobs.filter(r => !r.allow.some(a => a.startsWith("fs.write"))).map(r => r.name),
       note: "writes are not approved here",
     }
 
     corbie test ask.js --input '{"jobs": [{"name": "look", "allow": ["fs.read:/srv/**"]}, {"name": "tidy", "allow": ["fs.write:/srv/**"]}]}'
-      output: {"approve":["look"],"note":"writes are not approved here"}
+      output: {"approved":["look"],"note":"writes are not approved here"}
 
 Reference
 ---------

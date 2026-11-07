@@ -725,7 +725,7 @@ func AllowsSecret(layers []Layer, name string) bool {
 }
 
 // Declares says whether a job's allow list declares a permission that is
-// listed to be asked about: an entry of the same kind where either scope
+// listed in an approve: list: an entry of the same kind where either scope
 // covers the other, or a group that contains it, or all. A location in
 // either list is read from the tree's prefix.
 func Declares(allow []string, listed []string, prefix string) bool {

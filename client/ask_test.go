@@ -24,7 +24,7 @@ func TestAskApprovesSomeOfAStepsJobs(t *testing.T) {
 		"ask.js": `
 			if (input.asking.machine !== "approvals") throw new Error("not told who is asking")
 			return {
-				approve: input.jobs.filter(r => r.input.n <= input.limit).map(r => r.name),
+				approved: input.jobs.filter(r => r.input.n <= input.limit).map(r => r.name),
 				note: "only small numbers",
 			}
 		`,
@@ -40,7 +40,7 @@ func TestDenialNobodyHandlesFailsTheMachineAsDenied(t *testing.T) {
 		stages:
 		  one:
 		    job: { script: ./add.js, input: { n: 1 }, approve: true }
-	`, map[string]string{"add.js": scripts["add.js"], "ask.js": `return { approve: [] }`}, nil)
+	`, map[string]string{"add.js": scripts["add.js"], "ask.js": `return { approved: [] }`}, nil)
 	if r.Status != "failed" || r.Failure != "denied" || !strings.Contains(r.Error, "one: the ask did not approve the job") {
 		t.Fatalf("the flow ended %s/%s: %q", r.Status, r.Failure, r.Error)
 	}
@@ -50,7 +50,7 @@ func TestAskThatFailsOrDoesNotDecideApprovesNothing(t *testing.T) {
 	l := local(t)
 	for ask, want := range map[string]string{
 		`throw new Error("no")`: "the ask failed, which approves nothing",
-		`return "maybe"`:        "the ask's result has no approve list",
+		`return "maybe"`:        "the ask's result has no approved list",
 	} {
 		r := run(t, l, `
 			flow: undecided
@@ -69,12 +69,12 @@ func TestAskThatFailsOrDoesNotDecideApprovesNothing(t *testing.T) {
 	}
 }
 
-func TestAPermissionListedToBeAskedAboutHoldsTheJob(t *testing.T) {
+func TestAPermissionThatNeedsAYesHoldsTheJob(t *testing.T) {
 	l := local(t, "all")
 	r := run(t, l, `
-		flow: asked-about
+		flow: needs-a-yes
 		ask: { script: ./ask.js }
-		ask_about: [exec]
+		approve: [exec]
 		stages:
 		  plain:
 		    job: { script: ./add.js, input: { n: 1 } }
@@ -83,7 +83,7 @@ func TestAPermissionListedToBeAskedAboutHoldsTheJob(t *testing.T) {
 		output:
 		  plain: ${stages.plain.output.n}
 		  held: ${stages.starts_a_program.error}
-	`, map[string]string{"add.js": scripts["add.js"], "ask.js": `return { approve: [], note: input.jobs.map(r => r.name).join() }`}, nil)
+	`, map[string]string{"add.js": scripts["add.js"], "ask.js": `return { approved: [], note: input.jobs.map(r => r.name).join() }`}, nil)
 	check(t, r.Status, r.Output, "done", `{"plain": 2, "held": "the ask did not approve the job: starts_a_program"}`)
 }
 
@@ -102,8 +102,8 @@ func TestAskThatIsAMachineWaitsForAPerson(t *testing.T) {
 		          verdict:
 		            - { go: yes, when: "${event.data.ok}" }
 		            - { go: no }
-		      yes: { end: done, output: { approve: "${input.jobs.map(r => r.name)}" } }
-		      no: { end: done, output: { approve: [], note: "${event.data.why}" } }
+		      yes: { end: done, output: { approved: "${input.jobs.map(r => r.name)}" } }
+		      no: { end: done, output: { approved: [], note: "${event.data.why}" } }
 		stages:
 		  deploy:
 		    job: { script: ./add.js, input: { n: 41 }, approve: true }
@@ -124,9 +124,9 @@ func TestAskThatIsAMachineWaitsForAPerson(t *testing.T) {
 func Test_mach_denial_says_why_the_ask_gave_no_yes(t *testing.T) {
 	l := local(t)
 	for ask, want := range map[string]string{
-		`return { approve: [], note: "not today" }`: "the ask did not approve the job: not today",
-		`throw new Error("no")`:                     "the ask failed, which approves nothing",
-		`return "maybe"`:                            "the ask's result has no approve list",
+		`return { approved: [], note: "not today" }`: "the ask did not approve the job: not today",
+		`throw new Error("no")`:                      "the ask failed, which approves nothing",
+		`return "maybe"`:                             "the ask's result has no approved list",
 	} {
 		r := run(t, l, `
 			flow: why
@@ -150,7 +150,7 @@ func Test_mach_every_refusal_is_recorded(t *testing.T) {
 		  one:   { job: { script: ./add.js, input: { n: 1 }, approve: true } }
 		  two:   { job: { script: ./add.js, input: { n: 2 }, approve: true } }
 		  three: { job: { script: ./add.js, input: { n: 3 }, approve: true } }
-	`, map[string]string{"add.js": scripts["add.js"], "ask.js": `return { approve: [] }`}), startInput(nil))
+	`, map[string]string{"add.js": scripts["add.js"], "ask.js": `return { approved: [] }`}), startInput(nil))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -196,7 +196,7 @@ func Test_mach_inherited_ask_filled_from_declaring_machine(t *testing.T) {
 		// approves only if it was told who that machine was started for.
 		"ask.js": `
 			env.get("HOME")
-			return { approve: input.who === "parent" ? input.jobs.map(r => r.name) : [], note: "asked for " + input.who }
+			return { approved: input.who === "parent" ? input.jobs.map(r => r.name) : [], note: "asked for " + input.who }
 		`,
 	}
 	input := map[string]any{"who": "parent", "variable": "HOME"}

@@ -510,6 +510,19 @@ func TestTestReadsADirectory(t *testing.T) {
 	if out := m.ok("", "test", "on"); out != "on/hello.yaml  ok\n" {
 		t.Fatalf("corbie test on printed %q", out)
 	}
+	os.MkdirAll(filepath.Join(dir, "on", "shared"), 0o755)
+	os.WriteFile(filepath.Join(dir, "on", "shared", "base.yaml"), []byte("allow: [env:HOME]\n"), 0o644)
+	os.WriteFile(filepath.Join(dir, "on", "notes.yaml"), []byte("- later\n"), 0o644)
+	os.WriteFile(filepath.Join(dir, "on", ".corbieignore"), []byte("shared/\nnotes.yaml\n"), 0o644)
+	if out := m.ok("", "test", "on"); out != "on/hello.yaml  ok\non/notes.yaml  listed\non/shared/     listed\n" {
+		t.Fatalf("corbie test on, with paths listed, printed %q", out)
+	}
+	os.Remove(filepath.Join(dir, "on", ".corbieignore"))
+	if status, out, _ := m.run("", "test", "on"); status != 1 || !strings.Contains(out, "on/shared/base.yaml\n    it gives no type") {
+		t.Fatalf("with nothing listed, corbie test on ended %d and printed %q", status, out)
+	}
+	os.RemoveAll(filepath.Join(dir, "on", "shared"))
+	os.Remove(filepath.Join(dir, "on", "notes.yaml"))
 	if entries, _ := os.ReadDir(m.config); len(entries) != 0 {
 		t.Fatal("corbie test on a directory left a config behind")
 	}
@@ -523,6 +536,41 @@ func TestTestReadsADirectory(t *testing.T) {
 	status, out, _ := m.run("", "test", "on")
 	if status != 1 || !strings.Contains(out, "on/hello.yaml\n    ") {
 		t.Fatalf("with its script gone, corbie test on ended %d and printed %q", status, out)
+	}
+}
+
+// corbie test on the worked example in client/testdata/gromit prints each
+// machine ok, then each path .corbieignore lists.
+func TestTestListsTheWorkedExample(t *testing.T) {
+	m := machine{t, t.TempDir()}
+	from, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chdir("../testdata"); err != nil {
+		t.Fatal(err)
+	}
+	defer os.Chdir(from)
+	want := `gromit/agents/support.yaml                    ok
+gromit/conversation.yaml                      ok
+gromit/deploys.yaml                           ok
+gromit/gitlab/pipeline/create.yaml            ok
+gromit/gitlab/repository/commits/create.yaml  ok
+gromit/gitlab/repository/files/read.yaml      ok
+gromit/gromit/slack/chat/ask.yaml             ok
+gromit/gromit/slack/chat/post.yaml            ok
+gromit/gromit/slack/gromit.yaml               ok
+gromit/infra/vms/restart.yaml                 ok
+gromit/infra/vms/status.yaml                  ok
+gromit/ops/slack/chat/post.yaml               ok
+gromit/ops/slack/ops.yaml                     ok
+gromit/people/find.yaml                       ok
+gromit/.rook/                                 listed
+gromit/people/scopes.yaml                     listed
+gromit/toolkits/                              listed
+`
+	if out := m.ok("", "test", "gromit"); out != want {
+		t.Fatalf("corbie test gromit printed:\n%s", out)
 	}
 }
 

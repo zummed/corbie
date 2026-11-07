@@ -86,7 +86,7 @@ func (ex example) where() string {
 	return fmt.Sprintf("the page %q, the example at line %d", ex.page, ex.line)
 }
 
-var names = regexp.MustCompile(`^(?:#|//) ([\w./-]+\.(?:yaml|js))(?::.*)?$`)
+var names = regexp.MustCompile(`^(?:#|//) ([\w./-]+\.(?:yaml|js)|[\w./-]*\.corbieignore)(?::.*)?$`)
 
 // examplesOf reads the examples of a page.
 func examplesOf(page manual.Page) []example {

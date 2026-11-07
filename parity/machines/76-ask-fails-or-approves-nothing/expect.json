@@ -6,7 +6,7 @@
         "<contains>": "the ask failed"
       },
       "ask_approves_none": {
-        "<contains>": "no approve list"
+        "<contains>": "no approved list"
       }
     }
   },

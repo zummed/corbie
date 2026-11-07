@@ -233,7 +233,7 @@ func Test_ctl_called_runs_held_jobs_go_to_its_own_ask(t *testing.T) {
 		  s: { job: { script: ./work.js, approve: true } }
 	`
 	asking := strings.Replace(caller, "flow: caller", "flow: caller\n\task: ./ask.js", 1)
-	scripts := map[string]string{"work.js": "return 1", "ask.js": "return { approve: [] }"}
+	scripts := map[string]string{"work.js": "return 1", "ask.js": "return { approved: [] }"}
 	for _, own := range []bool{true, false} {
 		w := newWorld(t)
 		w.newRunner()
@@ -268,14 +268,14 @@ func Test_ctl_called_runs_held_jobs_go_to_its_own_ask(t *testing.T) {
 	}
 }
 
-// A caller's ask_about: [send:…] holds a call job for its ask; a
+// A caller's approve: [send:…] holds a call job for its ask; a
 // statechart's send action with the same list is never held.
-func Test_ctl_ask_about_send_holds_a_call(t *testing.T) {
+func Test_ctl_approve_send_holds_a_call(t *testing.T) {
 	w := newWorld(t)
-	held := strings.Replace(caller, "flow: caller", "flow: caller\n\task_about: [\"send:**\"]\n\task: ./ask.js", 1)
+	held := strings.Replace(caller, "flow: caller", "flow: caller\n\tapprove: [\"send:**\"]\n\task: ./ask.js", 1)
 	all := map[string]string{"/t/caller": held, "/t/lookup": lookup, "/t/room": talk,
-		"/t/router": strings.Replace(router, "statechart: router", "statechart: router\n\task_about: [\"send:**\"]\n\task: ./ask.js", 1)}
-	if r := w.submitTree(w.client, w.tree("/t", "/srv/t", all, map[string]string{"ask.js": "return { approve: [] }"})); !r.Taken {
+		"/t/router": strings.Replace(router, "statechart: router", "statechart: router\n\tapprove: [\"send:**\"]\n\task: ./ask.js", 1)}
+	if r := w.submitTree(w.client, w.tree("/t", "/srv/t", all, map[string]string{"ask.js": "return { approved: [] }"})); !r.Taken {
 		t.Fatalf("the tree was refused: %s", r.Refused)
 	}
 	run := w.startAt(w.client, "/t/caller", client.Start{})
@@ -296,6 +296,40 @@ func Test_ctl_ask_about_send_holds_a_call(t *testing.T) {
 	w.settle()
 	if runs := w.runsOf("talk"); len(runs) != 1 || !slices.Equal(w.told(runs[0]), []string{"not held"}) {
 		t.Fatalf("the send action gave the runs %v", runs)
+	}
+}
+
+// A call declares only a send to the location it calls, whatever else the
+// definition's allow: lists: approve: [send:lookup] holds the call to the
+// lookup and not the call to the other location beside it.
+func Test_ctl_approve_send_holds_only_a_call_to_a_listed_location(t *testing.T) {
+	w := newWorld(t)
+	both := `
+	flow: caller
+	allow: ["send:lookup", "send:other"]
+	approve: ["send:lookup"]
+	ask: ./ask.js
+	stages:
+	  look: { job: { call: { at: lookup }, input: 1 } }
+	  tell: { job: { call: { at: other }, input: 2 } }
+	output: ${stages.tell.output}
+`
+	all := map[string]string{"/t/caller": both, "/t/lookup": lookup, "/t/other": lookup}
+	if r := w.submitTree(w.client, w.tree("/t", "/srv/t", all, map[string]string{"ask.js": "return { approved: [] }"})); !r.Taken {
+		t.Fatalf("the tree was refused: %s", r.Refused)
+	}
+	run := w.startAt(w.client, "/t/caller", client.Start{})
+	w.settle()
+	var held []string
+	for _, step := range w.steps(run) {
+		for _, ask := range step.Asks {
+			if ask.Kind == instance.AskHold {
+				held = append(held, ask.Job.Name)
+			}
+		}
+	}
+	if !slices.Equal(held, []string{"look"}) || len(w.called(run)) != 1 {
+		t.Fatalf("held %v, and called %v", held, w.called(run))
 	}
 }
 

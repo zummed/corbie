@@ -102,14 +102,14 @@ func Test_ctl_send_job_too_large_to_write_fails(t *testing.T) {
 	}
 }
 
-// A flow's ask_about: [send:…] holds a send job to that location for its
+// A flow's approve: [send:…] holds a send job to that location for its
 // ask: the event is written once the ask approves the job, and never when it
 // approves nothing.
-func Test_ctl_ask_about_send_holds_a_send_job(t *testing.T) {
+func Test_ctl_approve_send_holds_a_send_job(t *testing.T) {
 	const tell = `
 		flow: tell
 		allow: ["send:**"]
-		ask_about: ["send:/t/room"]
+		approve: ["send:/t/room"]
 		ask: ./ask.js
 		stages:
 		  tell: { job: { send: { to: { at: room, key: "chat:1" }, event: said, data: { text: hello } } } }
@@ -135,7 +135,7 @@ func Test_ctl_ask_about_send_holds_a_send_job(t *testing.T) {
 		if approve {
 			approved = append(approved, "tell")
 		}
-		w.result(r1, run, instance.AskName, instance.Result{Status: instance.Done, Output: map[string]any{"approve": approved}})
+		w.result(r1, run, instance.AskName, instance.Result{Status: instance.Done, Output: map[string]any{"approved": approved}})
 		w.settle()
 		rooms := w.runsOf("talk")
 		if !approve {
@@ -150,6 +150,38 @@ func Test_ctl_ask_about_send_holds_a_send_job(t *testing.T) {
 		if len(rooms) != 1 || !slices.Equal(w.told(rooms[0]), []string{"hello"}) {
 			t.Fatalf("after the ask the rooms are %v", rooms)
 		}
+	}
+}
+
+// A send job that names no location declares nothing: with approve:
+// [send:room] and allow: [send:room], its send to a client is not held, and
+// it ends done, not delivered.
+func Test_ctl_approve_send_holds_no_send_job_without_a_location(t *testing.T) {
+	const tell = `
+		flow: tell
+		allow: ["send:room"]
+		approve: ["send:room"]
+		ask: ./ask.js
+		stages:
+		  tell: { job: { send: { to: "${({ client: 'c2' })}", event: said, data: { text: hello } } } }
+	`
+	w := newWorld(t)
+	w.roomsWith(map[string]string{"/t/tell": tell}, map[string]string{"ask.js": "return { approved: [] }"})
+	run := w.startAt(w.client, "/t/tell", client.Start{})
+	w.settle()
+	var sent []instance.Ask
+	for _, step := range w.steps(run) {
+		for _, ask := range step.Asks {
+			switch ask.Kind {
+			case instance.AskHold:
+				t.Fatalf("the send to a client was held: %+v", ask.Job)
+			case instance.AskEvent:
+				sent = append(sent, ask)
+			}
+		}
+	}
+	if head := w.head(run); head.Status != instance.Done || len(sent) != 1 || !sent[0].Undelivered {
+		t.Fatalf("the flow is %s and sent %+v", head.Status, sent)
 	}
 }
 
@@ -356,7 +388,7 @@ func Test_ctl_ask_is_told_a_held_call_or_send(t *testing.T) {
 	const tell = `
 		flow: tell
 		allow: ["send:**"]
-		ask_about: ["send:**"]
+		approve: ["send:**"]
 		ask: ./ask.js
 		stages:
 		  c: { job: { call: { at: lookup }, input: { n: 5 } } }

@@ -49,13 +49,19 @@ A state's `on:` says where to go on each event, by the event's name.
 
 A transition names the state to go to, and may have a condition and may send events. Where several are listed, the first whose condition holds is taken. A transition that names no state stays where it is and only sends.
 
+A transition to the state that has the rule, or to a state holding it, leaves that state and enters it again: its jobs and timers start afresh, and it has a new ticket.
+
 An event is taken by at most one rule. One the current state has no rule for is offered to the state that holds it, and so on outward. A failure nobody takes fails the chart. Any other event nobody takes is dropped.
 
 One event may set off a chain of transitions. A chain that does not come to rest fails the chart.
 
 ## Data
 
-A chart has no variables. Each state's latest output is remembered and can be read by name from any expression, along with the chart's input and the event that caused the current move. A value built up over a loop goes through a script: in as its input and out as its output.
+A chart has no variables. Each state's latest output is remembered and can be read by name from any expression, along with the chart's input and the event that caused the current move.
+
+A state's output is set only when the state is done: by its jobs ending well, or by a final state inside it. A job that fails leaves the state's earlier output as it was.
+
+A value built up over a loop goes through a script: in as its input and out as its output.
 
 ## Sending
 
@@ -89,7 +95,7 @@ states:
 - A send to an address needs `send:` in every layer of the chart, and the receiver's `receive:` must accept the chart (see permission.md). A send the chart's own layers refuse fails the chart with the status `denied`.
 - Any other send that is not taken is noted as undelivered in the chart's record and fails nothing. machine.md lists the cases.
 - Only a chart takes a sent event.
-- A send action is never held by `ask_about:`.
+- A send action is never held by `approve:`.
 
 ## Waiting
 
@@ -126,12 +132,13 @@ states:
       failed: ready
 ```
 
-Such a chart does one piece of work at a time. An event that arrives while it is busy finds no rule and is dropped, unless an active state names it under `defer:`. A client sender's receipt says so; a run sender is told nothing, and the chart's record shows the event dropped.
+Such a chart does one piece of work at a time. An event that arrives while it is busy finds no rule and is dropped, unless an active state names it under `defer:`. A client sender's receipt says so; a run sender is told nothing.
 
 1. An event that no rule takes is kept when an active state names it under `defer:`, and the receipt says the chart acted on it.
 2. Kept events are offered again in the order they arrived, each once no active state defers it, and before any newer event.
 3. A kept event that no rule takes then is dropped.
 
+- Kept events are offered in the step in which the last state keeping them is left, so a state entered in that step is given a kept event before its own job's result or its own timer.
 - A rule of a state that holds the deferring state is taken before the event is kept.
 - A state cannot defer `done`, `failed`, a ticket's name, a timer's name, or an event no state has a rule for, and a definition that tries is refused.
 - A chart that ends drops the events it kept.

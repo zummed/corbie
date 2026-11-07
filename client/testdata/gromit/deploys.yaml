@@ -1,0 +1,27 @@
+# One run per thread in #deploys, with no model. Every call to the pipeline
+# needs a yes from someone with deploy:approve.
+statechart: deploys
+description: Runs the deploy pipeline when someone in #deploys writes "deploy orders" or "deploy billing".
+lifetime: keyed
+receive: [gromit/slack/gromit]
+allow: [send:gitlab/pipeline/create, send:gromit/slack/chat/post]
+approve: [send:gitlab/pipeline/create]
+ask:
+  machine: .rook/approval.yaml
+  input: { ask: gromit/slack/chat/ask, people: people/find, approvers: "deploy:approve", in: "#deploys" }
+initial: waiting
+states:
+  waiting:
+    on:
+      message:
+        - { go: deploying, when: "${/^deploy (orders|billing)$/.test(event.data.text)}" }
+        - { go: over }
+  deploying:
+    job: { call: { at: gitlab/pipeline/create }, input: { project: "group/${event.data.text.slice(7)}", ref: main } }
+    on: { done: telling, failed: telling }
+  telling:
+    job:
+      call: { at: gromit/slack/chat/post }
+      input: { in: "${input.chat}", text: "${event.name === 'done' ? 'Deployed.' : 'The deploy did not run: ' + event.data.error}" }
+    on: { done: over, failed: over }
+  over: { end: done }

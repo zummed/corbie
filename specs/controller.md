@@ -59,7 +59,7 @@ Everything that compiles or evaluates happens in that process: checking the defi
 A bug in what the process runs gives a made definition that process, so its answer is a definition's word and no more. The answer holds what the machine asks for and nothing of the controller's. The same code then runs for a made machine as for any other.
 
 ```
-  the definition, as plain JSON   the machine's name and type, ask_about, keep, limit on jobs, deny list, scripts and machines
+  the definition, as plain JSON   the machine's name and type, approve, keep, limit on jobs, deny list, scripts and machines
   the answer                      the machine's own state, its requests, its input with defaults, its time limit, its filled-in allow list
   the controller                  every name in the store, every runner, every status, every flag, every receipt, what a step used
 ```
@@ -125,7 +125,7 @@ $ corbie run submit house --at /home
 | `house/devices/boiler.yaml` | `/home/devices/boiler` |
 | `house/rooms/room.yaml` | `/home/rooms/room` |
 | `house/tools/lookup.yaml` | `/home/tools/lookup` |
-| `house/shared/base.yaml` | none: it has no type line, so it is a piece |
+| `house/shared/base.yaml` | none: `.corbieignore` lists `shared/` |
 
 1. The controller refuses a prefix that the client's ceiling's `at:` entries do not match.
 2. It refuses a prefix inside or above another tree, and a tree another client owns, naming that tree or its owner.

@@ -76,7 +76,7 @@ func TestAgentToolScopeIsFilledFromTheAgentsInput(t *testing.T) {
 		prompt: Read the note.
 		tools:
 		  look:
-		    does: Read a file of the directory
+		    description: Read a file of the directory
 		    args: { name: string }
 		    job: { script: ./look.js, input: { path: "${input.dir}/${args.name}" }, allow: ["fs.read:${input.dir}/**"] }
 	`, map[string]string{"look.js": `return fs.read(input.path)`}), client.Start{
@@ -103,7 +103,7 @@ func TestMadeDefinitionsApprovalsAreCheckedWhereItIsStarted(t *testing.T) {
 				"flow: made\nstages:\n  held: { job: { script: ./step.js, approve: true } }\noutput: ${stages.held.output}\n",
 				{ files: { "./step.js": "return 7" } })
 		`,
-		"ask.js": `return { approve: input.jobs.map(r => r.name) }`,
+		"ask.js": `return { approved: input.jobs.map(r => r.name) }`,
 	}
 	const maker = `
 		flow: maker
@@ -130,7 +130,7 @@ func TestLargeTextResultIsStoredAsText(t *testing.T) {
 	l := local(t, "all")
 	def := strings.Replace(agentDef(m.URL, ""), "tools:\n", `tools:
 		  lines:
-		    does: Give many lines
+		    description: Give many lines
 		    args: { n: number }
 		    job: { script: ./lines.js, input: { n: "${args.n}" } }
 `, 1)
@@ -466,6 +466,95 @@ func TestMetaIsKeptAndNeverRead(t *testing.T) {
 	}
 }
 
+// A definition of any type, and a machine written in place, may give
+// description:, plain text kept with the stored definition as written. An
+// expression in it is refused.
+func Test_mach_description_is_kept_as_written(t *testing.T) {
+	const description = "description: Adds one to n, then tells nobody."
+	flow := `
+		flow: adder
+		` + description + `
+		stages:
+		  inner:
+		    job:
+		      machine:
+		        flow: inner
+		        description: The machine written in place.
+		        stages: { s: { job: { script: ./add.js, input: { n: 2 } } } }
+		        output: ${stages.s.output}
+		output: ${stages.inner.output}
+	`
+	d := draft(t, flow, scripts)
+	if d.Definition.Description != "Adds one to n, then tells nobody." {
+		t.Fatalf("the stored definition keeps the description as %q", d.Definition.Description)
+	}
+	if len(d.Children) != 1 {
+		t.Fatalf("the draft holds %d machines written in place", len(d.Children))
+	}
+	for _, child := range d.Children {
+		if child.Definition.Description != "The machine written in place." {
+			t.Fatalf("the machine written in place keeps the description as %q", child.Definition.Description)
+		}
+	}
+	r := run(t, local(t, "all"), flow, scripts, nil)
+	check(t, r.Status, r.Output, "done", `{"n": 3}`)
+	for _, def := range []string{
+		"statechart: s\n" + description + "\ninitial: a\nstates: { a: { end: done } }\n",
+		"agent: a\n" + description + "\nmodel: { name: claude-sonnet-5-5, secret: KEY }\nprompt: hello\n",
+	} {
+		d, err := machineParse(def, nil)
+		if err != nil || d.Definition.Description != "Adds one to n, then tells nobody." {
+			t.Errorf("a definition with description: was refused or lost it: %v\n%s", err, def)
+		}
+	}
+	_, err := machineParse("flow: f\ndescription: Adds ${input.n}.\nstages:\n  a: { job: ./add.js }\n", scripts)
+	if err == nil || !strings.Contains(err.Error(), "description: a description is plain text, with no expression") {
+		t.Fatalf("a description with an expression was not refused at description: %v", err)
+	}
+}
+
+// approve: at the top of a definition is a list of permissions, and in a job
+// true or false. Each written in the other's place is refused, and the
+// refusal tells the two apart.
+func Test_mach_approve_is_a_list_on_a_definition_and_a_flag_on_a_job(t *testing.T) {
+	for def, want := range map[string]string{
+		"flow: f\nask: ./ask.js\napprove: true\nstages:\n  a: { job: ./add.js }\n":                              "approve: at the top of a definition, this is a list of the permissions a job may use only after a yes",
+		"flow: f\nask: ./ask.js\nstages:\n  a: { job: { script: ./add.js, approve: [exec] } }\n":                "stages.a.job.approve: in a job, this is true or false",
+		"flow: f\nask: ./ask.js\napprove: [exec]\nstages:\n  a: { job: { script: ./add.js, approve: true } }\n": "",
+	} {
+		_, err := machineParse(def, map[string]string{"add.js": scripts["add.js"], "ask.js": "return { approved: [] }"})
+		switch {
+		case want == "" && err != nil:
+			t.Errorf("%s was refused: %v", def, err)
+		case want != "" && (err == nil || !strings.Contains(err.Error(), want)):
+			t.Errorf("%s was not refused with %q: %v", def, want, err)
+		}
+	}
+}
+
+// Every field named when, in every shape of every type, is a condition: one
+// expression, written ${…}.
+func Test_mach_every_when_is_a_condition(t *testing.T) {
+	found := 0
+	for _, name := range machine.Types() {
+		d, _ := machine.Describe(name)
+		for _, shape := range d.Shapes {
+			for _, f := range shape.Fields {
+				if f.Name != "when" {
+					continue
+				}
+				found++
+				if _, ok := machine.OneExpr(f.Like); f.Kind != machine.KindWord || !ok || !strings.HasPrefix(f.Description, "a condition, one expression") {
+					t.Errorf("%s's %s has a when: that is not a condition: %+v", name, shape.Name, f)
+				}
+			}
+		}
+	}
+	if found == 0 {
+		t.Fatal("no shape has a when:")
+	}
+}
+
 // A definition of any type may give title:, filled in from the input and
 // the run when the run starts, as one line of at most 200 characters. Only
 // the client that started the run is shown it; a viewer, who reads the
@@ -581,10 +670,10 @@ func Test_mach_file_leading_back_to_itself_is_refused(t *testing.T) {
 			map[string]string{"a.yaml": "include: ./b.yaml\n", "b.yaml": "include: ./a.yaml\n"},
 			"tools.include: the definition leads back to itself: a.yaml -> b.yaml -> a.yaml"},
 		{"a file included below itself", agent + "tools: { include: ./t.yaml }\n",
-			map[string]string{"t.yaml": "t: { does: x, job: " + inPlaceAgent("tools: { include: ./t.yaml }") + " }\n"},
+			map[string]string{"t.yaml": "t: { description: x, job: " + inPlaceAgent("tools: { include: ./t.yaml }") + " }\n"},
 			"the definition leads back to itself: t.yaml -> t.yaml"},
-		{"a part's file", agent + "open:\n  s: { include: ./s.yaml }\n",
-			map[string]string{"s.yaml": "does: Loop.\ntools:\n  t: { does: x, job: " + inPlaceAgent("open: { s: { include: ./s.yaml } }") + " }\n"},
+		{"a toolkit's file", agent + "toolkits:\n  s: { include: ./s.yaml }\n",
+			map[string]string{"s.yaml": "description: Loop.\ntools:\n  t: { description: x, job: " + inPlaceAgent("toolkits: { s: { include: ./s.yaml } }") + " }\n"},
 			"the definition leads back to itself: s.yaml -> s.yaml"},
 		{"a machine file", "flow: f\nstages:\n  one: { job: { machine: ./f.yaml } }\n",
 			map[string]string{"f.yaml": "flow: g\nstages:\n  one: { job: { machine: { flow: inner, stages: { two: { job: { machine: ./f.yaml } } } } } }\n"},
@@ -592,8 +681,14 @@ func Test_mach_file_leading_back_to_itself_is_refused(t *testing.T) {
 		{"two machine files", "flow: f\nstages:\n  one: { job: { machine: ./a.yaml } }\n",
 			map[string]string{"a.yaml": "flow: a\nstages:\n  one: { job: { machine: ./b.yaml } }\n", "b.yaml": "flow: b\nstages:\n  one: { job: { machine: ./a.yaml } }\n"},
 			"b.yaml: stages.one.job.machine: the definition leads back to itself: a.yaml -> b.yaml -> a.yaml"},
-		{"an included file and a machine file", agent + "open:\n  s: { include: ./s.yaml }\n",
-			map[string]string{"s.yaml": "does: Loop.\ntools:\n  t: { does: x, job: { machine: ./b.yaml } }\n", "b.yaml": agent + "open:\n  s: { include: ./s.yaml }\n"},
+		{"a type only files leading back could give", "include: ./a.yaml\n",
+			map[string]string{"a.yaml": "include: ./b.yaml\n", "b.yaml": "include: ./a.yaml\n"},
+			"b.yaml: include: the definition leads back to itself: a.yaml -> b.yaml -> a.yaml"},
+		{"a type from a file that includes itself", "include: ./a.yaml\n",
+			map[string]string{"a.yaml": "flow: a\nstages: { s: { job: ./s.js } }\ninclude: ./a.yaml\n", "s.js": "return 1"},
+			"a.yaml: include: the definition leads back to itself: a.yaml -> a.yaml"},
+		{"an included file and a machine file", agent + "toolkits:\n  s: { include: ./s.yaml }\n",
+			map[string]string{"s.yaml": "description: Loop.\ntools:\n  t: { description: x, job: { machine: ./b.yaml } }\n", "b.yaml": agent + "toolkits:\n  s: { include: ./s.yaml }\n"},
 			"the definition leads back to itself: s.yaml -> b.yaml -> s.yaml"},
 	} {
 		began := time.Now()
@@ -611,8 +706,8 @@ func Test_mach_file_leading_back_to_itself_is_refused(t *testing.T) {
 // defined it, saying so, and the runner goes on to run the next job.
 func Test_mach_made_definition_leading_back_to_itself_fails_its_job(t *testing.T) {
 	files := map[string]string{"make.js": `
-		return machines.define("agent: a\n` + growModel + `\nprompt: hi\nopen:\n  s: { include: ./s.yaml }\n",
-			{ files: { "./s.yaml": "does: Loop.\ntools:\n  t: { does: x, job: ` + inPlaceAgent("open: { s: { include: ./s.yaml } }") + ` }\n" } })
+		return machines.define("agent: a\n` + growModel + `\nprompt: hi\ntoolkits:\n  s: { include: ./s.yaml }\n",
+			{ files: { "./s.yaml": "description: Loop.\ntools:\n  t: { description: x, job: ` + inPlaceAgent("toolkits: { s: { include: ./s.yaml } }") + ` }\n" } })
 	`}
 	l := local(t)
 	r := run(t, l, "flow: maker\nstages:\n  make: { job: ./make.js }\n", files, nil)
@@ -722,41 +817,44 @@ func Test_mach_run_is_read_in_every_type(t *testing.T) {
 			t.Fatalf("%s: the run %s ended %s and read %v: %s", name, r.ID, r.Status, r.Output, r.Error)
 		}
 	}
-	// Each type reads the run's location where it reads its ID, and the
-	// location is the run's.
+	// Each type reads the run's location and its tree where it reads its ID,
+	// and they are the run's.
 	for name, def := range map[string]string{
 		"a flow's output": `
 			flow: f
 			stages:
 			  a: { job: { script: ./turn.js } }
-			output: "${run.location}"
+			output: "${run.location} ${run.tree}"
 		`,
 		"a statechart's final state": `
 			statechart: s
 			initial: b
 			states:
-			  b: { end: done, output: "${run.location}" }
+			  b: { end: done, output: "${run.location} ${run.tree}" }
 		`,
 		"an agent's prompt": `
 			agent: g
 			model: { name: scripted, service: anthropic }
 			turn: ./turn.js
-			prompt: "${run.location}"
+			prompt: "${run.location} ${run.tree}"
 		`,
 		"a timeout": `
 			flow: f
-			limits: { timeout: "${run.location ? '1m' : '1s'}" }
+			limits: { timeout: "${run.location && run.tree ? '1m' : '1s'}" }
 			stages:
-			  a: { job: { script: ./turn.js, timeout: "${run.location ? '1m' : '1s'}" } }
+			  a: { job: { script: ./turn.js, timeout: "${run.location && run.tree ? '1m' : '1s'}" } }
 		`,
 	} {
 		if _, err := machineParse(def, map[string]string{"turn.js": "return {}"}); err != nil {
-			t.Errorf("%s does not read run.location: %v", name, err)
+			t.Errorf("%s does not read run.location and run.tree: %v", name, err)
 		}
 	}
-	located := machine.NewEvaluator(time.Now(), []byte("seed"), machine.Run{ID: "r1", Location: "/home/devices/boiler"})
+	located := machine.NewEvaluator(time.Now(), []byte("seed"), machine.Run{ID: "r1", Location: "/home/devices/boiler", Tree: "/home"})
 	if got, err := located.Text("${run.location}", machine.Scope{"input": nil}, "output"); err != nil || got != "/home/devices/boiler" {
 		t.Errorf("run.location gives %v (%v)", got, err)
+	}
+	if got, err := located.Text("${run.tree}", machine.Scope{"input": nil}, "output"); err != nil || got != "/home" {
+		t.Errorf("run.tree gives %v (%v)", got, err)
 	}
 	_, err := machineParse(`
 		flow: f
@@ -765,5 +863,33 @@ func Test_mach_run_is_read_in_every_type(t *testing.T) {
 	`, echo)
 	if err == nil || !strings.Contains(err.Error(), "from the machine's input and its values, and from nothing else") {
 		t.Fatalf("a permission's scope read the run: %v", err)
+	}
+}
+
+// A definition gives one type, written anywhere in it or given by a file it
+// includes, and the field named for it gives the name.
+func Test_mach_type_is_one_field_anywhere(t *testing.T) {
+	post := map[string]string{"m.yaml": "flow: post\nstages: { s: { job: ./s.js } }\n", "s.js": "return 1", "b.yaml": "statechart: b\n"}
+	for def, want := range map[string]string{
+		"stages: { s: { job: ./s.js } }\nflow: late\n": "flow late",
+		"include: ./m.yaml\n":                          "flow post",
+		"flow: mine\ninclude: ./m.yaml\n":              "flow mine",
+	} {
+		d, err := machineParse(def, post)
+		if err != nil {
+			t.Fatalf("%q: %v", def, err)
+		}
+		if got := d.Definition.Type + " " + d.Definition.Name; got != want {
+			t.Fatalf("%q is a %s", def, got)
+		}
+	}
+	for def, want := range map[string]string{
+		"stages: { s: { job: ./s.js } }\n": "it gives no type: a machine writes one of agent:, flow:, statechart: with its name, or takes it from a file it includes",
+		"flow: a\ninclude: ./b.yaml\n":     "it gives more than one type, flow: a at line 1, statechart: b at b.yaml:1: a machine has one",
+		"include: [./m.yaml, ./b.yaml]\n":  "it gives more than one type, flow: post at m.yaml:1, statechart: b at b.yaml:1: a machine has one",
+	} {
+		if _, err := machineParse(def, post); err == nil || !strings.Contains(err.Error(), want) {
+			t.Errorf("%q: want %q, got: %v", def, want, err)
+		}
 	}
 }

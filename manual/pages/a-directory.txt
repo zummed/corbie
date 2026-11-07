@@ -31,10 +31,45 @@ Reference
   corbie run submit <directory> --at <prefix>   records the directory as a tree at the prefix
   corbie test <directory>...                    reads every machine, and starts nothing
 
-It reads every *.yaml in the directory and below it, but for .git. A file whose first key gives a type of machine has a location: its path under the prefix, without .yaml. Any other file is a piece, which a machine reads by including it.
+It reads every *.yaml in the directory and below it as a machine, but for .git and what .corbieignore lists. A machine's location is its path under the prefix, without .yaml.
 
   schedules/evening.yaml at /schedules   /schedules/evening
   house/devices/boiler.yaml at /home     /home/devices/boiler
+
+.corbieignore, at the top of the directory, lists what is no machine, one path a line, from the directory:
+
+  shared/       a directory, and everything below it
+  notes.yaml    one file
+  # a note      passed over, as an empty line is
+
+- A listed file has no location: nothing runs there, and nothing can be sent to it.
+- A machine still includes a listed file, runs it with machine:, and reads it with files:.
+- A *.yaml that is no machine, such as one in .github/, is a problem until it is listed.
+- A line is a path, not a pattern: one holding *, ? or [, or starting with !, fails the submit.
+
+A file of one line places a listed machine at its own location. It takes the type, the name and every field from the listed file:
+
+    # chat/.corbieignore
+    shared/
+
+    # chat/shared/post.yaml
+    flow: post
+    stages:
+      say: { job: { script: ./post.js } }
+    output: ${stages.say.output}
+
+    // chat/shared/post.js
+    return "posted"
+
+    # chat/team/post.yaml
+    include: shared/post.yaml
+
+    corbie test chat
+      chat/team/post.yaml  ok
+      chat/shared/         listed
+
+- A field the placed file writes wins over the listed file's, such as receive:.
+- Two files that place one machine are two locations, and their runs have one name.
 
 `lifetime:` says how a location's runs start:
 
@@ -55,7 +90,7 @@ What the submit does at a location:
 - The client's ceiling needs an at: entry for the prefix. `corbie init` gives its client at:/**.
 - drain is the default for keyed and transient files. A singleton always restarts, once its old run and that run's children have ended.
 - A file beside a directory of the same name, as boiler.yaml beside boiler/, is refused with the files below it: a location has nothing below it. The rest of the tree is recorded.
-- A singleton is given no input, so one whose input: needs a value is refused. A run reads the directory's absolute path as ${run.context}, and its location as ${run.location}.
+- A singleton is given no input, so one whose input: needs a value is refused. A run reads the directory's absolute path as ${run.context}, its location as ${run.location}, and the tree's prefix as ${run.tree}.
 - The submit prints the secrets and values the files use that are not set at their locations or above.
 
 `corbie test <directory>` checks each send and call whose `at:` is written out and is in the tree, as the controller would:
@@ -76,7 +111,7 @@ To have a machine come back when it ends, run it as a job with restart:. `corbie
       hearing:
         job:
           machine: ./hear.yaml
-          restart: { when: always, limit: 1, delay: 1s }
+          restart: { after: always, limit: 1, delay: 1s }
 
     # hear.yaml
     flow: hear

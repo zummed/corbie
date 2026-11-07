@@ -110,6 +110,10 @@ first one whose `when:` is true is taken.
   send    one send or a list: { to, event, data }, where `to:` is parent,
           the state or named job whose job is a machine, or an address
 
+A transition to the state that has the rule, or to a state holding it,
+leaves that state and enters it again: its jobs and timers start afresh,
+and it has a new ticket.
+
 An address names a run at a location, as in `corbie manual
 machines-together`.
 
@@ -128,6 +132,8 @@ machines-together`.
 - A job's failure that no state has a transition for fails the statechart.
 - Any other event that no state has a transition for is dropped, unless an
   active state names it under `defer:`. A chart keeps at most 100 events.
+- A kept event is offered as soon as the last state keeping it is left, so a
+  state entered then is given it before its own job's result or timer.
 - A cancelled statechart notes each event it kept as undelivered in the
   record of the run that sent it.
 - An `entry:` send to the state's own child arrives once the child has
@@ -151,8 +157,9 @@ What an expression reads
 
   input                   the statechart's input
   values                  the values set at the run's location or above
-  run                     the run's id, location and context
-  states.<name>.output    the state's last output
+  run                     the run's id, location, context and tree
+  states.<name>.output    the state's output when it was last done; a failed
+                          job leaves it as it was
   tickets.<name>          a ticket of this state, or of a state it is inside
   event                   the event that caused the transition:
                           { name, data, from }

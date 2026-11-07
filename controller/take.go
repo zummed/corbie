@@ -593,11 +593,18 @@ func (b *build) unwakeJob(job *instance.Going) {
 }
 
 // unwake names a wake that is no longer wanted, so it is deleted with what
-// the step used.
+// the step used. One this step asked for is not written at all: a wake
+// asked again under the same name would otherwise be deleted with it.
 func (b *build) unwake(at time.Time, what string) {
-	if !at.IsZero() {
-		b.step.Used = append(b.step.Used, store.Wake(b.p.ctl, at, b.inst, what))
+	if at.IsZero() {
+		return
 	}
+	asked := func(a instance.Ask) bool { return a.Kind == instance.AskWake && a.At.Equal(at) && a.What == what }
+	if slices.ContainsFunc(b.step.Asks, asked) {
+		b.step.Asks = slices.DeleteFunc(b.step.Asks, asked)
+		return
+	}
+	b.step.Used = append(b.step.Used, store.Wake(b.p.ctl, at, b.inst, what))
 }
 
 // emit takes a value a job sent up. The n-th value of a name from a job is
@@ -684,14 +691,10 @@ func timeout(job *instance.Going) machine.Duration {
 
 // machine gives the machine its events. Each client's event is then
 // answered: the machine acted on it, or had no rule for it. Its receipt
-// stands before what the step asked for.
+// stands before what the step asked for, so it is asked for first and
+// filled in once the machine has acted.
 func (b *build) machine() error {
-	at := len(b.step.Asks)
-	ignored, stepped, err := b.consult()
-	if err != nil {
-		return err
-	}
-	var receipts []instance.Ask
+	sent := map[int]*instance.Receipt{}
 	for i, a := range b.sources {
 		client, message, ok := a.client()
 		if !ok {
@@ -700,14 +703,18 @@ func (b *build) machine() error {
 		receipt := &instance.Receipt{Taken: true}
 		if a.isSend() {
 			receipt.Run = b.inst
-			if stepped {
-				acted := !slices.Contains(ignored, i)
-				receipt.Acted = &acted
-			}
+			sent[i] = receipt
 		}
-		receipts = append(receipts, instance.Ask{Kind: instance.AskReceipt, Sender: client, Message: message, Receipt: receipt})
+		b.ask(instance.Ask{Kind: instance.AskReceipt, Sender: client, Message: message, Receipt: receipt})
 	}
-	b.step.Asks = slices.Insert(b.step.Asks, min(at, len(b.step.Asks)), receipts...)
+	ignored, stepped, err := b.consult()
+	if err != nil || !stepped {
+		return err
+	}
+	for i, receipt := range sent {
+		acted := !slices.Contains(ignored, i)
+		receipt.Acted = &acted
+	}
 	return nil
 }
 
@@ -758,7 +765,7 @@ func (b *build) readDefinition(s *instance.Start) *stepOut {
 		// What a machine made while running holds is denied when it is held:
 		// its definition's ask is not one that applies.
 		if len(problems) == 0 && needsAsk && !st.Above.Made && st.Ask == nil && st.Above.Ask == nil {
-			problems = machine.Problems{{Text: "a job is marked for approval, or a permission is listed to be asked about, and no ask applies: neither this definition nor any machine above it has one"}}
+			problems = machine.Problems{{Text: "a job is marked for approval, or a permission is listed in approve:, and no ask applies: neither this definition nor any machine above it has one"}}
 		}
 		if read.Problems = problems; len(problems) > 0 {
 			return read
@@ -805,7 +812,7 @@ func (b *build) readDefinition(s *instance.Start) *stepOut {
 
 // run is what an expression reads of the instance.
 func (b *build) run() machine.Run {
-	return machine.Run{ID: b.inst, Location: b.st.Location, Context: b.st.Above.Context, Values: b.st.Above.Values}
+	return machine.Run{ID: b.inst, Location: b.st.Location, Context: b.st.Above.Context, Tree: b.st.Tree, Values: b.st.Above.Values}
 }
 
 // readAllow fills in the allow list written for the whole definition, for
@@ -1484,7 +1491,7 @@ func (b *build) first(s *instance.Start, start *arrival) (refused bool, err erro
 		st.Ask = def.Ask
 	}
 	st.Keep = machine.Duration(p.keepFor(def, &st.Above))
-	st.Above.AskAbout = append(slices.Clone(st.Above.AskAbout), def.AskAbout...)
+	st.Above.Approve = append(slices.Clone(st.Above.Approve), def.Approve...)
 	if len(read.Problems) == 0 && !gone {
 		if read, err = b.readStep(s, start); err != nil || read == nil {
 			return false, err
@@ -1581,18 +1588,25 @@ func (b *build) first(s *instance.Start, start *arrival) (refused bool, err erro
 
 // holds says whether a job waits for a yes before it starts: it is marked
 // for approval, or it declares a permission that its machine, or a machine
-// above it, lists as one to be asked about. Whether it is held depends on
+// above it, lists in approve:. Whether it is held depends on
 // what it declares alone, before anything is sent.
 func (b *build) holds(job *instance.Going) bool {
 	declared := job.Allow
 	switch {
 	case job.IsCall():
-		// A call is a send to its location.
-		declared = append(slices.Clone(declared), permission.Send+":"+job.Call.At)
-	case job.IsSend() && strings.HasPrefix(job.Send.At.At, "/"):
-		declared = append(slices.Clone(declared), permission.Send+":"+job.Send.At.At)
+		// A call is a send to its location, and does nothing else the
+		// definition's allow: lists.
+		declared = []string{permission.Send + ":" + job.Call.At}
+	case job.IsSend():
+		// A send's location is filled in by now, from /; one with none,
+		// such as a send to a client, is not delivered and declares
+		// nothing.
+		declared = nil
+		if at := job.Send.At.At; strings.HasPrefix(at, "/") {
+			declared = []string{permission.Send + ":" + at}
+		}
 	}
-	return job.Approve || permission.Declares(declared, b.st.Above.AskAbout, b.st.Tree)
+	return job.Approve || permission.Declares(declared, b.st.Above.Approve, b.st.Tree)
 }
 
 // startAsk starts each ask once for the jobs this step held that go to
@@ -1736,11 +1750,11 @@ func (b *build) askEnded(ask *instance.Going, outcome machine.Event, a *arrival)
 	approved := map[string]bool{}
 	reason := "the ask did not approve the job"
 	result, _ := outcome.Data.(map[string]any)
-	switch list, isList := result["approve"].([]any); {
+	switch list, isList := result["approved"].([]any); {
 	case outcome.Name == machine.Failed:
 		reason = fmt.Sprintf("the ask failed, which approves nothing: %v", result["error"])
 	case !isList:
-		reason = "the ask's result has no approve list, so nothing is approved: its result should be { approve: [names of jobs], note }"
+		reason = "the ask's result has no approved list, so nothing is approved: its result should be { approved: [names of jobs], note }"
 	default:
 		for _, name := range list {
 			if text, ok := name.(string); ok {

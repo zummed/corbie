@@ -119,13 +119,13 @@ func lying(kind string, args []string) {
 		out.State.Keep = machine.Duration(1000 * time.Hour)
 		out.State.TimeoutAt = time.Time{}
 		out.State.Ask = nil
-		out.State.Above.AskAbout = nil
+		out.State.Above.Approve = nil
 		out.State.Above.Keep = machine.Duration(1000 * time.Hour)
 		out.Limit = "1000h"
 
 	case "unasked":
 		// A job that an ask above must hold, with the list that holds it gone.
-		out.State.Above.AskAbout = nil
+		out.State.Above.Approve = nil
 		job := &machine.Job{Name: "x", Script: "./step.js", Allow: []string{"net:a.example"},
 			Found: &machine.Found{In: "m", Blob: in.State.Definition}}
 		out.State.Jobs = map[string]*instance.Going{"x": {Job: *job, Asked: 1, Attempt: 1, Runner: "r1", Due: soon}}
@@ -504,7 +504,7 @@ const asking = `
 	  go: { job: { machine: "${stages.make.output}" } }
 `
 
-var asked = map[string]string{"make.js": "return 1", "ok.js": "return { approve: input.jobs.map(j => j.name) }"}
+var asked = map[string]string{"make.js": "return 1", "ok.js": "return { approved: input.jobs.map(j => j.name) }"}
 
 // With an ask above, a job marked as from above would run under that ask's
 // layers, and the narrowing of a made machine would be gone.
@@ -654,19 +654,19 @@ func Test_ctl_keep_of_a_made_machine_is_no_longer_than_its_parents(t *testing.T)
 const asksFirst = `
 	flow: maker
 	ask: ./ok.js
-	ask_about: [ network ]
+	approve: [ network ]
 	stages:
 	  make: { job: ./make.js }
 	  go: { job: { machine: "${stages.make.output}" } }
 `
 
-// What an ask above must be asked about stays held, whatever the answer
-// says of the list.
+// A job that declares what an approve: list above it lists stays held,
+// whatever the answer says of the list.
 func Test_ctl_answer_cannot_clear_what_approval_holds(t *testing.T) {
 	w := newWorld(t)
 	run, r1 := w.madeUnder(asksFirst, plain, asked, "unasked")
-	if st := w.latest(w.child(run)).State; !slices.Contains(st.Above.AskAbout, "network") {
-		t.Fatalf("the list above the machine is %v", st.Above.AskAbout)
+	if st := w.latest(w.child(run)).State; !slices.Contains(st.Above.Approve, "network") {
+		t.Fatalf("the list above the machine is %v", st.Above.Approve)
 	}
 	if job := w.latest(w.child(run)).State.Jobs["x"]; job == nil || !job.Held || job.Runner != "" {
 		t.Fatalf("the job is %+v", job)
@@ -697,11 +697,11 @@ func Test_ctl_answer_cannot_fill_an_owners_ask(t *testing.T) {
 }
 
 // An owner's machine that names who decides, and starts a machine made while
-// running that is allowed what must be asked about.
+// running that is allowed what its approve: list holds.
 const humanAsks = `
 	flow: maker
 	ask: ./human.js
-	ask_about: [ "fs.read:/x/**" ]
+	approve: [ "fs.read:/x/**" ]
 	stages:
 	  make: { job: ./make.js }
 	  go: { job: { machine: "${stages.make.output}", allow: [ "fs.read:/x/**" ] } }
@@ -720,7 +720,7 @@ func (w *world) madeUnderHuman(r1 *identity.Identity, made *machine.Draft) (run,
 	}
 	w.result(r1, run, "make", instance.Result{Status: instance.Done, Output: ref.Value()})
 	w.settle()
-	w.result(r1, run, instance.AskName, instance.Result{Status: instance.Done, Output: map[string]any{"approve": []any{"go"}}})
+	w.result(r1, run, instance.AskName, instance.Result{Status: instance.Done, Output: map[string]any{"approved": []any{"go"}}})
 	w.settle()
 	w.pass()
 	w.settle()
@@ -799,20 +799,20 @@ func Test_ctl_made_machine_has_no_ask_of_its_own(t *testing.T) {
 }
 
 // A machine that writes an ask is told it has none, at the top of its
-// definition or in a set, and the owner's flow carries on.
+// definition or in a toolkit, and the owner's flow carries on.
 func Test_ctl_made_machine_that_writes_an_ask_fails(t *testing.T) {
 	for what, draft := range map[string]func(w *world) *machine.Draft{
 		"at its top": func(w *world) *machine.Draft {
 			return w.draft("flow: below\nask: ./step.js\nstages:\n  b: { job: ./step.js }\n", map[string]string{"step.js": "return 1"})
 		},
-		"in a part": func(w *world) *machine.Draft {
+		"in a toolkit": func(w *world) *machine.Draft {
 			return w.draft(`
 				agent: below
 				model: { name: m, service: anthropic, address: "http://127.0.0.1:1", secret: KEY }
 				prompt: hello
-				open:
-				  s: { include: ./part.yaml }
-			`, map[string]string{"step.js": "return 1", "part.yaml": "does: Things.\nask: ./step.js\ntools:\n  t: { does: T, job: ./step.js }\n"})
+				toolkits:
+				  s: { include: ./toolkit.yaml }
+			`, map[string]string{"step.js": "return 1", "toolkit.yaml": "description: Things.\nask: ./step.js\ntools:\n  t: { description: T, job: ./step.js }\n"})
 		},
 	} {
 		w := newWorld(t)
@@ -893,7 +893,7 @@ func Test_ctl_ask_that_is_a_machine_runs_for_a_made_machine(t *testing.T) {
 	w.settle()
 	child := w.child(run)
 	st := w.latest(w.child(child)).State
-	if !st.Above.IsAsk || st.Above.Ask != nil || st.Above.AskAbout != nil || st.Machine != "asks" {
+	if !st.Above.IsAsk || st.Above.Ask != nil || st.Above.Approve != nil || st.Machine != "asks" {
 		t.Fatalf("the machine run as the ask has %+v", st)
 	}
 	for _, msg := range w.inboxOf(r1) {
@@ -942,7 +942,7 @@ func Test_ctl_asks_of_a_definition_are_read_once_a_step(t *testing.T) {
 
 	w := newWorld(t)
 	run, r1 := w.listed()
-	w.lieNext("after a list", "many asks", "100", "open.s.ask")
+	w.lieNext("after a list", "many asks", "100", "toolkits.s.ask")
 	w.result(r1, run, "t", oneTool)
 	w.settle()
 	if st := w.latest(run).State; len(st.Jobs) < 100 || counted.asks != 1 {
@@ -953,7 +953,7 @@ func Test_ctl_asks_of_a_definition_are_read_once_a_step(t *testing.T) {
 	w = newWorld(t)
 	r1 = w.newRunner()
 	holder := w.holder(r1)
-	w.lieNext("many asks", "100", "open.s.ask")
+	w.lieNext("many asks", "100", "toolkits.s.ask")
 	ref, err := w.draft(lister, listerFiles).Store(ctx, w.ctrl.Store, "ctl", holder)
 	if err != nil {
 		t.Fatal(err)
@@ -1036,7 +1036,7 @@ func Test_ctl_client_start_names_a_location(t *testing.T) {
 }
 
 // lister is an owner's agent with an entry that lists tools from elsewhere,
-// and a set with an ask.
+// and a toolkit with an ask.
 const lister = `
 	agent: lister
 	model: { name: m, service: anthropic, address: "http://127.0.0.1:1", secret: KEY }
@@ -1046,12 +1046,12 @@ const lister = `
 	  t:
 	    list: { script: ./step.js }
 	    job: ./step.js
-	open:
-	  s: { include: ./part.yaml }
+	toolkits:
+	  s: { include: ./toolkit.yaml }
 `
 
 var listerFiles = map[string]string{"step.js": "return 1", "ok.js": "return {}", "own.js": "return {}",
-	"part.yaml": "does: Things.\nask: ./own.js\ntools:\n  u: { does: U, job: ./step.js }\n"}
+	"toolkit.yaml": "description: Things.\nask: ./own.js\ntools:\n  u: { description: U, job: ./step.js }\n"}
 
 // listed runs lister as far as the runner that has its list, and gives a tool.
 func (w *world) listed() (run string, r1 *identity.Identity) {
@@ -1064,7 +1064,7 @@ func (w *world) listed() (run string, r1 *identity.Identity) {
 }
 
 var oneTool = instance.Result{Status: instance.Done, Output: []any{
-	map[string]any{"name": "read", "does": "Read", "args": map[string]any{"type": "object"}}}}
+	map[string]any{"name": "read", "description": "Read", "args": map[string]any{"type": "object"}}}}
 
 // A list brings shapes from outside the definition, so what follows it is
 // taken in a process of its own. The first step holds nothing from outside.
@@ -1198,11 +1198,11 @@ func Test_ctl_made_definition_past_a_limit_fails_that_machine(t *testing.T) {
 // definition's words: an answer names only a place, and what is written there
 // is read from the definition and filled here. A place the definition does
 // not write gives the agent's own ask. The process can pick another place of
-// the definition, as "open.s.ask" here, for a tool outside that part: that is
+// the definition, as "toolkits.s.ask" here, for a tool outside that toolkit: that is
 // within what the specs say such a process can do (Permissions), and is no
 // more than it could do by dropping the approval.
 func Test_ctl_answer_cannot_write_a_listed_agents_ask(t *testing.T) {
-	for at, want := range map[string]string{"x": "./ok.js", "open.s.ask": "./own.js"} {
+	for at, want := range map[string]string{"x": "./ok.js", "toolkits.s.ask": "./own.js"} {
 		w := newWorld(t)
 		run, r1 := w.listed()
 		w.lieNext("after a list", "fills", at)

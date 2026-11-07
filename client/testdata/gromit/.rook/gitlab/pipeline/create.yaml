@@ -1,0 +1,6 @@
+flow: gitlab-pipeline-create
+description: Start a project's pipeline on a branch.
+input: { project: string, ref: string }
+stages:
+  start: { job: { script: .rook/gitlab/given.js, input: "${input}" } }
+output: ${stages.start.output}

@@ -35,7 +35,7 @@ func TestIncludeWorksInEveryMapping(t *testing.T) {
 	files := map[string]string{
 		"add.js":     scripts["add.js"],
 		"job.yaml":   "script: ./add.js\ninput: { n: 1 }\n",
-		"tools.yaml": "add: { does: Add, job: { include: ./job.yaml } }\n",
+		"tools.yaml": "add: { description: Add, job: { include: ./job.yaml } }\n",
 		"base.yaml":  "model: { include: ./model.yaml }\nprompt: hi\n",
 		"model.yaml": "name: m\nservice: anthropic\naddress: http://127.0.0.1:1\nsecret: KEY\n",
 		"to.yaml":    "to: parent\nevent: seen\n",
@@ -43,11 +43,11 @@ func TestIncludeWorksInEveryMapping(t *testing.T) {
 		"go.yaml":    "go: last\nsend: { include: ./to.yaml }\n",
 	}
 	for name, def := range map[string]string{
-		"a flow":    "flow: f\nstages:\n  one: { job: { include: ./job.yaml } }\n",
-		"a chart":   "statechart: c\ninitial: first\nstates: { include: ./waits.yaml }\n",
-		"an agent":  "agent: a\ninclude: ./base.yaml\ntools: { include: ./tools.yaml }\n",
-		"in a part": "agent: a\ninclude: ./base.yaml\nopen:\n  p: { does: P, tools: { include: ./tools.yaml } }\n",
-		"in place":  "flow: f\nstages:\n  one: { job: { machine: { agent: a, include: ./base.yaml, tools: { include: ./tools.yaml } } } }\n",
+		"a flow":       "flow: f\nstages:\n  one: { job: { include: ./job.yaml } }\n",
+		"a chart":      "statechart: c\ninitial: first\nstates: { include: ./waits.yaml }\n",
+		"an agent":     "agent: a\ninclude: ./base.yaml\ntools: { include: ./tools.yaml }\n",
+		"in a toolkit": "agent: a\ninclude: ./base.yaml\ntoolkits:\n  p: { description: P, tools: { include: ./tools.yaml } }\n",
+		"in place":     "flow: f\nstages:\n  one: { job: { machine: { agent: a, include: ./base.yaml, tools: { include: ./tools.yaml } } } }\n",
 	} {
 		d, err := machineParse(def, files)
 		if err != nil {
@@ -76,11 +76,11 @@ func TestIncludedPathsAreReadFromTheFilesDirectory(t *testing.T) {
 			turn: ./turn.js
 		`,
 		"kit/tools.yaml": `
-			short: { does: S, job: ./lib/short.js }
-			long: { does: L, job: { script: ./lib/long.js, files: [./lib/one.js, top.js] } }
-			named: { does: N, job: { machine: ./lib/child.yaml } }
+			short: { description: S, job: ./lib/short.js }
+			long: { description: L, job: { script: ./lib/long.js, files: [./lib/one.js, top.js] } }
+			named: { description: N, job: { machine: ./lib/child.yaml } }
 			placed:
-			  does: P
+			  description: P
 			  job:
 			    machine:
 			      flow: placed
@@ -164,7 +164,7 @@ func TestIncludeLeavesDataAlone(t *testing.T) {
 		`,
 		"kit/tools.yaml": `
 			script:
-			  does: A tool named as a field is
+			  description: A tool named as a field is
 			  args: { include: string }
 			  job:
 			    script: ./run.js
@@ -222,7 +222,7 @@ func Test_mach_include_problems_name_the_file(t *testing.T) {
 		"a field that does not belong": {"flow: f\nstages: { include: ./s.yaml }\n", map[string]string{"s.yaml": "one: { colour: red, job: ./a.js }\n", "a.js": "return 1"},
 			`s.yaml: stages.one.colour: "colour" is not a field that belongs here`},
 		"a machine in place with no type": {"flow: f\nstages: { one: { job: { machine: { include: ./m.yaml } } } }\n", map[string]string{"m.yaml": "stages: { one: { job: ./a.js } }\n", "a.js": "return 1"},
-			"stages.one.job.machine: a machine written in place writes its type and its name itself"},
+			"stages.one.job.machine: it gives no type: a machine writes one of agent:, flow:, statechart: with its name, or takes it from a file it includes\n"},
 		"a file below a file": {"flow: f\nstages: { include: ./a/s.yaml }\n", map[string]string{"a/s.yaml": "include: ./t.yaml\n", "a/t.yaml": "one: { colour: red, job: ./a.js }\n", "a/a.js": "return 1"},
 			`a/t.yaml: stages.one.colour: "colour" is not a field that belongs here`},
 	} {
@@ -342,19 +342,19 @@ include: [./a.yaml, ./b.yaml]
 model: { effort: high }
 tools:
   include: ./tools.yaml
-  read: { does: Read one shelf }
+  read: { description: Read one shelf }
 limits: { turns: 3 }
 `,
 		"a.yaml":     "include: ./base.yaml\nlimits: { jobs: 5 }\n",
 		"b.yaml":     "include: ./base.yaml\nprompt: from b\n",
 		"base.yaml":  "model: { name: claude-sonnet-5-5, secret: ANTHROPIC_KEY }\nprompt: ${input.said}\nlimits: { turns: 9, timeout: 1h }\n",
-		"tools.yaml": "read: { does: Read, job: ./read.js }\nwrite: { does: Write, job: ./write.js }\n",
+		"tools.yaml": "read: { description: Read, job: ./read.js }\nwrite: { description: Write, job: ./write.js }\n",
 		"read.js":    "return 1",
 		"write.js":   "return 1",
 	}
 	d := parseFamily(t, files)
 	out := string(d.WrittenOut())
-	for _, want := range []string{"effort: high", "name: claude-sonnet-5-5", "prompt: ${input.said}", "does: Read one shelf", "job: read.js", "does: Write", "turns: 3", "jobs: 5", "timeout: 1h"} {
+	for _, want := range []string{"effort: high", "name: claude-sonnet-5-5", "prompt: ${input.said}", "description: Read one shelf", "job: read.js", "description: Write", "turns: 3", "jobs: 5", "timeout: 1h"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("the written out definition does not hold %q:\n%s", want, out)
 		}
@@ -375,8 +375,8 @@ limits: { turns: 3 }
 	}
 	// One tool is taken from a file by its path, and no other.
 	d = draft(t, "agent: one\nmodel: { name: m, service: anthropic, secret: K }\nprompt: hi\ntools:\n  read: { include: ./tools.yaml#read }\n", map[string]string{
-		"tools.yaml": "read: { does: Read, job: ./read.js }\nwrite: { does: Write, job: ./write.js }\n", "read.js": "return 1", "write.js": "return 1"})
-	if out := string(d.WrittenOut()); !strings.Contains(out, "does: Read") || strings.Contains(out, "write") {
+		"tools.yaml": "read: { description: Read, job: ./read.js }\nwrite: { description: Write, job: ./write.js }\n", "read.js": "return 1", "write.js": "return 1"})
+	if out := string(d.WrittenOut()); !strings.Contains(out, "description: Read") || strings.Contains(out, "write") {
 		t.Errorf("one tool taken by its path gave:\n%s", out)
 	}
 	// A value of another kind than the included one wins whole.

@@ -16,8 +16,8 @@ func (astray) Name() string { return "astray" }
 
 func (astray) Shape() *Shape {
 	return &Shape{Name: "astray", What: "a machine gone astray", Fields: []Field{
-		{Name: "count", Kind: KindNumber, Does: "a number, which the reader reads as text"},
-		{Name: "unread", Kind: KindWord, Does: "a field the reader never asks for"},
+		{Name: "count", Kind: KindNumber, Description: "a number, which the reader reads as text"},
+		{Name: "unread", Kind: KindWord, Description: "a field the reader never asks for"},
 	}}
 }
 
@@ -55,9 +55,9 @@ func Test_mach_reader_reads_exactly_what_its_shape_names(t *testing.T) {
 	}
 }
 
-// What a definition of a type may hold is given whole: its first line and
-// what every type takes, the type's own, and each mapping's shape once, by
-// its name, so that a shape that holds itself is still finite.
+// What a definition of a type may hold is given whole: its type and name
+// field and what every type takes, the type's own, and each mapping's shape
+// once, by its name, so that a shape that holds itself is still finite.
 func Test_mach_a_type_is_described_by_what_its_reader_reads(t *testing.T) {
 	d, ok := Describe("probe")
 	if !ok {
@@ -69,7 +69,7 @@ func Test_mach_a_type_is_described_by_what_its_reader_reads(t *testing.T) {
 			names = append(names, f.Name)
 		}
 	}
-	if got := strings.Join(names, " "); got != "probe input keep limits allow deny ask_about ask title meta lifetime update receive work value" {
+	if got := strings.Join(names, " "); got != "probe description input keep limits allow deny approve ask title meta lifetime update receive work value" {
 		t.Errorf("a probe's definition holds: %s", got)
 	}
 	if d.Shapes["job"] != JobShape || d.Shapes["address"] != AddressShape || d.Shapes["limits"] == nil || len(d.Shapes) != 8 {
@@ -79,7 +79,7 @@ func Test_mach_a_type_is_described_by_what_its_reader_reads(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{`{"name":"work","kind":"named","does":"its jobs, by name","of":"job"}`, `{"name":"ask","kind":"job",`, `"like":"256MB"`} {
+	for _, want := range []string{`{"name":"work","kind":"named","description":"its jobs, by name","of":"job"}`, `{"name":"ask","kind":"job",`, `"like":"256MB"`} {
 		if !strings.Contains(string(sent), want) {
 			t.Errorf("a client is not given %s in\n%s", want, sent)
 		}

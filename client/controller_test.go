@@ -282,7 +282,7 @@ func Test_ctl_the_record_names_each_attempt(t *testing.T) {
 		    job: { script: ./never.js, restart: { limit: 1, delay: 1ms } }
 		  note:
 		    when: ${stages.flaky.failed}
-		    job: { script: ./never.js, restart: { when: always, limit: 1, delay: 1ms }, input: { fine: true } }
+		    job: { script: ./never.js, restart: { after: always, limit: 1, delay: 1ms }, input: { fine: true } }
 	`, map[string]string{"never.js": `if (input && input.fine) return 1; throw new Error("no")`}, nil)
 	if r.Status != "done" {
 		t.Fatalf("the run ended %s: %s", r.Status, r.Error)
@@ -321,7 +321,7 @@ func Test_ctl_a_job_with_no_restart_runs_once(t *testing.T) {
 }
 
 // A policy with no limit goes on until the job ends well, and a job that ends
-// well under when: failure is final.
+// well under after: failure is final.
 func Test_ctl_no_limit_goes_on_until_it_works(t *testing.T) {
 	l := local(t)
 	r := run(t, l, `
@@ -336,16 +336,16 @@ func Test_ctl_no_limit_goes_on_until_it_works(t *testing.T) {
 	}
 }
 
-// when: always runs a job that ended well again, as a new job with a new request
+// after: always runs a job that ended well again, as a new job with a new request
 // name. The limit's last run gives the machine its outcome, and the record shows
 // the rest.
-func Test_ctl_when_always_runs_again_after_it_ends_well(t *testing.T) {
+func Test_ctl_after_always_runs_again_after_it_ends_well(t *testing.T) {
 	l := local(t)
 	r := run(t, l, `
 		flow: again
 		stages:
 		  count:
-		    job: { script: ./count.js, restart: { when: always, limit: 2, delay: 1ms } }
+		    job: { script: ./count.js, restart: { after: always, limit: 2, delay: 1ms } }
 		output: ${stages.count.output}
 	`, map[string]string{"count.js": `return job.request`}, nil)
 	if r.Status != "done" {
@@ -391,7 +391,7 @@ func Test_ctl_a_new_job_counts_against_the_limit_of_jobs(t *testing.T) {
 		limits: { jobs: 3 }
 		stages:
 		  count:
-		    job: { script: ./count.js, restart: { when: always, delay: 1ms } }
+		    job: { script: ./count.js, restart: { after: always, delay: 1ms } }
 	`, map[string]string{"count.js": `return 1`}, nil)
 	if r.Status != "failed" || !strings.Contains(r.Error, "job limit reached") {
 		t.Fatalf("the run ended %s: %s", r.Status, r.Error)
@@ -423,7 +423,7 @@ stages:
   yes: { job: { script: ./yes.js, input: { jobs: "${input.jobs}" } } }
 output: ${stages.yes.output}
 `
-	yes := `return { approve: input.jobs.map((j) => j.name) }`
+	yes := `return { approved: input.jobs.map((j) => j.name) }`
 	failing := run(t, l, `
 		flow: held
 		ask: { machine: ./ask.yaml }
@@ -442,7 +442,7 @@ output: ${stages.yes.output}
 		ask: { machine: ./ask.yaml }
 		stages:
 		  count:
-		    job: { script: ./one.js, approve: true, restart: { when: always, limit: 2, delay: 1ms } }
+		    job: { script: ./one.js, approve: true, restart: { after: always, limit: 2, delay: 1ms } }
 	`, map[string]string{"ask.yaml": askFile, "yes.js": yes, "one.js": `return 1`}, nil)
 	if well.Status != "done" {
 		t.Fatalf("the run ended %s: %s", well.Status, well.Error)
@@ -475,7 +475,7 @@ func Test_ctl_a_cancelled_job_is_not_restarted(t *testing.T) {
 		flow: parent
 		stages:
 		  kid:
-		    job: { machine: ./kid.yaml, restart: { when: always, delay: 1ms } }
+		    job: { machine: ./kid.yaml, restart: { after: always, delay: 1ms } }
 		  after:
 		    when: ${stages.kid.failed}
 		    job: { script: ./one.js }
@@ -520,11 +520,11 @@ func Test_ctl_an_ask_ends_when_it_ends_well(t *testing.T) {
 	l := local(t)
 	r := run(t, l, `
 		flow: asked
-		ask: { script: ./yes.js, restart: { when: always, delay: 1ms } }
+		ask: { script: ./yes.js, restart: { after: always, delay: 1ms } }
 		stages:
 		  held: { job: { script: ./one.js, approve: true } }
 		output: ${stages.held.output}
-	`, map[string]string{"yes.js": `return { approve: input.jobs.map((j) => j.name) }`, "one.js": "return 1"}, nil)
+	`, map[string]string{"yes.js": `return { approved: input.jobs.map((j) => j.name) }`, "one.js": "return 1"}, nil)
 	if r.Status != "done" || r.Output != 1.0 {
 		t.Fatalf("the run ended %s with %v: %s", r.Status, r.Output, r.Error)
 	}

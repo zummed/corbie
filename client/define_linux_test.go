@@ -19,7 +19,7 @@ const costlyDefine = `
 	for (let f = 0; f < 5; f++) {
 		const tools = []
 		for (let i = 0; i < 2000; i++) {
-			tools.push("t" + f + "_" + i + ": { does: x, job: ./add.js, args: { type: object, properties: { a: { type: string, pattern: \"^a{990}" + i + "$\" } } } }\n")
+			tools.push("t" + f + "_" + i + ": { description: x, job: ./add.js, args: { type: object, properties: { a: { type: string, pattern: \"^a{990}" + i + "$\" } } } }\n")
 		}
 		names.push("./t" + f + ".yaml")
 		files[names[f]] = tools.join("")

@@ -188,9 +188,9 @@ Needs nothing.
 
 This script reads a document and writes another.
 
-    const part = yaml.parse("does: The weather.\ntools:\n  forecast: { args: {} }\n")
-    part.does                    // gives "The weather."
-    Object.keys(part.tools)      // gives ["forecast"]
+    const toolkit = yaml.parse("description: The weather.\ntools:\n  forecast: { args: {} }\n")
+    toolkit.description          // gives "The weather."
+    Object.keys(toolkit.tools)   // gives ["forecast"]
 
     yaml.write({ name: "tea", sizes: [1, 2], hot: "true" })
     // gives "hot: \"true\"\nname: tea\nsizes:\n  - 1\n  - 2\n"

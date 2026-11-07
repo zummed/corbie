@@ -26,8 +26,8 @@ func Test_mach_a_restart_reads_as_written(t *testing.T) {
 		"{}":                  {Delay: DefaultDelay, Longest: DefaultLongest},
 		"{ limit: 2 }":        {Limit: 2, Delay: DefaultDelay, Longest: DefaultLongest},
 		"{ limit: 5 in 1h }":  {Limit: 5, Within: Duration(time.Hour), Delay: DefaultDelay, Longest: DefaultLongest},
-		"{ when: always }":    {Always: true, Delay: DefaultDelay, Longest: DefaultLongest},
-		"{ when: failure }":   {Delay: DefaultDelay, Longest: DefaultLongest},
+		"{ after: always }":   {Always: true, Delay: DefaultDelay, Longest: DefaultLongest},
+		"{ after: failure }":  {Delay: DefaultDelay, Longest: DefaultLongest},
 		"{ delay: 30s }":      {Delay: Duration(30 * time.Second), Longest: Duration(30 * time.Second)},
 		"{ delay: 2s to 1m }": {Delay: Duration(2 * time.Second), Longest: Duration(time.Minute)},
 	} {
@@ -40,7 +40,7 @@ func Test_mach_a_restart_reads_as_written(t *testing.T) {
 		}
 	}
 	for written, want := range map[string]string{
-		"{ when: never }":         "when is failure or always",
+		"{ after: never }":        "after is failure or always",
 		"{ limit: 0 }":            "at least 1",
 		"{ limit: -1 }":           "at least 1",
 		"{ limit: 1.5 }":          "at least 1",

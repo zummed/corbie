@@ -681,7 +681,7 @@ func Test_man_every_field_is_on_its_page(t *testing.T) {
 				on = shared
 			}
 			for _, f := range shape.Fields {
-				if seen++; f.Does == "" {
+				if seen++; f.Description == "" {
 					t.Errorf("the field %s of %s does not say what it is for", f.Name, shape.What)
 				}
 				// A field is on a page as it is written, with its colon; or in

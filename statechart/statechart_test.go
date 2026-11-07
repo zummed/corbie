@@ -517,6 +517,31 @@ states:
 	c.want(c.active(), "ready")
 }
 
+// Kept events are offered in the step in which the last state keeping them
+// is left, so a state entered in that step is given one before its own job's
+// result or its own timer.
+func TestKeptEventGoesBeforeTheEnteredStatesJobAndTimer(t *testing.T) {
+	c := newChart(t, `
+statechart: worker
+initial: busy
+states:
+	busy:
+		job: ./work.js
+		defer: [work]
+		on: { done: ready }
+	ready:
+		job: ./work.js
+		timers: { wait: 1m }
+		on: { work: taken, done: finished, wait: finished }
+	taken: { end: done, output: work }
+	finished: { end: done, output: ready }
+`)
+	c.give(start())
+	c.want(c.give(machine.Event{Name: "work", From: "client"}))
+	c.want(c.kept(), "work")
+	c.want(c.give(done("busy", nil)), "cancel busy", "timer wait.ready", "job ready", "cancel ready", "clear wait.ready", "end work")
+}
+
 func TestHoldersRuleIsTakenBeforeADefer(t *testing.T) {
 	c := newChart(t, `
 statechart: nested
@@ -697,6 +722,66 @@ states:
 	c.want(c.give(old))
 	c.at = second
 	c.want(c.give(again), "end late")
+}
+
+// A transition to the state that has the rule, or to a state holding it,
+// enters that state again: its timer counts from the new entry. A rule with
+// no go: stays, and the timer keeps its first due time.
+func TestTransitionToItsOwnStateStartsItsTimersAgain(t *testing.T) {
+	c := newChart(t, `
+statechart: poked
+initial: open
+states:
+	open:
+		timers: { idle: 30m }
+		on:
+		  poke: open
+		  look: { send: { to: parent, event: seen } }
+		  idle: over
+		initial: inside
+		states:
+			inside: { on: { nudge: open } }
+	over: { end: done }
+`)
+	c.want(c.give(start()), "timer idle.open")
+	c.at = entered.Add(10 * time.Minute)
+	c.want(c.give(machine.Event{Name: "poke", From: "client"}), "clear idle.open", "timer idle.open")
+	if at, _ := c.timer("idle.open"); !at.Equal(entered.Add(40 * time.Minute)) {
+		t.Fatalf("poked at 10m, the timer is due %v after entry, want 40m", at.Sub(entered))
+	}
+	c.at = entered.Add(20 * time.Minute)
+	c.want(c.give(machine.Event{Name: "nudge", From: "client"}), "clear idle.open", "timer idle.open")
+	if at, _ := c.timer("idle.open"); !at.Equal(entered.Add(50 * time.Minute)) {
+		t.Fatalf("nudged at 20m, the timer is due %v after entry, want 50m", at.Sub(entered))
+	}
+	c.at = entered.Add(30 * time.Minute)
+	c.want(c.give(machine.Event{Name: "look", From: "client"}), "send seen to parent")
+	at, due := c.timer("idle.open")
+	if !at.Equal(entered.Add(50 * time.Minute)) {
+		t.Fatalf("after a rule with no go: the timer is due %v after entry, want 50m", at.Sub(entered))
+	}
+	c.at = at
+	c.want(c.give(due), "end <nil>")
+	// The state entered again has a new ticket.
+	c = newChart(t, `
+statechart: ticketed
+initial: open
+states:
+	open:
+		ticket: answer
+		on: { poke: open }
+`)
+	ticket := func() string {
+		var st state
+		json.Unmarshal(c.state, &st)
+		return st.Tickets["open"]
+	}
+	c.want(c.give(start()), "ticket open")
+	first := ticket()
+	c.want(c.give(machine.Event{Name: "poke", From: "client"}), "drop open", "ticket open")
+	if second := ticket(); first == "" || second == "" || second == first {
+		t.Fatalf("entered again, the state's ticket went from %q to %q", first, second)
+	}
 }
 
 // A recurring job is a chart that waits on a timer and starts its work as

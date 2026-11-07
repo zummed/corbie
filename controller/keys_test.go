@@ -859,7 +859,7 @@ func Test_ctl_keyed_root_outlives_its_sender(t *testing.T) {
 		      go: { go: gone, send: { to: { at: keeper, key: k }, event: hello, data: { doc: "${input.doc}" } } }
 		  gone: { end: done }
 	`
-	scripts := map[string]string{"read.js": "return input", "ok.js": "return { approve: input.jobs.map(j => j.name) }"}
+	scripts := map[string]string{"read.js": "return input", "ok.js": "return { approved: input.jobs.map(j => j.name) }"}
 	tree := func() *client.Tree {
 		return w.tree("/k", "/srv/k", map[string]string{"/k/keeper": keeper, "/k/sender": sender}, scripts)
 	}

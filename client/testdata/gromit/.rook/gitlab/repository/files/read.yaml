@@ -1,0 +1,6 @@
+flow: gitlab-repository-files-read
+description: Read one file of a project.
+input: { project: string, path: string, ref: "string?" }
+stages:
+  read: { job: { script: .rook/gitlab/given.js, input: "${input}" } }
+output: ${stages.read.output}

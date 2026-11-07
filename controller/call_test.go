@@ -299,6 +299,40 @@ func Test_ctl_approve_send_holds_a_call(t *testing.T) {
 	}
 }
 
+// A call declares only a send to the location it calls, whatever else the
+// definition's allow: lists: approve: [send:lookup] holds the call to the
+// lookup and not the call to the other location beside it.
+func Test_ctl_approve_send_holds_only_a_call_to_a_listed_location(t *testing.T) {
+	w := newWorld(t)
+	both := `
+	flow: caller
+	allow: ["send:lookup", "send:other"]
+	approve: ["send:lookup"]
+	ask: ./ask.js
+	stages:
+	  look: { job: { call: { at: lookup }, input: 1 } }
+	  tell: { job: { call: { at: other }, input: 2 } }
+	output: ${stages.tell.output}
+`
+	all := map[string]string{"/t/caller": both, "/t/lookup": lookup, "/t/other": lookup}
+	if r := w.submitTree(w.client, w.tree("/t", "/srv/t", all, map[string]string{"ask.js": "return { approved: [] }"})); !r.Taken {
+		t.Fatalf("the tree was refused: %s", r.Refused)
+	}
+	run := w.startAt(w.client, "/t/caller", client.Start{})
+	w.settle()
+	var held []string
+	for _, step := range w.steps(run) {
+		for _, ask := range step.Asks {
+			if ask.Kind == instance.AskHold {
+				held = append(held, ask.Job.Name)
+			}
+		}
+	}
+	if !slices.Equal(held, []string{"look"}) || len(w.called(run)) != 1 {
+		t.Fatalf("held %v, and called %v", held, w.called(run))
+	}
+}
+
 // A client calls a location in a tree it does not own by starting it. The
 // receipt says the call was taken, naming the run, while the run is running,
 // and is kept while it runs; when the run ends its result is beside the

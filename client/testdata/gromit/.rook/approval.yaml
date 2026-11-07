@@ -1,0 +1,32 @@
+# Stands in for Rook's approval, which a toolkit or a machine names as its ask.
+# It calls the question at `ask` and the lookup at `people`, and approves the
+# held jobs when the presser said yes, holds the scope `approvers`, and is not
+# the person who asked.
+statechart: approval
+description: Asks people whether held jobs may run, and gives the jobs approved.
+input: { asking: any, jobs: any, ask: string, people: string, approvers: string, in: string, asker: "string?" }
+allow: ["send:${input.ask}", "send:${input.people}"]
+initial: asking
+states:
+  asking:
+    job:
+      call: { at: "${input.ask}" }
+      input:
+        in: ${input.in}
+        text: "${input.jobs.map((j) => j.name + ' ' + JSON.stringify(j.asked ? j.asked.args : j.input)).join(', ')}?"
+        choices: ["yes", "no"]
+    on: { done: checking, failed: refused }
+  checking:
+    job: { call: { at: "${input.people}" }, input: { email: "${states.asking.output.email}" } }
+    on:
+      done:
+        - go: approved
+          when: "${states.asking.output.choice === 'yes' && event.data.scopes.includes(input.approvers) && event.data.email !== input.asker}"
+        - refused
+      failed: refused
+  approved:
+    end: done
+    output: { approved: "${input.jobs.map((j) => j.name)}", note: "${states.checking.output.name} said yes." }
+  refused:
+    end: done
+    output: { approved: [], note: "${states.asking.output && states.asking.output.choice === 'yes' ? 'the yes did not count' : 'no one said yes'}" }

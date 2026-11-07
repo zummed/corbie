@@ -1,0 +1,7 @@
+# Stands in for Rook's Slack post: it gives what it would post.
+flow: slack-chat-post
+description: Posts text in a channel or a thread.
+input: { in: string, text: string }
+stages:
+  post: { job: { script: ./post.js, input: "${input}" } }
+output: ${stages.post.output}

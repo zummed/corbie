@@ -153,6 +153,38 @@ func Test_ctl_approve_send_holds_a_send_job(t *testing.T) {
 	}
 }
 
+// A send job that names no location declares nothing: with approve:
+// [send:room] and allow: [send:room], its send to a client is not held, and
+// it ends done, not delivered.
+func Test_ctl_approve_send_holds_no_send_job_without_a_location(t *testing.T) {
+	const tell = `
+		flow: tell
+		allow: ["send:room"]
+		approve: ["send:room"]
+		ask: ./ask.js
+		stages:
+		  tell: { job: { send: { to: "${({ client: 'c2' })}", event: said, data: { text: hello } } } }
+	`
+	w := newWorld(t)
+	w.roomsWith(map[string]string{"/t/tell": tell}, map[string]string{"ask.js": "return { approved: [] }"})
+	run := w.startAt(w.client, "/t/tell", client.Start{})
+	w.settle()
+	var sent []instance.Ask
+	for _, step := range w.steps(run) {
+		for _, ask := range step.Asks {
+			switch ask.Kind {
+			case instance.AskHold:
+				t.Fatalf("the send to a client was held: %+v", ask.Job)
+			case instance.AskEvent:
+				sent = append(sent, ask)
+			}
+		}
+	}
+	if head := w.head(run); head.Status != instance.Done || len(sent) != 1 || !sent[0].Undelivered {
+		t.Fatalf("the flow is %s and sent %+v", head.Status, sent)
+	}
+}
+
 // busy is a keyed chat that keeps what is said while it works, until it is
 // told free.
 const busy = `

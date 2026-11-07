@@ -1594,10 +1594,11 @@ func (b *build) holds(job *instance.Going) bool {
 	declared := job.Allow
 	switch {
 	case job.IsCall():
-		// A call is a send to its location.
-		declared = append(slices.Clone(declared), permission.Send+":"+job.Call.At)
+		// A call is a send to its location, and does nothing else the
+		// definition's allow: lists.
+		declared = []string{permission.Send + ":" + job.Call.At}
 	case job.IsSend() && strings.HasPrefix(job.Send.At.At, "/"):
-		declared = append(slices.Clone(declared), permission.Send+":"+job.Send.At.At)
+		declared = []string{permission.Send + ":" + job.Send.At.At}
 	}
 	return job.Approve || permission.Declares(declared, b.st.Above.Approve, b.st.Tree)
 }

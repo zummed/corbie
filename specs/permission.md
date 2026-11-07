@@ -163,7 +163,7 @@ A refused call stops the job with the status denied. Every refusal says three th
 
 A definition may list in `approve:` permissions a job may use only after a yes. Before any job in that machine, or in a machine below it, starts, the permissions it declares are read against the list. A job that declares one of them, or a group that contains one, is held for the ask, exactly as a job marked for approval is (see Machines). Whether a job is held depends on what it declares alone, before anything is sent for it.
 
-A called run's held jobs go only to its own file's `ask:`, and are denied if it has none. A call and a `job: { send: … }` are jobs, so the caller's `approve: [send:…]` holds them. A statechart's send action is never held.
+A called run's held jobs go only to its own file's `ask:`, and are denied if it has none. A call and a `job: { send: … }` are jobs, so the caller's `approve: [send:…]` holds them. Each declares only `send:` to the location it names, so `approve: [send:a]` holds a call to `a` and not one to `b` in the same machine. A statechart's send action is never held.
 
 Asking only ever holds. An approved job gets exactly what its layers already allowed, and nothing can be had by asking that a layer refuses. A job never stops halfway to wait for a person.
 

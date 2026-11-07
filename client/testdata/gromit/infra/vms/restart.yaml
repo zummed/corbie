@@ -1,0 +1,7 @@
+flow: restart
+description: Restart one virtual machine by its name.
+input: { name: string }
+allow: ["net:${values.HYPERVISOR}", "secret:HYPERVISOR_KEY@net.unencrypted:${values.HYPERVISOR}"]
+stages:
+  restart: { job: { script: ./restart.js, input: { name: "${input.name}", host: "${values.HYPERVISOR}" } } }
+output: ${stages.restart.output}

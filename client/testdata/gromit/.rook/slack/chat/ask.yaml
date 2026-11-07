@@ -1,0 +1,15 @@
+# Stands in for Rook's question: it posts the text with a button for each
+# choice, and ends with the first press the router sends it. Each button holds
+# this run's address, { at: <its location>, run: <its ID> }.
+statechart: slack-chat-ask
+description: Asks a question on Slack with a button for each choice, and gives the first choice pressed.
+input: { in: string, text: string, choices: list }
+initial: asking
+states:
+  asking:
+    defer: [answer]
+    job: { script: ./post.js, input: { in: "${input.in}", text: "${input.text}" } }
+    on: { done: open }
+  open:
+    on: { answer: answered }
+  answered: { end: done, output: { choice: "${event.data.choice}", email: "${event.data.email}" } }

@@ -1,0 +1,5 @@
+# Nothing runs at a path listed here, and a machine may still include it,
+# run it as a child or read it as one of a job's files.
+.rook/
+toolkits/
+people/scopes.yaml

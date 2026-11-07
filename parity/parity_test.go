@@ -11,7 +11,7 @@
 //
 // The case's directory is submitted as a tree at /case, leaving out each
 // directory inside it that is a second way or that a step of the drive
-// submits. Every file of it with a type line has a location, and root.yaml's
+// submits. Every *.yaml file of it has a location, and root.yaml's
 // is /case/root. The run checked is the one the submit starts, for a
 // singleton, and otherwise one started at /case/root with input.json.
 //

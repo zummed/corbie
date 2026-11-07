@@ -510,6 +510,19 @@ func TestTestReadsADirectory(t *testing.T) {
 	if out := m.ok("", "test", "on"); out != "on/hello.yaml  ok\n" {
 		t.Fatalf("corbie test on printed %q", out)
 	}
+	os.MkdirAll(filepath.Join(dir, "on", "shared"), 0o755)
+	os.WriteFile(filepath.Join(dir, "on", "shared", "base.yaml"), []byte("allow: [env:HOME]\n"), 0o644)
+	os.WriteFile(filepath.Join(dir, "on", "notes.yaml"), []byte("- later\n"), 0o644)
+	os.WriteFile(filepath.Join(dir, "on", ".corbieignore"), []byte("shared/\nnotes.yaml\n"), 0o644)
+	if out := m.ok("", "test", "on"); out != "on/hello.yaml  ok\non/notes.yaml  listed\non/shared/     listed\n" {
+		t.Fatalf("corbie test on, with paths listed, printed %q", out)
+	}
+	os.Remove(filepath.Join(dir, "on", ".corbieignore"))
+	if status, out, _ := m.run("", "test", "on"); status != 1 || !strings.Contains(out, "on/shared/base.yaml\n    it gives no type") {
+		t.Fatalf("with nothing listed, corbie test on ended %d and printed %q", status, out)
+	}
+	os.RemoveAll(filepath.Join(dir, "on", "shared"))
+	os.Remove(filepath.Join(dir, "on", "notes.yaml"))
 	if entries, _ := os.ReadDir(m.config); len(entries) != 0 {
 		t.Fatal("corbie test on a directory left a config behind")
 	}

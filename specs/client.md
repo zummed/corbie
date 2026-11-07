@@ -222,9 +222,12 @@ A program's word that is itself a role's or a program's name begins the next nam
 
 ## A tree
 
-`corbie run submit <dir> --at <prefix>` records a directory as a tree. Each file with a type line gets a location: its path under the prefix, without `.yaml`. A file without one is a piece, read only by including it. `--at` defaults to `/` and the directory's own name, and `.` uses the directory's real name.
+`corbie run submit <dir> --at <prefix>` records a directory as a tree. Each `*.yaml` in it is a machine at a location: its path under the prefix, without `.yaml`. A file the directory's `.corbieignore` lists has no location. `--at` defaults to `/` and the directory's own name, and `.` uses the directory's real name.
 
 ```yaml
+# house/.corbieignore
+shared/
+
 # house/devices/boiler.yaml
 statechart: boiler
 lifetime: singleton
@@ -233,10 +236,10 @@ states:
   idle:
     on: { set: applying }
   applying:
-    job: { include: ./boiler-job.yaml }
+    job: { include: shared/boiler-job.yaml }
     on: { done: idle, failed: idle }
 
-# house/devices/boiler-job.yaml           no type line: a piece
+# house/shared/boiler-job.yaml            listed: no location
 script: ./boiler.js
 input: { target: "${event.data.target}" }
 allow: [net:boiler.lan:443, "secret:BOILER_PASSWORD@net:boiler.lan:443"]
@@ -260,11 +263,21 @@ $ corbie run submit /home/schedules/away --wait
 
 A submit does this, and exits when each run it cancelled has ended and each start has been taken. The controller's start of a singleton is good until it is taken, so the submit waits for it with no limit:
 
-1. It reads every `*.yaml` in the directory and below it, but for `.git`, and writes out and checks each machine.
+1. It reads every `*.yaml` in the directory and below it, but for `.git` and what `.corbieignore` lists, and writes out and checks each machine.
 2. It records every file at its location in the store, and removes the locations whose files have gone, cancelling every run there.
 3. For a changed file, the runs already running at its location do as its `update:` says.
 4. It starts each singleton with no running run, and nothing else.
 5. It prints the names of values and secrets the files use that are not set at their locations or above. This is a reminder, not a refusal.
+
+`.corbieignore`, at the top of the directory, lists what in it is no machine. Only the one at the top is read.
+
+- Each line is a path from the directory. A directory, with or without `/` at its end, lists everything below it.
+- A line starting with `#` and an empty line are passed over. There are no patterns: `*` and `!` are part of a name.
+- A line that names the directory itself, such as `.`, or has `..`, a `/` at its start, a `\` or a control character fails the submit, naming the line. A line naming nothing in the directory is no fault.
+- A listed file has no location: nothing runs there, and a send or a call to its path is to no location. A machine still includes it, runs it with `machine:` and reads it with `files:`.
+- A file listed after a submit is gone from the tree, so the next submit removes its location and cancels its runs.
+- A `*.yaml` that is no machine, such as `.github/workflows/test.yaml` or `docker-compose.yaml`, is a file with a problem until it is listed.
+- A file given alone, to `corbie run submit <file>` or `corbie test <file>`, is a tree of its own, and no list applies.
 
 A tree belongs to the client that first submitted it. Every run keeps the definition it started with, and a submit changes no other tree.
 
@@ -278,7 +291,7 @@ A tree belongs to the client that first submitted it. Every run keeps the defini
 - A singleton is given no input, and one that needs some is refused, and reported. It reads the context's absolute path as `${run.context}`.
 - When a client submits a different directory at a prefix it holds, the submit prints `/home: last submitted from /srv/old-house`.
 - `corbie run cancel <location>` after a submit cancels the runs there, so the next of each starts on the new definition.
-- `corbie test` given directories reads their machines as this command does, prints each one ok or its problems, and starts and cancels nothing. It reads no config and no store, so it changes nothing wherever it runs.
+- `corbie test` given directories reads their machines as this command does, prints each one ok or its problems and each listed path, and starts and cancels nothing. It reads no config and no store, so it changes nothing wherever it runs.
 - It reads each directory as a tree at / and the directory's name, as a submit with no `--at` does, and checks each send and call whose `at:` is written out and is in the tree as the controller would: that the lifetime of the file there fits the address, that its `receive:` lists the sender, that the event is not one of the file's own, such as a timer's name, and that the sender's own `allow:` and `deny:` hold `send:` for it. A machine is checked with the machines it starts, which send from its location, narrowed by the lists of the jobs that start them. A list with an expression in it is left out, as only a run fills it in. What fails is a problem of the sender's file.
 - A location of the tree that a send or a call names and that has no file is printed with where it is named, and fails nothing: the send may be one a condition leaves out.
 

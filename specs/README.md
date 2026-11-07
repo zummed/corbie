@@ -27,14 +27,14 @@ When something goes wrong, the layer that notices passes the error up untouched,
 
 ## Trees and locations
 
-A client submits a directory of machine files at a prefix, and the directory becomes a **tree**. Each file with a type line gets a **location**: its path under the prefix, without `.yaml`. A file without a type line is a piece, read only by including it.
+A client submits a directory of machine files at a prefix, and the directory becomes a **tree**. Each `*.yaml` file is a machine with a **location**: its path under the prefix, without `.yaml`. A file the directory's `.corbieignore` lists has no location, and machines include it.
 
 ```
 corbie run submit house --at /home
 
 house/devices/boiler.yaml        /home/devices/boiler
 house/thermostats/kitchen.yaml   /home/thermostats/kitchen
-house/base.yaml                  a piece, with no location
+house/shared/base.yaml           listed in .corbieignore: no location
 ```
 
 - A tree belongs to the client that first submitted it. Only that client submits there, and reads or cancels the runs at its locations.

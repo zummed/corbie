@@ -678,6 +678,12 @@ func Test_mach_file_leading_back_to_itself_is_refused(t *testing.T) {
 		{"two machine files", "flow: f\nstages:\n  one: { job: { machine: ./a.yaml } }\n",
 			map[string]string{"a.yaml": "flow: a\nstages:\n  one: { job: { machine: ./b.yaml } }\n", "b.yaml": "flow: b\nstages:\n  one: { job: { machine: ./a.yaml } }\n"},
 			"b.yaml: stages.one.job.machine: the definition leads back to itself: a.yaml -> b.yaml -> a.yaml"},
+		{"a type only files leading back could give", "include: ./a.yaml\n",
+			map[string]string{"a.yaml": "include: ./b.yaml\n", "b.yaml": "include: ./a.yaml\n"},
+			"b.yaml: include: the definition leads back to itself: a.yaml -> b.yaml -> a.yaml"},
+		{"a type from a file that includes itself", "include: ./a.yaml\n",
+			map[string]string{"a.yaml": "flow: a\nstages: { s: { job: ./s.js } }\ninclude: ./a.yaml\n", "s.js": "return 1"},
+			"a.yaml: include: the definition leads back to itself: a.yaml -> a.yaml"},
 		{"an included file and a machine file", agent + "open:\n  s: { include: ./s.yaml }\n",
 			map[string]string{"s.yaml": "does: Loop.\ntools:\n  t: { does: x, job: { machine: ./b.yaml } }\n", "b.yaml": agent + "open:\n  s: { include: ./s.yaml }\n"},
 			"the definition leads back to itself: s.yaml -> b.yaml -> s.yaml"},
@@ -854,5 +860,33 @@ func Test_mach_run_is_read_in_every_type(t *testing.T) {
 	`, echo)
 	if err == nil || !strings.Contains(err.Error(), "from the machine's input and its values, and from nothing else") {
 		t.Fatalf("a permission's scope read the run: %v", err)
+	}
+}
+
+// A definition gives one type, written anywhere in it or given by a file it
+// includes, and the field named for it gives the name.
+func Test_mach_type_is_one_field_anywhere(t *testing.T) {
+	post := map[string]string{"m.yaml": "flow: post\nstages: { s: { job: ./s.js } }\n", "s.js": "return 1", "b.yaml": "statechart: b\n"}
+	for def, want := range map[string]string{
+		"stages: { s: { job: ./s.js } }\nflow: late\n": "flow late",
+		"include: ./m.yaml\n":                          "flow post",
+		"flow: mine\ninclude: ./m.yaml\n":              "flow mine",
+	} {
+		d, err := machineParse(def, post)
+		if err != nil {
+			t.Fatalf("%q: %v", def, err)
+		}
+		if got := d.Definition.Type + " " + d.Definition.Name; got != want {
+			t.Fatalf("%q is a %s", def, got)
+		}
+	}
+	for def, want := range map[string]string{
+		"stages: { s: { job: ./s.js } }\n": "it gives no type: a machine writes one of agent:, flow:, statechart: with its name, or takes it from a file it includes",
+		"flow: a\ninclude: ./b.yaml\n":     "it gives more than one type, flow: a at line 1, statechart: b at b.yaml:1: a machine has one",
+		"include: [./m.yaml, ./b.yaml]\n":  "it gives more than one type, flow: post at m.yaml:1, statechart: b at b.yaml:1: a machine has one",
+	} {
+		if _, err := machineParse(def, post); err == nil || !strings.Contains(err.Error(), want) {
+			t.Errorf("%q: want %q, got: %v", def, want, err)
+		}
 	}
 }

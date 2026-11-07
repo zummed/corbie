@@ -92,15 +92,53 @@ func problems(t *testing.T, src string, contents map[string]string) string {
 	return err.Error()
 }
 
-func TestFirstLineGivesTypeAndName(t *testing.T) {
-	if _, err := Parse([]byte("probe: p\nvalue: 1\n"), files(nil)); err != nil {
-		t.Fatal(err)
+// A definition gives exactly one type, as a field written anywhere in it or
+// in a file it includes, and the type's field gives the name.
+func TestTypeIsOneFieldAnywhere(t *testing.T) {
+	inc := map[string]string{
+		"m.yaml":       "probe: post\nvalue: 1\n",
+		"deep.yaml":    "include: ./m.yaml\n",
+		"kit.yaml":     "parts:\n  p: { probe: inner }\n",
+		"other.yaml":   "listener: b\n",
+		"self.yaml":    "include: ./self.yaml\n",
+		"nothing.yaml": "value: 1\n",
 	}
-	if got := problems(t, "widget: p\n", nil); !strings.Contains(got, `"widget"`) || !strings.Contains(got, "first line") {
-		t.Fatalf("an unknown type: %s", got)
+	for src, name := range map[string]string{
+		"probe: p\nvalue: 1\n":             "p",
+		"value: 1\nprobe: p\n":             "p",
+		"include: ./m.yaml\n":              "post",
+		"include: ./deep.yaml\n":           "post",
+		"include: ./kit.yaml#parts.p\n":    "inner",
+		"probe: mine\ninclude: ./m.yaml\n": "mine",
+		"include: ./m.yaml\nprobe: mine\n": "mine",
+	} {
+		d, err := Parse([]byte(src), files(inc))
+		if err != nil {
+			t.Fatalf("%q: %v", src, err)
+		}
+		if d.Definition.Type != "probe" || d.Definition.Name != name {
+			t.Fatalf("%q is a %s named %q", src, d.Definition.Type, d.Definition.Name)
+		}
 	}
-	if got := problems(t, "value: 1\nprobe: p\n", nil); !strings.Contains(got, "first line") {
-		t.Fatalf("the type not on the first line: %s", got)
+	for src, want := range map[string]string{
+		"widget: p\n":                                       "it gives no type: a machine writes one of ",
+		"include: ./nothing.yaml\n":                         "it gives no type",
+		"probe: a\nlistener: b\n":                           "it gives more than one type, probe: a at line 1, listener: b at line 2: a machine has one",
+		"probe: a\ninclude: ./other.yaml\n":                 "it gives more than one type, probe: a at line 1, listener: b at other.yaml:1: a machine has one",
+		"include: ./gone.yaml\n":                            `include: "./gone.yaml" cannot be read: no such file`,
+		"include: ./self.yaml\n":                            "leads back to itself",
+		"probe: p\nwork:\n  a: { machine: { value: 1 } }\n": "work.a.machine: it gives no type",
+		"probe: p\nwork:\n  a: { machine: { include: ./m.yaml, listener: b } }\n": "work.a.machine: it gives more than one type, listener: b at line 3, probe: post at m.yaml:1",
+	} {
+		got := problems(t, src, inc)
+		if !strings.Contains(got, want) {
+			t.Fatalf("%q: %s", src, got)
+		}
+		if strings.Contains(want, "cannot be read") || strings.Contains(want, "leads back") {
+			if strings.Contains(got, "no type") {
+				t.Fatalf("%q: an include that cannot be read is said alone: %s", src, got)
+			}
+		}
 	}
 }
 

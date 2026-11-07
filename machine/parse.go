@@ -107,28 +107,32 @@ func (p *Parser) note(problem Problem) {
 // parse reads one written definition. needsAsk says whether it, or a child
 // that takes its ask from it, holds a job for approval with no ask to go to.
 func (p *Parser) parse(src []byte, place string) (draft *Draft, needsAsk bool) {
-	n, first, err := readYAML(src, p.source)
+	n, err := readYAML(src, p.source)
 	if err != nil {
 		p.Problem(place, "%v", err)
 		return nil, false
 	}
-	if t, ok := TypeOf(first); ok {
-		n = p.mapping(n, whole(t).field, "", p.chain)
-	}
-	p.at = map[string]*node{}
-	p.index(n, "")
-	return p.fill(plain(n).(map[string]any), first, place)
-}
-
-// fill fills out one definition, read into plain values, whose type is the
-// name its first line gives.
-func (p *Parser) fill(written map[string]any, first, place string) (draft *Draft, needsAsk bool) {
-	t, ok := TypeOf(first)
-	if !ok {
-		p.Problem(place, "the first line gives %q, which is not a type of machine: a definition begins with its type and its name, such as \"flow: digest\" (the types are: %s); a file in a tree without one is a piece, which a machine includes",
-			first, strings.Join(Types(), ", "))
+	types := p.typesOf(n, p.chain)
+	if len(types) != 1 {
+		// Written out as it is, the mapping says what its includes cannot
+		// give. With that said, no type is no news.
+		before := len(p.problems)
+		p.mapping(n, func(string) *Field { return nil }, "", p.chain)
+		if len(types) > 1 || len(p.problems) == before {
+			p.untyped(place, types)
+		}
 		return nil, false
 	}
+	t := types[0].t
+	n = p.mapping(n, whole(t).field, "", p.chain)
+	typeFirst(n, t)
+	p.at = map[string]*node{}
+	p.index(n, "")
+	return p.fill(plain(n).(map[string]any), t, place)
+}
+
+// fill fills out one definition of a type, read into plain values.
+func (p *Parser) fill(written map[string]any, t Type, place string) (draft *Draft, needsAsk bool) {
 	outer := p.draft
 	p.draft = &Draft{Definition: &Definition{Type: t.Name(), Scripts: map[string]blob.Ref{}, Machines: map[string]blob.Ref{}},
 		Files: map[string][]byte{}, Children: map[string]*Draft{}}
@@ -415,19 +419,21 @@ func (p *Parser) Machine(place string, written any) (name string) {
 		// A machine written in place.
 		p.inline++
 		name = fmt.Sprintf("in-place-%d", p.inline)
-		first := ""
+		// Written out, it holds every type it gives.
+		var types []typed
 		for _, kind := range Types() {
 			if _, ok := m[kind]; ok {
-				first = kind
+				t, _ := TypeOf(kind)
+				types = append(types, typed{t, p.at[placeOf(place, kind)]})
 			}
 		}
-		if first == "" {
-			p.Problem(place, "a machine written in place writes its type and its name itself, such as flow: digest (the types are: %s)", strings.Join(Types(), ", "))
+		if len(types) != 1 {
+			p.untyped(place, types)
 			return name
 		}
 		p.child(place, name, func(sub *Parser) (*Draft, bool) {
 			sub.at, sub.inPlace = below(p.at, place), true
-			return sub.fill(m, first, place)
+			return sub.fill(m, types[0].t, place)
 		}, p.dir, "")
 	default:
 		p.Problem(place, "a machine is the path of a definition, or a definition written in place")
@@ -936,19 +942,27 @@ func describe(v any) string {
 }
 
 // readYAML reads a written definition, from a file, into its values: mappings,
-// lists, text, numbers, true and false. It gives the top mapping and the name
-// on its first line.
-func readYAML(src []byte, file string) (*node, string, error) {
+// lists, text, numbers, true and false. It gives the top mapping.
+func readYAML(src []byte, file string) (*node, error) {
 	n, top, err := nodeYAML(src, file)
 	switch {
 	case err != nil:
-		return nil, "", err
+		return nil, err
 	case top == nil:
-		return nil, "", fmt.Errorf("the definition is empty")
+		return nil, errors.New("the definition is empty" + noMachine(file))
 	case !n.isMap() || len(n.keys) == 0:
-		return nil, "", fmt.Errorf("a definition is a mapping that begins with its type and its name")
+		return nil, errors.New("a definition is a mapping" + noMachine(file))
 	}
-	return n, n.keys[0], nil
+	return n, nil
+}
+
+// noMachine says, of a file read as a definition, what to do with one in a
+// tree that is no machine.
+func noMachine(file string) string {
+	if file == "" {
+		return ""
+	}
+	return "; a file in a tree that is no machine is listed in .corbieignore"
 }
 
 // nodeYAML reads one YAML document of a file into its values, as a
@@ -962,7 +976,7 @@ func readYAML(src []byte, file string) (*node, string, error) {
 func nodeYAML(src []byte, file string) (*node, *yaml.Node, error) {
 	var doc yaml.Node
 	if err := yaml.Unmarshal(src, &doc); err != nil {
-		return nil, nil, NotYAML(err, src)
+		return nil, nil, notYAML(err, src)
 	}
 	if doc.Kind == 0 || len(doc.Content) == 0 {
 		return nil, nil, nil
@@ -979,9 +993,9 @@ func nodeYAML(src []byte, file string) (*node, *yaml.Node, error) {
 	return n, top, err
 }
 
-// NotYAML gives the problem of a file the YAML reader refused, naming the
+// notYAML gives the problem of a file the YAML reader refused, naming the
 // line it is on.
-func NotYAML(err error, src []byte) error {
+func notYAML(err error, src []byte) error {
 	text := oneLine(strings.TrimPrefix(err.Error(), "yaml: "))
 	// The reader counts lines from 0 for a problem its parser finds, and
 	// from 1 for one its scanner finds.

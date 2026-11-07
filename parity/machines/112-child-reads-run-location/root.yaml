@@ -2,4 +2,4 @@
 flow: asker
 stages:
   where: { job: { machine: ./child.yaml } }
-output: { where: "${stages.where.output.where}" }
+output: { where: "${stages.where.output.where}", tree: "${stages.where.output.tree}" }

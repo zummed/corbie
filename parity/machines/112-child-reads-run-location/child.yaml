@@ -1,4 +1,4 @@
 statechart: child
 initial: over
 states:
-  over: { end: done, output: { where: "${run.location}" } }
+  over: { end: done, output: { where: "${run.location}", tree: "${run.tree}" } }

@@ -188,7 +188,7 @@ tools:
 | `meta:` | data Corbie keeps and never reads |
 
 - A toolkit's tools have their own permissions, as every tool has. Opening a toolkit gives the model names and instructions, and nothing else.
-- The instructions are filled from the agent's input when the toolkit is opened. With none, `open` gives `Opened net.`. Opening a toolkit again gives its instructions again.
+- The instructions are filled from the agent's input when the toolkit is opened. With none, `open` gives `Opened net.`. A run that carries the conversation on and opens the toolkit again is given them again.
 - The result of `open` is shown to the model whole, and is never stored as a blob.
 - A tool of a toolkit may not take the name of another tool of the agent.
 - `open` is supplied by Corbie, as the blob tools are, and no tool may take its name. It is not shown while no toolkit can be opened.

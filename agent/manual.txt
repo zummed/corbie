@@ -175,8 +175,9 @@ A toolkit has these fields.
   tools         the toolkit's tools, written as under Tools
   meta          data Corbie keeps and never reads
 
-- With no `instructions:`, `open` returns `Opened net.`. Opening a toolkit
-  again returns its instructions again.
+- With no `instructions:`, `open` returns `Opened net.`. A run that carries
+  the conversation on and opens the toolkit again is given its instructions
+  again.
 - No tool of a toolkit has the name of another tool of the agent.
 - The list of an entry with `list:` in a toolkit runs before the first turn.
   An error names it as `toolkits.net.tools.files.list`.

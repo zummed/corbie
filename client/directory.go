@@ -167,8 +167,8 @@ func readIgnore(dir string) (map[string]bool, error) {
 		if line == "" || strings.HasPrefix(line, "#") {
 			continue
 		}
-		if path.IsAbs(line) || slices.Contains(strings.Split(line, "/"), "..") || strings.ContainsFunc(line, func(r rune) bool { return r == '\\' || unicode.IsControl(r) }) {
-			return nil, fmt.Errorf("%s line %d: %q: a line is a path from the directory, with no .., no / at its start, no \\ and no control character", ignoreFile, i+1, line)
+		if path.IsAbs(line) || path.Clean(line) == "." || slices.Contains(strings.Split(line, "/"), "..") || strings.ContainsFunc(line, func(r rune) bool { return r == '\\' || unicode.IsControl(r) }) {
+			return nil, fmt.Errorf("%s line %d: %q: a line is a path inside the directory, not the directory itself, with no .., no / at its start, no \\ and no control character", ignoreFile, i+1, line)
 		}
 		listed[path.Clean(line)] = true
 	}

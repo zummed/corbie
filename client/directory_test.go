@@ -403,11 +403,13 @@ func TestListedFileHasNoLocation(t *testing.T) {
 // naming the line.
 func TestBadIgnoreLineFailsTheRead(t *testing.T) {
 	for line, want := range map[string]string{
-		"../up":     `.corbieignore line 2: "../up": a line is a path from the directory`,
+		"../up":     `.corbieignore line 2: "../up": a line is a path inside the directory`,
 		"/top":      `.corbieignore line 2: "/top"`,
 		`a\\b`:      `.corbieignore line 2: "a\\\\b"`,
 		"a/../../b": `.corbieignore line 2: "a/../../b"`,
 		"a\x01b":    `.corbieignore line 2`,
+		".":         `.corbieignore line 2: ".": a line is a path inside the directory, not the directory itself`,
+		"./":        `.corbieignore line 2: "./"`,
 	} {
 		_, err := client.ReadTree(house(t, map[string]string{".corbieignore": "ok/\n" + line + "\n"}), "/x")
 		if err == nil || !strings.HasPrefix(err.Error(), want) {

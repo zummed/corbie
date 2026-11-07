@@ -50,7 +50,7 @@ The detailed rules behind the [Statechart overview](../statechart.md). Area code
 *Accept:* parity case 26: in `listening` the chart stays for all three emitted values and the state's job keeps going.
 
 **R-chart-82** A transition to the state that has the rule, or to a state holding it, leaves that state and enters it again: its jobs and timers start afresh, and it has a new ticket.
-*Accept:* a state `open` with `timers: { idle: 30m }` and `on: { poke: open }` is poked at 10m, and its timer is due at 40m; a rule of `open` with no `go:` taken at 30m leaves it due at 40m. Parity case 16 leaves and enters `working` each round.
+*Accept:* a state `open` with `timers: { idle: 30m }` and `on: { poke: open }` is poked at 10m, and its timer is due at 40m; a rule of `open` with no `go:` taken at 30m leaves it due at 40m. A state `open` with `ticket: answer` poked has a ticket other than the one it had. Parity case 16 leaves and enters `working` each round.
 
 **R-chart-31** A rule may be written as a bare state name, as one transition, or as a list of transitions.
 *Accept:* `on: { done: waiting }`, `on: { done: { go: waiting } }` and `on: { done: [{ go: waiting }] }` give the same stored definition.

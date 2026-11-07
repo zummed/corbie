@@ -222,7 +222,7 @@ func Test_mach_include_problems_name_the_file(t *testing.T) {
 		"a field that does not belong": {"flow: f\nstages: { include: ./s.yaml }\n", map[string]string{"s.yaml": "one: { colour: red, job: ./a.js }\n", "a.js": "return 1"},
 			`s.yaml: stages.one.colour: "colour" is not a field that belongs here`},
 		"a machine in place with no type": {"flow: f\nstages: { one: { job: { machine: { include: ./m.yaml } } } }\n", map[string]string{"m.yaml": "stages: { one: { job: ./a.js } }\n", "a.js": "return 1"},
-			"stages.one.job.machine: a machine written in place writes its type and its name itself"},
+			"stages.one.job.machine: it gives no type: a machine writes one of agent:, flow:, statechart: with its name, or takes it from a file it includes\n"},
 		"a file below a file": {"flow: f\nstages: { include: ./a/s.yaml }\n", map[string]string{"a/s.yaml": "include: ./t.yaml\n", "a/t.yaml": "one: { colour: red, job: ./a.js }\n", "a/a.js": "return 1"},
 			`a/t.yaml: stages.one.colour: "colour" is not a field that belongs here`},
 	} {

@@ -125,7 +125,7 @@ $ corbie run submit house --at /home
 | `house/devices/boiler.yaml` | `/home/devices/boiler` |
 | `house/rooms/room.yaml` | `/home/rooms/room` |
 | `house/tools/lookup.yaml` | `/home/tools/lookup` |
-| `house/shared/base.yaml` | none: it has no type line, so it is a piece |
+| `house/shared/base.yaml` | none: `.corbieignore` lists `shared/` |
 
 1. The controller refuses a prefix that the client's ceiling's `at:` entries do not match.
 2. It refuses a prefix inside or above another tree, and a tree another client owns, naming that tree or its owner.

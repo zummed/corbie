@@ -1,7 +1,8 @@
 Definitions: every type of machine shares these fields, expressions, jobs, events and approval.
 
-A definition is a YAML file. Its first line is the machine's type and name:
-`flow: digest`, `statechart: review` or `agent: librarian`. A name is letters,
+A definition is a YAML file. One field gives the machine's type and name:
+`flow: digest`, `statechart: review` or `agent: librarian`. It may be written
+anywhere in the file, or come from a file it includes. A name is letters,
 digits, `_` and `-`, and starts with a letter. No stage, state, tool or job is
 named `ask`, the name of the definition's ask.
 
@@ -71,6 +72,9 @@ file or a list. A name may end in `#path` to take one part of a file.
   added to tools.yaml later does not reach it.
 - A file's values win over those of the files it includes, and an earlier
   file's over a later one's.
+- A file may take its type and name from a file it includes, as
+  `include: shared/post.yaml` does. A type it writes itself is the same type,
+  and its name wins.
 - `${…}` in an included text is an expression. A literal `${` is written
   `${'${'}`.
 - A path in a file is read from the context, and a path starting `./` from
@@ -255,9 +259,9 @@ A job with `restart:` runs again when it ends. With none it runs once.
 Locations
 ---------
 
-Each file with a type line in a submitted directory has a location: its path
-under the prefix it was submitted at, without `.yaml`. A file without one is
-a piece, which only includes read.
+Each *.yaml in a submitted directory has a location: its path under the prefix
+it was submitted at, without `.yaml`. A file that `.corbieignore` lists has
+none, as `corbie manual a-directory` shows.
 
   lifetime: singleton    one run, started by the submit
   lifetime: keyed        one run for each key a send names; statecharts only

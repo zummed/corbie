@@ -162,7 +162,7 @@ func (s *Shape) field(name string) *Field {
 	return nil
 }
 
-// The fields every type of machine takes, after the first line.
+// The fields every type of machine takes, beside its type and its name.
 var shared = []Field{
 	{Name: "input", Kind: KindTypes, Like: "{ urls: list, depth: number? }", Does: "the shape of its input: each name with the type of its value, or a JSON Schema with type: object"},
 	{Name: "keep", Kind: KindDuration, Like: "7d", Does: "how long its instances are kept after they end (a week)"},
@@ -232,9 +232,10 @@ var JobShape = &Shape{Name: "job", What: "a job", Fields: []Field{
 }}
 
 // definitionShape is the shape of a definition before its type's own
-// fields: its first line, and what every type takes.
+// fields: the field that gives its type and its name, and what every type
+// takes.
 func definitionShape(t Type) *Shape {
-	first := Field{Name: t.Name(), Kind: KindWord, Like: "digest", Does: "its name: the first line gives the type and the name"}
+	first := Field{Name: t.Name(), Kind: KindWord, Like: "digest", Does: "its name: the field named for the type gives the type and the name"}
 	own := slices.Clone(limits)
 	if l, ok := t.(Limiter); ok {
 		own = append(own, l.Limits()...)
@@ -248,8 +249,8 @@ func definitionShape(t Type) *Shape {
 
 // A Description is everything a definition of one type may hold: each
 // mapping's shape, by its name. The definition itself is two of them
-// together, as it is read: "definition" is its first line and what every
-// type takes, and the shape named as the type is the type's own.
+// together, as it is read: "definition" is its type and its name and what
+// every type takes, and the shape named as the type is the type's own.
 type Description struct {
 	Type   string            `json:"type"`
 	Shapes map[string]*Shape `json:"shapes"`
@@ -290,7 +291,7 @@ func (k Kind) reads(as []Kind) bool {
 // client that shows a person what a definition has written, field by
 // field, as it will be read.
 func Written(src []byte) (map[string]any, error) {
-	n, _, err := readYAML(src, "")
+	n, err := readYAML(src, "")
 	if err != nil {
 		return nil, err
 	}

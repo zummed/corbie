@@ -155,10 +155,15 @@ func (p *Parser) out(n *node, field *Field, place string, chain []string) *node 
 	case n.isMap():
 		switch {
 		case field.Path:
-			if t, ok := p.typeOf(n, chain, map[string]bool{}); ok {
-				return p.mapping(n, whole(t).field, place, chain)
+			// A machine written in place, whose type its includes may give.
+			// One with no type, or two, is written out as it is, for the
+			// reader to refuse.
+			if types := p.typesOf(n, chain); len(types) == 1 {
+				out := p.mapping(n, whole(types[0].t).field, place, chain)
+				typeFirst(out, types[0].t)
+				return out
 			}
-			return asWritten(n, chain)
+			return p.mapping(n, func(string) *Field { return nil }, place, chain)
 		case field.Kind == KindNamed:
 			entry := field.entry()
 			return p.mapping(n, func(string) *Field { return entry }, place, chain)
@@ -390,85 +395,143 @@ func (p *Parser) include(n *node, name, place string, chain []string) (*node, []
 // included.
 type read struct {
 	src  []byte
+	err  error // why it cannot be read
 	node *node
-	err  error
+	bad  error // why it cannot be read as YAML
+}
+
+// loaded reads a file a definition includes, by its path from the context.
+func (p *Parser) loaded(full string) *read {
+	r, ok := p.reads[full]
+	if !ok {
+		r = &read{}
+		r.src, r.err = p.load(full)
+		p.reads[full] = r
+	}
+	return r
+}
+
+// yaml gives a file read as YAML.
+func (r *read) yaml(full string) (*node, error) {
+	if r.err != nil {
+		return nil, r.err
+	}
+	if r.node == nil && r.bad == nil {
+		r.node, _, r.bad = nodeYAML(r.src, full)
+		if r.bad == nil && r.node == nil {
+			r.bad = fmt.Errorf("it is empty")
+		}
+	}
+	return r.node, r.bad
 }
 
 // readFile reads a file a definition includes, by its path from the
 // context.
 func (p *Parser) readFile(from, place, name, full string) ([]byte, bool) {
-	if r, ok := p.reads[full]; ok {
-		return r.src, true
-	}
-	src, err := p.load(full)
-	if err != nil {
-		p.problemIn(from, place, "%q cannot be read: %v", name, err)
-		return nil, false
-	}
-	p.reads[full] = &read{src: src}
-	return src, true
-}
-
-// readNode reads a file a definition includes as YAML.
-func (p *Parser) readNode(from, place, name, full string) (*node, bool) {
-	if _, ok := p.readFile(from, place, name, full); !ok {
-		return nil, false
-	}
-	r := p.reads[full]
-	if r.node == nil && r.err == nil {
-		r.node, _, r.err = nodeYAML(r.src, full)
-		if r.err == nil && r.node == nil {
-			r.err = fmt.Errorf("it is empty")
-		}
-	}
+	r := p.loaded(full)
 	if r.err != nil {
 		p.problemIn(from, place, "%q cannot be read: %v", name, r.err)
 		return nil, false
 	}
-	return r.node, true
+	return r.src, true
 }
 
-// typeOf gives the type of a machine written in place, which it writes
-// itself or takes from a file it includes.
-func (p *Parser) typeOf(n *node, chain []string, seen map[string]bool) (Type, bool) {
-	for _, k := range n.keys {
-		if t, ok := TypeOf(k); ok {
-			return t, true
-		}
-	}
-	inc := n.m[includeField]
-	if inc == nil {
+// readNode reads a file a definition includes as YAML.
+func (p *Parser) readNode(from, place, name, full string) (*node, bool) {
+	v, err := p.loaded(full).yaml(full)
+	if err != nil {
+		p.problemIn(from, place, "%q cannot be read: %v", name, err)
 		return nil, false
 	}
-	names := []*node{inc}
-	if inc.list {
-		names = inc.items
-	}
-	for _, name := range names {
-		text, ok := name.value.(string)
-		file, at, _ := strings.Cut(text, "#")
-		full := kept(p.cleanPath(p.moved(name, file)))
-		if !ok || !inContext(file) || seen[full] || slices.Contains(chain, full) {
-			continue
-		}
-		seen[full] = true
-		src, err := p.load(full)
-		if err != nil {
-			continue
-		}
-		v, _, err := nodeYAML(src, full)
-		for _, part := range strings.Split(at, ".") {
-			if at != "" && v.isMap() {
-				v = v.m[part]
+	return v, true
+}
+
+// A typed is a type a definition gives, with the value written under it.
+type typed struct {
+	t    Type
+	name *node
+}
+
+// typesOf gives the types a mapping gives: each it writes, then each a file
+// its include: names gives, following their include: in turn. A type given
+// twice, as by a file that writes the type a file it includes gives, is one.
+// An include that cannot be followed is passed over: its problem is said
+// when the mapping is written out.
+func (p *Parser) typesOf(n *node, chain []string) []typed {
+	var found []typed
+	seen := map[string]bool{}
+	var walk func(n *node, chain []string)
+	walk = func(n *node, chain []string) {
+		for _, k := range n.keys {
+			if t, ok := TypeOf(k); ok && !slices.ContainsFunc(found, func(f typed) bool { return f.t.Name() == t.Name() }) {
+				found = append(found, typed{t, n.m[k]})
 			}
 		}
-		if err == nil && v.isMap() {
-			if t, ok := p.typeOf(v, chain, seen); ok {
-				return t, true
+		inc := n.m[includeField]
+		if inc == nil {
+			return
+		}
+		names := []*node{inc}
+		if inc.list {
+			names = inc.items
+		}
+		for _, name := range names {
+			text, ok := name.value.(string)
+			file, at, _ := strings.Cut(text, "#")
+			full := kept(p.cleanPath(p.moved(name, file)))
+			if !ok || name.list || name.isMap() || !inContext(file) || seen[full+"#"+at] || slices.Contains(chain, full) {
+				continue
+			}
+			seen[full+"#"+at] = true
+			v, err := p.loaded(full).yaml(full)
+			for _, part := range strings.Split(at, ".") {
+				if at != "" && v.isMap() {
+					v = v.m[part]
+				}
+			}
+			if err == nil && v.isMap() {
+				walk(v, append(slices.Clip(chain), full))
 			}
 		}
 	}
-	return nil, false
+	walk(n, chain)
+	return found
+}
+
+// typeFirst puts a mapping's type field first, where it is printed.
+func typeFirst(n *node, t Type) {
+	if i := slices.Index(n.keys, t.Name()); i > 0 {
+		n.keys = slices.Insert(slices.Delete(n.keys, i, i+1), 0, t.Name())
+	}
+}
+
+// untyped notes that a mapping read as a definition gives no type, or more
+// than one.
+func (p *Parser) untyped(place string, types []typed) {
+	if len(types) == 0 {
+		var fields []string
+		for _, name := range Types() {
+			fields = append(fields, name+":")
+		}
+		text := fmt.Sprintf("it gives no type: a machine writes one of %s with its name, or takes it from a file it includes", strings.Join(fields, ", "))
+		if place == "" {
+			text += noMachine(p.source)
+		}
+		p.Problem(place, "%s", text)
+		return
+	}
+	var each []string
+	for _, f := range types {
+		switch {
+		case f.name == nil:
+			each = append(each, f.t.Name()+":")
+		case f.name.file == p.source:
+			each = append(each, fmt.Sprintf("%s: %v at line %d", f.t.Name(), plain(f.name), f.name.line))
+		default:
+			each = append(each, fmt.Sprintf("%s: %v at %s", f.t.Name(), plain(f.name), f.name.at()))
+		}
+	}
+	p.Problem(place, "it gives more than one type, %s: a machine has one", strings.Join(each, ", "))
 }
 
 // index notes the place of every value written out, and of what it holds.

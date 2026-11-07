@@ -65,10 +65,13 @@ A tool that needs approval goes to the agent's ask like any job. A `call:` or `s
 
 ## Shared definitions
 
-Agents share a model, tools and text with `include:`, as any machine does (see [Machines](machine.md#definitions)). A base file with no type line is a piece: it has no location and runs nothing.
+Agents share a model, tools and text with `include:`, as any machine does (see [Machines](machine.md#definitions)). A base file gives no type, so `.corbieignore` lists its directory: it has no location and runs nothing.
 
 ```yaml
-# agents/base.yaml
+# .corbieignore
+agents/shared/
+
+# agents/shared/base.yaml
 input: { dir: string, said: string }
 model: { name: claude-sonnet-5-5, secret: ANTHROPIC_KEY }
 system: { include: ./base.md }
@@ -78,19 +81,19 @@ tools:
 
 # agents/operator.yaml
 agent: operator
-include: ./base.yaml
+include: ./shared/base.yaml
 tools:
-  run_tests: { include: ./tools/run_tests.yaml }
+  run_tests: { include: ./shared/tools/run_tests.yaml }
 
 # agents/teacher.yaml
 agent: teacher
-include: ./base.yaml
+include: ./shared/base.yaml
 system:
-  - { include: ./base.md }
+  - { include: ./shared/base.md }
   - The person asking is new to this code. Explain each step before you give the change.
 ```
 
-`agents/base.md` holds the shared text:
+`agents/shared/base.md` holds the shared text:
 
 ```
 You answer questions about the Go project in ${input.dir}.

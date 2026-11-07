@@ -12,7 +12,7 @@ A machine runs until it reaches an end of its own, is cancelled, or passes its t
 
 ## Definitions
 
-A definition is data, written in YAML. Its first line gives its type and its name. It may give the shape of its input, how long its instances are kept, and its limits.
+A definition is data, written in YAML. Exactly one of its fields is `flow:`, `statechart:` or `agent:`, which gives its type and its name. That field may be written anywhere in the mapping, or come from a file the definition includes, and a definition with none or with two is refused. It may give the shape of its input, how long its instances are kept, and its limits.
 
 A definition may carry `meta:`, with any value. Corbie keeps it with the stored definition, never reads it, and fills in no expression in it. An application keeps its own data there, such as when to start the machine.
 
@@ -71,7 +71,7 @@ allow: ["fs.read:${input.dir}/**"]
 
 The client writes the definition out before it sends it:
 
-1. It reads each file the definition names. A file holds any fields, and has no type: a machine written in place writes its own.
+1. It reads each file the definition names. A file holds any fields. One may give the type, which the definition takes, and a definition that writes a type too writes the same one. `base.yaml` gives none, so in a tree it is listed in `.corbieignore` (see Locations).
 2. In a mapping, it merges in the included fields at every depth. `family.yaml`'s `model:` gets `name` and `secret` from `base.yaml`, and keeps its own `effort`.
 3. In a list or a text, it replaces an item `{ include: <file> }` with that file's list or text, and `{ include: <file>#<path> }` with the value at that path.
 4. It sends the result, which holds no `include:` and keeps each value's file and line.
@@ -107,7 +107,7 @@ An instance never changes its definition. A machine that wants to change how it 
 
 ## Locations
 
-A client submits a directory at a prefix, and the directory becomes a tree (see client.md). Each file in it with a type line has a location: its path under the prefix, without `.yaml`. A file without a type line is a piece: it has no location, runs nothing, and is read only by including it.
+A client submits a directory at a prefix, and the directory becomes a tree (see client.md). Each `*.yaml` in it is a machine with a location: its path under the prefix, without `.yaml`. A file the tree's `.corbieignore` lists has none: nothing runs there and nothing can be sent to it. A machine still includes it, runs it as a child and reads it with `files:`.
 
 `lifetime:` says how runs start at a location:
 
@@ -124,7 +124,7 @@ $ corbie run submit house --at /home
 /home/services/weather   transient   recorded
 ```
 
-The submit starts the boiler's run. The thermostat starts a run for each room a send names, and the weather service one for each call. `house/base.yaml` has no type line: it is a piece, has no location and is not listed.
+The submit starts the boiler's run. The thermostat starts a run for each room a send names, and the weather service one for each call. `house/.corbieignore` lists `shared/`, so `house/shared/base.yaml` has no location and is not printed.
 
 Every run has a location, and its authority comes from it: its file's `allow:` and `ask:`, its tree client's ceiling, and the secrets and values set at its location or above (see permission.md and secret.md).
 
@@ -132,6 +132,39 @@ Every run has a location, and its authority comes from it: its file's `allow:` a
 - A machine made while running has no file of its own. It runs at the location of the job that starts it, narrowed by that job's list.
 - `limits: { runs: N }` on a keyed file caps how many of its runs are running at once (see statechart.md). N is at least 1, and `runs` on a file that is not keyed is refused.
 - `lifetime:`, `update:`, `receive:` and `limits: { runs: }` belong to a file at a location, and are refused in a machine written in place or made while running.
+
+A file of one line places a machine that a listed file holds at its own location:
+
+```yaml
+# project/.corbieignore
+.rook/
+
+# project/.rook/slack/chat/post.yaml        listed: no location
+flow: post
+input: { in: string, text: string }
+receive: [gromit/gromit]
+stages:
+  post: { job: { script: ./post.js, input: "${input}", allow: [net:slack.com] } }
+
+# project/gromit/chat/post.yaml
+include: .rook/slack/chat/post.yaml
+
+# project/ops/chat/post.yaml
+include: .rook/slack/chat/post.yaml
+receive: [ops/ops]
+```
+
+```
+$ corbie run submit project --at /x
+/x/gromit/chat/post   transient   recorded
+/x/ops/chat/post      transient   recorded
+```
+
+- A placed file takes its type, its name and every field from the file it includes, `lifetime:` and `receive:` among them. Placing a singleton gives a singleton.
+- A field the placed file writes wins: `/x/ops/chat/post` receives only from `ops/ops`.
+- Two placements of one file are two locations, and the runs of both are named `post`.
+- A `./` path in the included file is read from that file's directory, so both run `.rook/slack/chat/post.js`.
+- A change to the included file changes every placement, and the next submit acts on each as on any changed file.
 
 A run keeps the definition it started with, and a submit changes what new runs get. `update:` says what a changed file does to the runs already running at its location:
 

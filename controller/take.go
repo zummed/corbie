@@ -1597,8 +1597,14 @@ func (b *build) holds(job *instance.Going) bool {
 		// A call is a send to its location, and does nothing else the
 		// definition's allow: lists.
 		declared = []string{permission.Send + ":" + job.Call.At}
-	case job.IsSend() && strings.HasPrefix(job.Send.At.At, "/"):
-		declared = []string{permission.Send + ":" + job.Send.At.At}
+	case job.IsSend():
+		// A send's location is filled in by now, from /; one with none,
+		// such as a send to a client, is not delivered and declares
+		// nothing.
+		declared = nil
+		if at := job.Send.At.At; strings.HasPrefix(at, "/") {
+			declared = []string{permission.Send + ":" + at}
+		}
 	}
 	return job.Approve || permission.Declares(declared, b.st.Above.Approve, b.st.Tree)
 }

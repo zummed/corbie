@@ -764,15 +764,13 @@ func (s *stepper) replied(data any) error {
 		if err != nil {
 			return err
 		}
-		// A tool that calls a machine gives it the input the tool fixes,
-		// with the model's arguments as they were given.
+		// A tool that calls a machine gives it the model's arguments as they
+		// were given, with the input the tool fixes over them.
 		if tool.Call != "" {
-			input, _ := job.Input.(map[string]any)
-			input = maps.Clone(input)
-			if input == nil {
-				input = map[string]any{}
-			}
+			input := map[string]any{}
 			maps.Copy(input, args)
+			fixed, _ := job.Input.(map[string]any)
+			maps.Copy(input, fixed)
 			job.Input = input
 		}
 		// Opening a toolkit marked for approval waits for the ask, which is

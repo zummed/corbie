@@ -4,6 +4,7 @@ import (
 	"encoding/json/v2"
 	"errors"
 	"fmt"
+	"io/fs"
 	"math"
 	"path"
 	"slices"
@@ -32,6 +33,10 @@ type Parser struct {
 	inline   int
 	limits   *Fields // the definition's limits, for a type to read its own
 	nearer   bool    // the jobs being read go to an ask nearer than the definition's
+	// located says whether a file of the context, by its path from it, is
+	// a machine at a location of the tree being read. It is nil for a
+	// definition read with no tree.
+	located func(file string) bool
 	// inPlace says the definition being read is written in place, and made
 	// that it was made while a machine runs: neither is a file at a
 	// location.
@@ -42,33 +47,36 @@ type Parser struct {
 // the contents of a file the definition names, by its path. A definition
 // that holds a job for approval and has no ask for it to go to is refused.
 func Parse(src []byte, load func(path string) ([]byte, error)) (*Draft, error) {
-	return parse(src, "", load, true, false)
+	return parse(src, "", load, nil, true, false)
 }
 
 // ParseIn is Parse for a definition kept in a file of the context, by its
 // path from the context. load gives a file by its path from the context.
 func ParseIn(file string, src []byte, load func(path string) ([]byte, error)) (*Draft, error) {
-	return parse(src, file, load, true, false)
+	return parse(src, file, load, nil, true, false)
 }
 
 // ParseAt is ParseIn for a file at a location in a tree. Whether its
 // approvals have an ask to go to is settled when a run starts there: the
 // file may run only as another machine's child, under that machine's ask.
-func ParseAt(file string, src []byte, load func(path string) ([]byte, error)) (*Draft, error) {
-	return parse(src, file, load, false, false)
+// located says whether a file of the context, by its path from it, is a
+// machine at a location of the tree; it is nil for a file read alone, as a
+// tree of its own.
+func ParseAt(file string, src []byte, load func(path string) ([]byte, error), located func(file string) bool) (*Draft, error) {
+	return parse(src, file, load, located, false, false)
 }
 
 // ParseMade is Parse for a definition made while a machine runs. Whether
 // its approvals have an ask to go to is left open: that is settled by what
 // is above it when a job is held.
 func ParseMade(src []byte, load func(path string) ([]byte, error)) (*Draft, error) {
-	return parse(src, "", load, false, true)
+	return parse(src, "", load, nil, false, true)
 }
 
 // parse reads a definition. root says one whose approvals have no ask to go
 // to is refused, and made that it was made while a machine runs.
-func parse(src []byte, file string, load func(path string) ([]byte, error), root, made bool) (*Draft, error) {
-	p := &Parser{load: load, dir: path.Dir(file), top: file, source: file, noted: map[Problem]bool{}, includes: new(int), reads: map[string]*read{}, made: made}
+func parse(src []byte, file string, load func(path string) ([]byte, error), located func(string) bool, root, made bool) (*Draft, error) {
+	p := &Parser{load: load, dir: path.Dir(file), top: file, source: file, noted: map[Problem]bool{}, includes: new(int), reads: map[string]*read{}, located: located, made: made}
 	if file == "" {
 		p.dir = ""
 	} else {
@@ -472,6 +480,79 @@ func (p *Parser) MachineType(name string) string {
 	return ""
 }
 
+// MachineAt reads the machine at a location of the tree being read, as a
+// tool that calls it needs it: its type, description, input in full form
+// and lifetime, and nothing else. Its includes are joined, and no machine
+// or tool it names is read, so two machines that name each other are read
+// once each. The location is written out, from the tree's prefix. Where
+// there is no such machine it notes the problem at the place, and gives
+// nil.
+func (p *Parser) MachineAt(place, at string) *Definition {
+	switch {
+	case p.made:
+		p.Problem(place, "a machine made while running has no tree, and calls no location")
+		return nil
+	case HasExpr(at):
+		p.Problem(place, "%q: the location is written out", at)
+		return nil
+	case strings.HasPrefix(at, "/"):
+		p.Problem(place, "%q: the location is one in the same tree, written from its prefix with no / at its start", at)
+		return nil
+	case CheckLocation(at) != nil:
+		return nil // the check says what is wrong with it
+	case p.located == nil:
+		p.Problem(place, "the machine at %s is read from the tree this file is in: give the directory, as in corbie test <dir>", at)
+		return nil
+	}
+	file := at + ".yaml"
+	if !p.located(file) {
+		p.Problem(place, "there is no machine at %s: .corbieignore lists %s", at, file)
+		return nil
+	}
+	r := p.loaded(file)
+	if errors.Is(r.err, fs.ErrNotExist) {
+		p.Problem(place, "there is no machine at %s: the tree has no file %s", at, file)
+		return nil
+	}
+	n, err := r.yaml(file)
+	types := []typed{}
+	if err == nil && n.isMap() {
+		types = p.typesOf(n, []string{file})
+	}
+	if len(types) != 1 {
+		p.Problem(place, "the machine at %s cannot be read: %s has problems of its own", at, file)
+		return nil
+	}
+	t := types[0].t
+	shape := whole(t)
+	read := &Parser{load: p.load, dir: path.Dir(file), top: file, source: file, chain: []string{file},
+		noted: map[Problem]bool{}, includes: new(int), reads: p.reads}
+	written, _ := plain(read.mapping(n, func(name string) *Field {
+		if name == "description" || name == "input" || name == "lifetime" {
+			return shape.field(name)
+		}
+		return nil
+	}, "", read.chain)).(map[string]any)
+	def := &Definition{Type: t.Name(), Lifetime: LifetimeTransient}
+	description, okDescription := written["description"].(string)
+	lifetime, okLifetime := written["lifetime"].(string)
+	input, okInput := written["input"].(map[string]any)
+	if input != nil {
+		input, err = InputForm.Full(input)
+	}
+	switch {
+	case len(read.problems) > 0, err != nil,
+		!okDescription && written["description"] != nil, !okLifetime && written["lifetime"] != nil, !okInput && written["input"] != nil:
+		p.Problem(place, "the machine at %s cannot be read: %s has problems of its own", at, file)
+		return nil
+	}
+	def.Description, def.Input = description, input
+	if lifetime != "" {
+		def.Lifetime = lifetime
+	}
+	return def
+}
+
 // cleanPath gives a path as a definition keeps it: from the context, starting
 // with ./, however it was written. A path that leaves the context, an
 // expression and one of Corbie's own scripts are given as they are.
@@ -636,7 +717,7 @@ func (p *Parser) child(place, name string, read func(*Parser) (*Draft, bool), di
 	p.draft.Definition.Machines[name] = blob.Ref{}
 	chain := p.reading(place)
 	sub := &Parser{load: p.load, dir: dir, top: p.top, source: p.source, chain: chain, includes: p.includes, reads: p.reads,
-		problems: p.problems, noted: p.noted, inline: p.inline * 100, made: p.made}
+		problems: p.problems, noted: p.noted, inline: p.inline * 100, located: p.located, made: p.made}
 	if file != "" {
 		sub.source, sub.chain = file, append(chain, file)
 	}

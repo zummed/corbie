@@ -71,6 +71,11 @@ type Tool struct {
 	List *machine.JobSpec `json:"list,omitzero"`
 	// Toolkit names the toolkit the tool is in, if it is in one.
 	Toolkit string `json:"toolkit,omitzero"`
+	// Call is the location of the machine the tool calls, where it is
+	// written as call:. Its description and its arguments are that
+	// machine's; Job calls it, with the input the tool fixes, and the
+	// model's arguments are added to that input.
+	Call string `json:"call,omitzero"`
 	// When is a condition on the agent's input, checked when the run
 	// starts: the tool is offered only if it holds.
 	When string `json:"when,omitzero"`
@@ -342,6 +347,11 @@ func (agentType) Shape() *machine.Shape {
 		{Name: "job", Kind: machine.KindJob, Like: "{ script: ./shelf.js }", Does: "the job that is started when the model picks it; it reads input and args"},
 		{Name: "list", Kind: machine.KindJob, Like: "{ script: ./github.js }",
 			Does: "a job that lists tools, in place of description and args; job runs each of them, and reads tool, the name the list gave"},
+		{Name: "call", Kind: machine.KindWord, Like: "gitlab/issues/read",
+			Does: "a location in the same tree, whose machine the tool calls, in place of description, args and job: the description and the arguments are that machine's"},
+		{Name: "input", Kind: machine.KindValue, Like: "{ project: group/orders }",
+			Does: "of a tool with call: the names of the machine's input the tool fixes, which the model is not given; it reads the agent's input"},
+		{Name: "approve", Kind: machine.KindFlag, Like: "true", Does: "of a tool with call: the call waits for the ask to approve it"},
 		when,
 	}}
 	toolkit := &machine.Shape{Name: "toolkit", What: "a toolkit", Fields: []machine.Field{
@@ -412,6 +422,19 @@ func fillTool(p *machine.Parser, a *Agent, shape *machine.Shape, place, name str
 	if tf == nil {
 		return nil
 	}
+	if tf.Has("call") {
+		tool := fillCall(p, tf, place)
+		tf.Done()
+		a.Tools[name] = tool
+		return tool
+	}
+	for _, field := range []string{"input", "approve"} {
+		if tf.Has(field) {
+			p.Problem(place+"."+field, "%s: belongs to a tool with call:; a tool with job: writes it in the job", field)
+		}
+	}
+	tf.Value("input")
+	tf.Bool("approve")
 	tool := &Tool{Description: tf.Text("description"), When: tf.Cond("when")}
 	if list, ok := tf.Value("list"); ok {
 		tool.List = p.Job(place+".list", list)
@@ -426,6 +449,105 @@ func fillTool(p *machine.Parser, a *Agent, shape *machine.Shape, place, name str
 	tf.Done()
 	a.Tools[name] = tool
 	return tool
+}
+
+// fillCall reads a tool written with call:. It holds send: for the
+// location, and nothing else is written for it. Its job calls the location
+// with the input the tool fixes.
+func fillCall(p *machine.Parser, tf *machine.Fields, place string) *Tool {
+	for _, field := range []string{"description", "args", "job", "list"} {
+		if tf.Has(field) {
+			p.Problem(place+"."+field, "a tool with call: has no %s: the description and arguments come from the machine called", field)
+		}
+	}
+	tf.Text("description")
+	tf.Map("args")
+	tf.Value("job")
+	tf.Value("list")
+	at := tf.Text("call")
+	tool := &Tool{Call: at, When: tf.Cond("when"),
+		Job: &machine.JobSpec{Call: &machine.AddressSpec{At: at}, Approve: tf.Bool("approve")}}
+	fixed := map[string]any{}
+	if written, ok := tf.Value("input"); ok {
+		if fixed, ok = written.(map[string]any); !ok {
+			p.Problem(place+".input", "this should be a mapping of names of the called machine's input, and is not one")
+			fixed = map[string]any{}
+		}
+	}
+	if len(fixed) > 0 {
+		tool.Job.Input = fixed
+	}
+	target := p.MachineAt(place+".call", at)
+	if target == nil {
+		tool.Args = map[string]any{"type": "object", "properties": map[string]any{}, "additionalProperties": false}
+		return tool
+	}
+	tool.Job.Allow = []string{"send:" + at}
+	tool.Description, tool.Agent = target.Description, target.Type == "agent"
+	if target.Description == "" {
+		p.Problem(place+".call", "the machine at %s has no description:, which the model is given as the tool's", at)
+	}
+	if target.Lifetime != machine.LifetimeTransient {
+		p.Problem(place+".call", "the machine at %s is %s: a call starts a run only of a transient location", at, target.Lifetime)
+	}
+	tool.Args = callArgs(p, place, at, target.Input, fixed)
+	return tool
+}
+
+// callArgs gives the arguments of a tool that calls a machine: the
+// machine's input without the names the tool fixes, and no other name.
+// A blob in that input is the name the model was shown.
+func callArgs(p *machine.Parser, place, at string, input, fixed map[string]any) map[string]any {
+	properties := map[string]any{}
+	var required []any
+	for _, key := range sortedNames(input) {
+		if !slices.Contains([]string{"type", "properties", "required", "additionalProperties", "description", "title"}, key) {
+			p.Problem(place+".call", "the input of the machine at %s is written with %s, and a tool takes its arguments only from an input written with properties", at, key)
+		}
+	}
+	if given, ok := input["properties"].(map[string]any); ok {
+		for name, property := range given {
+			properties[name] = asArg(property)
+		}
+	}
+	required, _ = input["required"].([]any)
+	for _, name := range sortedNames(fixed) {
+		if _, named := properties[name]; !named {
+			p.Problem(place+".input."+name, "the machine at %s takes no input named %q", at, name)
+		}
+		delete(properties, name)
+		required = slices.DeleteFunc(slices.Clone(required), func(r any) bool { return r == name })
+	}
+	args := map[string]any{"type": "object", "properties": properties, "additionalProperties": false}
+	if len(required) > 0 {
+		args["required"] = required
+	}
+	return args
+}
+
+// asArg gives one property of a machine's input as a tool's argument: a
+// blob, which the input takes as the blob itself, is the name the model was
+// shown.
+func asArg(property any) any {
+	m, ok := property.(map[string]any)
+	if !ok || m["type"] != "object" || !slices.Equal(asTexts(m["required"]), []string{"$blob"}) {
+		return property
+	}
+	arg := map[string]any{"type": "string", "format": "blob"}
+	if description, ok := m["description"]; ok {
+		arg["description"] = description
+	}
+	return arg
+}
+
+func asTexts(v any) []string {
+	list, _ := v.([]any)
+	var out []string
+	for _, item := range list {
+		text, _ := item.(string)
+		out = append(out, text)
+	}
+	return out
 }
 
 // Fill reads an agent as written and gives its full form.
@@ -575,6 +697,14 @@ func checkTool(c *machine.Checker, a *Agent, name string, tool *Tool) {
 	}
 	if tool.Job == nil {
 		c.Problem(place, "a tool needs a job")
+		return
+	}
+	if tool.Call != "" {
+		// What the machine called gives was checked as it was read.
+		if _, err := machine.CompileShape(tool.Args); err != nil {
+			c.Problem(place+".call", "%v", err)
+		}
+		c.Job(place, tool.Job, "input")
 		return
 	}
 	if tool.List != nil {

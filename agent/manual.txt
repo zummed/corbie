@@ -100,6 +100,10 @@ Tools
   list         a job that returns tools, [{ name, description, args }], in
                place of `description:` and `args:`; `job:` runs each, and
                reads `tool`, its name
+  call         a location in the same tree, in place of `description:`,
+               `args:` and `job:`: the tool calls the machine there
+  input        with `call:`, the names of that machine's input the tool fixes
+  approve      with `call:`, `true` holds the call for the ask
   when         a condition on the agent's input, checked when the run
                starts: the tool is offered only if it holds
 
@@ -121,6 +125,32 @@ any depth.
 - A tool whose job is a call gets the called run's whole result, or its error.
 - A tool called twice in one turn has jobs named `shelf` and `shelf.1`.
 - No tool is named turn, preview, open, blob_read, blob_search or blob_code.
+
+A tool written `call:` takes its description and arguments from the machine
+it calls. The client reads that machine's file when it reads the tree.
+
+  tools:
+    read_file: { call: gitlab/files/read, input: { project: group/orders } }
+
+  gitlab/files/read.yaml:
+    flow: read
+    description: Read one file of a project.
+    input: { project: string, path: string, ref: "string?" }
+
+The model is shown `read_file` as `Read one file of a project.`, with the
+arguments `path` and `ref`. A call `{ path: a.txt }` starts a run of
+`gitlab/files/read` with the input `{ project: group/orders, path: a.txt }`.
+
+- The arguments are the machine's `input:` without the names the tool fixes.
+  The model giving any other name does not fit.
+- An argument the model leaves out is absent from the machine's input.
+- `input:` may read the agent's input, as `${input.team}`.
+- The tool has `send:` for the location, and nothing else is written for it.
+- The location is written from the tree's prefix. Its machine is transient
+  and has a `description:`, and a file `.corbieignore` lists is no machine.
+- A machine that is an agent is shown to the model as its reply.
+- A tool written `call:` is refused in a file read alone and in a machine
+  made while running.
 
 An entry with `list:` gives tools that come from elsewhere, such as the tools
 of an MCP server (`corbie manual mcp`), which change without the definition

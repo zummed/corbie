@@ -92,7 +92,9 @@ func ReadTree(dir, at string) (*Tree, error) {
 		}
 		m := &Machine{Path: rel}
 		m.Location = at + "/" + strings.TrimSuffix(m.Path, ".yaml")
-		m.Draft, m.Problem = readMachine(full, m.Path, machine.ParseAt)
+		m.Draft, m.Problem = readMachine(full, m.Path, func(file string, src []byte, load func(string) ([]byte, error)) (*machine.Draft, error) {
+			return machine.ParseAt(file, src, load, func(file string) bool { return located(listed, file) })
+		})
 		t.Machines = append(t.Machines, m)
 		return nil
 	})
@@ -140,7 +142,9 @@ func ReadFile(dir, rel, at string, job ScriptJob) (*Tree, error) {
 		}
 		m.Draft, m.Problem = Script(path.Base(rel), src, job)
 	} else {
-		m.Draft, m.Problem = readMachine(dir, rel, machine.ParseAt)
+		m.Draft, m.Problem = readMachine(dir, rel, func(file string, src []byte, load func(string) ([]byte, error)) (*machine.Draft, error) {
+			return machine.ParseAt(file, src, load, nil)
+		})
 	}
 	return &Tree{Prefix: at, Directory: dir, Machines: []*Machine{m}}, nil
 }
@@ -173,6 +177,21 @@ func readIgnore(dir string) (map[string]bool, error) {
 		listed[path.Clean(line)] = true
 	}
 	return listed, nil
+}
+
+// located says whether a file of a tree's directory, by its path from it,
+// is a machine at a location: a *.yaml file outside .git that .corbieignore
+// does not list, itself or by a directory above it.
+func located(listed map[string]bool, file string) bool {
+	if !strings.HasSuffix(file, ".yaml") {
+		return false
+	}
+	for at := path.Clean(file); at != "."; at = path.Dir(at) {
+		if listed[at] || path.Base(at) == ".git" {
+			return false
+		}
+	}
+	return true
 }
 
 // inside says whether a file is in dir once every link to it is followed.

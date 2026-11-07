@@ -699,6 +699,46 @@ states:
 	c.want(c.give(again), "end late")
 }
 
+// A transition to the state that has the rule, or to a state holding it,
+// enters that state again: its timer counts from the new entry. A rule with
+// no go: stays, and the timer keeps its first due time.
+func TestTransitionToItsOwnStateStartsItsTimersAgain(t *testing.T) {
+	c := newChart(t, `
+statechart: poked
+initial: open
+states:
+	open:
+		timers: { idle: 30m }
+		on:
+		  poke: open
+		  look: { send: { to: parent, event: seen } }
+		  idle: over
+		initial: inside
+		states:
+			inside: { on: { nudge: open } }
+	over: { end: done }
+`)
+	c.want(c.give(start()), "timer idle.open")
+	c.at = entered.Add(10 * time.Minute)
+	c.want(c.give(machine.Event{Name: "poke", From: "client"}), "clear idle.open", "timer idle.open")
+	if at, _ := c.timer("idle.open"); !at.Equal(entered.Add(40 * time.Minute)) {
+		t.Fatalf("poked at 10m, the timer is due %v after entry, want 40m", at.Sub(entered))
+	}
+	c.at = entered.Add(20 * time.Minute)
+	c.want(c.give(machine.Event{Name: "nudge", From: "client"}), "clear idle.open", "timer idle.open")
+	if at, _ := c.timer("idle.open"); !at.Equal(entered.Add(50 * time.Minute)) {
+		t.Fatalf("nudged at 20m, the timer is due %v after entry, want 50m", at.Sub(entered))
+	}
+	c.at = entered.Add(30 * time.Minute)
+	c.want(c.give(machine.Event{Name: "look", From: "client"}), "send seen to parent")
+	at, due := c.timer("idle.open")
+	if !at.Equal(entered.Add(50 * time.Minute)) {
+		t.Fatalf("after a rule with no go: the timer is due %v after entry, want 50m", at.Sub(entered))
+	}
+	c.at = at
+	c.want(c.give(due), "end <nil>")
+}
+
 // A recurring job is a chart that waits on a timer and starts its work as
 // a child. Over three days it starts three, each at nine.
 func TestRecurringJobStartsItsWorkAtItsTimeEachDay(t *testing.T) {

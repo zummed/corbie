@@ -43,11 +43,14 @@ The detailed rules behind the [Statechart overview](../statechart.md). Area code
 **R-chart-25** A state's rules are under `on:`, by the name of the event: `done`, `failed`, a timer's name, an answer to a ticket, an event sent by the parent, by a child or to the run by its address, a value a job emitted.
 *Accept:* an answer to a ticket: parity case 21. An event from the parent and one from a child: parity case 33. An emitted value: parity case 26. An event sent by address: parity case 114.
 
-**R-chart-27** A transition names the state to go to, may have a condition and may send events; where several are listed, the first whose condition holds is taken, and a transition that names its own state leaves the state and enters it again.
-*Accept:* parity case 16: the rule for `done` goes to `finished` once its condition holds, and to `working` until then, leaving and entering `working` each round. Parity case 35's parent sends five events from one transition, and the child receives all five.
+**R-chart-27** A transition names the state to go to, may have a condition and may send events; where several are listed, the first whose condition holds is taken.
+*Accept:* parity case 16: the rule for `done` goes to `finished` once its condition holds, and to `working` until then. Parity case 35's parent sends five events from one transition, and the child receives all five.
 
 **R-chart-29** A transition that names no state stays where it is and only sends.
 *Accept:* parity case 26: in `listening` the chart stays for all three emitted values and the state's job keeps going.
+
+**R-chart-82** A transition to the state that has the rule, or to a state holding it, leaves that state and enters it again: its jobs and timers start afresh, and it has a new ticket.
+*Accept:* a state `open` with `timers: { idle: 30m }` and `on: { poke: open }` is poked at 10m, and its timer is due at 40m; a rule of `open` with no `go:` taken at 30m leaves it due at 40m. Parity case 16 leaves and enters `working` each round.
 
 **R-chart-31** A rule may be written as a bare state name, as one transition, or as a list of transitions.
 *Accept:* `on: { done: waiting }`, `on: { done: { go: waiting } }` and `on: { done: [{ go: waiting }] }` give the same stored definition.

@@ -1,6 +1,7 @@
 package controller_test
 
 import (
+	"strings"
 	"testing"
 	"time"
 
@@ -140,5 +141,53 @@ func Test_inst_client_cannot_write_its_cause(t *testing.T) {
 	w.settle()
 	if cause, _ := w.causeOf(sender, "stop"); cause.Run != "" || cause.Client != "c1" || cause.Message != "20261010T120000.000000Z-forged" {
 		t.Fatalf("the run took stop from %+v", cause)
+	}
+}
+
+// What the controller writes to a run for a step that asked for something
+// names that step: the note that a send was not delivered, and the failure
+// of a call no run took.
+func Test_inst_note_and_failed_call_name_the_step(t *testing.T) {
+	w := newWorld(t)
+	child := strings.Replace(talk, "\tlifetime: keyed\n", "", 1)
+	sender := w.roomsWith(map[string]string{"/t/parent": `
+		statechart: parent
+		initial: a
+		states:
+		  a: { job: { machine: ./child.yaml } }
+	`}, map[string]string{"child.yaml": child})
+	parent := w.startAt(w.client, "/t/parent", client.Start{})
+	w.settle()
+	w.tell(sender, "poke", map[string]any{"at": "router", "run": w.child(parent), "text": "wrong"})
+	w.settle()
+	sending := 0
+	for _, s := range w.steps(sender) {
+		for _, ask := range s.Asks {
+			if ask.Kind == instance.AskEvent && ask.Location == "/t/router" {
+				sending = s.Number
+			}
+		}
+	}
+	if cause, _ := w.causeOf(sender, instance.KindNote); sending == 0 || cause != (instance.Cause{Run: sender, Step: sending}) {
+		t.Fatalf("the note names %+v, not step %d of the sender", cause, sending)
+	}
+
+	w = newWorld(t)
+	run := w.calls(map[string]string{"/t/lookup": strings.Replace(lookup, "statechart: lookup", "statechart: lookup\n\treceive: [nobody]", 1)}, nil)
+	calling, failed := 0, instance.Cause{}
+	for _, s := range w.steps(run) {
+		for _, ask := range s.Asks {
+			if ask.Kind == instance.AskCall {
+				calling = s.Number
+			}
+		}
+		for _, e := range s.Events {
+			if strings.HasSuffix(e.Source, ".failed") {
+				failed = e.Cause
+			}
+		}
+	}
+	if calling == 0 || failed != (instance.Cause{Run: run, Step: calling}) {
+		t.Fatalf("the failed call names %+v, not step %d of the caller", failed, calling)
 	}
 }

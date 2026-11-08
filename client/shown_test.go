@@ -37,10 +37,10 @@ func shownAfter(entries []client.Entry) []machine.Shown {
 	return shown
 }
 
-// Each step is shown with where the run stands, in one shape for every type:
+// Each step is shown with the run's state, in one shape for every type:
 // a flow's stages with their statuses, a statechart's active states, an
 // agent's turns. Nothing the head says is in it.
-func Test_inst_step_shows_where_the_run_stands(t *testing.T) {
+func Test_inst_step_shows_the_runs_state(t *testing.T) {
 	l := local(t, "all")
 	_, entries := followAll(t, l, `
 		flow: two

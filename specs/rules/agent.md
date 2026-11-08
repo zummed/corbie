@@ -191,5 +191,5 @@ Uses:
 
 Used by:
 
-- **Machines.** An agent is one of the three types, and supplies the filling-out of its short forms, its check, its step, where a watcher is shown it stands (R-inst-72), and its manual page.
+- **Machines.** An agent is one of the three types, and supplies the filling-out of its short forms, its check, its step, the state a watcher is shown (R-inst-72), and its manual page.
 - **Flow, Statechart.** Either may run an agent as a child, and an agent may run either, or another agent, as a tool.

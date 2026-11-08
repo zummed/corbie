@@ -752,7 +752,8 @@ func sortedNames[V any](m map[string]V) []string {
 	return keys
 }
 
-// Show gives where an agent stands: how many turns it has taken.
+// Show gives an agent's state as a watcher is shown it: how many turns it
+// has taken.
 func (agentType) Show(raw jsontext.Value) machine.Shown {
 	var st state
 	if raw == nil || json.Unmarshal(raw, &st) != nil {

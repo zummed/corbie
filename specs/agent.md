@@ -315,7 +315,5 @@ An agent's record holds these entries, under these names:
 | job `open` | an open of a toolkit |
 | job `preview`, `preview.1` | the preview of a blob before the model is first shown it |
 | job named after an entry with `list:` | the list of that entry's tools, made before the first turn |
-| job `ask` | the ask for the jobs of one step that need approval |
-| `turn` in a step's `state` | how many turns the agent has taken |
 
 `stop` is `end`, `tools` or `length`.

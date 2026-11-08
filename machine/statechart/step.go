@@ -569,7 +569,7 @@ func (s *stepper) taken(name string) bool {
 	return false
 }
 
-// Show gives where a chart stands: the states it is in.
+// Show gives a chart's state as a watcher is shown it: the states it is in.
 func (chartType) Show(raw jsontext.Value) machine.Shown {
 	var st state
 	if raw == nil || json.Unmarshal(raw, &st) != nil {

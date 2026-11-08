@@ -327,13 +327,13 @@ type Type interface {
 	// Check reports what is wrong with a definition in full form.
 	Check(c *Checker, def *Definition)
 	Step(in *StepIn) (*StepOut, error)
-	// Show gives where a run of the type stands, from its state.
+	// Show gives the state a watcher is shown of a run of the type.
 	Show(state jsontext.Value) Shown
 	Manual() string
 }
 
-// Shown is where a run stands, as a watcher is shown it for each step,
-// beside what its head says. Each type fills one field.
+// Shown is the state of a run a watcher is shown for each step, beside
+// what its head says. Each type fills one field.
 type Shown struct {
 	// Stages are a flow's stages, each with its status: waiting, running,
 	// done, failed or skipped.

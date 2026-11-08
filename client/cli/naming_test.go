@@ -101,8 +101,9 @@ func Test_client_submit_problems_in_json(t *testing.T) {
 }
 
 // A run's record prints a line for each call job, naming the run it
-// started, and that run prints the caller's step as its cause; a reply to a client names the client; and a note, written after
-// the run ended or not, is printed once, with the run's status once.
+// started, and that run prints the caller's step as its cause; a reply to
+// a client names the client; and a note, written after the run ended or
+// not, is printed once, with the run's status once.
 func Test_client_record_names_calls_clients_and_notes(t *testing.T) {
 	m, _ := working(t, "all")
 	dir := filepath.Join(t.TempDir(), "t")

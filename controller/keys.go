@@ -582,7 +582,7 @@ func (p *pass) toAddress(inst string, step *instance.Step, ask *instance.Ask) er
 	if err != nil || failure == nil {
 		return err
 	}
-	return p.tell(inst, inst, ask.Message+".note", notDelivered(msg, failure.Error), nil)
+	return p.tell(inst, inst, ask.Message+".note", notDelivered(msg, failure.Error), asked(inst, step))
 }
 
 // sendJob carries out a send job: its event, and then its result, done with
@@ -640,8 +640,7 @@ func (p *pass) addressed(inst string, step *instance.Step, ask *instance.Ask) (*
 }
 
 // tell writes a note into a run's record, as a step of the controller's own,
-// whether or not the run has ended. A note a step asked for has that step
-// as its cause.
+// whether or not the run has ended. Its cause is the step the note is about.
 func (p *pass) tell(to, from, message, text string, cause *instance.Cause) error {
 	msg := &instance.Message{Kind: instance.KindNote, Instance: to, From: from, Note: text, Cause: cause}
 	_, err := p.send(store.Message(p.ctl, p.ctl, message), noEnd, msg, p.c.ID.Card)
@@ -667,7 +666,7 @@ func (p *pass) undeliver(a *arrival, why string) error {
 	if err != nil || !gone {
 		return err
 	}
-	return p.tell(a.msg.From, a.msg.Instance, noteName(a.name), notDelivered(a.msg, why), nil)
+	return p.tell(a.msg.From, a.msg.Instance, noteName(a.name), notDelivered(a.msg, why), a.msg.Cause)
 }
 
 // redirect moves on an event sent to { at } or { at, key } whose run cannot
@@ -728,7 +727,7 @@ func (p *pass) redirect(a *arrival) error {
 		return nil
 	}
 	base, tail := a.name[strings.LastIndexByte(a.name, '/')+1:], run[strings.LastIndexByte(run, '/')+1:]
-	return p.tell(msg.From, run, base+".moved."+tail, fmt.Sprintf("the event %s sent to %s went to the run %s, not %s", msg.Event.Name, addressText(msg.To), run, before), nil)
+	return p.tell(msg.From, run, base+".moved."+tail, fmt.Sprintf("the event %s sent to %s went to the run %s, not %s", msg.Event.Name, addressText(msg.To), run, before), msg.Cause)
 }
 
 // holder gives the run that has a key, whose file is named at: none where

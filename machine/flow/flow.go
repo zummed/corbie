@@ -794,7 +794,8 @@ func (s *stepper) scope(item any) machine.Scope {
 	return machine.Scope{"input": s.in.Input, "stages": stages, "item": item}
 }
 
-// Show gives where a flow stands: the status of each stage.
+// Show gives a flow's state as a watcher is shown it: the status of each
+// stage.
 func (flowType) Show(raw jsontext.Value) machine.Shown {
 	var st state
 	if raw == nil || json.Unmarshal(raw, &st) != nil {

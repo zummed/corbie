@@ -22,13 +22,13 @@ Each event in a step names its `cause`, which the controller writes:
 
 | Event | `cause` |
 |---|---|
-| asked for by a step of a run: a send, a call, a start, an event to or from a child, an end | `{ run, step }`: that run and step |
+| asked for by a step of a run: a send, a call, a start, a cancel, an event to or from a child, an end, a tell; or the note or failure the controller writes when one of these cannot be delivered | `{ run, step }`: that run and step |
 | from a client: a start, an event, a call, a submit that starts a singleton | `{ client, message }`: the client and its message |
 | from the run's own script job or timer | none; `from` names the job or the timer, and the step that asked for it lists it among its asks |
 
 A viewer follows a request from a client's message through every send, call and child to its end by these causes. A run's cause is the cause of its start.
 
-A watcher is shown, for each step, where the run stands as `state`, in one shape for every type. It holds nothing the head says.
+A watcher is shown, for each step, the run's `state`, in one shape for every type. It holds nothing the head says.
 
 | Field | Type | What it holds |
 |---|---|---|

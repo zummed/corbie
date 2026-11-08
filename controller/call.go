@@ -221,7 +221,7 @@ func (b *build) noCall(start *arrival, why string) {
 // once.
 func (p *pass) callFailed(a *arrival, why string) error {
 	s := a.msg.Start
-	msg := &instance.Message{Kind: instance.KindResult, Instance: a.msg.From, From: a.msg.Instance,
+	msg := &instance.Message{Kind: instance.KindResult, Instance: a.msg.From, From: a.msg.Instance, Cause: a.msg.Cause,
 		Result: &instance.Result{Job: s.Above.CallJob, Status: machine.StatusError, Final: true,
 			Error: &machine.Error{Status: machine.StatusError, Error: why}}}
 	if _, err := p.send(a.name+".failed", noEnd, msg, p.c.ID.Card); err != nil {

@@ -312,7 +312,7 @@ type Entry struct {
 	Events []instance.Arrived `json:"events,omitzero"`
 	Asks   []instance.Ask     `json:"asks,omitzero"`
 	Status string             `json:"status,omitzero"`
-	Shown  machine.Shown      `json:"state,omitzero"` // where the run stands after the step
+	Shown  machine.Shown      `json:"state,omitzero"` // the run's state after the step
 	// For an emit.
 	Job  string `json:"job,omitzero"` // the job that emitted
 	Name string `json:"name,omitzero"`

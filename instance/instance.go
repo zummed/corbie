@@ -84,8 +84,10 @@ type Arrived struct {
 }
 
 // A Cause is what sent an event: the step of a run that asked for it, or a
-// message of a client. An event from the run's own script job or timer has
-// none.
+// message of a client. A note or a failure the controller writes for a step
+// names that step. An event from the run's own script job or timer has
+// none. A Cause is apart from a message's From, the run the machine answers,
+// and an event's Source, the file the message came in.
 type Cause struct {
 	Run     string `json:"run,omitzero"`
 	Step    int    `json:"step,omitzero"`

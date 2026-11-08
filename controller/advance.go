@@ -109,7 +109,7 @@ func (p *pass) advance(inst string, waiting []*arrival) error {
 		if taken.step == nil {
 			continue
 		}
-		readers, err := p.readers(inst)
+		readers, err := p.readers(inst, &taken.step.State)
 		if err != nil {
 			return err
 		}
@@ -160,12 +160,26 @@ func isAltered(err error) bool {
 }
 
 // readers are the parties everything in an instance's record is sealed to:
-// the controller, and the client of the root's tree.
-func (p *pass) readers(inst string) ([]identity.Card, error) {
+// the controller, the client of the root's tree, and each client its root's
+// file lists in read: that the controller trusts.
+func (p *pass) readers(inst string, st *instance.State) ([]identity.Card, error) {
 	cards := []identity.Card{p.c.ID.Card}
-	t, err := p.trusted(store.InstanceClient(inst))
+	owner := store.InstanceClient(inst)
+	t, err := p.trusted(owner)
+	if err != nil {
+		return nil, err
+	}
 	if t != nil {
 		cards = append(cards, t.Card)
 	}
-	return cards, err
+	for _, name := range st.Above.Readers {
+		reader, err := p.trusted(name)
+		if err != nil {
+			return nil, err
+		}
+		if name != owner && reader.Trusted() && reader.Card.Kind == identity.Client {
+			cards = append(cards, reader.Card)
+		}
+	}
+	return cards, nil
 }

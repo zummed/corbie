@@ -91,7 +91,8 @@ Events and tickets
 
 A statechart state with `ticket: <name>` issues a ticket, and
 `corbie run reply` answers it (`corbie manual statechart`). Only the client that
-owns the run's tree can print the ticket, with `corbie run show <id> --tickets`.
+owns the run's tree, and those its file's `read:` lists, can print the ticket,
+with `corbie run show <id> --tickets`.
 
 A statechart with no final state keeps running. With `lifetime: singleton` the
 submit starts its one run, and a client sends it an event at its location each

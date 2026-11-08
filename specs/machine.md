@@ -18,7 +18,7 @@ A definition may carry `meta:`, with any value. Corbie keeps it with the stored 
 
 A definition may give `description:`, plain text that says what the machine is for. Corbie keeps it with the stored definition, and refuses an expression in it.
 
-A definition may give `title:`, which names a run to a person. Its expressions read `input`, `values` and `run`, and the controller fills it in when the run starts and keeps it in the run's record, never in its head, so only the client that owns the run's tree sees it. A title is one line of at most 200 characters: each run of white space, line breaks among it, becomes one space, and a longer title is cut.
+A definition may give `title:`, which names a run to a person. Its expressions read `input`, `values` and `run`, and the controller fills it in when the run starts and keeps it in the run's record, never in its head, so only the clients that read the run's record see it. A title is one line of at most 200 characters: each run of white space, line breaks among it, becomes one space, and a longer title is cut.
 
 ```yaml
 title: "${input.channel}: ${input.said}"     # a run's title: "#testing: give me a release card for 4.2"
@@ -133,7 +133,8 @@ Every run has a location, and its authority comes from it: its file's `allow:` a
 - A child started by `machine:` runs at its parent's location.
 - A machine made while running has no file of its own. It runs at the location of the job that starts it, narrowed by that job's list.
 - `limits: { runs: N }` on a keyed file caps how many of its runs are running at once (see statechart.md). N is at least 1, and `runs` on a file that is not keyed is refused.
-- `lifetime:`, `update:`, `receive:` and `limits: { runs: }` belong to a file at a location, and are refused in a machine written in place or made while running.
+- `read: [client:wall]` lists the clients, beside the tree's, that read the runs at the location (see permission.md).
+- `lifetime:`, `update:`, `receive:`, `read:` and `limits: { runs: }` belong to a file at a location, and are refused in a machine written in place or made while running.
 
 A file of one line places a machine that a listed file holds at its own location:
 

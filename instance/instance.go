@@ -28,8 +28,8 @@ const (
 )
 
 // A Head is the small public summary of an instance, signed by the
-// controller and sealed to nobody. Apart from its location, key and labels
-// it holds nothing the instance was given or produced.
+// controller and sealed to nobody. Apart from its location, key, labels and
+// readers it holds nothing the instance was given or produced.
 type Head struct {
 	Name    string `json:"name"`    // the instance
 	Machine string `json:"machine"` // what the definition is called
@@ -50,6 +50,8 @@ type Head struct {
 	Timers    int               `json:"timers,omitzero"`
 	Tickets   []string          `json:"tickets,omitzero"`
 	Labels    map[string]string `json:"labels,omitzero"`
+	// Readers are the clients, beside its tree's, its record is sealed to.
+	Readers []string `json:"readers,omitzero"`
 	// Keep is how long the instance is kept after it ends.
 	Keep machine.Duration `json:"keep,omitzero"`
 }
@@ -186,6 +188,9 @@ type Above struct {
 	// longer than what started it, so a child's record goes no later than
 	// its parent's.
 	Keep machine.Duration `json:"keep,omitzero"`
+	// Readers are the clients, beside the tree's, that its record is sealed
+	// to: those its root's file lists in read:, by name.
+	Readers []string `json:"readers,omitzero"`
 	// StartedBy is the run whose send or call started the instance. It is
 	// a root of its own tree's client, and no parent of it.
 	StartedBy string `json:"started_by,omitzero"`

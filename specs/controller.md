@@ -95,7 +95,7 @@ Any other machine is an owner's words, and its steps are taken in the controller
 
 ## Sending a job
 
-A script job is sent as a message to a runner, signed by the controller and sealed to that runner. The message carries everything the runner needs to know: where in the record to read the script, its files and the input; each layer of permissions that applies, by name, so a refusal can say which layer refused; the values of the secrets it may use, set at its location or above; its limits; where in the record the job writes what it emits; and which emitted names the machine wants to hear about.
+A script job is sent as a message to a runner, signed by the controller and sealed to that runner. The message carries everything the runner needs to know: where in the record to read the script, its files and the input; each layer of permissions that applies, by name, so a refusal can say which layer refused; the values of the secrets it may use, set at its location or above; its limits; where in the record the job writes what it emits, and the clients that is sealed to; and which emitted names the machine wants to hear about.
 
 A job's tags choose its runner. The job goes to a runner that has every tag it names, and a job that names none may go to any runner. Where several qualify the controller picks one from the request and the attempt, so the same attempt always goes to the same runner, and a later attempt goes to a different one where more than one qualifies. It takes no account of load. A job whose tags no runner has, or which names a value or secret not set at its location or above, fails before anything is sent, naming the name and the location.
 
@@ -133,7 +133,7 @@ $ corbie run submit house --at /home
 4. It records each file, written out with its includes, at its location, and acts on what changed (see A changed or removed file).
 5. The receipt names the directory that last submitted there, and the values and secrets the files use that are not set at their locations or above.
 
-A submit changes no other tree. Only the tree's client reads and cancels the runs at its locations. Another client starts a run there only by calling a transient location (see Sending and calling).
+A submit changes no other tree. Only the tree's client cancels the runs at its locations, and it and the clients a file's `read:` lists read them. Another client starts a run there only by calling a transient location (see Sending and calling).
 
 ## Starting runs
 

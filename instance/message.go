@@ -168,7 +168,8 @@ type Job struct {
 	Due time.Time `json:"due"`
 	// Wants names the emitted values the machine wants to hear about.
 	Wants []string `json:"wants,omitzero"`
-	// Client is the card of the client that owns the root's tree: what the
-	// job adds to the record is sealed to it and to the controller.
-	Client identity.Card `json:"client"`
+	// Readers are the cards of the clients what the job adds to the record
+	// is sealed to, beside the controller: the client that owns the root's
+	// tree, and those its root's file lists in read:.
+	Readers []identity.Card `json:"readers"`
 }

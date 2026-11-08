@@ -179,6 +179,8 @@ var shared = []Field{
 		Description: "what a changed file does to the runs already running at its location: restart cancels them; drain, the default but for a singleton, lets them finish"},
 	{Name: "receive", Kind: KindList, Like: "[thermostats/*, client:panel]",
 		Description: "who may send to its runs or call it: locations and client:<name>, for every event or by event name; with none, its own tree and its tree's client"},
+	{Name: "read", Kind: KindList, Like: "[client:wall]",
+		Description: "the clients, beside its tree's, that read its runs' records, as client:<name>"},
 }
 
 // The limits every type of machine takes. A type may add its own.

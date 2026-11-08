@@ -86,7 +86,7 @@ secrets and values                those set at its location or above; the neares
 - A child started by `machine:` runs at its parent's location. A machine made while running runs at the location of the job that starts it.
 - A made machine's sends would carry that job's location in `event.from`, so it sends only to its parent and its children.
 
-A tree belongs to the client that first submitted it. Only that client submits there, and reads and cancels the runs at its locations. A client submits trees only at prefixes its ceiling's `at:` entries match.
+A tree belongs to the client that first submitted it. Only that client submits there and cancels the runs at its locations, and it and the clients a file's `read:` lists read them (see Reading). A client submits trees only at prefixes its ceiling's `at:` entries match.
 
 ```
 work$ corbie client card | ssh ctl corbie controller enrol - --ceiling "at:/work,send:/work/**,network,secret:*@*"
@@ -149,6 +149,22 @@ tools:
 
 A gateway is a client, and a request to it is a call to a location by the gateway's client, checked as above (see client.md). The file's `receive:` lists `client:<name>` for the gateway's client, or that client owns the tree.
 
+## Reading
+
+A file's `read:` lists the clients, beside its tree's, that read its runs.
+
+```yaml
+# home/door.yaml                        location /home/door
+statechart: door
+read: [client:wall]
+receive: [client:wall]
+```
+
+- The controller seals every entry of the record of a run at `/home/door`, and of every run below it, to itself, the tree's client and `wall`. The run's head lists `wall`.
+- `wall` reads what the record holds: the input, the output, emits, tickets, the definition and the values set at the location. No record holds a secret.
+- `wall` does not own the tree. It submits nothing there and cancels nothing, and it sends to the runs as `receive:` and its ceiling's `send:` allow. The controller writes `{ client: wall }` into `event.from`.
+- A run keeps the list it started with, and a client the controller does not trust is passed over.
+
 ## Checking
 
 The check is made at the moment a script acts, and it is made in one place. A plugin never checks a permission and never opens anything by itself. It asks Corbie for a way to connect, a path, a program or a variable, and Corbie checks every layer, notes what was used, and hands over the thing or refuses (see Plugins).
@@ -210,6 +226,9 @@ A script cannot reach outside itself except through the kinds above, and those a
 ```
 
 - Whoever holds a gateway's token calls every location that accepts the gateway's client, with any input.
+- Every client reads every head, and lists every record and the names, sizes and times of its entries, the names of its jobs among them. It opens only what is sealed to it.
+- A client a file's `read:` lists reads the tickets of the runs there, and so can answer them, as any client that holds a ticket can.
+- A client taken off `read:` still opens what was sealed to it, and the runs still running keep the list they started with until they end.
 - What is at a location is not secret from those who may send there. A run whose layers allow `send:` to a location learns from an undelivered note or a failed call, before `receive:` is read, whether a file is recorded there, its lifetime, whether its singleton is running and whether a keyed location is at its `limits: { runs }`. A client learns from a refused start or call whether a file is recorded at a location and the client whose tree it is in, whatever its ceiling, and the location's lifetime when its ceiling allows `send:` there.
 - Machines made while running that each use a step's whole time delay other machines: a pass waits for four of those steps at a time, up to 10 seconds, and every other run pays that in each pass it needs. Beside four such machines, a run of 20 ms took 10 seconds.
 - A step that asks for as much as fits in its 4 MiB delays other machines for as long as carrying it out takes.

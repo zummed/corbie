@@ -410,3 +410,91 @@ func Test_client_start_uploads_side_by_side(t *testing.T) {
 		t.Fatalf("a submit whose upload failed gave %v and sent %d messages", err, u.messages.Load())
 	}
 }
+
+// A file's read: lists clients that read its runs' records as the tree's
+// client does: the run and its child are listed and shown to them, their
+// records and emits open, and they hold the run's tickets. They do not own
+// the tree: a cancel is refused, and a client the list does not name is
+// shown the status alone.
+func Test_client_read_lists_clients_that_read_the_records(t *testing.T) {
+	l := local(t, "all")
+	enrol := func(name string) *client.Client {
+		t.Helper()
+		id, err := identity.New(name, identity.Client)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := identity.WriteTrust(ctx, l.Controller.Store, l.Controller.ID, identity.Trust{Card: id.Card}); err != nil {
+			t.Fatal(err)
+		}
+		return client.New(id, l.Controller.ID.Card, l.Memory.As(store.Party{Kind: store.Client, Name: name, Controller: l.Controller.ID.Name}))
+	}
+	wall, other := enrol("wall"), enrol("other")
+	id, err := l.Run(ctx, draft(t, `
+		statechart: door
+		read: [client:wall]
+		initial: kid
+		states:
+		  kid:
+		    job: { machine: ./kid.yaml }
+		    on: { done: hold }
+		  hold:
+		    ticket: open
+		    on: { open: over }
+		  over:
+		    end: done
+		    output: { kid: "${states.kid.output}", said: "${event.data}" }
+	`, map[string]string{
+		"kid.yaml": "flow: kid\nstages:\n  say: { job: { script: ./say.js } }\noutput: ${stages.say.output}\n",
+		"say.js":   `log("MARKER-LOG"); return "MARKER-OUT"`,
+	}), client.Start{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	waitFor(t, l, func(runs []*client.Run) string {
+		for _, r := range runs {
+			if r.ID == id && len(r.Tickets) == 1 {
+				return r.ID
+			}
+		}
+		return ""
+	})
+
+	runs, err := wall.List(ctx, client.Filter{Finished: true})
+	if err != nil || len(runs) != 2 {
+		t.Fatalf("the reader lists %d runs (%v), want the run and its child", len(runs), err)
+	}
+	var told []string
+	if _, err := wall.Record(ctx, id, func(e client.Entry) { told = append(told, fmt.Sprint(e.Data)) }); err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Contains(told, "MARKER-LOG") {
+		t.Errorf("the reader was not shown the child's emit: %v", told)
+	}
+	tickets, err := wall.Tickets(ctx, id)
+	if err != nil || tickets["open"] == "" {
+		t.Fatalf("the reader holds the tickets %v (%v)", tickets, err)
+	}
+	if _, err := wall.Cancel(ctx, id, 0); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := wall.Reply(ctx, id, tickets["open"], "from the wall", 0); err != nil {
+		t.Fatal(err)
+	}
+	r, err := wall.Wait(ctx, id, 20*time.Millisecond)
+	if err != nil || r.Status != instance.Done || fmt.Sprint(r.Output) != "map[kid:MARKER-OUT said:from the wall]" {
+		t.Fatalf("the reader is shown %+v (%v)", r, err)
+	}
+
+	// A client the list does not name lists nothing, and is shown the
+	// status alone.
+	if runs, err := other.List(ctx, client.Filter{Finished: true}); err != nil || len(runs) != 0 {
+		t.Errorf("another client lists %v (%v)", runs, err)
+	}
+	if r, err := other.Wait(ctx, id, 20*time.Millisecond); err != nil || r.Status != instance.Done || r.Output != nil {
+		t.Errorf("another client is shown %+v (%v)", r, err)
+	}
+	if _, err := other.Record(ctx, id, func(client.Entry) {}); !errors.Is(err, client.ErrOthers) {
+		t.Errorf("another client reading the record: %v", err)
+	}
+}

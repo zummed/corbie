@@ -149,6 +149,30 @@ func Test_mach_receive_says_who_may_send(t *testing.T) {
 	}
 }
 
+// A file's read: names the clients that read its runs' records, each as
+// client:<name>, written out. A machine written in place or made while
+// running has no location, and refuses it.
+func Test_mach_read_names_clients(t *testing.T) {
+	d := parsed(t, "probe: p\nread: [client:wall, client:phone]\n", nil)
+	if got := d.Definition.Read; !slices.Equal(got, []string{"client:wall", "client:phone"}) {
+		t.Errorf("read: is stored as %v", got)
+	}
+	got := problems(t, "probe: p\nread: [wall, \"client:\", \"client:${input.who}\"]\nwork:\n  a: { machine: { probe: inner, read: [client:wall] } }\n", nil)
+	for _, want := range []string{
+		`read[0]: "wall": read: names clients, as client:wall`,
+		"read[1]: client: names a client",
+		`read[2]: "client:${input.who}": a read: entry is written out`,
+		"read: read belongs to a file at a location",
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("the mistake %q is not said in:\n%s", want, got)
+		}
+	}
+	if _, err := ParseMade([]byte("probe: p\nread: [client:wall]\n"), files(nil)); err == nil || !strings.Contains(err.Error(), "read belongs to a file") {
+		t.Errorf("a machine made while running gave: %v", err)
+	}
+}
+
 // An address is { at }, { at, key } or { at, run }, or one expression that
 // gives one. A location written out is checked with the definition, and one
 // filled in when it is filled.

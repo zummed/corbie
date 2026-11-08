@@ -427,10 +427,14 @@ func (p *pass) job(inst string, step *instance.Step, ask *instance.Ask) (*instan
 	if client == nil {
 		return nil, none, p.failf("the client %q is not known to the controller", store.InstanceClient(inst)), nil
 	}
+	readers, err := p.readers(inst, st)
+	if err != nil {
+		return nil, none, nil, err
+	}
 	request, _, _ := strings.Cut(ask.Name, "@")
 	job := &instance.Job{Instance: inst, Name: ask.Name, Attempt: ask.Attempt, Request: inst + "/" + request,
 		Script: asked.Found.Blob, Path: asked.Script, Files: asked.Found.Files,
-		Input: asked.Input, Timeout: timeoutOf(asked), Memory: asked.Memory, Due: ask.At, Wants: asked.Wants, Client: client.Card}
+		Input: asked.Input, Timeout: timeoutOf(asked), Memory: asked.Memory, Due: ask.At, Wants: asked.Wants, Readers: readers[1:]} // all but the controller
 
 	// Every layer the controller knows of, each by name: the job in its
 	// definition, the start, each parent's job, and the client's ceiling.
@@ -527,7 +531,7 @@ func (p *pass) child(inst string, step *instance.Step, ask *instance.Ask) *insta
 		Layers:  layers,
 		Approve: st.Above.Approve, Ask: st.Above.Ask, Context: st.Above.Context, Values: st.Above.Values,
 		IsAsk: job.Name == instance.AskName,
-		Made:  made || st.Above.Made && !job.Above, Keep: st.Keep}
+		Made:  made || st.Above.Made && !job.Above, Keep: st.Keep, Readers: st.Above.Readers}
 	// The nearest ask above the child is the one its job goes to: an ask
 	// nearer than its machine's, or the machine's own. A machine made while
 	// running keeps none, so it hands down the one above it.
@@ -581,7 +585,7 @@ func (p *pass) head(inst string, step *instance.Step) error {
 	st := &step.State
 	head := &instance.Head{Name: inst, Machine: st.Machine, Type: st.Type, Status: st.Status, Step: step.Number,
 		Started: st.Started, Ended: st.Ended, Parent: st.Above.Parent, Location: st.Location, Key: st.Key, StartedBy: st.Above.StartedBy,
-		Timers: len(st.Timers), Labels: st.Labels, Keep: st.Keep}
+		Timers: len(st.Timers), Labels: st.Labels, Readers: st.Above.Readers, Keep: st.Keep}
 	if st.Error != nil && st.Status == instance.Failed {
 		head.Failure = st.Error.Status
 	}

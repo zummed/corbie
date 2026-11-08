@@ -22,7 +22,7 @@ Wherever a run is shown, it has the same shape and the same words.
 
 A run shows its location, and its key at a keyed location. A run is `waiting` to start, `running`, `done`, `failed` or `cancelled`. A failed run says why: an `error`, a `timeout`, or `denied` with the refusal. A finished run has its output, and a list of the permissions it used, which for a machine are those of every job in it and below it.
 
-A run waiting on a ticket shows the ticket's name. The ticket's value is in the record, which only the client of the run's tree can read. Only that client is shown the run's title, its input, its output, the failure's text and the permissions it used, and another client that asks for more than the run's status is told there is no such run of its own, and which client's tree the run is in. A client that called the run from outside the tree is shown its status and its output or error, from the call's result, and the run its call started (see instance.md).
+A run waiting on a ticket shows the ticket's name. The ticket's value is in the record, which only the client of the run's tree and the clients its file's `read:` lists can read. Only those clients are shown the run's title, its input, its output, the failure's text and the permissions it used, and `run ls` lists only their runs. Another client that asks for more than the run's status is told there is no such run of its own, and which client's tree the run is in. A client that called the run from outside the tree is shown its status and its output or error, from the call's result, and the run its call started (see instance.md).
 
 A blob in any value is shown as its type, its size and the path to ask for it by. Its key is never shown, at the command line, over HTTP or to a model.
 

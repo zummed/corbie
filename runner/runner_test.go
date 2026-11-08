@@ -96,7 +96,7 @@ func (w *world) leave(as *identity.Identity, name, script string, change func(*i
 	}
 	job := &instance.Job{Instance: inst, Name: name, Attempt: 1, Request: inst + "/" + name, Script: ref,
 		Layers: []permission.Layer{{Name: "the definition", Allow: []string{"all"}}}, Timeout: machine.Duration(10 * time.Second),
-		Due: time.Now().Add(time.Minute), Client: w.c1.Card}
+		Due: time.Now().Add(time.Minute), Readers: []identity.Card{w.c1.Card}}
 	if change != nil {
 		change(job)
 	}

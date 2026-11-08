@@ -31,8 +31,8 @@ type Run struct {
 	Layer   string `json:"layer,omitzero"`
 	Fix     string `json:"fix,omitzero"`
 
-	// Title, Input and Output are shown only to the client of the run's
-	// tree.
+	// Title, Input and Output are shown only to a client that reads the
+	// run's record.
 	Title  string `json:"title,omitzero"`
 	Input  any    `json:"input,omitzero"`
 	Output any    `json:"output,omitzero"`
@@ -74,13 +74,13 @@ var ErrNeverTaken = fmt.Errorf("%w: its start was never taken up", ErrNoRun)
 // waiting to start, or its start was refused.
 var ErrNoRecord = errors.New("the run has no record to read")
 
-// ErrOthers is a run in a tree of another client, which only that client
-// reads and cancels: to this client it is no run.
+// ErrOthers is a run in a tree of another client, whose file's read: does
+// not list this client: to this client it is no run.
 var ErrOthers = fmt.Errorf("%w of this client's", ErrNoRun)
 
 // others says a run is in a tree of another client, naming the client.
 func others(id string) error {
-	return fmt.Errorf("%w: the run is in a tree of the client %s, which alone reads it and cancels it", ErrOthers, store.InstanceClient(id))
+	return fmt.Errorf("%w: the run is in a tree of the client %s, and its file's read: does not list this client", ErrOthers, store.InstanceClient(id))
 }
 
 // ErrCalled is a run this client started as a call into a tree of another
@@ -93,9 +93,28 @@ func runOf(head *instance.Head) *Run {
 		Location: head.Location, Key: head.Key, StartedBy: head.StartedBy, Timers: head.Timers, Tickets: head.Tickets, Labels: head.Labels}
 }
 
-// mine says whether the client may read what is inside a run.
+// mine says whether a run is in one of the client's trees.
 func (c *Client) mine(run string) bool {
 	return c.ID != nil && store.InstanceClient(run) == c.ID.Name
+}
+
+// reads says whether the client may read what is inside a run: one of its
+// own, or one whose head lists it among the clients its file's read: names.
+func (c *Client) reads(run string, head *instance.Head) bool {
+	return c.mine(run) || c.ID != nil && head != nil && slices.Contains(head.Readers, c.ID.Name)
+}
+
+// readable gives no error for a run the client may read what is inside of,
+// and says whose run it is otherwise.
+func (c *Client) readable(ctx context.Context, id string) error {
+	if c.mine(id) {
+		return nil
+	}
+	head, _, err := instance.ReadHead(ctx, c.Store, c.Controller, id)
+	if err != nil || c.reads(id, head) {
+		return err
+	}
+	return others(id)
 }
 
 // Show gives one run: where it stands and, once it has ended, how. It is
@@ -108,7 +127,7 @@ func (c *Client) Show(ctx context.Context, id string) (*Run, error) {
 	if err != nil {
 		return nil, err
 	}
-	if !c.mine(id) {
+	if !c.reads(id, head) {
 		if head == nil {
 			return nil, others(id)
 		}
@@ -293,8 +312,8 @@ func pause(ctx context.Context, interval time.Duration, notice <-chan struct{}) 
 	return true
 }
 
-// current gives the latest step of a run in one of this client's trees. A
-// run with no step is no run, a call, or has no record to read yet.
+// current gives the latest step of a run this client may read. A run with
+// no step is no run, a call, or has no record to read yet.
 func (c *Client) current(ctx context.Context, id string) (*instance.Step, error) {
 	if err := c.identity(); err != nil {
 		return nil, err
@@ -302,8 +321,8 @@ func (c *Client) current(ctx context.Context, id string) (*instance.Step, error)
 	if err := store.CheckInstance(id); err != nil {
 		return nil, err
 	}
-	if !c.mine(id) {
-		return nil, others(id)
+	if err := c.readable(ctx, id); err != nil {
+		return nil, err
 	}
 	latest, err := instance.Current(ctx, c.Store, c.Controller, c.ID, id)
 	if err != nil || latest != nil {
@@ -321,7 +340,8 @@ func (c *Client) current(ctx context.Context, id string) (*instance.Step, error)
 
 // Tickets gives the tickets a run is waiting on, each name with its value.
 // The value is the whole right to answer; it is in the record, which only
-// the client of the run's tree can read.
+// the client of the run's tree and the clients its file's read: lists can
+// read.
 func (c *Client) Tickets(ctx context.Context, id string) (map[string]string, error) {
 	latest, err := c.current(ctx, id)
 	if err != nil {

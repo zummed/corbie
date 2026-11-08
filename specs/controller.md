@@ -198,7 +198,7 @@ job:
 3. The job fails if `receive:` refuses the caller, the location is not `transient`, or the run fails.
 4. Cancelling the calling job, or ending the run that holds it, cancels the run.
 
-- The caller's record names the run it called, and that run's head names the caller.
+- The caller's record names the run it called, and that run's head names the caller's step as its cause.
 - A call is checked against a `receive:` list. A mapping names events, and takes a call only from the tree's client.
 - A called run's held jobs go only to its own file's `ask:`, and are denied when it has none.
 

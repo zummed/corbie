@@ -163,6 +163,11 @@ func (p *pass) noteCarried(inst string, step, asks int) error {
 	}
 }
 
+// asked is the cause of a message a step of a run asked for.
+func asked(inst string, step *instance.Step) *instance.Cause {
+	return &instance.Cause{Run: inst, Step: step.Number}
+}
+
 // carry carries out one thing a step asked for.
 func (p *pass) carry(inst string, step *instance.Step, ask *instance.Ask) error {
 	st := &step.State
@@ -198,7 +203,7 @@ func (p *pass) carry(inst string, step *instance.Step, ask *instance.Ask) error 
 		return p.failJob(inst, ask.Name, ask.Message, ask.Error)
 
 	case instance.AskChild:
-		msg := &instance.Message{Kind: instance.KindStart, Instance: ask.Child, From: inst, Start: p.child(inst, step, ask)}
+		msg := &instance.Message{Kind: instance.KindStart, Instance: ask.Child, From: inst, Cause: asked(inst, step), Start: p.child(inst, step, ask)}
 		failure, err := p.send(store.Message(p.ctl, p.ctl, ask.Message), noEnd, msg, p.c.ID.Card)
 		if err != nil {
 			return err
@@ -223,7 +228,7 @@ func (p *pass) carry(inst string, step *instance.Step, ask *instance.Ask) error 
 		if ask.Run != "" {
 			to = ask.Run // a run a call started
 		}
-		msg := &instance.Message{Kind: instance.KindCancel, Instance: to, From: inst}
+		msg := &instance.Message{Kind: instance.KindCancel, Instance: to, From: inst, Cause: asked(inst, step)}
 		_, err := p.send(store.Message(p.ctl, p.ctl, ask.Message), noEnd, msg, p.c.ID.Card)
 		return err
 
@@ -234,7 +239,7 @@ func (p *pass) carry(inst string, step *instance.Step, ask *instance.Ask) error 
 		return p.result(ask)
 
 	case instance.AskTell:
-		return p.tell(ask.To, inst, ask.Message, ask.Text)
+		return p.tell(ask.To, inst, ask.Message, ask.Text, asked(inst, step))
 
 	case instance.AskEvent:
 		if ask.Job != nil {
@@ -252,7 +257,7 @@ func (p *pass) carry(inst string, step *instance.Step, ask *instance.Ask) error 
 		if going := st.Jobs[ask.Name]; going != nil {
 			job = going.Full()
 		}
-		msg := &instance.Message{Kind: instance.KindEvent, Instance: ask.To, From: inst, Event: ask.Event}
+		msg := &instance.Message{Kind: instance.KindEvent, Instance: ask.To, From: inst, Cause: asked(inst, step), Event: ask.Event}
 		if ask.Name == "" {
 			// Up to the parent: what it carries is in the parent's record
 			// before the parent is told.
@@ -261,7 +266,7 @@ func (p *pass) carry(inst string, step *instance.Step, ask *instance.Ask) error 
 				return err
 			}
 			parent, child, job = ask.To, inst, st.Above.Job
-			msg = &instance.Message{Kind: instance.KindEmit, Instance: ask.To, From: inst,
+			msg = &instance.Message{Kind: instance.KindEmit, Instance: ask.To, From: inst, Cause: asked(inst, step),
 				Emit: &instance.EmitNote{Job: st.Above.Job, Name: ask.Event.Name, Index: ask.Attempt, Data: data}}
 		}
 		failure, err := p.send(store.Message(p.ctl, p.ctl, ask.Message), noEnd, msg, p.c.ID.Card)
@@ -272,12 +277,12 @@ func (p *pass) carry(inst string, step *instance.Step, ask *instance.Ask) error 
 		// parent is given the failure in the event's place, and the child is
 		// cancelled as its parent would cancel it.
 		failure.Error = fmt.Sprintf("the event %s could not be sent: %s", ask.Event.Name, failure.Error)
-		msg = &instance.Message{Kind: instance.KindResult, Instance: parent, From: child,
+		msg = &instance.Message{Kind: instance.KindResult, Instance: parent, From: child, Cause: asked(inst, step),
 			Result: &instance.Result{Job: job, Status: failure.Status, Error: failure, Final: true}}
 		if _, err := p.send(store.Message(p.ctl, p.ctl, ask.Message+".failed"), noEnd, msg, p.c.ID.Card); err != nil {
 			return err
 		}
-		msg = &instance.Message{Kind: instance.KindCancel, Instance: child, From: parent}
+		msg = &instance.Message{Kind: instance.KindCancel, Instance: child, From: parent, Cause: asked(inst, step)}
 		_, err = p.send(store.Message(p.ctl, p.ctl, ask.Message+cancelSuffix), noEnd, msg, p.c.ID.Card)
 		return err
 
@@ -298,7 +303,7 @@ func (p *pass) carry(inst string, step *instance.Step, ask *instance.Ask) error 
 			e.Output = nil
 			result.Status, result.Error = e.Status, &e
 		}
-		msg := &instance.Message{Kind: instance.KindResult, Instance: ask.To, From: inst, Result: result}
+		msg := &instance.Message{Kind: instance.KindResult, Instance: ask.To, From: inst, Cause: asked(inst, step), Result: result}
 		failure, err := p.send(store.Message(p.ctl, p.ctl, ask.Message), noEnd, msg, p.c.ID.Card)
 		if err != nil || failure == nil {
 			return err
@@ -580,7 +585,7 @@ func (p *pass) answer(sender, message string, until time.Time, r *instance.Recei
 func (p *pass) head(inst string, step *instance.Step) error {
 	st := &step.State
 	head := &instance.Head{Name: inst, Machine: st.Machine, Type: st.Type, Status: st.Status, Step: step.Number,
-		Started: st.Started, Ended: st.Ended, Parent: st.Above.Parent, Location: st.Location, Key: st.Key, StartedBy: st.Above.StartedBy,
+		Started: st.Started, Ended: st.Ended, Parent: st.Above.Parent, Location: st.Location, Key: st.Key, Cause: st.Above.Cause,
 		Timers: len(st.Timers), Labels: st.Labels, Keep: st.Keep}
 	if st.Error != nil && st.Status == instance.Failed {
 		head.Failure = st.Error.Status

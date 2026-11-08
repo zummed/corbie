@@ -20,7 +20,7 @@ To a client a run is an instance: a root at a location in one of its trees, or o
 
 Wherever a run is shown, it has the same shape and the same words.
 
-A run shows its location, and its key at a keyed location. A run is `waiting` to start, `running`, `done`, `failed` or `cancelled`. A failed run says why: an `error`, a `timeout`, or `denied` with the refusal. A finished run has its output, and a list of the permissions it used, which for a machine are those of every job in it and below it.
+A run shows its location, its key at a keyed location, and its cause: the step of another run, or the client's message, that started it. A run is `waiting` to start, `running`, `done`, `failed` or `cancelled`. A failed run says why: an `error`, a `timeout`, or `denied` with the refusal. A finished run has its output, and a list of the permissions it used, which for a machine are those of every job in it and below it.
 
 A run waiting on a ticket shows the ticket's name. The ticket's value is in the record, which only the client of the run's tree can read. Only that client is shown the run's title, its input, its output, the failure's text and the permissions it used, and another client that asks for more than the run's status is told there is no such run of its own, and which client's tree the run is in. A client that called the run from outside the tree is shown its status and its output or error, from the call's result, and the run its call started (see instance.md).
 
@@ -106,7 +106,7 @@ Following from a terminal is one flag, `--watch`. It prints what the command pri
 
 `run send` to a key with no running run starts one, as the file's `lifetime: keyed` says. A client sends to the runs of its own trees with no `send:` entry, and only it cancels them. A send to another tree needs `send:` in the client's ceiling and `client:<its name>` in the receiver's `receive:` (see permission.md).
 
-`run show` prints a run's title, and `run ls` does not, since a listing reads only the heads. `run show` can also print one step, one job's input and output, or the definition, can save a result's files to a directory, and with `--wait` stays until the run ends and prints its result.
+`run show` prints a run's title, and `run ls` does not, since a listing reads only the heads. For a run another run started, `run show` prints `cause: <id> step <n>`. In `--json`, a listing's row and `run show` give `cause`, and each step of a record gives the cause of each event and where the run stands as `state` (see instance.md). `run show` can also print one step, one job's input and output, or the definition, can save a result's files to a directory, and with `--wait` stays until the run ends and prints its result.
 
 `run submit <location>` sends a start; `run submit --wait` waits for the run it started and `run submit --watch` follows it. The tree's client starts a transient location with no `send:` entry. Another client's start is a call: its ceiling needs `send:` for the location, the file's `receive:` must list `client:<its name>`, and the start takes no labels or `--allow`. Under the ID it printed, it is shown only the call's result: the run's status and its output or error, and the result's files. A cancel of that ID is refused, naming the run the call started and its tree's client, which alone cancels it.
 

@@ -4,7 +4,7 @@ An instance is one run of a machine. It is two things in the store: a head, whic
 
 ## The head
 
-The head is a small signed summary that the controller rewrites as the instance moves. It says what the instance is called and what type of machine it is, whether it is running, done, failed or cancelled, which step it has reached, when it started, which instance is its parent, and what it is waiting for: how many jobs on runners, how many timers, and the names of any tickets. It also carries its location, its key at a keyed location, the labels its client gave it at the start, and the run whose send or call started it.
+The head is a small signed summary that the controller rewrites as the instance moves. It says what the instance is called and what type of machine it is, whether it is running, done, failed or cancelled, which step it has reached, when it started, which instance is its parent, and what it is waiting for: how many jobs on runners, how many timers, and the names of any tickets. It also carries its location, its key at a keyed location, the labels its client gave it at the start, and its cause: what started it.
 
 The head is sealed to nobody. Anyone the store lets read it can read it and can check the controller's signature. For that reason it holds nothing the instance was given or produced: no input, no output, no error text, no log line, no value of a ticket. A location, a key and labels are the exceptions. A label is the client's own words about the run, chosen knowing they are public, and a child carries its parent's. A location is chosen by its tree's client, and a key by the definition or the client that sends to it, on the same terms.
 
@@ -17,6 +17,16 @@ When an instance ends, its head moves from the running heads to the finished one
 The record is the instance's history, kept as entries that are each written once and never changed. The record stays where it is for as long as it exists.
 
 A **step** entry is written by the controller each time the instance takes a step. It holds the events that arrived and which messages and wakes they came from, the state the machine was left in, and what the step asked for. Steps are numbered. The first copy of the controller to write a given number has taken that step; any other copy finds the number taken, reads that entry and carries on from there. The latest step is the instance's whole state, and its last step holds its result.
+
+Each event in a step names its `cause`, which the controller writes:
+
+| Event | `cause` |
+|---|---|
+| asked for by a step of a run: a send, a call, a start, an event to or from a child, an end | `{ run, step }`: that run and step |
+| from a client: a start, an event, a call, a submit that starts a singleton | `{ client, message }`: the client and its message |
+| from the run's own script job or timer | none; `from` names the job or the timer, and the step that asked for it lists it among its asks |
+
+A viewer follows a request from a client's message through every send, call and child to its end by these causes. A run's cause is the cause of its start.
 
 A watcher is shown, for each step, where the run stands as `state`, in one shape for every type. It holds nothing the head says.
 

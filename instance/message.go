@@ -37,6 +37,9 @@ type Message struct {
 	// Sender.
 	To     *machine.Address `json:"to,omitzero"`
 	Sender *machine.Address `json:"sender,omitzero"`
+	// Cause is, in a message the controller sends itself, what caused it:
+	// the step that asked for it, or the client's message it carries on.
+	Cause *Cause `json:"cause,omitzero"`
 
 	Start  *Start         `json:"start,omitzero"`
 	Submit *Submit        `json:"submit,omitzero"`

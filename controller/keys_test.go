@@ -192,7 +192,8 @@ func (w *world) sentBy(run string) []instance.Ask {
 // A send to a key with no running run starts one, a root of the client of
 // the receiving tree, gives it the event's data as its input and then the
 // event, and goes to that run after. The run's head names its location, its
-// key and its sender, and its record names the sender's address.
+// key and the sender's step as its cause, and its record names the sender's
+// address.
 func Test_chart_send_to_a_key_starts_a_run_then_delivers(t *testing.T) {
 	w := newWorld(t)
 	sender := w.rooms(nil)
@@ -209,10 +210,10 @@ func Test_chart_send_to_a_key_starts_a_run_then_delivers(t *testing.T) {
 		t.Fatalf("the run was told %v", got)
 	}
 	head, st := w.head(run), w.latest(run).State
-	if head.Location != "/t/room" || head.Key != "chat:1" || head.Parent != "" || head.StartedBy != sender || store.InstanceClient(run) != "c1" {
+	if head.Location != "/t/room" || head.Key != "chat:1" || head.Parent != "" || head.Cause.Run != sender || head.Cause.Step == 0 || store.InstanceClient(run) != "c1" {
 		t.Fatalf("the head is %+v", head)
 	}
-	if st.Above.Parent != "" || st.Above.StartedBy != sender || st.Above.Depth != 1 || st.Lifetime != machine.LifetimeKeyed {
+	if st.Above.Parent != "" || st.Above.Cause != head.Cause || st.Above.Depth != 1 || st.Lifetime != machine.LifetimeKeyed {
 		t.Fatalf("it runs under %+v", st.Above)
 	}
 	if in, _ := st.Input.(map[string]any); in["text"] != "one" {
@@ -1143,7 +1144,7 @@ func Test_ctl_sent_root_takes_nothing_from_its_sender(t *testing.T) {
 	w.settle()
 	run := w.runsOf("talk")[0]
 	st := w.latest(run).State
-	if len(st.Above.Layers) != 0 || len(st.Labels) != 0 || st.Above.Made || st.Above.Parent != "" || st.Above.StartedBy != from ||
+	if len(st.Above.Layers) != 0 || len(st.Labels) != 0 || st.Above.Made || st.Above.Parent != "" || st.Above.Cause.Run != from ||
 		st.Above.Ask != nil || st.Above.Values["WHERE"] != "room" {
 		t.Fatalf("it runs under %+v with labels %v", st.Above, st.Labels)
 	}

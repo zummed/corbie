@@ -83,11 +83,11 @@ func TestHeadIsCheckedAgainstTheControllersCard(t *testing.T) {
 	w := newWorld(t)
 	at := store.RunningHead("ctl", run)
 	w.put(at, &Head{Name: run, Status: Running, Step: 2, Machine: "review", Labels: map[string]string{"team": "ops"},
-		Location: "/home/rooms/room", Key: "kitchen", StartedBy: "c1/20261010T115900.000Z-0123456789"})
+		Location: "/home/rooms/room", Key: "kitchen", Cause: Cause{Run: "c1/20261010T115900.000Z-0123456789", Step: 3}})
 	// Anyone who can read it reads all of it, with no identity of their own.
 	head, _, err := ReadHead(ctx, w.s, w.ctl.Card, run)
 	if err != nil || head.Machine != "review" || head.Labels["team"] != "ops" || head.Location != "/home/rooms/room" ||
-		head.Key != "kitchen" || head.StartedBy != "c1/20261010T115900.000Z-0123456789" {
+		head.Key != "kitchen" || head.Cause != (Cause{Run: "c1/20261010T115900.000Z-0123456789", Step: 3}) {
 		t.Fatalf("the head reads as %+v (%v)", head, err)
 	}
 	// One byte changed, and it does not check.

@@ -247,7 +247,7 @@ func (b *build) mayCancel(a *arrival) bool {
 	case identity.Client:
 		return a.sender == store.InstanceClient(b.inst)
 	case identity.Controller:
-		return a.msg.From == "" || a.msg.From == b.st.Above.Parent || b.st.Above.CallJob != "" && a.msg.From == b.st.Above.StartedBy
+		return a.msg.From == "" || a.msg.From == b.st.Above.Parent || b.st.Above.CallJob != "" && a.msg.From == b.st.Above.Cause.Run
 	}
 	return false
 }
@@ -270,7 +270,22 @@ func (b *build) refuse(a *arrival, format string, args ...any) {
 // record notes an event in the entry. own says the controller acted on it
 // itself and the machine was not consulted.
 func (b *build) record(event machine.Event, a *arrival, own bool) {
-	b.step.Events = append(b.step.Events, instance.Arrived{Event: event, Source: a.name, Own: own})
+	b.step.Events = append(b.step.Events, instance.Arrived{Event: event, Source: a.name, Cause: b.cause(a), Own: own})
+}
+
+// cause gives what sent a message: a client's message, or the step of a
+// run that asked the controller for it. A wake and a runner's message have
+// none.
+func (b *build) cause(a *arrival) instance.Cause {
+	switch {
+	case a.wake:
+		return instance.Cause{}
+	case a.kind == identity.Client:
+		return instance.Cause{Client: a.sender, Message: a.name[strings.LastIndexByte(a.name, '/')+1:]}
+	case a.kind == identity.Controller && a.msg.Cause != nil:
+		return *a.msg.Cause
+	}
+	return instance.Cause{}
 }
 
 // give hands an event to the machine.
@@ -1266,7 +1281,7 @@ func (b *build) end(status string, output any, e *machine.Error) {
 			Message: b.message("result")})
 	case st.Above.CallJob != "":
 		// A called run's end is its call job's result.
-		b.ask(instance.Ask{Kind: instance.AskEnd, To: st.Above.StartedBy, Name: st.Above.CallJob, Output: output, Error: e,
+		b.ask(instance.Ask{Kind: instance.AskEnd, To: st.Above.Cause.Run, Name: st.Above.CallJob, Output: output, Error: e,
 			Message: b.message("result")})
 	case st.Above.CallReceipt != nil:
 		// Written beside the receipt of the client that called.
@@ -1280,8 +1295,8 @@ func (b *build) end(status string, output any, e *machine.Error) {
 	}
 	// A run that a send started and that fails as it starts is that send's
 	// failure.
-	if st.Above.StartedBy != "" && st.Above.CallJob == "" && status == instance.Failed && b.step.Number == 1 {
-		b.ask(instance.Ask{Kind: instance.AskTell, To: st.Above.StartedBy, Message: b.message("tell"),
+	if st.Above.Parent == "" && st.Above.Cause.Run != "" && st.Above.CallJob == "" && status == instance.Failed && b.step.Number == 1 {
+		b.ask(instance.Ask{Kind: instance.AskTell, To: st.Above.Cause.Run, Message: b.message("tell"),
 			Text: fmt.Sprintf("the run %s, started by a send to %s#%s, failed in its first step, which took the event: %s", b.inst, st.Location, st.Key, e.Error)})
 	}
 }
@@ -1387,6 +1402,7 @@ func (p *pass) begin(inst string, waiting []*arrival) (*taken, error) {
 	b.step.Time = b.time
 	st := b.st
 	st.Status, st.Started, st.Definition, st.Input, st.Labels, st.Seed, st.Above, st.Key = instance.Running, b.time, s.Definition, s.Input, s.Labels, s.Seed, *above, s.Key
+	st.Above.Cause = b.cause(start)
 	if st.Location == "" {
 		// A child runs at its parent's location.
 		st.Location, st.Tree = s.Location, s.Tree

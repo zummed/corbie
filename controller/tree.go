@@ -369,7 +369,7 @@ func (p *pass) carryTree(a *arrival, base string, entry *treeEntry) error {
 	slices.Sort(cancelled)
 	for _, done := range d.Done {
 		if done.Run != "" {
-			if err := p.startSingleton(base, done, running[done.Location]); err != nil {
+			if err := p.startSingleton(entry.Client, base, done, running[done.Location]); err != nil {
 				return err
 			}
 		}
@@ -530,7 +530,7 @@ func (p *pass) runningAt(client, location, other string) (bool, error) {
 // cancelled; with none, the run its key's file names, if that run has the
 // key. A start still waiting is never the one replaced: it waits itself, and
 // is left once the key's file names this one.
-func (p *pass) startSingleton(base string, done instance.Recorded, running []string) error {
+func (p *pass) startSingleton(client, base string, done instance.Recorded, running []string) error {
 	at := store.Key(p.ctl, done.Location, "")
 	name := store.Message(p.ctl, p.ctl, store.JobMessage(done.Run, base+".start"))
 	for {
@@ -555,7 +555,7 @@ func (p *pass) startSingleton(base string, done instance.Recorded, running []str
 		// its seed.
 		seed := make([]byte, 32)
 		rand.Read(seed)
-		msg := &instance.Message{Kind: instance.KindStart, Instance: done.Run,
+		msg := &instance.Message{Kind: instance.KindStart, Instance: done.Run, Cause: &instance.Cause{Client: client, Message: base},
 			Start: &instance.Start{Location: done.Location, Replaces: replaces, Seed: seed}}
 		if _, err := p.send(name, noEnd, msg, p.c.ID.Card); err != nil {
 			return err
@@ -734,9 +734,8 @@ func (b *build) located(start *arrival) (*instance.Start, error) {
 	above := &instance.Above{Values: values}
 	if (sent || call) && s.Above != nil {
 		// A run a send or a call starts is a root: it takes from its sender
-		// how far down it is, who sent, and the call it answers, and
-		// nothing else.
-		above.Depth, above.StartedBy = s.Above.Depth, s.Above.StartedBy
+		// how far down it is and the call it answers, and nothing else.
+		above.Depth = s.Above.Depth
 		above.CallJob, above.CallReceipt = s.Above.CallJob, s.Above.CallReceipt
 	}
 	if tree != nil {

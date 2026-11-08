@@ -307,10 +307,10 @@ func TestWorkedExample(t *testing.T) {
 		const asked = "orders-2 is stuck, can you restart it?"
 		g.say("cy@acme.example", "#support", "C1/1", asked)
 		q := g.question()
-		if q.StartedBy == "" {
+		if q.Cause.Run == "" {
 			t.Fatalf("the question was started by nothing: %+v", q)
 		}
-		approval := show(t, g.l, q.StartedBy)
+		approval := show(t, g.l, q.Cause.Run)
 		jobs, _ := approval.Input.(map[string]any)["jobs"].([]any)
 		if approval.Machine != "approval" || approval.Location != "/acme/agents/support" || len(jobs) != 1 {
 			t.Fatalf("the question was asked by %s at %s for %s", approval.Machine, approval.Location, jsonOf(approval.Input))
@@ -443,7 +443,7 @@ func TestWorkedExample(t *testing.T) {
 		g.t = t
 		g.say("di@acme.example", "#deploys", "C5/5", "deploy orders")
 		q := g.question()
-		approval := show(t, g.l, q.StartedBy)
+		approval := show(t, g.l, q.Cause.Run)
 		jobs, _ := approval.Input.(map[string]any)["jobs"].([]any)
 		if approval.Location != "/acme/deploys" || len(jobs) != 1 || jobs[0].(map[string]any)["name"] != "deploying" {
 			t.Fatalf("the ask at %s was given %s", approval.Location, jsonOf(approval.Input))

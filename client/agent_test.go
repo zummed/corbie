@@ -863,9 +863,9 @@ func TestAgentListedTools(t *testing.T) {
 	}
 }
 
-// The ask is shown a listed call's entry and the tool's own name, and
-// nothing more for any other tool.
-func TestAgentAskIsShownAListedCallsEntryAndTool(t *testing.T) {
+// The ask is shown each call's tool by name: for a listed call, the entry
+// and the tool's own name, and for any other tool its name and no entry.
+func TestAgentAskIsShownTheToolOfEachCall(t *testing.T) {
 	both := llmstandin.Reply{Text: "let me see", Calls: []llmstandin.ToolCall{{ID: "issue", Name: "github_create_issue", Args: `{"title":"Broken"}`}, {ID: "sum", Name: "add", Args: `{"n":1}`}}}
 	m := newModel(t, both, says("done"))
 	def := listed(m.URL, `[ { name: create_issue, description: Open an issue, args: { type: object } } ]`)
@@ -876,7 +876,7 @@ func TestAgentAskIsShownAListedCallsEntryAndTool(t *testing.T) {
 	files := maps.Clone(listedScripts)
 	files["ask.js"] = `
 		const listed = (a) => a.entry === "github" && a.tool === "create_issue" && a.args.title === "Broken" && a.description === "Open an issue" && a.said === "let me see"
-		const own = (a) => !("entry" in a) && !("tool" in a) && a.args.n === 1 && a.description === "Add one to a number"
+		const own = (a) => !("entry" in a) && a.tool === "add" && a.args.n === 1 && a.description === "Add one to a number"
 		const fits = input.jobs.filter((j) => j.name.startsWith("github_") ? listed(j.asked) : own(j.asked))
 		return { approved: fits.map((j) => j.name), note: "the ask was shown " + JSON.stringify(input.jobs.map((j) => j.asked)) }`
 	if r := runAgent(t, local(t, "all"), def, files); r.Status != "done" {

@@ -258,8 +258,9 @@ func (g *gromit) posted(chat string) map[string]any {
 // The worked example of a project under Rook, run without services: a
 // person asks in Slack, the router sends it to the conversation, the agent
 // is offered the toolkits the person's scopes allow, a call that needs a
-// yes goes to the toolkit's ask, which asks in a channel and is answered
-// with a press, and the reply is posted in the thread.
+// yes goes to the agent's ask, which asks the approvers of the call's
+// toolkit in that toolkit's channel and is answered with a press, and the
+// reply is posted in the thread.
 func TestWorkedExample(t *testing.T) {
 	g := newGromit(t)
 
@@ -302,7 +303,7 @@ func TestWorkedExample(t *testing.T) {
 		}
 	})
 
-	t.Run("a held call goes to the toolkit's ask and an approved one runs where its secret is set", func(t *testing.T) {
+	t.Run("a held call goes to its toolkit's approvers and an approved one runs where its secret is set", func(t *testing.T) {
 		g.t = t
 		const asked = "orders-2 is stuck, can you restart it?"
 		g.say("cy@acme.example", "#support", "C1/1", asked)

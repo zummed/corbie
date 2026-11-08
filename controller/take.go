@@ -67,13 +67,12 @@ type build struct {
 	time time.Time
 
 	out     taken
-	events  []machine.Event             // those for the machine
-	sources []*arrival                  // where each came from
-	index   int                         // how many messages the step has named
-	held    []*instance.Going           // the jobs of this step that wait for the ask
-	read    *stepOut                    // what the step read of the definition
-	asks    map[string]*machine.JobSpec // the asks the definition writes, read once a step
-	targets map[addressed]*target       // what each key a step sends to has
+	events  []machine.Event       // those for the machine
+	sources []*arrival            // where each came from
+	index   int                   // how many messages the step has named
+	held    []*instance.Going     // the jobs of this step that wait for the ask
+	read    *stepOut              // what the step read of the definition
+	targets map[addressed]*target // what each key a step sends to has
 	// fromLocation says the run starts from its location's file, which its
 	// first step copies into its record.
 	fromLocation bool
@@ -759,7 +758,7 @@ func (b *build) readDefinition(s *instance.Start) *stepOut {
 		problems, needsAsk := machine.Check(b.def)
 		// A machine made while running has no ask of its own, and its author
 		// is told so. Nothing it wrote of one is kept either way.
-		if st.Above.Made && (b.def.Ask != nil || len(machine.Asks(b.def)) > 0) {
+		if st.Above.Made && b.def.Ask != nil {
 			problems = append(problems, machine.Problem{Text: "a machine made while running has no ask of its own: take out its `ask:`, and what it holds goes to the ask above it"})
 		}
 		// What a machine made while running holds is denied when it is held:
@@ -837,34 +836,21 @@ func (b *build) readAllow(read *stepOut) {
 }
 
 // fill fills in an ask, here, from the input of the machine that declares it.
-func (b *build) fill(spec *machine.JobSpec, input any, at string) (*machine.Job, error) {
-	eval := machine.NewEvaluator(b.time, b.seed("ask", fmt.Sprint(b.step.Number), at), b.run())
-	return spec.Fill(eval, machine.Scope{"input": input}, at, instance.AskName)
+func (b *build) fill(spec *machine.JobSpec, input any) (*machine.Job, error) {
+	eval := machine.NewEvaluator(b.time, b.seed("ask", fmt.Sprint(b.step.Number), instance.AskName), b.run())
+	return spec.Fill(eval, machine.Scope{"input": input}, instance.AskName, instance.AskName)
 }
 
-// askOf says which ask a held job goes to: the ask it carries or, with none,
-// the machine's own or the nearest one above it. above says it is one above.
-func (b *build) askOf(job *machine.Job) (spec *machine.JobSpec, input any, at string, above bool) {
-	spec, input, at = job.Ask, b.st.Input, job.AskAt
-	if spec == nil {
-		spec, at = b.st.Ask, instance.AskName
+// askOf says which ask the machine's held jobs go to: its own or, with
+// none, the nearest one above it. above says it is one above.
+func (b *build) askOf() (spec *machine.JobSpec, input any, above bool) {
+	if b.st.Ask != nil {
+		return b.st.Ask, b.st.Input, false
 	}
-	if spec == nil && b.st.Above.Ask != nil {
-		spec, input, at, above = b.st.Above.Ask.Spec, b.st.Above.Ask.Input, b.st.Above.Ask.At, true
+	if b.st.Above.Ask != nil {
+		return b.st.Above.Ask.Spec, b.st.Above.Ask.Input, true
 	}
-	return spec, input, at, above
-}
-
-// askAt gives the ask a definition writes at a place. A machine made while
-// running has none of its own, and nothing of its definition is read for one.
-func (b *build) askAt(at string) *machine.JobSpec {
-	if at == "" || b.st.Above.Made {
-		return nil
-	}
-	if b.asks == nil {
-		b.asks = machine.Asks(b.def)
-	}
-	return b.asks[at]
+	return nil, nil, false
 }
 
 // follow does what a step read: the machine's state is the one it read, and
@@ -1010,9 +996,9 @@ func (b *build) begin(req *machine.Job, earlier *instance.Going) error {
 	if earlier != nil {
 		job.Restarts, job.Restarted, job.Doubled = earlier.Restarts, earlier.Restarted, earlier.Doubled
 	}
-	// Where a job is, whether it is an ask from above, and what is written
-	// at the place its ask is, the controller says.
-	job.Found, job.Above, job.Ask = nil, false, b.askAt(job.AskAt)
+	// Where a job is, and whether it is an ask from above, the controller
+	// says.
+	job.Found, job.Above = nil, false
 	// The job's permissions are the lists written for the whole definition
 	// and, with them, those written for the job.
 	if b.st.Jobs == nil {
@@ -1624,29 +1610,13 @@ func (b *build) holds(job *instance.Going) bool {
 	return job.Approve || permission.Declares(declared, b.st.Above.Approve, b.st.Tree)
 }
 
-// startAsk starts each ask once for the jobs this step held that go to
-// it. The asks start in the order their first job was held.
+// startAsk starts the ask once for the jobs this step held: the machine's
+// own or, with none, the nearest one above it. It is filled once, from the
+// input of the machine that declares it. An ask that cannot be filled
+// denies the jobs, with a note that names the fault.
 func (b *build) startAsk() {
-	var places []string
-	held := map[string][]*instance.Going{}
-	for _, job := range b.held {
-		_, _, at, _ := b.askOf(&job.Job)
-		if _, seen := held[at]; !seen {
-			places = append(places, at)
-		}
-		held[at] = append(held[at], job)
-	}
+	held := b.held
 	b.held = nil
-	for _, at := range places {
-		b.startOneAsk(held[at])
-	}
-}
-
-// startOneAsk starts an ask for the jobs that go to it: the ask they carry
-// or, with none, the machine's own or the nearest one above it. It is
-// filled once, from the input of the machine that declares it. An ask that
-// cannot be filled denies the jobs, with a note that names the fault.
-func (b *build) startOneAsk(held []*instance.Going) {
 	deny := func(format string, args ...any) {
 		for _, job := range held {
 			job.Held = false
@@ -1654,7 +1624,7 @@ func (b *build) startOneAsk(held []*instance.Going) {
 				Error: &machine.Error{Status: machine.StatusDenied, Error: fmt.Sprintf(format, args...)}})
 		}
 	}
-	spec, input, at, above := b.askOf(&held[0].Job)
+	spec, input, above := b.askOf()
 	switch {
 	case spec == nil && b.st.Above.Made:
 		deny("the job needs approval and no ask applies: a machine made while running uses only an ask above it, and none is above it")
@@ -1663,7 +1633,7 @@ func (b *build) startOneAsk(held []*instance.Going) {
 		deny("the job needs approval and no ask applies: neither this machine nor any above it has one")
 		return
 	}
-	filled, err := b.fill(spec, input, at)
+	filled, err := b.fill(spec, input)
 	if err != nil {
 		deny("the ask could not be started: %v", err)
 		return

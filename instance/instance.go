@@ -212,12 +212,11 @@ type Heard struct {
 	Message string `json:"message"`
 }
 
-// AskAbove is an ask a machine takes from above: the ask as written, where
-// it is written, the definition that declares it and the input its values
-// are filled from. No machine made while running declares one.
+// AskAbove is an ask a machine takes from above: the ask as written, the
+// definition that declares it and the input its values are filled from. No
+// machine made while running declares one.
 type AskAbove struct {
 	Spec       *machine.JobSpec   `json:"spec"`
-	At         string             `json:"at"`
 	Definition blob.Ref           `json:"definition"`
 	Input      any                `json:"input,omitzero"`
 	Layers     []permission.Layer `json:"layers,omitzero"`

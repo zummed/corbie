@@ -87,9 +87,6 @@ type Toolkit struct {
 	// Instructions are the text the model is given when it opens the
 	// toolkit, filled from the agent's input then.
 	Instructions string `json:"instructions,omitzero"`
-	// Ask is the ask for the jobs of the toolkit's tools and for opening
-	// it, before the agent's own.
-	Ask *machine.JobSpec `json:"ask,omitzero"`
 	// Approve holds the toolkit's opening for the ask.
 	Approve bool `json:"approve,omitzero"`
 	// When is a condition on the agent's input, checked when the run
@@ -110,15 +107,6 @@ func (t *Tool) place(name string) string {
 // toolkitPlace is where a toolkit is in the definition.
 func toolkitPlace(name string) string { return "toolkits." + name }
 
-// askOf gives a toolkit's ask and where it is written. With none, its jobs
-// go to the agent's.
-func (a *Agent) askOf(toolkit string) (*machine.JobSpec, string) {
-	if t := a.Toolkits[toolkit]; t != nil && t.Ask != nil {
-		return t.Ask, toolkitPlace(toolkit) + ".ask"
-	}
-	return nil, ""
-}
-
 // Lists says an entry of the agent's tools has a list, whose job gives shapes
 // from outside the definition.
 func (agentType) Lists(def *machine.Definition) bool {
@@ -132,21 +120,6 @@ func (agentType) Lists(def *machine.Definition) bool {
 		}
 	}
 	return false
-}
-
-// Asks gives the ask of each toolkit, by the place it is written.
-func (agentType) Asks(def *machine.Definition) map[string]*machine.JobSpec {
-	asks := map[string]*machine.JobSpec{}
-	var a Agent
-	if json.Unmarshal(def.Body, &a) != nil {
-		return asks
-	}
-	for name, toolkit := range a.Toolkits {
-		if toolkit != nil && toolkit.Ask != nil {
-			asks[toolkitPlace(name)+".ask"] = toolkit.Ask
-		}
-	}
-	return asks
 }
 
 // DefaultTurns is how many turns an agent has unless it says otherwise.
@@ -358,8 +331,6 @@ func (agentType) Shape() *machine.Shape {
 		{Name: "description", Kind: machine.KindText, Like: "The firewall and the switch", Description: "what the toolkit is for, which the model reads before it opens it"},
 		{Name: "instructions", Kind: machine.KindText, Like: "{ include: ./net.md }",
 			Description: "the text the model is given when it opens the toolkit; it reads the agent's input"},
-		{Name: "ask", Kind: machine.KindJob, Like: "{ machine: ./approval.yaml }",
-			Description: "the ask for the jobs of the toolkit's tools and for opening it, before the agent's own; it reads the agent's input"},
 		{Name: "approve", Kind: machine.KindFlag, Like: "true", Description: "opening the toolkit waits for the ask to approve it"},
 		when,
 		{Name: "tools", Kind: machine.KindNamed, Of: tool, Description: "the toolkit's tools, each a named job"},
@@ -390,28 +361,16 @@ func fillToolkit(p *machine.Parser, a *Agent, shape *machine.Shape, name string,
 		Approve: ff.Bool("approve"), When: ff.Cond("when")}
 	a.Toolkits[name] = toolkit
 	toolkit.Meta, _ = ff.Value("meta")
-	if ask, ok := ff.Value("ask"); ok {
-		toolkit.Ask = p.Job(place+".ask", ask)
-		p.Ask(place+".ask", toolkit.Ask)
-	}
+	ff.Refuse("ask", "a toolkit has no ask: its held jobs go to the agent's ask, which is shown the toolkit's name as toolkit; write ask: in the agent")
 	tools, order := ff.Map("tools")
-	read := func() {
-		for _, toolName := range order {
-			if _, taken := a.Tools[toolName]; taken {
-				p.Problem(place+".tools."+toolName, "the tool %q has the name of another tool of the agent", toolName)
-				continue
-			}
-			if t := fillTool(p, a, ff.Of("tools"), place+".tools."+toolName, toolName, tools[toolName]); t != nil {
-				t.Toolkit = name
-			}
+	for _, toolName := range order {
+		if _, taken := a.Tools[toolName]; taken {
+			p.Problem(place+".tools."+toolName, "the tool %q has the name of another tool of the agent", toolName)
+			continue
 		}
-	}
-	// A machine a tool of the toolkit runs takes the toolkit's ask as the
-	// nearest above it.
-	if toolkit.Ask != nil {
-		p.Nearer(read)
-	} else {
-		read()
+		if t := fillTool(p, a, ff.Of("tools"), place+".tools."+toolName, toolName, tools[toolName]); t != nil {
+			t.Toolkit = name
+		}
 	}
 	ff.Done()
 }
@@ -664,15 +623,9 @@ func (agentType) Check(c *machine.Checker, def *machine.Definition) {
 		if toolkit.When != "" {
 			c.Cond(place+".when", toolkit.When, "input")
 		}
-		// A toolkit's own ask is the ask for opening it and for the jobs of
-		// its tools: they need none from the agent.
-		ask, _ := a.askOf(name)
-		c.Asked(ask, func() {
-			c.Job(place+".ask", toolkit.Ask, "input")
-			if toolkit.Approve {
-				c.Approves()
-			}
-		})
+		if toolkit.Approve {
+			c.Approves()
+		}
 	}
 	for _, name := range sortedNames(a.Tools) {
 		tool := a.Tools[name]
@@ -680,8 +633,7 @@ func (agentType) Check(c *machine.Checker, def *machine.Definition) {
 			c.Problem("tools."+name, "a tool needs a job")
 			continue
 		}
-		ask, _ := a.askOf(tool.Toolkit)
-		c.Asked(ask, func() { checkTool(c, &a, name, tool) })
+		checkTool(c, &a, name, tool)
 	}
 }
 

@@ -1,8 +1,5 @@
 description: The servers. Their state, and restarting one.
 instructions: { include: ./infra.md }
-ask:
-  machine: .rook/approval.yaml
-  input: { ask: gromit/slack/chat/ask, people: people/find, approvers: "infra:approve", in: "#infra", asker: "${input.asker.email}" }
 tools:
   vm_status: { call: infra/vms/status }
   restart: { call: infra/vms/restart, approve: true }

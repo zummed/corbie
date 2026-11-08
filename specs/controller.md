@@ -36,7 +36,7 @@ When a machine's last step both sends events and ends the machine, the events ar
 
 ## A step in a process of its own
 
-Two kinds of step are taken in a process of their own: every step of a machine made while running, and every step after the first of an agent with a `list:` tool. The machine above an agent, and a tool's machine below it, are taken as their own definitions say.
+Two kinds of step are taken in a process of their own: every step of a machine made while running, and every step after the first of an agent with a `list:` tool. Both read words from outside (see [Machines](machine.md#words-from-outside)). The machine above an agent, and a tool's machine below it, are taken as their own definitions say.
 
 ## A machine made while running
 
@@ -66,11 +66,11 @@ A bug in what the process runs gives a made definition that process, so its answ
 
 - A made machine's `keep` is no longer than its parent's, and its time limit no longer than the job that starts it allows.
 - Whether a job is held is worked out by the controller, from the lists above the machine.
-- A made machine has no ask of its own, and one that writes an ask fails as it starts. Nothing it wrote of one is kept, so a process that skips that check gains nothing. A held job goes to the nearest ask above it that was not made while running, and with none it is denied.
-- Every ask is that owner's words, and the controller fills it in from the input of the machine that declares it, in its own process. No process fills in an ask, and an answer cannot name one.
+- Where a made machine's held jobs go is the rule for words from outside (see Machines). Nothing a made machine wrote of an ask is kept, so a process that skips the check of its `ask:` gains nothing.
+- Every ask is an owner's words, and the controller fills it in from the input of the machine that declares it, in its own process. No process fills in an ask, and an answer cannot name one.
 - A name in an answer goes into names in the store, so it is one a definition could hold, of at most 100 characters. Any other fails the machine.
 - A job named `ask` in an answer fails the machine too.
-- A machine made while running that asks to send to a run other than its parent or its children, or to call a location, fails. The controller knows which machines those are from its own record.
+- The controller knows which machines are made while running from its own record, and fails one whose answer sends to an address or calls.
 
 An answer is data of at most 4 MiB, nested at most 1000 deep, of at most 1024 sends, and with the state it adds to at most 4 MiB. Past any of these the machine fails, since a step is read on every later pass. The controller compiles and evaluates none of it, and no step an answer leads to can end the controller or stop its passes.
 
@@ -83,7 +83,7 @@ A controller that stops ends the step's process too, and leaves the note. A pass
 A `list:` job gives shapes from outside the definition, which the agent's steps compile and check values against. So every step after the agent's first is taken as a made machine's is, with the same limits and the same bounds on its answer. Its first step holds nothing from outside, and is taken in the controller.
 
 - The controller notes this in the state at the first step, from the definition read as plain JSON. An answer has no say in it.
-- The agent stays the owner's: nothing narrows it, and its asks are its definition's. A step names where its job's ask is written, and the controller reads what is written there from the definition and fills it in.
+- The agent stays the owner's: nothing narrows it, and its ask is its definition's. An answer cannot name an ask, as no answer can.
 - A step takes about 16 ms where it took 5 ms, with 20 listed tools, and one more write to the store.
 - The step's whole time and 5 seconds must fit in what the host leaves of a call, so a host whose calls are shorter than 15 seconds fails such an agent and says so.
 

@@ -57,24 +57,24 @@ An ask is any job.
   a statechart    waits for a person, who answers with `corbie run reply`
   an agent        has a model review the jobs
 
-For an agent's tool, each held job has `asked: { description, args, said }`:
-the tool's description, the arguments the model gave and what the model said.
-For a tool from a `list:`, `asked` has `entry` and `tool` too: the entry's name
-and the tool's own, such as `github` and `create_issue`. For a tool of a
-toolkit, for `open` and for the list of an entry in a toolkit, it has `toolkit`,
-the toolkit's name. A call that is not approved goes back to the model as
-denied.
+For an agent's tool, each held job has `asked`.
+
+  tool          the tool's name; for a tool from a `list:`, its own, such as `create_issue`
+  entry         for a tool from a `list:`, the entry's name, such as `github`
+  toolkit       for a tool of a toolkit, for `open` and for a toolkit's list: the toolkit's name
+  description   the tool's description
+  args          the arguments the model gave
+  said          what the model said
+
+Every held call of an agent goes to one ask, which sends each to whoever should
+approve it by reading `asked.tool` and `asked.toolkit`. A call that is not
+approved goes back to the model as denied.
 
 A machine with no `ask:` uses the ask of the machine above it. A run that a
 send or a call started has no machine above it, and uses only its own file's
 `ask:`. `approve: [send:…]` holds a call or a send job, and never a
-statechart's `send:` action. A job of an agent's toolkit, and every machine
-below it, use the toolkit's `ask:` when it has one.
-
-A machine made while running has no ask of its own, and one that writes an
-`ask:` fails as it starts, saying so. Its held jobs go to the nearest `ask:`
-above it that was not made while running. With none, they fail with status
-`denied`.
+statechart's `send:` action. A machine made while running has no `ask:` of its
+own, as `corbie manual definitions` says under Words from outside.
 
 Reference
 ---------

@@ -130,13 +130,6 @@ type Job struct {
 	// Shown is what the ask is shown about the job, beside its name and
 	// its input, where the job is held for approval.
 	Shown any `json:"shown,omitzero"`
-	// AskAt is where the ask the job goes to when it is held is written,
-	// where one is nearer than its machine's. Only that comes from a step.
-	// Ask is what is written there, which the controller reads from the
-	// definition and fills from the machine's input, once for the held
-	// jobs of a step that name the same place.
-	AskAt string   `json:"ask_at,omitzero"`
-	Ask   *JobSpec `json:"ask,omitzero"`
 	// Above says the job is an ask taken from a machine above, whose
 	// script or machine is in that machine's definition. Only the controller
 	// sets it.
@@ -343,8 +336,6 @@ type Limiter interface {
 type Reader interface {
 	// Lists says the definition takes shapes from outside as it runs.
 	Lists(def *Definition) bool
-	// Asks gives the asks the definition writes, by place. It is never nil.
-	Asks(def *Definition) map[string]*JobSpec
 }
 
 // Lists says a definition takes shapes from outside as it runs.
@@ -406,15 +397,6 @@ func Owns(def *Definition, name string) bool {
 	t, _ := TypeOf(def.Type)
 	o, ok := t.(Owner)
 	return ok && o.Owns(def, name)
-}
-
-// Asks gives the asks a definition writes, by place.
-func Asks(def *Definition) map[string]*JobSpec {
-	t, _ := TypeOf(def.Type)
-	if r, ok := t.(Reader); ok {
-		return r.Asks(def)
-	}
-	return nil
 }
 
 var types = map[string]Type{}

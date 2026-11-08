@@ -528,14 +528,10 @@ func (p *pass) child(inst string, step *instance.Step, ask *instance.Ask) *insta
 		Approve: st.Above.Approve, Ask: st.Above.Ask, Context: st.Above.Context, Values: st.Above.Values,
 		IsAsk: job.Name == instance.AskName,
 		Made:  made || st.Above.Made && !job.Above, Keep: st.Keep}
-	// The nearest ask above the child is the one its job goes to: an ask
-	// nearer than its machine's, or the machine's own. A machine made while
-	// running keeps none, so it hands down the one above it.
-	switch {
-	case job.Ask != nil:
-		above.Ask = &instance.AskAbove{Spec: job.Ask, At: job.AskAt, Definition: st.Definition, Input: st.Input, Layers: st.Above.Layers}
-	case st.Ask != nil:
-		above.Ask = &instance.AskAbove{Spec: st.Ask, At: instance.AskName, Definition: st.Definition, Input: st.Input, Layers: st.Above.Layers}
+	// The nearest ask above the child is its machine's own. A machine made
+	// while running keeps none, so it hands down the one above it.
+	if st.Ask != nil {
+		above.Ask = &instance.AskAbove{Spec: st.Ask, Definition: st.Definition, Input: st.Input, Layers: st.Above.Layers}
 	}
 	if above.IsAsk {
 		// A machine run as an ask takes no ask from above it, and is not

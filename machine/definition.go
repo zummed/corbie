@@ -315,17 +315,6 @@ func (c *Checker) Name(place, name string) {
 // than a job marked for it, which needs an ask as such a job does.
 func (c *Checker) Approves() { c.approves = true }
 
-// Asked checks jobs that go to an ask of their own when they are held, an
-// ask nearer than the definition's: they need no ask from the definition
-// or above it. With no ask of their own they go to the definition's.
-func (c *Checker) Asked(ask *JobSpec, check func()) {
-	before := c.approves
-	check()
-	if ask != nil {
-		c.approves = before
-	}
-}
-
 // reading adds to the names a place gives what every expression reads.
 func reading(names []string) []string { return append(slices.Clip(names), RunName, ValuesName) }
 
@@ -761,11 +750,8 @@ type Draft struct {
 	Children   map[string]*Draft
 	// needsAsk says a job in it is held for approval and it has no ask.
 	needsAsk bool
-	// asks are the machines it runs as an ask, each with its place.
-	asks map[string]string
-	// nearer says, of each machine it runs, whether only jobs that go to
-	// an ask nearer than its own run it.
-	nearer map[string]bool
+	// ask is the machine it runs as its ask, if its ask is a machine.
+	ask string
 	// size is the size of the definition as it is stored.
 	size int
 	// written is the definition as it is written out, with what it

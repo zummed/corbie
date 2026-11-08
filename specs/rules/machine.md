@@ -283,13 +283,13 @@ The detailed rules behind the [Machines overview](../machine.md). Area code: `ma
 **R-mach-95** What gives the yes is the machine's ask: a job of its own, a script or a machine, named at the top of the definition. That job is called `ask`, and nothing else in a definition may take the name.
 *Accept:* parity case 63 (a script) and parity case 74 (a machine). A flow with a stage named `ask`, a chart with a state named `ask` and an agent with a tool named `ask` are each refused when checked.
 
-**R-mach-97** A machine with an ask of its own uses it; a machine with none uses the nearest one above it. A machine made while running has none of its own (see Controller, C-ctl-64).
+**R-mach-97** A machine with an ask of its own uses it; a machine with none uses the nearest one above it. A machine made while running has none of its own (R-mach-163).
 *Accept:* parity case 73 (own ask wins); parity case 70 (one level up, approved), parity case 71 (one level up, refused) and parity case 72 (two levels up, through a machine that marks nothing).
 
-**R-mach-99** The jobs from one step that need approval go to their ask together, and each ask is filled in and started once for them. A job may go to an ask nearer than its machine's, which a type gives it.
-*Accept:* parity case 66. An agent's turn calls `open` for a toolkit that has an ask of its own and a tool of the agent's own, each marked for approval; the step starts the toolkit's ask with the open and the agent's ask with the call, once each.
+**R-mach-99** The jobs from one step that need approval go to their ask together, and the ask is filled in and started once for them.
+*Accept:* parity case 66.
 
-**C-mach-24** The held jobs of one step go to one run of an ask by where the ask is written, never by what filling it in gave. An expression in an ask's values need not give the same value twice, as `${Math.random()}` does not, and one ask would otherwise start as several. *Test:* `mach_one_run_of_each_ask_for_a_step`
+**C-mach-24** The held jobs of one step go to one run of their ask, filled in once, never one run for each value filling it in gave. An expression in an ask's values need not give the same value twice, as `${Math.random()}` does not, and one ask would otherwise start as several. *Test:* `mach_one_run_of_each_ask_for_a_step`
 
 **R-mach-100** The ask is told which machine is asking and, for each job, what it is and what input it would get.
 *Accept:* parity case 70: each child is named as the machine asking. Parity case 63: the ask is given the job and its input.
@@ -298,7 +298,7 @@ The detailed rules behind the [Machines overview](../machine.md). Area code: `ma
 *Accept:* parity case 66: the two approved items run, the other two appear with an error, and nothing was ever sent to a runner for them. Parity case 65: the note is in the error.
 
 **R-mach-106** An ask that cannot be filled in, that fails, or whose result has no `approved:` list, approves nothing.
-*Accept:* parity case 76: the first child's ask fails, the second's result has no `approved:` list, and neither held job starts. An agent's toolkit whose ask's input reads a field its input does not have: the held call is denied with an error naming `toolkits.net.ask.input`, and the agent carries on.
+*Accept:* parity case 76: the first child's ask fails, the second's result has no `approved:` list, and neither held job starts. An agent whose ask's input reads a field its input does not have: the held call is denied with an error naming `ask.input`, and the agent carries on.
 
 **R-mach-109** An approval has no time limit of its own; the ask's timeout is how long it may take.
 *Accept:* an ask that is a chart with a timeout of one second waits on a ticket nobody answers; it fails as out of time and the held job is denied. The same ask with no timeout holds the job for as long as the test waits.
@@ -318,6 +318,11 @@ The detailed rules behind the [Machines overview](../machine.md). Area code: `ma
 **C-mach-21** An ask's input and permissions are filled from the input of the machine that declares the ask, never from the input of a machine that inherits it, and the permissions and secrets of an inherited ask go into the ask's own job and into no other job of that machine. A child's input could otherwise widen what the ask may reach, and any job in a child could name the secrets its parent gave the ask. *Test:* `mach_inherited_ask_filled_from_declaring_machine`
 
 **C-mach-22** When an ask, started once, refuses several jobs, every one of them is given to its machine as denied and written in the record, including those that arrive after the first has failed the machine. Telling only the first leaves the rest held for an ask that has already ended, and whoever reads the record must see every job that was turned down. *Test:* `mach_every_refusal_is_recorded`
+
+## Words from outside
+
+**R-mach-163** Words from outside, a definition made while running and the tools a `list:` gives, name no ask and no address. A made machine's held jobs go to the nearest ask above it that was not made while running, and are denied with none; a made machine that writes `ask:`, sends to an address or calls fails. A listed tool's call runs the entry's `job:`, held for the agent's ask and addressing what that job names.
+*Accept:* for a made machine, the tests of C-ctl-64 and C-ctl-76; a made machine whose layers allow `send:/home/**` has a send to `/home/devices/boiler` refused, and its send to its parent is delivered (parity case 133). For a listed tool, `TestAgentAskIsShownTheToolOfEachCall`: the call of `github_create_issue`, marked for approval through its entry, goes to the agent's ask; and `ctl_answer_cannot_write_a_listed_agents_ask`.
 
 ## Failure
 

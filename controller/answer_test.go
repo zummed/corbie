@@ -133,16 +133,11 @@ func lying(kind string, args []string) {
 		out.Requests = []machine.Request{{Job: &machine.Job{Name: "x", Script: "./step.js", Allow: []string{"net:a.example"}}}}
 
 	case "fills":
-		// A job that names an ask of the step's own choosing, and fills that
-		// ask and the one a job above declares.
-		at := "x"
-		if len(args) > 0 {
-			at = args[0]
-		}
-		out.Requests = []machine.Request{{Job: &machine.Job{Name: "x", Script: "./step.js", Approve: true,
-			Ask: &machine.JobSpec{Script: "./step.js"}, AskAt: at}}}
+		// A job held for approval, and the ask filled by the step's own
+		// choosing.
+		out.Requests = []machine.Request{{Job: &machine.Job{Name: "x", Script: "./step.js", Approve: true}}}
 		filled := map[string]any{"job": &machine.Job{Name: "x", Script: "./step.js", Allow: []string{"all"}}}
-		out.Asks = map[string]any{instance.AskName: filled, at: filled}
+		out.Asks = map[string]any{instance.AskName: filled}
 
 	case "two jobs":
 		out.Requests = []machine.Request{{Job: &machine.Job{Name: "x", Script: "./step.js"}}, {Job: &machine.Job{Name: "y", Script: "./step.js"}}}
@@ -189,12 +184,6 @@ func lying(kind string, args []string) {
 
 	case "held":
 		out.Requests = []machine.Request{{Job: &machine.Job{Name: "b", Script: "./step.js", Allow: []string{"fs.read:/x/**"}}}}
-
-	case "many asks":
-		n, _ := strconv.Atoi(args[0])
-		for i := range n {
-			out.Requests = append(out.Requests, machine.Request{Job: &machine.Job{Name: fmt.Sprintf("j%d", i), Script: "./step.js", AskAt: args[1]}})
-		}
 
 	case "address send":
 		// A send to an address: args are the location, and the key if there
@@ -798,38 +787,23 @@ func Test_ctl_made_machine_has_no_ask_of_its_own(t *testing.T) {
 	w.wantHuman(r1, run, child)
 }
 
-// A machine that writes an ask is told it has none, at the top of its
-// definition or in a toolkit, and the owner's flow carries on.
+// A machine that writes an ask is told it has none, and the owner's flow
+// carries on.
 func Test_ctl_made_machine_that_writes_an_ask_fails(t *testing.T) {
-	for what, draft := range map[string]func(w *world) *machine.Draft{
-		"at its top": func(w *world) *machine.Draft {
-			return w.draft("flow: below\nask: ./step.js\nstages:\n  b: { job: ./step.js }\n", map[string]string{"step.js": "return 1"})
-		},
-		"in a toolkit": func(w *world) *machine.Draft {
-			return w.draft(`
-				agent: below
-				model: { name: m, service: anthropic, address: "http://127.0.0.1:1", secret: KEY }
-				prompt: hello
-				toolkits:
-				  s: { include: ./toolkit.yaml }
-			`, map[string]string{"step.js": "return 1", "toolkit.yaml": "description: Things.\nask: ./step.js\ntools:\n  t: { description: T, job: ./step.js }\n"})
-		},
-	} {
-		w := newWorld(t)
-		r1 := w.newRunner()
-		run := w.holder(r1)
-		ref, err := draft(w).Store(ctx, w.ctrl.Store, "ctl", run)
-		if err != nil {
-			t.Fatal(err)
-		}
-		w.result(r1, run, "make", instance.Result{Status: instance.Done, Output: ref.Value()})
-		w.settle()
-		w.pass()
-		w.settle()
-		st := w.latest(w.child(run)).State
-		if st.Status != instance.Failed || st.Error == nil || !strings.Contains(st.Error.Error, "no ask of its own") {
-			t.Errorf("with an ask %s, the machine ended %s: %+v", what, st.Status, st.Error)
-		}
+	w := newWorld(t)
+	r1 := w.newRunner()
+	run := w.holder(r1)
+	ref, err := w.draft("flow: below\nask: ./step.js\nstages:\n  b: { job: ./step.js }\n", map[string]string{"step.js": "return 1"}).Store(ctx, w.ctrl.Store, "ctl", run)
+	if err != nil {
+		t.Fatal(err)
+	}
+	w.result(r1, run, "make", instance.Result{Status: instance.Done, Output: ref.Value()})
+	w.settle()
+	w.pass()
+	w.settle()
+	st := w.latest(w.child(run)).State
+	if st.Status != instance.Failed || st.Error == nil || !strings.Contains(st.Error.Error, "no ask of its own") {
+		t.Errorf("the machine ended %s: %+v", st.Status, st.Error)
 	}
 }
 
@@ -931,57 +905,6 @@ func Test_ctl_owners_ask_machine_for_a_made_machine_keeps_its_own_ask(t *testing
 	}
 }
 
-// A job's name in an answer costs what its bytes cost: however many jobs name
-// a place, the definition is read for it once, and not at all for a machine
-// that has no ask of its own.
-func Test_ctl_asks_of_a_definition_are_read_once_a_step(t *testing.T) {
-	agent, _ := machine.TypeOf("agent")
-	counted := &askCounter{Type: agent}
-	machine.Register(counted)
-	t.Cleanup(func() { machine.Register(agent) })
-
-	w := newWorld(t)
-	run, r1 := w.listed()
-	w.lieNext("after a list", "many asks", "100", "toolkits.s.ask")
-	w.result(r1, run, "t", oneTool)
-	w.settle()
-	if st := w.latest(run).State; len(st.Jobs) < 100 || counted.asks != 1 {
-		t.Fatalf("for %d jobs, the asks were read %d times", len(st.Jobs), counted.asks)
-	}
-
-	counted.asks = 0
-	w = newWorld(t)
-	r1 = w.newRunner()
-	holder := w.holder(r1)
-	w.lieNext("many asks", "100", "toolkits.s.ask")
-	ref, err := w.draft(lister, listerFiles).Store(ctx, w.ctrl.Store, "ctl", holder)
-	if err != nil {
-		t.Fatal(err)
-	}
-	w.result(r1, holder, "make", instance.Result{Status: instance.Done, Output: ref.Value()})
-	w.pass()
-	w.pass()
-	w.settle()
-	if st := w.latest(w.child(holder)).State; len(st.Jobs) < 100 || counted.asks != 0 {
-		t.Fatalf("for %d jobs of a made machine, the asks were read %d times", len(st.Jobs), counted.asks)
-	}
-}
-
-// askCounter is a machine type that counts how often its asks are read.
-type askCounter struct {
-	machine.Type
-	asks int
-}
-
-func (c *askCounter) Lists(def *machine.Definition) bool {
-	return c.Type.(machine.Reader).Lists(def)
-}
-
-func (c *askCounter) Asks(def *machine.Definition) map[string]*machine.JobSpec {
-	c.asks++
-	return c.Type.(machine.Reader).Asks(def)
-}
-
 // A client starts a run at a location: the run's definition is the file
 // recorded there, copied into the run's own record, whatever else the start
 // names, and its input is the blob the start names in that record. A start that names a definition in another run's record, and no
@@ -1036,7 +959,7 @@ func Test_ctl_client_start_names_a_location(t *testing.T) {
 }
 
 // lister is an owner's agent with an entry that lists tools from elsewhere,
-// and a toolkit with an ask.
+// and a toolkit.
 const lister = `
 	agent: lister
 	model: { name: m, service: anthropic, address: "http://127.0.0.1:1", secret: KEY }
@@ -1050,8 +973,8 @@ const lister = `
 	  s: { include: ./toolkit.yaml }
 `
 
-var listerFiles = map[string]string{"step.js": "return 1", "ok.js": "return {}", "own.js": "return {}",
-	"toolkit.yaml": "description: Things.\nask: ./own.js\ntools:\n  u: { description: U, job: ./step.js }\n"}
+var listerFiles = map[string]string{"step.js": "return 1", "ok.js": "return {}",
+	"toolkit.yaml": "description: Things.\ntools:\n  u: { description: U, job: ./step.js }\n"}
 
 // listed runs lister as far as the runner that has its list, and gives a tool.
 func (w *world) listed() (run string, r1 *identity.Identity) {
@@ -1194,24 +1117,18 @@ func Test_ctl_made_definition_past_a_limit_fails_that_machine(t *testing.T) {
 	}
 }
 
-// An owner's agent takes its steps in a process, and its asks are still its
-// definition's words: an answer names only a place, and what is written there
-// is read from the definition and filled here. A place the definition does
-// not write gives the agent's own ask. The process can pick another place of
-// the definition, as "toolkits.s.ask" here, for a tool outside that toolkit: that is
-// within what the specs say such a process can do (Permissions), and is no
-// more than it could do by dropping the approval.
+// An owner's agent takes its steps in a process, and its ask is still its
+// definition's words: an answer has nowhere to name or fill one, and the ask
+// is read from the definition and filled here.
 func Test_ctl_answer_cannot_write_a_listed_agents_ask(t *testing.T) {
-	for at, want := range map[string]string{"x": "./ok.js", "toolkits.s.ask": "./own.js"} {
-		w := newWorld(t)
-		run, r1 := w.listed()
-		w.lieNext("after a list", "fills", at)
-		w.result(r1, run, "t", oneTool)
-		w.settle()
-		ask := w.inboxOf(r1)[w.jobName(r1, instance.AskName)]
-		if ask == nil || ask.Job.Path != want {
-			t.Errorf("with the place %s, the ask is %+v", at, ask)
-		}
+	w := newWorld(t)
+	run, r1 := w.listed()
+	w.lieNext("after a list", "fills")
+	w.result(r1, run, "t", oneTool)
+	w.settle()
+	ask := w.inboxOf(r1)[w.jobName(r1, instance.AskName)]
+	if ask == nil || ask.Job.Path != "./ok.js" {
+		t.Errorf("the ask is %+v", ask)
 	}
 }
 

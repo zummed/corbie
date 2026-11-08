@@ -21,6 +21,7 @@ func orders(address string) map[string]string {
 			input: { question: any, team: string }
 			model: { name: test-model, service: anthropic, address: ADDRESS, secret: TEST_KEY }
 			prompt: ${input.question}
+			ask: toolkits/ask.js
 			toolkits:
 			  orders: { include: toolkits/orders.yaml }
 			  infra: { include: toolkits/infra.yaml }
@@ -39,7 +40,6 @@ func orders(address string) map[string]string {
 		"infra/vms/status.js": `return "all running"`,
 		"toolkits/orders.yaml": `
 			description: The orders app.
-			ask: ./ask.js
 			tools:
 			  read_file: { call: gitlab/files/read, input: { project: group/orders } }
 			  change_file: { call: gitlab/commits/create, input: { project: "${input.team}" }, approve: true }
@@ -80,7 +80,7 @@ func offeredTool(tools []any, name string) map[string]any {
 // input of the machine at the location, without the names it fixes. The
 // machine is given the fixed input with the model's arguments, and an
 // optional argument left out is absent. A call marked approve: true goes to
-// the toolkit's ask, which is shown the machine's description, the model's
+// the agent's ask, which is shown the machine's description, the model's
 // arguments and the toolkit.
 func TestAgentToolCallsAMachineOfTheTree(t *testing.T) {
 	m := newModel(t,

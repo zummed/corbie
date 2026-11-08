@@ -423,9 +423,7 @@ func (s *stepper) begin() error {
 			return err
 		}
 		if tool.Toolkit != "" {
-			shown := map[string]any{}
-			s.inToolkit(job, tool.Toolkit, shown)
-			job.Shown = shown
+			job.Shown = map[string]any{"toolkit": tool.Toolkit}
 		}
 		s.st.Lists = append(s.st.Lists, &listing{Entry: name})
 		s.request(machine.Request{Job: job})
@@ -475,14 +473,6 @@ func (s *stepper) offer(scope machine.Scope) error {
 func (s *stepper) offers(name string, tool *Tool) bool {
 	not := s.st.Unoffered
 	return not == nil || !slices.Contains(not.Tools, name) && !slices.Contains(not.Toolkits, tool.Toolkit)
-}
-
-// inToolkit gives a job of a toolkit, or the open of one, what it needs to
-// go to the toolkit's ask: the ask is shown the toolkit's name, and the job
-// names where the toolkit's ask is written, where it has one.
-func (s *stepper) inToolkit(job *machine.Job, toolkit string, shown map[string]any) {
-	shown["toolkit"] = toolkit
-	_, job.AskAt = s.a.askOf(toolkit)
 }
 
 // opened notes the toolkit an open call opened: its tools are shown from
@@ -745,9 +735,10 @@ func (s *stepper) replied(data any) error {
 		if seen[one.Tool] > 1 {
 			one.Job = fmt.Sprintf("%s.%d", one.Tool, seen[one.Tool]-1)
 		}
-		// The ask is shown the arguments, the tool's description and what the
-		// model said, and for a listed tool its entry and its own name.
-		shown := map[string]any{"description": tool.Description, "args": one.Args, "said": text}
+		// The ask is shown the tool, the arguments, the tool's description
+		// and what the model said, and for a listed tool its entry and its
+		// own name.
+		shown := map[string]any{"tool": one.Tool, "description": tool.Description, "args": one.Args, "said": text}
 		scope["args"] = args
 		entry := one.Tool
 		delete(scope, "tool")
@@ -789,7 +780,7 @@ func (s *stepper) replied(data any) error {
 			job.Input = map[string]any{"toolkit": in, "instructions": instructions}
 		}
 		if in != "" {
-			s.inToolkit(job, in, shown)
+			shown["toolkit"] = in
 		}
 		job.Shown = shown
 		s.request(machine.Request{Job: job})

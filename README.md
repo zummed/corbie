@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="docs/corbie.svg" width="100%" alt="An animation with no words. The camera goes in through the eye of the Corbie mark. A server has failed and raises an alarm. An AI agent takes the alarm and uses three small machines at once: one reads the logs, one gets the metrics, one lists the deploys, and the last deploy is the cause. The camera pulls back, and the agent is one step of something larger: it asks you in a chat, you approve, and a last machine rolls the deploy back, so the server is well again. The camera pulls back out through the eye to the mark, and under it: Dynamic machine orchestrator.">
+  <img src=".github/readme/corbie.svg" width="100%" alt="An animation with no words. The camera goes in through the eye of the Corbie mark. A server has failed and raises an alarm. An AI agent takes the alarm and uses three small machines at once: one reads the logs, one gets the metrics, one lists the deploys, and the last deploy is the cause. The camera pulls back, and the agent is one step of something larger: it asks you in a chat, you approve, and a last machine rolls the deploy back, so the server is well again. The camera pulls back out through the eye to the mark, and under it: Dynamic machine orchestrator.">
 </p>
 
 <p align="center"><a href="https://zummed.github.io/corbie/"><b>Read the manual</b></a></p>
@@ -8,7 +8,7 @@
 
 <h2 align="center">Composable machines</h2>
 
-<p align="center"><img src="docs/flow.svg" width="270" alt="Flow: Streaming, parallel data processing. Fetch sends each item on as it has it, sum up and translate take each one at the same time, and send follows."><img src="docs/statechart.svg" width="270" alt="Statechart: React, sleep, loop and run work in parallel. A draft waits for an answer, goes round again on a no, is done on a yes, and gives up after two days."><img src="docs/agent.svg" width="270" alt="Agent: An AI choosing its tools, with limits and a human in the loop. An AI model decides which tool to use, here search and then send mail."></p>
+<p align="center"><img src=".github/readme/flow.svg" width="270" alt="Flow: Streaming, parallel data processing. Fetch sends each item on as it has it, sum up and translate take each one at the same time, and send follows."><img src=".github/readme/statechart.svg" width="270" alt="Statechart: React, sleep, loop and run work in parallel. A draft waits for an answer, goes round again on a no, is done on a yes, and gives up after two days."><img src=".github/readme/agent.svg" width="270" alt="Agent: An AI choosing its tools, with limits and a human in the loop. An AI model decides which tool to use, here search and then send mail."></p>
 <p align="center">Mix predictable workflows with dynamic agents.</p>
 
 <br>

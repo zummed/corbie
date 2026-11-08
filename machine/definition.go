@@ -695,6 +695,8 @@ func (c *Checker) location(def *Definition) {
 			c.Problem(at, "%q: read: names clients, as client:wall, since only a client reads a record", entry)
 		case name == "":
 			c.Problem(at, "client: names a client, as client:wall")
+		case slices.Index(def.Read, entry) < i:
+			c.Problem(at, "%q is listed twice", entry)
 		}
 	}
 	for _, event := range sortedKeys(def.Receive) {

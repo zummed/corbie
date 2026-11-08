@@ -475,8 +475,13 @@ func Test_client_read_lists_clients_that_read_the_records(t *testing.T) {
 	if err != nil || tickets["open"] == "" {
 		t.Fatalf("the reader holds the tickets %v (%v)", tickets, err)
 	}
-	if _, err := wall.Cancel(ctx, id, 0); err != nil {
+	cancel, err := wall.Cancel(ctx, id, 0)
+	if err != nil {
 		t.Fatal(err)
+	}
+	if r, err := wall.WaitReceipt(ctx, cancel, 0, 20*time.Millisecond); err != nil || r.Taken ||
+		!strings.Contains(r.Refused, "only that client cancels it") || !strings.Contains(r.Refused, l.ID.Name) {
+		t.Fatalf("the reader's cancel gave %+v (%v)", r, err)
 	}
 	if _, err := wall.Reply(ctx, id, tickets["open"], "from the wall", 0); err != nil {
 		t.Fatal(err)

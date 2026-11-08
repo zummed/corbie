@@ -338,6 +338,7 @@ records, tickets and files, and those of the runs below them.
 - A listed client does not own the tree. It cannot submit there or cancel the
   runs.
 - A run keeps the list it started with.
+- A client the controller does not trust reads nothing. The submit prints its name.
 
 Events
 ------

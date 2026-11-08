@@ -377,12 +377,14 @@ type Receipt struct {
 
 // Submitted is what a submit did: what became of each location of the
 // tree, the runs it cancelled, the directory last submitted there when it
-// was another, and the secrets and values the files use that are not set.
+// was another, the secrets and values the files use that are not set, and
+// the clients the files' read: lists that the controller does not trust.
 type Submitted struct {
 	Locations []Recorded `json:"locations,omitzero"`
 	Cancelled []string   `json:"cancelled,omitzero"`
 	Before    string     `json:"before,omitzero"`
 	Missing   []string   `json:"missing,omitzero"`
+	Untrusted []string   `json:"untrusted,omitzero"`
 }
 
 // Recorded is what a submit did at one location: started, restarted,

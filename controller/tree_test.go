@@ -186,12 +186,14 @@ func Test_ctl_submit_is_refused_naming_the_tree(t *testing.T) {
 }
 
 // The receipt says what the submit did at each location, the directory
-// submitted there before when it was another, and the secrets and values
-// the files use that are not set at their locations or above.
+// submitted there before when it was another, the secrets and values the
+// files use that are not set at their locations or above, and the clients
+// a read: lists that the controller does not trust.
 func Test_ctl_submit_receipt_names_what_it_did(t *testing.T) {
 	w := newWorld(t)
 	uses := `
 		flow: uses
+		read: [client:c1, client:ghost]
 		stages:
 		  s: { job: { script: ./work.js, allow: ["secret:TOKEN@net:${values.HOST}:443"] } }
 	`
@@ -204,6 +206,9 @@ func Test_ctl_submit_receipt_names_what_it_did(t *testing.T) {
 	}
 	if want := []string{"secret TOKEN for /h/uses", "value HOST for /h/uses", "value HOST for /h/waiting"}; !slices.Equal(done.Missing, want) {
 		t.Fatalf("the reminder is %q", done.Missing)
+	}
+	if want := []string{"client:ghost for /h/uses"}; !slices.Equal(done.Untrusted, want) {
+		t.Fatalf("the clients not trusted are %q", done.Untrusted)
 	}
 	if err := secret.Set(ctx, w.ctrl.Store, w.ctl, "/h", "TOKEN", "t"); err != nil {
 		t.Fatal(err)

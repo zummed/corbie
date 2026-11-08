@@ -150,18 +150,19 @@ func Test_mach_receive_says_who_may_send(t *testing.T) {
 }
 
 // A file's read: names the clients that read its runs' records, each as
-// client:<name>, written out. A machine written in place or made while
+// client:<name>, written out, each once. A machine written in place or made while
 // running has no location, and refuses it.
 func Test_mach_read_names_clients(t *testing.T) {
 	d := parsed(t, "probe: p\nread: [client:wall, client:phone]\n", nil)
 	if got := d.Definition.Read; !slices.Equal(got, []string{"client:wall", "client:phone"}) {
 		t.Errorf("read: is stored as %v", got)
 	}
-	got := problems(t, "probe: p\nread: [wall, \"client:\", \"client:${input.who}\"]\nwork:\n  a: { machine: { probe: inner, read: [client:wall] } }\n", nil)
+	got := problems(t, "probe: p\nread: [wall, \"client:\", \"client:${input.who}\", client:wall, client:wall]\nwork:\n  a: { machine: { probe: inner, read: [client:wall] } }\n", nil)
 	for _, want := range []string{
 		`read[0]: "wall": read: names clients, as client:wall`,
 		"read[1]: client: names a client",
 		`read[2]: "client:${input.who}": a read: entry is written out`,
+		`read[4]: "client:wall" is listed twice`,
 		"read: read belongs to a file at a location",
 	} {
 		if !strings.Contains(got, want) {

@@ -161,9 +161,9 @@ receive: [client:wall]
 ```
 
 - The controller seals every entry of the record of a run at `/home/door`, and of every run below it, to itself, the tree's client and `wall`. The run's head lists `wall`.
-- `wall` reads what the record holds: the input, the output, emits, tickets, the definition and the values set at the location. No record holds a secret.
+- `wall` reads what the record holds: the input, the output, emits, tickets, the definition and the values set at its location or above. No record holds a secret.
 - `wall` does not own the tree. It submits nothing there and cancels nothing, and it sends to the runs as `receive:` and its ceiling's `send:` allow. The controller writes `{ client: wall }` into `event.from`.
-- A run keeps the list it started with, and a client the controller does not trust is passed over.
+- A run keeps the list it started with. The controller seals nothing to a client it does not trust, and the head still lists the name; the submit's receipt names it.
 
 ## Checking
 

@@ -113,7 +113,7 @@ func (p *pass) advance(inst string, waiting []*arrival) error {
 		if err != nil {
 			return err
 		}
-		written, err := p.write(store.Step(p.ctl, inst, taken.step.Number), noEnd, taken.step, readers...)
+		written, err := p.write(store.Step(p.ctl, inst, taken.step.Number), noEnd, taken.step, append(readers, p.c.ID.Card)...)
 		if err != nil {
 			return err
 		}
@@ -159,11 +159,11 @@ func isAltered(err error) bool {
 	return err != nil && strings.Contains(err.Error(), identity.ErrAltered.Error())
 }
 
-// readers are the parties everything in an instance's record is sealed to:
-// the controller, the client of the root's tree, and each client its root's
-// file lists in read: that the controller trusts.
+// readers are the clients everything in an instance's record is sealed to,
+// beside the controller: the client of the root's tree, and each client its
+// root's file lists in read: that the controller trusts.
 func (p *pass) readers(inst string, st *instance.State) ([]identity.Card, error) {
-	cards := []identity.Card{p.c.ID.Card}
+	var cards []identity.Card
 	owner := store.InstanceClient(inst)
 	t, err := p.trusted(owner)
 	if err != nil {

@@ -59,8 +59,9 @@ type changes struct {
 	Cancel []string `json:"cancel,omitzero"`
 	Remove []string `json:"remove,omitzero"`
 	// Before is the directory submitted before, when it was another.
-	Before  string   `json:"before,omitzero"`
-	Missing []string `json:"missing,omitzero"`
+	Before    string   `json:"before,omitzero"`
+	Missing   []string `json:"missing,omitzero"`
+	Untrusted []string `json:"untrusted,omitzero"`
 }
 
 // A located is what the controller keeps at a location: the file recorded
@@ -311,6 +312,15 @@ func (p *pass) plan(a *arrival, base string, before *treeEntry) (*treeEntry, err
 		for _, name := range missing {
 			d.Missing = append(d.Missing, name+" for "+location)
 		}
+		for _, entry := range def.Read {
+			t, err := p.trusted(strings.TrimPrefix(entry, "client:"))
+			if err != nil {
+				return nil, err
+			}
+			if !t.Trusted() || t.Card.Kind != identity.Client {
+				d.Untrusted = append(d.Untrusted, entry+" for "+location)
+			}
+		}
 	}
 	for _, location := range msg.Problems {
 		d.Done = append(d.Done, instance.Recorded{Location: location, What: didProblem})
@@ -379,8 +389,7 @@ func (p *pass) carryTree(a *arrival, base string, entry *treeEntry) error {
 			return err
 		}
 	}
-	missing := d.Missing
-	receipt := &instance.Receipt{Taken: true, Tree: &instance.Submitted{Locations: d.Done, Cancelled: cancelled, Before: d.Before, Missing: missing}}
+	receipt := &instance.Receipt{Taken: true, Tree: &instance.Submitted{Locations: d.Done, Cancelled: cancelled, Before: d.Before, Missing: d.Missing, Untrusted: d.Untrusted}}
 	if err := p.writeReceipt(a.sender, a.name, receipt); err != nil {
 		return err
 	}

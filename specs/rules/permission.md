@@ -116,7 +116,7 @@ The detailed rules behind the [Permissions overview](../permission.md). Requirem
 ## Reading
 
 **R-perm-70** A file's `read:` lists clients that read the runs at its location, and the runs below them, as the tree's client does (R-inst-32), and each run's head lists them. A listed client submits nothing in the tree and cancels nothing, and sends as `receive:` and its ceiling allow. A run keeps the list it started with.
-*Accept:* `Test_client_read_lists_clients_that_read_the_records`: a chart at a file with `read: [client:wall]` starts a child flow whose script logs a marker. `wall` lists the run and its child, is shown the child's emit, reads the ticket and answers it, and its cancel is refused; the run ends `done` with the answer in its output. A client the list does not name lists neither run, is shown the run's status with no output, and is told the record is not its own.
+*Accept:* `Test_client_read_lists_clients_that_read_the_records`: a chart at a file with `read: [client:wall]` starts a child flow whose script logs a marker. `wall` lists the run and its child, is shown the child's emit, reads the ticket and answers it, and its cancel is refused, naming the tree's client; the run ends `done` with the answer in its output. A client the list does not name lists neither run, is shown the run's status with no output, and is told the record is not its own.
 
 ## Checking
 

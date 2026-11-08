@@ -131,7 +131,7 @@ $ corbie run submit house --at /home
 2. It refuses a prefix inside or above another tree, and a tree another client owns, naming that tree or its owner.
 3. It refuses a file whose location would be below another's, such as `boiler/x.yaml` beside `boiler.yaml`.
 4. It records each file, written out with its includes, at its location, and acts on what changed (see A changed or removed file).
-5. The receipt names the directory that last submitted there, and the values and secrets the files use that are not set at their locations or above.
+5. The receipt names the directory that last submitted there, the values and secrets the files use that are not set at their locations or above, and the clients the files' `read:` lists that the controller does not trust.
 
 A submit changes no other tree. Only the tree's client cancels the runs at its locations, and it and the clients a file's `read:` lists read them. Another client starts a run there only by calling a transient location (see Sending and calling).
 

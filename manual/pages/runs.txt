@@ -9,7 +9,7 @@ Commands
 
   corbie run submit <file or directory>   records a tree, and starts its singletons
   corbie run submit <location>            starts a run there and prints its ID
-  corbie run ls                           lists the runs of this client's trees in progress
+  corbie run ls                           lists the runs in progress of this client's trees and of files whose `read:` lists it
   corbie run show <id>                    prints one run's status, input and output
   corbie run cancel <id>                  cancels a run in this client's trees; a location cancels each run there, location#key one
   corbie run send <id> <event> [data]     sends an event to a run; a location, or location#key, names one too

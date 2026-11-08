@@ -216,8 +216,8 @@ location, and the secrets and values the files use that are not set.
   corbie manual a-directory   a tree of machines
 ` + scripts},
 		{Name: "run ls", Usage: "[--watch] [--all] [--label k=v] [--status <status>] [--parent <id>]", Summary: "list runs", Run: cmdLs, Help: `
-It lists the runs of this client's trees that are in progress, child runs
-included. A run with status waiting, which no controller has started, is not
+It lists the runs in progress of this client's trees and of the files whose
+read: lists it, child runs included. A run with status waiting, which no controller has started, is not
 listed.
 
   --all               include runs that have ended and are still in the store

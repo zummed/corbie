@@ -417,13 +417,8 @@ An ask's job takes input like any other. The permissions an ask needs are its ow
 
 A definition made while running, which a script or a model wrote, and the tools a `list:` job gives an agent are words from outside: no owner wrote them. Words from outside name no ask and no address. A step that reads them is taken in a process of its own (see Controller).
 
-| | A machine made while running | A tool a `list:` gives |
-|---|---|---|
-| its held jobs go to | the nearest ask above it that was not made while running, and are denied with none | the agent's ask, as any tool's do |
-| it may address | its parent and its children | what the entry's `job:` names |
-
-- A made machine that writes `ask:` fails as it starts. One that sends to an address or calls a location fails then.
-- A list gives each tool a name, a description and the shape of its arguments. Nothing else is read from it.
+- A machine made while running may address only its parent and its children. Its held jobs go to the nearest ask above it that was not made while running, and with none they are denied. One that writes `ask:` fails as it starts, and one that sends to an address or calls a location fails then.
+- A tool a `list:` gives runs the entry's `job:`, whose held jobs go to the agent's ask as any tool's do, and which addresses what that job names. A list gives each tool a name, a description and the shape of its arguments, and nothing else is read from it.
 
 ## Failure
 

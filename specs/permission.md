@@ -67,7 +67,7 @@ parent                       the child's job may
 
 A machine made while running is not its parent's author's words: a script or a model wrote it. It is always narrowed by the job that starts it, and with no list it is allowed nothing. Everything below it is made while running too, and its steps are taken in a process of their own (see Controller).
 
-Where a made machine's held jobs go, and what it may address, is the rule for words from outside (see [Machines](machine.md#words-from-outside)).
+Where a made machine's held jobs go, and what it may address, is under Words from outside (see [Machines](machine.md#words-from-outside)).
 
 The scope of a definition's allow entry may be filled from the machine's input, as in `fs.read:${input.dir}/**`. It reads nothing but the input, and since every layer above still applies, an input can choose a place within a limit and never move the limit. A value set at the run's location fills a scope the same way, as in `net:${values.HUB}` (see secret.md).
 

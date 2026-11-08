@@ -415,9 +415,9 @@ func asking(askInput string) (extra string, files map[string]string) {
 	return "ask: { script: ./ask.js, input: " + askInput + " }", files
 }
 
-// The held jobs of one step that go to one ask start it once, though
-// filling its values in twice would give two different values.
-func Test_mach_one_run_of_each_ask_for_a_step(t *testing.T) {
+// The held jobs of one step start the ask once, though filling its values
+// in twice would give two different values.
+func Test_mach_one_run_of_the_ask_for_a_step(t *testing.T) {
 	extra, files := asking(`{ r: "${Math.random()}" }`)
 	twice := llmstandin.Reply{Calls: []llmstandin.ToolCall{{ID: "c1", Name: "show", Args: `{"command": "a"}`}, {ID: "c2", Name: "show", Args: `{"command": "b"}`}}}
 	m := newModel(t, calls("c0", "open", `{"toolkit": "net"}`), twice, says("done"))

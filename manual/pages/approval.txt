@@ -59,7 +59,8 @@ An ask is any job.
 
 For an agent's tool, each held job has `asked`.
 
-  tool          the tool's name; for a tool from a `list:`, its own, such as `create_issue`
+  tool          the tool's own name; for a tool from a `list:`, such as `create_issue`,
+                `entry` and `tool` together tell it apart
   entry         for a tool from a `list:`, the entry's name, such as `github`
   toolkit       for a tool of a toolkit, for `open` and for a toolkit's list: the toolkit's name
   description   the tool's description

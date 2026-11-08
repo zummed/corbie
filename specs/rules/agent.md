@@ -62,7 +62,7 @@ The detailed rules behind the [Agent overview](../agent.md). Area code: `agent`.
 **R-agent-27** A tool that fails goes back to the model as an error, with whatever output it still gave, and the agent carries on.
 *Accept:* parity case 85: the third turn is shown both errors, and the agent ends well; in the result for the chart's call the model sees `reached gave_up` and the failed final state's output.
 
-**R-agent-29** A tool that needs approval goes to the agent's ask like any job; the calls from one turn that need it go together, the ask is shown the tool's name as `tool`, the arguments, the tool's description and what the model said, and for a listed tool the entry's name as `entry` and the tool's own name as `tool`; a call that is not approved goes back to the model as denied, with the ask's note.
+**R-agent-29** A tool that needs approval goes to the agent's ask like any job; the calls from one turn that need it go together, the ask is shown the tool's own name as `tool`, the arguments, the tool's description and what the model said, and for a listed tool the entry's name as `entry`; a call that is not approved goes back to the model as denied, with the ask's note.
 *Accept:* parity case 89: the ask is run once, with both calls, is shown each call's tool, arguments, description and the model's words, and the refused call reaches the model as denied with the note. `TestAgentAskIsShownTheToolOfEachCall`: an entry `github` lists `create_issue`; the ask for a call of `github_create_issue` is shown `entry: github` and `tool: create_issue`, and the ask for a call of the definition's own tool `add` is shown `tool: add` and no entry.
 
 **R-agent-33** A call that needs no approval is not held by one in the same turn that does.

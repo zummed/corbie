@@ -289,7 +289,7 @@ The detailed rules behind the [Machines overview](../machine.md). Area code: `ma
 **R-mach-99** The jobs from one step that need approval go to their ask together, and the ask is filled in and started once for them.
 *Accept:* parity case 66.
 
-**C-mach-24** The held jobs of one step go to one run of their ask, filled in once, never one run for each value filling it in gave. An expression in an ask's values need not give the same value twice, as `${Math.random()}` does not, and one ask would otherwise start as several. *Test:* `mach_one_run_of_each_ask_for_a_step`
+**C-mach-24** The held jobs of one step go to one run of their ask, filled in once, never one run for each value filling it in gave. An expression in an ask's values need not give the same value twice, as `${Math.random()}` does not, and one ask would otherwise start as several. *Test:* `mach_one_run_of_the_ask_for_a_step`
 
 **R-mach-100** The ask is told which machine is asking and, for each job, what it is and what input it would get.
 *Accept:* parity case 70: each child is named as the machine asking. Parity case 63: the ask is given the job and its input.

@@ -133,8 +133,8 @@ func lying(kind string, args []string) {
 		out.Requests = []machine.Request{{Job: &machine.Job{Name: "x", Script: "./step.js", Allow: []string{"net:a.example"}}}}
 
 	case "fills":
-		// A job held for approval, and the ask filled by the step's own
-		// choosing.
+		// A job held for approval, and an answer that offers a filled ask of
+		// its own, which the controller ignores.
 		out.Requests = []machine.Request{{Job: &machine.Job{Name: "x", Script: "./step.js", Approve: true}}}
 		filled := map[string]any{"job": &machine.Job{Name: "x", Script: "./step.js", Allow: []string{"all"}}}
 		out.Asks = map[string]any{instance.AskName: filled}

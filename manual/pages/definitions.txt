@@ -383,7 +383,7 @@ An ask that fails, whose values cannot be filled in, or that returns any other
 value, approves nothing.
 
 - A machine with no `ask:` uses the nearest `ask:` above it.
-- Where a machine made while running sends its held jobs is under Words from
+- Where the held jobs of a machine made while running go is under Words from
   outside.
 - The controller starts the ask once for the held jobs of one step.
 - A machine run as an ask uses no `ask:` and no `approve:` list from above it.

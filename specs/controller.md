@@ -66,7 +66,7 @@ A bug in what the process runs gives a made definition that process, so its answ
 
 - A made machine's `keep` is no longer than its parent's, and its time limit no longer than the job that starts it allows.
 - Whether a job is held is worked out by the controller, from the lists above the machine.
-- Where a made machine's held jobs go is the rule for words from outside (see Machines). Nothing a made machine wrote of an ask is kept, so a process that skips the check of its `ask:` gains nothing.
+- Where a made machine's held jobs go is under Words from outside (see Machines). Nothing a made machine wrote of an ask is kept, so a process that skips the check of its `ask:` gains nothing.
 - Every ask is an owner's words, and the controller fills it in from the input of the machine that declares it, in its own process. No process fills in an ask, and an answer cannot name one.
 - A name in an answer goes into names in the store, so it is one a definition could hold, of at most 100 characters. Any other fails the machine.
 - A job named `ask` in an answer fails the machine too.

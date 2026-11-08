@@ -281,8 +281,8 @@ A machine contains jobs, which do its work. A job is a script, which a runner ex
 |---|---|
 | `script: ./fetch.js` | the script, on a runner |
 | `machine: ./child.yaml` | the machine of that file, as a child run |
-| `call: { at: services/weather }` | the machine at that location, as a run of its own whose result comes back (see Sending and calling) |
-| `send: { to, event, data }` | nothing: the event is delivered to a run, and the job gives back nothing |
+| `call: { at: services/weather }` | the machine at that location, as a run of its own whose result is the job's output (see Sending and calling) |
+| `send: { to, event, data }` | nothing: the event is delivered to a run, and the job has no output |
 
 A script or a machine has an input, the permissions it may use, a limit on time, and optionally a restart policy. A script also has a limit on memory and tags that choose which runners may take it.
 

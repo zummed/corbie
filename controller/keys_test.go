@@ -334,6 +334,33 @@ func Test_ctl_send_to_a_transient_location_starts_a_run(t *testing.T) {
 	}
 }
 
+// A send that would start a run of a transient location is refused by its
+// receive: as a keyed start is: the sender's record notes it undelivered, a
+// client's receipt says refused, and no run starts.
+func Test_ctl_send_to_a_transient_location_is_refused_by_receive(t *testing.T) {
+	w := newWorld(t)
+	sender := w.rooms(map[string]string{"/t/picky": `
+		statechart: picky
+		receive: [client:b]
+		initial: a
+		states:
+		  a: { on: { rang: b } }
+		  b: { end: done }
+	`})
+	w.tell(sender, "ring", map[string]any{"at": "picky"})
+	w.settle()
+	if notes := w.keyNotes(sender); len(notes) != 1 || !strings.Contains(notes[0], "/t/picky does not receive rang from the run "+sender) {
+		t.Fatalf("the router's record says %v", notes)
+	}
+	c := w.other("c", "send:/t/**")
+	if r := w.clientSend(c, "/t/picky", "rang", nil); r.Taken || !strings.Contains(r.Refused, "does not receive rang from client:c") {
+		t.Fatalf("c got %+v", r)
+	}
+	if runs := w.runsOf("picky"); len(runs) != 0 {
+		t.Fatalf("the runs of picky are %v", runs)
+	}
+}
+
 // A key is free again once its run ends, and so is a singleton's.
 func Test_ctl_key_is_free_once_its_run_ends(t *testing.T) {
 	w := newWorld(t)

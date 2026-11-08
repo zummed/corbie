@@ -1,6 +1,8 @@
 # Corbie
 
-Corbie runs machines. A machine is a flow, a statechart or an agent, written as a definition in YAML, and it contains jobs, which do its work. A job is a script, which a runner executes, or a machine: named by its file, `machine:`, it runs as a child run, and named by its location, `call:`, it runs as a run of its own whose result comes back. A `send:` job delivers an event to a run and gives back nothing. One binary does everything. What a process does is set by the roles it is started with and by nothing else.
+Corbie runs machines. A machine is a flow, a statechart or an agent, written as a definition in YAML, and it contains jobs, which do its work. A job is a script, which a runner executes, or a machine.
+
+One binary does everything. What a process does is set by the roles it is started with and by nothing else.
 
 ## How it holds together
 

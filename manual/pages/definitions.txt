@@ -185,8 +185,8 @@ Jobs
 
 A machine contains jobs. A job is a script, which a runner executes, or a
 machine: named by its file, `machine:`, it runs as a child run, and named by
-its location, `call:`, it runs as a run of its own whose result comes back. A
-`send:` job delivers an event to a run and gives back nothing.
+its location, `call:`, it runs as a run of its own whose result is the job's
+output. A `send:` job delivers an event to a run and has no output.
 
   script: ./fetch.js           a script file
   machine: ./child.yaml        a definition file, or a definition written in place

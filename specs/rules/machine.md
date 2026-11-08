@@ -101,7 +101,7 @@ The detailed rules behind the [Machines overview](../machine.md). Area code: `ma
 
 ## Jobs
 
-**R-mach-33** A job is a script or a machine. A runner executes a script. A machine named by its file, `machine:`, is started by the controller as a child run, and one named by its location, `call:`, as a run of its own whose result is the job's output. A `send:` job runs nothing: it delivers an event to a run and gives back nothing.
+**R-mach-33** A job is a script or a machine. A runner executes a script. A machine named by its file, `machine:`, is started by the controller as a child run, and one named by its location, `call:`, as a run of its own whose result is the job's output. A `send:` job runs nothing: it delivers an event to a run and has no output.
 *Accept:* a flow with a script stage and a machine stage: the record shows one job sent to a runner and its result arriving as the first stage's `done`, and a new instance whose head names the flow as its parent, with nothing sent to a runner for the second stage itself.
 
 **R-mach-35** A job of either kind has an input, the permissions it may use, a limit on time, and optionally a restart policy, written the same way for both; a script also has a limit on memory and tags that choose its runners.

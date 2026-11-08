@@ -278,7 +278,7 @@ The detailed rules behind the [Controller overview](../controller.md). What the 
 *Accept:* parity case 115. `Test_chart_send_to_a_key_starts_a_run_then_delivers`, `Test_ctl_key_is_free_once_its_run_ends` and `Test_ctl_event_for_a_run_that_ended_starts_anew_or_is_noted`, `Test_ctl_direct_send_waits_behind_a_moved_send` and `Test_ctl_undelivered_note_reaches_an_ended_sender`.
 
 **R-ctl-132** A send to a transient location's `{ at }` starts a new run there each time, as a send to a key no other send names would, and takes no key's file. The event's data is the run's input. A statechart is then given the event; a flow or an agent is given only the start, and the send is not noted as undelivered. `limits: { runs }` takes no part.
-*Accept:* parity case 137. `Test_ctl_send_to_a_transient_location_starts_a_run`.
+*Accept:* parity case 137. `Test_ctl_send_to_a_transient_location_starts_a_run` and `Test_ctl_send_to_a_transient_location_is_refused_by_receive`.
 
 **C-ctl-67** A run takes its key's file only-if-new after its definition has been read and its location's `receive:` takes the event, and before anything of the run is written; a file that names it already is its own. A run that loses has done nothing, and its start moves on to the run that won, which takes it as an event. A claim made after the step would have a machine act on an event that a second run also acts on. *Test:* `ctl_two_senders_race_for_one_key`, `ctl_two_copies_race_for_one_key` and `ctl_two_senders_stopped_after_every_write`
 

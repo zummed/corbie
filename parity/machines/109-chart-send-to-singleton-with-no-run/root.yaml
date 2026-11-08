@@ -1,6 +1,7 @@
 # A send to a location whose singleton is not running is noted in the
 # sender's record, and fails nothing. lonely.yaml is a singleton whose run
-# ended as it started.
+# ended as it started. The submit starts it beside this run, so the first
+# timer lets its run end before the send.
 statechart: asker
 allow: [send:lonely]
 initial: waiting

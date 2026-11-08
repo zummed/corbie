@@ -41,7 +41,7 @@ jobs:
       - uses: actions/upload-pages-artifact@v5
         if: github.event_name == 'push'
         with:
-          path: site
+          path: build/site
 
   # The packages whose code differs on Windows are tested there. The rest
   # of the tests start programs through sh.

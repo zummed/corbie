@@ -41,7 +41,7 @@ jobs:
 
       - name: Check what the binary prints
         run: |
-          printed=$(dist/corbie-linux-amd64 version | sed -n '1s/^corbie //p')
+          printed=$(build/dist/corbie-linux-amd64 version | sed -n '1s/^corbie //p')
           if [ "$printed" != "$VERSION" ]; then
             echo "the binary prints \"$printed\", not \"$VERSION\""; exit 1
           fi
@@ -51,7 +51,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
         run: |
-          gh release create "v$VERSION" dist/* \
+          gh release create "v$VERSION" build/dist/* \
             --target "$GITHUB_SHA" \
             --title "$VERSION" \
             --notes "Built from $GITHUB_SHA."

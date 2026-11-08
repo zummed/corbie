@@ -101,7 +101,7 @@ The detailed rules behind the [Machines overview](../machine.md). Area code: `ma
 
 ## Jobs
 
-**R-mach-33** A job that is a script is executed by a runner; a job that is a machine is started by the controller as a child run.
+**R-mach-33** A job is a script or a machine. A runner executes a script. A machine named by its file, `machine:`, is started by the controller as a child run, and one named by its location, `call:`, as a run of its own whose result is the job's output. A `send:` job runs nothing: it delivers an event to a run and gives back nothing.
 *Accept:* a flow with a script stage and a machine stage: the record shows one job sent to a runner and its result arriving as the first stage's `done`, and a new instance whose head names the flow as its parent, with nothing sent to a runner for the second stage itself.
 
 **R-mach-35** A job of either kind has an input, the permissions it may use, a limit on time, and optionally a restart policy, written the same way for both; a script also has a limit on memory and tags that choose its runners.
@@ -184,7 +184,7 @@ The detailed rules behind the [Machines overview](../machine.md). Area code: `ma
 **R-mach-158** An expression and an allow entry's scope read the values set at the run's location or above as `values.NAME`. A value is read by its name: `values[expr]` and `values` alone are refused when checked, and the names a definition, a draft with its children and a job read can be listed. An expression that reads a value not set fails, naming the value and the run's location.
 *Accept:* a definition reading `values.GREETING`, `values['ROOM']` and `net:${values.HUB}:443` lists those three; with them set its job is filled as `kitchen` and `net:hub.lan:443`; with `HUB` not set it fails with `the value HUB is not set at /home/devices/boiler or above`. `${values[input.name]}` and `${Object.keys(values)}` are refused. *Test:* `mach_values_are_read_by_name`
 
-**R-mach-159** A job may be `send: { to, event, data }`: it sends the event to a run by its address. Beside `send:` it takes `approve:`, `allow:` and `deny:`, and no other field of a job. A job is exactly one of a script, a machine, a send or a call, and a sent event's name is written out and none that Corbie gives a machine itself.
+**R-mach-159** A job may be `send: { to, event, data }`: it sends the event to a run by its address. Beside `send:` it takes `approve:`, `allow:` and `deny:`, and no other field of a job. A job writes exactly one of `script:`, `machine:`, `call:` and `send:`, and a sent event's name is written out and none that Corbie gives a machine itself.
 *Accept:* a send with `approve:` and `allow:` passes; a send with `input:` and `timeout:`, a send with a script, a send of `done` and a send whose event is an expression are each refused at their place. *Test:* `mach_a_job_sends`
 
 **R-mach-160** A job may be `call: { at }` with an input: it starts a run of that location and waits, and its output is that run's result. A call names its location with `at` alone, and takes no memory, tags, files or key.

@@ -36,7 +36,7 @@ An agent may be started with the conversation of an earlier agent's result, and 
 
 ## Tools
 
-A tool is a named job, a script, a machine, a call or a send, with a description, the shape of its arguments, and its own permissions. The job reads the agent's input and the arguments the model supplied. A tool whose job is an agent is how an agent has sub-agents: the model is shown what the sub-agent replied, and the sub-agent's conversation stays in its own record.
+A tool is a named job, written with `script:`, `machine:`, `call:` or `send:`, with a description, the shape of its arguments, and its own permissions. The job reads the agent's input and the arguments the model supplied. A tool whose job is an agent is how an agent has sub-agents: the model is shown what the sub-agent replied, and the sub-agent's conversation stays in its own record.
 
 A tool's `description:` is plain text, and Corbie refuses an expression in it, as in a definition's. A call or a send names a location read from the agent's tree, and needs `send:` for it (see [Permissions](permission.md)).
 

@@ -267,7 +267,16 @@ A `default` that `properties` and `items` do not lead to from the top, such as o
 
 ## Jobs
 
-A machine contains jobs, which do its work. A job is a script, which a runner executes, or a machine, which the controller starts as a child run. Either way it has an input, the permissions it may use, a limit on time, and optionally a restart policy. A script also has a limit on memory and tags that choose which runners may take it.
+A machine contains jobs, which do its work. A job is a script, which a runner executes, or a machine:
+
+| Job | What runs |
+|---|---|
+| `script: ./fetch.js` | the script, on a runner |
+| `machine: ./child.yaml` | the machine of that file, as a child run |
+| `call: { at: services/weather }` | the machine at that location, as a run of its own whose result comes back (see Sending and calling) |
+| `send: { to, event, data }` | nothing: the event is delivered to a run, and the job gives back nothing |
+
+A script or a machine has an input, the permissions it may use, a limit on time, and optionally a restart policy. A script also has a limit on memory and tags that choose which runners may take it.
 
 A program using Corbie as a library can list a definition's jobs, each with its place, such as `stages.a.job`.
 

@@ -4,9 +4,9 @@ An instance is one run of a machine. It is two things in the store: a head, whic
 
 ## The head
 
-The head is a small signed summary that the controller rewrites as the instance moves. It says what the instance is called and what type of machine it is, whether it is running, done, failed or cancelled, which step it has reached, when it started, which instance is its parent, and what it is waiting for: how many jobs on runners, how many timers, and the names of any tickets. It also carries its location, its key at a keyed location, the labels its client gave it at the start, and its cause: what started it.
+The head is a small signed summary that the controller rewrites as the instance moves. It says what the instance is called and what type of machine it is, whether it is running, done, failed or cancelled, which step it has reached, when it started, which instance is its parent, and what it is waiting for: how many jobs on runners, how many timers, and the names of any tickets. It also carries its location, its key at a keyed location, the labels its client gave it at the start, the clients its file's `read:` lists, and its cause: what started it.
 
-The head is sealed to nobody. Anyone the store lets read it can read it and can check the controller's signature. For that reason it holds nothing the instance was given or produced: no input, no output, no error text, no log line, no value of a ticket. A location, a key and labels are the exceptions. A label is the client's own words about the run, chosen knowing they are public, and a child carries its parent's. A location is chosen by its tree's client, and a key by the definition or the client that sends to it, on the same terms.
+The head is sealed to nobody. Anyone the store lets read it can read it and can check the controller's signature. For that reason it holds nothing the instance was given or produced: no input, no output, no error text, no log line, no value of a ticket. A location, a key, labels and the clients `read:` lists are the exceptions. A label is the client's own words about the run, chosen knowing they are public, and a child carries its parent's. A location and its `read:` are chosen by its tree's client, and a key by the definition or the client that sends to it, on the same terms.
 
 The head is a summary and may be a moment behind. The record is the truth, and the controller brings the head up to date after each step.
 
@@ -40,7 +40,7 @@ An **emit** entry is written by a job while it runs: a log line, a note of progr
 
 The record also holds the instance's **blobs**: the larger values its entries refer to. Among them is the definition the instance started with, which a later submit at its location does not change.
 
-Everything in a record is sealed so that only the controller and the client that owns the root's tree can read it.
+Everything in a record is sealed so that only the controller, the client that owns the root's tree and the clients the root's file's `read:` lists can read it (see permission.md). A client `read:` lists that the controller does not trust when an entry is written cannot read that entry.
 
 ## How long it is kept
 
@@ -58,7 +58,7 @@ A run is reported once more when it ends, saying how. For a listing that does no
 
 For an instance whose record the watcher may read, it then reads the entries it has not seen. Because entries never change, each is read once.
 
-What a watcher sees depends only on what the store lets it read, and there are three levels. With no access it sees nothing. With access to heads it sees where every instance stands and nothing inside any of them, which is what a dashboard or a metrics exporter needs. A client sees where the runs of its trees stand and everything inside them.
+What a watcher sees depends only on what the store lets it read, and there are three levels. With no access it sees nothing. With access to heads it sees where every instance stands and nothing inside any of them, which is what a dashboard or a metrics exporter needs. A client sees where the runs of its trees, and of files whose `read:` lists it, stand and everything inside them.
 
 Watching holds no state anywhere and asks nothing of the controller. In a directory or in memory, a watcher in the same process as the writer is told at once that something was written. Any other watcher looks again at an interval, which is the one setting watching has.
 

@@ -62,8 +62,8 @@ func (f Filter) keeps(r *Run) bool {
 }
 
 // List gives the runs this party may read, each as its head gives it:
-// every instance, not only roots. A client sees its own; a viewer with
-// access to heads sees everyone's.
+// every instance, not only roots. A client sees its own and those whose
+// file's read: lists it; a viewer with access to heads sees everyone's.
 func (c *Client) List(ctx context.Context, filter Filter) ([]*Run, error) {
 	heads, _, _, err := c.heads(ctx, filter.Finished, nil)
 	var runs []*Run
@@ -90,9 +90,9 @@ func (c *Client) heads(ctx context.Context, finished bool, last map[string]headR
 	// The running heads are read before the finished ones: a head is
 	// written among the finished before it leaves the running, so a run
 	// that ends in between is in one or the other.
-	places := []string{c.under(store.Running(c.ctl()))}
+	places := []string{store.Running(c.ctl())}
 	if finished {
-		places = append(places, c.under(store.Finished(c.ctl())))
+		places = append(places, store.Finished(c.ctl()))
 	}
 	found := map[string]*Run{}
 	marks := map[string]store.Mark{}
@@ -114,7 +114,7 @@ func (c *Client) heads(ctx context.Context, finished bool, last map[string]headR
 		err = store.Each(ctx, store.SideBySide, len(unread), func(i int) error {
 			head, mark, err := c.readHead(ctx, unread[i])
 			now[i].mark = mark
-			if head != nil {
+			if head != nil && c.lists(head) {
 				now[i].run = runOf(head)
 			}
 			return err
@@ -142,14 +142,9 @@ func (c *Client) heads(ctx context.Context, finished bool, last map[string]headR
 	return runs, marks, read, nil
 }
 
-// under gives the part of a place of heads this party may read: a client's
-// own, or all of them for a viewer.
-func (c *Client) under(base string) string {
-	if c.ID != nil {
-		return base + "/" + c.ID.Name
-	}
-	return base
-}
+// lists says whether a listing gives a run: a viewer is given every run,
+// and a client those it may read.
+func (c *Client) lists(head *instance.Head) bool { return c.ID == nil || c.reads(head.Name, head) }
 
 // listHeads lists the heads in a place.
 func (c *Client) listHeads(ctx context.Context, place string) ([]store.Listed, error) {
@@ -235,7 +230,7 @@ func (c *Client) changes(ctx context.Context, filter Filter, w *watched, tell fu
 	}
 	var ended []string
 	if !filter.Finished {
-		if ended, err = store.Names(c.listHeads(ctx, c.under(store.Finished(c.ctl())))); err != nil {
+		if ended, err = store.Names(c.listHeads(ctx, store.Finished(c.ctl()))); err != nil {
 			return err
 		}
 	}
@@ -268,7 +263,7 @@ func (c *Client) changes(ctx context.Context, filter Filter, w *watched, tell fu
 			return err
 		}
 		for i, head := range read {
-			if head != nil && filter.keeps(runOf(head)) {
+			if head != nil && c.lists(head) && filter.keeps(runOf(head)) {
 				tell(Update{Run: runOf(head), New: true})
 			}
 			w.ended[unread[i]] = true
@@ -342,8 +337,8 @@ func (c *Client) Follow(ctx context.Context, id string, interval time.Duration, 
 	if err := store.CheckInstance(id); err != nil {
 		return nil, err
 	}
-	if !c.mine(id) {
-		return nil, others(id)
+	if err := c.readable(ctx, id); err != nil {
+		return nil, err
 	}
 	notice, stop := c.Store.Notice(store.Records(c.ctl()))
 	defer stop()
@@ -383,8 +378,8 @@ func (c *Client) Record(ctx context.Context, id string, tell func(Entry)) (*Run,
 	if err := store.CheckInstance(id); err != nil {
 		return nil, err
 	}
-	if !c.mine(id) {
-		return nil, others(id)
+	if err := c.readable(ctx, id); err != nil {
+		return nil, err
 	}
 	all := map[string]*followed{id: {jobs: map[string]identity.Card{}, emits: map[string]bool{}}}
 	if run, err := c.look(ctx, id, all, tell); err != nil || run != nil {

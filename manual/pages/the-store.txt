@@ -50,9 +50,9 @@ Who may read and write
   <controller>/inbox/         all          adds          adds                  -
   receipts/                   all          -             reads its own         -
   uploads/                    all          -             adds its own          -
-  running/, finished/         all          -             reads its own         reads
-  records: steps/, carried    all          -             reads its own         -
-  records: emits/             all          adds          reads its own         -
+  running/, finished/         all          -             reads                 reads
+  records: steps/, carried    all          -             reads                 -
+  records: emits/             all          adds          reads                 -
   records: blobs/             all          reads, adds   reads, adds its own   -
   wakes/, trust/, locations/  all          -             -                     -
   <runner>/inbox/             adds         all           -                     -
@@ -64,7 +64,8 @@ Who may read and write
   viewer    reads the status files only, for a dashboard
 
 A runner can add to any run's record. Each file it adds names a job, and
-readers ignore a file from a runner that was not sent that job.
+readers ignore a file from a runner that was not sent that job. A client reads
+every record and decrypts only the files encrypted for it.
 
 Signing and encryption
 ----------------------
@@ -92,7 +93,7 @@ signed by another writer.
   that key      HPKE, for the X25519 public key of each reader
 
   a message in an inbox           encrypted for the process whose inbox it is in
-  a step, an emit                 encrypted for the controller and the client in the run's ID
+  a step, an emit                 encrypted for the controller and each client that reads the run
   an answer under receipts/       encrypted for the client that sent the message
   a secret, a value               encrypted for the controller
   a blob                          encrypted under its own key, and not signed

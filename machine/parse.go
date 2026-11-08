@@ -236,8 +236,9 @@ func (p *Parser) location(def *Definition, f, limits *Fields) {
 	if receive, ok := f.take("receive", KindList); ok {
 		def.Receive = p.receive("receive", receive)
 	}
+	def.Read = f.Strings("read")
 	if p.inPlace || p.made {
-		for _, name := range []string{"lifetime", "update", "receive"} {
+		for _, name := range []string{"lifetime", "update", "receive", "read"} {
 			if f.Has(name) {
 				p.Problem(name, "%s belongs to a file at a location, and a machine written in place or made while running has none", name)
 			}
@@ -245,7 +246,7 @@ func (p *Parser) location(def *Definition, f, limits *Fields) {
 		if limits.Has("runs") {
 			p.Problem("limits.runs", "runs belongs to a file at a location, and a machine written in place or made while running has none")
 		}
-		def.Lifetime, def.Update, def.Runs, def.Receive = "", "", 0, nil
+		def.Lifetime, def.Update, def.Runs, def.Receive, def.Read = "", "", 0, nil, nil
 		return
 	}
 	// A runs that is no whole number has had its problem: 0 is no reading

@@ -574,7 +574,7 @@ func Test_inst_watch_reads_only_heads_that_changed(t *testing.T) {
 		switch {
 		case act == "read":
 			reads[name]++
-		case name == store.Running("controller")+"/client":
+		case name == store.Running("controller"):
 			looks++
 		}
 		return nil

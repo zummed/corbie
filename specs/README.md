@@ -10,7 +10,7 @@ Everything Corbie knows is in the store, which is a directory or a bucket. Every
 
 There are three kinds of party. A **controller** advances machines. It takes each message addressed to it, works out which instance the message is for, runs one step of that instance and writes down the result. A step only asks for work; the work is done elsewhere. A **runner** does the work: it takes jobs from its inbox, runs each script with the permissions the job was given, and writes the result back. A **client** submits machine files, starts runs and reads what happened to them. The command line, the gateway and an application using Corbie as a library are all clients.
 
-Each instance of a machine has a head and a record. The head is a small public card saying where the instance stands. The record is everything that happened to it, in order, readable only by the controller and by the client that owns the run's tree. Watching a run, listing runs, reading a result and streaming a run's progress are all the same act: reading heads and records from the store.
+Each instance of a machine has a head and a record. The head is a small public card saying where the instance stands. The record is everything that happened to it, in order, readable only by the controller, the client that owns the run's tree and the clients its file's `read:` lists. Watching a run, listing runs, reading a result and streaming a run's progress are all the same act: reading heads and records from the store.
 
 One script job's trip looks like this. Every step of it is a write to the store.
 
@@ -39,7 +39,7 @@ house/thermostats/kitchen.yaml   /home/thermostats/kitchen
 house/shared/base.yaml           listed in .corbieignore: no location
 ```
 
-- A tree belongs to the client that first submitted it. Only that client submits there, and reads or cancels the runs at its locations.
+- A tree belongs to the client that first submitted it. Only that client submits there and cancels the runs at its locations. It and the clients a file's `read:` lists read the runs there.
 - Trees do not nest. A client submits only at prefixes its ceiling's `at:` entries match.
 - A run's authority comes from its location: its file's `allow:` and `ask:`, its tree client's ceiling, and the secrets and values set at its location or above.
 - A sender or a caller, machine or client, adds nothing to the run's authority and takes nothing away. Its input may fill an allow scope, within the run's own patterns and every ceiling.

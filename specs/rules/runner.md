@@ -189,7 +189,7 @@ Uses:
 - **Secret**: gets the values a job carries, hands scripts handles to them, and has what comes back to a script, and what a job's process prints, searched for them (C-sec-25).
 - **Plugin**: supplies the calls a script makes, the libraries a bare name loads and the reading of a document of YAML or JSON that `require` of a data file gives; a program is started through the one way out that the exec wrapper is put in front of; what a script leaves open is closed by its plugin when the job ends (C-plug-07).
 - **Blob**: reads the script, its files and the input, and writes blobs that leave a job into the instance's record; a blob stays on the runner until its reference leaves the job (C-blob-06).
-- **Instance**: an emit entry is signed by the runner, tied to its job and sealed to the controller and the root's client (R-store-44, R-inst-32); an emit the machine wants is also told to the controller (R-inst-29).
+- **Instance**: an emit entry is signed by the runner, tied to its job and sealed to the controller and the clients the job names: the root's client and those `read:` lists (R-store-44, R-inst-32); an emit the machine wants is also told to the controller (R-inst-29).
 
 Used by:
 

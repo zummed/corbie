@@ -9,7 +9,7 @@ Commands
 
   corbie run submit <file or directory>   records a tree, and starts its singletons
   corbie run submit <location>            starts a run there and prints its ID
-  corbie run ls                           lists the runs of this client's trees in progress
+  corbie run ls                           lists the runs in progress of this client's trees and of files whose `read:` lists it
   corbie run show <id>                    prints one run's status, input and output
   corbie run cancel <id>                  cancels a run in this client's trees; a location cancels each run there, location#key one
   corbie run send <id> <event> [data]     sends an event to a run; a location, or location#key, names one too
@@ -92,7 +92,8 @@ Events and tickets
 
 A statechart state with `ticket: <name>` issues a ticket, and
 `corbie run reply` answers it (`corbie manual statechart`). Only the client that
-owns the run's tree can print the ticket, with `corbie run show <id> --tickets`.
+owns the run's tree, and those its file's `read:` lists, can print the ticket,
+with `corbie run show <id> --tickets`.
 
 A statechart with no final state keeps running. With `lifetime: singleton` the
 submit starts its one run, and a client sends it an event at its location each

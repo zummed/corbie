@@ -81,12 +81,12 @@ The layout is drawn so that the right to read or write is only ever a matter of 
 |---|---|---|
 | Controller | everything in its own area; jobs into runners' inboxes | everything in its own area |
 | Runner | results into the controller's inbox; new emits and blobs in records; its own inbox and marks | its own inbox and marks; blobs in records |
-| Client | messages into the controller's inbox; its own uploads; new blobs in the records of its own runs | its own receipts, heads and records |
+| Client | messages into the controller's inbox; its own uploads; new blobs in the records of its own runs | its own receipts; every head and record |
 | A viewer given heads only | nothing | every head |
 
 Every party can read the layout's version. A runner or a client adds to a record only-if-new: it can never change or remove what is there. A runner is not limited to the records of the jobs it holds, so a runner can add junk to any record. What it adds is signed by it and tied to a job, and readers ignore an entry from a runner that had no such job.
 
-Blobs are encrypted and their keys travel only in sealed messages, so the right to read a blob's bytes gives nothing without its reference.
+Blobs are encrypted and their keys travel only in sealed messages, so the right to read a blob's bytes gives nothing without its reference. A record's entries are sealed, so a client opens only those sealed to it.
 
 ## Kinds of store
 

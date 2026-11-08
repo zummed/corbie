@@ -1502,6 +1502,14 @@ func (b *build) first(s *instance.Start, start *arrival) (refused bool, err erro
 		}
 	}
 	st.Machine, st.Type = def.Name, def.Type
+	if b.fromLocation {
+		// A run started at its location is read by the clients its file
+		// lists, and so is everything below it.
+		st.Above.Readers = nil
+		for _, entry := range def.Read {
+			st.Above.Readers = append(st.Above.Readers, strings.TrimPrefix(entry, "client:"))
+		}
+	}
 	// A machine made while running has no ask of its own, and what it wrote
 	// of one is not kept.
 	if !st.Above.Made {

@@ -28,8 +28,8 @@ const (
 )
 
 // A Head is the small public summary of an instance, signed by the
-// controller and sealed to nobody. Apart from its location, key and labels
-// it holds nothing the instance was given or produced.
+// controller and sealed to nobody. Apart from its location, key, labels and
+// readers it holds nothing the instance was given or produced.
 type Head struct {
 	Name    string `json:"name"`    // the instance
 	Machine string `json:"machine"` // what the definition is called
@@ -50,6 +50,8 @@ type Head struct {
 	Timers   int               `json:"timers,omitzero"`
 	Tickets  []string          `json:"tickets,omitzero"`
 	Labels   map[string]string `json:"labels,omitzero"`
+	// Readers are the clients, beside its tree's, its record is sealed to.
+	Readers []string `json:"readers,omitzero"`
 	// Keep is how long the instance is kept after it ends.
 	Keep machine.Duration `json:"keep,omitzero"`
 }
@@ -199,6 +201,9 @@ type Above struct {
 	// longer than what started it, so a child's record goes no later than
 	// its parent's.
 	Keep machine.Duration `json:"keep,omitzero"`
+	// Readers are the clients, beside the tree's, that its record is sealed
+	// to: those its root's file lists in read:, by name.
+	Readers []string `json:"readers,omitzero"`
 	// Cause is what started the instance: the cause of its start.
 	Cause Cause `json:"cause,omitzero"`
 	// CallJob is, for a run a call job started, that job of the calling
@@ -383,12 +388,14 @@ type Receipt struct {
 
 // Submitted is what a submit did: what became of each location of the
 // tree, the runs it cancelled, the directory last submitted there when it
-// was another, and the secrets and values the files use that are not set.
+// was another, the secrets and values the files use that are not set, and
+// the clients the files' read: lists that the controller does not trust.
 type Submitted struct {
 	Locations []Recorded `json:"locations,omitzero"`
 	Cancelled []string   `json:"cancelled,omitzero"`
 	Before    string     `json:"before,omitzero"`
 	Missing   []string   `json:"missing,omitzero"`
+	Untrusted []string   `json:"untrusted,omitzero"`
 }
 
 // Recorded is what a submit did at one location: started, restarted,

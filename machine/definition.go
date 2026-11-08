@@ -50,6 +50,9 @@ type Definition struct {
 	// name, with "" for every event. With none, its own tree and its tree's
 	// client may.
 	Receive map[string][]string `json:"receive,omitzero"`
+	// Read names the clients, beside its tree's, that read the records of
+	// the file's runs, each as client:<name>.
+	Read []string `json:"read,omitzero"`
 	// Body is the type's own part.
 	Body jsontext.Value `json:"body"`
 	// Scripts and Machines are the files and child definitions the
@@ -670,6 +673,20 @@ func (c *Checker) location(def *Definition) {
 		c.Problem("limits.runs", "runs is at least 1")
 	case def.Runs > 0 && def.Lifetime != LifetimeKeyed:
 		c.Problem("limits.runs", "runs limits the runs of a keyed file, and this file is not keyed")
+	}
+	for i, entry := range def.Read {
+		at := fmt.Sprintf("read[%d]", i)
+		name, ok := strings.CutPrefix(entry, "client:")
+		switch {
+		case HasExpr(entry):
+			c.Problem(at, "%q: a read: entry is written out, with no expression", entry)
+		case !ok:
+			c.Problem(at, "%q: read: names clients, as client:wall, since only a client reads a record", entry)
+		case name == "":
+			c.Problem(at, "client: names a client, as client:wall")
+		case slices.Index(def.Read, entry) < i:
+			c.Problem(at, "%q is listed twice", entry)
+		}
 	}
 	for _, event := range sortedKeys(def.Receive) {
 		place := "receive"

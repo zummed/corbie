@@ -22,13 +22,14 @@ Fields every type takes
   lifetime: singleton          how runs start at the file's location, as below
   update: restart              what a changed file does to its runs, as below
   receive: [client:panel]      who may send to its runs or call it, as below
+  read: [client:wall]          other clients that read its runs, as below
 
 `title:` names a run to a person, and `corbie run show` prints it. Its
 expressions read `input`, `values` and `run`.
 
 - A title is one line of at most 200 characters. Each run of white space,
   line breaks among it, becomes one space, and a longer title is cut.
-- Only the client that owns the run's tree sees its title. `corbie run ls`
+- Only the clients that read the run's record see its title. `corbie run ls`
   does not print it.
 - A title that cannot be filled in fails the run, as an input that does not
   fit does.
@@ -278,7 +279,7 @@ none, as `corbie manual a-directory` shows.
 - `limits: { runs: 50 }` on a keyed file caps how many of its runs are running
   at once.
 - A machine written in place or made while running has no location, and
-  refuses `lifetime:`, `update:`, `receive:` and `runs:`.
+  refuses `lifetime:`, `update:`, `receive:`, `read:` and `runs:`.
 
 Sending and calling
 -------------------
@@ -334,6 +335,17 @@ A send or a call needs the sender's permissions, a send or call job's own
   noted as undelivered in the sender's record and fails nothing, after the
   sender's end if it has ended.
 - What a machine made while running may address is under Words from outside.
+
+A file's `read:` lists clients, beside its tree's, that read its runs: their
+records, tickets and files, and those of the runs below them.
+
+  read: [client:wall]          wall lists and shows the runs, and reads their records
+  receive: [client:wall]       wall sends to them too
+
+- A listed client does not own the tree. It cannot submit there or cancel the
+  runs.
+- A run keeps the list it started with.
+- A client the controller does not trust reads nothing. The submit prints its name.
 
 Events
 ------

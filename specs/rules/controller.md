@@ -190,7 +190,7 @@ The detailed rules behind the [Controller overview](../controller.md). What the 
 **R-ctl-108** A submit is refused, with its receipt saying why, at a prefix no `at:` entry of the client's ceiling matches, inside or above another tree, at a tree another client owns, at `/`, or with a location below another's or outside the prefix. The refusal names the tree or the owner, and for the ceiling the line that allows it.
 *Accept:* `Test_ctl_submit_needs_an_at_entry` and `Test_ctl_submit_is_refused_naming_the_tree`.
 
-**R-ctl-109** The receipt of a submit says what was done at each location, the directory last submitted there when it was another, and the secrets and values the files use that are not set at their locations or above, which refuses nothing.
+**R-ctl-109** The receipt of a submit says what was done at each location, the directory last submitted there when it was another, the secrets and values the files use that are not set at their locations or above, and the clients the files' `read:` lists that the controller does not trust; none of these refuses anything.
 *Accept:* `Test_ctl_submit_receipt_names_what_it_did`.
 
 **R-ctl-110** A file with a problem keeps what was recorded at its location before, and its runs, and the rest of the submit is done.

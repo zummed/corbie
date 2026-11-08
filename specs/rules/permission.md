@@ -99,7 +99,7 @@ The detailed rules behind the [Permissions overview](../permission.md). Requirem
 **R-perm-64** A child started by `machine:` runs at its parent's location. A machine made while running runs at the location of the job that starts it, and addresses no other run (R-mach-163).
 *Accept:* a child of `/home/devices/boiler` reads the secrets set at `/home/devices`.
 
-**R-perm-65** A tree belongs to the client that first submitted it: only that client submits there, reads the runs at its locations and cancels them, and a client submits trees only at prefixes its ceiling's `at:` entries match.
+**R-perm-65** A tree belongs to the client that first submitted it: only that client submits there and cancels the runs at its locations, it and the clients a file's `read:` lists read them, and a client submits trees only at prefixes its ceiling's `at:` entries match.
 *Accept:* the work client, with `at:/work` in its ceiling, submits a tree at `/work`. The shop client's submit at `/work` is refused, naming the work client, and its cancel of a run at `/work/services/lookup` is refused. The work client's submit at `/shop` is refused, naming its ceiling and the line `at:/shop`.
 
 ## Sending and calling
@@ -112,6 +112,11 @@ The detailed rules behind the [Permissions overview](../permission.md). Requirem
 
 **R-perm-68** The client that owns a tree sends to and calls the runs at its locations with no `send:` entry, whatever their `receive:` says. A parent run and its children send to each other with no `send:` or `receive:` entry.
 *Accept:* the work client, with no `send:` entry in its ceiling, sends to a chart at `/work/a` whose `receive:` lists only `client:panel`, and the event is delivered. A child sends to its parent, whose `receive:` lists nobody, and its parent sends back, with no `send:` entry in either's layers.
+
+## Reading
+
+**R-perm-70** A file's `read:` lists clients that read the runs at its location, and the runs below them, as the tree's client does (R-inst-32), and each run's head lists them. A listed client submits nothing in the tree and cancels nothing, and sends as `receive:` and its ceiling allow. A run keeps the list it started with.
+*Accept:* `Test_client_read_lists_clients_that_read_the_records`: a chart at a file with `read: [client:wall]` starts a child flow whose script logs a marker. `wall` lists the run and its child, is shown the child's emit, reads the ticket and answers it, and its cancel is refused, naming the tree's client; the run ends `done` with the answer in its output. A client the list does not name lists neither run, is shown the run's status with no output, and is told the record is not its own.
 
 ## Checking
 
@@ -192,11 +197,12 @@ The detailed rules behind the [Permissions overview](../permission.md). Requirem
 
 ## Interfaces
 
-- **Machines** supply each job's lists, the filling of scopes from input and values, the `approve:` list, the ask a held job goes to, and each file's `receive:`; what happens to a held job from then on is R-mach-91 to R-mach-115. Permissions tell them which entries are names and may hold no expression, and read and match the locations in addresses and `receive:` (`ReadLocation`, `MatchLocation`).
+- **Machines** supply each job's lists, the filling of scopes from input and values, the `approve:` list, the ask a held job goes to, and each file's `receive:` and `read:`; what happens to a held job from then on is R-mach-91 to R-mach-115. Permissions tell them which entries are names and may hold no expression, and read and match the locations in addresses and `receive:` (`ReadLocation`, `MatchLocation`).
 - **Controller** builds a job's layers from the definition, the start, each parent's job and the ceiling of the client that owns the run's tree, sends them apart and by name, and holds the jobs that declare a listed permission. It checks `send:` against the sender's layers for a send action and for send and call jobs, with the tree's prefix and never the runner's ceiling, checks the receiver's `receive:`, and checks `at:` against the client's ceiling at a submit.
 - **Identity** is where a ceiling is given with trust and changed: a client's by the controller's owner, a controller's by the runner's owner; a party with no ceiling may do nothing outside the job (R-id-24). A client's ceiling carries its `at:` entries and is checked as one (`CheckCeiling`).
 - **Runner** adds its own ceiling to the layers a job carries, gives the job its scratch directory, writes the refusal or the list of what was used into the job's result, keeps nothing from a job on any ground but these layers, and stops what a job started when it ends (R-run-19).
 - **Plugins** reach outside only through the ways out, and each way out is where a check is made and a use is noted (R-plug-02); what a script leaves open is closed at the job's end (C-plug-07).
 - **Secrets** supply the values that may fill a scope, and use the `secret` kind and its rule for a secret's name: its destination, which values a job is sent (R-sec-14), that being allowed a secret is not being sent it, and the check that every secret in a handle may go where it is going.
-- **Client** carries a start's narrowing list, and shows a run's `denied` with its refusal and the permissions a finished run used.
+- **Client** carries a start's narrowing list, and shows a run's `denied` with its refusal and the permissions a finished run used. It shows a client a run whose head lists it as it shows one of its own.
+- **Instances** seal a record's entries to the controller, the tree's client and the clients `read:` lists (R-inst-32).
 - **Manual** carries the statements of what is not defended, and each plugin's page says which kinds its calls need.

@@ -10,7 +10,7 @@ Everything that makes a machine move arrives as a message in the controller's in
 
 A message comes from a client submitting a tree, starting a run, cancelling one, sending an event, calling a location or answering a ticket; from a runner returning a job's result or passing on an emit the machine wants; or from the controller itself, which is how a child's start, a child's ending, events between a parent and a child, and sends and calls between runs travel. A wake is anything owed to time: a machine's timer, a machine's timeout, a job's result falling due, the next attempt at a job.
 
-The controller accepts a message only from a party it trusts, signed by that party and sealed to itself. A client may cancel only runs at its own trees' locations, and may answer any ticket it holds. It starts a run in another client's tree only by calling a transient location: its start of a location in another client's tree is a call. A client's send or call is checked as a run's is (see Sending and calling). A result or an emit is accepted only for a job the instance is still waiting on, from the runner the job was sent to.
+The controller accepts a message only from a party it trusts, signed by that party and sealed to itself. A client may cancel only runs at its own trees' locations, and may answer any ticket it holds. It starts a run in another client's tree only with a call or a send: its start of a location in another client's tree is a call. A client's send or call is checked as a run's is (see Sending and calling). A result or an emit is accepted only for a job the instance is still waiting on, from the runner the job was sent to.
 
 A sender's messages are named so that they sort in the order they were sent, and the controller takes them in that order.
 
@@ -133,7 +133,7 @@ $ corbie run submit house --at /home
 4. It records each file, written out with its includes, at its location, and acts on what changed (see A changed or removed file).
 5. The receipt names the directory that last submitted there, the values and secrets the files use that are not set at their locations or above, and the clients the files' `read:` lists that the controller does not trust.
 
-A submit changes no other tree. Only the tree's client cancels the runs at its locations, and it and the clients a file's `read:` lists read them. Another client starts a run there only by calling a transient location (see Sending and calling).
+A submit changes no other tree. Only the tree's client cancels the runs at its locations, and it and the clients a file's `read:` lists read them. Another client starts a run there only with a call or a send (see Sending and calling).
 
 ## Starting runs
 

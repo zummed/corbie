@@ -151,7 +151,7 @@ An expression reads these names.
 
   input                     the run's input, in every type
   values                    the values set at the run's location or above, as `values.HUB`
-  run                       the run's `id`, `location`, `context` and `tree`, in every type
+  run                       the run's `id`, `location`, `key`, `address`, `context` and `tree`, in every type
   stages, item              in a flow
   states, event, tickets    in a statechart
   args                      in an agent's tool
@@ -269,7 +269,7 @@ none, as `corbie manual a-directory` shows.
 
   lifetime: singleton    one run, started by the submit
   lifetime: keyed        one run for each key a send names; statecharts only
-  lifetime: transient    a run for each call or start; the default
+  lifetime: transient    a new run for each call, start or send; the default
 
   update: restart        a changed file cancels the runs at its location
   update: drain          they finish on the definition they started with; the default
@@ -287,6 +287,7 @@ A job sends an event to a run by its address, or calls a location and waits
 for the result.
 
   { at: devices/boiler }                    the run of a singleton location
+  { at: services/report }                   a new run of a transient location
   { at: rooms/thermostat, key: kitchen }    the run for that key, started if none is running
   { at: devices/boiler, run: <ID> }         one run by its ID
 
@@ -323,7 +324,12 @@ A send or a call needs the sender's permissions, a send or call job's own
 - A call is checked against a list. A mapping takes a call only from the
   tree's client.
 - The run reads the sender as `event.from`: `{ at, run }`, with `key` for a
-  keyed run, or `{ client }`.
+  keyed run, or `{ client }`. A run reads its own address as
+  `${run.address}`, and its key as `${run.key}`, which is null except at a keyed
+  location.
+- A send to a transient location starts a new run with the event's data as
+  its input. A statechart is then given the event; a flow or an agent is given
+  only the start.
 - A send the receiver refuses, or that no running statechart can take, is
   noted as undelivered in the sender's record and fails nothing, after the
   sender's end if it has ended.

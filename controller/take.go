@@ -811,8 +811,17 @@ func (b *build) readDefinition(s *instance.Start) *stepOut {
 }
 
 // run is what an expression reads of the instance.
-func (b *build) run() machine.Run {
-	return machine.Run{ID: b.inst, Location: b.st.Location, Context: b.st.Above.Context, Tree: b.st.Tree, Values: b.st.Above.Values}
+func (b *build) run() machine.Run { return runOf(b.inst, b.st) }
+
+// runOf is what an expression reads of an instance in a state. Only a run
+// at a keyed location has a key.
+func runOf(inst string, st *instance.State) machine.Run {
+	run := machine.Run{ID: inst, Location: st.Location, Context: st.Above.Context, Tree: st.Tree, Values: st.Above.Values}
+	if st.Lifetime == machine.LifetimeKeyed {
+		key := st.Key
+		run.Key = &key
+	}
+	return run
 }
 
 // readAllow fills in the allow list written for the whole definition, for
@@ -1282,7 +1291,7 @@ func (b *build) end(status string, output any, e *machine.Error) {
 	// failure.
 	if st.Above.StartedBy != "" && st.Above.CallJob == "" && status == instance.Failed && b.step.Number == 1 {
 		b.ask(instance.Ask{Kind: instance.AskTell, To: st.Above.StartedBy, Message: b.message("tell"),
-			Text: fmt.Sprintf("the run %s, started by a send to %s#%s, failed in its first step, which took the event: %s", b.inst, st.Location, st.Key, e.Error)})
+			Text: fmt.Sprintf("the run %s, started by a send to %s, failed in its first step, which took the event: %s", b.inst, addressText(&machine.Address{At: st.Location, Key: runOf(b.inst, st).Key}), e.Error)})
 	}
 }
 
@@ -1435,11 +1444,17 @@ func (b *build) first(s *instance.Start, start *arrival) (refused bool, err erro
 	}
 	b.def = def
 	// A run a send starts takes the event only where its location's file
-	// takes it. One whose file cannot be read fails as it starts.
-	if start.isSend() && len(read.Problems) == 0 {
+	// takes it. One whose file cannot be read fails as it starts. A flow or
+	// an agent takes no sent event, so a send that starts one is its start
+	// alone.
+	given := start.isSend()
+	if given && len(read.Problems) == 0 {
 		if why := b.refuses(start.msg, def); why != "" {
 			b.undeliver(start, why)
 			return true, nil
+		}
+		if !machine.Receives(def) {
+			given, b.events = false, nil
 		}
 	}
 	// A call is taken only where its location's file takes the caller. Its
@@ -1514,7 +1529,7 @@ func (b *build) first(s *instance.Start, start *arrival) (refused bool, err erro
 	}
 	b.use(start)
 	b.record(machine.Event{Name: machine.Start, Data: st.Input}, start, false)
-	if start.isSend() {
+	if given {
 		b.record(sentEvent(start.msg), start, false)
 	}
 	if start.kind == identity.Client || st.Lifetime != "" {

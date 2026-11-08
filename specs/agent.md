@@ -300,4 +300,4 @@ Every agent has tools for working with blobs without reading them whole: one to 
 
 ## Events
 
-An agent acts on the results of its turns, its tools and its ask, and on nothing else. A send to an agent run by its address is noted as undelivered in the sender's record. Events sent down to it, and events its tools send up while they run, are ignored; a watcher still sees them in the record.
+An agent acts on the results of its turns, its tools and its ask, and on nothing else. A send to an agent run by its address is noted as undelivered in the sender's record, and one to a transient agent's location starts a new run of it, with the event's data as its input. Events sent down to it, and events its tools send up while they run, are ignored; a watcher still sees them in the record.

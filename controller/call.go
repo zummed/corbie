@@ -115,11 +115,7 @@ func (p *pass) called(inst string, step *instance.Step, ask *instance.Ask) error
 	if err != nil {
 		return err
 	}
-	sender := &machine.Address{At: st.Location, Run: inst}
-	if st.Lifetime == machine.LifetimeKeyed {
-		key := st.Key
-		sender.Key = &key
-	}
+	sender := runOf(inst, st).Address()
 	mac := hmac.New(sha256.New, st.Seed)
 	mac.Write([]byte("call\x00" + ask.Message))
 	msg := &instance.Message{Kind: instance.KindStart, Instance: ask.Run, From: inst, Sender: sender, Start: &instance.Start{

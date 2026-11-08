@@ -57,7 +57,7 @@ A flow keeps every item's result in its state, so `each:` suits lists of hundred
 
 What a stage's job sends up while it works, a script's emits or a child machine's events, is available to later stages as that stage's emitted items, as they arrive. A flow's `emit:` can name one stage whose emitted items it emits to its own parent as they arrive, which is how a flow gives partial results.
 
-A flow does not wait on tickets or timers, and ignores events sent down to it. A send to a flow run by its address is noted as undelivered in the sender's record.
+A flow does not wait on tickets or timers, and ignores events sent down to it. A send to a flow run by its address is noted as undelivered in the sender's record. A send to a transient flow's location starts a new run of it, with the event's data as its input (see machine.md).
 
 ## Sending and calling
 

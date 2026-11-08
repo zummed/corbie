@@ -104,7 +104,7 @@ Following from a terminal is one flag, `--watch`. It prints what the command pri
 /home/chats#alice     the running run of key alice at a keyed location
 ```
 
-`run send` to a key with no running run starts one, as the file's `lifetime: keyed` says. A client sends to the runs of its own trees with no `send:` entry, and only it cancels them. A send to another tree needs `send:` in the client's ceiling and `client:<its name>` in the receiver's `receive:` (see permission.md).
+`run send` to a key with no running run starts one, as the file's `lifetime: keyed` says, and `run send` to a transient location starts a new run of it. A client sends to the runs of its own trees with no `send:` entry, and only it cancels them. A send to another tree needs `send:` in the client's ceiling and `client:<its name>` in the receiver's `receive:` (see permission.md).
 
 `run show` prints a run's title, and `run ls` does not, since a listing reads only the heads. `run show` can also print one step, one job's input and output, or the definition, can save a result's files to a directory, and with `--wait` stays until the run ends and prints its result.
 

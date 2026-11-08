@@ -23,12 +23,15 @@ import (
 //     the empty key.
 //  2. The step that ends a run is written first and the file is deleted
 //     after, so a run that has the key is running or has just ended.
-//  3. An event sent to { at } or { at, key } leaves the inbox only when a
-//     step of a running run used it. Until then it stays under the name its
-//     sender's step gave it, and where its run has ended, or lost its key,
-//     the message is rewritten in place to name the run that has the key.
+//  3. An event sent to a singleton's { at } or to { at, key } leaves the
+//     inbox only when a step of a running run used it. Until then it stays
+//     under the name its sender's step gave it, and where its run has ended,
+//     or lost its key, the message is rewritten in place to name the run
+//     that has the key.
 //  4. An event sent to { at, run } goes to that run alone, and is noted as
 //     undelivered when that run cannot take it.
+//  5. An event sent to a transient location's { at } starts a new run, as a
+//     key no other send names would, and takes no key's file.
 //
 // So a send reads the file once and fixes the run it goes to in its step. A
 // carry-out done again goes to the same run, which has heard it.
@@ -39,9 +42,15 @@ func (a *arrival) isSend() bool {
 	return !a.wake && a.msg.Kind == instance.KindSend && a.kind == identity.Controller && a.msg.To != nil
 }
 
-// movable says an arrival is an event sent to { at } or { at, key }, which
-// goes on to the run that has the key now.
-func (a *arrival) movable() bool { return a.isSend() && a.msg.To.Run == "" }
+// movable says an arrival is an event sent to a singleton's { at } or to
+// { at, key }, which goes on to the run that has the key now.
+func (a *arrival) movable() bool { return a.isSend() && a.msg.To.Run == "" && !a.fresh() }
+
+// fresh says an arrival is an event sent to a transient location's { at },
+// which starts a run of its own and goes nowhere else.
+func (a *arrival) fresh() bool {
+	return a.isSend() && a.msg.To.Run == "" && a.msg.To.Key == nil && a.msg.Start != nil
+}
 
 // starts says an arrival starts an instance: a start, or an event sent to a
 // key that names the run it starts.
@@ -131,7 +140,7 @@ type ahead struct {
 // that run, and it is taken first. It is why an event is never heard out of
 // order. The inbox is read in order.
 func (p *pass) behind(a *arrival, seen *ahead) bool {
-	if !a.isSend() {
+	if !a.isSend() || a.fresh() {
 		return false
 	}
 	msg := a.msg
@@ -210,7 +219,7 @@ func (p *pass) aimAt(at, key string, keyed, live bool) (*target, error) {
 
 // aim says where a send to { at } or { at, key } goes: to the run that has
 // the key, or to a run it starts, which the caller names; or why it is not
-// delivered.
+// delivered. A send to a transient location's { at } always starts one.
 func (t *target) aim(at string, keyed bool) (to string, starts bool, why string) {
 	switch {
 	case t.holder != "":
@@ -222,6 +231,8 @@ func (t *target) aim(at string, keyed bool) (to string, starts bool, why string)
 		return "", false, why
 	}
 	switch {
+	case !keyed && t.file.Lifetime == machine.LifetimeTransient:
+		return "", true, ""
 	case !keyed:
 		return "", false, fmt.Sprintf("no run of the singleton at %s is running", at)
 	case t.file.Runs > 0 && t.runs >= t.file.Runs:
@@ -414,10 +425,13 @@ func (b *build) aim(ask *instance.Ask, s *machine.Send, at, why string) {
 	if starts {
 		// Named under the tree's client, from the sender's message, so a
 		// carry-out done again names the same run. A second send in the
-		// step to the key goes to it.
+		// step to the key goes to it; one to a transient location starts
+		// another.
 		to = store.RootInstance(t.file.Client, b.time, ask.Message)
 		ask.Run = to
-		t.holder = to
+		if keyed {
+			t.holder = to
+		}
 		for place, other := range b.targets {
 			if place.at == at && other != nil {
 				other.runs++
@@ -465,7 +479,8 @@ func (b *build) refuses(msg *instance.Message, def *machine.Definition) string {
 	case msg.To.At != b.st.Location && !(msg.To.At == "" && msg.Sender != nil && msg.Sender.Client == store.InstanceClient(b.inst)):
 		// The tree's client names a run of its own by its ID alone.
 		return fmt.Sprintf("the run %s is not at %s", b.inst, msg.To.At)
-	case !machine.Receives(def):
+	case !machine.Receives(def) && !(msg.Start != nil && msg.Start.Run == b.inst):
+		// A send that starts a run of a flow or an agent is its start.
 		return fmt.Sprintf("the run %s is a %s, which takes no sent event", b.inst, def.Type)
 	case machine.Reserved(name) || machine.Owns(def, name):
 		return fmt.Sprintf("%q is the name of an event the run gives itself", name)
@@ -605,8 +620,9 @@ func (p *pass) sendJob(inst string, step *instance.Step, ask *instance.Ask) erro
 // addressed writes an event sent to a run by its address. What the event
 // names is in the record of the run it goes to before that run is told. An
 // event sent to a key carries the start of a run, so one that arrives after
-// the run with the key has ended starts a fresh one. It gives the message,
-// and why it could not be written, if it could not.
+// the run with the key has ended starts a fresh one, and so does one that
+// starts a run of a transient location. It gives the message, and why it
+// could not be written, if it could not.
 func (p *pass) addressed(inst string, step *instance.Step, ask *instance.Ask) (*instance.Message, *machine.Error, error) {
 	if ask.To == "" || ask.Undelivered {
 		return nil, nil, nil // written in the record, and nowhere else
@@ -616,20 +632,18 @@ func (p *pass) addressed(inst string, step *instance.Step, ask *instance.Ask) (*
 	if err != nil {
 		return nil, nil, err
 	}
-	sender := &machine.Address{At: st.Location, Run: inst}
-	if st.Lifetime == machine.LifetimeKeyed {
-		key := st.Key
-		sender.Key = &key
-	}
+	sender := runOf(inst, st).Address()
 	to := &machine.Address{At: ask.Location}
 	msg := &instance.Message{Kind: instance.KindSend, Instance: ask.To, From: inst, To: to, Sender: sender,
 		Event: &machine.Event{Name: ask.Event.Name, Data: data}}
 	switch {
 	case ask.Direct:
 		to.Run = ask.To
-	case ask.Key != "":
+	case ask.Key != "" || ask.Run != "":
 		key := ask.Key
-		to.Key = &key
+		if key != "" {
+			to.Key = &key
+		}
 		mac := hmac.New(sha256.New, st.Seed)
 		mac.Write([]byte("send\x00" + ask.Message))
 		msg.Start = &instance.Start{Location: ask.Location, Key: key, Run: ask.Run, Seed: mac.Sum(nil),
@@ -831,10 +845,10 @@ func (p *pass) route(a *arrival) error {
 			run = store.RootInstance(t.file.Client, a.sent, name)
 		}
 		out.Instance = run
-		if to.Key != nil {
+		if to.Key != nil || starts {
 			seed := make([]byte, 32)
 			rand.Read(seed)
-			out.Start = &instance.Start{Location: to.At, Key: *to.Key, Seed: seed, Above: &instance.Above{}}
+			out.Start = &instance.Start{Location: to.At, Key: keyOf(to), Seed: seed, Above: &instance.Above{}}
 			if starts {
 				out.Start.Run = run
 			}

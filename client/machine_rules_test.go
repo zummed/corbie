@@ -856,6 +856,18 @@ func Test_mach_run_is_read_in_every_type(t *testing.T) {
 	if got, err := located.Text("${run.tree}", machine.Scope{"input": nil}, "output"); err != nil || got != "/home" {
 		t.Errorf("run.tree gives %v (%v)", got, err)
 	}
+	// Only a run at a keyed location has a key, and its address names it.
+	key := "kitchen"
+	keyed := machine.NewEvaluator(time.Now(), []byte("seed"), machine.Run{ID: "r2", Location: "/home/rooms/room", Key: &key, Tree: "/home"})
+	for evaluator, want := range map[*machine.Evaluator]string{
+		located: `[null,{"at":"/home/devices/boiler","run":"r1"}]`,
+		keyed:   `["kitchen",{"at":"/home/rooms/room","key":"kitchen","run":"r2"}]`,
+	} {
+		got, err := evaluator.Eval("JSON.stringify([run.key, run.address])", machine.Scope{"input": nil})
+		if err != nil || got != want {
+			t.Errorf("run.key and run.address give %v (%v), not %s", got, err, want)
+		}
+	}
 	_, err := machineParse(`
 		flow: f
 		stages:

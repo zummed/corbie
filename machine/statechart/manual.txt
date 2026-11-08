@@ -118,6 +118,7 @@ An address names a run at a location, as in `corbie manual
 machines-together`.
 
   to: { at: devices/boiler }                           the singleton at the location
+  to: { at: services/report }                          a new run of a transient location
   to: { at: rooms/room, key: "${event.data.room}" }    the run for the key, started if none is running
   to: { at: rooms/room, run: "${event.data.run}" }     one run by its ID
   to: "${event.from}"                                  the sender of the event being taken

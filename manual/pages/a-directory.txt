@@ -75,7 +75,7 @@ A file of one line places a listed machine at its own location. It takes the typ
 
   singleton             the submit starts its one run, when none is running
   keyed                 a send to a key with no running run starts one
-  transient, default    corbie run submit <location> starts one
+  transient, default    corbie run submit <location>, a call or a send to { at } starts a new one
 
 What the submit does at a location:
 
@@ -96,7 +96,7 @@ What the submit does at a location:
 `corbie test <directory>` checks each send and call whose `at:` is written out and is in the tree, as the controller would:
 
   the location has a file         a location with none is printed, which fails nothing
-  the lifetime fits               { at } to a singleton, { at, key } to keyed, a call to transient
+  the lifetime fits               { at } to a singleton or transient, { at, key } to keyed, a call to transient
   receive: lists the sender       read for the event's name, or for a call
   the event is not the file's     such as the name of its timer
   the sender holds send:          in its own allow: and deny:; a list with ${…} in it is left out

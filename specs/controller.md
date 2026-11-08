@@ -141,7 +141,7 @@ A submit changes no other tree. Only the tree's client reads and cancels the run
 |---|---|
 | `singleton` | at a submit, when the location has no running run |
 | `keyed` | at a send to a key with no running run, with the event's data as input |
-| `transient` (default) | at a call, or at `corbie run submit <location>` from the tree's client |
+| `transient` (default) | at a call, at a send to `{ at }` with the event's data as input, or at `corbie run submit <location>` from the tree's client |
 
 - Every run keeps the definition it started with, in its own record.
 - A run's authority comes from its location: its file's `allow:` and `ask:`, its tree client's ceiling, and the secrets and values set at its location or above (see permission.md).
@@ -204,7 +204,9 @@ job:
 
 ## Keyed runs
 
-A key's file is at its location (see store.md), named by the SHA-256 of the key. It holds the key, the run and the message that starts the run, signed by the controller and sealed to it. A singleton's run is named the same way, by the file of the empty key, which the submit writes as it starts the run. A send to `{ at }` never starts a run: with no running singleton it is noted as undelivered.
+A key's file is at its location (see store.md), named by the SHA-256 of the key. It holds the key, the run and the message that starts the run, signed by the controller and sealed to it. A singleton's run is named the same way, by the file of the empty key, which the submit writes as it starts the run. A send to a singleton's `{ at }` never starts a run: with no running singleton it is noted as undelivered.
+
+A send to a transient location's `{ at }` is a send to a key no other send names. It always starts a new run, named from the sender's message, and takes no key's file. The run's first step takes the start and the event, as a keyed run's does; a flow or an agent takes the start alone.
 
 1. A send reads the file once, while the step is worked out, and the step names the run the event goes to: the run the file names or, when it names none at a keyed location, a new run. A carry-out done again goes to the same run.
 2. A message to a key carries the event, and what would start a run there. The new run's first step takes both, and the run with the key takes the event alone.

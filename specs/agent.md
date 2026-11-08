@@ -36,7 +36,7 @@ An agent may be started with the conversation of an earlier agent's result, and 
 
 ## Tools
 
-A tool is a named job, a script, a machine, a call or a send, with a description, the shape of its arguments, and its own permissions. The job reads the agent's input and the arguments the model supplied. A tool whose job is an agent is how an agent has sub-agents: the model is shown what the sub-agent replied, and the sub-agent's conversation stays in its own record.
+A tool is a named job, written with `script:`, `machine:`, `call:` or `send:`, with a description, the shape of its arguments, and its own permissions. The job reads the agent's input and the arguments the model supplied. A tool whose job is an agent is how an agent has sub-agents: the model is shown what the sub-agent replied, and the sub-agent's conversation stays in its own record.
 
 A tool's `description:` is plain text, and Corbie refuses an expression in it, as in a definition's. A call or a send names a location read from the agent's tree, and needs `send:` for it (see [Permissions](permission.md)).
 
@@ -300,4 +300,4 @@ Every agent has tools for working with blobs without reading them whole: one to 
 
 ## Events
 
-An agent acts on the results of its turns, its tools and its ask, and on nothing else. A send to an agent run by its address is noted as undelivered in the sender's record. Events sent down to it, and events its tools send up while they run, are ignored; a watcher still sees them in the record.
+An agent acts on the results of its turns, its tools and its ask, and on nothing else. A send to an agent run by its address is noted as undelivered in the sender's record, and one to a transient agent's location starts a new run of it, with the event's data as its input. Events sent down to it, and events its tools send up while they run, are ignored; a watcher still sees them in the record.

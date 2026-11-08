@@ -682,8 +682,10 @@ func (b *build) located(start *arrival) (*instance.Start, error) {
 		return nil, b.callIn(start, file, &s)
 	case store.InstanceClient(b.inst) != file.Client:
 		return no("%s is in a tree of the client %s, and only that client starts a run there", s.Location, file.Client)
-	case sent && file.Lifetime != machine.LifetimeKeyed:
+	case sent && s.Key != "" && file.Lifetime != machine.LifetimeKeyed:
 		return no("%s is not keyed", s.Location)
+	case sent && s.Key == "" && file.Lifetime != machine.LifetimeTransient:
+		return no("%s is not transient", s.Location)
 	case sent:
 	case call && file.Lifetime != machine.LifetimeTransient:
 		return no("%s is %s: a call starts a run only of a transient location", s.Location, file.Lifetime)

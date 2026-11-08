@@ -140,14 +140,15 @@ func (s *sender) check(send machine.PlacedSend, layers []permission.Layer) (why,
 		}
 		return "", ""
 	}
-	if !machine.Receives(def) {
+	if why := machine.Addressable(at, def.Lifetime, to.Key != ""); why != "" {
+		return why, ""
+	}
+	if !machine.Receives(def) && def.Lifetime != machine.LifetimeTransient {
+		// A send to a transient flow or agent starts a run of it.
 		return fmt.Sprintf("%s is a %s, which takes no sent event", at, def.Type), ""
 	}
 	if machine.Owns(def, send.Event) {
 		return fmt.Sprintf("%q is the name of an event %s gives itself", send.Event, at), ""
-	}
-	if why := machine.Addressable(at, def.Lifetime, to.Key != ""); why != "" {
-		return why, ""
 	}
 	if !machine.ReceivesFrom(def, s.tree.Prefix, sender, send.Event) {
 		return fmt.Sprintf("%s does not receive %s from %s", at, send.Event, s.from), ""

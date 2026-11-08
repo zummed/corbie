@@ -117,7 +117,7 @@ A client submits a directory at a prefix, and the directory becomes a tree (see 
 |---|---|---|
 | `singleton` | one | the submit |
 | `keyed` | one per key, statecharts only | a send to a key with no running run (see statechart.md) |
-| `transient` | any number; the default | a call, or `corbie run submit <location>` by the tree's client |
+| `transient` | any number; the default | a call, a send to `{ at }`, or `corbie run submit <location>` by the tree's client |
 
 ```
 $ corbie run submit house --at /home
@@ -126,7 +126,7 @@ $ corbie run submit house --at /home
 /home/services/weather   transient   recorded
 ```
 
-The submit starts the boiler's run. The thermostat starts a run for each room a send names, and the weather service one for each call. `house/.corbieignore` lists `shared/`, so `house/shared/base.yaml` has no location and is not printed.
+The submit starts the boiler's run. The thermostat starts a run for each room a send names, and the weather service one for each call or send. `house/.corbieignore` lists `shared/`, so `house/shared/base.yaml` has no location and is not printed.
 
 Every run has a location, and its authority comes from it: its file's `allow:` and `ask:`, its tree client's ceiling, and the secrets and values set at its location or above (see permission.md and secret.md).
 
@@ -191,8 +191,16 @@ Expressions are JavaScript. They read `input`, which is what the machine was sta
 ```
   run.id         the run's ID
   run.location   the run's location, such as /home/devices/boiler
+  run.key        the run's key at a keyed location, such as kitchen; null for any other run
+  run.address    the address other runs send to this run with: { at, run }, with key for a keyed run
   run.context    the absolute path of the directory last submitted at the run's tree
   run.tree       the prefix of the run's tree, such as /home
+```
+
+`run.address` is what `event.from` gives a receiver of this run's sends, so a run hands out its own return address:
+
+```yaml
+send: { to: { at: services/report }, event: make, data: { reply_to: "${run.address}" } }
 ```
 
 Everything else that varies from one run of a definition to the next comes in through `input`, and from one tree to the next through `values`.
@@ -267,7 +275,16 @@ A `default` that `properties` and `items` do not lead to from the top, such as o
 
 ## Jobs
 
-A machine contains jobs, which do its work. A job is a script, which a runner executes, or a machine, which the controller starts as a child run. Either way it has an input, the permissions it may use, a limit on time, and optionally a restart policy. A script also has a limit on memory and tags that choose which runners may take it.
+A machine contains jobs, which do its work. A job is a script, which a runner executes, or a machine:
+
+| Job | What runs |
+|---|---|
+| `script: ./fetch.js` | the script, on a runner |
+| `machine: ./child.yaml` | the machine of that file, as a child run |
+| `call: { at: services/weather }` | the machine at that location, as a run of its own whose result is the job's output (see Sending and calling) |
+| `send: { to, event, data }` | nothing: the event is delivered to a run, and the job has no output |
+
+A script or a machine has an input, the permissions it may use, a limit on time, and optionally a restart policy. A script also has a limit on memory and tags that choose which runners may take it.
 
 A program using Corbie as a library can list a definition's jobs, each with its place, such as `stages.a.job`.
 
@@ -324,6 +341,7 @@ A machine sends an event to a run by its address, or calls a location and waits 
 | Address | Sends to |
 |---|---|
 | `{ at: devices/boiler }` | the run of a `singleton` location |
+| `{ at: services/report }` | a new run of a `transient` location |
 | `{ at: rooms/thermostat, key: kitchen }` | the run for that key at a `keyed` location, started if none is running |
 | `{ at: devices/boiler, run: <ID> }` | one run by its ID, a child run included |
 
@@ -341,6 +359,13 @@ job: { call: { at: services/weather }, input: { days: 2 } }
 - `at`, `key` and `run` may hold expressions, and `to` may be one expression that gives an address. An address is checked once it is filled in.
 - `job: { call: { at }, input }` starts a run of a `transient` location and waits. The job's output is that run's result. The job fails if the receiver refuses it, if the location is not `transient`, or if the run fails.
 - A key is any text of 1 to 256 characters. It is written in the run's head, as a label is, so anyone who can list runs can read it, and it holds no secret.
+
+A send to a transient location's `{ at }` is a send to a key no other send names: it always starts a new run.
+
+1. The event's data is the new run's input.
+2. A statechart is then given the event, as a keyed run is. A flow or an agent takes no sent event, and is given only the start.
+
+`receive:`, the depth limit and `event.from` work as for a keyed run. `limits: { runs }` is for keyed files only.
 
 A send or a call needs two lists to agree:
 

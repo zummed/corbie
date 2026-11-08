@@ -1,0 +1,10 @@
+statechart: echo
+allow: [send:root]
+initial: open
+states:
+  open:
+    on:
+      hello:
+        go: over
+        send: { to: "${input.back}", event: heard, data: { from: "${event.from}", key: "${run.key}", me: "${run.address}" } }
+  over: { end: done }

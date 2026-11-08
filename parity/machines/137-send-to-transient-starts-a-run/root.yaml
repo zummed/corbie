@@ -1,0 +1,17 @@
+# A send to a transient location's { at } starts a new run there, with the
+# event's data as its input. The chart echo is given the event after its
+# start, and the flow note only its start. Each replies to the address it was
+# handed, run.address, and gives its own, which names it as event.from does.
+statechart: asker
+allow: [send:echo, send:note]
+initial: asking
+states:
+  asking:
+    entry:
+      send:
+        - { to: { at: echo }, event: hello, data: { back: "${run.address}" } }
+        - { to: { at: note }, event: write, data: { back: "${run.address}" } }
+    on: { heard: one, written: one }
+  one:
+    on: { heard: finished, written: finished }
+  finished: { end: done }

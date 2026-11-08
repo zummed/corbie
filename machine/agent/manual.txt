@@ -95,7 +95,7 @@ Tools
   description  what the tool is for, in plain text with no expression: the
                model chooses a tool by this text
   args         the shape of its arguments: { name: type }, or JSON Schema
-  job          a script, a machine, a call or a send, as in
+  job          `script:`, `machine:`, `call:` or `send:`, as in
                `corbie manual definitions`; it reads `input`, the agent's
                input, and `args`, the model's arguments
   list         a job that returns tools, [{ name, description, args }], in

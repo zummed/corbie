@@ -1,4 +1,5 @@
 statechart: lonely
-initial: open
+lifetime: singleton
+initial: gone
 states:
-  open: { on: { hello: open } }
+  gone: { end: done }

@@ -1,6 +1,8 @@
 # Corbie
 
-Corbie runs machines. A machine is a flow, a statechart or an agent, written as a definition in YAML, and it contains jobs, which do its work: a job is a script, which a runner executes, or another machine. One binary does everything. What a process does is set by the roles it is started with and by nothing else.
+Corbie runs machines. A machine is a flow, a statechart or an agent, written as a definition in YAML, and it contains jobs, which do its work. A job is a script, which a runner executes, or a machine.
+
+One binary does everything. What a process does is set by the roles it is started with and by nothing else.
 
 ## How it holds together
 
@@ -49,7 +51,7 @@ A file's `lifetime:` says how runs start at its location.
 ```
 singleton   the submit starts the one run
 keyed       one run per key, started by a send to a key with no running run; statecharts only
-transient   a new run for each call or corbie run submit <location>; the default
+transient   a new run for each call, each send to { at }, or corbie run submit <location>; the default
 ```
 
 The gateway starts a run by calling a location (see client.md).
@@ -65,7 +67,7 @@ Removing a file cancels every run at its location.
 
 ## How machines talk
 
-A statechart sends an event with a `send:` action, and a flow stage or an agent tool with `job: { send: … }`. `job: { call: { at }, input }` starts a run of a transient location and waits for its result. Only a statechart takes a sent event. An address is `{ at }` for a singleton, `{ at, key }` for a keyed run, or `{ at, run }` for one run.
+A statechart sends an event with a `send:` action, and a flow stage or an agent tool with `job: { send: … }`. `job: { call: { at }, input }` starts a run of a transient location and waits for its result. An address is `{ at }` for a singleton or a new run of a transient location, `{ at, key }` for a keyed run, or `{ at, run }` for one run. A run hands out its own address as `${run.address}`.
 
 Two lists must agree:
 
@@ -115,6 +117,7 @@ corbie run submit house --at /home
 
 - Only jobs of runs at `/home/devices/boiler` get `BOILER_PASSWORD`.
 - The controller writes the sender into `event.from`, here `{ at: /home/thermostats/kitchen, run: <ID> }`. A reply is a send to that address.
+- A send to a transient location's `{ at }` starts a new run with the event's data as its input, as a send to a key no one else names does. A statechart is then given the event; a flow or an agent takes no sent event and is given only the start.
 - A send the sender's own layers refuse is `denied`. A send the receiver refuses is noted in the sender's record and fails nothing.
 
 ## Reading these specs

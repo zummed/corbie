@@ -267,15 +267,21 @@ const (
 )
 
 // A Run is what an expression reads of the run it is in: its ID, its
-// location, the context its client submitted from, the prefix of its tree,
-// and the values set at its location or above, by name.
+// location, its key at a keyed location, the context its client submitted
+// from, the prefix of its tree, and the values set at its location or above,
+// by name.
 type Run struct {
 	ID       string
 	Location string
+	Key      *string
 	Context  string
 	Tree     string
 	Values   map[string]string
 }
+
+// Address is the address another run sends to this run with, as event.from
+// names it as a sender: { at, run }, with key for a keyed run.
+func (r Run) Address() *Address { return &Address{At: r.Location, Run: r.ID, Key: r.Key} }
 
 // An Evaluator fills in the expressions of one step. The time expressions
 // see is the time of the step, and their random numbers follow from the
@@ -377,7 +383,14 @@ func (e *Evaluator) give(name string, v any) (goja.Value, error) {
 // Eval gives the value of one expression in a scope.
 func (e *Evaluator) Eval(src string, scope Scope) (any, error) {
 	scope = maps.Clone(scope)
-	scope[RunName] = map[string]any{"id": e.of.ID, "location": e.of.Location, "context": e.of.Context, "tree": e.of.Tree}
+	run := map[string]any{"id": e.of.ID, "location": e.of.Location, "key": nil, "context": e.of.Context, "tree": e.of.Tree}
+	to := e.of.Address()
+	address := map[string]any{"at": to.At, "run": to.Run}
+	if to.Key != nil {
+		run["key"], address["key"] = *to.Key, *to.Key
+	}
+	run["address"] = address
+	scope[RunName] = run
 	values := map[string]any{}
 	for name, value := range e.of.Values {
 		values[name] = value

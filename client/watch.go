@@ -312,7 +312,7 @@ type Entry struct {
 	Events []instance.Arrived `json:"events,omitzero"`
 	Asks   []instance.Ask     `json:"asks,omitzero"`
 	Status string             `json:"status,omitzero"`
-	Shown  any                `json:"state,omitzero"` // what the machine's type shows of its state
+	Shown  machine.Shown      `json:"state,omitzero"` // where the run stands after the step
 	// For an emit.
 	Job  string `json:"job,omitzero"` // the job that emitted
 	Name string `json:"name,omitzero"`
@@ -673,7 +673,7 @@ func stepEntry(name string, step *instance.Step) (Entry, error) {
 		entry.Asks = append(entry.Asks, ask)
 	}
 	if t, ok := machine.TypeOf(step.State.Type); ok {
-		entry.Shown = t.Show(nil, step.State.Inner)
+		entry.Shown = t.Show(step.State.Inner)
 	}
 	return entry, nil
 }

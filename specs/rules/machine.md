@@ -332,7 +332,7 @@ The detailed rules behind the [Machines overview](../machine.md). Area code: `ma
 
 ## Machine types
 
-**R-mach-131** A type is an extension that supplies six things, the shape of its definitions, the filling-out of its short forms, the check of its definitions, its step, what a watcher is shown of its state, and its page of the manual; everything in this area is supplied by Corbie, the same for every type.
+**R-mach-131** A type is an extension that supplies six things, the shape of its definitions, the filling-out of its short forms, the check of its definitions, its step, where a run of it stands as a watcher is shown it (R-inst-72), and its page of the manual; everything in this area is supplied by Corbie, the same for every type.
 *Accept:* a binary is built with a test extension that adds a fourth type; a definition of that type is submitted, checked, run to its end and watched, and `corbie manual` lists and prints its page. The checks of this area for values, jobs, events, tickets, approval and limits pass unchanged with a flow, a statechart, an agent and the test extension's type as the machine.
 
 ## Interfaces

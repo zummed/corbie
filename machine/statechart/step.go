@@ -569,14 +569,13 @@ func (s *stepper) taken(name string) bool {
 	return false
 }
 
-// Show gives what a watcher is shown of a chart's state: the states it is
-// in.
-func (chartType) Show(def *machine.Definition, raw jsontext.Value) any {
+// Show gives where a chart stands: the states it is in.
+func (chartType) Show(raw jsontext.Value) machine.Shown {
 	var st state
 	if raw == nil || json.Unmarshal(raw, &st) != nil {
-		return nil
+		return machine.Shown{}
 	}
-	return map[string]any{"states": st.Active}
+	return machine.Shown{States: st.Active}
 }
 
 // Kept gives the events a chart's state keeps under defer:, in the order

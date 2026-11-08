@@ -301,3 +301,21 @@ Every agent has tools for working with blobs without reading them whole: one to 
 ## Events
 
 An agent acts on the results of its turns, its tools and its ask, and on nothing else. A send to an agent run by its address is noted as undelivered in the sender's record. Events sent down to it, and events its tools send up while they run, are ignored; a watcher still sees them in the record.
+
+## The record
+
+An agent's record holds these entries, under these names:
+
+| Entry | What it is |
+|---|---|
+| job `turn`, `turn#2`, … | one turn, whatever script makes it; its input names the model as `model.name` |
+| emit `text` of a turn | a piece of the model's reply, as `llm.chat` gives it |
+| `done` from a turn | `{ turn, text, calls: [{ id, name, args }], stop, usage: { input, output } }` |
+| job named after a tool, `shelf`, `shelf.1` | one call of the tool the model named; its `done` or `failed` goes back to the model |
+| job `open` | an open of a toolkit |
+| job `preview`, `preview.1` | the preview of a blob before the model is first shown it |
+| job named after an entry with `list:` | the list of that entry's tools, made before the first turn |
+| job `ask` | the ask for the jobs of one step that need approval |
+| `turn` in a step's `state` | how many turns the agent has taken |
+
+`stop` is `end`, `tools` or `length`.

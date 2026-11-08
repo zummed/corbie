@@ -69,8 +69,8 @@ func (probe) Step(in *StepIn) (*StepOut, error) {
 	return out, nil
 }
 
-func (probe) Show(*Definition, jsontext.Value) any { return nil }
-func (probe) Manual() string                       { return "probe: a machine type for tests." }
+func (probe) Show(jsontext.Value) Shown { return Shown{} }
+func (probe) Manual() string            { return "probe: a machine type for tests." }
 
 func init() { Register(probe{}) }
 

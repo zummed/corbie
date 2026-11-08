@@ -83,7 +83,8 @@ The record
   step, events      a step's number, and the events it received: `name`, `from`, `data`,
                     and `answer: true` on the answer to a ticket
   asks              what the controller did next; kind `script`, `child` or `call` is a job it started
-  status, state     the run's status and the machine's state after the step
+  status, state     the run's status and where it stands after the step: a flow's `stages`,
+                    a statechart's `states`, an agent's `turn`
   job, name, data   an emitted value: its job, its name (`log` for a log line) and the value
 
 Events and tickets

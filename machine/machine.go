@@ -327,9 +327,21 @@ type Type interface {
 	// Check reports what is wrong with a definition in full form.
 	Check(c *Checker, def *Definition)
 	Step(in *StepIn) (*StepOut, error)
-	// Show gives what a watcher is shown of a state.
-	Show(def *Definition, state jsontext.Value) any
+	// Show gives where a run of the type stands, from its state.
+	Show(state jsontext.Value) Shown
 	Manual() string
+}
+
+// Shown is where a run stands, as a watcher is shown it for each step,
+// beside what its head says. Each type fills one field.
+type Shown struct {
+	// Stages are a flow's stages, each with its status: waiting, running,
+	// done, failed or skipped.
+	Stages map[string]string `json:"stages,omitzero"`
+	// States are a statechart's active states, outermost first.
+	States []string `json:"states,omitzero"`
+	// Turn is how many turns an agent has taken.
+	Turn int `json:"turn,omitzero"`
 }
 
 // A Limiter is a type that adds limits of its own to those every type

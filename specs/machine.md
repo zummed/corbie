@@ -449,4 +449,4 @@ A machine reacts to a failure as to any event. A failure it has no rule for fail
 
 ## Machine types
 
-A type is an extension like any other. It supplies the shape of its definitions, the filling-out of its short forms, the check of its definitions, its step, what a watcher is shown of its state, and its page of the manual. A type with asks of its own, or that takes shapes from outside as it runs, says so from a definition read as plain JSON. Everything in this area is supplied by Corbie, the same for every type, and no type has its own version of any of it.
+A type is an extension like any other. It supplies the shape of its definitions, the filling-out of its short forms, the check of its definitions, its step, where a run of it stands as a watcher is shown it (see Instances), and its page of the manual. A type with asks of its own, or that takes shapes from outside as it runs, says so from a definition read as plain JSON. Everything in this area is supplied by Corbie, the same for every type, and no type has its own version of any of it.

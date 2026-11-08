@@ -41,6 +41,9 @@ The detailed rules behind the [Instances overview](../instance.md).
 **R-inst-21** A step entry holds the events that arrived, names the messages and the wakes they came from, holds the state the machine was left in, and holds what the step asked for.
 *Accept:* open the entry for a statechart's step set off by a job's result and a timer together, which moved it from `drafting` to `waiting`. It shows a `done` event and a `timer` event, the name of the result's message in the controller's inbox and the name of the wake, a state in which `waiting` is active with the output of `drafting`, and the job it asked for, under the name the message then sent to the runner carries.
 
+**R-inst-72** A watcher is shown, for each step, where the run stands, in one shape for every type: a flow's stages and the status of each, a statechart's active states, an agent's number of turns taken. It holds nothing the head says.
+*Accept:* a flow of two stages is shown after its first step with the first `running` and the second `waiting`, and after its last with both `done`; a chart is shown in its first state; an agent that took two turns is shown at turn 1 and then 2, and with no other field. *Test:* `Test_inst_step_shows_where_the_run_stands`
+
 **R-inst-25** The latest step entry is the instance's whole state, and the last step entry of an instance that has ended holds its result.
 *Accept:* remove every step and emit entry of a waiting instance except its latest step; when its next message arrives it takes the same step, with the same result, as an untouched copy of the same instance. The output `run show` prints for a finished run is the output its last step entry holds, and a failed run's last step entry holds its error.
 
@@ -152,5 +155,5 @@ Used by:
 - **Controller**: writes step entries, heads and receipts; brings the head up to date after each step (R-ctl-27) and moves it when an instance ends; accepts or refuses each of a client's messages; trims and removes what is past keeping, a little at a time (R-ctl-98).
 - **Runner**: writes a job's emit entries and blobs into the instance's record, in batches (C-run-33), every one before the job's result (C-run-23), and a message to the controller for each emitted value the machine wants.
 - **Client**: writes the five messages and their uploads; lists, shows and follows runs by the one way of watching; owns what a viewer is told at the awkward moments: a receipt before a head, a start never taken (R-client-36 to R-client-40), and C-inst-02.
-- **Machines** and each machine type: the state a step entry holds, and what a watcher is shown of it.
+- **Machines** and each machine type: the state a step entry holds, and where a watcher is shown the run stands (R-inst-72).
 - **Roles**: a pass that is killed leaves the head and the record as R-inst-12, R-inst-13 and C-ctl-16 describe.

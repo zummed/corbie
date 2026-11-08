@@ -167,6 +167,11 @@ The detailed rules behind the [Agent overview](../agent.md). Area code: `agent`.
 **R-agent-52** An agent acts on the results of its turns, its tools and its ask, and on nothing else: events sent down to it, and events its tools send up while they run, are ignored, and a watcher still sees them in the record.
 *Accept:* an agent's record shows a step asking for a new job only after a result from a turn, a tool or the ask. Parity case 87 (sent down) and parity case 103 (sent up): the event is in the agent's record, from its sender, and the agent did nothing with it.
 
+## The record
+
+**R-agent-70** An agent's record names its entries as the overview's table gives them: a turn is the job `turn`, whatever script makes it; `llm.chat` emits the reply's pieces under `text`; a turn's `done` holds `turn`, `text`, `calls`, `stop` and `usage`; and a tool call is a job named after the tool the model named.
+*Accept:* an agent whose model calls `add` once and then answers is followed: its script jobs are `turn`, `add` and `turn#2`; `text` is emitted under `turn`; the turn's input names the model; the first turn's `done` holds one call, a `stop`, a `turn` and a `usage`, and the last holds the answer as `text` with `stop` `end`. *Test:* `Test_agent_record_names_its_entries`
+
 ## Interfaces
 
 Uses:
@@ -180,5 +185,5 @@ Uses:
 
 Used by:
 
-- **Machines.** An agent is one of the three types, and supplies the filling-out of its short forms, its check, its step, what a watcher is shown of its state, and its manual page.
+- **Machines.** An agent is one of the three types, and supplies the filling-out of its short forms, its check, its step, the state a watcher is shown (R-inst-72), and its manual page.
 - **Flow, Statechart.** Either may run an agent as a child, and an agent may run either, or another agent, as a tool.

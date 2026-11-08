@@ -517,8 +517,8 @@ func Test_ctl_client_cannot_write_its_sender(t *testing.T) {
 			}
 		}
 	}
-	if w.head(runs[0]).StartedBy != "" {
-		t.Fatalf("the run names %s as its sender", w.head(runs[0]).StartedBy)
+	if cause := w.head(runs[0]).Cause; cause.Run != "" || cause.Client != "c1" || cause.Message == "" {
+		t.Fatalf("the run names %+v as its cause", cause)
 	}
 }
 

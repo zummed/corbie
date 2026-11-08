@@ -28,8 +28,8 @@ func (astray) Fill(p *Parser, f *Fields) any {
 	return &probeBody{}
 }
 
-func (astray) Check(*Checker, *Definition)          {}
-func (astray) Show(*Definition, jsontext.Value) any { return nil }
+func (astray) Check(*Checker, *Definition) {}
+func (astray) Show(jsontext.Value) Shown   { return Shown{} }
 
 func init() { Register(astray{}) }
 

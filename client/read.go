@@ -45,10 +45,11 @@ type Run struct {
 	Ended   time.Time `json:"ended,omitzero"`
 	Parent  string    `json:"parent,omitzero"`
 	// Location is where the run's machine lives, Key is the run's key at a
-	// keyed location, and StartedBy the run whose send or call started it.
-	Location  string `json:"location,omitzero"`
-	Key       string `json:"key,omitzero"`
-	StartedBy string `json:"started_by,omitzero"`
+	// keyed location, and Cause what started it: a step of another run, or
+	// a client's message.
+	Location string         `json:"location,omitzero"`
+	Key      string         `json:"key,omitzero"`
+	Cause    instance.Cause `json:"cause,omitzero"`
 	// Called is, for a start of a location in a tree another client owns,
 	// the run the call started there. The client is shown only its status
 	// and its output or error, from the call's result.
@@ -90,7 +91,7 @@ var ErrCalled = errors.New("the run is a call into a tree of another client, and
 func runOf(head *instance.Head) *Run {
 	return &Run{ID: head.Name, Machine: head.Machine, Type: head.Type, Status: head.Status, Failure: head.Failure,
 		Step: head.Step, Started: head.Started, Ended: head.Ended, Parent: head.Parent, Jobs: head.Jobs,
-		Location: head.Location, Key: head.Key, StartedBy: head.StartedBy, Timers: head.Timers, Tickets: head.Tickets, Labels: head.Labels}
+		Location: head.Location, Key: head.Key, Cause: head.Cause, Timers: head.Timers, Tickets: head.Tickets, Labels: head.Labels}
 }
 
 // mine says whether the client may read what is inside a run.
@@ -144,7 +145,7 @@ func (c *Client) Show(ctx context.Context, id string) (*Run, error) {
 	}
 	st := &latest.State
 	run.Machine, run.Type, run.Started, run.Parent, run.Labels = st.Machine, st.Type, st.Started, st.Above.Parent, st.Labels
-	run.Location, run.Key, run.StartedBy, run.Title = st.Location, st.Key, st.Above.StartedBy, st.Title
+	run.Location, run.Key, run.Cause, run.Title = st.Location, st.Key, st.Above.Cause, st.Title
 	// A blob in the output is shown as its type, its size and the path to
 	// ask for it by: its key is left out here, where the one shape is made.
 	run.Status, run.Step, run.Output, run.Used, run.Ended = st.Status, latest.Number, blob.Show(st.Output), st.Used, st.Ended

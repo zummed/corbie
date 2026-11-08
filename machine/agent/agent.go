@@ -704,14 +704,14 @@ func sortedNames[V any](m map[string]V) []string {
 	return keys
 }
 
-// Show gives what a watcher is shown of an agent's state: which turn it is
-// on and what it is waiting for.
-func (agentType) Show(def *machine.Definition, raw jsontext.Value) any {
+// Show gives an agent's state as a watcher is shown it: how many turns it
+// has taken.
+func (agentType) Show(raw jsontext.Value) machine.Shown {
 	var st state
 	if raw == nil || json.Unmarshal(raw, &st) != nil {
-		return nil
+		return machine.Shown{}
 	}
-	return map[string]any{"turn": st.Turn, "waiting": st.Waiting}
+	return machine.Shown{Turn: st.Turn}
 }
 
 func (agentType) Manual() string { return manual }

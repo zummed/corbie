@@ -739,8 +739,8 @@ func runText(run *client.Run, script bool) string {
 	if run.Key != "" {
 		fmt.Fprintf(&b, "  key: %q\n", run.Key)
 	}
-	if run.StartedBy != "" {
-		fmt.Fprintf(&b, "  started by: %s\n", run.StartedBy)
+	if run.Cause.Run != "" {
+		fmt.Fprintf(&b, "  cause: %s step %d\n", run.Cause.Run, run.Cause.Step)
 	}
 	if len(run.Labels) > 0 {
 		fmt.Fprintf(&b, "  labels: %s\n", labelsOf(run))

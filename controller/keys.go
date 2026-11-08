@@ -597,7 +597,7 @@ func (p *pass) toAddress(inst string, step *instance.Step, ask *instance.Ask) er
 	if err != nil || failure == nil {
 		return err
 	}
-	return p.tell(inst, inst, ask.Message+".note", notDelivered(msg, failure.Error))
+	return p.tell(inst, inst, ask.Message+".note", notDelivered(msg, failure.Error), asked(inst, step))
 }
 
 // sendJob carries out a send job: its event, and then its result, done with
@@ -634,7 +634,7 @@ func (p *pass) addressed(inst string, step *instance.Step, ask *instance.Ask) (*
 	}
 	sender := runOf(inst, st).Address()
 	to := &machine.Address{At: ask.Location}
-	msg := &instance.Message{Kind: instance.KindSend, Instance: ask.To, From: inst, To: to, Sender: sender,
+	msg := &instance.Message{Kind: instance.KindSend, Instance: ask.To, From: inst, To: to, Sender: sender, Cause: asked(inst, step),
 		Event: &machine.Event{Name: ask.Event.Name, Data: data}}
 	switch {
 	case ask.Direct:
@@ -647,16 +647,16 @@ func (p *pass) addressed(inst string, step *instance.Step, ask *instance.Ask) (*
 		mac := hmac.New(sha256.New, st.Seed)
 		mac.Write([]byte("send\x00" + ask.Message))
 		msg.Start = &instance.Start{Location: ask.Location, Key: key, Run: ask.Run, Seed: mac.Sum(nil),
-			Above: &instance.Above{Depth: st.Above.Depth + 1, StartedBy: inst}}
+			Above: &instance.Above{Depth: st.Above.Depth + 1}}
 	}
 	failure, err := p.send(store.Message(p.ctl, p.ctl, ask.Message), noEnd, msg, p.c.ID.Card)
 	return msg, failure, err
 }
 
 // tell writes a note into a run's record, as a step of the controller's own,
-// whether or not the run has ended.
-func (p *pass) tell(to, from, message, text string) error {
-	msg := &instance.Message{Kind: instance.KindNote, Instance: to, From: from, Note: text}
+// whether or not the run has ended. Its cause is the step the note is about.
+func (p *pass) tell(to, from, message, text string, cause *instance.Cause) error {
+	msg := &instance.Message{Kind: instance.KindNote, Instance: to, From: from, Note: text, Cause: cause}
 	_, err := p.send(store.Message(p.ctl, p.ctl, message), noEnd, msg, p.c.ID.Card)
 	return err
 }
@@ -680,7 +680,7 @@ func (p *pass) undeliver(a *arrival, why string) error {
 	if err != nil || !gone {
 		return err
 	}
-	return p.tell(a.msg.From, a.msg.Instance, noteName(a.name), notDelivered(a.msg, why))
+	return p.tell(a.msg.From, a.msg.Instance, noteName(a.name), notDelivered(a.msg, why), a.msg.Cause)
 }
 
 // redirect moves on an event sent to { at } or { at, key } whose run cannot
@@ -741,7 +741,7 @@ func (p *pass) redirect(a *arrival) error {
 		return nil
 	}
 	base, tail := a.name[strings.LastIndexByte(a.name, '/')+1:], run[strings.LastIndexByte(run, '/')+1:]
-	return p.tell(msg.From, run, base+".moved."+tail, fmt.Sprintf("the event %s sent to %s went to the run %s, not %s", msg.Event.Name, addressText(msg.To), run, before))
+	return p.tell(msg.From, run, base+".moved."+tail, fmt.Sprintf("the event %s sent to %s went to the run %s, not %s", msg.Event.Name, addressText(msg.To), run, before), msg.Cause)
 }
 
 // holder gives the run that has a key, whose file is named at: none where
@@ -824,7 +824,8 @@ func (p *pass) route(a *arrival) error {
 			return refuse("%s", r.Error())
 		}
 	}
-	out := &instance.Message{Kind: instance.KindSend, To: to, Sender: &machine.Address{Client: a.sender}, Event: msg.Event}
+	out := &instance.Message{Kind: instance.KindSend, To: to, Sender: &machine.Address{Client: a.sender},
+		Cause: &instance.Cause{Client: a.sender, Message: base}, Event: msg.Event}
 	if to.Run != "" {
 		out.Instance = to.Run
 	} else {

@@ -42,14 +42,14 @@ type Head struct {
 	Ended   time.Time `json:"ended,omitzero"`
 	Parent  string    `json:"parent,omitzero"`
 	// Location is where the run's machine lives, Key is its key at a keyed
-	// location, and StartedBy is the run whose send or call started it.
-	Location  string            `json:"location,omitzero"`
-	Key       string            `json:"key,omitzero"`
-	StartedBy string            `json:"started_by,omitzero"`
-	Jobs      int               `json:"jobs,omitzero"`
-	Timers    int               `json:"timers,omitzero"`
-	Tickets   []string          `json:"tickets,omitzero"`
-	Labels    map[string]string `json:"labels,omitzero"`
+	// location, and Cause is what started it.
+	Location string            `json:"location,omitzero"`
+	Key      string            `json:"key,omitzero"`
+	Cause    Cause             `json:"cause,omitzero"`
+	Jobs     int               `json:"jobs,omitzero"`
+	Timers   int               `json:"timers,omitzero"`
+	Tickets  []string          `json:"tickets,omitzero"`
+	Labels   map[string]string `json:"labels,omitzero"`
 	// Keep is how long the instance is kept after it ends.
 	Keep machine.Duration `json:"keep,omitzero"`
 }
@@ -73,13 +73,26 @@ type Step struct {
 	Asks []Ask `json:"asks,omitzero"`
 }
 
-// Arrived is an event with the message or wake it came from. Machine says
-// whether it was given to the machine or was the controller's own to act
-// on.
+// Arrived is an event with the message or wake it came from, and its
+// cause. Own says the controller acted on it itself and the machine was
+// not given it.
 type Arrived struct {
 	machine.Event
 	Source string `json:"source,omitzero"`
+	Cause  Cause  `json:"cause,omitzero"`
 	Own    bool   `json:"own,omitzero"`
+}
+
+// A Cause is what sent an event: the step of a run that asked for it, or a
+// message of a client. A note or a failure the controller writes for a step
+// names that step. An event from the run's own script job or timer has
+// none. A Cause is apart from a message's From, the run the machine answers,
+// and an event's Source, the file the message came in.
+type Cause struct {
+	Run     string `json:"run,omitzero"`
+	Step    int    `json:"step,omitzero"`
+	Client  string `json:"client,omitzero"`
+	Message string `json:"message,omitzero"`
 }
 
 // State is everything about an instance that is not its history.
@@ -186,11 +199,10 @@ type Above struct {
 	// longer than what started it, so a child's record goes no later than
 	// its parent's.
 	Keep machine.Duration `json:"keep,omitzero"`
-	// StartedBy is the run whose send or call started the instance. It is
-	// a root of its own tree's client, and no parent of it.
-	StartedBy string `json:"started_by,omitzero"`
-	// CallJob is, for a run a call job started, that job of StartedBy's:
-	// the run's end is the job's result.
+	// Cause is what started the instance: the cause of its start.
+	Cause Cause `json:"cause,omitzero"`
+	// CallJob is, for a run a call job started, that job of the calling
+	// run's, which Cause names: the run's end is the job's result.
 	CallJob string `json:"call_job,omitzero"`
 	// CallReceipt is, for a run a client called in a tree it does not own,
 	// the call's message: the run's result is written beside its receipt.

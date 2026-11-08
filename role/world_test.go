@@ -20,9 +20,9 @@ import (
 	"github.com/zummed/corbie/runner"
 	"github.com/zummed/corbie/store"
 
-	_ "github.com/zummed/corbie/flow"
+	_ "github.com/zummed/corbie/machine/flow"
+	_ "github.com/zummed/corbie/machine/statechart"
 	_ "github.com/zummed/corbie/plugin/bundled"
-	_ "github.com/zummed/corbie/statechart"
 )
 
 var ctx = context.Background()

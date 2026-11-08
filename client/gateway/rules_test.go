@@ -19,7 +19,7 @@ import (
 	"github.com/zummed/corbie/runner"
 	"github.com/zummed/corbie/store"
 
-	_ "github.com/zummed/corbie/flow"
+	_ "github.com/zummed/corbie/machine/flow"
 	_ "github.com/zummed/corbie/plugin/bundled"
 )
 

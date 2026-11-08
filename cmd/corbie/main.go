@@ -8,10 +8,10 @@ import (
 	"github.com/zummed/corbie/client/cli"
 	"github.com/zummed/corbie/runner"
 
-	_ "github.com/zummed/corbie/agent"
-	_ "github.com/zummed/corbie/flow"
+	_ "github.com/zummed/corbie/machine/agent"
+	_ "github.com/zummed/corbie/machine/flow"
+	_ "github.com/zummed/corbie/machine/statechart"
 	_ "github.com/zummed/corbie/plugin/bundled"
-	_ "github.com/zummed/corbie/statechart"
 )
 
 func main() {

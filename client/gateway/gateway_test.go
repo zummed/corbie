@@ -20,7 +20,7 @@ import (
 	"github.com/zummed/corbie/machine"
 	"github.com/zummed/corbie/permission"
 
-	_ "github.com/zummed/corbie/statechart"
+	_ "github.com/zummed/corbie/machine/statechart"
 )
 
 const door = `

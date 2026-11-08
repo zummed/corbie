@@ -20,7 +20,7 @@ import (
 	"github.com/zummed/corbie/secret"
 	"github.com/zummed/corbie/store"
 
-	_ "github.com/zummed/corbie/statechart"
+	_ "github.com/zummed/corbie/machine/statechart"
 )
 
 var ctx = context.Background()

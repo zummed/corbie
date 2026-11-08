@@ -24,7 +24,7 @@ import (
 	"github.com/zummed/corbie/role"
 	"github.com/zummed/corbie/store"
 
-	_ "github.com/zummed/corbie/agent"
+	_ "github.com/zummed/corbie/machine/agent"
 )
 
 // stepThatLies is the argument that makes the test binary a step's process

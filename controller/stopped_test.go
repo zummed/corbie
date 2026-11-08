@@ -11,9 +11,9 @@ import (
 	"time"
 
 	"github.com/zummed/corbie/controller"
-	_ "github.com/zummed/corbie/flow"
 	"github.com/zummed/corbie/identity"
 	"github.com/zummed/corbie/instance"
+	_ "github.com/zummed/corbie/machine/flow"
 	"github.com/zummed/corbie/permission"
 	"github.com/zummed/corbie/store"
 )

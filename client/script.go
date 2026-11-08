@@ -4,8 +4,8 @@ import (
 	"encoding/json/v2"
 	"strings"
 
-	_ "github.com/zummed/corbie/flow"
 	"github.com/zummed/corbie/machine"
+	_ "github.com/zummed/corbie/machine/flow"
 )
 
 // ScriptStage is the name of the one stage a script is wrapped in.

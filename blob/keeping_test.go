@@ -21,8 +21,8 @@ import (
 	"github.com/zummed/corbie/permission"
 	"github.com/zummed/corbie/store"
 
-	_ "github.com/zummed/corbie/flow"
-	_ "github.com/zummed/corbie/statechart"
+	_ "github.com/zummed/corbie/machine/flow"
+	_ "github.com/zummed/corbie/machine/statechart"
 )
 
 var ctx = context.Background()

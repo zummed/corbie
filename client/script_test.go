@@ -11,7 +11,7 @@ import (
 	"time"
 
 	"github.com/zummed/corbie/client"
-	"github.com/zummed/corbie/flow"
+	"github.com/zummed/corbie/machine/flow"
 	"github.com/zummed/corbie/plugin"
 	"github.com/zummed/corbie/store"
 )

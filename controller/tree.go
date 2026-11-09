@@ -506,6 +506,33 @@ func (p *pass) replacing(client, location, self string, replaces []string) (bool
 	return p.runningAt(client, location, self)
 }
 
+// handedOver gives what the runs a singleton's start replaces hand over to
+// it, by the latest step of each and the definition it started with: the
+// value of the first whose definition names something to hand over, and
+// that run. It gives no run where none does.
+func (p *pass) handedOver(replaces []string) (value any, from string, err error) {
+	for _, run := range replaces {
+		step, err := instance.Current(p.ctx, p.store, p.c.ID.Card, p.c.ID, run)
+		if err != nil && !isAltered(err) {
+			return nil, "", err
+		}
+		if step == nil {
+			continue
+		}
+		def, err := p.definitionAt(step.State.Definition)
+		if errorsIs(err, machine.ErrDefinition) {
+			continue
+		}
+		if err != nil {
+			return nil, "", err
+		}
+		if value, named := machine.HandsOver(def, step.State.Inner, step.State.Input); named {
+			return value, run, nil
+		}
+	}
+	return nil, "", nil
+}
+
 // runningAt says whether a run of a client's other than one named is
 // running at a location, a child included.
 func (p *pass) runningAt(client, location, other string) (bool, error) {
@@ -536,9 +563,9 @@ func (p *pass) runningAt(client, location, other string) (bool, error) {
 // startSingleton starts a location's singleton: its start, which waits for
 // the runs it replaces to end, and then its key's file, which names it. The
 // runs it replaces are those running at the location, which the submit has
-// cancelled; with none, the run its key's file names, if that run has the
-// key. A start still waiting is never the one replaced: it waits itself, and
-// is left once the key's file names this one.
+// cancelled; with none, those replaced gives. A start still waiting is
+// never the one replaced: it waits itself, and is left once the key's file
+// names this one.
 func (p *pass) startSingleton(client, base string, done instance.Recorded, running []string) error {
 	at := store.Key(p.ctl, done.Location, "")
 	name := store.Message(p.ctl, p.ctl, store.JobMessage(done.Run, base+".start"))
@@ -552,12 +579,8 @@ func (p *pass) startSingleton(client, base string, done instance.Recorded, runni
 		}
 		replaces := running
 		if len(replaces) == 0 && file != nil {
-			live, err := p.live(file)
-			if err != nil {
+			if replaces, err = p.replaced(file); err != nil {
 				return err
-			}
-			if live {
-				replaces = []string{file.Run}
 			}
 		}
 		// The start is written only-if-new: one written before stands, with
@@ -582,6 +605,26 @@ func (p *pass) startSingleton(client, base string, done instance.Recorded, runni
 		}
 		// The file changed under the write: read it again.
 	}
+}
+
+// replaced gives the runs a singleton's start replaces when none is running
+// at its location: the run its key's file names, if that run has the key,
+// and, while that run's start is still waiting, the runs that start
+// replaces, which then hand over to this one.
+func (p *pass) replaced(file *instance.KeyFile) ([]string, error) {
+	live, err := p.live(file)
+	if err != nil || !live {
+		return nil, err
+	}
+	data, mark, err := p.store.Read(p.ctx, file.Start)
+	if err != nil || mark == store.None {
+		return []string{file.Run}, err
+	}
+	var msg instance.Message
+	if _, err := identity.Read(data, file.Start, p.c.ID.Card, p.c.ID, &msg); err != nil || msg.Start == nil {
+		return []string{file.Run}, nil
+	}
+	return append([]string{file.Run}, msg.Start.Replaces...), nil
 }
 
 // removeLocation removes what is recorded at a location whose file has

@@ -33,6 +33,10 @@ ends the run as failed and the schedule stops. `corbie run show <id>` prints
 the run as `running`, with `waiting on 1 timer`, until `corbie run cancel <id>`
 ends it.
 
+A changed `nightly.yaml` submitted again cancels the run and starts a new one
+on the new file, with no input by default. `handover:` gives the new run a
+state's latest output from the old one, as in `corbie manual statechart`.
+
 A timer's time is a length of time or a time of day.
 
   90s, 48h, 7d             a length of time, from when the statechart enters the state

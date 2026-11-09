@@ -1,0 +1,23 @@
+# The asker sends the singleton at /case/tally add twice and then ask, and
+# is told { n: 2 }. While the asker waits on go, the directory changed is
+# submitted at /case: its tally.yaml has a description, so the tally starts
+# again, and the run it replaces hands over the output of counting. The
+# asker's second ask is told { n: 2 } by the new run.
+statechart: asker
+allow: [send:tally]
+initial: first
+states:
+  first:
+    entry:
+      send:
+        - { to: { at: tally }, event: add }
+        - { to: { at: tally }, event: add }
+        - { to: { at: tally }, event: ask }
+    on: { said: waiting }
+  waiting:
+    ticket: go
+    on: { go: second }
+  second:
+    entry: { send: { to: { at: tally }, event: ask } }
+    on: { said: finished }
+  finished: { end: done, output: "${event.data}" }

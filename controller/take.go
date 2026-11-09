@@ -1502,6 +1502,22 @@ func (b *build) first(s *instance.Start, start *arrival) (refused bool, err erro
 			gone = true
 		}
 	}
+	// A singleton started again is given what the run it replaces hands
+	// over, with the blobs that names copied into its own record.
+	if len(s.Replaces) > 0 && !gone {
+		value, from, err := p.handedOver(s.Replaces)
+		if err != nil {
+			return false, err
+		}
+		handed := *s
+		if handed.Input, err = p.handUp(value, b.inst); err != nil {
+			return false, err
+		}
+		s = &handed
+		if from != "" && value == nil {
+			b.ask(instance.Ask{Kind: instance.AskNote, Text: fmt.Sprintf("the run %s handed over nothing: the state its handover: names gave no output, and that run was given no input", from)})
+		}
+	}
 	st.Machine, st.Type = def.Name, def.Type
 	if b.fromLocation {
 		// A run started at its location is read by the clients its file

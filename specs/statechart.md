@@ -145,6 +145,53 @@ Such a chart does one piece of work at a time. An event that arrives while it is
 - When a chart is cancelled, by a client or by `update: restart`, each event it kept is noted as undelivered in its sender's record.
 - A chart keeps at most 100 events. One more is dropped, as an event with no rule is; the newest is dropped because a receipt already written for an older one cannot change.
 
+## Handing over to the next run
+
+A singleton starts again on every change to its file, and by default the new run starts empty. `handover:` names one state of a singleton chart: when a submit replaces the run, the new run's input is that state's latest output in the run replaced, or, if it gave none, what that run was given.
+
+```yaml
+# feeds/watch.yaml                      location /feeds/watch
+statechart: watch
+lifetime: singleton
+handover: checking
+initial: checking
+
+states:
+  checking:
+    job: { script: ./check.js, input: "${states.checking.output ?? input}" }
+    on: { done: waiting, failed: waiting }
+  waiting:
+    timers: { again: 10m }
+    on: { again: checking }
+```
+
+```js
+// check.js: what this run has seen, from its last check or from the run before
+const seen = input?.seen ?? []
+// ... fetch the feed, add the new ids ...
+return { seen }
+```
+
+1. A submit finds the file changed and cancels the running chart.
+2. Once that run and its children have ended, a new run starts on the new file.
+3. Its input is the latest output of the state the cancelled run's `handover:` names, or, if that state gave none there, what the cancelled run was given.
+
+```
+  what happens                                          the new run's input   submit prints
+  first submit                                          null                  started
+  check.js changed, submitted                           { seen: [a, b] }      restarted
+  watch.yaml changed again before checking finished     { seen: [a, b] }      restarted
+  corbie run cancel /feeds/watch, then a submit         null                  started
+```
+
+The third row is the fallback: the second run had not finished `checking`, so it hands on what it was given.
+
+- The run replaced follows its own definition, as every run does. A chart that gains `handover:` in a change hands nothing over on that submit, and one that loses it hands over on that submit for the last time.
+- The new run's `input:` checks what it is handed, as it checks any input. With no `input:` nothing checks it, so the script reads what it was handed and turns an older shape into the new one.
+- Only a run started again is handed anything. A run started after the chart was cancelled, failed or ended is given no input.
+- Work the cancelled run had under way is not in the output, and may be done again.
+- When the cancelled run's `handover:` gives nothing, the new run's record has a note saying so.
+
 ## One run per key
 
 `lifetime: keyed` is for statecharts only. A location with it has one run for each key a sender names.

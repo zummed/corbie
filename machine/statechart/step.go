@@ -588,4 +588,22 @@ func (chartType) Kept(raw jsontext.Value) []machine.Event {
 	return st.Kept
 }
 
+// HandsOver gives what a singleton chart hands to the run a submit starts in
+// its place: the latest output of the state its handover: names, or, if
+// that state gave none, the chart's input.
+func (chartType) HandsOver(def *machine.Definition, raw jsontext.Value, input any) (any, bool) {
+	var chart Chart
+	if json.Unmarshal(def.Body, &chart) != nil || chart.Handover == "" {
+		return nil, false
+	}
+	var st state
+	if raw != nil && json.Unmarshal(raw, &st) != nil {
+		return input, true
+	}
+	if output, ok := st.Outputs[chart.Handover]; ok {
+		return output, true
+	}
+	return input, true
+}
+
 func (chartType) Manual() string { return manual }

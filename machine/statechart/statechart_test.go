@@ -1030,3 +1030,44 @@ func Test_chart_send_to_is_checked(t *testing.T) {
 		refused(t, fmt.Sprintf(head, to), says)
 	}
 }
+
+// handover: names a state of a singleton chart.
+func Test_chart_handover_names_a_state_of_a_singleton(t *testing.T) {
+	head := "statechart: watch\nhandover: checking\ninitial: checking\nstates:\n\tchecking: { on: { again: checking } }\n"
+	newChart(t, "lifetime: singleton\n"+head)
+	refused(t, head, "only a singleton hands over")
+	refused(t, "lifetime: keyed\n"+head, "only a singleton hands over")
+	refused(t, "lifetime: singleton\n"+strings.Replace(head, "handover: checking", "handover: polling", 1), `handover: there is no state named "polling"`)
+}
+
+// A chart hands over the latest output of the state its handover: names,
+// or, if that state gave none, its input; one with no handover: hands over
+// nothing.
+func Test_chart_handover_gives_the_state_output_or_the_input(t *testing.T) {
+	src := `
+statechart: watch
+lifetime: singleton
+handover: checking
+initial: checking
+states:
+	checking:
+		job: ./check.js
+		on: { done: waiting }
+	waiting: { on: { again: checking } }
+`
+	c := newChart(t, src)
+	c.input = map[string]any{"seen": []any{"a"}}
+	c.give(start())
+	if value, named := machine.HandsOver(c.def, c.state, c.input); !named || !reflect.DeepEqual(value, c.input) {
+		t.Fatalf("before checking was done the chart hands over %v, %v", value, named)
+	}
+	c.give(done("checking", map[string]any{"seen": []any{"a", "b"}}))
+	if value, _ := machine.HandsOver(c.def, c.state, c.input); !reflect.DeepEqual(value, map[string]any{"seen": []any{"a", "b"}}) {
+		t.Fatalf("once checking was done the chart hands over %v", value)
+	}
+	c = newChart(t, strings.Replace(src, "handover: checking\n", "", 1))
+	c.give(start(), done("checking", 1.0))
+	if value, named := machine.HandsOver(c.def, c.state, c.input); named || value != nil {
+		t.Fatalf("a chart with no handover: hands over %v, %v", value, named)
+	}
+}

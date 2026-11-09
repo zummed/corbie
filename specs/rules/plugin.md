@@ -7,7 +7,7 @@ The detailed rules behind the [Plugins overview](../plugin.md). Requirements are
 **R-plug-01** A script can do nothing outside itself except by calling a plugin.
 *Accept:* in a job whose every layer is `all`, nothing a script has apart from plugins and the libraries over them reads a file, opens a connection, starts a program or reads a variable of the runner's.
 
-**R-plug-02** A plugin never opens anything by itself. It asks Corbie for a way to connect, a path, a program or a variable.
+**R-plug-02** A plugin never opens anything by itself, except that `time` reads the runner's zone files. It asks Corbie for a way to connect, a path, a program or a variable.
 *Accept:* for each plugin that comes with Corbie, every call that reaches outside is refused in a job no layer allows anything, and nothing happens outside the job: a stand-in server sees no connection, no file is made, no program starts.
 
 **R-plug-03** At a way out, Corbie checks the job's permissions, notes what was used, puts secrets in where they are bound to go, and hands the thing over or refuses. This is the same for every plugin and no plugin does any of it.
@@ -95,8 +95,8 @@ The detailed rules behind the [Plugins overview](../plugin.md). Requirements are
 **R-plug-57** `mcp` signs in to a server with a header the script gives, or with a client's credentials, a secret or a key, given as handles. Each address the sign-in connects to is checked like the server's.
 *Accept:* a stand-in server takes a bearer token in a header. A second takes only a token from a stand-in sign-in server: given a client id and a secret bound to the sign-in server, the plugin gets a token and the call succeeds; with `net` for the sign-in server's host missing, the call is refused, naming it.
 
-**R-plug-59** `time.clock(ms, { zone })` gives `{ date, time }`, the date (`YYYY-MM-DD`) and time of day (`HH:MM:SS`) an instant has in the zone. `time.instant({ date, time }, { zone })` gives that instant in ms; `time` is `HH:MM` or `HH:MM:SS`. Both use the zones timers take and their rule for a time skipped or shown twice (C-chart-08, C-chart-15). Without a zone both are UTC. A date or time the calendar does not have, a clock with another field, an unknown zone, and `Local` are bad input.
-*Accept:* the page's examples. `TestTimersAndTimeAgree`: in London, New York and Sydney, on the days the clock skips a time and shows it twice, a timer at that time and `time.instant` give the same moment. `TestClockAndInstant`: a clock given back to `time.instant` is the instant to the second. `TestBadInput`: 2026-02-30, 24:00, a clock with a third field, an unknown zone and `Local` are each `bad_input`.
+**R-plug-59** `time.clock(ms, { zone })` gives `{ date, time }`, the date (`YYYY-MM-DD`) and time of day (`HH:MM:SS`) an instant has in the zone, for an instant in the years 0000 to 9999 there. `time.instant({ date, time }, { zone })` gives that instant in ms; `time` is `HH:MM` or `HH:MM:SS`. Both take the zone names timers take and use their rule for a time skipped or shown twice (C-chart-08, C-chart-15). Without a zone both are UTC. A date or time the calendar does not have, an instant outside those years, a clock with another field, an unknown zone, and `Local` are bad input.
+*Accept:* the page's examples. In London, New York and Sydney, on the days the clock skips a time and shows it twice, a timer at that time and `time.instant` give the same moment. A clock given back to `time.instant` is the instant to the second. 2026-02-30, 24:00, a clock with a third field, an instant in the year 10000, an unknown zone and `Local` are each `bad_input`.
 
 **C-plug-09** `http` follows redirects itself, one at a time, and takes each secret's value afresh for each place it is redirected to, so a request carrying a secret is followed only to a host the secret is also bound to. The server would otherwise choose where the secret goes next. *Test:* `plug_http_secret_not_carried_to_another_host`
 
@@ -154,7 +154,7 @@ The detailed rules behind the [Plugins overview](../plugin.md). Requirements are
 - **Permissions** check every way out but the job's own channel, and note what was used. Plugins make no check and add no kind.
 - **Secrets** go into a way out where they are bound to go, and what a plugin hands back as text is masked on its way to the script.
 - **Runner** runs the script, gives it `require`, `emit` and its scratch directory, starts and stops what a job starts, puts the exec wrapper in front of every program (C-run-49), and fails a job that calls a plugin its binary does not have.
-- **Machines** fill out, check and store a definition the `machines` plugin is given, and give the `time` plugin the zones and the rule timers use.
+- **Machines** fill out, check and store a definition the `machines` plugin is given, and give the `time` plugin the zone names and the rule timers use.
 - **Blobs** are made and read by the `blobs` plugin, in the job's own instance's record, and are where `http` sends a large body.
 - **Models** are the `llm` plugin and the model services behind it.
 - **Agent** uses the bundled libraries: the standard turn and the tools for blobs.

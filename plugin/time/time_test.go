@@ -42,11 +42,11 @@ func TestClockAndInstant(t *testing.T) {
 		t.Fatalf("the clock given back is the instant %v, %v; want %v", back, err, ms(at.Truncate(time.Second)))
 	}
 	// Without a zone both are UTC.
-	if got, _ := call(t, "clock", ms(at), nil); got.(map[string]any)["time"] != "11:02:03" {
-		t.Fatalf("without a zone the clock is %v", got)
+	if got, err := call(t, "clock", ms(at), nil); err != nil || got.(map[string]any)["time"] != "11:02:03" {
+		t.Fatalf("without a zone the clock is %v, %v", got, err)
 	}
-	if got, _ := call(t, "instant", map[string]any{"date": "2026-07-01", "time": "11:02"}, nil); got != ms(time.Date(2026, 7, 1, 11, 2, 0, 0, time.UTC)) {
-		t.Fatalf("without a zone 11:02 is %v", got)
+	if got, err := call(t, "instant", map[string]any{"date": "2026-07-01", "time": "11:02"}, nil); err != nil || got != ms(time.Date(2026, 7, 1, 11, 2, 0, 0, time.UTC)) {
+		t.Fatalf("without a zone 11:02 is %v, %v", got, err)
 	}
 }
 
@@ -66,6 +66,12 @@ func TestBadInput(t *testing.T) {
 		},
 		"text where an instant goes":  func() (any, error) { return call(t, "clock", "2026-02-27", nil) },
 		"an instant no Date can hold": func() (any, error) { return call(t, "clock", 1e16, nil) },
+		"an instant in the year 10000": func() (any, error) {
+			return call(t, "clock", ms(time.Date(10000, 1, 1, 0, 0, 0, 0, time.UTC)), nil)
+		},
+		"an instant in the year 10000 in the zone": func() (any, error) {
+			return call(t, "clock", ms(time.Date(9999, 12, 31, 23, 0, 0, 0, time.UTC)), plugin.Options{"zone": "Pacific/Kiritimati"})
+		},
 	} {
 		var e *plugin.Error
 		if _, err := do(); !errors.As(err, &e) || e.Code != plugin.BadInput {

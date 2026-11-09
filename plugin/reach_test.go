@@ -15,10 +15,10 @@ import (
 
 // What a plugin that comes with Corbie may be built from. A package that
 // cannot reach outside the process is used freely. One that can is used
-// only by the names listed for it, none of which opens anything: the
-// opening is done by the Job. Of Corbie itself a plugin uses the public
-// package and no other part, as an extension does, but for the time zones
-// timers use.
+// only by the names listed for it, none of which opens anything but a
+// zone file: the opening is done by the Job. Of Corbie itself a plugin
+// uses the public package and no other part, as an extension does, but for
+// the zone names and the rule timers use.
 var (
 	// inside are the packages with no way out of the process.
 	inside = []string{
@@ -52,8 +52,8 @@ var (
 		"golang.org/x/crypto/ssh": {"NewClientConn", "NewClient", "ClientConfig", "AuthMethod", "Password", "KeyboardInteractive",
 			"PublicKeys", "ParsePrivateKey", "ParseAuthorizedKey", "HostKeyCallback", "InsecureIgnoreHostKey", "PublicKey",
 			"FingerprintSHA256", "ExitError", "KeyAlgoRSA", "KeyAlgoRSASHA256", "KeyAlgoRSASHA512"},
-		// The time zones and the rule for a time of day that timers use,
-		// which time gives a script.
+		// The zone names and the rule for a time of day that timers use,
+		// which time gives a script. Zone reads the runner's zone files.
 		"github.com/zummed/corbie/machine": {"Zone", "At"},
 	}
 	// files are the names only the plugin for files uses. Its work is

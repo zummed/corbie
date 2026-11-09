@@ -1,6 +1,6 @@
 // Package time is the plugin that turns an instant into the date and time
-// of day a time zone's clock shows, and back, with the zones and the rule
-// timers use.
+// of day a time zone's clock shows, and back, with the zone names and the
+// rule timers use.
 package time
 
 import (
@@ -38,6 +38,9 @@ func clock(job *plugin.Job, first any, opt plugin.Options) (any, error) {
 		return nil, err
 	}
 	at := time.UnixMilli(int64(math.Floor(ms))).In(zone)
+	if at.Year() < 0 || at.Year() > 9999 {
+		return nil, plugin.Errorf(plugin.BadInput, "time.clock gives dates in the years 0000 to 9999, and %.0f ms is in the year %d in %s", ms, at.Year(), zone)
+	}
 	return map[string]any{"date": at.Format(dateForm), "time": at.Format(secondsForm)}, nil
 }
 
@@ -88,7 +91,7 @@ func zoneOf(opt plugin.Options) (*time.Location, error) {
 const page = `time: this plugin turns an instant into a date and time of day in a time zone, and back.
 
   time.clock(ms, { zone })        gives { date, time }: what the zone's clock shows at the instant
-  time.instant(clock, { zone })   the instant, in ms, at which the zone's clock shows clock
+  time.instant(clock, { zone })   gives the instant, in ms, at which the zone's clock shows that date and time
 
 ms is an instant as Date.now() gives it: milliseconds since 1970 UTC. clock
 is { date, time }, as time.clock gives it.
@@ -103,14 +106,17 @@ Options:
   it, and a time the clock shows twice is the first, as timers have it.
 - A day in a zone is not always 24 hours long, so a script steps a day on
   date, as the second example does, and never adds 86400000 to ms.
+- A script reads a clock's fields as clock.date and clock.time, since a
+  variable named time would hide the plugin.
 - A time a definition writes is a timer's. A time worked out from data is
   time.instant's, and a statechart waits for it with a timer of
   "${Math.max(0, at - Date.now())}ms".
 
 Errors:
-  bad_input   a date or a time of day the calendar does not have, a clock with
-              another field, an unknown zone, or Local, the zone of whichever
-              computer reads it
+  bad_input   a date or a time of day the calendar does not have, an instant
+              outside the years 0000 to 9999 in the zone, a clock with another
+              field, an unknown zone, or Local, the zone of whichever computer
+              reads it
 
 Needs nothing.
 
@@ -123,11 +129,13 @@ UTC after. The clock skips 01:30 on 29 March and shows it twice on 25 October.
     time.instant({ date: "2026-03-29", time: "01:30" }, { zone })   // gives Date.UTC(2026, 2, 29, 1, 0)
     time.instant({ date: "2026-10-25", time: "01:30" }, { zone })   // gives Date.UTC(2026, 9, 25, 0, 30)
 
-This script works out the next 07:30 in London after 09:00 on 28 March 2026.
+This script works out the next 07:30 in London after 09:00 on 28 March 2026:
+today's if it is still to come, and otherwise tomorrow's.
 
     const zone = "Europe/London"
-    const now = time.clock(Date.UTC(2026, 2, 28, 9, 0), { zone })   // gives { date: "2026-03-28", time: "09:00:00" }
-    const [y, m, d] = now.date.split("-").map(Number)
-    const tomorrow = new Date(Date.UTC(y, m - 1, d + 1)).toISOString().slice(0, 10)
-    time.instant({ date: tomorrow, time: "07:30" }, { zone })     // gives Date.UTC(2026, 2, 29, 6, 30)
+    const now = Date.UTC(2026, 2, 28, 9, 0)
+    const clock = time.clock(now, { zone })   // gives { date: "2026-03-28", time: "09:00:00" }
+    const [y, m, d] = clock.date.split("-").map(Number)
+    const at = (day) => time.instant({ date: time.clock(Date.UTC(y, m - 1, day)).date, time: "07:30" }, { zone })
+    at(d) > now ? at(d) : at(d + 1)           // gives Date.UTC(2026, 2, 29, 6, 30)
 `

@@ -56,7 +56,7 @@ A file whose path ends in `.yaml`, `.yml` or `.json` gives its data, read as
 `corbie manual yaml` says. It needs no permission.
 
 A script's `Date` is the runner's clock, and its local time is UTC. The date
-and time in a time zone come from `corbie manual time`.
+and time in a time zone come from the `time` plugin; see `corbie manual time`.
 
 A script cannot start a job: only a machine starts jobs.
 

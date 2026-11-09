@@ -601,7 +601,7 @@ func Test_chart_timers_refused(t *testing.T) {
 	refused(t, head+"\t\ttimers: { late: 1h }\n\t\ton: { late: b }\n\tc: { ticket: late, on: { late: a } }\n", `"late" is the name of the ticket of the state "c", and a timer cannot take a ticket's name`)
 }
 
-func Test_chart_zone_known_without_host_zone_files(t *testing.T) {
+func Test_chart_zone_named_and_local_refused(t *testing.T) {
 	if _, err := parseAt("09:00 Europe/London"); err != nil {
 		t.Fatal(err)
 	}
@@ -825,20 +825,33 @@ func Test_chart_time_of_day_in_skipped_hour_fires_at_the_jump(t *testing.T) {
 	if got := due(t, "01:30 Europe/London", before); !got.Equal(want) {
 		t.Fatalf("a time the clock skips is due %v, want the jump at %v", got, want)
 	}
+	// Samoa skipped 30 December 2011 whole: its clock went from the end of
+	// the 29th to the start of the 31st at 10:00 UTC.
+	before = time.Date(2011, 12, 29, 18, 0, 0, 0, time.UTC)
+	want = time.Date(2011, 12, 30, 10, 0, 0, 0, time.UTC)
+	if got := due(t, "07:30 Pacific/Apia", before); !got.Equal(want) {
+		t.Fatalf("a time on a day the clock skips is due %v, want the jump at %v", got, want)
+	}
 }
 
 func Test_chart_time_of_day_in_repeated_hour_fires_at_the_first(t *testing.T) {
-	// The clock shows 01:30 twice in London on 25 October 2026, and in New
-	// York on 1 November. Go's own choice is the second in London and the
-	// first in New York.
-	for _, c := range []struct{ first, zone string }{
-		{"2026-10-25T00:30:00Z", "Europe/London"},
-		{"2026-11-01T05:30:00Z", "America/New_York"},
+	// The clock shows 01:30 twice in London on 25 October 2026 and in New
+	// York on 1 November, and 02:30 twice in Sydney on 5 April. Go's own
+	// choice is the second in London and Sydney and the first in New York.
+	for _, c := range []struct{ at, first string }{
+		{"01:30 Europe/London", "2026-10-25T00:30:00Z"},
+		{"01:30 America/New_York", "2026-11-01T05:30:00Z"},
+		{"02:30 Australia/Sydney", "2026-04-04T15:30:00Z"},
 	} {
 		want, _ := time.Parse(time.RFC3339, c.first)
-		if got := due(t, "01:30 "+c.zone, want.Add(-12*time.Hour)); !got.Equal(want) {
-			t.Errorf("01:30 in %s, which the clock shows twice, is due %v, want the first at %v", c.zone, got, want)
+		if got := due(t, c.at, want.Add(-12*time.Hour)); !got.Equal(want) {
+			t.Errorf("%s, which the clock shows twice, is due %v, want the first at %v", c.at, got, want)
 		}
+	}
+	// Entered at 01:00 UTC, between the two, it waits for the next day.
+	entered := time.Date(2026, 10, 25, 1, 0, 0, 0, time.UTC)
+	if got, want := due(t, "01:30 Europe/London", entered), time.Date(2026, 10, 26, 1, 30, 0, 0, time.UTC); !got.Equal(want) {
+		t.Errorf("entered between the two, it is due %v, want the next day at %v", got, want)
 	}
 }
 

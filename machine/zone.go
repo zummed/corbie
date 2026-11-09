@@ -26,20 +26,27 @@ func Zone(name string) (*time.Location, error) {
 // time.Date's does.
 func At(year int, month time.Month, day, hour, minute, second int, zone *time.Location) time.Time {
 	wall := time.Date(year, month, day, hour, minute, second, 0, time.UTC)
-	near := time.Date(year, month, day, hour, minute, second, 0, zone)
-	// The clock shows the time at wall less an offset the zone has then.
-	// Each offset the zone has a few hours either side gives a moment, and
+	// The clock shows the time at wall less the offset the zone has then.
+	// An offset today is at most 14 hours either way, so each offset the zone
+	// has from 14 hours before wall to 14 hours after gives a moment, and
 	// those moments at which the zone has that offset show the time.
-	var first time.Time
-	for _, probe := range []time.Time{near.Add(-6 * time.Hour), near, near.Add(6 * time.Hour)} {
+	var first, lo, hi time.Time
+	for i, probe := range []time.Time{wall.Add(-14 * time.Hour), wall, wall.Add(14 * time.Hour)} {
 		_, offset := probe.In(zone).Zone()
 		at := wall.Add(-time.Duration(offset) * time.Second)
+		if i == 0 || at.Before(lo) {
+			lo = at
+		}
+		if i == 0 || at.After(hi) {
+			hi = at
+		}
 		if _, shown := at.In(zone).Zone(); shown == offset && (first.IsZero() || at.Before(first)) {
 			first = at
 		}
 	}
 	if first.IsZero() {
-		return jump(near.Add(-6*time.Hour), near.Add(6*time.Hour), zone)
+		// No moment shows the time, so the clock jumps past it between them.
+		return jump(lo, hi, zone)
 	}
 	return first
 }

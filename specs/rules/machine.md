@@ -101,7 +101,7 @@ The detailed rules behind the [Machines overview](../machine.md). Area code: `ma
 
 ## Jobs
 
-**R-mach-33** A job is a script or a machine. A runner executes a script. A machine named by its file, `machine:`, is started by the controller as a child run, and one named by its location, `call:`, as a run of its own whose result is the job's output. A `send:` job runs nothing: it delivers an event to a run and has no output.
+**R-mach-33** A job is a script, a machine, or a send. A machine is named by its file (`machine:`) or by its location (`call:`), and a send delivers an event and returns nothing. A runner executes a script. A machine named by its file is started by the controller as a child run, and one named by its location as a run of its own whose result is the job's output.
 *Accept:* a flow with a script stage and a machine stage: the record shows one job sent to a runner and its result arriving as the first stage's `done`, and a new instance whose head names the flow as its parent, with nothing sent to a runner for the second stage itself.
 
 **R-mach-35** A job of either kind has an input, the permissions it may use, a limit on time, and optionally a restart policy, written the same way for both; a script also has a limit on memory and tags that choose its runners.
@@ -187,7 +187,7 @@ The detailed rules behind the [Machines overview](../machine.md). Area code: `ma
 **R-mach-158** An expression and an allow entry's scope read the values set at the run's location or above as `values.NAME`. A value is read by its name: `values[expr]` and `values` alone are refused when checked, and the names a definition, a draft with its children and a job read can be listed. An expression that reads a value not set fails, naming the value and the run's location.
 *Accept:* a definition reading `values.GREETING`, `values['ROOM']` and `net:${values.HUB}:443` lists those three; with them set its job is filled as `kitchen` and `net:hub.lan:443`; with `HUB` not set it fails with `the value HUB is not set at /home/devices/boiler or above`. `${values[input.name]}` and `${Object.keys(values)}` are refused. *Test:* `mach_values_are_read_by_name`
 
-**R-mach-159** A job may be `send: { to, event, data }`: it sends the event to a run by its address. Beside `send:` it takes `approve:`, `allow:` and `deny:`, and no other field of a job. A job writes exactly one of `script:`, `machine:`, `call:` and `send:`, and a sent event's name is written out and none that Corbie gives a machine itself.
+**R-mach-159** A send, written `send: { to, event, data }` inside `job:`, delivers an event to a run by its address and returns nothing (R-mach-33). Beside `send:` it takes `approve:`, `allow:` and `deny:`, and no other field of a job. A job writes exactly one of `script:`, `machine:`, `call:` and `send:`, and a sent event's name is written out and none that Corbie gives a machine itself.
 *Accept:* a send with `approve:` and `allow:` passes; a send with `input:` and `timeout:`, a send with a script, a send of `done` and a send whose event is an expression are each refused at their place. *Test:* `mach_a_job_sends`
 
 **R-mach-160** A job may be `call: { at }` with an input: it starts a run of that location and waits, and its output is that run's result. A call names its location with `at` alone, and takes no memory, tags, files or key.
@@ -283,7 +283,7 @@ The detailed rules behind the [Machines overview](../machine.md). Area code: `ma
 **R-mach-91** A job marked for approval does not start until its machine's ask has approved it; a job that declares a permission its machine lists in `approve:` is held the same way (see Permissions, R-perm-42).
 *Accept:* parity case 63.
 
-**R-mach-95** What gives the yes is the machine's ask: a job of its own, a script or a machine, named at the top of the definition. That job is called `ask`, and nothing else in a definition may take the name.
+**R-mach-95** What gives the yes is the machine's ask: a job of its own, named at the top of the definition. That job is called `ask`, and nothing else in a definition may take the name.
 *Accept:* parity case 63 (a script) and parity case 74 (a machine). A flow with a stage named `ask`, a chart with a state named `ask` and an agent with a tool named `ask` are each refused when checked.
 
 **R-mach-97** A machine with an ask of its own uses it; a machine with none uses the nearest one above it. A machine made while running has none of its own (R-mach-163).

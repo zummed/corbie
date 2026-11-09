@@ -305,7 +305,7 @@ func Test_mach_a_job_sends(t *testing.T) {
 	got := problems(t, "probe: p\nwork:\n  a: { send: { to: { at: x }, event: e }, input: 1, timeout: 5s }\n  b: { send: { to: { at: x }, event: e }, script: ./a.js }\n  c: { send: { to: { at: x }, event: done } }\n  d: { send: { to: { at: x }, event: \"${input.e}\" } }\n", map[string]string{"a.js": ""})
 	for _, want := range []string{
 		"work.a: a send takes to, event and data, and approve, allow and deny: it has no input, timeout",
-		"work.b: a job is one of a script, a machine, a send or a call",
+		"work.b: a job writes one of script:, machine:, call: and send:",
 		`work.c.send.event: "done": no machine can send an event named`,
 		`work.d.send.event: "${input.e}": the event's name is written out`,
 	} {

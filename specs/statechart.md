@@ -33,7 +33,7 @@ A final state is one with `end:`. It ends the state that holds it, and a final s
 
 ## Jobs
 
-A state may have a job, a script or a machine. It starts when the state is entered and is cancelled if the state is left before it finishes. A state that holds other states has no job of its own.
+A state may have a job. It starts when the state is entered and is cancelled if the state is left before it finishes. A state that holds other states has no job of its own.
 
 A state may instead have several named jobs, which all start when it is entered. The state is done when all of them are done, its output is each one's by name, and it has failed as soon as one fails. This is how a chart does several things at once.
 

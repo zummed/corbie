@@ -55,7 +55,7 @@ it. A loaded file has the plugins and `require`, and not `input`, `job`,
 A file whose path ends in `.yaml`, `.yml` or `.json` gives its data, read as
 `corbie manual yaml` says. It needs no permission.
 
-A script cannot start a script or a machine: only a machine starts jobs.
+A script cannot start a job: only a machine starts jobs.
 
 Plugins
 -------

@@ -400,9 +400,9 @@ func (c *Checker) Job(place string, s *JobSpec, names ...string) {
 	}
 	switch {
 	case kinds > 1:
-		c.Problem(place, "a job is one of a script, a machine, a send or a call")
+		c.Problem(place, "a job writes one of script:, machine:, call: and send:")
 	case kinds == 0:
-		c.Problem(place, "a job needs a script, a machine, a send or a call")
+		c.Problem(place, "a job writes one of script:, machine:, call: and send:, and this one writes none")
 	case s.IsSend():
 		if s.Input != nil || s.Timeout != "" || s.Restart != nil || s.Memory != 0 || len(s.Tags) > 0 || len(s.Files) > 0 {
 			c.Problem(place, "a send takes to, event and data, and approve, allow and deny: it has no input, timeout, restart, memory, tags or files")

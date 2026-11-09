@@ -276,14 +276,14 @@ A `default` that `properties` and `items` do not lead to from the top, such as o
 
 ## Jobs
 
-A machine contains jobs, which do its work. A job is a script, which a runner executes, or a machine:
+A machine contains jobs, which do its work. A job is a script, a machine, or a send. A machine is named by its file (`machine:`) or by its location (`call:`), and a send delivers an event and returns nothing.
 
 | Job | What runs |
 |---|---|
 | `script: ./fetch.js` | the script, on a runner |
 | `machine: ./child.yaml` | the machine of that file, as a child run |
 | `call: { at: services/weather }` | the machine at that location, as a run of its own whose result is the job's output (see Sending and calling) |
-| `send: { to, event, data }` | nothing: the event is delivered to a run, and the job has no output |
+| `send: { to, event, data }` | nothing: the job delivers the event to a run and returns nothing |
 
 A script or a machine has an input, the permissions it may use, a limit on time, and optionally a restart policy. A script also has a limit on memory and tags that choose which runners may take it.
 
@@ -429,7 +429,7 @@ Services that carry questions to people, such as a chat program, are clients at 
 
 ## Approval
 
-A job can be made to wait for a yes before it starts. A job is held if it is marked for approval, or if a permission it asks for is one its machine, or a machine above it, has listed in `approve:`. Being approved gives a job nothing it was not already allowed; approval only ever holds. What gives the yes is the machine's ask: a job of its own, a script or a machine, named at the top of the definition. That job is called `ask`, and nothing else in a definition may take the name. A machine with no ask uses the nearest one above it. For a machine made while running, see [Words from outside](#words-from-outside).
+A job can be made to wait for a yes before it starts. A job is held if it is marked for approval, or if a permission it asks for is one its machine, or a machine above it, has listed in `approve:`. Being approved gives a job nothing it was not already allowed; approval only ever holds. What gives the yes is the machine's ask: a job of its own, named at the top of the definition. That job is called `ask`, and nothing else in a definition may take the name. A machine with no ask uses the nearest one above it. For a machine made while running, see [Words from outside](#words-from-outside).
 
 A run started by a send or a call has no machine above it, so its held jobs go only to its own file's `ask:`, and are denied if it has none. A call or a `job: { send }` is a job, and declares only `send:` to the location it names, so the sender's `approve: [send:…]` holds it when the list names that location. A statechart's send action is never held.
 

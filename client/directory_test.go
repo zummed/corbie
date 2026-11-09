@@ -48,7 +48,7 @@ func TestTreeStartsItsSingletons(t *testing.T) {
 	if run.Status != "running" || run.Input != nil {
 		t.Fatalf("the singleton is %s, with input %v", run.Status, run.Input)
 	}
-	if runs := roots(t, l); len(runs) != 1 {
+	if runs := roots(t, l, done.Locations[0].Run); len(runs) != 1 {
 		t.Fatalf("there are %d runs", len(runs))
 	}
 	// The transient file runs when its tree's client starts it.
@@ -69,7 +69,7 @@ func TestSecondSubmitStartsNothing(t *testing.T) {
 	if again.Locations[0].What != "recorded" || len(again.Cancelled) > 0 || again.Before != "" {
 		t.Fatalf("the second submit did %+v", again)
 	}
-	if runs := roots(t, l); len(runs) != 1 || runs[0].ID != first {
+	if runs := roots(t, l, first); len(runs) != 1 || runs[0].ID != first {
 		t.Fatalf("the runs are %v", runs)
 	}
 }
@@ -600,19 +600,33 @@ func write(t *testing.T, dir, name, text string) {
 }
 
 // roots gives the root runs, finished ones too.
-func roots(t *testing.T, l *client.Local) []*client.Run {
+func roots(t *testing.T, l *client.Local, listed ...string) []*client.Run {
 	t.Helper()
-	runs, err := l.List(ctx, client.Filter{Finished: true})
-	if err != nil {
-		t.Fatal(err)
-	}
-	var out []*client.Run
-	for _, run := range runs {
-		if run.Parent == "" {
-			out = append(out, run)
+	// A run's head is written a moment after its record, so the runs
+	// started are waited for before the roots are counted.
+	deadline := time.Now().Add(20 * time.Second)
+	for {
+		runs, err := l.List(ctx, client.Filter{Finished: true})
+		if err != nil {
+			t.Fatal(err)
 		}
+		var out []*client.Run
+		var ids []string
+		for _, run := range runs {
+			if run.Parent == "" {
+				out = append(out, run)
+				ids = append(ids, run.ID)
+			}
+		}
+		all := true
+		for _, id := range listed {
+			all = all && slices.Contains(ids, id)
+		}
+		if all || time.Now().After(deadline) {
+			return out
+		}
+		time.Sleep(interval)
 	}
-	return out
 }
 
 // show gives a run as it stands.

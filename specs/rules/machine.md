@@ -88,8 +88,8 @@ The detailed rules behind the [Machines overview](../machine.md). Area code: `ma
 **R-mach-29** An expression may run for one second.
 *Accept:* a stage's input holds an expression that loops for ever; the instance fails after about a second with an error that names the expression's place.
 
-**R-mach-30** The time an expression sees is the time of the step, taken from the step's inputs; random numbers differ from one expression to the next but are the same if the step is taken again.
-*Accept:* two expressions in one step read the time and get the same value, and each asks for a random number and gets a different one. The step taken again, by another copy of the controller at a later moment, gives the same time and the same two numbers.
+**R-mach-30** The time an expression sees is the time of the step, in UTC, taken from the step's inputs; random numbers differ from one expression to the next but are the same if the step is taken again.
+*Accept:* two expressions in one step read the time and get the same value, and each asks for a random number and gets a different one. The step taken again, by another copy of the controller at a later moment, gives the same time and the same two numbers. On a computer set to another zone, `new Date().getHours()` gives the step's hour in UTC.
 
 **C-mach-12** One expression cannot change what the next one sees. Anything shared that an expression could alter would make a step's answer depend on the order of evaluation. *Test:* `mach_expression_cannot_alter_shared_names`
 

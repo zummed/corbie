@@ -55,6 +55,8 @@ Besides plugins, a script has a few things of its own:
 
 A job's input and output pass through the store as JSON, so their maps reach the next script with their keys sorted.
 
+`Date` is the runner's clock, and its local time is UTC on every runner.
+
 A script cannot start a job. Deciding what runs is a machine's work.
 
 ## Programs a job starts

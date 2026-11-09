@@ -210,7 +210,7 @@ A value is read by its name, as `values.HUB`. `values[name]` and `values` alone 
 
 Some fields are names, not values, and an expression in them is refused: a thing's name, a type, a permission's kind, a deny entry, a secret's name, a tag, a ticket's name. The path of a script or a machine is a name too, with one exception: it may be exactly one expression that gives a stored definition or script.
 
-An expression may run for one second. That limit stops its own code, and not a call to something built in that is under way; a step of a machine made while running has limits that stop everything (see Controller). The time it sees is the time of the step, and random numbers differ from one expression to the next but are the same if the step is taken again.
+An expression may run for one second. That limit stops its own code, and not a call to something built in that is under way; a step of a machine made while running has limits that stop everything (see Controller). The time it sees is the time of the step, in UTC, and random numbers differ from one expression to the next but are the same if the step is taken again.
 
 ## Shapes
 

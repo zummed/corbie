@@ -167,8 +167,8 @@ It may use JavaScript's operators, `? :`, arrow functions, methods such as
 - An expression cannot change what it reads. It has no `eval`, `Function`,
   `Promise`, `require` or plugins, so it reads no file and makes no
   network connection.
-- `Date` gives the time of the step, and `Math.random` gives the same numbers
-  each time the step is taken.
+- `Date` gives the time of the step, in UTC, and `Math.random` gives the same
+  numbers each time the step is taken.
 - An expression may run for one second. That limit stops its own code, and
   not a call to something built in that is under way.
 - In a permission's scope an expression reads `input` and `values` and nothing

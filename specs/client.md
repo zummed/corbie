@@ -91,6 +91,8 @@ $ corbie run show <id> --record
   waiting on ticket knock
 ```
 
+A time Corbie prints is in UTC.
+
 Following from a terminal is one flag, `--watch`. It prints what the command prints without it, and keeps going:
 
 - `run ls --watch` prints the listing, then each run that appears or changes.

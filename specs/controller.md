@@ -160,6 +160,7 @@ A submit changes no other tree. Only the tree's client cancels the runs at its l
 
 - `drain` is the default for keyed and transient files. A singleton is always `restart`, and its new run starts once every run it replaces has ended, their children included.
 - A singleton started again is given, as its input, what the run it replaces hands over by that run's `handover:`, read once that run has ended. The controller copies the blobs the value names into the new run's record before its first step.
+- Only the controller's start of a singleton names the runs it replaces. A client's start that names any is refused.
 - A keyed run cancelled by a restart starts fresh at the next send to its key.
 - Events a cancelled run had kept under `defer:` are noted as undelivered in each sender's record.
 - The controller finds a location's runs by listing its tree client's running heads, each of which names its location.

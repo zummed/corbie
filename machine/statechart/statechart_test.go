@@ -1058,16 +1058,16 @@ states:
 	c := newChart(t, src)
 	c.input = map[string]any{"seen": []any{"a"}}
 	c.give(start())
-	if value, named := machine.HandsOver(c.def, c.state, c.input); !named || !reflect.DeepEqual(value, c.input) {
-		t.Fatalf("before checking was done the chart hands over %v, %v", value, named)
+	if value, named, err := machine.HandsOver(c.def, c.state, c.input); err != nil || !named || !reflect.DeepEqual(value, c.input) {
+		t.Fatalf("before checking was done the chart hands over %v, %v, %v", value, named, err)
 	}
 	c.give(done("checking", map[string]any{"seen": []any{"a", "b"}}))
-	if value, _ := machine.HandsOver(c.def, c.state, c.input); !reflect.DeepEqual(value, map[string]any{"seen": []any{"a", "b"}}) {
-		t.Fatalf("once checking was done the chart hands over %v", value)
+	if value, _, err := machine.HandsOver(c.def, c.state, c.input); err != nil || !reflect.DeepEqual(value, map[string]any{"seen": []any{"a", "b"}}) {
+		t.Fatalf("once checking was done the chart hands over %v, %v", value, err)
 	}
 	c = newChart(t, strings.Replace(src, "handover: checking\n", "", 1))
 	c.give(start(), done("checking", 1.0))
-	if value, named := machine.HandsOver(c.def, c.state, c.input); named || value != nil {
-		t.Fatalf("a chart with no handover: hands over %v, %v", value, named)
+	if value, named, err := machine.HandsOver(c.def, c.state, c.input); err != nil || named || value != nil {
+		t.Fatalf("a chart with no handover: hands over %v, %v, %v", value, named, err)
 	}
 }

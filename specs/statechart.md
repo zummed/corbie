@@ -184,13 +184,14 @@ return { seen }
   corbie run cancel /feeds/watch, then a submit         null                  started
 ```
 
-The third row is the fallback: the second run had not finished `checking`, so it hands on what it was given.
+The third row is the fallback: the second run had not finished `checking`, so it hands over what it was given.
 
 - The run replaced follows its own definition, as every run does. A chart that gains `handover:` in a change hands nothing over on that submit, and one that loses it hands over on that submit for the last time.
-- The new run's `input:` checks what it is handed, as it checks any input. With no `input:` nothing checks it, so the script reads what it was handed and turns an older shape into the new one.
-- Only a run started again is handed anything. A run started after the chart was cancelled, failed or ended is given no input.
+- The new run's `input:` checks what it is handed, as it checks any input. A value that does not fit fails the new run at its first step, and the next submit starts the chart with no input.
+- With no `input:` nothing checks the value, so the script turns an older shape into the new one.
+- Only a run a submit cancels hands over. A chart cancelled, failed or ended before the submit hands nothing to the run the submit starts.
 - Work the cancelled run had under way is not in the output, and may be done again.
-- When the cancelled run's `handover:` gives nothing, the new run's record has a note saying so.
+- When the cancelled run hands over nothing by its `handover:`, or its record can no longer be read, the new run's record has a note naming that run and why.
 
 ## One run per key
 

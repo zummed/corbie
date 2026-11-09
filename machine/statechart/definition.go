@@ -118,7 +118,7 @@ var (
 		{Name: "initial", Kind: machine.KindWord, Like: "drafting", Description: "the state it starts in"},
 		{Name: "states", Kind: machine.KindNamed, Of: stateShape, Description: "its states"},
 		{Name: "handover", Kind: machine.KindWord, Like: "checking",
-			Description: "of a singleton, the state whose latest output, or else the run's input, is the input of the run a submit starts in its place"},
+			Description: "of a singleton, the state whose latest output, or else this run's input, is the input of the run a submit starts in its place"},
 	}}
 )
 

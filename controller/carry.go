@@ -32,6 +32,11 @@ func (p *pass) finish(inst string, step *instance.Step) error {
 			return err
 		}
 	}
+	if st := &step.State; st.Status != instance.Running && st.Counted {
+		if err := p.free(inst, store.Key(p.ctl, st.Location, inst), inst); err != nil {
+			return err
+		}
+	}
 	// What does not depend on anything else is written side by side. A step's
 	// events go after it, one after another in the order sent, since a run
 	// takes what sorts before an event it has heard as a copy. The ending is

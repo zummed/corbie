@@ -72,8 +72,8 @@ These are true of sends and calls to addresses.
   read it.
 - A run a send or a call starts counts as one level below its sender, and
   fails as it starts past its own file's `limits: { depth: }`, 16 by default.
-- `limits: { runs: }` is counted as a send is made, so sends from several runs
-  at once can pass it by a few.
+- `limits: { runs: }` is counted as a send is made and as a run starts, so
+  starts from several runs at once can pass it by a few.
 - A run remembers the last message of each of its 64 most recent senders. A
   controller stopped while it sends, with 64 others heard before it resumes,
   can deliver an event twice.

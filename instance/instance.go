@@ -117,6 +117,9 @@ type State struct {
 	Tree     string `json:"tree,omitzero"`
 	// Key is the instance's key at a keyed location, while it runs.
 	Key string `json:"key,omitzero"`
+	// Counted says a transient run took a key file under its own ID, which
+	// its location's limits: { runs } counts, while it runs.
+	Counted bool `json:"counted,omitzero"`
 	// Lifetime is the lifetime of the file a root was started from at its
 	// location. A child has none.
 	Lifetime string `json:"lifetime,omitzero"`

@@ -109,7 +109,7 @@ Some things are the same whatever the machine's type, and the controller does th
 - **Children.** It starts child machines, passes events between parent and child in order, copies what a child hands up into the parent's record, and cancels everything below a machine that ends or is cancelled. A script job is cancelled by a message to its runner.
 - **Time.** It keeps timers and delivers them, and ends a machine whose timeout has passed. That machine fails as out of time and everything below it is cancelled.
 - **Tickets.** It makes tickets and takes their answers.
-- **Limits.** It counts depth and jobs against their limits, and a keyed location's running runs against `limits: { runs }`.
+- **Limits.** It counts depth and jobs against their limits, and a keyed or transient location's running runs against `limits: { runs }`.
 - **Approval.** It holds the jobs that need approval, starts each ask once for the jobs of a step that go to it, and releases or refuses them when the ask has ended.
 
 ## Trees and locations
@@ -178,7 +178,7 @@ These sends are noted as undelivered in the sender's record and fail nothing:
 
 - The receiver's `receive:` does not list the sender.
 - No run at the address is running, or the run is a flow or an agent.
-- The key has no running run and its location has `limits: { runs }` running already.
+- The send would start a run, and its location has `limits: { runs }` running already.
 - The event is named `start`, `done`, `failed`, a timer's name or a ticket's name.
 - The address names a run by its ID that is not at the location the address gives, or a client.
 - A run that had kept the event under `defer:` was cancelled.
@@ -195,7 +195,7 @@ job:
 
 1. The controller starts a run of the `transient` location with the input, as a root of that location's tree client.
 2. The job's output is that run's result, and a client's call has the result written beside its receipt (see instance.md).
-3. The job fails if `receive:` refuses the caller, the location is not `transient`, or the run fails.
+3. The job fails if `receive:` refuses the caller, the location is not `transient` or is at its `limits: { runs }`, or the run fails.
 4. Cancelling the calling job, or ending the run that holds it, cancels the run.
 
 - The caller's record names the run it called, and that run's head names the caller's step as its cause.
@@ -206,7 +206,7 @@ job:
 
 A key's file is at its location (see store.md), named by the SHA-256 of the key. It holds the key, the run and the message that starts the run, signed by the controller and sealed to it. A singleton's run is named the same way, by the file of the empty key, which the submit writes as it starts the run. A send to a singleton's `{ at }` never starts a run: with no running singleton it is noted as undelivered.
 
-A send to a transient location's `{ at }` is a send to a key no other send names. It always starts a new run, named from the sender's message, and takes no key's file. The run's first step takes the start and the event, as a keyed run's does; a flow or an agent takes the start alone.
+A send to a transient location's `{ at }` is a send to a key no other send names. It always starts a new run, named from the sender's message. The run's first step takes the start and the event, as a keyed run's does; a flow or an agent takes the start alone. A transient run takes a key's file only where its file has `limits: { runs }`: the file of its own ID, which counts it, freed as a key's is.
 
 1. A send reads the file once, while the step is worked out, and the step names the run the event goes to: the run the file names or, when it names none at a keyed location, a new run. A carry-out done again goes to the same run.
 2. A message to a key carries the event, and what would start a run there. The new run's first step takes both, and the run with the key takes the event alone.
@@ -228,9 +228,9 @@ An event sent to a key is the first event of its step. The events of a step afte
 
 An instance remembers the last message taken from each of its 64 most recent senders, and one that does not sort after it is a copy from a carry-out done again.
 
-`limits: { runs }` is checked while the sender's step is worked out, by listing the key files at the location, and again when a message moves on to start a run. Sends from several runs at once may each find room, so the count can pass the cap by a few.
+`limits: { runs }` is checked while the sender's step is worked out, by listing the key files at the location, and again when a message moves on to start a run. At a transient location it is checked again as the run starts, for a send, a call and a client's start alike. Starts from several runs at once may each find room, so the count can pass the cap by a few.
 
-A send costs one read of the file, and one of the location's file when it starts a run. It lists nothing when the location has no `limits: { runs }`. A step's files are read side by side, since a step that does not fit in a pass is never written. Taking a key costs a read and a write, and reading the run it names when another has it. Freeing one costs a read and a delete.
+A send costs one read of the file, and one of the location's file when it starts a run. A send, and a run starting at a transient location, lists nothing when the location has no `limits: { runs }`. A step's files are read side by side, since a step that does not fit in a pass is never written. Taking a key costs a read and a write, and reading the run it names when another has it. Freeing one costs a read and a delete.
 
 ## Housekeeping
 

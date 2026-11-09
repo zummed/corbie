@@ -82,7 +82,7 @@ func Test_client_submit_problems_in_json(t *testing.T) {
 	m, _ := working(t, "all")
 	dir := filepath.Join(t.TempDir(), "bad")
 	os.Mkdir(dir, 0o755)
-	os.WriteFile(filepath.Join(dir, "a.yaml"), []byte("flow: a\nlimits: { runs: 2 }\nstages:\n  s: { job: { script: ./x.js } }\n"), 0o644)
+	os.WriteFile(filepath.Join(dir, "a.yaml"), []byte("flow: a\nlifetime: singleton\nlimits: { runs: 2 }\nstages:\n  s: { job: { script: ./x.js } }\n"), 0o644)
 	os.WriteFile(filepath.Join(dir, "x.js"), []byte("return 1"), 0o644)
 	status, out, said := m.run("", "run", "submit", dir, "--json")
 	if status != 1 || !strings.Contains(said, "1 of 1 files have problems") {

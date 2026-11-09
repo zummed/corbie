@@ -174,6 +174,6 @@ The bridge sends `send: { to: { at: agents/chat, key: "${event.data.thread}" }, 
 2. Further sends to that key go to that run.
 3. When the run ends, the next send to the key starts a fresh one.
 
-- `limits: { runs: N }` caps how many of the location's runs are running at once. With the cap reached, a send to a new key is not delivered and is noted in the sender's record; sends to running keys still go through. There is no default cap.
+- `limits: { runs: N }` caps how many of the location's runs are running at once, as it does at a transient location (see machine.md). With the cap reached, a send to a new key is not delivered and is noted in the sender's record; sends to running keys still go through. There is no default cap.
 - A run started by a send counts one level below its sender, and fails as it starts if that passes its own file's depth limit.
 - The run's authority comes from its location. The sender adds nothing to it and takes nothing away (see permission.md).

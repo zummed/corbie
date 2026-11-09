@@ -671,8 +671,8 @@ func (c *Checker) location(def *Definition) {
 	switch {
 	case def.Runs < 0:
 		c.Problem("limits.runs", "runs is at least 1")
-	case def.Runs > 0 && def.Lifetime != LifetimeKeyed:
-		c.Problem("limits.runs", "runs limits the runs of a keyed file, and this file is not keyed")
+	case def.Runs > 0 && def.Lifetime == LifetimeSingleton:
+		c.Problem("limits.runs", "runs limits the runs of a keyed or transient file, and a singleton has one run")
 	}
 	for i, entry := range def.Read {
 		at := fmt.Sprintf("read[%d]", i)

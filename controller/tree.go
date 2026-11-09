@@ -72,8 +72,8 @@ type located struct {
 	Definition blob.Ref `json:"definition"`
 	Hash       string   `json:"hash"`
 	Lifetime   string   `json:"lifetime"`
-	// Runs is how many runs of a keyed file may be running at once: no
-	// limit where it is none.
+	// Runs is how many runs of a keyed or transient file may be running at
+	// once: no limit where it is none.
 	Runs int `json:"runs,omitzero"`
 }
 
@@ -706,6 +706,17 @@ func (b *build) located(start *arrival) (*instance.Start, error) {
 	case start.kind == identity.Controller && file.Lifetime != machine.LifetimeSingleton:
 		b.drop(start)
 		return nil, nil
+	}
+	// A transient location at its limits: { runs } starts no run. Its runs
+	// are counted by their key files, as a keyed location's are.
+	if file.Lifetime == machine.LifetimeTransient && file.Runs > 0 {
+		files, err := store.Names(p.store.List(p.ctx, store.Keys(p.ctl, s.Location)))
+		if err != nil {
+			return nil, err
+		}
+		if len(files) >= file.Runs {
+			return no("%s is at its limit of %d runs", s.Location, file.Runs)
+		}
 	}
 	// A singleton started again waits for every run it replaces to end,
 	// children included, and so does everything waiting for it: until no

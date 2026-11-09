@@ -1538,6 +1538,14 @@ func (b *build) first(s *instance.Start, start *arrival) (refused bool, err erro
 	if len(problems) == 0 {
 		st.Input, st.Title = read.Input, read.Title
 	}
+	// A transient run whose file limits its runs takes a key file under its
+	// own ID, so that its location counts it. It is freed as a key is.
+	if st.Lifetime == machine.LifetimeTransient && def.Runs > 0 {
+		if _, err := p.claim(b.inst, store.Key(p.ctl, st.Location, b.inst), b.inst, start.name); err != nil {
+			return false, err
+		}
+		st.Counted = true
+	}
 	b.use(start)
 	b.record(machine.Event{Name: machine.Start, Data: st.Input}, start, false)
 	if given {

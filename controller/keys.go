@@ -31,7 +31,8 @@ import (
 //  4. An event sent to { at, run } goes to that run alone, and is noted as
 //     undelivered when that run cannot take it.
 //  5. An event sent to a transient location's { at } starts a new run, as a
-//     key no other send names would, and takes no key's file.
+//     key no other send names would. The run takes a key file under its own
+//     ID only where its file has limits: { runs }, so that it is counted.
 //
 // So a send reads the file once and fixes the run it goes to in its step. A
 // carry-out done again goes to the same run, which has heard it.
@@ -186,7 +187,7 @@ type target struct {
 // a limit on its runs, how many key files it has. live says the run the
 // file names must still have the key: a send takes the file's word, and the
 // event moves on from a run that has ended.
-func (p *pass) aimAt(at, key string, keyed, live bool) (*target, error) {
+func (p *pass) aimAt(at, key string, live bool) (*target, error) {
 	t := &target{}
 	file, _, err := instance.ReadKey(p.ctx, p.store, p.c.ID.Card, p.c.ID, store.Key(p.ctl, at, key), key)
 	if err != nil && !isAltered(err) {
@@ -209,7 +210,7 @@ func (p *pass) aimAt(at, key string, keyed, live bool) (*target, error) {
 	if t.file, err = p.readLocated(at); err != nil && !isAltered(err) {
 		return nil, err
 	}
-	if !keyed || t.file == nil || t.file.Runs == 0 {
+	if t.file == nil || t.file.Runs == 0 {
 		return t, nil
 	}
 	files, err := store.Names(p.store.List(p.ctx, store.Keys(p.ctl, at)))
@@ -231,9 +232,7 @@ func (t *target) aim(at string, keyed bool) (to string, starts bool, why string)
 		return "", false, why
 	}
 	switch {
-	case !keyed && t.file.Lifetime == machine.LifetimeTransient:
-		return "", true, ""
-	case !keyed:
+	case !keyed && t.file.Lifetime != machine.LifetimeTransient:
 		return "", false, fmt.Sprintf("no run of the singleton at %s is running", at)
 	case t.file.Runs > 0 && t.runs >= t.file.Runs:
 		return "", false, fmt.Sprintf("%s is at its limit of %d runs", at, t.file.Runs)
@@ -252,7 +251,6 @@ func (b *build) readAddresses(requests []machine.Request) error {
 		b.targets = map[addressed]*target{}
 	}
 	var places []addressed
-	var keyed []bool
 	for _, r := range requests {
 		if r.Send == nil || r.Send.At == nil || r.Send.At.Client != "" || r.Send.At.Run != "" {
 			continue
@@ -265,13 +263,12 @@ func (b *build) readAddresses(requests []machine.Request) error {
 		if _, seen := b.targets[place]; !seen {
 			b.targets[place] = nil
 			places = append(places, place)
-			keyed = append(keyed, r.Send.At.Key != nil)
 		}
 	}
 	found := make([]*target, len(places))
 	err := b.p.each(len(places), func(i int) error {
 		var err error
-		found[i], err = b.p.aimAt(places[i].at, places[i].key, keyed[i], false)
+		found[i], err = b.p.aimAt(places[i].at, places[i].key, false)
 		return err
 	})
 	for i, place := range places {
@@ -410,7 +407,7 @@ func (b *build) aim(ask *instance.Ask, s *machine.Send, at, why string) {
 	t := b.targets[addressed{at, ask.Key}]
 	if t == nil {
 		var err error
-		if t, err = b.p.aimAt(at, ask.Key, keyed, false); err != nil {
+		if t, err = b.p.aimAt(at, ask.Key, false); err != nil {
 			b.err = err
 			return
 		}
@@ -693,7 +690,7 @@ func (p *pass) undeliver(a *arrival, why string) error {
 func (p *pass) redirect(a *arrival) error {
 	msg := *a.msg
 	keyed := msg.To.Key != nil
-	t, err := p.aimAt(msg.To.At, keyOf(msg.To), keyed, true)
+	t, err := p.aimAt(msg.To.At, keyOf(msg.To), true)
 	if err != nil {
 		return err
 	}
@@ -834,7 +831,7 @@ func (p *pass) route(a *arrival) error {
 				return refuse("%v", err)
 			}
 		}
-		t, err := p.aimAt(to.At, keyOf(to), to.Key != nil, false)
+		t, err := p.aimAt(to.At, keyOf(to), false)
 		if err != nil {
 			return err
 		}

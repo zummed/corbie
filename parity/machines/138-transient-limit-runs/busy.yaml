@@ -1,0 +1,6 @@
+statechart: busy
+limits: { runs: 1 }
+initial: open
+states:
+  open: { timers: { linger: 3s }, on: { linger: over } }
+  over: { end: done }

@@ -405,6 +405,62 @@ func Test_ctl_limit_runs_caps_new_keys(t *testing.T) {
 	}
 }
 
+// limits: { runs } caps the runs of a transient location as it does a keyed
+// one's: at the cap a client's start and a client's send are refused in the
+// receipt, and a run's send is noted. Each run is counted by a key file of
+// its own, which goes when it ends, and then a start is taken again.
+func Test_ctl_limit_runs_caps_a_transient_location(t *testing.T) {
+	w := newWorld(t)
+	sender := w.rooms(map[string]string{"/t/bell": `
+		statechart: bell
+		limits: { runs: 1 }
+		initial: a
+		states:
+		  a: { on: { rang: b } }
+		  b: { end: done }
+	`})
+	start := func() *instance.Receipt {
+		run, err := w.client.Start(ctx, client.Start{At: "/t/bell"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		w.settle()
+		r, err := w.client.Receipt(ctx, strings.SplitN(run, "/", 2)[1])
+		if err != nil || r == nil {
+			t.Fatalf("no receipt for %s: %v", run, err)
+		}
+		return r
+	}
+	if r := start(); !r.Taken {
+		t.Fatalf("the first start was refused: %s", r.Refused)
+	}
+	if r := start(); r.Taken || !strings.Contains(r.Refused, "/t/bell is at its limit of 1 runs") {
+		t.Fatalf("the second start gave %+v", r)
+	}
+	if r := w.clientSend(w.client, "/t/bell", "rang", nil); r.Taken || !strings.Contains(r.Refused, "/t/bell is at its limit of 1 runs") {
+		t.Fatalf("the send gave %+v", r)
+	}
+	w.tell(sender, "ring", map[string]any{"at": "bell"})
+	w.settle()
+	if notes := w.keyNotes(sender); len(notes) != 1 || !strings.Contains(notes[0], "/t/bell is at its limit of 1 runs") {
+		t.Fatalf("the router's record says %v", notes)
+	}
+	bells := w.runsOf("bell")
+	if len(bells) != 1 || len(w.list(store.Keys("ctl", "/t/bell"))) != 1 {
+		t.Fatalf("the bells are %v, with the key files %v", bells, w.list(store.Keys("ctl", "/t/bell")))
+	}
+	if _, err := w.client.Send(ctx, w.to(bells[0]), "rang", nil, time.Hour); err != nil {
+		t.Fatal(err)
+	}
+	w.settle()
+	if left := w.list(store.Keys("ctl", "/t/bell")); len(left) != 0 {
+		t.Fatalf("the run ended and the key files are %v", left)
+	}
+	if r := start(); !r.Taken {
+		t.Fatalf("the start after the run ended was refused: %s", r.Refused)
+	}
+}
+
 // A message in flight to a run that ended moves on to start a fresh run only
 // where the location's limit leaves room.
 func Test_ctl_limit_runs_checked_when_a_message_moves_on(t *testing.T) {

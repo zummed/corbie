@@ -1,0 +1,10 @@
+{
+  "status": "done",
+  "output": { "error": { "<contains>": "/case/busy is at its limit of 1 runs" } },
+  "record": [
+    { "machine": "sender", "ask": { "kind": "event", "location": "/case/busy", "run": "<any>" } },
+    { "machine": "sender", "ask": { "kind": "event", "location": "/case/busy", "undelivered": true, "text": { "<contains>": "/case/busy is at its limit of 1 runs" } } },
+    { "machine": "busy", "status": "done" }
+  ],
+  "note": "R-mach-155, R-ctl-124: limits: { runs } caps the runs of a transient location; a send past it is noted and a call past it fails."
+}

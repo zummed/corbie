@@ -172,8 +172,8 @@ The detailed rules behind the [Machines overview](../machine.md). Area code: `ma
 **R-mach-154** A file's `update:` is `restart` or `drain`, stored filled in: `restart` for a singleton and `drain` for any other by default. A singleton always restarts, and `update: drain` on one is refused.
 *Accept:* `lifetime: singleton` alone is stored with `update: restart`; with `update: drain` it is refused at `update`. *Test:* `mach_update_says_what_a_change_does`
 
-**R-mach-155** `limits: { runs: N }` caps how many runs of a keyed file are running at once. N is at least 1, and `runs` on a file that is not keyed is refused.
-*Accept:* a keyed chart with `runs: 50` is stored with 50; `runs: 0` and `runs:` on a transient file are refused at `limits.runs`. *Test:* `mach_runs_limits_a_keyed_file`
+**R-mach-155** `limits: { runs: N }` caps how many runs at a keyed or transient file's location are running at once. N is at least 1, and `runs` on a singleton is refused.
+*Accept:* a keyed chart and a transient chart with `runs: 50` are stored with 50; `runs: 0` and `runs:` on a singleton are refused at `limits.runs`. Parity case 138. *Test:* `mach_runs_limits_a_keyed_or_transient_file`
 
 **R-mach-156** A file's `receive:` is a list, for every event, or a mapping from an event's name to a list. An entry is a location pattern or `client:<name>`, written out; a pattern is read from the tree's prefix unless it starts with `/`, and holds no `..`, `.`, empty name, `+` name, `#`, backslash or control character. An event's name in it is written out and is none that Corbie gives a machine itself.
 *Accept:* `receive: [thermostats/*, /work/**, client:panel]` is stored for every event and `{ set: […], stop: client:panel }` by name; an entry with an expression, `client:`, `../up`, `a//b`, `x#y` or `+/z`, and the event `done`, are each refused at their place. *Test:* `mach_receive_says_who_may_send`

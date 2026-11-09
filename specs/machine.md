@@ -132,7 +132,7 @@ Every run has a location, and its authority comes from it: its file's `allow:` a
 
 - A child started by `machine:` runs at its parent's location.
 - A machine made while running has no file of its own. It runs at the location of the job that starts it, narrowed by that job's list.
-- `limits: { runs: N }` on a keyed file caps how many of its runs are running at once (see statechart.md). N is at least 1, and `runs` on a file that is not keyed is refused.
+- `limits: { runs: N }` on a keyed or transient file caps how many runs at its location are running at once. At the cap a send that would start a run is noted as undelivered, a call fails with the reason, and a client's start is refused in its receipt. N is at least 1, and `runs` on a singleton is refused.
 - `read: [client:wall]` lists the clients, beside the tree's, that read the runs at the location (see permission.md).
 - `lifetime:`, `update:`, `receive:`, `read:` and `limits: { runs: }` belong to a file at a location, and are refused in a machine written in place or made while running.
 
@@ -358,7 +358,7 @@ job: { call: { at: services/weather }, input: { days: 2 } }
 - A location in an address, a `send:` entry or a `receive:` entry is read from the tree's prefix, unless it starts with `/`, which is a full path into any tree. A name in it is not empty, `.`, `..` or `+`, and holds no `#`, backslash or control character.
 - `job: { send: … }` ends `done`, with no output, once the message is written. An event too large to write, past 256 KiB, fails the job, as any job's message does. Beside `send:` it takes `approve:`, `allow:` and `deny:`, and no other field of a job.
 - `at`, `key` and `run` may hold expressions, and `to` may be one expression that gives an address. An address is checked once it is filled in.
-- `job: { call: { at }, input }` starts a run of a `transient` location and waits. The job's output is that run's result. The job fails if the receiver refuses it, if the location is not `transient`, or if the run fails.
+- `job: { call: { at }, input }` starts a run of a `transient` location and waits. The job's output is that run's result. The job fails if the receiver refuses it, if the location is not `transient` or is at its `limits: { runs }`, or if the run fails.
 - A key is any text of 1 to 256 characters. It is written in the run's head, as a label is, so anyone who can list runs can read it, and it holds no secret.
 
 A send to a transient location's `{ at }` is a send to a key no other send names: it always starts a new run.
@@ -366,7 +366,7 @@ A send to a transient location's `{ at }` is a send to a key no other send names
 1. The event's data is the new run's input.
 2. A statechart is then given the event, as a keyed run is. A flow or an agent takes no sent event, and is given only the start.
 
-`receive:`, the depth limit and `event.from` work as for a keyed run. `limits: { runs }` is for keyed files only.
+`receive:`, the depth limit, `event.from` and `limits: { runs }` work as for a keyed run.
 
 A send or a call needs two lists to agree:
 
@@ -390,7 +390,7 @@ The controller writes the sender into `event.from`: `{ at, run }`, with `key` fo
 | the sender's own layers refuse it | `denied` |
 | the receiver's `receive:` refuses it | noted as undelivered in the sender's record |
 | no running statechart can take it: it names a flow or an agent run, a run that has ended, or a key that is empty or past 256 characters | noted as undelivered |
-| a keyed location is at its `limits: { runs: }` and no run has the key | noted as undelivered |
+| it would start a run at a location at its `limits: { runs: }` | noted as undelivered |
 | a run kept it under `defer:` and was cancelled or restarted | noted as undelivered |
 | it is named `start`, `done`, `failed`, `timer`, a timer's name or a ticket's name | noted as undelivered |
 

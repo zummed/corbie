@@ -1,0 +1,15 @@
+# A transient location with limits: { runs: 1 } starts one run at a time: a
+# second send to it in the same step is noted as undelivered, and a call
+# while the first run is running fails with the reason.
+statechart: sender
+allow: [send:busy]
+initial: sending
+states:
+  sending:
+    entry: { send: [{ to: { at: busy }, event: hi }, { to: { at: busy }, event: hi }] }
+    timers: { pause: 1s }
+    on: { pause: calling }
+  calling:
+    job: { call: { at: busy } }
+    on: { failed: finished }
+  finished: { end: done, output: { error: "${event.data.error}" } }

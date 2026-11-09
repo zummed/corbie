@@ -73,14 +73,16 @@ func Test_mach_update_says_what_a_change_does(t *testing.T) {
 	}
 }
 
-// limits: { runs: } caps the runs of a keyed file.
-func Test_mach_runs_limits_a_keyed_file(t *testing.T) {
-	if d := parsed(t, "listener: l\nlifetime: keyed\nlimits: { runs: 50 }\n", nil); d.Definition.Runs != 50 {
-		t.Errorf("runs is stored as %d", d.Definition.Runs)
+// limits: { runs: } caps the runs of a keyed or a transient file.
+func Test_mach_runs_limits_a_keyed_or_transient_file(t *testing.T) {
+	for _, src := range []string{"listener: l\nlifetime: keyed\nlimits: { runs: 50 }\n", "probe: p\nlimits: { runs: 50 }\n"} {
+		if d := parsed(t, src, nil); d.Definition.Runs != 50 {
+			t.Errorf("%q: runs is stored as %d", src, d.Definition.Runs)
+		}
 	}
 	for src, want := range map[string]string{
-		"probe: p\nlimits: { runs: 5 }\n":                     "limits.runs: runs limits the runs of a keyed file, and this file is not keyed",
-		"listener: l\nlifetime: keyed\nlimits: { runs: 0 }\n": "limits.runs: runs is at least 1",
+		"probe: p\nlifetime: singleton\nlimits: { runs: 5 }\n": "limits.runs: runs limits the runs of a keyed or transient file, and a singleton has one run",
+		"listener: l\nlifetime: keyed\nlimits: { runs: 0 }\n":  "limits.runs: runs is at least 1",
 	} {
 		if got := problems(t, src, nil); !strings.Contains(got, want) {
 			t.Errorf("%q gave:\n%s", src, got)

@@ -39,7 +39,7 @@ expressions read `input`, `values` and `run`.
   timeout: 1h    how long a run may take; default no limit
   depth: 16      levels of child runs below a run that a client or a submit started; default 16, 0 for none
   jobs: 100      how many jobs a run may start; default no limit
-  runs: 50       of a keyed file, how many of its runs may be running at once; default no limit
+  runs: 50       of a keyed or transient file, how many runs at its location may be running at once; default no limit
   turns: 20      an agent's turns, as in `corbie manual agent`
 
 A length of time is written `30s`, `5m`, `48h` or `7d`.
@@ -276,8 +276,9 @@ none, as `corbie manual a-directory` shows.
   update: drain          they finish on the definition they started with; the default
 
 - A singleton always restarts, and `update: drain` on one is refused.
-- `limits: { runs: 50 }` on a keyed file caps how many of its runs are running
-  at once.
+- `limits: { runs: 50 }` on a keyed or transient file caps how many runs at its
+  location are running at once. Past it a send that would start a run is not
+  delivered, a call fails, and a client's start is refused.
 - A machine written in place or made while running has no location, and
   refuses `lifetime:`, `update:`, `receive:`, `read:` and `runs:`.
 
@@ -304,7 +305,8 @@ for the result.
 - A send job ends `done` once the event is written. It takes `to`, `event`,
   `data`, `approve`, `allow` and `deny`, and nothing else.
 - A call job's output is the called run's result. It fails if the receiver
-  refuses it, if the location is not transient, or if the run fails.
+  refuses it, if the location is not transient or is at its `limits: { runs }`,
+  or if the run fails.
 - A call job takes `call`, `input`, `timeout`, `restart`, `approve`, `allow`
   and `deny`. Its `timeout` is the called run's, and each restart calls again.
 - The called run belongs to its own tree's client. Cancelling the call job

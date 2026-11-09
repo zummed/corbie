@@ -44,7 +44,7 @@ version                                  the layout's version
       tree                               at a tree's prefix: the client that owns the tree, and the directory last submitted there
       file                               the file recorded at the location, written out
       blobs/<name>                       the scripts and machines that file names
-      keys/<hash>                        which run a key names, by the SHA-256 of the key; a singleton's is the empty key
+      keys/<hash>                        which run a key names, by the SHA-256 of the key; a singleton's is the empty key, a counted transient run's its own ID
       secrets/<name>                     a secret set at the location
       values/<name>                      a value set at the location
   uploads/<client>/<message>/<name>      the files a client sends with a submit

@@ -10,11 +10,13 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"reflect"
 	"strconv"
 	"strings"
 	"syscall"
 	"testing"
 	"time"
+	_ "time/tzdata"
 
 	"github.com/zummed/corbie/machine"
 	"github.com/zummed/corbie/runner"
@@ -27,6 +29,10 @@ func standInHere(as string, args []string) bool {
 	fromRunner := func() *os.File { return os.NewFile(3, "from the runner") }
 	toRunner := func() *os.File { return os.NewFile(4, "to the runner") }
 	switch as {
+	case "job-in-tokyo":
+		// A job's process on a computer set to a zone nine hours east.
+		syscall.Exec(os.Args[0], []string{os.Args[0], runner.JobArg}, []string{"TZ=Asia/Tokyo"})
+		os.Exit(1)
 	case "job-with-output-held":
 		// A job's process that has started a program which holds the
 		// process's own output open, and is in another group.
@@ -129,5 +135,18 @@ func Test_run_unreadable_channel_stops_job_and_fails_it(t *testing.T) {
 		// The process had not ended by itself: the runner stopped it.
 		soon(t, "the job's process to be stopped", func() bool { return ended(pid) })
 		end()
+	}
+}
+
+func Test_run_script_local_time_is_utc(t *testing.T) {
+	w := newWorld(t)
+	w.job(w.ctl, "clock", `const d = new Date(Date.UTC(2026, 6, 1, 12, 30))
+		return [d.getHours(), d.getMinutes(), d.getTimezoneOffset(), new Date(2026, 0, 1).getTime() === Date.UTC(2026, 0, 1)]`, nil)
+	r := w.runner("all")
+	r.Command = []string{os.Args[0], "job-in-tokyo"}
+	pass(t, r)
+	got := w.results()["clock"]
+	if got == nil || !reflect.DeepEqual(got.Output, []any{12.0, 30.0, 0.0, true}) {
+		t.Fatalf("a script on a computer nine hours east of UTC reads its local time as %+v", got)
 	}
 }

@@ -7,7 +7,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"reflect"
 	"strconv"
 	"strings"
 	"testing"
@@ -51,10 +50,6 @@ func standIn(as string, args []string) bool {
 		if args[0] == "and dies" {
 			os.Exit(1)
 		}
-		runner.JobMain()
-	case "job-in-another-zone":
-		// A job's process on a computer set to a zone nine hours east.
-		time.Local = time.FixedZone("east", 9*3600)
 		runner.JobMain()
 	case "job-that-dies-at-once":
 		// A job's process that says why and is gone, without waiting to
@@ -224,19 +219,6 @@ func Test_run_long_error_output_does_not_stall_job(t *testing.T) {
 			size, text = len(got.Error.Error), got.Error.Error
 		}
 		t.Fatalf("the job whose process printed and died has an error of %d bytes: %.200s … %s", size, text, text[max(len(text)-100, 0):])
-	}
-}
-
-func Test_run_script_local_time_is_utc(t *testing.T) {
-	w := newWorld(t)
-	w.job(w.ctl, "clock", `const d = new Date(Date.UTC(2026, 6, 1, 12, 30))
-		return [d.getHours(), d.getMinutes(), d.getTimezoneOffset(), new Date(2026, 0, 1).getTime() === Date.UTC(2026, 0, 1)]`, nil)
-	r := w.runner("all")
-	r.Command = []string{os.Args[0], "job-in-another-zone", runner.JobArg}
-	pass(t, r)
-	got := w.results()["clock"]
-	if got == nil || !reflect.DeepEqual(got.Output, []any{12.0, 30.0, 0.0, true}) {
-		t.Fatalf("a script on a computer nine hours east of UTC reads its local time as %+v", got)
 	}
 }
 

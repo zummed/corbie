@@ -80,12 +80,10 @@ func (p *Process) Close() {
 	p.from.Close()
 }
 
-// Open is how a process started by Start begins: it keeps time in UTC,
-// whatever zone its computer is set to, takes its ends of the channel, and
-// makes itself a group where the system needs that. Everything it starts is
-// in that group, and goes when the group is ended.
+// Open is how a process started by Start begins: it takes its ends of the
+// channel, and makes itself a group where the system needs that. Everything
+// it starts is in that group, and goes when the group is ended.
 func Open() (*Wire, error) {
-	time.Local = time.UTC
 	from, to := takeChannel()
 	if err := startGroup(); err != nil {
 		return nil, fmt.Errorf("the process could not make a group of its own: %w", err)

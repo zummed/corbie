@@ -79,7 +79,7 @@ The record
 
 `corbie run show <id> --record --json` prints each entry as one line, child runs' entries included.
 
-  id, time          the run the entry belongs to, and when it was written
+  id, time          the run the entry belongs to, and when it was written, in UTC
   step, events      a step's number, and the events it received: `name`, `from`, `data`,
                     `cause`, and `answer: true` on the answer to a ticket
   asks              what the controller did next; kind `script`, `child` or `call` is a job it started

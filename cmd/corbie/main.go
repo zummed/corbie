@@ -4,7 +4,6 @@ package main
 
 import (
 	"os"
-	"time"
 
 	"github.com/zummed/corbie/client/cli"
 	"github.com/zummed/corbie/runner"
@@ -16,9 +15,6 @@ import (
 )
 
 func main() {
-	// Every process of the binary keeps time in UTC, whatever zone its
-	// computer is set to: scripts, expressions and what the command prints.
-	time.Local = time.UTC
 	if len(os.Args) > 1 && os.Args[1] == runner.JobArg {
 		runner.JobMain()
 		return

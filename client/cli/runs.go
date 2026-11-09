@@ -825,7 +825,7 @@ func (e *Env) entry(entry client.Entry) {
 		fmt.Fprintln(e.Out, string(data))
 		return
 	}
-	at := entry.Time.Local().Format("15:04:05")
+	at := entry.Time.Format("15:04:05")
 	short := entry.ID[strings.LastIndexByte(entry.ID, '-')+1:]
 	if entry.Step == 0 {
 		data, _ := json.Marshal(entry.Data, json.Deterministic(true))

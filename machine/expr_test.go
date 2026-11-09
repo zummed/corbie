@@ -1,6 +1,8 @@
 package machine
 
 import (
+	"os"
+	"os/exec"
 	"reflect"
 	"strings"
 	"testing"
@@ -113,6 +115,23 @@ func TestTimeAndRandom(t *testing.T) {
 	s2, _ := b.Eval("Math.random()", scope)
 	if r1 != s1 || r2 != s2 {
 		t.Fatal("the step taken again got other random numbers")
+	}
+}
+
+// An expression on a computer set to a zone nine hours east reads the
+// step's time in UTC. The test runs itself again in that zone.
+func TestLocalTimeIsUTC(t *testing.T) {
+	if os.Getenv("TZ") != "Asia/Tokyo" {
+		again := exec.Command(os.Args[0], "-test.run=^TestLocalTimeIsUTC$")
+		again.Env = append(os.Environ(), "TZ=Asia/Tokyo")
+		if out, err := again.CombinedOutput(); err != nil {
+			t.Fatalf("%v\n%s", err, out)
+		}
+		return
+	}
+	got, err := eval(t).Eval("[new Date().getHours(), new Date().getTimezoneOffset()]", Scope{"input": nil})
+	if err != nil || !reflect.DeepEqual(got, []any{float64(12), float64(0)}) {
+		t.Fatalf("an expression in Tokyo at 12:00 UTC reads %v, %v", got, err)
 	}
 }
 

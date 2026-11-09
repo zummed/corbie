@@ -173,7 +173,7 @@ A run keeps the definition it started with, and a submit changes what new runs g
 
 | `update:` | Runs already running |
 |---|---|
-| `restart` | are cancelled; a singleton starts again on the new definition, and a keyed run starts fresh on the next send to its key |
+| `restart` | are cancelled; a singleton starts again on the new definition, handed what the old run's `handover:` names (see statechart.md), and a keyed run starts fresh on the next send to its key |
 | `drain` | finish on the definition they started with; the default for keyed and transient |
 
 - A file is changed when the machine written out from it differs. Where its values are written takes no part, so moving a line changes nothing.
@@ -210,7 +210,7 @@ A value is read by its name, as `values.HUB`. `values[name]` and `values` alone 
 
 Some fields are names, not values, and an expression in them is refused: a thing's name, a type, a permission's kind, a deny entry, a secret's name, a tag, a ticket's name. The path of a script or a machine is a name too, with one exception: it may be exactly one expression that gives a stored definition or script.
 
-An expression may run for one second. That limit stops its own code, and not a call to something built in that is under way; a step of a machine made while running has limits that stop everything (see Controller). The time it sees is the time of the step, and random numbers differ from one expression to the next but are the same if the step is taken again.
+An expression may run for one second. That limit stops its own code, and not a call to something built in that is under way; a step of a machine made while running has limits that stop everything (see Controller). The time it sees is the time of the step, in UTC, and random numbers differ from one expression to the next but are the same if the step is taken again.
 
 ## Shapes
 
@@ -480,4 +480,4 @@ A machine reacts to a failure as to any event. A failure it has no rule for fail
 
 ## Machine types
 
-A type is an extension like any other. It supplies the shape of its definitions, the filling-out of its short forms, the check of its definitions, its step, the state of its run a watcher is shown (see Instances), and its page of the manual. A type that takes shapes from outside as it runs says so from a definition read as plain JSON. Everything in this area is supplied by Corbie, the same for every type, and no type has its own version of any of it.
+A type is an extension like any other. It supplies the shape of its definitions, the filling-out of its short forms, the check of its definitions, its step, the state of its run a watcher is shown (see Instances), and its page of the manual. A type that takes shapes from outside as it runs says so from a definition read as plain JSON. A type may also give, from a run's definition, state and input, the value that run hands to the run a submit starts in its place. Everything in this area is supplied by Corbie, the same for every type, and no type has its own version of any of it.

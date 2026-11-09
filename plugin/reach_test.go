@@ -15,9 +15,10 @@ import (
 
 // What a plugin that comes with Corbie may be built from. A package that
 // cannot reach outside the process is used freely. One that can is used
-// only by the names listed for it, none of which opens anything: the
-// opening is done by the Job. Of Corbie itself a plugin uses the public
-// package and no other part, as an extension does.
+// only by the names listed for it, none of which opens anything but a
+// zone file: the opening is done by the Job. Of Corbie itself a plugin
+// uses the public package and no other part, as an extension does, but for
+// the zone names and the rule timers use.
 var (
 	// inside are the packages with no way out of the process.
 	inside = []string{
@@ -25,7 +26,7 @@ var (
 		"crypto", "crypto/aes", "crypto/cipher", "crypto/ecdsa", "crypto/ed25519", "crypto/hmac", "crypto/md5", "crypto/rand",
 		"crypto/rsa", "crypto/sha1", "crypto/sha256", "crypto/sha512",
 		"encoding/base64", "encoding/csv", "encoding/hex", "encoding/json/jsontext", "encoding/json/v2", "encoding/pem", "encoding/xml",
-		"errors", "fmt", "hash", "io", "io/fs", "net/url", "regexp", "runtime/debug", "slices", "sort", "strconv", "strings", "time", "unicode",
+		"errors", "fmt", "hash", "io", "io/fs", "math", "net/url", "regexp", "runtime/debug", "slices", "sort", "strconv", "strings", "time", "unicode",
 		"golang.org/x/net/html", "golang.org/x/net/html/charset", "go.yaml.in/yaml/v3",
 		"github.com/zummed/corbie/plugin", "github.com/zummed/corbie/plugin/llm",
 	}
@@ -51,6 +52,9 @@ var (
 		"golang.org/x/crypto/ssh": {"NewClientConn", "NewClient", "ClientConfig", "AuthMethod", "Password", "KeyboardInteractive",
 			"PublicKeys", "ParsePrivateKey", "ParseAuthorizedKey", "HostKeyCallback", "InsecureIgnoreHostKey", "PublicKey",
 			"FingerprintSHA256", "ExitError", "KeyAlgoRSA", "KeyAlgoRSASHA256", "KeyAlgoRSASHA512"},
+		// The zone names and the rule for a time of day that timers use,
+		// which time gives a script. Zone reads the runner's zone files.
+		"github.com/zummed/corbie/machine": {"Zone", "At"},
 	}
 	// files are the names only the plugin for files uses. Its work is
 	// files, and each of its calls that touches one asks the Job where.

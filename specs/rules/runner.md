@@ -131,6 +131,9 @@ The detailed rules behind the [Runner overview](../runner.md).
 **R-run-54** `require` of one of the job's files whose path ends in `.yaml`, `.yml` or `.json` gives the file's data, read as the `yaml` plugin reads a document; of one ending in `.js` or `.cjs`, its `exports`; of any other text file, its text as written. None needs a permission.
 *Accept:* a job allowed nothing names `./bridge/who.js` and lists `./people.yaml` and `./bridge/groups.json`: `require("../people.yaml")` gives its data, with a date left as the text written, `require("./groups.json")` gives its list, and two requires of one file give the same value. A listed `.yml` file that is not YAML fails the call with an error naming the file and the line. A listed `./prompts/system.md` holding `${input.room}` gives its text with the `${` left as written, a listed file with no extension gives its text, and a listed `.cjs` file runs.
 
+**R-run-55** A script's local time is UTC: `Date`'s local methods give what its UTC methods give, whatever zone the runner's computer is set to.
+*Accept:* on a computer set to a zone nine hours east of UTC, a script reads 12:30 UTC on 1 July 2026: `getHours()` gives 12, `getTimezoneOffset()` gives 0, and `new Date(2026, 0, 1)` is `Date.UTC(2026, 0, 1)`.
+
 **C-run-35** `require` looks a path up only among the files the job lists, and never on the runner's disk. A path that reaches the disk is a file read outside every permission check. *Test:* `run_require_reads_only_listed_files`
 
 **C-run-36** No plugin or library can take the name of one of a script's own things: `input`, `job`, `emit`, `log`, `progress`, `require`. An extension added later would silently stand in for one of them in every script. *Test:* `run_plugin_cannot_take_a_scripts_own_name`

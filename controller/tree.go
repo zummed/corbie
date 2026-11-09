@@ -506,6 +506,42 @@ func (p *pass) replacing(client, location, self string, replaces []string) (bool
 	return p.runningAt(client, location, self)
 }
 
+// handedOver gives what a singleton's start is handed by the runs it
+// replaces: what the first of them to have taken a step hands over, by its
+// latest step and the definition it started with. It gives the text of a
+// note for the new run where that run's handover: gives nothing, or no
+// record of the runs can be read.
+func (p *pass) handedOver(replaces []string) (value any, note string, err error) {
+	for i, run := range replaces {
+		step, err := instance.Current(p.ctx, p.store, p.c.ID.Card, p.c.ID, run)
+		if err != nil && !isAltered(err) {
+			return nil, "", err
+		}
+		if step == nil {
+			continue
+		}
+		def, err := p.definitionAt(step.State.Definition)
+		if errorsIs(err, machine.ErrDefinition) {
+			return nil, unread(replaces[:i+1]), nil
+		}
+		if err != nil {
+			return nil, "", err
+		}
+		value, named, err := machine.HandsOver(def, step.State.Inner, step.State.Input)
+		if err != nil || !named || value != nil {
+			return value, "", err
+		}
+		return nil, fmt.Sprintf("the run %s handed over nothing: the state its handover: names gave no output, and that run was given no input", run), nil
+	}
+	return nil, unread(replaces), nil
+}
+
+// unread is the note for a run handed nothing because no record of the
+// runs it replaces can be read.
+func unread(runs []string) string {
+	return fmt.Sprintf("nothing was handed over: no record can be read of the run %s", strings.Join(runs, " or "))
+}
+
 // runningAt says whether a run of a client's other than one named is
 // running at a location, a child included.
 func (p *pass) runningAt(client, location, other string) (bool, error) {
@@ -536,9 +572,9 @@ func (p *pass) runningAt(client, location, other string) (bool, error) {
 // startSingleton starts a location's singleton: its start, which waits for
 // the runs it replaces to end, and then its key's file, which names it. The
 // runs it replaces are those running at the location, which the submit has
-// cancelled; with none, the run its key's file names, if that run has the
-// key. A start still waiting is never the one replaced: it waits itself, and
-// is left once the key's file names this one.
+// cancelled; with none, those replaced gives. A start still waiting is
+// never the one replaced: it waits itself, and is left once the key's file
+// names this one.
 func (p *pass) startSingleton(client, base string, done instance.Recorded, running []string) error {
 	at := store.Key(p.ctl, done.Location, "")
 	name := store.Message(p.ctl, p.ctl, store.JobMessage(done.Run, base+".start"))
@@ -552,12 +588,8 @@ func (p *pass) startSingleton(client, base string, done instance.Recorded, runni
 		}
 		replaces := running
 		if len(replaces) == 0 && file != nil {
-			live, err := p.live(file)
-			if err != nil {
+			if replaces, err = p.replaced(file); err != nil {
 				return err
-			}
-			if live {
-				replaces = []string{file.Run}
 			}
 		}
 		// The start is written only-if-new: one written before stands, with
@@ -582,6 +614,35 @@ func (p *pass) startSingleton(client, base string, done instance.Recorded, runni
 		}
 		// The file changed under the write: read it again.
 	}
+}
+
+// replaced gives the runs a singleton's start replaces when none is running
+// at its location: the run its key's file names, if that run has the key.
+// While that run's start is still waiting, the runs that start replaces
+// come after it, so what they hand over goes to this one.
+func (p *pass) replaced(file *instance.KeyFile) ([]string, error) {
+	step, err := instance.Current(p.ctx, p.store, p.c.ID.Card, p.c.ID, file.Run)
+	if err != nil && !isAltered(err) {
+		return nil, err
+	}
+	if step != nil {
+		if step.State.Status != instance.Running {
+			return nil, nil
+		}
+		return []string{file.Run}, nil
+	}
+	data, mark, err := p.store.Read(p.ctx, file.Start)
+	if err != nil || mark == store.None {
+		return nil, err
+	}
+	var msg instance.Message
+	if _, err := identity.Read(data, file.Start, p.c.ID.Card, p.c.ID, &msg); err != nil {
+		if isAltered(err) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return append([]string{file.Run}, msg.Start.Replaces...), nil
 }
 
 // removeLocation removes what is recorded at a location whose file has

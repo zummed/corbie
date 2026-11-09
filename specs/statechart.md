@@ -105,7 +105,11 @@ The client that owns the run's tree reads the ticket's value and hands it to who
 
 `timers:` names timers that start when the state is entered and are cancelled when it is left. A timer that is due arrives as an event with the timer's name, from the state, and no other event is taken under that name.
 
-A length of time counts from entry. A time of day, optionally with a weekday and a time zone, is due at its next occurrence after entry; without a zone it is UTC. A time with an expression is filled in when the state is entered, and a filled time that is not a length of time or a time of day fails the chart.
+A length of time counts from entry. A time of day, optionally with a weekday and a time zone, is due at its next occurrence after entry; without a zone it is UTC.
+
+A time the zone's clock skips is due when the clock jumps past it. A time the clock shows twice is due at the first, and a state entered between the two waits for the next day. `01:30 Europe/London` on 25 October 2026 is due at 00:30 UTC, and entered at 01:00 UTC it is due at 01:30 UTC on the 26th.
+
+A time with an expression is filled in when the state is entered, and a filled time that is not a length of time or a time of day fails the chart.
 
 A rule under a ticket's or a timer's name belongs in the state that issues or starts it, or in a state that holds that one: anywhere else it would never be taken, and the definition is refused.
 
@@ -144,6 +148,54 @@ Such a chart does one piece of work at a time. An event that arrives while it is
 - A chart that ends drops the events it kept.
 - When a chart is cancelled, by a client or by `update: restart`, each event it kept is noted as undelivered in its sender's record.
 - A chart keeps at most 100 events. One more is dropped, as an event with no rule is; the newest is dropped because a receipt already written for an older one cannot change.
+
+## Handing over to the next run
+
+A singleton starts again on every change to its file, and by default the new run starts empty. `handover:` names one state of a singleton chart: when a submit replaces the run, the new run's input is that state's latest output in the run replaced, or, if it gave none, what that run was given.
+
+```yaml
+# feeds/watch.yaml                      location /feeds/watch
+statechart: watch
+lifetime: singleton
+handover: checking
+initial: checking
+
+states:
+  checking:
+    job: { script: ./check.js, input: "${states.checking.output ?? input}" }
+    on: { done: waiting, failed: waiting }
+  waiting:
+    timers: { again: 10m }
+    on: { again: checking }
+```
+
+```js
+// check.js: what this run has seen, from its last check or from the run before
+const seen = input?.seen ?? []
+// ... fetch the feed, add the new ids ...
+return { seen }
+```
+
+1. A submit finds the file changed and cancels the running chart.
+2. Once that run and its children have ended, a new run starts on the new file.
+3. Its input is the latest output of the state the cancelled run's `handover:` names, or, if that state gave none there, what the cancelled run was given.
+
+```
+  what happens                                          the new run's input   submit prints
+  first submit                                          null                  started
+  check.js changed, submitted                           { seen: [a, b] }      restarted
+  watch.yaml changed again before checking finished     { seen: [a, b] }      restarted
+  corbie run cancel /feeds/watch, then a submit         null                  started
+```
+
+The third row is the fallback: the second run had not finished `checking`, so it hands over what it was given.
+
+- The run replaced follows its own definition, as every run does. A chart that gains `handover:` in a change hands nothing over on that submit, and one that loses it hands over on that submit for the last time.
+- The new run's `input:` checks what it is handed, as it checks any input. A value that does not fit fails the new run at its first step, and the next submit starts the chart with no input.
+- With no `input:` nothing checks the value, so the script turns an older shape into the new one.
+- Only a run a submit cancels hands over. A chart cancelled, failed or ended before the submit hands nothing to the run the submit starts.
+- Work the cancelled run had under way is not in the output, and may be done again.
+- When the cancelled run hands over nothing by its `handover:`, or its record can no longer be read, the new run's record has a note naming that run and why.
 
 ## One run per key
 

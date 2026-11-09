@@ -66,6 +66,8 @@ Fields
 
   initial    the first state, needed where there is more than one
   states     the states, by name; a name is used once in a statechart
+  handover   of a singleton: the state whose latest output, or else this run's
+             input, is the input of the run a changed file starts in its place
 
 A state has these fields, and at most one of `job:`, `jobs:` and `states:`.
 
@@ -153,6 +155,10 @@ A timer's time is one of these.
   "mon 09:00"              a time on one day of the week
   "09:00 Europe/London"    a time of day in a named time zone
   "${input.at}"            one of these, from input, when the state is entered
+
+A time the zone's clock skips is due when the clock jumps past it. A time the
+clock shows twice is due at the first, and a state entered between the two
+waits for the next day.
 
 What an expression reads
 ------------------------

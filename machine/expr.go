@@ -24,6 +24,11 @@ import (
 // type; text with expressions inside it is text with the values filled in.
 // Expressions are JavaScript and read only what their scope names.
 
+// Every process that runs JavaScript keeps time in UTC, whatever zone its
+// computer is set to, so that a script, an expression and a time written to
+// the store read the same on every computer.
+func init() { time.Local = time.UTC }
+
 // ExprLimit is how long one expression may run.
 const ExprLimit = time.Second
 

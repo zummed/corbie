@@ -601,7 +601,7 @@ func Test_chart_timers_refused(t *testing.T) {
 	refused(t, head+"\t\ttimers: { late: 1h }\n\t\ton: { late: b }\n\tc: { ticket: late, on: { late: a } }\n", `"late" is the name of the ticket of the state "c", and a timer cannot take a ticket's name`)
 }
 
-func Test_chart_zone_known_without_host_zone_files(t *testing.T) {
+func Test_chart_zone_named_and_local_refused(t *testing.T) {
 	if _, err := parseAt("09:00 Europe/London"); err != nil {
 		t.Fatal(err)
 	}
@@ -825,6 +825,34 @@ func Test_chart_time_of_day_in_skipped_hour_fires_at_the_jump(t *testing.T) {
 	if got := due(t, "01:30 Europe/London", before); !got.Equal(want) {
 		t.Fatalf("a time the clock skips is due %v, want the jump at %v", got, want)
 	}
+	// Samoa skipped 30 December 2011 whole: its clock went from the end of
+	// the 29th to the start of the 31st at 10:00 UTC.
+	before = time.Date(2011, 12, 29, 18, 0, 0, 0, time.UTC)
+	want = time.Date(2011, 12, 30, 10, 0, 0, 0, time.UTC)
+	if got := due(t, "07:30 Pacific/Apia", before); !got.Equal(want) {
+		t.Fatalf("a time on a day the clock skips is due %v, want the jump at %v", got, want)
+	}
+}
+
+func Test_chart_time_of_day_in_repeated_hour_fires_at_the_first(t *testing.T) {
+	// The clock shows 01:30 twice in London on 25 October 2026 and in New
+	// York on 1 November, and 02:30 twice in Sydney on 5 April. Go's own
+	// choice is the second in London and Sydney and the first in New York.
+	for _, c := range []struct{ at, first string }{
+		{"01:30 Europe/London", "2026-10-25T00:30:00Z"},
+		{"01:30 America/New_York", "2026-11-01T05:30:00Z"},
+		{"02:30 Australia/Sydney", "2026-04-04T15:30:00Z"},
+	} {
+		want, _ := time.Parse(time.RFC3339, c.first)
+		if got := due(t, c.at, want.Add(-12*time.Hour)); !got.Equal(want) {
+			t.Errorf("%s, which the clock shows twice, is due %v, want the first at %v", c.at, got, want)
+		}
+	}
+	// Entered at 01:00 UTC, between the two, it waits for the next day.
+	entered := time.Date(2026, 10, 25, 1, 0, 0, 0, time.UTC)
+	if got, want := due(t, "01:30 Europe/London", entered), time.Date(2026, 10, 26, 1, 30, 0, 0, time.UTC); !got.Equal(want) {
+		t.Errorf("entered between the two, it is due %v, want the next day at %v", got, want)
+	}
 }
 
 func Test_chart_state_does_not_grow_with_use(t *testing.T) {
@@ -1028,5 +1056,46 @@ func Test_chart_send_to_is_checked(t *testing.T) {
 		"{ at: a//b }":                    "a location has no empty name",
 	} {
 		refused(t, fmt.Sprintf(head, to), says)
+	}
+}
+
+// handover: names a state of a singleton chart.
+func Test_chart_handover_names_a_state_of_a_singleton(t *testing.T) {
+	head := "statechart: watch\nhandover: checking\ninitial: checking\nstates:\n\tchecking: { on: { again: checking } }\n"
+	newChart(t, "lifetime: singleton\n"+head)
+	refused(t, head, "only a singleton hands over")
+	refused(t, "lifetime: keyed\n"+head, "only a singleton hands over")
+	refused(t, "lifetime: singleton\n"+strings.Replace(head, "handover: checking", "handover: polling", 1), `handover: there is no state named "polling"`)
+}
+
+// A chart hands over the latest output of the state its handover: names,
+// or, if that state gave none, its input; one with no handover: hands over
+// nothing.
+func Test_chart_handover_gives_the_state_output_or_the_input(t *testing.T) {
+	src := `
+statechart: watch
+lifetime: singleton
+handover: checking
+initial: checking
+states:
+	checking:
+		job: ./check.js
+		on: { done: waiting }
+	waiting: { on: { again: checking } }
+`
+	c := newChart(t, src)
+	c.input = map[string]any{"seen": []any{"a"}}
+	c.give(start())
+	if value, named, err := machine.HandsOver(c.def, c.state, c.input); err != nil || !named || !reflect.DeepEqual(value, c.input) {
+		t.Fatalf("before checking was done the chart hands over %v, %v, %v", value, named, err)
+	}
+	c.give(done("checking", map[string]any{"seen": []any{"a", "b"}}))
+	if value, _, err := machine.HandsOver(c.def, c.state, c.input); err != nil || !reflect.DeepEqual(value, map[string]any{"seen": []any{"a", "b"}}) {
+		t.Fatalf("once checking was done the chart hands over %v, %v", value, err)
+	}
+	c = newChart(t, strings.Replace(src, "handover: checking\n", "", 1))
+	c.give(start(), done("checking", 1.0))
+	if value, named, err := machine.HandsOver(c.def, c.state, c.input); err != nil || named || value != nil {
+		t.Fatalf("a chart with no handover: hands over %v, %v, %v", value, named, err)
 	}
 }

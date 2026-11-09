@@ -140,7 +140,9 @@ The detailed rules behind the [Statechart overview](../statechart.md). Area code
 
 **C-chart-08** A time of day that a zone's clock skips on some day is due at the moment the clock jumps past it. Daily work set inside the skipped hour would otherwise miss that day. *Test:* `chart_time_of_day_in_skipped_hour_fires_at_the_jump`
 
-**C-chart-09** Time zones are known to the binary itself, and a zone that means "wherever the controller is running" is refused. A host with no zone files would otherwise refuse or misread a zone that another host accepts, and the same chart would be due at different moments on different hosts. *Test:* `chart_zone_known_without_host_zone_files`
+**C-chart-09** A timer's zone is named, such as `Europe/London`, and `Local`, the zone of whichever computer reads it, is refused. A chart naming `Local` would be due at different moments on different hosts. A zone is read from the host's zone files when it has them, and otherwise from the copy in the binary, which has every zone the IANA list names. *Test:* `chart_zone_named_and_local_refused`
+
+**C-chart-15** A time of day a zone's clock shows twice on some day is due at the first, and a state entered between the two is due the next day. Go's own choice is the first in some zones and the second in others, so the same timer would be due at the first in New York and at the second in London, and a daily chart that waits again after the first would run its work twice that day. *Test:* `chart_time_of_day_in_repeated_hour_fires_at_the_first`
 
 ## A chart that is started once and used many times
 
@@ -160,6 +162,12 @@ The detailed rules behind the [Statechart overview](../statechart.md). Area code
 
 **C-chart-13** A chart keeps at most 100 events; one more is dropped, and the receipt for it says the chart did not act on it. Every step reads the chart's state whole, so a sender could otherwise make each step slower than the last. *Test:* `chart_kept_events_are_bounded`
 
+**R-chart-84** `handover:` names one state of a singleton chart. It is refused on a chart of any other lifetime, and when it names a state the chart does not have.
+*Accept:* `Test_chart_handover_names_a_state_of_a_singleton`.
+
+**R-chart-85** A singleton chart a submit replaces hands over, by its own `handover:`, the latest output of that state in the run, or, when that state gave none, the run's input. A chart with no `handover:` hands over nothing.
+*Accept:* `Test_chart_handover_gives_the_state_output_or_the_input`.
+
 ## Interfaces
 
 Uses:
@@ -171,6 +179,6 @@ Uses:
 
 Used by:
 
-- **Machines.** A statechart is one of the three types, and supplies the filling-out of its short forms, its check, its step, the state a watcher is shown (R-inst-72), and its manual page.
+- **Machines.** A statechart is one of the three types, and supplies the filling-out of its short forms, its check, its step, the state a watcher is shown (R-inst-72), its manual page, and the value a singleton run hands over (R-chart-85).
 - **Flow, Agent.** Either may run a chart as a child, and a chart may run either.
 - **Machines, for approval.** An ask that waits for a person is typically a chart that hands out a ticket and ends with the jobs it approves.

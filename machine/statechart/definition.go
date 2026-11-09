@@ -10,7 +10,6 @@ import (
 	"strconv"
 	"strings"
 	"time"
-	_ "time/tzdata" // time zones are known to the binary itself
 
 	"github.com/zummed/corbie/machine"
 )
@@ -19,6 +18,9 @@ import (
 type Chart struct {
 	Initial string            `json:"initial,omitzero"`
 	States  map[string]*State `json:"states"`
+	// Handover names the state whose latest output a singleton's run hands
+	// to the run a submit starts in its place.
+	Handover string `json:"handover,omitzero"`
 }
 
 // State is one state in full form.
@@ -114,6 +116,8 @@ var (
 	shape      = &machine.Shape{Name: "statechart", What: "a statechart", Fields: []machine.Field{
 		{Name: "initial", Kind: machine.KindWord, Like: "drafting", Description: "the state it starts in"},
 		{Name: "states", Kind: machine.KindNamed, Of: stateShape, Description: "its states"},
+		{Name: "handover", Kind: machine.KindWord, Like: "checking",
+			Description: "of a singleton, the state whose latest output, or else this run's input, is the input of the run a submit starts in its place"},
 	}}
 )
 
@@ -141,7 +145,7 @@ func (chartType) Shape() *machine.Shape { return shape }
 
 // Fill reads a chart as written and gives its full form.
 func (chartType) Fill(p *machine.Parser, f *machine.Fields) any {
-	chart := &Chart{Initial: f.Text("initial")}
+	chart := &Chart{Initial: f.Text("initial"), Handover: f.Text("handover")}
 	states, order := f.Map("states")
 	chart.States = fillStates(p, "states", states, order)
 	return chart
@@ -344,6 +348,14 @@ func (chartType) Check(c *machine.Checker, def *machine.Definition) {
 		return
 	}
 	checkInitial(c, "", chart.Initial, chart.States)
+	if chart.Handover != "" {
+		switch _, known := all[chart.Handover]; {
+		case def.Lifetime != machine.LifetimeSingleton:
+			c.Problem("handover", "only a singleton is started again in place of its run, so only a singleton hands over")
+		case !known:
+			c.Problem("handover", "there is no state named %q", chart.Handover)
+		}
+	}
 	// The children a send may be addressed to: the job of a state, or a
 	// named job, that is a machine.
 	children, scripts, jobState := map[string]bool{}, map[string]bool{}, map[string]string{}
@@ -661,12 +673,9 @@ func parseAt(text string) (when, error) {
 		return when{}, bad
 	}
 	if len(parts) == 2 {
-		if parts[1] == "Local" || parts[1] == "local" {
-			return when{}, fmt.Errorf("%q: a zone has a name, such as Europe/London; \"wherever the controller runs\" is not one", text)
-		}
-		zone, err := time.LoadLocation(parts[1])
+		zone, err := machine.Zone(parts[1])
 		if err != nil {
-			return when{}, fmt.Errorf("%q: %q is not a time zone", text, parts[1])
+			return when{}, fmt.Errorf("%q: %v", text, err)
 		}
 		w.zone = zone
 	}
@@ -680,39 +689,16 @@ func (w when) next(entered time.Time) time.Time {
 	if !w.clock {
 		return entered.Add(w.length)
 	}
-	local := entered.In(w.zone)
+	y, m, d := entered.In(w.zone).Date()
 	for day := 0; day <= 8; day++ {
-		y, m, d := local.Date()
-		at := time.Date(y, m, d+day, w.hour, w.minute, 0, 0, w.zone)
-		if w.weekday >= 0 && int(at.Weekday()) != w.weekday {
+		if w.weekday >= 0 && int(time.Date(y, m, d+day, 0, 0, 0, 0, time.UTC).Weekday()) != w.weekday {
 			continue
 		}
-		if h, min, _ := at.Clock(); h != w.hour || min != w.minute {
-			// The zone's clock skips this time on this day: it is due at
-			// the moment the clock jumps past it.
-			at = jump(time.Date(y, m, d+day, 0, 0, 0, 0, w.zone), w.zone)
-		}
-		if at.After(entered) {
-			return at.UTC()
+		if at := machine.At(y, m, d+day, w.hour, w.minute, 0, w.zone); at.After(entered) {
+			return at
 		}
 	}
 	return entered.Add(24 * time.Hour)
-}
-
-// jump finds the moment within the day after from at which the zone's
-// clock changes.
-func jump(from time.Time, zone *time.Location) time.Time {
-	_, start := from.Zone()
-	lo, hi := from, from.Add(30*time.Hour)
-	for hi.Sub(lo) > time.Second {
-		mid := lo.Add(hi.Sub(lo) / 2)
-		if _, offset := mid.In(zone).Zone(); offset == start {
-			lo = mid
-		} else {
-			hi = mid
-		}
-	}
-	return hi.Truncate(time.Second)
 }
 
 // jobsOf gives a state's named jobs.

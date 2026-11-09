@@ -6,7 +6,7 @@ A script can do nothing outside itself except by calling a plugin. This area is 
 
 A library, written in script, calls plugins: a Graph helper, a paging loop, an API wrapper. A plugin, written in Go, asks Corbie for a way out: http, net, fs, exec, crypto and the rest. The ways out are kept by Corbie, and there are four: open a connection, open a path, start a program, read a variable.
 
-**The ways out** are few and Corbie keeps them. A plugin never opens anything by itself. It asks Corbie for a way to connect, a path, a program or a variable, and Corbie checks the job's permissions, notes what was used, puts secrets in where they are bound to go, and hands the thing over or refuses. Because there is one place, the checks, the record of what was used and the handling of secrets are the same for every plugin and cannot be forgotten by one.
+**The ways out** are few and Corbie keeps them. A plugin never opens anything by itself, except that `time` reads the runner's zone files. It asks Corbie for a way to connect, a path, a program or a variable, and Corbie checks the job's permissions, notes what was used, puts secrets in where they are bound to go, and hands the thing over or refuses. Because there is one place, the checks, the record of what was used and the handling of secrets are the same for every plugin and cannot be forgotten by one.
 
 **Plugins** are thin and low-level. They give a script the plain building blocks: a web request, a raw connection, a file, a program, a hash. With them anything can be done.
 
@@ -39,6 +39,8 @@ Every plugin is written the same way and reads the same way to a script.
 
 Corbie's names are its own. Where a script's standard language already has a thing, such as `URL` or `JSON`, a script has that.
 
+Scripts have neither `Intl` nor `Temporal`, so a time zone comes from the `time` plugin.
+
 A plugin's page in the manual is its specification. It lists each call, its options, and the permissions it needs, and its examples are run as tests.
 
 ## What comes with Corbie
@@ -54,6 +56,7 @@ A plugin's page in the manual is its specification. It lists each call, its opti
 | `compress` | packing and unpacking |
 | `html`, `xml` | reading a page or a document as a tree |
 | `yaml` | reading a YAML document as data, and writing data as YAML |
+| `time` | the date and time of day an instant has in a time zone, and the instant of a date and time in one |
 | `websocket` | a connection that carries messages both ways, kept alive while the script works |
 | `ssh` | running a command on another computer |
 | `blobs` | making and reading blobs |

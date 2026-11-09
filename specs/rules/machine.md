@@ -88,8 +88,8 @@ The detailed rules behind the [Machines overview](../machine.md). Area code: `ma
 **R-mach-29** An expression may run for one second.
 *Accept:* a stage's input holds an expression that loops for ever; the instance fails after about a second with an error that names the expression's place.
 
-**R-mach-30** The time an expression sees is the time of the step, taken from the step's inputs; random numbers differ from one expression to the next but are the same if the step is taken again.
-*Accept:* two expressions in one step read the time and get the same value, and each asks for a random number and gets a different one. The step taken again, by another copy of the controller at a later moment, gives the same time and the same two numbers.
+**R-mach-30** The time an expression sees is the time of the step, in UTC, taken from the step's inputs; random numbers differ from one expression to the next but are the same if the step is taken again.
+*Accept:* two expressions in one step read the time and get the same value, and each asks for a random number and gets a different one. The step taken again, by another copy of the controller at a later moment, gives the same time and the same two numbers. On a computer set to another zone, `new Date().getHours()` gives the step's hour in UTC.
 
 **C-mach-12** One expression cannot change what the next one sees. Anything shared that an expression could alter would make a step's answer depend on the order of evaluation. *Test:* `mach_expression_cannot_alter_shared_names`
 
@@ -360,6 +360,7 @@ Used by:
 
 - **Flow, Statechart, Agent.** Each supplies the six things a type supplies, and takes from this area values and expressions, jobs and their names, events, children, tickets, approval, failure and limits.
 - **Client.** Writes out each file's includes, fills out and checks the definition with this area's code before submitting it, and prints it written out with each value's file and line; sends events and answers to tickets.
-- **Controller.** Checks a definition with this area's code before starting it, and calls a type's step. It gives a run its location and its values, reads a location in an address from the tree's prefix, and carries out a send and a call.
+- **Controller.** Checks a definition with this area's code before starting it, and calls a type's step. It gives a run its location and its values, reads a location in an address from the tree's prefix, carries out a send and a call, and asks a type for the value a singleton's run hands over (R-chart-85).
+- **Plugins.** The `time` plugin takes the zone names and the rule timers use.
 - **Manual.** Prints each type's page.
 - **Applications.** A Go program using Corbie as a library lists a definition's jobs, each with its place.

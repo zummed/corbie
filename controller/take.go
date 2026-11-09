@@ -1379,6 +1379,9 @@ func (p *pass) begin(inst string, waiting []*arrival) (*taken, error) {
 	case start.kind == identity.Client && s.Location == "":
 		b.refuse(start, "a client's start names a location: a run starts at the location of a file in a tree")
 		return &b.out, nil
+	case start.kind == identity.Client && len(s.Replaces) > 0:
+		b.refuse(start, "a client's start replaces no run: a singleton is started again when its tree is submitted")
+		return &b.out, nil
 	case start.isSend() || s.Location != "" && (s.Above == nil || isCall(s)) && (start.kind == identity.Client || start.kind == identity.Controller):
 		// A start of a location: the run begins from the file recorded
 		// there. A client's start of a location in another client's tree
@@ -1500,6 +1503,22 @@ func (b *build) first(s *instance.Start, start *arrival) (refused bool, err erro
 			return true, nil
 		default:
 			gone = true
+		}
+	}
+	// A singleton started again is given what the run it replaces hands
+	// over, with the blobs that names copied into its own record.
+	if len(s.Replaces) > 0 && !gone {
+		value, note, err := p.handedOver(s.Replaces)
+		if err != nil {
+			return false, err
+		}
+		handed := *s
+		if handed.Input, err = p.handUp(value, b.inst); err != nil {
+			return false, err
+		}
+		s = &handed
+		if note != "" {
+			b.ask(instance.Ask{Kind: instance.AskNote, Text: note})
 		}
 	}
 	st.Machine, st.Type = def.Name, def.Type

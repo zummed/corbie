@@ -10,7 +10,6 @@ import (
 	"strconv"
 	"strings"
 	"time"
-	_ "time/tzdata" // time zones are known to the binary itself
 
 	"github.com/zummed/corbie/machine"
 )
@@ -674,12 +673,9 @@ func parseAt(text string) (when, error) {
 		return when{}, bad
 	}
 	if len(parts) == 2 {
-		if parts[1] == "Local" || parts[1] == "local" {
-			return when{}, fmt.Errorf("%q: a zone has a name, such as Europe/London; \"wherever the controller runs\" is not one", text)
-		}
-		zone, err := time.LoadLocation(parts[1])
+		zone, err := machine.Zone(parts[1])
 		if err != nil {
-			return when{}, fmt.Errorf("%q: %q is not a time zone", text, parts[1])
+			return when{}, fmt.Errorf("%q: %v", text, err)
 		}
 		w.zone = zone
 	}
@@ -693,39 +689,16 @@ func (w when) next(entered time.Time) time.Time {
 	if !w.clock {
 		return entered.Add(w.length)
 	}
-	local := entered.In(w.zone)
+	y, m, d := entered.In(w.zone).Date()
 	for day := 0; day <= 8; day++ {
-		y, m, d := local.Date()
-		at := time.Date(y, m, d+day, w.hour, w.minute, 0, 0, w.zone)
-		if w.weekday >= 0 && int(at.Weekday()) != w.weekday {
+		if w.weekday >= 0 && int(time.Date(y, m, d+day, 0, 0, 0, 0, time.UTC).Weekday()) != w.weekday {
 			continue
 		}
-		if h, min, _ := at.Clock(); h != w.hour || min != w.minute {
-			// The zone's clock skips this time on this day: it is due at
-			// the moment the clock jumps past it.
-			at = jump(time.Date(y, m, d+day, 0, 0, 0, 0, w.zone), w.zone)
-		}
-		if at.After(entered) {
-			return at.UTC()
+		if at := machine.At(y, m, d+day, w.hour, w.minute, 0, w.zone); at.After(entered) {
+			return at
 		}
 	}
 	return entered.Add(24 * time.Hour)
-}
-
-// jump finds the moment within the day after from at which the zone's
-// clock changes.
-func jump(from time.Time, zone *time.Location) time.Time {
-	_, start := from.Zone()
-	lo, hi := from, from.Add(30*time.Hour)
-	for hi.Sub(lo) > time.Second {
-		mid := lo.Add(hi.Sub(lo) / 2)
-		if _, offset := mid.In(zone).Zone(); offset == start {
-			lo = mid
-		} else {
-			hi = mid
-		}
-	}
-	return hi.Truncate(time.Second)
 }
 
 // jobsOf gives a state's named jobs.

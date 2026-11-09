@@ -140,7 +140,9 @@ The detailed rules behind the [Statechart overview](../statechart.md). Area code
 
 **C-chart-08** A time of day that a zone's clock skips on some day is due at the moment the clock jumps past it. Daily work set inside the skipped hour would otherwise miss that day. *Test:* `chart_time_of_day_in_skipped_hour_fires_at_the_jump`
 
-**C-chart-09** Time zones are known to the binary itself, and a zone that means "wherever the controller is running" is refused. A host with no zone files would otherwise refuse or misread a zone that another host accepts, and the same chart would be due at different moments on different hosts. *Test:* `chart_zone_known_without_host_zone_files`
+**C-chart-09** Time zones are known from the host's zone files when it has them, and otherwise from the copy in the binary, and `Local`, the zone of whichever computer reads it, is refused. A host with no zone files would otherwise refuse a zone that another host accepts, and a chart naming `Local` would be due at different moments on different hosts. *Test:* `chart_zone_known_without_host_zone_files`
+
+**C-chart-15** A time of day a zone's clock shows twice on some day is due at the first. Go's own choice is the first in some zones and the second in others, so the same timer would be due at the first in New York and at the second in London. *Test:* `chart_time_of_day_in_repeated_hour_fires_at_the_first`
 
 ## A chart that is started once and used many times
 

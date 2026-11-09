@@ -18,6 +18,7 @@ import (
 	_ "github.com/zummed/corbie/plugin/net"
 	_ "github.com/zummed/corbie/plugin/secrets"
 	_ "github.com/zummed/corbie/plugin/ssh"
+	_ "github.com/zummed/corbie/plugin/time"
 	_ "github.com/zummed/corbie/plugin/websocket"
 	_ "github.com/zummed/corbie/plugin/xml"
 	_ "github.com/zummed/corbie/plugin/yaml"

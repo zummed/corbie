@@ -827,6 +827,21 @@ func Test_chart_time_of_day_in_skipped_hour_fires_at_the_jump(t *testing.T) {
 	}
 }
 
+func Test_chart_time_of_day_in_repeated_hour_fires_at_the_first(t *testing.T) {
+	// The clock shows 01:30 twice in London on 25 October 2026, and in New
+	// York on 1 November. Go's own choice is the second in London and the
+	// first in New York.
+	for _, c := range []struct{ first, zone string }{
+		{"2026-10-25T00:30:00Z", "Europe/London"},
+		{"2026-11-01T05:30:00Z", "America/New_York"},
+	} {
+		want, _ := time.Parse(time.RFC3339, c.first)
+		if got := due(t, "01:30 "+c.zone, want.Add(-12*time.Hour)); !got.Equal(want) {
+			t.Errorf("01:30 in %s, which the clock shows twice, is due %v, want the first at %v", c.zone, got, want)
+		}
+	}
+}
+
 func Test_chart_state_does_not_grow_with_use(t *testing.T) {
 	c := newChart(t, `
 statechart: standing

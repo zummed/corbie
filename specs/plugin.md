@@ -39,6 +39,8 @@ Every plugin is written the same way and reads the same way to a script.
 
 Corbie's names are its own. Where a script's standard language already has a thing, such as `URL` or `JSON`, a script has that.
 
+Scripts have neither `Intl` nor `Temporal`, so a time zone comes from the `time` plugin. When the script language has them, scripts use those and `time` goes.
+
 A plugin's page in the manual is its specification. It lists each call, its options, and the permissions it needs, and its examples are run as tests.
 
 ## What comes with Corbie
@@ -54,6 +56,7 @@ A plugin's page in the manual is its specification. It lists each call, its opti
 | `compress` | packing and unpacking |
 | `html`, `xml` | reading a page or a document as a tree |
 | `yaml` | reading a YAML document as data, and writing data as YAML |
+| `time` | the date and time of day an instant has in a time zone, and the instant of a date and time in one |
 | `websocket` | a connection that carries messages both ways, kept alive while the script works |
 | `ssh` | running a command on another computer |
 | `blobs` | making and reading blobs |

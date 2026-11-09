@@ -361,5 +361,6 @@ Used by:
 - **Flow, Statechart, Agent.** Each supplies the six things a type supplies, and takes from this area values and expressions, jobs and their names, events, children, tickets, approval, failure and limits.
 - **Client.** Writes out each file's includes, fills out and checks the definition with this area's code before submitting it, and prints it written out with each value's file and line; sends events and answers to tickets.
 - **Controller.** Checks a definition with this area's code before starting it, and calls a type's step. It gives a run its location and its values, reads a location in an address from the tree's prefix, carries out a send and a call, and asks a type for the value a singleton's run hands over (R-chart-85).
+- **Plugins.** The `time` plugin takes the zones and the rule timers use.
 - **Manual.** Prints each type's page.
 - **Applications.** A Go program using Corbie as a library lists a definition's jobs, each with its place.

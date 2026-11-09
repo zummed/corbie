@@ -95,7 +95,7 @@ Tools
   description  what the tool is for, in plain text with no expression: the
                model chooses a tool by this text
   args         the shape of its arguments: { name: type }, or JSON Schema
-  job          a script, a machine, a call or a send, as in
+  job          `script:`, `machine:`, `call:` or `send:`, as in
                `corbie manual definitions`; it reads `input`, the agent's
                input, and `args`, the model's arguments
   list         a job that returns tools, [{ name, description, args }], in
@@ -117,9 +117,9 @@ a `description`, an `enum` or fields of its own. `format: blob` marks a blob at
 any depth.
 
 - A tool whose job has `approve: true` waits for the definition's `ask:`,
-  which gets `asked: { description, args, said }`: the tool's `description:`,
-  the model's arguments and the model's text. A call that is not approved is
-  returned to the model as denied, with the ask's note.
+  which gets `asked: { tool, description, args, said }`: the tool's name and
+  `description:`, the model's arguments and the model's text. A call that is
+  not approved is returned to the model as denied, with the ask's note.
 - A tool whose job fails is returned to the model as an error.
 - A tool whose job is an agent is a sub-agent. The model gets the sub-agent's
   reply, and the sub-agent's conversation stays in its own record.
@@ -165,6 +165,7 @@ changing.
   list gave it.
 - Every listed tool has the permissions of `job:`.
 - The ask gets `entry` and `tool` in `asked`: `github` and `create_issue`.
+- A list is words from outside, as `corbie manual definitions` says.
 - The agent fails if the list fails, or gives a tool with no name, args that
   are not JSON Schema with type: object, args that mark a blob, or a name
   that is longer than 64 characters or that another tool has.
@@ -199,9 +200,6 @@ A toolkit has these fields.
   description   what the toolkit is for, in plain text with no expression, which
                 the model reads before it opens it
   instructions  what `open` returns, written as `system:` is; it may hold `${input...}`
-  ask           the ask for opening the toolkit, for its tools' jobs and lists
-                and for the machines below them, before the agent's own; its
-                expressions read the agent's input
   approve       `true` holds the toolkit's open for the ask
   when          a condition on the agent's input: the toolkit is offered only if it holds
   tools         the toolkit's tools, written as under Tools
@@ -213,12 +211,12 @@ A toolkit has these fields.
 - No tool of a toolkit has the name of another tool of the agent.
 - The list of an entry with `list:` in a toolkit runs before the first turn.
   An error names it as `toolkits.net.tools.files.list`.
-- The ask for `open` gets `asked: { toolkit, description, args, said }`, where
-  `description` is the toolkit's. An open that is not approved opens nothing.
-- The ask for a call of a toolkit's tool gets `toolkit` in `asked`, and so does
-  the ask for the list of an entry in a toolkit.
-- A toolkit that has an `ask:` needs no `ask:` of the agent's. The permissions
-  of the toolkit's `ask:` are its own, as any ask's are.
+- A toolkit has no `ask:`. Its `open`, its tools' calls and their lists wait
+  for the agent's `ask:`, which gets the toolkit's name as `toolkit` in
+  `asked`. A toolkit that writes `ask:` is refused.
+- The ask for `open` gets `asked: { tool, toolkit, description, args, said }`,
+  where `description` is the toolkit's. An open that is not approved opens
+  nothing.
 - An agent given a `conversation` opens no toolkit: the model calls `open` for
   each toolkit it needs, and a toolkit marked `approve: true` waits for the ask
   again.

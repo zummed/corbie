@@ -1,0 +1,20 @@
+# The agent's ask. It sends the held jobs of each toolkit to that toolkit's
+# approvers, in that toolkit's channel, and gives every job approved.
+flow: by-toolkit
+input: { asking: any, jobs: any, ask: string, people: string, asker: "string?", toolkits: any }
+stages:
+  asked:
+    each: "${[...new Set(input.jobs.map((j) => j.asked.toolkit))]}"
+    job:
+      machine: ./approval.yaml
+      input:
+        asking: ${input.asking}
+        jobs: "${input.jobs.filter((j) => j.asked.toolkit === item)}"
+        ask: ${input.ask}
+        people: ${input.people}
+        approvers: ${input.toolkits[item].approvers}
+        in: ${input.toolkits[item].in}
+        asker: ${input.asker}
+output:
+  approved: "${stages.asked.output.flatMap((o) => o.output ? o.output.approved : [])}"
+  note: "${stages.asked.output.map((o) => o.output ? o.output.note : o.error).join(' ')}"

@@ -121,7 +121,7 @@ The detailed rules behind the [Runner overview](../runner.md).
 **R-run-42** `require` of a bare name gives a plugin or a library that comes with the binary; of a path starting `./` or `../`, the file at that path from the directory of the file that calls it, among the files the job lists; and nothing else.
 *Accept:* `require("http").get` is the same call as `http.get`, and the bare name of a library that comes with the binary gives that library. A job names `./lib/fetch.js` and lists `./lib/util.js` and `./top.js`: `require("./util.js")` in `fetch.js` gives what `lib/util.js` offers, and `require("../top.js")` in `util.js` gives `top.js`. A path to a file the job does not list, a path that starts with `/` and a bare name that is neither a plugin nor a bundled library each fail the call with an error that says what was asked for, and none reads the runner's disk.
 
-**R-run-46** A script cannot start jobs, whether scripts or machines.
+**R-run-46** A script cannot start a job.
 *Accept:* a script uses `machines` to define a machine and returns: no job and no instance has been made by it, and the definition runs only when a machine asks for it as a job.
 
 **C-run-33** A batch of emits is written when it is full or a short time after its first emit, whichever comes first. Written one at a time, a model's reply is hundreds of writes; held until full, a single line of progress is not seen until the job ends. *Test:* `run_emits_batched_by_count_or_short_time`
@@ -189,7 +189,7 @@ Uses:
 - **Secret**: gets the values a job carries, hands scripts handles to them, and has what comes back to a script, and what a job's process prints, searched for them (C-sec-25).
 - **Plugin**: supplies the calls a script makes, the libraries a bare name loads and the reading of a document of YAML or JSON that `require` of a data file gives; a program is started through the one way out that the exec wrapper is put in front of; what a script leaves open is closed by its plugin when the job ends (C-plug-07).
 - **Blob**: reads the script, its files and the input, and writes blobs that leave a job into the instance's record; a blob stays on the runner until its reference leaves the job (C-blob-06).
-- **Instance**: an emit entry is signed by the runner, tied to its job and sealed to the controller and the root's client (R-store-44, R-inst-32); an emit the machine wants is also told to the controller (R-inst-29).
+- **Instance**: an emit entry is signed by the runner, tied to its job and sealed to the controller and the clients the job names: the root's client and those `read:` lists (R-store-44, R-inst-32); an emit the machine wants is also told to the controller (R-inst-29).
 
 Used by:
 

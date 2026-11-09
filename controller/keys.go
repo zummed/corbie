@@ -23,12 +23,16 @@ import (
 //     the empty key.
 //  2. The step that ends a run is written first and the file is deleted
 //     after, so a run that has the key is running or has just ended.
-//  3. An event sent to { at } or { at, key } leaves the inbox only when a
-//     step of a running run used it. Until then it stays under the name its
-//     sender's step gave it, and where its run has ended, or lost its key,
-//     the message is rewritten in place to name the run that has the key.
+//  3. An event sent to a singleton's { at } or to { at, key } leaves the
+//     inbox only when a step of a running run used it. Until then it stays
+//     under the name its sender's step gave it, and where its run has ended,
+//     or lost its key, the message is rewritten in place to name the run
+//     that has the key.
 //  4. An event sent to { at, run } goes to that run alone, and is noted as
 //     undelivered when that run cannot take it.
+//  5. An event sent to a transient location's { at } starts a new run, as a
+//     key no other send names would. The run takes a key file under its own
+//     ID only where its file has limits: { runs }, so that it is counted.
 //
 // So a send reads the file once and fixes the run it goes to in its step. A
 // carry-out done again goes to the same run, which has heard it.
@@ -39,9 +43,15 @@ func (a *arrival) isSend() bool {
 	return !a.wake && a.msg.Kind == instance.KindSend && a.kind == identity.Controller && a.msg.To != nil
 }
 
-// movable says an arrival is an event sent to { at } or { at, key }, which
-// goes on to the run that has the key now.
-func (a *arrival) movable() bool { return a.isSend() && a.msg.To.Run == "" }
+// movable says an arrival is an event sent to a singleton's { at } or to
+// { at, key }, which goes on to the run that has the key now.
+func (a *arrival) movable() bool { return a.isSend() && a.msg.To.Run == "" && !a.fresh() }
+
+// fresh says an arrival is an event sent to a transient location's { at },
+// which starts a run of its own and goes nowhere else.
+func (a *arrival) fresh() bool {
+	return a.isSend() && a.msg.To.Run == "" && a.msg.To.Key == nil && a.msg.Start != nil
+}
 
 // starts says an arrival starts an instance: a start, or an event sent to a
 // key that names the run it starts.
@@ -131,7 +141,7 @@ type ahead struct {
 // that run, and it is taken first. It is why an event is never heard out of
 // order. The inbox is read in order.
 func (p *pass) behind(a *arrival, seen *ahead) bool {
-	if !a.isSend() {
+	if !a.isSend() || a.fresh() {
 		return false
 	}
 	msg := a.msg
@@ -177,7 +187,7 @@ type target struct {
 // a limit on its runs, how many key files it has. live says the run the
 // file names must still have the key: a send takes the file's word, and the
 // event moves on from a run that has ended.
-func (p *pass) aimAt(at, key string, keyed, live bool) (*target, error) {
+func (p *pass) aimAt(at, key string, live bool) (*target, error) {
 	t := &target{}
 	file, _, err := instance.ReadKey(p.ctx, p.store, p.c.ID.Card, p.c.ID, store.Key(p.ctl, at, key), key)
 	if err != nil && !isAltered(err) {
@@ -200,7 +210,7 @@ func (p *pass) aimAt(at, key string, keyed, live bool) (*target, error) {
 	if t.file, err = p.readLocated(at); err != nil && !isAltered(err) {
 		return nil, err
 	}
-	if !keyed || t.file == nil || t.file.Runs == 0 {
+	if t.file == nil || t.file.Runs == 0 {
 		return t, nil
 	}
 	files, err := store.Names(p.store.List(p.ctx, store.Keys(p.ctl, at)))
@@ -210,7 +220,7 @@ func (p *pass) aimAt(at, key string, keyed, live bool) (*target, error) {
 
 // aim says where a send to { at } or { at, key } goes: to the run that has
 // the key, or to a run it starts, which the caller names; or why it is not
-// delivered.
+// delivered. A send to a transient location's { at } always starts one.
 func (t *target) aim(at string, keyed bool) (to string, starts bool, why string) {
 	switch {
 	case t.holder != "":
@@ -222,7 +232,7 @@ func (t *target) aim(at string, keyed bool) (to string, starts bool, why string)
 		return "", false, why
 	}
 	switch {
-	case !keyed:
+	case !keyed && t.file.Lifetime != machine.LifetimeTransient:
 		return "", false, fmt.Sprintf("no run of the singleton at %s is running", at)
 	case t.file.Runs > 0 && t.runs >= t.file.Runs:
 		return "", false, fmt.Sprintf("%s is at its limit of %d runs", at, t.file.Runs)
@@ -241,7 +251,6 @@ func (b *build) readAddresses(requests []machine.Request) error {
 		b.targets = map[addressed]*target{}
 	}
 	var places []addressed
-	var keyed []bool
 	for _, r := range requests {
 		if r.Send == nil || r.Send.At == nil || r.Send.At.Client != "" || r.Send.At.Run != "" {
 			continue
@@ -254,13 +263,12 @@ func (b *build) readAddresses(requests []machine.Request) error {
 		if _, seen := b.targets[place]; !seen {
 			b.targets[place] = nil
 			places = append(places, place)
-			keyed = append(keyed, r.Send.At.Key != nil)
 		}
 	}
 	found := make([]*target, len(places))
 	err := b.p.each(len(places), func(i int) error {
 		var err error
-		found[i], err = b.p.aimAt(places[i].at, places[i].key, keyed[i], false)
+		found[i], err = b.p.aimAt(places[i].at, places[i].key, false)
 		return err
 	})
 	for i, place := range places {
@@ -399,7 +407,7 @@ func (b *build) aim(ask *instance.Ask, s *machine.Send, at, why string) {
 	t := b.targets[addressed{at, ask.Key}]
 	if t == nil {
 		var err error
-		if t, err = b.p.aimAt(at, ask.Key, keyed, false); err != nil {
+		if t, err = b.p.aimAt(at, ask.Key, false); err != nil {
 			b.err = err
 			return
 		}
@@ -414,10 +422,13 @@ func (b *build) aim(ask *instance.Ask, s *machine.Send, at, why string) {
 	if starts {
 		// Named under the tree's client, from the sender's message, so a
 		// carry-out done again names the same run. A second send in the
-		// step to the key goes to it.
+		// step to the key goes to it; one to a transient location starts
+		// another.
 		to = store.RootInstance(t.file.Client, b.time, ask.Message)
 		ask.Run = to
-		t.holder = to
+		if keyed {
+			t.holder = to
+		}
 		for place, other := range b.targets {
 			if place.at == at && other != nil {
 				other.runs++
@@ -465,7 +476,8 @@ func (b *build) refuses(msg *instance.Message, def *machine.Definition) string {
 	case msg.To.At != b.st.Location && !(msg.To.At == "" && msg.Sender != nil && msg.Sender.Client == store.InstanceClient(b.inst)):
 		// The tree's client names a run of its own by its ID alone.
 		return fmt.Sprintf("the run %s is not at %s", b.inst, msg.To.At)
-	case !machine.Receives(def):
+	case !machine.Receives(def) && !(msg.Start != nil && msg.Start.Run == b.inst):
+		// A send that starts a run of a flow or an agent is its start.
 		return fmt.Sprintf("the run %s is a %s, which takes no sent event", b.inst, def.Type)
 	case machine.Reserved(name) || machine.Owns(def, name):
 		return fmt.Sprintf("%q is the name of an event the run gives itself", name)
@@ -582,7 +594,7 @@ func (p *pass) toAddress(inst string, step *instance.Step, ask *instance.Ask) er
 	if err != nil || failure == nil {
 		return err
 	}
-	return p.tell(inst, inst, ask.Message+".note", notDelivered(msg, failure.Error))
+	return p.tell(inst, inst, ask.Message+".note", notDelivered(msg, failure.Error), asked(inst, step))
 }
 
 // sendJob carries out a send job: its event, and then its result, done with
@@ -605,8 +617,9 @@ func (p *pass) sendJob(inst string, step *instance.Step, ask *instance.Ask) erro
 // addressed writes an event sent to a run by its address. What the event
 // names is in the record of the run it goes to before that run is told. An
 // event sent to a key carries the start of a run, so one that arrives after
-// the run with the key has ended starts a fresh one. It gives the message,
-// and why it could not be written, if it could not.
+// the run with the key has ended starts a fresh one, and so does one that
+// starts a run of a transient location. It gives the message, and why it
+// could not be written, if it could not.
 func (p *pass) addressed(inst string, step *instance.Step, ask *instance.Ask) (*instance.Message, *machine.Error, error) {
 	if ask.To == "" || ask.Undelivered {
 		return nil, nil, nil // written in the record, and nowhere else
@@ -616,33 +629,31 @@ func (p *pass) addressed(inst string, step *instance.Step, ask *instance.Ask) (*
 	if err != nil {
 		return nil, nil, err
 	}
-	sender := &machine.Address{At: st.Location, Run: inst}
-	if st.Lifetime == machine.LifetimeKeyed {
-		key := st.Key
-		sender.Key = &key
-	}
+	sender := runOf(inst, st).Address()
 	to := &machine.Address{At: ask.Location}
-	msg := &instance.Message{Kind: instance.KindSend, Instance: ask.To, From: inst, To: to, Sender: sender,
+	msg := &instance.Message{Kind: instance.KindSend, Instance: ask.To, From: inst, To: to, Sender: sender, Cause: asked(inst, step),
 		Event: &machine.Event{Name: ask.Event.Name, Data: data}}
 	switch {
 	case ask.Direct:
 		to.Run = ask.To
-	case ask.Key != "":
+	case ask.Key != "" || ask.Run != "":
 		key := ask.Key
-		to.Key = &key
+		if key != "" {
+			to.Key = &key
+		}
 		mac := hmac.New(sha256.New, st.Seed)
 		mac.Write([]byte("send\x00" + ask.Message))
 		msg.Start = &instance.Start{Location: ask.Location, Key: key, Run: ask.Run, Seed: mac.Sum(nil),
-			Above: &instance.Above{Depth: st.Above.Depth + 1, StartedBy: inst}}
+			Above: &instance.Above{Depth: st.Above.Depth + 1}}
 	}
 	failure, err := p.send(store.Message(p.ctl, p.ctl, ask.Message), noEnd, msg, p.c.ID.Card)
 	return msg, failure, err
 }
 
 // tell writes a note into a run's record, as a step of the controller's own,
-// whether or not the run has ended.
-func (p *pass) tell(to, from, message, text string) error {
-	msg := &instance.Message{Kind: instance.KindNote, Instance: to, From: from, Note: text}
+// whether or not the run has ended. Its cause is the step the note is about.
+func (p *pass) tell(to, from, message, text string, cause *instance.Cause) error {
+	msg := &instance.Message{Kind: instance.KindNote, Instance: to, From: from, Note: text, Cause: cause}
 	_, err := p.send(store.Message(p.ctl, p.ctl, message), noEnd, msg, p.c.ID.Card)
 	return err
 }
@@ -666,7 +677,7 @@ func (p *pass) undeliver(a *arrival, why string) error {
 	if err != nil || !gone {
 		return err
 	}
-	return p.tell(a.msg.From, a.msg.Instance, noteName(a.name), notDelivered(a.msg, why))
+	return p.tell(a.msg.From, a.msg.Instance, noteName(a.name), notDelivered(a.msg, why), a.msg.Cause)
 }
 
 // redirect moves on an event sent to { at } or { at, key } whose run cannot
@@ -679,7 +690,7 @@ func (p *pass) undeliver(a *arrival, why string) error {
 func (p *pass) redirect(a *arrival) error {
 	msg := *a.msg
 	keyed := msg.To.Key != nil
-	t, err := p.aimAt(msg.To.At, keyOf(msg.To), keyed, true)
+	t, err := p.aimAt(msg.To.At, keyOf(msg.To), true)
 	if err != nil {
 		return err
 	}
@@ -727,7 +738,7 @@ func (p *pass) redirect(a *arrival) error {
 		return nil
 	}
 	base, tail := a.name[strings.LastIndexByte(a.name, '/')+1:], run[strings.LastIndexByte(run, '/')+1:]
-	return p.tell(msg.From, run, base+".moved."+tail, fmt.Sprintf("the event %s sent to %s went to the run %s, not %s", msg.Event.Name, addressText(msg.To), run, before))
+	return p.tell(msg.From, run, base+".moved."+tail, fmt.Sprintf("the event %s sent to %s went to the run %s, not %s", msg.Event.Name, addressText(msg.To), run, before), msg.Cause)
 }
 
 // holder gives the run that has a key, whose file is named at: none where
@@ -810,7 +821,8 @@ func (p *pass) route(a *arrival) error {
 			return refuse("%s", r.Error())
 		}
 	}
-	out := &instance.Message{Kind: instance.KindSend, To: to, Sender: &machine.Address{Client: a.sender}, Event: msg.Event}
+	out := &instance.Message{Kind: instance.KindSend, To: to, Sender: &machine.Address{Client: a.sender},
+		Cause: &instance.Cause{Client: a.sender, Message: base}, Event: msg.Event}
 	if to.Run != "" {
 		out.Instance = to.Run
 	} else {
@@ -819,7 +831,7 @@ func (p *pass) route(a *arrival) error {
 				return refuse("%v", err)
 			}
 		}
-		t, err := p.aimAt(to.At, keyOf(to), to.Key != nil, false)
+		t, err := p.aimAt(to.At, keyOf(to), false)
 		if err != nil {
 			return err
 		}
@@ -831,10 +843,10 @@ func (p *pass) route(a *arrival) error {
 			run = store.RootInstance(t.file.Client, a.sent, name)
 		}
 		out.Instance = run
-		if to.Key != nil {
+		if to.Key != nil || starts {
 			seed := make([]byte, 32)
 			rand.Read(seed)
-			out.Start = &instance.Start{Location: to.At, Key: *to.Key, Seed: seed, Above: &instance.Above{}}
+			out.Start = &instance.Start{Location: to.At, Key: keyOf(to), Seed: seed, Above: &instance.Above{}}
 			if starts {
 				out.Start.Run = run
 			}

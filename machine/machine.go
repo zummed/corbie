@@ -96,7 +96,8 @@ func (e *Error) Value() any {
 }
 
 // A Job is a filled-in request for work: a script, which a runner
-// executes, or a machine, which the controller starts as a child.
+// executes, a machine, which the controller starts as a child run or, named
+// by its location, as a run of its own, or a send.
 type Job struct {
 	// Name says what asked for the job: a stage, a state, a tool, an
 	// agent's turn, the ask; an item of a list adds its position.
@@ -130,13 +131,6 @@ type Job struct {
 	// Shown is what the ask is shown about the job, beside its name and
 	// its input, where the job is held for approval.
 	Shown any `json:"shown,omitzero"`
-	// AskAt is where the ask the job goes to when it is held is written,
-	// where one is nearer than its machine's. Only that comes from a step.
-	// Ask is what is written there, which the controller reads from the
-	// definition and fills from the machine's input, once for the held
-	// jobs of a step that name the same place.
-	AskAt string   `json:"ask_at,omitzero"`
-	Ask   *JobSpec `json:"ask,omitzero"`
 	// Above says the job is an ask taken from a machine above, whose
 	// script or machine is in that machine's definition. Only the controller
 	// sets it.
@@ -327,9 +321,21 @@ type Type interface {
 	// Check reports what is wrong with a definition in full form.
 	Check(c *Checker, def *Definition)
 	Step(in *StepIn) (*StepOut, error)
-	// Show gives what a watcher is shown of a state.
-	Show(def *Definition, state jsontext.Value) any
+	// Show gives the state a watcher is shown of a run of the type.
+	Show(state jsontext.Value) Shown
 	Manual() string
+}
+
+// Shown is the state of a run a watcher is shown for each step, beside
+// what its head says. Each type fills one field.
+type Shown struct {
+	// Stages are a flow's stages, each with its status: waiting, running,
+	// done, failed or skipped.
+	Stages map[string]string `json:"stages,omitzero"`
+	// States are a statechart's active states, outermost first.
+	States []string `json:"states,omitzero"`
+	// Turn is how many turns an agent has taken.
+	Turn int `json:"turn,omitzero"`
 }
 
 // A Limiter is a type that adds limits of its own to those every type
@@ -343,8 +349,6 @@ type Limiter interface {
 type Reader interface {
 	// Lists says the definition takes shapes from outside as it runs.
 	Lists(def *Definition) bool
-	// Asks gives the asks the definition writes, by place. It is never nil.
-	Asks(def *Definition) map[string]*JobSpec
 }
 
 // Lists says a definition takes shapes from outside as it runs.
@@ -406,15 +410,6 @@ func Owns(def *Definition, name string) bool {
 	t, _ := TypeOf(def.Type)
 	o, ok := t.(Owner)
 	return ok && o.Owns(def, name)
-}
-
-// Asks gives the asks a definition writes, by place.
-func Asks(def *Definition) map[string]*JobSpec {
-	t, _ := TypeOf(def.Type)
-	if r, ok := t.(Reader); ok {
-		return r.Asks(def)
-	}
-	return nil
 }
 
 var types = map[string]Type{}

@@ -1,0 +1,4 @@
+flow: note
+allow: [send:root]
+stages:
+  reply: { job: { send: { to: "${input.back}", event: written, data: { me: "${run.address}" } } } }

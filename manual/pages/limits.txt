@@ -72,8 +72,8 @@ These are true of sends and calls to addresses.
   read it.
 - A run a send or a call starts counts as one level below its sender, and
   fails as it starts past its own file's `limits: { depth: }`, 16 by default.
-- `limits: { runs: }` is counted as a send is made, so sends from several runs
-  at once can pass it by a few.
+- `limits: { runs: }` is counted as a send is made and as a run starts, so
+  starts from several runs at once can pass it by a few.
 - A run remembers the last message of each of its 64 most recent senders. A
   controller stopped while it sends, with 64 others heard before it resumes,
   can deliver an event twice.
@@ -89,6 +89,12 @@ These are true of the store.
 - Whoever operates the store can read every file path, delete any file and
   restore the store to an earlier state. They cannot read an encrypted file,
   and a file they alter is refused by its reader.
+- Every client can read every run's status, and how many files each run's
+  record has, with their sizes and times. It reads nothing else of a run it
+  may not read.
+- A client a file's `read:` lists can answer the tickets of the runs there.
+  Taken off the list, it still reads what was encrypted for it, and the runs
+  still running keep the list they started with.
 - Someone on the network between a served directory and a computer that uses
   it can see that the two communicate and how much data they exchange, and can
   delay or cut the connection. They can do nothing else.

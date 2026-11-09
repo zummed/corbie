@@ -31,13 +31,12 @@ func (c *Checker) SendTo(place string, to *AddressSpec, event string, names ...s
 
 // Addressable says why a send to { at }, or to { at, key } when keyed, goes
 // to no run at a location of a lifetime, or "" where it may: { at } goes to
-// a singleton's run, and { at, key } to a keyed location's.
+// a singleton's run or starts a new run of a transient location, and
+// { at, key } goes to a keyed location's run for the key.
 func Addressable(at, lifetime string, keyed bool) string {
 	switch {
 	case !keyed && lifetime == LifetimeKeyed:
 		return fmt.Sprintf("%s is keyed: a send to it names a key, as %s#<key>", at, at)
-	case !keyed && lifetime == LifetimeTransient:
-		return fmt.Sprintf("%s is transient: a send to a location goes to a singleton or a key, and a run of a transient location is named by its ID", at)
 	case keyed && lifetime != LifetimeKeyed:
 		return fmt.Sprintf("%s is not keyed", at)
 	}

@@ -80,7 +80,8 @@ func (w *world) failure(run string) string {
 
 // A call job starts a run of a transient location and waits; its output is
 // that run's result. The called run is a root of the location's tree client,
-// one level below its caller, and its head names the run that called it.
+// one level below its caller, and its head names the caller's step as its
+// cause.
 func Test_ctl_call_returns_the_runs_result(t *testing.T) {
 	w := newWorld(t)
 	run := w.calls(nil, map[string]any{"n": "seven"})
@@ -96,7 +97,7 @@ func Test_ctl_call_returns_the_runs_result(t *testing.T) {
 		t.Fatalf("the caller's record names the runs %v", callee)
 	}
 	head := w.head(callee[0])
-	if head == nil || head.Parent != "" || head.StartedBy != run || head.Location != "/t/lookup" || store.InstanceClient(callee[0]) != "c1" {
+	if head == nil || head.Parent != "" || head.Cause.Run != run || head.Cause.Step == 0 || head.Location != "/t/lookup" || store.InstanceClient(callee[0]) != "c1" {
 		t.Fatalf("the called run's head is %+v", head)
 	}
 	if st := w.latest(callee[0]).State; st.Above.Depth != 1 || st.Above.CallJob == "" {

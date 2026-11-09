@@ -67,13 +67,12 @@ type build struct {
 	time time.Time
 
 	out     taken
-	events  []machine.Event             // those for the machine
-	sources []*arrival                  // where each came from
-	index   int                         // how many messages the step has named
-	held    []*instance.Going           // the jobs of this step that wait for the ask
-	read    *stepOut                    // what the step read of the definition
-	asks    map[string]*machine.JobSpec // the asks the definition writes, read once a step
-	targets map[addressed]*target       // what each key a step sends to has
+	events  []machine.Event       // those for the machine
+	sources []*arrival            // where each came from
+	index   int                   // how many messages the step has named
+	held    []*instance.Going     // the jobs of this step that wait for the ask
+	read    *stepOut              // what the step read of the definition
+	targets map[addressed]*target // what each key a step sends to has
 	// fromLocation says the run starts from its location's file, which its
 	// first step copies into its record.
 	fromLocation bool
@@ -247,7 +246,7 @@ func (b *build) mayCancel(a *arrival) bool {
 	case identity.Client:
 		return a.sender == store.InstanceClient(b.inst)
 	case identity.Controller:
-		return a.msg.From == "" || a.msg.From == b.st.Above.Parent || b.st.Above.CallJob != "" && a.msg.From == b.st.Above.StartedBy
+		return a.msg.From == "" || a.msg.From == b.st.Above.Parent || b.st.Above.CallJob != "" && a.msg.From == b.st.Above.Cause.Run
 	}
 	return false
 }
@@ -270,7 +269,22 @@ func (b *build) refuse(a *arrival, format string, args ...any) {
 // record notes an event in the entry. own says the controller acted on it
 // itself and the machine was not consulted.
 func (b *build) record(event machine.Event, a *arrival, own bool) {
-	b.step.Events = append(b.step.Events, instance.Arrived{Event: event, Source: a.name, Own: own})
+	b.step.Events = append(b.step.Events, instance.Arrived{Event: event, Source: a.name, Cause: b.cause(a), Own: own})
+}
+
+// cause gives what sent a message: a client's message, or the step of a
+// run that asked the controller for it. A wake and a runner's message have
+// none.
+func (b *build) cause(a *arrival) instance.Cause {
+	switch {
+	case a.wake:
+		return instance.Cause{}
+	case a.kind == identity.Client:
+		return instance.Cause{Client: a.sender, Message: a.name[strings.LastIndexByte(a.name, '/')+1:]}
+	case a.kind == identity.Controller && a.msg.Cause != nil:
+		return *a.msg.Cause
+	}
+	return instance.Cause{}
 }
 
 // give hands an event to the machine.
@@ -759,7 +773,7 @@ func (b *build) readDefinition(s *instance.Start) *stepOut {
 		problems, needsAsk := machine.Check(b.def)
 		// A machine made while running has no ask of its own, and its author
 		// is told so. Nothing it wrote of one is kept either way.
-		if st.Above.Made && (b.def.Ask != nil || len(machine.Asks(b.def)) > 0) {
+		if st.Above.Made && b.def.Ask != nil {
 			problems = append(problems, machine.Problem{Text: "a machine made while running has no ask of its own: take out its `ask:`, and what it holds goes to the ask above it"})
 		}
 		// What a machine made while running holds is denied when it is held:
@@ -811,8 +825,17 @@ func (b *build) readDefinition(s *instance.Start) *stepOut {
 }
 
 // run is what an expression reads of the instance.
-func (b *build) run() machine.Run {
-	return machine.Run{ID: b.inst, Location: b.st.Location, Context: b.st.Above.Context, Tree: b.st.Tree, Values: b.st.Above.Values}
+func (b *build) run() machine.Run { return runOf(b.inst, b.st) }
+
+// runOf is what an expression reads of an instance in a state. Only a run
+// at a keyed location has a key.
+func runOf(inst string, st *instance.State) machine.Run {
+	run := machine.Run{ID: inst, Location: st.Location, Context: st.Above.Context, Tree: st.Tree, Values: st.Above.Values}
+	if st.Lifetime == machine.LifetimeKeyed {
+		key := st.Key
+		run.Key = &key
+	}
+	return run
 }
 
 // readAllow fills in the allow list written for the whole definition, for
@@ -828,34 +851,21 @@ func (b *build) readAllow(read *stepOut) {
 }
 
 // fill fills in an ask, here, from the input of the machine that declares it.
-func (b *build) fill(spec *machine.JobSpec, input any, at string) (*machine.Job, error) {
-	eval := machine.NewEvaluator(b.time, b.seed("ask", fmt.Sprint(b.step.Number), at), b.run())
-	return spec.Fill(eval, machine.Scope{"input": input}, at, instance.AskName)
+func (b *build) fill(spec *machine.JobSpec, input any) (*machine.Job, error) {
+	eval := machine.NewEvaluator(b.time, b.seed("ask", fmt.Sprint(b.step.Number), instance.AskName), b.run())
+	return spec.Fill(eval, machine.Scope{"input": input}, instance.AskName, instance.AskName)
 }
 
-// askOf says which ask a held job goes to: the ask it carries or, with none,
-// the machine's own or the nearest one above it. above says it is one above.
-func (b *build) askOf(job *machine.Job) (spec *machine.JobSpec, input any, at string, above bool) {
-	spec, input, at = job.Ask, b.st.Input, job.AskAt
-	if spec == nil {
-		spec, at = b.st.Ask, instance.AskName
+// askOf says which ask the machine's held jobs go to: its own or, with
+// none, the nearest one above it. above says it is one above.
+func (b *build) askOf() (spec *machine.JobSpec, input any, above bool) {
+	if b.st.Ask != nil {
+		return b.st.Ask, b.st.Input, false
 	}
-	if spec == nil && b.st.Above.Ask != nil {
-		spec, input, at, above = b.st.Above.Ask.Spec, b.st.Above.Ask.Input, b.st.Above.Ask.At, true
+	if b.st.Above.Ask != nil {
+		return b.st.Above.Ask.Spec, b.st.Above.Ask.Input, true
 	}
-	return spec, input, at, above
-}
-
-// askAt gives the ask a definition writes at a place. A machine made while
-// running has none of its own, and nothing of its definition is read for one.
-func (b *build) askAt(at string) *machine.JobSpec {
-	if at == "" || b.st.Above.Made {
-		return nil
-	}
-	if b.asks == nil {
-		b.asks = machine.Asks(b.def)
-	}
-	return b.asks[at]
+	return nil, nil, false
 }
 
 // follow does what a step read: the machine's state is the one it read, and
@@ -1001,9 +1011,9 @@ func (b *build) begin(req *machine.Job, earlier *instance.Going) error {
 	if earlier != nil {
 		job.Restarts, job.Restarted, job.Doubled = earlier.Restarts, earlier.Restarted, earlier.Doubled
 	}
-	// Where a job is, whether it is an ask from above, and what is written
-	// at the place its ask is, the controller says.
-	job.Found, job.Above, job.Ask = nil, false, b.askAt(job.AskAt)
+	// Where a job is, and whether it is an ask from above, the controller
+	// says.
+	job.Found, job.Above = nil, false
 	// The job's permissions are the lists written for the whole definition
 	// and, with them, those written for the job.
 	if b.st.Jobs == nil {
@@ -1170,8 +1180,9 @@ func (b *build) launch(job *instance.Going) {
 	job.Runner = runner
 	job.Due = b.time.Add(time.Duration(timeout(job)) + dueGrace)
 	job.Wake = b.wakeFor(wakeDue, full)
+	b.st.Scripts++
 	// The job, and then the wake for when its result is due.
-	b.ask(instance.Ask{Kind: instance.AskScript, Name: full, Job: &job.Job, Attempt: job.Attempt, Runner: runner, Card: card,
+	b.ask(instance.Ask{Kind: instance.AskScript, Name: full, Job: &job.Job, Attempt: job.Attempt, Number: b.st.Scripts, Runner: runner, Card: card,
 		At: job.Due, What: job.Wake, Message: store.JobMessage(b.inst, full)})
 }
 
@@ -1266,7 +1277,7 @@ func (b *build) end(status string, output any, e *machine.Error) {
 			Message: b.message("result")})
 	case st.Above.CallJob != "":
 		// A called run's end is its call job's result.
-		b.ask(instance.Ask{Kind: instance.AskEnd, To: st.Above.StartedBy, Name: st.Above.CallJob, Output: output, Error: e,
+		b.ask(instance.Ask{Kind: instance.AskEnd, To: st.Above.Cause.Run, Name: st.Above.CallJob, Output: output, Error: e,
 			Message: b.message("result")})
 	case st.Above.CallReceipt != nil:
 		// Written beside the receipt of the client that called.
@@ -1280,9 +1291,9 @@ func (b *build) end(status string, output any, e *machine.Error) {
 	}
 	// A run that a send started and that fails as it starts is that send's
 	// failure.
-	if st.Above.StartedBy != "" && st.Above.CallJob == "" && status == instance.Failed && b.step.Number == 1 {
-		b.ask(instance.Ask{Kind: instance.AskTell, To: st.Above.StartedBy, Message: b.message("tell"),
-			Text: fmt.Sprintf("the run %s, started by a send to %s#%s, failed in its first step, which took the event: %s", b.inst, st.Location, st.Key, e.Error)})
+	if st.Above.Parent == "" && st.Above.Cause.Run != "" && st.Above.CallJob == "" && status == instance.Failed && b.step.Number == 1 {
+		b.ask(instance.Ask{Kind: instance.AskTell, To: st.Above.Cause.Run, Message: b.message("tell"),
+			Text: fmt.Sprintf("the run %s, started by a send to %s, failed in its first step, which took the event: %s", b.inst, addressText(&machine.Address{At: st.Location, Key: runOf(b.inst, st).Key}), e.Error)})
 	}
 }
 
@@ -1387,6 +1398,7 @@ func (p *pass) begin(inst string, waiting []*arrival) (*taken, error) {
 	b.step.Time = b.time
 	st := b.st
 	st.Status, st.Started, st.Definition, st.Input, st.Labels, st.Seed, st.Above, st.Key = instance.Running, b.time, s.Definition, s.Input, s.Labels, s.Seed, *above, s.Key
+	st.Above.Cause = b.cause(start)
 	if st.Location == "" {
 		// A child runs at its parent's location.
 		st.Location, st.Tree = s.Location, s.Tree
@@ -1435,11 +1447,17 @@ func (b *build) first(s *instance.Start, start *arrival) (refused bool, err erro
 	}
 	b.def = def
 	// A run a send starts takes the event only where its location's file
-	// takes it. One whose file cannot be read fails as it starts.
-	if start.isSend() && len(read.Problems) == 0 {
+	// takes it. One whose file cannot be read fails as it starts. A flow or
+	// an agent takes no sent event, so a send that starts one is its start
+	// alone.
+	given := start.isSend()
+	if given && len(read.Problems) == 0 {
 		if why := b.refuses(start.msg, def); why != "" {
 			b.undeliver(start, why)
 			return true, nil
+		}
+		if !machine.Receives(def) {
+			given, b.events = false, nil
 		}
 	}
 	// A call is taken only where its location's file takes the caller. Its
@@ -1485,6 +1503,14 @@ func (b *build) first(s *instance.Start, start *arrival) (refused bool, err erro
 		}
 	}
 	st.Machine, st.Type = def.Name, def.Type
+	if b.fromLocation {
+		// A run started at its location is read by the clients its file
+		// lists, and so is everything below it.
+		st.Above.Readers = nil
+		for _, entry := range def.Read {
+			st.Above.Readers = append(st.Above.Readers, strings.TrimPrefix(entry, "client:"))
+		}
+	}
 	// A machine made while running has no ask of its own, and what it wrote
 	// of one is not kept.
 	if !st.Above.Made {
@@ -1512,9 +1538,17 @@ func (b *build) first(s *instance.Start, start *arrival) (refused bool, err erro
 	if len(problems) == 0 {
 		st.Input, st.Title = read.Input, read.Title
 	}
+	// A transient run whose file limits its runs takes a key file under its
+	// own ID, so that its location counts it. It is freed as a key is.
+	if st.Lifetime == machine.LifetimeTransient && def.Runs > 0 {
+		if _, err := p.claim(b.inst, store.Key(p.ctl, st.Location, b.inst), b.inst, start.name); err != nil {
+			return false, err
+		}
+		st.Counted = true
+	}
 	b.use(start)
 	b.record(machine.Event{Name: machine.Start, Data: st.Input}, start, false)
-	if start.isSend() {
+	if given {
 		b.record(sentEvent(start.msg), start, false)
 	}
 	if start.kind == identity.Client || st.Lifetime != "" {
@@ -1609,29 +1643,13 @@ func (b *build) holds(job *instance.Going) bool {
 	return job.Approve || permission.Declares(declared, b.st.Above.Approve, b.st.Tree)
 }
 
-// startAsk starts each ask once for the jobs this step held that go to
-// it. The asks start in the order their first job was held.
+// startAsk starts the ask once for the jobs this step held: the machine's
+// own or, with none, the nearest one above it. It is filled once, from the
+// input of the machine that declares it. An ask that cannot be filled
+// denies the jobs, with a note that names the fault.
 func (b *build) startAsk() {
-	var places []string
-	held := map[string][]*instance.Going{}
-	for _, job := range b.held {
-		_, _, at, _ := b.askOf(&job.Job)
-		if _, seen := held[at]; !seen {
-			places = append(places, at)
-		}
-		held[at] = append(held[at], job)
-	}
+	held := b.held
 	b.held = nil
-	for _, at := range places {
-		b.startOneAsk(held[at])
-	}
-}
-
-// startOneAsk starts an ask for the jobs that go to it: the ask they carry
-// or, with none, the machine's own or the nearest one above it. It is
-// filled once, from the input of the machine that declares it. An ask that
-// cannot be filled denies the jobs, with a note that names the fault.
-func (b *build) startOneAsk(held []*instance.Going) {
 	deny := func(format string, args ...any) {
 		for _, job := range held {
 			job.Held = false
@@ -1639,7 +1657,7 @@ func (b *build) startOneAsk(held []*instance.Going) {
 				Error: &machine.Error{Status: machine.StatusDenied, Error: fmt.Sprintf(format, args...)}})
 		}
 	}
-	spec, input, at, above := b.askOf(&held[0].Job)
+	spec, input, above := b.askOf()
 	switch {
 	case spec == nil && b.st.Above.Made:
 		deny("the job needs approval and no ask applies: a machine made while running uses only an ask above it, and none is above it")
@@ -1648,7 +1666,7 @@ func (b *build) startOneAsk(held []*instance.Going) {
 		deny("the job needs approval and no ask applies: neither this machine nor any above it has one")
 		return
 	}
-	filled, err := b.fill(spec, input, at)
+	filled, err := b.fill(spec, input)
 	if err != nil {
 		deny("the ask could not be started: %v", err)
 		return

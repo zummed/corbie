@@ -62,8 +62,8 @@ func (f Filter) keeps(r *Run) bool {
 }
 
 // List gives the runs this party may read, each as its head gives it:
-// every instance, not only roots. A client sees its own; a viewer with
-// access to heads sees everyone's.
+// every instance, not only roots. A client sees its own and those whose
+// file's read: lists it; a viewer with access to heads sees everyone's.
 func (c *Client) List(ctx context.Context, filter Filter) ([]*Run, error) {
 	heads, _, _, err := c.heads(ctx, filter.Finished, nil)
 	var runs []*Run
@@ -90,9 +90,9 @@ func (c *Client) heads(ctx context.Context, finished bool, last map[string]headR
 	// The running heads are read before the finished ones: a head is
 	// written among the finished before it leaves the running, so a run
 	// that ends in between is in one or the other.
-	places := []string{c.under(store.Running(c.ctl()))}
+	places := []string{store.Running(c.ctl())}
 	if finished {
-		places = append(places, c.under(store.Finished(c.ctl())))
+		places = append(places, store.Finished(c.ctl()))
 	}
 	found := map[string]*Run{}
 	marks := map[string]store.Mark{}
@@ -114,7 +114,7 @@ func (c *Client) heads(ctx context.Context, finished bool, last map[string]headR
 		err = store.Each(ctx, store.SideBySide, len(unread), func(i int) error {
 			head, mark, err := c.readHead(ctx, unread[i])
 			now[i].mark = mark
-			if head != nil {
+			if head != nil && c.lists(head) {
 				now[i].run = runOf(head)
 			}
 			return err
@@ -142,14 +142,9 @@ func (c *Client) heads(ctx context.Context, finished bool, last map[string]headR
 	return runs, marks, read, nil
 }
 
-// under gives the part of a place of heads this party may read: a client's
-// own, or all of them for a viewer.
-func (c *Client) under(base string) string {
-	if c.ID != nil {
-		return base + "/" + c.ID.Name
-	}
-	return base
-}
+// lists says whether a listing gives a run: a viewer is given every run,
+// and a client those it may read.
+func (c *Client) lists(head *instance.Head) bool { return c.ID == nil || c.reads(head.Name, head) }
 
 // listHeads lists the heads in a place.
 func (c *Client) listHeads(ctx context.Context, place string) ([]store.Listed, error) {
@@ -235,7 +230,7 @@ func (c *Client) changes(ctx context.Context, filter Filter, w *watched, tell fu
 	}
 	var ended []string
 	if !filter.Finished {
-		if ended, err = store.Names(c.listHeads(ctx, c.under(store.Finished(c.ctl())))); err != nil {
+		if ended, err = store.Names(c.listHeads(ctx, store.Finished(c.ctl()))); err != nil {
 			return err
 		}
 	}
@@ -268,7 +263,7 @@ func (c *Client) changes(ctx context.Context, filter Filter, w *watched, tell fu
 			return err
 		}
 		for i, head := range read {
-			if head != nil && filter.keeps(runOf(head)) {
+			if head != nil && c.lists(head) && filter.keeps(runOf(head)) {
 				tell(Update{Run: runOf(head), New: true})
 			}
 			w.ended[unread[i]] = true
@@ -312,7 +307,7 @@ type Entry struct {
 	Events []instance.Arrived `json:"events,omitzero"`
 	Asks   []instance.Ask     `json:"asks,omitzero"`
 	Status string             `json:"status,omitzero"`
-	Shown  any                `json:"state,omitzero"` // what the machine's type shows of its state
+	Shown  machine.Shown      `json:"state,omitzero"` // the run's state after the step
 	// For an emit.
 	Job  string `json:"job,omitzero"` // the job that emitted
 	Name string `json:"name,omitzero"`
@@ -326,8 +321,14 @@ type followed struct {
 	listed bool // whether its steps have been listed: after that they are read by number
 	read   bool // whether any step of it could be read
 	ended  bool
-	jobs   map[string]identity.Card // the runner each job went to, by the job's full name
-	emits  map[string]bool          // the emit entries already given
+	jobs   map[int]sent    // the scripts its steps sent, by their numbers
+	emits  map[string]bool // the emit entries already given
+}
+
+// sent is a script a step sent: its full name and the runner it went to.
+type sent struct {
+	name   string
+	runner identity.Card
 }
 
 // Follow gives each entry of a run's record as it is written, with those of
@@ -342,12 +343,12 @@ func (c *Client) Follow(ctx context.Context, id string, interval time.Duration, 
 	if err := store.CheckInstance(id); err != nil {
 		return nil, err
 	}
-	if !c.mine(id) {
-		return nil, others(id)
+	if err := c.readable(ctx, id); err != nil {
+		return nil, err
 	}
 	notice, stop := c.Store.Notice(store.Records(c.ctl()))
 	defer stop()
-	all := map[string]*followed{id: {jobs: map[string]identity.Card{}, emits: map[string]bool{}}}
+	all := map[string]*followed{id: {jobs: map[int]sent{}, emits: map[string]bool{}}}
 	ended := false
 	for {
 		run, err := c.look(ctx, id, all, tell)
@@ -383,10 +384,10 @@ func (c *Client) Record(ctx context.Context, id string, tell func(Entry)) (*Run,
 	if err := store.CheckInstance(id); err != nil {
 		return nil, err
 	}
-	if !c.mine(id) {
-		return nil, others(id)
+	if err := c.readable(ctx, id); err != nil {
+		return nil, err
 	}
-	all := map[string]*followed{id: {jobs: map[string]identity.Card{}, emits: map[string]bool{}}}
+	all := map[string]*followed{id: {jobs: map[int]sent{}, emits: map[string]bool{}}}
 	if run, err := c.look(ctx, id, all, tell); err != nil || run != nil {
 		return run, err
 	}
@@ -477,20 +478,21 @@ func (c *Client) read(ctx context.Context, name string, all map[string]*followed
 		f.listed = false
 		return err
 	}
-	var unread, jobs []string
+	var unread []string
+	var jobs []int
 	for _, at := range names {
 		if f.emits[at] {
 			continue
 		}
-		parts := strings.Split(strings.TrimPrefix(at, store.Emits(c.ctl(), name)+"/"), "/")
-		if _, known := f.jobs[parts[0]]; len(parts) != 2 || !known {
+		job, _, ok := store.EmitOf(c.ctl(), name, at)
+		if _, known := f.jobs[job]; !ok || !known {
 			continue // from a runner that had no such job, or its step is not read yet
 		}
-		unread, jobs = append(unread, at), append(jobs, parts[0])
+		unread, jobs = append(unread, at), append(jobs, job)
 	}
 	emits := make([]*instance.Emit, len(unread))
 	err = store.Each(ctx, store.SideBySide, len(unread), func(i int) (err error) {
-		emits[i], err = c.emit(ctx, name, jobs[i], store.Number(unread[i]), f.jobs[jobs[i]])
+		emits[i], err = c.emit(ctx, name, f.jobs[jobs[i]], jobs[i], store.Number(unread[i]))
 		return err
 	})
 	if err != nil {
@@ -602,11 +604,11 @@ func (c *Client) give(name string, step *instance.Step, all map[string]*followed
 	for _, ask := range step.Asks {
 		switch ask.Kind {
 		case instance.AskScript:
-			f.jobs[ask.Name] = ask.Card
+			f.jobs[ask.Number] = sent{name: ask.Name, runner: ask.Card}
 		case instance.AskChild:
 			// A child is found from any step that started one.
 			if _, known := all[ask.Child]; !known {
-				all[ask.Child] = &followed{parent: name, jobs: map[string]identity.Card{}, emits: map[string]bool{}}
+				all[ask.Child] = &followed{parent: name, jobs: map[int]sent{}, emits: map[string]bool{}}
 			}
 		}
 	}
@@ -673,42 +675,44 @@ func stepEntry(name string, step *instance.Step) (Entry, error) {
 		entry.Asks = append(entry.Asks, ask)
 	}
 	if t, ok := machine.TypeOf(step.State.Type); ok {
-		entry.Shown = t.Show(nil, step.State.Inner)
+		entry.Shown = t.Show(step.State.Inner)
 	}
 	return entry, nil
 }
 
-// emit reads one emit entry of a job. It gives nil for one that is not
-// there, or that was not signed by the runner the job went to: a runner can
-// add to any record, and what it adds for a job it never had is ignored.
-func (c *Client) emit(ctx context.Context, name, job string, number int, runner identity.Card) (*instance.Emit, error) {
-	at := store.Emit(c.ctl(), name, job, number)
+// emit reads one emit entry of a script a step sent, filed under the
+// script's number. It gives nil for one that is not there, that was not
+// signed by the runner the script went to, or that names another job: a
+// runner can add to any record, and what it adds for a job it never had is
+// ignored.
+func (c *Client) emit(ctx context.Context, name string, job sent, jobNumber, number int) (*instance.Emit, error) {
+	at := store.Emit(c.ctl(), name, jobNumber, number)
 	data, mark, err := c.Store.Read(ctx, at)
 	if err != nil || mark == store.None {
 		return nil, err
 	}
 	var emit instance.Emit
-	if _, err := identity.Read(data, at, runner, c.ID, &emit); err != nil || emit.Job != job || emit.Number != number {
+	if _, err := identity.Read(data, at, job.runner, c.ID, &emit); err != nil || emit.Job != job.name || emit.Number != number {
 		return nil, nil
 	}
 	return &emit, nil
 }
 
-// runnerOf gives the card of the runner a job was sent to, from the step
-// that asked for it, looking from the latest step back.
-func (c *Client) runnerOf(ctx context.Context, name, job string, latest int) (identity.Card, error) {
+// sentAs gives the script a step sent under a full name, and its number,
+// from the step that asked for it, looking from the latest step back.
+func (c *Client) sentAs(ctx context.Context, name, job string, latest int) (sent, int, error) {
 	for number := latest; number > 0; number-- {
 		step, err := instance.ReadStep(ctx, c.Store, c.Controller, c.ID, name, number)
 		if err != nil || step == nil {
-			return identity.Card{}, err // below here the steps are trimmed
+			return sent{}, 0, err // below here the steps are trimmed
 		}
 		for _, ask := range step.Asks {
 			if ask.Kind == instance.AskScript && ask.Name == job {
-				return ask.Card, nil
+				return sent{name: ask.Name, runner: ask.Card}, ask.Number, nil
 			}
 		}
 	}
-	return identity.Card{}, nil
+	return sent{}, 0, nil
 }
 
 // A File is a blob of a run as it is shown: what it is and how large, and
@@ -773,9 +777,11 @@ func (c *Client) find(ctx context.Context, id, path string) (blob.Ref, error) {
 		in = strings.Join(parts[2:], "/")
 	case parts[0] == "emits" && len(parts) == 4 && store.CheckPart(parts[1]) == nil:
 		number, _ := strconv.Atoi(parts[2])
-		var runner identity.Card
-		if runner, err = c.runnerOf(ctx, id, parts[1], latest.Number); err == nil {
-			holder, err = c.emit(ctx, id, parts[1], number, runner)
+		var job sent
+		var jobNumber int
+		holder = nil
+		if job, jobNumber, err = c.sentAs(ctx, id, parts[1], latest.Number); err == nil && jobNumber > 0 {
+			holder, err = c.emit(ctx, id, job, jobNumber, number)
 		}
 		in = parts[3]
 	case parts[0] == "input" && len(parts) >= 2:

@@ -28,8 +28,8 @@ const (
 )
 
 // A Head is the small public summary of an instance, signed by the
-// controller and sealed to nobody. Apart from its location, key and labels
-// it holds nothing the instance was given or produced.
+// controller and sealed to nobody. Apart from its location, key, labels and
+// readers it holds nothing the instance was given or produced.
 type Head struct {
 	Name    string `json:"name"`    // the instance
 	Machine string `json:"machine"` // what the definition is called
@@ -42,14 +42,16 @@ type Head struct {
 	Ended   time.Time `json:"ended,omitzero"`
 	Parent  string    `json:"parent,omitzero"`
 	// Location is where the run's machine lives, Key is its key at a keyed
-	// location, and StartedBy is the run whose send or call started it.
-	Location  string            `json:"location,omitzero"`
-	Key       string            `json:"key,omitzero"`
-	StartedBy string            `json:"started_by,omitzero"`
-	Jobs      int               `json:"jobs,omitzero"`
-	Timers    int               `json:"timers,omitzero"`
-	Tickets   []string          `json:"tickets,omitzero"`
-	Labels    map[string]string `json:"labels,omitzero"`
+	// location, and Cause is what started it.
+	Location string            `json:"location,omitzero"`
+	Key      string            `json:"key,omitzero"`
+	Cause    Cause             `json:"cause,omitzero"`
+	Jobs     int               `json:"jobs,omitzero"`
+	Timers   int               `json:"timers,omitzero"`
+	Tickets  []string          `json:"tickets,omitzero"`
+	Labels   map[string]string `json:"labels,omitzero"`
+	// Readers are the clients, beside its tree's, its record is sealed to.
+	Readers []string `json:"readers,omitzero"`
 	// Keep is how long the instance is kept after it ends.
 	Keep machine.Duration `json:"keep,omitzero"`
 }
@@ -73,13 +75,26 @@ type Step struct {
 	Asks []Ask `json:"asks,omitzero"`
 }
 
-// Arrived is an event with the message or wake it came from. Machine says
-// whether it was given to the machine or was the controller's own to act
-// on.
+// Arrived is an event with the message or wake it came from, and its
+// cause. Own says the controller acted on it itself and the machine was
+// not given it.
 type Arrived struct {
 	machine.Event
 	Source string `json:"source,omitzero"`
+	Cause  Cause  `json:"cause,omitzero"`
 	Own    bool   `json:"own,omitzero"`
+}
+
+// A Cause is what sent an event: the step of a run that asked for it, or a
+// message of a client. A note or a failure the controller writes for a step
+// names that step. An event from the run's own script job or timer has
+// none. A Cause is apart from a message's From, the run the machine answers,
+// and an event's Source, the file the message came in.
+type Cause struct {
+	Run     string `json:"run,omitzero"`
+	Step    int    `json:"step,omitzero"`
+	Client  string `json:"client,omitzero"`
+	Message string `json:"message,omitzero"`
 }
 
 // State is everything about an instance that is not its history.
@@ -102,6 +117,9 @@ type State struct {
 	Tree     string `json:"tree,omitzero"`
 	// Key is the instance's key at a keyed location, while it runs.
 	Key string `json:"key,omitzero"`
+	// Counted says a transient run took a key file under its own ID, which
+	// its location's limits: { runs } counts, while it runs.
+	Counted bool `json:"counted,omitzero"`
 	// Lifetime is the lifetime of the file a root was started from at its
 	// location. A child has none.
 	Lifetime string `json:"lifetime,omitzero"`
@@ -134,6 +152,10 @@ type State struct {
 	Asked map[string]int `json:"asked,omitzero"`
 	// JobsStarted counts the jobs the instance has started.
 	JobsStarted int `json:"jobs_started,omitzero"`
+	// Scripts counts the attempts at scripts the instance has sent to
+	// runners, and numbers each: what an attempt adds to the record is
+	// filed under its number, never its name.
+	Scripts int `json:"scripts,omitzero"`
 	// Heard is the name of the last message taken from each of the most
 	// recent MaxHeard senders, oldest first: the instance's parent and each
 	// run that sent to it by address. The controller writes those under
@@ -186,11 +208,13 @@ type Above struct {
 	// longer than what started it, so a child's record goes no later than
 	// its parent's.
 	Keep machine.Duration `json:"keep,omitzero"`
-	// StartedBy is the run whose send or call started the instance. It is
-	// a root of its own tree's client, and no parent of it.
-	StartedBy string `json:"started_by,omitzero"`
-	// CallJob is, for a run a call job started, that job of StartedBy's:
-	// the run's end is the job's result.
+	// Readers are the clients, beside the tree's, that its record is sealed
+	// to: those its root's file lists in read:, by name.
+	Readers []string `json:"readers,omitzero"`
+	// Cause is what started the instance: the cause of its start.
+	Cause Cause `json:"cause,omitzero"`
+	// CallJob is, for a run a call job started, that job of the calling
+	// run's, which Cause names: the run's end is the job's result.
 	CallJob string `json:"call_job,omitzero"`
 	// CallReceipt is, for a run a client called in a tree it does not own,
 	// the call's message: the run's result is written beside its receipt.
@@ -212,12 +236,11 @@ type Heard struct {
 	Message string `json:"message"`
 }
 
-// AskAbove is an ask a machine takes from above: the ask as written, where
-// it is written, the definition that declares it and the input its values
-// are filled from. No machine made while running declares one.
+// AskAbove is an ask a machine takes from above: the ask as written, the
+// definition that declares it and the input its values are filled from. No
+// machine made while running declares one.
 type AskAbove struct {
 	Spec       *machine.JobSpec   `json:"spec"`
-	At         string             `json:"at"`
 	Definition blob.Ref           `json:"definition"`
 	Input      any                `json:"input,omitzero"`
 	Layers     []permission.Layer `json:"layers,omitzero"`
@@ -313,8 +336,10 @@ type Ask struct {
 	// Name is the job a script, a child, a cancel or a failure is about.
 	Name string       `json:"name,omitzero"`
 	Job  *machine.Job `json:"job,omitzero"`
-	// Attempt is which attempt at the job this is.
+	// Attempt is which attempt at the job this is, and Number a script's
+	// number in the instance, under which its emits are filed.
 	Attempt int    `json:"attempt,omitzero"`
+	Number  int    `json:"number,omitzero"`
 	Runner  string `json:"runner,omitzero"`
 	// Card is the card of the runner a job goes to: what that job adds to
 	// the record is checked against it.
@@ -372,12 +397,14 @@ type Receipt struct {
 
 // Submitted is what a submit did: what became of each location of the
 // tree, the runs it cancelled, the directory last submitted there when it
-// was another, and the secrets and values the files use that are not set.
+// was another, the secrets and values the files use that are not set, and
+// the clients the files' read: lists that the controller does not trust.
 type Submitted struct {
 	Locations []Recorded `json:"locations,omitzero"`
 	Cancelled []string   `json:"cancelled,omitzero"`
 	Before    string     `json:"before,omitzero"`
 	Missing   []string   `json:"missing,omitzero"`
+	Untrusted []string   `json:"untrusted,omitzero"`
 }
 
 // Recorded is what a submit did at one location: started, restarted,

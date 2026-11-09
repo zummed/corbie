@@ -117,11 +117,14 @@ second goes to that run, and nothing is recorded at `/house/bell`.
 - `send:room` in `allow:` lets the statechart send to `/house/room`. A send it
   does not allow fails the statechart as `denied`.
 - The run that takes an event reads its sender in `${event.from}`, and a send
-  `to: "${event.from}"` replies.
+  `to: "${event.from}"` replies. A run hands out its own address as
+  `${run.address}`.
+- A send to `{ at }` of a transient location starts a new run of it, with the
+  event's data as its input.
 - A file's `receive:` lists who may send to its runs, by default every
   location of its tree and the tree's client.
-- `limits: { runs: 50 }` in a keyed file caps how many of its runs are
-  running at once; a send to a new key past it is not delivered.
+- `limits: { runs: 50 }` in a keyed or transient file caps how many of its runs
+  are running at once; a send that would start a run past it is not delivered.
 
 Next: `corbie manual install` covers running Corbie on several computers, on a
 bucket and as serverless functions.

@@ -82,7 +82,7 @@ func Test_client_submit_problems_in_json(t *testing.T) {
 	m, _ := working(t, "all")
 	dir := filepath.Join(t.TempDir(), "bad")
 	os.Mkdir(dir, 0o755)
-	os.WriteFile(filepath.Join(dir, "a.yaml"), []byte("flow: a\nlimits: { runs: 2 }\nstages:\n  s: { job: { script: ./x.js } }\n"), 0o644)
+	os.WriteFile(filepath.Join(dir, "a.yaml"), []byte("flow: a\nlifetime: singleton\nlimits: { runs: 2 }\nstages:\n  s: { job: { script: ./x.js } }\n"), 0o644)
 	os.WriteFile(filepath.Join(dir, "x.js"), []byte("return 1"), 0o644)
 	status, out, said := m.run("", "run", "submit", dir, "--json")
 	if status != 1 || !strings.Contains(said, "1 of 1 files have problems") {
@@ -101,8 +101,9 @@ func Test_client_submit_problems_in_json(t *testing.T) {
 }
 
 // A run's record prints a line for each call job, naming the run it
-// started; a reply to a client names the client; and a note, written after
-// the run ended or not, is printed once, with the run's status once.
+// started, and that run prints the caller's step as its cause; a reply to
+// a client names the client; and a note, written after the run ended or
+// not, is printed once, with the run's status once.
 func Test_client_record_names_calls_clients_and_notes(t *testing.T) {
 	m, _ := working(t, "all")
 	dir := filepath.Join(t.TempDir(), "t")
@@ -121,13 +122,17 @@ func Test_client_record_names_calls_clients_and_notes(t *testing.T) {
 
 	id := strings.TrimSpace(m.ok("", "run", "submit", "/t/c"))
 	m.ok("", "run", "show", id, "--wait")
-	if out := m.ok("", "run", "show", id, "--record"); !regexp.MustCompile(`-> job c: a call to /t/w, box-client/\S+`).MatchString(out) {
-		t.Errorf("the caller's record printed:\n%s", out)
+	out := m.ok("", "run", "show", id, "--record")
+	called := regexp.MustCompile(`-> job c: a call to /t/w, (box-client/\S+)`).FindStringSubmatch(out)
+	if called == nil {
+		t.Fatalf("the caller's record printed:\n%s", out)
+	}
+	if shown := m.ok("", "run", "show", called[1]); !strings.Contains(shown, "  cause: "+id+" step 1\n") {
+		t.Errorf("the called run printed:\n%s", shown)
 	}
 
 	id = strings.TrimSpace(m.ok("", "run", "submit", "/t/poke"))
 	m.ok("", "run", "show", id, "--wait")
-	var out string
 	until(t, "the note", func() bool {
 		out = m.ok("", "run", "show", id, "--record")
 		return strings.Contains(out, "was not delivered")

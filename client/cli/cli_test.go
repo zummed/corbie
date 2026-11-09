@@ -586,17 +586,19 @@ func TestTestChecksTheSendsOfATree(t *testing.T) {
 		"rooms/room.yaml": chart("lifetime: keyed\n", ""),
 		"boiler.yaml":     chart("lifetime: singleton\nreceive: [panel]\n", ""),
 		"weather.yaml":    "flow: weather\nstages:\n  a: { job: ./a.js }\n",
+		"steady.yaml":     "flow: steady\nlifetime: singleton\nstages:\n  a: { job: ./a.js }\n",
 		"a.js":            "return 1",
 		"panel.yaml": chart(`allow: ["send:**"]`+"\n", "    entry:\n      send:\n"+
 			"        - { to: { at: rooms/room, key: k }, event: set }\n"+
 			"        - { to: { at: boiler }, event: set }\n"+
 			"        - { to: { at: \"rooms/${input.r}\" }, event: set }\n"+
 			"        - { to: { at: later }, event: set }\n"+
+			"        - { to: { at: weather }, event: go }\n"+
 			"    job: { call: { at: weather } }\n"),
-		"sensor.yaml": chart(`allow: ["send:rooms/**", "send:weather"]`+"\n", "    entry:\n      send:\n"+
+		"sensor.yaml": chart(`allow: ["send:rooms/**", "send:steady"]`+"\n", "    entry:\n      send:\n"+
 			"        - { to: { at: rooms/room }, event: set }\n"+
 			"        - { to: { at: boiler }, event: set }\n"+
-			"        - { to: { at: weather }, event: set }\n"+
+			"        - { to: { at: steady }, event: set }\n"+
 			"    job: { call: { at: rooms/room } }\n"),
 		"door.yaml": chart(`allow: ["send:**"]`+"\n", "    entry:\n      send:\n"+
 			"        - { to: { at: boiler }, event: set }\n"+
@@ -614,7 +616,7 @@ func TestTestChecksTheSendsOfATree(t *testing.T) {
 		"    states.a.job.call: /" + name + "/rooms/room is keyed: a call starts a run only of a transient location\n",
 		"    states.a.entry.send[0].to: /" + name + "/rooms/room is keyed: a send to it names a key, as /" + name + "/rooms/room#<key>\n",
 		"    states.a.entry.send[1].to: send:/" + name + "/boiler was refused by the definition of \"x\"",
-		"    states.a.entry.send[2].to: /" + name + "/weather is a flow, which takes no sent event\n",
+		"    states.a.entry.send[2].to: /" + name + "/steady is a flow, which takes no sent event\n",
 		"door.yaml\n    states.a.job.call: send:/" + name + "/weather was refused by the job states.a.job in the definition of \"x\"",
 		"    states.a.entry.send[0].to: /" + name + "/boiler does not receive set from /" + name + "/door\n",
 		"    states.a.entry.send[1].to: \"ring\" is the name of an event /" + name + "/bell gives itself\n",

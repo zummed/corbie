@@ -46,7 +46,7 @@ Fields
 
 A stage has these fields.
 
-  job              a script, a machine, a send or a call: see `corbie manual definitions`
+  job              a script, a machine, or a send: see `corbie manual definitions`
   when             a condition, one expression: ${stages.fetch.failed}; if it
                    is false, the stage is skipped
   follows          stages it runs after without reading them: [fetch]

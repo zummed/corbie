@@ -262,8 +262,47 @@ func Test_run_emit_entries_numbered_from_one_without_gaps(t *testing.T) {
 		t.Fatalf("102 emits were written as %d entries", len(entries))
 	}
 	for i, name := range entries {
-		if !strings.HasSuffix(name, "/it/"+pad8(i+1)) {
+		if !strings.HasSuffix(name, "/emits/"+pad8(1)+"/"+pad8(i+1)) {
 			t.Fatalf("entry %d is named %s", i+1, name)
+		}
+	}
+}
+
+// Every client lists every record, so no name in one says what a
+// definition or a person chose: a job's emits are under its number, and its
+// name is in the sealed entry, where a follower still finds it.
+func Test_store_record_names_say_nothing_chosen(t *testing.T) {
+	l := local(t)
+	id, err := l.Run(ctx, draft(t, `
+		flow: zebra
+		stages:
+		  zebrastage: { job: { script: ./zebra-tool.js } }
+	`, map[string]string{"zebra-tool.js": `
+		emit("zebranote", "zebra")
+		return blobs.make("zebra", { type: "text/plain" })
+	`}), client.Start{Input: map[string]any{"zebra": "zebra"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var jobs []string
+	done, err := l.Follow(ctx, id, 20*time.Millisecond, func(e client.Entry) {
+		if e.Step == 0 {
+			jobs = append(jobs, e.Job+" "+e.Name)
+		}
+	})
+	if err != nil || done.Status != "done" {
+		t.Fatalf("following: %v %+v", err, done)
+	}
+	if !slices.Contains(jobs, "zebrastage zebranote") {
+		t.Fatalf("the follow gave the emits as %v", jobs)
+	}
+	names, err := store.Names(l.Memory.As(ownerOf()).List(ctx, "controller/records"))
+	if err != nil || len(names) == 0 {
+		t.Fatal(err)
+	}
+	for _, name := range names {
+		if strings.Contains(name, "zebra") {
+			t.Fatalf("a record's name says what a definition chose: %s", name)
 		}
 	}
 }

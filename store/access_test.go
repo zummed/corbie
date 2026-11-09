@@ -35,7 +35,7 @@ func newTable(t *testing.T, open func(Party) Store) table {
 		"ctl/inbox/c1/m1", "ctl/inbox/r1/m1", "ctl/receipts/c1/m1/receipt", "ctl/receipts/c1/m1/blobs/b1",
 		"ctl/receipts/c2/m1/receipt",
 		"ctl/running/c1/i1", "ctl/running/c2/i2", "ctl/finished/c1/i0", "ctl/finished/c2/i9",
-		"ctl/records/c1/i1/steps/1", "ctl/records/c1/i1/emits/j1/1", "ctl/records/c1/i1/blobs/b1",
+		"ctl/records/c1/i1/steps/1", "ctl/records/c1/i1/emits/00000001/1", "ctl/records/c1/i1/blobs/b1",
 		"ctl/records/c2/i2/steps/1", "ctl/records/c2/i2/blobs/b1",
 		"ctl/wakes/t/c1/i1/w", "ctl/trust/r1", "ctl/locations/+/secrets/s1",
 		"ctl/locations/home/+/tree", "ctl/locations/home/boiler/+/file", "ctl/locations/home/boiler/+/blobs/b1",
@@ -151,11 +151,11 @@ func runnerRow(t *testing.T, w table) {
 	w.refused(w.r1, OnlyIfNew, "ctl/inbox/c1/x")
 
 	// It adds emits and blobs to any record, and changes nothing there.
-	w.allowed(w.r1, OnlyIfNew, "ctl/records/c1/i1/emits/j1/2", "ctl/records/c1/i1/blobs/b2",
-		"ctl/records/c2/i2/emits/j9/1", "ctl/records/c2/i2/blobs/b2")
-	w.refused(w.r1, Overwrite, "ctl/records/c1/i1/emits/j1/2", "ctl/records/c1/i1/blobs/b2")
-	w.refused(w.r1, OnlyIfUnchanged("x"), "ctl/records/c1/i1/emits/j1/2")
-	w.noDelete(w.r1, "ctl/records/c1/i1/emits/j1/2", "ctl/records/c1/i1/blobs/b2")
+	w.allowed(w.r1, OnlyIfNew, "ctl/records/c1/i1/emits/00000001/2", "ctl/records/c1/i1/blobs/b2",
+		"ctl/records/c2/i2/emits/00000009/1", "ctl/records/c2/i2/blobs/b2")
+	w.refused(w.r1, Overwrite, "ctl/records/c1/i1/emits/00000001/2", "ctl/records/c1/i1/blobs/b2")
+	w.refused(w.r1, OnlyIfUnchanged("x"), "ctl/records/c1/i1/emits/00000001/2")
+	w.noDelete(w.r1, "ctl/records/c1/i1/emits/00000001/2", "ctl/records/c1/i1/blobs/b2")
 	w.refused(w.r1, OnlyIfNew, "ctl/records/c1/i1/steps/2")
 
 	// Its own inbox and marks are its own; another runner's are not.
@@ -174,7 +174,7 @@ func runnerRow(t *testing.T, w table) {
 	w.noList(w.r1, "r2/inbox", "r2/taken")
 
 	// Nothing else is given: no value and no name.
-	w.noRead(w.r1, "ctl/records/c1/i1/steps/1", "ctl/records/c1/i1/emits/j1/1", "ctl/running/c1/i1",
+	w.noRead(w.r1, "ctl/records/c1/i1/steps/1", "ctl/records/c1/i1/emits/00000001/1", "ctl/running/c1/i1",
 		"ctl/receipts/c1/m1/receipt", "ctl/receipts/c1/m1/blobs/b1", "ctl/wakes/t/c1/i1/w", "ctl/trust/r1",
 		"ctl/locations/+/secrets/s1", "ctl/locations/home/+/tree", "ctl/locations/home/boiler/+/file",
 		"ctl/locations/home/boiler/+/blobs/b1", "ctl/locations/home/boiler/+/values/v1", "ctl/uploads/c1/m1/f1", "ctl/inbox/r1/m1")
@@ -194,7 +194,7 @@ func clientRow(t *testing.T, w table) {
 	w.allowed(w.c1, OnlyIfNew, "ctl/records/c1/new/blobs/up")
 	w.refused(w.c1, Overwrite, "ctl/records/c1/new/blobs/up")
 	w.noDelete(w.c1, "ctl/records/c1/new/blobs/up")
-	w.refused(w.c1, OnlyIfNew, "ctl/records/c1/new/steps/1", "ctl/records/c1/new/emits/j/1",
+	w.refused(w.c1, OnlyIfNew, "ctl/records/c1/new/steps/1", "ctl/records/c1/new/emits/00000001/00000001",
 		"ctl/records/c2/i2/blobs/x")
 
 	// It adds the files it sends with a message to its own uploads, and
@@ -204,14 +204,18 @@ func clientRow(t *testing.T, w table) {
 	w.noDelete(w.c1, "ctl/uploads/c1/m1/f1")
 	w.refused(w.c1, OnlyIfNew, "ctl/uploads/c2/m2/f1", "ctl/locations/home/x/+/file", "ctl/receipts/c1/m1/blobs/b2")
 
+	// It reads every head and every record, each of which is sealed or
+	// holds nothing that is not public.
 	w.reads(w.c1, "ctl/receipts/c1/m1/receipt", "ctl/receipts/c1/m1/blobs/b1", "ctl/running/c1/i1", "ctl/finished/c1/i0",
-		"ctl/records/c1/i1/steps/1", "ctl/records/c1/i1/emits/j1/1", "ctl/records/c1/i1/blobs/b1")
-	w.lists(w.c1, "ctl/receipts/c1", "ctl/receipts/c1/m1", "ctl/running/c1", "ctl/finished/c1", "ctl/records/c1", "ctl/records/c1/i1/steps")
-	w.noRead(w.c1, "ctl/receipts/c2/m1/receipt", "ctl/running/c2/i2", "ctl/finished/c2/i9", "ctl/records/c2/i2/steps/1",
+		"ctl/records/c1/i1/steps/1", "ctl/records/c1/i1/emits/00000001/1", "ctl/records/c1/i1/blobs/b1",
+		"ctl/running/c2/i2", "ctl/finished/c2/i9", "ctl/records/c2/i2/steps/1")
+	w.lists(w.c1, "ctl/receipts/c1", "ctl/receipts/c1/m1", "ctl/running/c1", "ctl/finished/c1", "ctl/records/c1", "ctl/records/c1/i1/steps",
+		"ctl/running", "ctl/running/c2", "ctl/records/c2")
+	w.noRead(w.c1, "ctl/receipts/c2/m1/receipt",
 		"ctl/inbox/c1/m1", "ctl/wakes/t/c1/i1/w", "ctl/trust/r1", "ctl/locations/+/secrets/s1",
 		"ctl/locations/home/+/tree", "ctl/locations/home/boiler/+/file", "ctl/locations/home/boiler/+/blobs/b1",
 		"ctl/locations/home/boiler/+/values/v1", "ctl/locations/home/rooms/+/keys/k1", "ctl/uploads/c1/m1/f1", "ctl/uploads/c2/m1/f1", "r1/inbox/ctl/j1", "r1/taken/j1")
-	w.noList(w.c1, "ctl/receipts/c2", "ctl/running/c2", "ctl/running", "ctl/records/c2", "ctl/inbox/c1",
+	w.noList(w.c1, "ctl/receipts/c2", "ctl/inbox/c1",
 		"ctl/wakes", "ctl/trust", "ctl/locations", "ctl/locations/c1", "ctl/uploads", "ctl/uploads/c1", "r1", "r1/inbox")
 }
 

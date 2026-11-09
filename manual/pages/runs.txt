@@ -9,7 +9,7 @@ Commands
 
   corbie run submit <file or directory>   records a tree, and starts its singletons
   corbie run submit <location>            starts a run there and prints its ID
-  corbie run ls                           lists the runs of this client's trees in progress
+  corbie run ls                           lists the runs in progress of this client's trees and of files whose `read:` lists it
   corbie run show <id>                    prints one run's status, input and output
   corbie run cancel <id>                  cancels a run in this client's trees; a location cancels each run there, location#key one
   corbie run send <id> <event> [data]     sends an event to a run; a location, or location#key, names one too
@@ -42,7 +42,7 @@ here.
   started, ended        times in UTC
   parent                for a child run, the ID of the run that started it
   location, key         where its machine lives, and its key at a keyed location
-  started_by            the run whose send or call started it
+  cause                 what started it: { run, step } of another run, or { client, message }
   called                for a start in another client's tree, the run the call started there
   jobs, timers          how many of its script jobs are on a runner, and how many timers it waits for
   tickets               the names of the tickets it waits on
@@ -81,9 +81,10 @@ The record
 
   id, time          the run the entry belongs to, and when it was written
   step, events      a step's number, and the events it received: `name`, `from`, `data`,
-                    and `answer: true` on the answer to a ticket
+                    `cause`, and `answer: true` on the answer to a ticket
   asks              what the controller did next; kind `script`, `child` or `call` is a job it started
-  status, state     the run's status and the machine's state after the step
+  status, state     the run's status and state after the step: a flow's `stages`,
+                    a statechart's `states`, an agent's `turn`
   job, name, data   an emitted value: its job, its name (`log` for a log line) and the value
 
 Events and tickets
@@ -91,7 +92,8 @@ Events and tickets
 
 A statechart state with `ticket: <name>` issues a ticket, and
 `corbie run reply` answers it (`corbie manual statechart`). Only the client that
-owns the run's tree can print the ticket, with `corbie run show <id> --tickets`.
+owns the run's tree, and those its file's `read:` lists, can print the ticket,
+with `corbie run show <id> --tickets`.
 
 A statechart with no final state keeps running. With `lifetime: singleton` the
 submit starts its one run, and a client sends it an event at its location each

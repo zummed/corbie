@@ -10,7 +10,7 @@ Everything that makes a machine move arrives as a message in the controller's in
 
 A message comes from a client submitting a tree, starting a run, cancelling one, sending an event, calling a location or answering a ticket; from a runner returning a job's result or passing on an emit the machine wants; or from the controller itself, which is how a child's start, a child's ending, events between a parent and a child, and sends and calls between runs travel. A wake is anything owed to time: a machine's timer, a machine's timeout, a job's result falling due, the next attempt at a job.
 
-The controller accepts a message only from a party it trusts, signed by that party and sealed to itself. A client may cancel only runs at its own trees' locations, and may answer any ticket it holds. It starts a run in another client's tree only by calling a transient location: its start of a location in another client's tree is a call. A client's send or call is checked as a run's is (see Sending and calling). A result or an emit is accepted only for a job the instance is still waiting on, from the runner the job was sent to.
+The controller accepts a message only from a party it trusts, signed by that party and sealed to itself. A client may cancel only runs at its own trees' locations, and may answer any ticket it holds. It starts a run in another client's tree only with a call or a send: its start of a location in another client's tree is a call. A client's send or call is checked as a run's is (see Sending and calling). A result or an emit is accepted only for a job the instance is still waiting on, from the runner the job was sent to.
 
 A sender's messages are named so that they sort in the order they were sent, and the controller takes them in that order.
 
@@ -36,7 +36,7 @@ When a machine's last step both sends events and ends the machine, the events ar
 
 ## A step in a process of its own
 
-Two kinds of step are taken in a process of their own: every step of a machine made while running, and every step after the first of an agent with a `list:` tool. The machine above an agent, and a tool's machine below it, are taken as their own definitions say.
+Two kinds of step are taken in a process of their own: every step of a machine made while running, and every step after the first of an agent with a `list:` tool. Both read words from outside (see [Machines](machine.md#words-from-outside)). The machine above an agent, and a tool's machine below it, are taken as their own definitions say.
 
 ## A machine made while running
 
@@ -66,11 +66,11 @@ A bug in what the process runs gives a made definition that process, so its answ
 
 - A made machine's `keep` is no longer than its parent's, and its time limit no longer than the job that starts it allows.
 - Whether a job is held is worked out by the controller, from the lists above the machine.
-- A made machine has no ask of its own, and one that writes an ask fails as it starts. Nothing it wrote of one is kept, so a process that skips that check gains nothing. A held job goes to the nearest ask above it that was not made while running, and with none it is denied.
-- Every ask is that owner's words, and the controller fills it in from the input of the machine that declares it, in its own process. No process fills in an ask, and an answer cannot name one.
+- Where a made machine's held jobs go is under Words from outside (see Machines). Nothing a made machine wrote of an ask is kept, so a process that skips the check of its `ask:` gains nothing.
+- Every ask is an owner's words, and the controller fills it in from the input of the machine that declares it, in its own process. No process fills in an ask, and an answer cannot name one.
 - A name in an answer goes into names in the store, so it is one a definition could hold, of at most 100 characters. Any other fails the machine.
 - A job named `ask` in an answer fails the machine too.
-- A machine made while running that asks to send to a run other than its parent or its children, or to call a location, fails. The controller knows which machines those are from its own record.
+- The controller knows which machines are made while running from its own record, and fails one whose answer sends to an address or calls.
 
 An answer is data of at most 4 MiB, nested at most 1000 deep, of at most 1024 sends, and with the state it adds to at most 4 MiB. Past any of these the machine fails, since a step is read on every later pass. The controller compiles and evaluates none of it, and no step an answer leads to can end the controller or stop its passes.
 
@@ -83,7 +83,7 @@ A controller that stops ends the step's process too, and leaves the note. A pass
 A `list:` job gives shapes from outside the definition, which the agent's steps compile and check values against. So every step after the agent's first is taken as a made machine's is, with the same limits and the same bounds on its answer. Its first step holds nothing from outside, and is taken in the controller.
 
 - The controller notes this in the state at the first step, from the definition read as plain JSON. An answer has no say in it.
-- The agent stays the owner's: nothing narrows it, and its asks are its definition's. A step names where its job's ask is written, and the controller reads what is written there from the definition and fills it in.
+- The agent stays the owner's: nothing narrows it, and its ask is its definition's. An answer cannot name an ask, as no answer can.
 - A step takes about 16 ms where it took 5 ms, with 20 listed tools, and one more write to the store.
 - The step's whole time and 5 seconds must fit in what the host leaves of a call, so a host whose calls are shorter than 15 seconds fails such an agent and says so.
 
@@ -95,7 +95,7 @@ Any other machine is an owner's words, and its steps are taken in the controller
 
 ## Sending a job
 
-A script job is sent as a message to a runner, signed by the controller and sealed to that runner. The message carries everything the runner needs to know: where in the record to read the script, its files and the input; each layer of permissions that applies, by name, so a refusal can say which layer refused; the values of the secrets it may use, set at its location or above; its limits; where in the record the job writes what it emits; and which emitted names the machine wants to hear about.
+A script job is sent as a message to a runner, signed by the controller and sealed to that runner. The message carries everything the runner needs to know: where in the record to read the script, its files and the input; each layer of permissions that applies, by name, so a refusal can say which layer refused; the values of the secrets it may use, set at its location or above; its limits; where in the record the job writes what it emits, and the clients that is sealed to; and which emitted names the machine wants to hear about.
 
 A job's tags choose its runner. The job goes to a runner that has every tag it names, and a job that names none may go to any runner. Where several qualify the controller picks one from the request and the attempt, so the same attempt always goes to the same runner, and a later attempt goes to a different one where more than one qualifies. It takes no account of load. A job whose tags no runner has, or which names a value or secret not set at its location or above, fails before anything is sent, naming the name and the location.
 
@@ -109,7 +109,7 @@ Some things are the same whatever the machine's type, and the controller does th
 - **Children.** It starts child machines, passes events between parent and child in order, copies what a child hands up into the parent's record, and cancels everything below a machine that ends or is cancelled. A script job is cancelled by a message to its runner.
 - **Time.** It keeps timers and delivers them, and ends a machine whose timeout has passed. That machine fails as out of time and everything below it is cancelled.
 - **Tickets.** It makes tickets and takes their answers.
-- **Limits.** It counts depth and jobs against their limits, and a keyed location's running runs against `limits: { runs }`.
+- **Limits.** It counts depth and jobs against their limits, and a keyed or transient location's running runs against `limits: { runs }`.
 - **Approval.** It holds the jobs that need approval, starts each ask once for the jobs of a step that go to it, and releases or refuses them when the ask has ended.
 
 ## Trees and locations
@@ -131,9 +131,9 @@ $ corbie run submit house --at /home
 2. It refuses a prefix inside or above another tree, and a tree another client owns, naming that tree or its owner.
 3. It refuses a file whose location would be below another's, such as `boiler/x.yaml` beside `boiler.yaml`.
 4. It records each file, written out with its includes, at its location, and acts on what changed (see A changed or removed file).
-5. The receipt names the directory that last submitted there, and the values and secrets the files use that are not set at their locations or above.
+5. The receipt names the directory that last submitted there, the values and secrets the files use that are not set at their locations or above, and the clients the files' `read:` lists that the controller does not trust.
 
-A submit changes no other tree. Only the tree's client reads and cancels the runs at its locations. Another client starts a run there only by calling a transient location (see Sending and calling).
+A submit changes no other tree. Only the tree's client cancels the runs at its locations, and it and the clients a file's `read:` lists read them. Another client starts a run there only with a call or a send (see Sending and calling).
 
 ## Starting runs
 
@@ -141,7 +141,7 @@ A submit changes no other tree. Only the tree's client reads and cancels the run
 |---|---|
 | `singleton` | at a submit, when the location has no running run |
 | `keyed` | at a send to a key with no running run, with the event's data as input |
-| `transient` (default) | at a call, or at `corbie run submit <location>` from the tree's client |
+| `transient` (default) | at a call, at a send to `{ at }` with the event's data as input, or at `corbie run submit <location>` from the tree's client |
 
 - Every run keeps the definition it started with, in its own record.
 - A run's authority comes from its location: its file's `allow:` and `ask:`, its tree client's ceiling, and the secrets and values set at its location or above (see permission.md).
@@ -178,7 +178,7 @@ These sends are noted as undelivered in the sender's record and fail nothing:
 
 - The receiver's `receive:` does not list the sender.
 - No run at the address is running, or the run is a flow or an agent.
-- The key has no running run and its location has `limits: { runs }` running already.
+- The send would start a run, and its location has `limits: { runs }` running already.
 - The event is named `start`, `done`, `failed`, a timer's name or a ticket's name.
 - The address names a run by its ID that is not at the location the address gives, or a client.
 - A run that had kept the event under `defer:` was cancelled.
@@ -195,16 +195,18 @@ job:
 
 1. The controller starts a run of the `transient` location with the input, as a root of that location's tree client.
 2. The job's output is that run's result, and a client's call has the result written beside its receipt (see instance.md).
-3. The job fails if `receive:` refuses the caller, the location is not `transient`, or the run fails.
+3. The job fails if `receive:` refuses the caller, the location is not `transient` or is at its `limits: { runs }`, or the run fails.
 4. Cancelling the calling job, or ending the run that holds it, cancels the run.
 
-- The caller's record names the run it called, and that run's head names the caller.
+- The caller's record names the run it called, and that run's head names the caller's step as its cause.
 - A call is checked against a `receive:` list. A mapping names events, and takes a call only from the tree's client.
 - A called run's held jobs go only to its own file's `ask:`, and are denied when it has none.
 
 ## Keyed runs
 
-A key's file is at its location (see store.md), named by the SHA-256 of the key. It holds the key, the run and the message that starts the run, signed by the controller and sealed to it. A singleton's run is named the same way, by the file of the empty key, which the submit writes as it starts the run. A send to `{ at }` never starts a run: with no running singleton it is noted as undelivered.
+A key's file is at its location (see store.md), named by the SHA-256 of the key. It holds the key, the run and the message that starts the run, signed by the controller and sealed to it. A singleton's run is named the same way, by the file of the empty key, which the submit writes as it starts the run. A send to a singleton's `{ at }` never starts a run: with no running singleton it is noted as undelivered.
+
+A send to a transient location's `{ at }` is a send to a key no other send names. It always starts a new run, named from the sender's message. The run's first step takes the start and the event, as a keyed run's does; a flow or an agent takes the start alone. A transient run takes a key's file only where its file has `limits: { runs }`: the file of its own ID, which counts it, freed as a key's is. A start taken again after the controller stopped finds that file, and the limit does not refuse it.
 
 1. A send reads the file once, while the step is worked out, and the step names the run the event goes to: the run the file names or, when it names none at a keyed location, a new run. A carry-out done again goes to the same run.
 2. A message to a key carries the event, and what would start a run there. The new run's first step takes both, and the run with the key takes the event alone.
@@ -226,9 +228,9 @@ An event sent to a key is the first event of its step. The events of a step afte
 
 An instance remembers the last message taken from each of its 64 most recent senders, and one that does not sort after it is a copy from a carry-out done again.
 
-`limits: { runs }` is checked while the sender's step is worked out, by listing the key files at the location, and again when a message moves on to start a run. Sends from several runs at once may each find room, so the count can pass the cap by a few.
+`limits: { runs }` is checked while the sender's step is worked out, by listing the key files at the location, and again when a message moves on to start a run. At a transient location it is checked again as the run starts, for a send, a call and a client's start alike. Starts from several runs at once may each find room, so the count can pass the cap by a few.
 
-A send costs one read of the file, and one of the location's file when it starts a run. It lists nothing when the location has no `limits: { runs }`. A step's files are read side by side, since a step that does not fit in a pass is never written. Taking a key costs a read and a write, and reading the run it names when another has it. Freeing one costs a read and a delete.
+A send costs one read of the file, and one of the location's file when it starts a run. A send, and a run starting at a transient location, lists nothing when the location has no `limits: { runs }`. A step's files are read side by side, since a step that does not fit in a pass is never written. Taking a key costs a read and a write, and reading the run it names when another has it. Freeing one costs a read and a delete.
 
 ## Housekeeping
 

@@ -67,7 +67,7 @@ parent                       the child's job may
 
 A machine made while running is not its parent's author's words: a script or a model wrote it. It is always narrowed by the job that starts it, and with no list it is allowed nothing. Everything below it is made while running too, and its steps are taken in a process of their own (see Controller).
 
-A made machine has no ask of its own, so what it holds goes to an ask its author did not write (see Machines).
+Where a made machine's held jobs go, and what it may address, is under Words from outside (see [Machines](machine.md#words-from-outside)).
 
 The scope of a definition's allow entry may be filled from the machine's input, as in `fs.read:${input.dir}/**`. It reads nothing but the input, and since every layer above still applies, an input can choose a place within a limit and never move the limit. A value set at the run's location fills a scope the same way, as in `net:${values.HUB}` (see secret.md).
 
@@ -84,9 +84,9 @@ secrets and values                those set at its location or above; the neares
 - A start's list, a parent's job list and the runner's ceiling narrow it, as in Layers.
 - A sender or a caller adds nothing to a run's authority and takes nothing from it. The input it gives may fill an allow scope, within the receiver's own patterns and every ceiling.
 - A child started by `machine:` runs at its parent's location. A machine made while running runs at the location of the job that starts it.
-- A made machine's sends would carry that job's location in `event.from`, so it sends only to its parent and its children.
+- A made machine's sends would carry that job's location in `event.from`, which is why it addresses no other run.
 
-A tree belongs to the client that first submitted it. Only that client submits there, and reads and cancels the runs at its locations. A client submits trees only at prefixes its ceiling's `at:` entries match.
+A tree belongs to the client that first submitted it. Only that client submits there and cancels the runs at its locations, and it and the clients a file's `read:` lists read them (see Reading). A client submits trees only at prefixes its ceiling's `at:` entries match.
 
 ```
 work$ corbie client card | ssh ctl corbie controller enrol - --ceiling "at:/work,send:/work/**,network,secret:*@*"
@@ -149,6 +149,22 @@ tools:
 
 A gateway is a client, and a request to it is a call to a location by the gateway's client, checked as above (see client.md). The file's `receive:` lists `client:<name>` for the gateway's client, or that client owns the tree.
 
+## Reading
+
+Every client reads every head; everything else is sealed to the clients that may read the run. A file's `read:` lists the clients, beside its tree's, that read its runs.
+
+```yaml
+# home/door.yaml                        location /home/door
+statechart: door
+read: [client:wall]
+receive: [client:wall]
+```
+
+- The controller seals every entry of the record of a run at `/home/door`, and of every run below it, to itself, the tree's client and `wall`. The run's head lists `wall`.
+- `wall` reads what the record holds: the input, the output, emits, tickets, the definition and the values set at its location or above. No record holds a secret.
+- `wall` does not own the tree. It submits nothing there and cancels nothing, and it sends to the runs as `receive:` and its ceiling's `send:` allow. The controller writes `{ client: wall }` into `event.from`.
+- A run keeps the list it started with. The controller seals nothing to a client it does not trust, and the head still lists the name; the submit's receipt names it.
+
 ## Checking
 
 The check is made at the moment a script acts, and it is made in one place. A plugin never checks a permission and never opens anything by itself. It asks Corbie for a way to connect, a path, a program or a variable, and Corbie checks every layer, notes what was used, and hands over the thing or refuses (see Plugins).
@@ -197,7 +213,7 @@ A script cannot reach outside itself except through the kinds above, and those a
 - Whether a connection is encrypted is known to Corbie when Corbie does the encrypting. Where a service's own protocol does it, that is the plugin's word.
 - A job cannot listen for connections. Nothing a job opens outlives the job.
 - A served directory's wire is private to the two computers. Someone on the network between them can see that they talk and how much, and can hold work up or cut it off, and nothing else (see Store).
-- A step of an agent with a `list:` tool runs in a process of its own and its answer is the agent's word, so a bug in what that process runs can ask for any job of the agent's definition, with any lists and no approval the definition's jobs would have marked, and can send a job to another ask that definition writes. A permission the layers above refuse stays refused, `approve:` still holds what it lists, and an ask stays the definition's.
+- A step of an agent with a `list:` tool runs in a process of its own and its answer is the agent's word, so a bug in what that process runs can ask for any job of the agent's definition, with any lists and no approval the definition's jobs would have marked. A permission the layers above refuse stays refused, `approve:` still holds what it lists, and an ask stays the definition's.
 - An owner's expression runs in the controller's own process. Nothing limits its memory, and its one second stops its own code and not a call to something built in, so `'a'.repeat(2**40)` ends the controller and a regular expression that backtracks holds a step without end. An owner can do this to a controller that takes their definitions. Only a definition a client submitted has its expressions run in the controller's own process; a definition a job stored runs in a process of its own (see Controller).
 - An owner's expression is read and compiled in the controller's own process, and nothing stops that. Reading `=>` nested in what stands before another takes twice as long with each, and so does compiling a chain of `&&`, `||` or `??` whose left sides are fixed, so forty of either never finish. 4 MB of brackets ended a client for want of stack in 2.4 seconds, and the controller reads an expression with the same code.
 - Nothing limits what reading a definition costs the process that reads it. An owner's definition costs this to their own client and controller. A job's costs that job, and past its limits the job fails and the runner goes on: 4 MB of brackets in a define ended the job's process, and 20 levels of files that each name the next twice ran to its time limit. These were measured reading and checking each:
@@ -210,7 +226,10 @@ A script cannot reach outside itself except through the kinds above, and those a
 ```
 
 - Whoever holds a gateway's token calls every location that accepts the gateway's client, with any input.
-- What is at a location is not secret from those who may send there. A run whose layers allow `send:` to a location learns from an undelivered note or a failed call, before `receive:` is read, whether a file is recorded there, its lifetime, whether its singleton is running and whether a keyed location is at its `limits: { runs }`. A client learns from a refused start or call whether a file is recorded at a location and the client whose tree it is in, whatever its ceiling, and the location's lifetime when its ceiling allows `send:` there.
+- A client browsing the store sees that runs exist, their heads, and how many entries each record has, with their sizes and times. It opens only what is sealed to it.
+- A client a file's `read:` lists reads the tickets of the runs there, and so can answer them, as any client that holds a ticket can.
+- A client taken off `read:` still opens what was sealed to it, and the runs still running keep the list they started with until they end.
+- What is at a location is not secret from those who may send there. A run whose layers allow `send:` to a location learns from an undelivered note or a failed call, before `receive:` is read, whether a file is recorded there, its lifetime, whether its singleton is running and whether the location is at its `limits: { runs }`. A client learns from a refused start or call whether a file is recorded at a location and the client whose tree it is in, whatever its ceiling, and the location's lifetime and whether it is at its `limits: { runs }` when its ceiling allows `send:` there.
 - Machines made while running that each use a step's whole time delay other machines: a pass waits for four of those steps at a time, up to 10 seconds, and every other run pays that in each pass it needs. Beside four such machines, a run of 20 ms took 10 seconds.
 - A step that asks for as much as fits in its 4 MiB delays other machines for as long as carrying it out takes.
 - A host with less memory than four steps' 4 GiB stops a step's process or the whole controller. The step is then taken once more, and its machine fails.

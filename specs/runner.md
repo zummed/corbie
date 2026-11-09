@@ -55,7 +55,7 @@ Besides plugins, a script has a few things of its own:
 
 A job's input and output pass through the store as JSON, so their maps reach the next script with their keys sorted.
 
-A script cannot start jobs, whether scripts or machines. Deciding what runs is a machine's work.
+A script cannot start a job. Deciding what runs is a machine's work.
 
 ## Programs a job starts
 

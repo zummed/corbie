@@ -76,8 +76,8 @@ The detailed rules behind the [Machines overview](../machine.md). Area code: `ma
 **R-mach-21** A value that is exactly one expression takes the expression's value, whatever its type; text with expressions inside it is text with the values filled in; everything else is literal.
 *Accept:* `count: "${input.n}"` with the input `{ n: 3 }` gives the number 3, and with `{ n: [1, 2] }` gives the list. `"Look into ${input.topic}."` with the topic `the disk` gives `Look into the disk.` `n: 3`, `title: hello` and a nested map reach a job's input exactly as written.
 
-**R-mach-24** Expressions are JavaScript, and an expression reads `input`, `values`, `run` and what its machine's type adds, and nothing else. `run` holds the run's `id`, its `location`, its `context` and its `tree`, the prefix of its tree.
-*Accept:* `${input.urls.filter(u => u.startsWith("https")).length}` gives the number of matching items. A flow's expression that reads `states`, and an expression that names something outside the language itself such as `require` or `process`, are each refused when the definition is checked. `${run.id}` gives the run's ID in a flow's output, a statechart's final state, an agent's prompt and a limit's `timeout`, and `${run.location}` gives `/home/devices/boiler` and `${run.tree}` gives `/home` for a run there. *Test:* `mach_run_is_read_in_every_type`
+**R-mach-24** Expressions are JavaScript, and an expression reads `input`, `values`, `run` and what its machine's type adds, and nothing else. `run` holds the run's `id`, its `location`, its `key`, its `address`, its `context` and its `tree`, the prefix of its tree. `run.key` is the key of a run at a keyed location, and null for any other run. `run.address` is `{ at, run }`, with `key` for a keyed run: the address `event.from` gives for the run's sends.
+*Accept:* `${input.urls.filter(u => u.startsWith("https")).length}` gives the number of matching items. A flow's expression that reads `states`, and an expression that names something outside the language itself such as `require` or `process`, are each refused when the definition is checked. `${run.id}` gives the run's ID in a flow's output, a statechart's final state, an agent's prompt and a limit's `timeout`, and `${run.location}` gives `/home/devices/boiler` and `${run.tree}` gives `/home` for a run there. A run there reads `run.key` as null and `run.address` as `{ at: /home/devices/boiler, run: <its ID> }`, and the run for the key `kitchen` at `/home/rooms/room` reads `kitchen` and `{ at: /home/rooms/room, key: kitchen, run: <its ID> }`. Parity case 137: the address a run hands out as `run.address` is the one its receiver reads as `event.from`. *Test:* `mach_run_is_read_in_every_type`
 
 **R-mach-27** An expression in a field that is a name is refused: a thing's name, a type, a permission's kind, a deny entry, a secret's name, a tag, a ticket's name. The path of a script or a machine is a name too, except that it may be exactly one expression that gives a stored definition or script.
 *Accept:* seven definitions, each with `${input.x}` in one of these fields, are each refused when checked, and each refusal names the field. `machine: "${input.definition}"`, given a stored definition, runs it as a child; `script: "./${input.name}.js"` is refused when checked.
@@ -101,7 +101,7 @@ The detailed rules behind the [Machines overview](../machine.md). Area code: `ma
 
 ## Jobs
 
-**R-mach-33** A job that is a script is executed by a runner; a job that is a machine is started by the controller as a child run.
+**R-mach-33** A job is a script, a machine, or a send. A machine is named by its file (`machine:`) or by its location (`call:`), and a send delivers an event and returns nothing. A runner executes a script. A machine named by its file is started by the controller as a child run, and one named by its location as a run of its own whose result is the job's output.
 *Accept:* a flow with a script stage and a machine stage: the record shows one job sent to a runner and its result arriving as the first stage's `done`, and a new instance whose head names the flow as its parent, with nothing sent to a runner for the second stage itself.
 
 **R-mach-35** A job of either kind has an input, the permissions it may use, a limit on time, and optionally a restart policy, written the same way for both; a script also has a limit on memory and tags that choose its runners.
@@ -166,17 +166,20 @@ The detailed rules behind the [Machines overview](../machine.md). Area code: `ma
 
 ## Locations and addresses
 
-**R-mach-153** A file's `lifetime:` says how runs start at its location: `singleton`, `keyed` or `transient`, the default, which is stored filled in. Only a type whose runs take sent events, the statechart, may be `keyed`. `lifetime:`, `update:`, `receive:` and `limits: { runs: }` belong to a file at a location, and are refused in a machine written in place or made while running.
+**R-mach-153** A file's `lifetime:` says how runs start at its location: `singleton`, `keyed` or `transient`, the default, which is stored filled in. Only a type whose runs take sent events, the statechart, may be `keyed`. `lifetime:`, `update:`, `receive:`, `read:` and `limits: { runs: }` belong to a file at a location, and are refused in a machine written in place or made while running.
 *Accept:* a file with no `lifetime:` is stored as `transient`; a type that takes no sent events with `lifetime: keyed` is refused at `lifetime`; `lifetime:` in a machine written in place and `limits: { runs: 2 }` in one made while running are each refused at their place. *Test:* `mach_a_file_says_how_its_runs_start`
 
 **R-mach-154** A file's `update:` is `restart` or `drain`, stored filled in: `restart` for a singleton and `drain` for any other by default. A singleton always restarts, and `update: drain` on one is refused.
 *Accept:* `lifetime: singleton` alone is stored with `update: restart`; with `update: drain` it is refused at `update`. *Test:* `mach_update_says_what_a_change_does`
 
-**R-mach-155** `limits: { runs: N }` caps how many runs of a keyed file are running at once. N is at least 1, and `runs` on a file that is not keyed is refused.
-*Accept:* a keyed chart with `runs: 50` is stored with 50; `runs: 0` and `runs:` on a transient file are refused at `limits.runs`. *Test:* `mach_runs_limits_a_keyed_file`
+**R-mach-155** `limits: { runs: N }` caps how many runs at a keyed or transient file's location are running at once. N is at least 1, and `runs` on a singleton is refused.
+*Accept:* a keyed chart and a transient chart with `runs: 50` are stored with 50; `runs: 0` and `runs:` on a singleton are refused at `limits.runs`. Parity case 138. *Test:* `mach_runs_limits_a_keyed_or_transient_file`
 
 **R-mach-156** A file's `receive:` is a list, for every event, or a mapping from an event's name to a list. An entry is a location pattern or `client:<name>`, written out; a pattern is read from the tree's prefix unless it starts with `/`, and holds no `..`, `.`, empty name, `+` name, `#`, backslash or control character. An event's name in it is written out and is none that Corbie gives a machine itself.
 *Accept:* `receive: [thermostats/*, /work/**, client:panel]` is stored for every event and `{ set: […], stop: client:panel }` by name; an entry with an expression, `client:`, `../up`, `a//b`, `x#y` or `+/z`, and the event `done`, are each refused at their place. *Test:* `mach_receive_says_who_may_send`
+
+**R-mach-164** A file's `read:` is a list of `client:<name>` entries, written out, each once.
+*Accept:* `read: [client:wall, client:phone]` is stored as written; `wall`, `client:`, `client:${input.who}` and a second `client:wall` are each refused at their place, and so is `read:` in a machine written in place and in one made while running. *Test:* `mach_read_names_clients`
 
 **R-mach-157** An address is `{ at }`, `{ at, key }` or `{ at, run }`, or exactly one expression that gives one. `at`, `key` and `run` may hold expressions; a location written out is checked with the definition, and one with expressions when it is filled in, as is a whole address. A location is read from the tree's prefix unless it starts with `/`, and a name in it is not empty, `.`, `..` or `+`, and holds no `#`, backslash or control character. A key filled in is kept as it is, so a send to one that is empty or past 256 characters is undelivered. An address that names both a run and a key, as `event.from` does for a keyed run, goes to the run.
 *Accept:* `{ at: devices/boiler }`, a key filled from the input, a full path with a run, and `${input.from}` giving `{ at, run, key }` or `{ client }` each fill in as written. `{ at: ../up }`, a written address with both `key` and `run`, `to: "to ${input.x}"` and an address with no `at` are refused when checked; `${input.at}` filled with `../x` or empty text, and `${input.id}` in `run` filled with `c1/../y`, fail the job. A key filled in as empty text is kept, empty. *Test:* `mach_address_names_a_run`
@@ -184,7 +187,7 @@ The detailed rules behind the [Machines overview](../machine.md). Area code: `ma
 **R-mach-158** An expression and an allow entry's scope read the values set at the run's location or above as `values.NAME`. A value is read by its name: `values[expr]` and `values` alone are refused when checked, and the names a definition, a draft with its children and a job read can be listed. An expression that reads a value not set fails, naming the value and the run's location.
 *Accept:* a definition reading `values.GREETING`, `values['ROOM']` and `net:${values.HUB}:443` lists those three; with them set its job is filled as `kitchen` and `net:hub.lan:443`; with `HUB` not set it fails with `the value HUB is not set at /home/devices/boiler or above`. `${values[input.name]}` and `${Object.keys(values)}` are refused. *Test:* `mach_values_are_read_by_name`
 
-**R-mach-159** A job may be `send: { to, event, data }`: it sends the event to a run by its address. Beside `send:` it takes `approve:`, `allow:` and `deny:`, and no other field of a job. A job is exactly one of a script, a machine, a send or a call, and a sent event's name is written out and none that Corbie gives a machine itself.
+**R-mach-159** A send, written `send: { to, event, data }` inside `job:`, delivers an event to a run by its address and returns nothing (R-mach-33). Beside `send:` it takes `approve:`, `allow:` and `deny:`, and no other field of a job. A job writes exactly one of `script:`, `machine:`, `call:` and `send:`, and a sent event's name is written out and none that Corbie gives a machine itself.
 *Accept:* a send with `approve:` and `allow:` passes; a send with `input:` and `timeout:`, a send with a script, a send of `done` and a send whose event is an expression are each refused at their place. *Test:* `mach_a_job_sends`
 
 **R-mach-160** A job may be `call: { at }` with an input: it starts a run of that location and waits, and its output is that run's result. A call names its location with `at` alone, and takes no memory, tags, files or key.
@@ -280,16 +283,16 @@ The detailed rules behind the [Machines overview](../machine.md). Area code: `ma
 **R-mach-91** A job marked for approval does not start until its machine's ask has approved it; a job that declares a permission its machine lists in `approve:` is held the same way (see Permissions, R-perm-42).
 *Accept:* parity case 63.
 
-**R-mach-95** What gives the yes is the machine's ask: a job of its own, a script or a machine, named at the top of the definition. That job is called `ask`, and nothing else in a definition may take the name.
+**R-mach-95** What gives the yes is the machine's ask: a job of its own, named at the top of the definition. That job is called `ask`, and nothing else in a definition may take the name.
 *Accept:* parity case 63 (a script) and parity case 74 (a machine). A flow with a stage named `ask`, a chart with a state named `ask` and an agent with a tool named `ask` are each refused when checked.
 
-**R-mach-97** A machine with an ask of its own uses it; a machine with none uses the nearest one above it. A machine made while running has none of its own (see Controller, C-ctl-64).
+**R-mach-97** A machine with an ask of its own uses it; a machine with none uses the nearest one above it. A machine made while running has none of its own (R-mach-163).
 *Accept:* parity case 73 (own ask wins); parity case 70 (one level up, approved), parity case 71 (one level up, refused) and parity case 72 (two levels up, through a machine that marks nothing).
 
-**R-mach-99** The jobs from one step that need approval go to their ask together, and each ask is filled in and started once for them. A job may go to an ask nearer than its machine's, which a type gives it.
-*Accept:* parity case 66. An agent's turn calls `open` for a toolkit that has an ask of its own and a tool of the agent's own, each marked for approval; the step starts the toolkit's ask with the open and the agent's ask with the call, once each.
+**R-mach-99** The jobs from one step that need approval go to their ask together, and the ask is filled in and started once for them.
+*Accept:* parity case 66.
 
-**C-mach-24** The held jobs of one step go to one run of an ask by where the ask is written, never by what filling it in gave. An expression in an ask's values need not give the same value twice, as `${Math.random()}` does not, and one ask would otherwise start as several. *Test:* `mach_one_run_of_each_ask_for_a_step`
+**C-mach-24** The held jobs of one step go to one run of their ask, filled in once, never one run for each value filling it in gave. An expression in an ask's values need not give the same value twice, as `${Math.random()}` does not, and one ask would otherwise start as several. *Test:* `mach_one_run_of_the_ask_for_a_step`
 
 **R-mach-100** The ask is told which machine is asking and, for each job, what it is and what input it would get.
 *Accept:* parity case 70: each child is named as the machine asking. Parity case 63: the ask is given the job and its input.
@@ -298,7 +301,7 @@ The detailed rules behind the [Machines overview](../machine.md). Area code: `ma
 *Accept:* parity case 66: the two approved items run, the other two appear with an error, and nothing was ever sent to a runner for them. Parity case 65: the note is in the error.
 
 **R-mach-106** An ask that cannot be filled in, that fails, or whose result has no `approved:` list, approves nothing.
-*Accept:* parity case 76: the first child's ask fails, the second's result has no `approved:` list, and neither held job starts. An agent's toolkit whose ask's input reads a field its input does not have: the held call is denied with an error naming `toolkits.net.ask.input`, and the agent carries on.
+*Accept:* parity case 76: the first child's ask fails, the second's result has no `approved:` list, and neither held job starts. An agent whose ask's input reads a field its input does not have: the held call is denied with an error naming `ask.input`, and the agent carries on.
 
 **R-mach-109** An approval has no time limit of its own; the ask's timeout is how long it may take.
 *Accept:* an ask that is a chart with a timeout of one second waits on a ticket nobody answers; it fails as out of time and the held job is denied. The same ask with no timeout holds the job for as long as the test waits.
@@ -319,6 +322,11 @@ The detailed rules behind the [Machines overview](../machine.md). Area code: `ma
 
 **C-mach-22** When an ask, started once, refuses several jobs, every one of them is given to its machine as denied and written in the record, including those that arrive after the first has failed the machine. Telling only the first leaves the rest held for an ask that has already ended, and whoever reads the record must see every job that was turned down. *Test:* `mach_every_refusal_is_recorded`
 
+## Words from outside
+
+**R-mach-163** Words from outside, a definition made while running and the tools a `list:` gives, name no ask and no address. A made machine's held jobs go to the nearest ask above it that was not made while running, and are denied with none; a made machine that writes `ask:`, sends to an address or calls fails. A listed tool's call runs the entry's `job:`, held for the agent's ask and addressing what that job names.
+*Accept:* for a made machine, the tests of C-ctl-64 and C-ctl-76; a made machine whose layers allow `send:/home/**` has a send to `/home/devices/boiler` refused, and its send to its parent is delivered (parity case 133). For a listed tool, `TestAgentAskIsShownTheToolOfEachCall`: the call of `github_create_issue`, marked for approval through its entry, goes to the agent's ask; and `ctl_answer_cannot_write_a_listed_agents_ask`.
+
 ## Failure
 
 **R-mach-118** A job fails in one of four ways, and its `failed` event says which: with an error, by running out of time, by being denied, or by being cancelled.
@@ -332,7 +340,7 @@ The detailed rules behind the [Machines overview](../machine.md). Area code: `ma
 
 ## Machine types
 
-**R-mach-131** A type is an extension that supplies six things, the shape of its definitions, the filling-out of its short forms, the check of its definitions, its step, what a watcher is shown of its state, and its page of the manual; everything in this area is supplied by Corbie, the same for every type.
+**R-mach-131** A type is an extension that supplies six things, the shape of its definitions, the filling-out of its short forms, the check of its definitions, its step, the state of its run a watcher is shown (R-inst-72), and its page of the manual; everything in this area is supplied by Corbie, the same for every type.
 *Accept:* a binary is built with a test extension that adds a fourth type; a definition of that type is submitted, checked, run to its end and watched, and `corbie manual` lists and prints its page. The checks of this area for values, jobs, events, tickets, approval and limits pass unchanged with a flow, a statechart, an agent and the test extension's type as the machine.
 
 ## Interfaces

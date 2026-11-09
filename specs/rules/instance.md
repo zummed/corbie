@@ -7,8 +7,8 @@ The detailed rules behind the [Instances overview](../instance.md).
 **R-inst-01** The head is signed by the controller, and anyone who can read it can check the signature with the controller's card.
 *Accept:* read a head straight from the store and check it against the controller's card: it passes. Change one byte of it: the check fails and no viewer shows it.
 
-**R-inst-02** The head says what the instance is called, what type of machine it is, when it started, which instance is its parent, its location, its key at a keyed location and the run whose send or call started it if it has them, whether it is running, done, failed or cancelled, and which step it has reached.
-*Accept:* the head of a flow started as a child by a statechart at `/home/hall` gives the flow's name, says it is a flow, gives a start time, names the statechart's instance as its parent, gives `/home/hall` as its location, says `running` and gives the step the controller last wrote; a root's head names no parent. A run at the keyed location `/home/rooms/room` started by a send to the key `kitchen` gives that location, that key and the sending run, and a run a call job started names the calling run. The heads of four ended runs show `done`, `failed` and `cancelled` as each ended.
+**R-inst-02** The head says what the instance is called, what type of machine it is, when it started, which instance is its parent, its location, its key at a keyed location and the clients its root's file's `read:` lists if it has them, its cause, whether it is running, done, failed or cancelled, and which step it has reached.
+*Accept:* the head of a flow started as a child by a statechart at `/home/hall` gives the flow's name, says it is a flow, gives a start time, names the statechart's instance as its parent and the step that started it as its cause, gives `/home/hall` as its location, says `running` and gives the step the controller last wrote; a root's head names no parent. A run at the keyed location `/home/rooms/room` started by a send to the key `kitchen` gives that location, that key and the sending run's step, a run a call job started names the calling run's step, and a run a client started names the client and its message. The heads of four ended runs show `done`, `failed` and `cancelled` as each ended.
 
 **R-inst-05** The head says what the instance is waiting for: how many jobs on runners, how many timers, and the names of any tickets.
 *Accept:* a statechart in a state with one script job, one timer and `ticket: verdict` shows one job, one timer and `verdict` among its tickets. Once the job's result has been taken it shows no jobs; once the state is left it shows no ticket.
@@ -19,7 +19,7 @@ The detailed rules behind the [Instances overview](../instance.md).
 **R-inst-09** The head is sealed to nobody. Whoever the store lets read it can read all of it and needs no identity of their own.
 *Accept:* with the controller's card, the store's address and read access to heads, and no identity file, a viewer lists the heads and reads every field of each.
 
-**R-inst-10** Apart from its location, key and labels, the head holds nothing the instance was given or produced: no input, no output, no error text, no log line, no value of a ticket.
+**R-inst-10** Apart from its location, key, labels and the clients `read:` lists, the head holds nothing the instance was given or produced: no input, no output, no error text, no log line, no value of a ticket.
 *Accept:* run a machine whose input, output, error text, log lines, ticket value and ticket answer each hold a marker string of their own, on a memory store that keeps every version of every head. No version of any head holds any of the markers. A label, a location and a key holding a marker do appear.
 
 **R-inst-12** The head may be a moment behind the record, and where the two differ the record is right.
@@ -41,6 +41,12 @@ The detailed rules behind the [Instances overview](../instance.md).
 **R-inst-21** A step entry holds the events that arrived, names the messages and the wakes they came from, holds the state the machine was left in, and holds what the step asked for.
 *Accept:* open the entry for a statechart's step set off by a job's result and a timer together, which moved it from `drafting` to `waiting`. It shows a `done` event and a `timer` event, the name of the result's message in the controller's inbox and the name of the wake, a state in which `waiting` is active with the output of `drafting`, and the job it asked for, under the name the message then sent to the runner carries.
 
+**R-inst-71** Each event in a step entry names its cause, which only the controller writes: for an event a step of a run asked for, or a note or failure the controller writes for that step, that run and step; for one from a client, the client and its message; for one from the run's own script job or timer, none. A run's cause is the cause of its start.
+*Accept:* a client sends `go` to a chart, which calls a location whose run starts a child, and then sends to a key. The chart's `go` names the client's message; the called run's start names the chart's step that asked for the call, and so does its head; the child's start names the called run's step; the called run's `done` names the child's last step, and the chart's `done` the called run's last step; the keyed run's event names the chart's step that sent it. The child's script results name no cause. A cause a client writes in its message is replaced with the client and the message. The note that a send was not delivered names the sender's step that sent it, and the failure of a call no run took names the caller's step that called. *Test:* `Test_inst_event_names_its_cause`, `Test_inst_client_cannot_write_its_cause`, `Test_inst_note_and_failed_call_name_the_step`
+
+**R-inst-72** A watcher is shown, for each step, the run's state, in one shape for every type: a flow's stages and the status of each, a statechart's active states, an agent's number of turns taken. It holds nothing the head says.
+*Accept:* a flow of two stages is shown after its first step with the first `running` and the second `waiting`, and after its last with both `done`; a chart is shown in its first state; an agent that took two turns is shown at turn 1 and then 2, and with no other field. *Test:* `Test_inst_step_shows_the_runs_state`
+
 **R-inst-25** The latest step entry is the instance's whole state, and the last step entry of an instance that has ended holds its result.
 *Accept:* remove every step and emit entry of a waiting instance except its latest step; when its next message arrives it takes the same step, with the same result, as an untouched copy of the same instance. The output `run show` prints for a finished run is the output its last step entry holds, and a failed run's last step entry holds its error.
 
@@ -50,8 +56,8 @@ The detailed rules behind the [Instances overview](../instance.md).
 **R-inst-29** When the machine has said it wants to act on values of a name, the runner also tells the controller of each such value by a message; for values of any other name the controller plays no part.
 *Accept:* a flow has a stage that takes its items from what another stage emits: each item emitted reaches the machine as an event, and a message for it was written into the controller's inbox. A job that logs a hundred lines and reports progress, in a machine that has asked for none of them, causes one message from its runner to the controller: its result.
 
-**R-inst-32** Everything in a record is sealed so that the controller and the client that owns the root's tree can read it, and nobody else can.
-*Accept:* run a root with a child, with a marker string in each input, emit and output, and read the record's values raw: no marker shows. The client that owns the root's tree opens every entry of both records. Another enrolled client handed the same raw values opens none, also when it called the root into that tree. A runner opens no step entry and no emit entry, the emits it wrote itself included.
+**R-inst-32** Everything in a record is sealed so that the controller, the client that owns the root's tree and each client the root's file's `read:` lists that the controller trusts can read it, and nobody else can.
+*Accept:* run a root with a child, with a marker string in each input, emit and output, and read the record's values raw: no marker shows. The client that owns the root's tree opens every entry of both records, and so does a client the root's file's `read:` lists. Another enrolled client handed the same raw values opens none, also when it called the root into that tree. A runner opens no step entry and no emit entry, the emits it wrote itself included.
 
 **R-inst-68** Among an instance's blobs is the definition it started with, and a later submit at its location does not change it.
 *Accept:* start a run at `/t/job`, then submit the tree again with `job.yaml` and its script changed. `run show` prints the definition the run started with, and its next job runs the script it started with. A run started at `/t/job` after the submit runs the new ones.
@@ -144,7 +150,7 @@ The detailed rules behind the [Instances overview](../instance.md).
 Uses:
 
 - **Store**: heads under `running/` and `finished/`, records under `records/`, receipts and the results of calls under `receipts/`, the files sent with a message under `uploads/`, each within the table of who may touch what; ordered listing, each name with what a read of it gives; the notice a directory or memory store gives a watcher in the same process.
-- **Identity**: the controller's signature on a head; the sealing of record entries to the controller and the root's client, and of a receipt and a call's result to the client that sent the message; the signature of a runner on what it emits.
+- **Identity**: the controller's signature on a head; the sealing of record entries to the controller, the root's client and the clients `read:` lists, and of a receipt and a call's result to the client that sent the message; the signature of a runner on what it emits.
 - **Blobs**: the larger values a record's entries refer to, where they live in the record, and the rules for when a blob in a record goes.
 
 Used by:
@@ -152,5 +158,5 @@ Used by:
 - **Controller**: writes step entries, heads and receipts; brings the head up to date after each step (R-ctl-27) and moves it when an instance ends; accepts or refuses each of a client's messages; trims and removes what is past keeping, a little at a time (R-ctl-98).
 - **Runner**: writes a job's emit entries and blobs into the instance's record, in batches (C-run-33), every one before the job's result (C-run-23), and a message to the controller for each emitted value the machine wants.
 - **Client**: writes the five messages and their uploads; lists, shows and follows runs by the one way of watching; owns what a viewer is told at the awkward moments: a receipt before a head, a start never taken (R-client-36 to R-client-40), and C-inst-02.
-- **Machines** and each machine type: the state a step entry holds, and what a watcher is shown of it.
+- **Machines** and each machine type: the state a step entry holds, and the state a watcher is shown (R-inst-72).
 - **Roles**: a pass that is killed leaves the head and the record as R-inst-12, R-inst-13 and C-ctl-16 describe.

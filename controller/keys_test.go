@@ -192,7 +192,8 @@ func (w *world) sentBy(run string) []instance.Ask {
 // A send to a key with no running run starts one, a root of the client of
 // the receiving tree, gives it the event's data as its input and then the
 // event, and goes to that run after. The run's head names its location, its
-// key and its sender, and its record names the sender's address.
+// key and the sender's step as its cause, and its record names the sender's
+// address.
 func Test_chart_send_to_a_key_starts_a_run_then_delivers(t *testing.T) {
 	w := newWorld(t)
 	sender := w.rooms(nil)
@@ -209,10 +210,10 @@ func Test_chart_send_to_a_key_starts_a_run_then_delivers(t *testing.T) {
 		t.Fatalf("the run was told %v", got)
 	}
 	head, st := w.head(run), w.latest(run).State
-	if head.Location != "/t/room" || head.Key != "chat:1" || head.Parent != "" || head.StartedBy != sender || store.InstanceClient(run) != "c1" {
+	if head.Location != "/t/room" || head.Key != "chat:1" || head.Parent != "" || head.Cause.Run != sender || head.Cause.Step == 0 || store.InstanceClient(run) != "c1" {
 		t.Fatalf("the head is %+v", head)
 	}
-	if st.Above.Parent != "" || st.Above.StartedBy != sender || st.Above.Depth != 1 || st.Lifetime != machine.LifetimeKeyed {
+	if st.Above.Parent != "" || st.Above.Cause != head.Cause || st.Above.Depth != 1 || st.Lifetime != machine.LifetimeKeyed {
 		t.Fatalf("it runs under %+v", st.Above)
 	}
 	if in, _ := st.Input.(map[string]any); in["text"] != "one" {
@@ -234,10 +235,9 @@ func Test_chart_send_to_a_key_starts_a_run_then_delivers(t *testing.T) {
 	}
 }
 
-// A send to { at } goes to the singleton's run. With none running, at a
-// location that is not a singleton, or where nothing is recorded, it is
-// written in the sender's record as undelivered, saying which, and fails
-// nothing.
+// A send to { at } goes to the singleton's run. With none running, or where
+// nothing is recorded, it is written in the sender's record as undelivered,
+// saying which, and fails nothing.
 func Test_chart_send_to_a_singleton_with_no_run_is_undelivered(t *testing.T) {
 	w := newWorld(t)
 	sender := w.rooms(map[string]string{"/t/bell": `
@@ -254,17 +254,111 @@ func Test_chart_send_to_a_singleton_with_no_run_is_undelivered(t *testing.T) {
 	if len(bell) != 1 {
 		t.Fatalf("the bell's runs are %v", bell)
 	}
-	for _, at := range []string{"bell", "router", "nowhere"} {
+	for _, at := range []string{"bell", "nowhere"} {
 		w.tell(sender, "ring", map[string]any{"at": at})
 		w.settle()
 	}
 	notes := w.keyNotes(sender)
-	if len(notes) != 3 || !strings.Contains(notes[0], "no run of the singleton at /t/bell") ||
-		!strings.Contains(notes[1], "/t/router is transient") || !strings.Contains(notes[2], "nothing is recorded at /t/nowhere") {
+	if len(notes) != 2 || !strings.Contains(notes[0], "no run of the singleton at /t/bell") ||
+		!strings.Contains(notes[1], "nothing is recorded at /t/nowhere") {
 		t.Fatalf("the record says %v", notes)
 	}
 	if head := w.head(sender); head.Status != instance.Running {
 		t.Fatalf("the sender is %s", head.Status)
+	}
+}
+
+// A send to a transient location's { at } starts a new run of it each time,
+// as a key no other send names would: two sends in one step start two runs,
+// and a client's send starts one too. A statechart is given the event after
+// its start, and a flow, which takes no sent event, only its start, with the
+// event's data as its input. No run takes a key's file, and the sender's
+// record notes nothing.
+func Test_ctl_send_to_a_transient_location_starts_a_run(t *testing.T) {
+	w := newWorld(t)
+	w.newRunner()
+	sender := w.rooms(map[string]string{
+		"/t/bell": `
+			statechart: bell
+			initial: a
+			states:
+			  a: { on: { rang: b } }
+			  b: { end: done, output: "${input}" }
+		`,
+		"/t/twice": `
+			statechart: twice
+			allow: ["send:**"]
+			initial: a
+			states:
+			  a: { entry: { send: [{ to: { at: bell }, event: rang, data: 1 }, { to: { at: bell }, event: rang, data: 2 }] } }
+		`,
+		"/t/work": `
+			flow: work
+			stages:
+			  a: { job: { script: ./step.js, input: "${input}" } }
+		`,
+	}, "step.js")
+	w.startAt(w.client, "/t/twice", client.Start{})
+	w.settle()
+	w.tell(sender, "ring", map[string]any{"at": "work"})
+	w.settle()
+	if _, err := w.client.Send(ctx, machine.Address{At: "/t/bell"}, "rang", 3, time.Hour); err != nil {
+		t.Fatal(err)
+	}
+	w.settle()
+	bells := w.runsOf("bell")
+	var outputs []string
+	for _, run := range bells {
+		st := w.latest(run).State
+		outputs = append(outputs, fmt.Sprint(st.Status, " ", st.Output))
+		if head := w.head(run); head.Key != "" || head.Parent != "" {
+			t.Fatalf("the run %s has the key %q and the parent %q", run, head.Key, head.Parent)
+		}
+	}
+	slices.Sort(outputs)
+	if fmt.Sprint(outputs) != "[done 1 done 2 done 3]" {
+		t.Fatalf("the bells ended %v", outputs)
+	}
+	works := w.runsOf("work")
+	if len(works) != 1 {
+		t.Fatalf("the flows are %v", works)
+	}
+	if steps := w.steps(works[0]); len(steps) != 1 || len(steps[0].Events) != 1 || steps[0].Events[0].Name != machine.Start ||
+		steps[0].State.Status != instance.Running || steps[0].State.Above.Cause.Run != sender {
+		t.Fatalf("the flow's record is %+v", steps)
+	}
+	if notes := w.keyNotes(sender); len(notes) != 0 {
+		t.Fatalf("the router's record says %v", notes)
+	}
+	if left := w.list(store.Keys("ctl", "/t/bell")); len(left) != 0 {
+		t.Fatalf("key files: %v", left)
+	}
+}
+
+// A send that would start a run of a transient location is refused by its
+// receive: as a keyed start is: the sender's record notes it undelivered, a
+// client's receipt says refused, and no run starts.
+func Test_ctl_send_to_a_transient_location_is_refused_by_receive(t *testing.T) {
+	w := newWorld(t)
+	sender := w.rooms(map[string]string{"/t/picky": `
+		statechart: picky
+		receive: [client:b]
+		initial: a
+		states:
+		  a: { on: { rang: b } }
+		  b: { end: done }
+	`})
+	w.tell(sender, "ring", map[string]any{"at": "picky"})
+	w.settle()
+	if notes := w.keyNotes(sender); len(notes) != 1 || !strings.Contains(notes[0], "/t/picky does not receive rang from the run "+sender) {
+		t.Fatalf("the router's record says %v", notes)
+	}
+	c := w.other("c", "send:/t/**")
+	if r := w.clientSend(c, "/t/picky", "rang", nil); r.Taken || !strings.Contains(r.Refused, "does not receive rang from client:c") {
+		t.Fatalf("c got %+v", r)
+	}
+	if runs := w.runsOf("picky"); len(runs) != 0 {
+		t.Fatalf("the runs of picky are %v", runs)
 	}
 }
 
@@ -1143,7 +1237,7 @@ func Test_ctl_sent_root_takes_nothing_from_its_sender(t *testing.T) {
 	w.settle()
 	run := w.runsOf("talk")[0]
 	st := w.latest(run).State
-	if len(st.Above.Layers) != 0 || len(st.Labels) != 0 || st.Above.Made || st.Above.Parent != "" || st.Above.StartedBy != from ||
+	if len(st.Above.Layers) != 0 || len(st.Labels) != 0 || st.Above.Made || st.Above.Parent != "" || st.Above.Cause.Run != from ||
 		st.Above.Ask != nil || st.Above.Values["WHERE"] != "room" {
 		t.Fatalf("it runs under %+v with labels %v", st.Above, st.Labels)
 	}

@@ -134,15 +134,20 @@ func Test_store_served_directory_holds_each_party_to_its_row(t *testing.T) {
 	put("run/inbox/ctl/job1", "job")
 	put("ctl/locations/+/secrets/TOKEN", "sealed")
 
-	// A client reads its own heads and records, and nobody else's.
+	// A client reads every head and record, which are sealed or public,
+	// and no receipt but its own.
+	put("ctl/receipts/cli/m1/receipt", "receipt")
 	if v, _ := read(t, client, "ctl/running/cli/i1"); v != "head" {
 		t.Errorf("a client read its own head as %q", v)
 	}
-	if v, mark := read(t, other, "ctl/running/cli/i1"); v != "" || mark != None {
-		t.Errorf("a client read another client's head: %q", v)
+	if v, _ := read(t, other, "ctl/running/cli/i1"); v != "head" {
+		t.Errorf("a client read another client's head as %q", v)
 	}
-	if _, err := Names(other.List(ctx, "ctl/records/cli")); !errors.Is(err, ErrRefused) {
-		t.Errorf("a client listed another client's records: %v", err)
+	if names, err := Names(other.List(ctx, "ctl/records/cli")); err != nil || len(names) != 1 {
+		t.Errorf("a client listed another client's records: %v %v", names, err)
+	}
+	if v, mark := read(t, other, "ctl/receipts/cli/m1/receipt"); v != "" || mark != None {
+		t.Errorf("a client read another client's receipt: %q", v)
 	}
 	if v, _ := read(t, client, "ctl/locations/+/secrets/TOKEN"); v != "" {
 		t.Errorf("a client read a secret: %q", v)
@@ -171,7 +176,7 @@ func Test_store_served_directory_holds_each_party_to_its_row(t *testing.T) {
 	if done, err := runner.Delete(ctx, "run/inbox/ctl/job1", Overwrite); !done || err != nil {
 		t.Errorf("a runner removing its job: %v %v", done, err)
 	}
-	if done, err := runner.Write(ctx, "ctl/records/cli/i1/emits/job1/1", []byte("emit"), OnlyIfNew); !done || err != nil {
+	if done, err := runner.Write(ctx, "ctl/records/cli/i1/emits/00000001/00000001", []byte("emit"), OnlyIfNew); !done || err != nil {
 		t.Errorf("a runner's emit: %v %v", done, err)
 	}
 	if v, _ := read(t, runner, "ctl/records/cli/i1/steps/1"); v != "" {

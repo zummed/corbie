@@ -115,16 +115,12 @@ func (p *pass) called(inst string, step *instance.Step, ask *instance.Ask) error
 	if err != nil {
 		return err
 	}
-	sender := &machine.Address{At: st.Location, Run: inst}
-	if st.Lifetime == machine.LifetimeKeyed {
-		key := st.Key
-		sender.Key = &key
-	}
+	sender := runOf(inst, st).Address()
 	mac := hmac.New(sha256.New, st.Seed)
 	mac.Write([]byte("call\x00" + ask.Message))
-	msg := &instance.Message{Kind: instance.KindStart, Instance: ask.Run, From: inst, Sender: sender, Start: &instance.Start{
+	msg := &instance.Message{Kind: instance.KindStart, Instance: ask.Run, From: inst, Sender: sender, Cause: asked(inst, step), Start: &instance.Start{
 		Location: ask.Location, Input: input, Timeout: ask.Job.Timeout, Seed: mac.Sum(nil),
-		Above: &instance.Above{Depth: st.Above.Depth + 1, StartedBy: inst, CallJob: ask.Name}}}
+		Above: &instance.Above{Depth: st.Above.Depth + 1, CallJob: ask.Name}}}
 	failure, err := p.send(store.Message(p.ctl, p.ctl, ask.Message), noEnd, msg, p.c.ID.Card)
 	if err != nil || failure == nil {
 		return err
@@ -188,9 +184,10 @@ func (b *build) callIn(start *arrival, file *located, s *instance.Start) error {
 	}
 	seed := make([]byte, 32)
 	rand.Read(seed)
-	msg := &instance.Message{Kind: instance.KindStart, Instance: run, Sender: &machine.Address{Client: start.sender}, Start: &instance.Start{
-		Location: s.Location, Input: input, Timeout: s.Timeout, Seed: seed,
-		Above: &instance.Above{CallReceipt: &instance.CallReceipt{Client: start.sender, Message: base}}}}
+	msg := &instance.Message{Kind: instance.KindStart, Instance: run, Sender: &machine.Address{Client: start.sender},
+		Cause: &instance.Cause{Client: start.sender, Message: base}, Start: &instance.Start{
+			Location: s.Location, Input: input, Timeout: s.Timeout, Seed: seed,
+			Above: &instance.Above{CallReceipt: &instance.CallReceipt{Client: start.sender, Message: base}}}}
 	failure, err := p.send(store.Message(p.ctl, p.ctl, name), noEnd, msg, p.c.ID.Card)
 	if err != nil {
 		return err
@@ -220,7 +217,7 @@ func (b *build) noCall(start *arrival, why string) {
 // once.
 func (p *pass) callFailed(a *arrival, why string) error {
 	s := a.msg.Start
-	msg := &instance.Message{Kind: instance.KindResult, Instance: s.Above.StartedBy, From: a.msg.Instance,
+	msg := &instance.Message{Kind: instance.KindResult, Instance: a.msg.From, From: a.msg.Instance, Cause: a.msg.Cause,
 		Result: &instance.Result{Job: s.Above.CallJob, Status: machine.StatusError, Final: true,
 			Error: &machine.Error{Status: machine.StatusError, Error: why}}}
 	if _, err := p.send(a.name+".failed", noEnd, msg, p.c.ID.Card); err != nil {

@@ -32,7 +32,6 @@ type Parser struct {
 	draft    *Draft
 	inline   int
 	limits   *Fields // the definition's limits, for a type to read its own
-	nearer   bool    // the jobs being read go to an ask nearer than the definition's
 	// located says whether a file of the context, by its path from it, is
 	// a machine at a location of the tree being read. It is nil for a
 	// definition read with no tree.
@@ -177,7 +176,7 @@ func (p *Parser) fill(written map[string]any, t Type, place string) (draft *Draf
 	def.Description = f.Text("description")
 	if ask, ok := f.Value("ask"); ok {
 		def.Ask = p.Job("ask", ask)
-		p.Ask("ask", def.Ask)
+		p.draft.ask = def.Ask.Machine
 	}
 	def.Title = f.Text("title")
 	def.Meta, _ = f.Value("meta")
@@ -215,13 +214,13 @@ func (p *Parser) fill(written map[string]any, t Type, place string) (draft *Draf
 	// A child with no ask of its own takes its parent's. A machine run as
 	// an ask takes none from above it.
 	for name, child := range p.draft.Children {
-		if place, isAsk := p.draft.asks[name]; isAsk {
+		if name != "" && name == p.draft.ask {
 			if child.needsAsk {
-				p.Problem(place, "the machine run as the ask marks a job for approval, or lists permissions in approve:, and has no ask of its own: a machine run as an ask takes no ask from above it")
+				p.Problem("ask", "the machine run as the ask marks a job for approval, or lists permissions in approve:, and has no ask of its own: a machine run as an ask takes no ask from above it")
 			}
 			continue
 		}
-		approves = approves || child.needsAsk && !p.draft.nearer[name]
+		approves = approves || child.needsAsk
 	}
 	p.draft.needsAsk = approves && def.Ask == nil
 	return p.draft, p.draft.needsAsk
@@ -237,8 +236,9 @@ func (p *Parser) location(def *Definition, f, limits *Fields) {
 	if receive, ok := f.take("receive", KindList); ok {
 		def.Receive = p.receive("receive", receive)
 	}
+	def.Read = f.Strings("read")
 	if p.inPlace || p.made {
-		for _, name := range []string{"lifetime", "update", "receive"} {
+		for _, name := range []string{"lifetime", "update", "receive", "read"} {
 			if f.Has(name) {
 				p.Problem(name, "%s belongs to a file at a location, and a machine written in place or made while running has none", name)
 			}
@@ -246,7 +246,7 @@ func (p *Parser) location(def *Definition, f, limits *Fields) {
 		if limits.Has("runs") {
 			p.Problem("limits.runs", "runs belongs to a file at a location, and a machine written in place or made while running has none")
 		}
-		def.Lifetime, def.Update, def.Runs, def.Receive = "", "", 0, nil
+		def.Lifetime, def.Update, def.Runs, def.Receive, def.Read = "", "", 0, nil, nil
 		return
 	}
 	// A runs that is no whole number has had its problem: 0 is no reading
@@ -322,41 +322,6 @@ func (p *Parser) Address(place string, written any) AddressSpec {
 	return AddressSpec{At: f.Text("at"), Key: f.Text("key"), Run: f.Text("run")}
 }
 
-// Ask notes a job the definition holds as an ask, at its place: a machine
-// run as it takes no ask from above it.
-func (p *Parser) Ask(place string, s *JobSpec) {
-	if s == nil || s.Machine == "" {
-		return
-	}
-	if p.draft.asks == nil {
-		p.draft.asks = map[string]string{}
-	}
-	p.draft.asks[s.Machine] = place
-}
-
-// Nearer reads jobs that go to an ask nearer than the definition's. A
-// machine that only such jobs run takes that ask as the nearest above it,
-// and needs none from the definition.
-func (p *Parser) Nearer(read func()) {
-	outer := p.nearer
-	p.nearer = true
-	read()
-	p.nearer = outer
-}
-
-// runs notes a machine a job runs, and whether every job that runs it goes
-// to a nearer ask.
-func (p *Parser) runs(name string) {
-	if name == "" {
-		return
-	}
-	if p.draft.nearer == nil {
-		p.draft.nearer = map[string]bool{}
-	}
-	nearer, seen := p.draft.nearer[name]
-	p.draft.nearer[name] = p.nearer && (nearer || !seen)
-}
-
 // Limits gives the definition's limits, for a type to read those it adds.
 func (p *Parser) Limits() *Fields { return p.limits }
 
@@ -416,7 +381,6 @@ func (p *Parser) Job(place string, written any) *JobSpec {
 // definition, or a definition written in place. It loads it, and gives the
 // name the definition has for it.
 func (p *Parser) Machine(place string, written any) (name string) {
-	defer func() { p.runs(name) }()
 	switch m := written.(type) {
 	case string:
 		name = p.cleanPath(m)
@@ -819,6 +783,18 @@ func (f *Fields) take(name string, as ...Kind) (any, bool) {
 	v, ok := f.m[name]
 	f.taken[name] = true
 	return v, ok
+}
+
+// Refuse reports a field that does not belong here, where it is written,
+// with why.
+func (f *Fields) Refuse(name, why string) {
+	if f == nil {
+		return
+	}
+	if _, ok := f.m[name]; ok {
+		f.taken[name] = true
+		f.p.Problem(f.at(name), "%s", why)
+	}
 }
 
 // Has says whether the field is written, without taking it.

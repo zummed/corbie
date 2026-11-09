@@ -37,6 +37,9 @@ type Message struct {
 	// Sender.
 	To     *machine.Address `json:"to,omitzero"`
 	Sender *machine.Address `json:"sender,omitzero"`
+	// Cause is, in a message the controller sends itself, what caused it:
+	// the step that asked for it, or the client's message it carries on.
+	Cause *Cause `json:"cause,omitzero"`
 
 	Start  *Start         `json:"start,omitzero"`
 	Submit *Submit        `json:"submit,omitzero"`
@@ -147,6 +150,9 @@ type Job struct {
 	Instance string `json:"instance"`
 	Name     string `json:"name"` // the job's full name, its attempt included
 	Attempt  int    `json:"attempt"`
+	// Number is the job's number in the instance: the runner files its
+	// emits under it.
+	Number int `json:"number"`
 	// Request names what asked: every attempt at the same job has the same.
 	Request string `json:"request"`
 
@@ -168,7 +174,8 @@ type Job struct {
 	Due time.Time `json:"due"`
 	// Wants names the emitted values the machine wants to hear about.
 	Wants []string `json:"wants,omitzero"`
-	// Client is the card of the client that owns the root's tree: what the
-	// job adds to the record is sealed to it and to the controller.
-	Client identity.Card `json:"client"`
+	// Readers are the cards of the clients what the job adds to the record
+	// is sealed to, beside the controller: the client that owns the root's
+	// tree, and those its root's file lists in read:.
+	Readers []identity.Card `json:"readers"`
 }

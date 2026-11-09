@@ -4,9 +4,9 @@ An instance is one run of a machine. It is two things in the store: a head, whic
 
 ## The head
 
-The head is a small signed summary that the controller rewrites as the instance moves. It says what the instance is called and what type of machine it is, whether it is running, done, failed or cancelled, which step it has reached, when it started, which instance is its parent, and what it is waiting for: how many jobs on runners, how many timers, and the names of any tickets. It also carries its location, its key at a keyed location, the labels its client gave it at the start, and the run whose send or call started it.
+The head is a small signed summary that the controller rewrites as the instance moves. It says what the instance is called and what type of machine it is, whether it is running, done, failed or cancelled, which step it has reached, when it started, which instance is its parent, and what it is waiting for: how many jobs on runners, how many timers, and the names of any tickets. It also carries its location, its key at a keyed location, the labels its client gave it at the start, the clients its file's `read:` lists, and its cause: what started it.
 
-The head is sealed to nobody. Anyone the store lets read it can read it and can check the controller's signature. For that reason it holds nothing the instance was given or produced: no input, no output, no error text, no log line, no value of a ticket. A location, a key and labels are the exceptions. A label is the client's own words about the run, chosen knowing they are public, and a child carries its parent's. A location is chosen by its tree's client, and a key by the definition or the client that sends to it, on the same terms.
+The head is sealed to nobody. Anyone the store lets read it can read it and can check the controller's signature. For that reason it holds nothing the instance was given or produced: no input, no output, no error text, no log line, no value of a ticket. A location, a key, labels and the clients `read:` lists are the exceptions. A label is the client's own words about the run, chosen knowing they are public, and a child carries its parent's. A location and its `read:` are chosen by its tree's client, and a key by the definition or the client that sends to it, on the same terms.
 
 The head is a summary and may be a moment behind. The record is the truth, and the controller brings the head up to date after each step.
 
@@ -18,11 +18,29 @@ The record is the instance's history, kept as entries that are each written once
 
 A **step** entry is written by the controller each time the instance takes a step. It holds the events that arrived and which messages and wakes they came from, the state the machine was left in, and what the step asked for. Steps are numbered. The first copy of the controller to write a given number has taken that step; any other copy finds the number taken, reads that entry and carries on from there. The latest step is the instance's whole state, and its last step holds its result.
 
-An **emit** entry is written by a job while it runs: a log line, a note of progress, a piece of a model's reply, a named value. The job's runner writes it straight into the record, in order, and a watcher sees it as soon as it is there. If the machine has said it wants to act on values of that name, the runner also tells the controller, which costs one more message; otherwise the controller plays no part.
+Each event in a step names its `cause`, which the controller writes:
+
+| Event | `cause` |
+|---|---|
+| asked for by a step of a run: a send, a call, a start, a cancel, an event to or from a child, an end, a tell; or the note or failure the controller writes when one of these cannot be delivered | `{ run, step }`: that run and step |
+| from a client: a start, an event, a call, a submit that starts a singleton | `{ client, message }`: the client and its message |
+| from the run's own script job or timer | none; `from` names the job or the timer, and the step that asked for it lists it among its asks |
+
+A viewer follows a request from a client's message through every send, call and child to its end by these causes. A run's cause is the cause of its start.
+
+A watcher is shown, for each step, the run's `state`, in one shape for every type. It holds nothing the head says.
+
+| Field | Type | What it holds |
+|---|---|---|
+| `stages` | flow | each stage and its status: `waiting`, `running`, `done`, `failed` or `skipped` |
+| `states` | statechart | the active states, outermost first |
+| `turn` | agent | how many turns the agent has taken |
+
+An **emit** entry is written by a job while it runs: a log line, a note of progress, a piece of a model's reply, a named value. The job's runner writes it straight into the record, in order, under the number the controller gave the job, and a watcher sees it as soon as it is there. If the machine has said it wants to act on values of that name, the runner also tells the controller, which costs one more message; otherwise the controller plays no part.
 
 The record also holds the instance's **blobs**: the larger values its entries refer to. Among them is the definition the instance started with, which a later submit at its location does not change.
 
-Everything in a record is sealed so that only the controller and the client that owns the root's tree can read it.
+Everything in a record is sealed so that only the controller, the client that owns the root's tree and the clients the root's file's `read:` lists can read it (see permission.md). A client `read:` lists that the controller does not trust when an entry is written cannot read that entry. Steps and emits are named by number and blobs by a time and random characters, so another client learns only how many entries a record has, with their sizes and times (see store.md).
 
 ## How long it is kept
 
@@ -40,7 +58,7 @@ A run is reported once more when it ends, saying how. For a listing that does no
 
 For an instance whose record the watcher may read, it then reads the entries it has not seen. Because entries never change, each is read once.
 
-What a watcher sees depends only on what the store lets it read, and there are three levels. With no access it sees nothing. With access to heads it sees where every instance stands and nothing inside any of them, which is what a dashboard or a metrics exporter needs. A client sees where the runs of its trees stand and everything inside them.
+What a watcher sees depends only on what the store lets it read, and there are three levels. With no access it sees nothing. With access to heads it sees where every instance stands and nothing inside any of them, which is what a dashboard or a metrics exporter needs. A client sees where the runs of its trees, and of files whose `read:` lists it, stand and everything inside them.
 
 Watching holds no state anywhere and asks nothing of the controller. In a directory or in memory, a watcher in the same process as the writer is told at once that something was written. Any other watcher looks again at an interval, which is the one setting watching has.
 

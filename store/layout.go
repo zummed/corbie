@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -216,9 +217,23 @@ func Step(ctl, instance string, number int) string {
 	return fmt.Sprintf("%s/records/%s/steps/%08d", ctl, instance, number)
 }
 
-// Emit is the name of an emit entry of a job.
-func Emit(ctl, instance, job string, number int) string {
-	return fmt.Sprintf("%s/records/%s/emits/%s/%08d", ctl, instance, job, number)
+// Emit is the name of an emit entry of a job: under the job's number in
+// the instance, never its name, since every client lists every record.
+func Emit(ctl, instance string, job, number int) string {
+	return fmt.Sprintf("%s/records/%s/emits/%08d/%08d", ctl, instance, job, number)
+}
+
+// EmitOf reads the job's number and the entry's number out of the name of
+// an emit entry of an instance.
+func EmitOf(ctl, instance, name string) (job, number int, ok bool) {
+	rest, ok := strings.CutPrefix(name, Emits(ctl, instance)+"/")
+	parts := strings.Split(rest, "/")
+	if !ok || len(parts) != 2 {
+		return 0, 0, false
+	}
+	job, jobErr := strconv.Atoi(parts[0])
+	number, numberErr := strconv.Atoi(parts[1])
+	return job, number, jobErr == nil && numberErr == nil && job > 0 && number > 0
 }
 
 // Number reads the number at the end of a step's or an emit's name.

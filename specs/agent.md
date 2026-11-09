@@ -36,7 +36,7 @@ An agent may be started with the conversation of an earlier agent's result, and 
 
 ## Tools
 
-A tool is a named job, a script, a machine, a call or a send, with a description, the shape of its arguments, and its own permissions. The job reads the agent's input and the arguments the model supplied. A tool whose job is an agent is how an agent has sub-agents: the model is shown what the sub-agent replied, and the sub-agent's conversation stays in its own record.
+A tool is a named job, written with `script:`, `machine:`, `call:` or `send:`, with a description, the shape of its arguments, and its own permissions. The job reads the agent's input and the arguments the model supplied. A tool whose job is an agent is how an agent has sub-agents: the model is shown what the sub-agent replied, and the sub-agent's conversation stays in its own record.
 
 A tool's `description:` is plain text, and Corbie refuses an expression in it, as in a definition's. A call or a send names a location read from the agent's tree, and needs `send:` for it (see [Permissions](permission.md)).
 
@@ -93,7 +93,7 @@ The location is written out, from the tree's prefix. These are refused when the 
 
 A tool may give `when:`, a condition on the agent's input. It is checked once, when the run starts, and a tool whose `when:` does not hold is not offered (see [Who is offered what](#who-is-offered-what)).
 
-A tool that needs approval goes to the agent's ask like any job. A `call:` or `send:` job is held when `approve:` names its `send:` entry. The tool calls from one turn that need it go together, and the ask is shown the arguments, the tool's description and what the model said. A tool call that needs no approval runs at once, and the next turn waits for the ask as well as for the tools. A tool call that is not approved goes back to the model as denied, with the ask's note.
+A tool that needs approval goes to the agent's ask like any job. A `call:` or `send:` job is held when `approve:` names its `send:` entry. The tool calls from one turn that need it go together, and the ask is shown the tool's name as `tool`, the arguments, the tool's description and what the model said. A tool call that needs no approval runs at once, and the next turn waits for the ask as well as for the tools. A tool call that is not approved goes back to the model as denied, with the ask's note.
 
 ## Shared definitions
 
@@ -166,7 +166,7 @@ return input?.tool ? server.call(input.tool, { args: input.args }) : server.tool
 3. A call runs the entry's `job:`, where `${tool}` is the tool's own name, `create_issue`.
 
 - The list is made once in a run, kept in the agent's record, and is the same for every turn.
-- Every step of the agent after its first is taken in a process of its own, since a list's shapes come from outside the definition (see Controller).
+- A list is words from outside (see [Machines](machine.md#words-from-outside)), so every step of the agent after its first is taken in a process of its own (see Controller).
 - Every listed tool has the entry's permissions and, if the entry's job is marked for approval, its approval. The ask is shown the name the model used, the arguments, the entry's name as `entry` and the tool's own name as `tool`.
 - The model can call every tool the list gives. The `list:` script narrows that by returning fewer.
 - A tool's description and its shape are shown to the model as the list gives them.
@@ -197,7 +197,6 @@ toolkits:
 description: The firewall and the switch, and the network's docs.
 instructions: |
   Run show commands only. ${input.asker.name} is asking.
-ask: { machine: ./approval.yaml }
 tools:
   show_status:
     description: Run one read-only status command.
@@ -214,7 +213,6 @@ tools:
 |---|---|
 | `description:` | what the toolkit is for, in plain text with no expression, which the model reads before it opens it |
 | `instructions:` | the text `open` gives the model, written as `system:` is |
-| `ask:` | the ask for the toolkit's tools and for opening it |
 | `approve:` | `true` holds the toolkit's open for the ask |
 | `when:` | a condition on the agent's input: the toolkit is offered only if it holds |
 | `tools:` | the toolkit's tools, written as an agent's are |
@@ -226,10 +224,8 @@ tools:
 - A tool of a toolkit may not take the name of another tool of the agent.
 - `open` is supplied by Corbie, as the blob tools are, and no tool may take its name. It is not shown while no toolkit can be opened.
 - The list of an entry with `list:` in a toolkit is made before the first turn, as any list is. An error names it by where it is written, as `toolkits.net.tools.files.list`.
-- A toolkit marked `approve: true` holds its `open` job for the ask, which is shown the toolkit's name as `toolkit` and the toolkit's `description:`. An open that is not approved goes back to the model as denied, with the ask's note, and opens nothing. Only an approved open opens such a toolkit.
-- For a call of a toolkit's tool, and for the list of an entry in a toolkit, the ask is shown the toolkit's name as `toolkit`.
-- A toolkit of an agent made while running cannot name an ask (see Machines).
-- A toolkit may name an ask. It is the ask for the jobs and lists of the toolkit's tools and for opening the toolkit, before the agent's own, and the nearest ask above every machine below those tools' jobs. Its permissions are its own, as any ask's are, and its expressions read the agent's input. Like any ask, it is filled in and started once for the held calls of one turn, and one that cannot be filled in denies them.
+- A toolkit has no ask. Its `open`, the calls of its tools and their lists go to the agent's ask, which is shown the toolkit's name as `toolkit`. A toolkit that writes `ask:` is refused.
+- A toolkit marked `approve: true` holds its `open` job for the ask, which is shown the toolkit's `description:` too. An open that is not approved goes back to the model as denied, with the ask's note, and opens nothing. Only an approved open opens such a toolkit.
 
 ## Who is offered what
 
@@ -300,4 +296,20 @@ Every agent has tools for working with blobs without reading them whole: one to 
 
 ## Events
 
-An agent acts on the results of its turns, its tools and its ask, and on nothing else. A send to an agent run by its address is noted as undelivered in the sender's record. Events sent down to it, and events its tools send up while they run, are ignored; a watcher still sees them in the record.
+An agent acts on the results of its turns, its tools and its ask, and on nothing else. A send to an agent run by its address is noted as undelivered in the sender's record, and one to a transient agent's location starts a new run of it, with the event's data as its input. Events sent down to it, and events its tools send up while they run, are ignored; a watcher still sees them in the record.
+
+## The record
+
+An agent's record holds these entries, under these names:
+
+| Entry | What it is |
+|---|---|
+| job `turn`, `turn#2`, … | one turn, whatever script makes it; its input names the model as `model.name` |
+| emit `text` of a turn | a piece of the model's reply, as `llm.chat` gives it |
+| `done` from a turn | `{ turn, text, calls: [{ id, name, args }], stop, usage: { input, output } }` |
+| job named after a tool, `shelf`, `shelf.1` | one call of the tool the model named; its `done` or `failed` goes back to the model |
+| job `open` | an open of a toolkit |
+| job `preview`, `preview.1` | the preview of a blob before the model is first shown it |
+| job named after an entry with `list:` | the list of that entry's tools, made before the first turn |
+
+`stop` is `end`, `tools` or `length`.

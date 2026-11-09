@@ -1,0 +1,15 @@
+{
+  "status": "done",
+  "record": [
+    { "machine": "asker", "ask": { "kind": "event", "location": "/case/echo", "run": "<any>" } },
+    { "machine": "asker", "ask": { "kind": "event", "location": "/case/note", "run": "<any>" } },
+    { "machine": "echo", "event": { "name": "hello", "sender": { "at": "/case/root", "run": "<any>" } } },
+    { "machine": "echo", "status": "done" },
+    { "machine": "note", "status": "done" },
+    { "machine": "asker", "event": { "name": "heard", "sender": { "at": "/case/echo", "run": "<any>" },
+      "data": { "from": { "at": "/case/root", "run": "<any>" }, "key": null, "me": { "at": "/case/echo", "run": "<any>" } } } },
+    { "machine": "asker", "event": { "name": "written", "sender": { "at": "/case/note", "run": "<any>" },
+      "data": { "me": { "at": "/case/note", "run": "<any>" } } } }
+  ],
+  "note": "R-ctl-132, R-mach-24: a send to a transient location starts a run of it, a chart is given the event and a flow only its start, and run.address is the address event.from gives."
+}

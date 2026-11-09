@@ -73,14 +73,16 @@ func Test_mach_update_says_what_a_change_does(t *testing.T) {
 	}
 }
 
-// limits: { runs: } caps the runs of a keyed file.
-func Test_mach_runs_limits_a_keyed_file(t *testing.T) {
-	if d := parsed(t, "listener: l\nlifetime: keyed\nlimits: { runs: 50 }\n", nil); d.Definition.Runs != 50 {
-		t.Errorf("runs is stored as %d", d.Definition.Runs)
+// limits: { runs: } caps the runs of a keyed or a transient file.
+func Test_mach_runs_limits_a_keyed_or_transient_file(t *testing.T) {
+	for _, src := range []string{"listener: l\nlifetime: keyed\nlimits: { runs: 50 }\n", "probe: p\nlimits: { runs: 50 }\n"} {
+		if d := parsed(t, src, nil); d.Definition.Runs != 50 {
+			t.Errorf("%q: runs is stored as %d", src, d.Definition.Runs)
+		}
 	}
 	for src, want := range map[string]string{
-		"probe: p\nlimits: { runs: 5 }\n":                     "limits.runs: runs limits the runs of a keyed file, and this file is not keyed",
-		"listener: l\nlifetime: keyed\nlimits: { runs: 0 }\n": "limits.runs: runs is at least 1",
+		"probe: p\nlifetime: singleton\nlimits: { runs: 5 }\n": "limits.runs: runs limits the runs of a keyed or transient file, and a singleton has one run",
+		"listener: l\nlifetime: keyed\nlimits: { runs: 0 }\n":  "limits.runs: runs is at least 1",
 	} {
 		if got := problems(t, src, nil); !strings.Contains(got, want) {
 			t.Errorf("%q gave:\n%s", src, got)
@@ -146,6 +148,31 @@ func Test_mach_receive_says_who_may_send(t *testing.T) {
 		if !strings.Contains(got, want) {
 			t.Errorf("the mistake %q is not said in:\n%s", want, got)
 		}
+	}
+}
+
+// A file's read: names the clients that read its runs' records, each as
+// client:<name>, written out, each once. A machine written in place or made while
+// running has no location, and refuses it.
+func Test_mach_read_names_clients(t *testing.T) {
+	d := parsed(t, "probe: p\nread: [client:wall, client:phone]\n", nil)
+	if got := d.Definition.Read; !slices.Equal(got, []string{"client:wall", "client:phone"}) {
+		t.Errorf("read: is stored as %v", got)
+	}
+	got := problems(t, "probe: p\nread: [wall, \"client:\", \"client:${input.who}\", client:wall, client:wall]\nwork:\n  a: { machine: { probe: inner, read: [client:wall] } }\n", nil)
+	for _, want := range []string{
+		`read[0]: "wall": read: names clients, as client:wall`,
+		"read[1]: client: names a client",
+		`read[2]: "client:${input.who}": a read: entry is written out`,
+		`read[4]: "client:wall" is listed twice`,
+		"read: read belongs to a file at a location",
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("the mistake %q is not said in:\n%s", want, got)
+		}
+	}
+	if _, err := ParseMade([]byte("probe: p\nread: [client:wall]\n"), files(nil)); err == nil || !strings.Contains(err.Error(), "read belongs to a file") {
+		t.Errorf("a machine made while running gave: %v", err)
 	}
 }
 
@@ -278,7 +305,7 @@ func Test_mach_a_job_sends(t *testing.T) {
 	got := problems(t, "probe: p\nwork:\n  a: { send: { to: { at: x }, event: e }, input: 1, timeout: 5s }\n  b: { send: { to: { at: x }, event: e }, script: ./a.js }\n  c: { send: { to: { at: x }, event: done } }\n  d: { send: { to: { at: x }, event: \"${input.e}\" } }\n", map[string]string{"a.js": ""})
 	for _, want := range []string{
 		"work.a: a send takes to, event and data, and approve, allow and deny: it has no input, timeout",
-		"work.b: a job is one of a script, a machine, a send or a call",
+		"work.b: a job writes one of script:, machine:, call: and send:",
 		`work.c.send.event: "done": no machine can send an event named`,
 		`work.d.send.event: "${input.e}": the event's name is written out`,
 	} {

@@ -65,6 +65,8 @@ matches, allows what its allow list matches, and refuses everything else.
   sender but the runner's ceiling, and the receiver's `receive:` must accept
   the sender (`corbie manual definitions`). A client needs neither for the
   runs of its own trees. The sender adds nothing to the receiving run's layers.
+- A file's `read:` lets other clients read its runs, and gives them nothing
+  else (`corbie manual definitions`).
 
 Refusals
 --------

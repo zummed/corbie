@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/zummed/corbie/blob"
+	"github.com/zummed/corbie/identity"
 	"github.com/zummed/corbie/instance"
 	"github.com/zummed/corbie/machine"
 	"github.com/zummed/corbie/plugin"
@@ -317,9 +318,9 @@ func (e *emits) write(j *supervised) error {
 	e.batch = nil
 	e.entries++
 	r, job, ctl := j.r, j.job, j.s.Controller
-	at := store.Emit(ctl.Name, job.Instance, job.Name, e.entries)
+	at := store.Emit(ctl.Name, job.Instance, job.Number, e.entries)
 	entry := &instance.Emit{Job: job.Name, Number: e.entries, Values: batch}
-	data, err := r.ID.Write(at, r.Now(), noEnd, entry, ctl, job.Client)
+	data, err := r.ID.Write(at, r.Now(), noEnd, entry, append([]identity.Card{ctl}, job.Readers...)...)
 	if err != nil {
 		return err
 	}

@@ -258,8 +258,9 @@ func (g *gromit) posted(chat string) map[string]any {
 // The worked example of a project under Rook, run without services: a
 // person asks in Slack, the router sends it to the conversation, the agent
 // is offered the toolkits the person's scopes allow, a call that needs a
-// yes goes to the toolkit's ask, which asks in a channel and is answered
-// with a press, and the reply is posted in the thread.
+// yes goes to the agent's ask, which asks the approvers of the call's
+// toolkit in that toolkit's channel and is answered with a press, and the
+// reply is posted in the thread.
 func TestWorkedExample(t *testing.T) {
 	g := newGromit(t)
 
@@ -302,15 +303,15 @@ func TestWorkedExample(t *testing.T) {
 		}
 	})
 
-	t.Run("a held call goes to the toolkit's ask and an approved one runs where its secret is set", func(t *testing.T) {
+	t.Run("a held call goes to its toolkit's approvers and an approved one runs where its secret is set", func(t *testing.T) {
 		g.t = t
 		const asked = "orders-2 is stuck, can you restart it?"
 		g.say("cy@acme.example", "#support", "C1/1", asked)
 		q := g.question()
-		if q.StartedBy == "" {
+		if q.Cause.Run == "" {
 			t.Fatalf("the question was started by nothing: %+v", q)
 		}
-		approval := show(t, g.l, q.StartedBy)
+		approval := show(t, g.l, q.Cause.Run)
 		jobs, _ := approval.Input.(map[string]any)["jobs"].([]any)
 		if approval.Machine != "approval" || approval.Location != "/acme/agents/support" || len(jobs) != 1 {
 			t.Fatalf("the question was asked by %s at %s for %s", approval.Machine, approval.Location, jsonOf(approval.Input))
@@ -443,7 +444,7 @@ func TestWorkedExample(t *testing.T) {
 		g.t = t
 		g.say("di@acme.example", "#deploys", "C5/5", "deploy orders")
 		q := g.question()
-		approval := show(t, g.l, q.StartedBy)
+		approval := show(t, g.l, q.Cause.Run)
 		jobs, _ := approval.Input.(map[string]any)["jobs"].([]any)
 		if approval.Location != "/acme/deploys" || len(jobs) != 1 || jobs[0].(map[string]any)["name"] != "deploying" {
 			t.Fatalf("the ask at %s was given %s", approval.Location, jsonOf(approval.Input))

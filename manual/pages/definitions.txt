@@ -22,13 +22,14 @@ Fields every type takes
   lifetime: singleton          how runs start at the file's location, as below
   update: restart              what a changed file does to its runs, as below
   receive: [client:panel]      who may send to its runs or call it, as below
+  read: [client:wall]          other clients that read its runs, as below
 
 `title:` names a run to a person, and `corbie run show` prints it. Its
 expressions read `input`, `values` and `run`.
 
 - A title is one line of at most 200 characters. Each run of white space,
   line breaks among it, becomes one space, and a longer title is cut.
-- Only the client that owns the run's tree sees its title. `corbie run ls`
+- Only the clients that read the run's record see its title. `corbie run ls`
   does not print it.
 - A title that cannot be filled in fails the run, as an input that does not
   fit does.
@@ -38,7 +39,7 @@ expressions read `input`, `values` and `run`.
   timeout: 1h    how long a run may take; default no limit
   depth: 16      levels of child runs below a run that a client or a submit started; default 16, 0 for none
   jobs: 100      how many jobs a run may start; default no limit
-  runs: 50       of a keyed file, how many of its runs may be running at once; default no limit
+  runs: 50       of a keyed or transient file, how many runs at its location may be running at once; default no limit
   turns: 20      an agent's turns, as in `corbie manual agent`
 
 A length of time is written `30s`, `5m`, `48h` or `7d`.
@@ -151,7 +152,7 @@ An expression reads these names.
 
   input                     the run's input, in every type
   values                    the values set at the run's location or above, as `values.HUB`
-  run                       the run's `id`, `location`, `context` and `tree`, in every type
+  run                       the run's `id`, `location`, `key`, `address`, `context` and `tree`, in every type
   stages, item              in a flow
   states, event, tickets    in a statechart
   args                      in an agent's tool
@@ -183,9 +184,11 @@ It may use JavaScript's operators, `? :`, arrow functions, methods such as
 Jobs
 ----
 
-A machine contains jobs. A job is a script, which a runner executes, a
-machine, which the controller starts as a child run, or a send or a call to
-another run, as below.
+A machine contains jobs. A job is a script, a machine, or a send. A machine is
+named by its file (`machine:`) or by its location (`call:`), and a send
+delivers an event and returns nothing. A runner executes a script; a machine
+named by its file runs as a child run, and one named by its location as a run
+of its own whose result is the job's output.
 
   script: ./fetch.js           a script file
   machine: ./child.yaml        a definition file, or a definition written in place
@@ -268,16 +271,17 @@ none, as `corbie manual a-directory` shows.
 
   lifetime: singleton    one run, started by the submit
   lifetime: keyed        one run for each key a send names; statecharts only
-  lifetime: transient    a run for each call or start; the default
+  lifetime: transient    a new run for each call, start or send; the default
 
   update: restart        a changed file cancels the runs at its location
   update: drain          they finish on the definition they started with; the default
 
 - A singleton always restarts, and `update: drain` on one is refused.
-- `limits: { runs: 50 }` on a keyed file caps how many of its runs are running
-  at once.
+- `limits: { runs: 50 }` on a keyed or transient file caps how many runs at its
+  location are running at once. Past it a send that would start a run is not
+  delivered, a call fails, and a client's start is refused.
 - A machine written in place or made while running has no location, and
-  refuses `lifetime:`, `update:`, `receive:` and `runs:`.
+  refuses `lifetime:`, `update:`, `receive:`, `read:` and `runs:`.
 
 Sending and calling
 -------------------
@@ -286,6 +290,7 @@ A job sends an event to a run by its address, or calls a location and waits
 for the result.
 
   { at: devices/boiler }                    the run of a singleton location
+  { at: services/report }                   a new run of a transient location
   { at: rooms/thermostat, key: kitchen }    the run for that key, started if none is running
   { at: devices/boiler, run: <ID> }         one run by its ID
 
@@ -301,7 +306,8 @@ for the result.
 - A send job ends `done` once the event is written. It takes `to`, `event`,
   `data`, `approve`, `allow` and `deny`, and nothing else.
 - A call job's output is the called run's result. It fails if the receiver
-  refuses it, if the location is not transient, or if the run fails.
+  refuses it, if the location is not transient or is at its `limits: { runs }`,
+  or if the run fails.
 - A call job takes `call`, `input`, `timeout`, `restart`, `approve`, `allow`
   and `deny`. Its `timeout` is the called run's, and each restart calls again.
 - The called run belongs to its own tree's client. Cancelling the call job
@@ -322,11 +328,27 @@ A send or a call needs the sender's permissions, a send or call job's own
 - A call is checked against a list. A mapping takes a call only from the
   tree's client.
 - The run reads the sender as `event.from`: `{ at, run }`, with `key` for a
-  keyed run, or `{ client }`.
+  keyed run, or `{ client }`. A run reads its own address as
+  `${run.address}`, and its key as `${run.key}`, which is null except at a keyed
+  location.
+- A send to a transient location starts a new run with the event's data as
+  its input. A statechart is then given the event; a flow or an agent is given
+  only the start.
 - A send the receiver refuses, or that no running statechart can take, is
   noted as undelivered in the sender's record and fails nothing, after the
   sender's end if it has ended.
-- A machine made while running sends only to its parent and its children.
+- What a machine made while running may address is under Words from outside.
+
+A file's `read:` lists clients, beside its tree's, that read its runs: their
+records, tickets and files, and those of the runs below them.
+
+  read: [client:wall]          wall lists and shows the runs, and reads their records
+  receive: [client:wall]       wall sends to them too
+
+- A listed client does not own the tree. It cannot submit there or cancel the
+  runs.
+- A run keeps the list it started with.
+- A client the controller does not trust reads nothing. The submit prints its name.
 
 Events
 ------
@@ -368,10 +390,10 @@ The ask is a job, and the controller adds two fields to its input.
   input.asking    { machine, instance }: the machine whose jobs are held, and its run's ID
   input.jobs      [{ name, input, allow, script, machine, call or send, asked }]: each held job
 
-- A held job has `asked: { description, args, said }` only for an agent's tool
-  call, with `entry` and `tool` too for a tool from a `list:`, and `toolkit`,
-  the toolkit's name, for a tool of a toolkit or for `open`. The list of an
-  entry in a toolkit has `asked: { toolkit }`.
+- A held job has `asked: { tool, description, args, said }` only for an agent's
+  tool call, with `entry` too for a tool from a `list:`, and `toolkit`, the
+  toolkit's name, for a tool of a toolkit or for `open`. The list of an entry
+  in a toolkit has `asked: { toolkit }`.
 - A held call job has `call: { at }`, and a held send job `send: { to, event, data }`.
 
 The ask returns `{ approved: [names of jobs], note: "..." }`.
@@ -383,13 +405,9 @@ An ask that fails, whose values cannot be filled in, or that returns any other
 value, approves nothing.
 
 - A machine with no `ask:` uses the nearest `ask:` above it.
-- A machine made while running has no ask of its own, and one that writes an
-  `ask:` fails as it starts, saying so. Its held jobs go to the nearest `ask:`
-  above it that was not made while running, and with none they fail with
-  status `denied`.
-- The jobs of an agent's toolkit, and the machines below them, use the
-  toolkit's `ask:`, when it has one, before the agent's. The controller starts
-  each ask once for the jobs of one step that use it.
+- Where the held jobs of a machine made while running go is under Words from
+  outside.
+- The controller starts the ask once for the held jobs of one step.
 - A machine run as an ask uses no `ask:` and no `approve:` list from above it.
 - A run started by a send or a call uses only its own file's `ask:`.
 - A run of a definition that can hold a job and has no `ask:` in it or above
@@ -406,6 +424,20 @@ its `allow:` list has no `fs.write` entry.
 
     corbie test ask.js --input '{"jobs": [{"name": "look", "allow": ["fs.read:/srv/**"]}, {"name": "tidy", "allow": ["fs.write:/srv/**"]}]}'
       output: {"approved":["look"],"note":"writes are not approved here"}
+
+Words from outside
+------------------
+
+A machine made while running, which a script or a model wrote, and the tools a
+`list:` gives an agent are words from outside. They name no ask and no address.
+
+- A machine made while running has no ask of its own. Its held jobs go to the
+  nearest `ask:` above it that was not made while running, and with none they
+  fail with status `denied`. One that writes `ask:` fails as it starts.
+- A machine made while running sends only to its parent and its children. A
+  send to an address or a call fails it.
+- A tool from a `list:` runs the entry's `job:`, which the definition writes,
+  and waits for the agent's `ask:` as any tool does.
 
 Reference
 ---------

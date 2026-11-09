@@ -550,6 +550,9 @@ func (e *Env) submit(tree *client.Tree) error {
 		for _, name := range done.Missing {
 			fmt.Fprintf(&b, "not set at its location or above: %s\n", name)
 		}
+		for _, name := range done.Untrusted {
+			fmt.Fprintf(&b, "not a client the controller trusts: %s\n", name)
+		}
 		return b.String()
 	})
 	if err == nil && len(printed.Problems) > 0 {
@@ -739,8 +742,8 @@ func runText(run *client.Run, script bool) string {
 	if run.Key != "" {
 		fmt.Fprintf(&b, "  key: %q\n", run.Key)
 	}
-	if run.StartedBy != "" {
-		fmt.Fprintf(&b, "  started by: %s\n", run.StartedBy)
+	if run.Cause.Run != "" {
+		fmt.Fprintf(&b, "  cause: %s step %d\n", run.Cause.Run, run.Cause.Step)
 	}
 	if len(run.Labels) > 0 {
 		fmt.Fprintf(&b, "  labels: %s\n", labelsOf(run))

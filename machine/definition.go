@@ -50,6 +50,9 @@ type Definition struct {
 	// name, with "" for every event. With none, its own tree and its tree's
 	// client may.
 	Receive map[string][]string `json:"receive,omitzero"`
+	// Read names the clients, beside its tree's, that read the records of
+	// the file's runs, each as client:<name>.
+	Read []string `json:"read,omitzero"`
 	// Body is the type's own part.
 	Body jsontext.Value `json:"body"`
 	// Scripts and Machines are the files and child definitions the
@@ -315,17 +318,6 @@ func (c *Checker) Name(place, name string) {
 // than a job marked for it, which needs an ask as such a job does.
 func (c *Checker) Approves() { c.approves = true }
 
-// Asked checks jobs that go to an ask of their own when they are held, an
-// ask nearer than the definition's: they need no ask from the definition
-// or above it. With no ask of their own they go to the definition's.
-func (c *Checker) Asked(ask *JobSpec, check func()) {
-	before := c.approves
-	check()
-	if ask != nil {
-		c.approves = before
-	}
-}
-
 // reading adds to the names a place gives what every expression reads.
 func reading(names []string) []string { return append(slices.Clip(names), RunName, ValuesName) }
 
@@ -408,9 +400,9 @@ func (c *Checker) Job(place string, s *JobSpec, names ...string) {
 	}
 	switch {
 	case kinds > 1:
-		c.Problem(place, "a job is one of a script, a machine, a send or a call")
+		c.Problem(place, "a job writes one of script:, machine:, call: and send:")
 	case kinds == 0:
-		c.Problem(place, "a job needs a script, a machine, a send or a call")
+		c.Problem(place, "a job writes one of script:, machine:, call: and send:, and this one writes none")
 	case s.IsSend():
 		if s.Input != nil || s.Timeout != "" || s.Restart != nil || s.Memory != 0 || len(s.Tags) > 0 || len(s.Files) > 0 {
 			c.Problem(place, "a send takes to, event and data, and approve, allow and deny: it has no input, timeout, restart, memory, tags or files")
@@ -679,8 +671,22 @@ func (c *Checker) location(def *Definition) {
 	switch {
 	case def.Runs < 0:
 		c.Problem("limits.runs", "runs is at least 1")
-	case def.Runs > 0 && def.Lifetime != LifetimeKeyed:
-		c.Problem("limits.runs", "runs limits the runs of a keyed file, and this file is not keyed")
+	case def.Runs > 0 && def.Lifetime == LifetimeSingleton:
+		c.Problem("limits.runs", "runs limits the runs of a keyed or transient file, and a singleton has one run")
+	}
+	for i, entry := range def.Read {
+		at := fmt.Sprintf("read[%d]", i)
+		name, ok := strings.CutPrefix(entry, "client:")
+		switch {
+		case HasExpr(entry):
+			c.Problem(at, "%q: a read: entry is written out, with no expression", entry)
+		case !ok:
+			c.Problem(at, "%q: read: names clients, as client:wall, since only a client reads a record", entry)
+		case name == "":
+			c.Problem(at, "client: names a client, as client:wall")
+		case slices.Index(def.Read, entry) < i:
+			c.Problem(at, "%q is listed twice", entry)
+		}
 	}
 	for _, event := range sortedKeys(def.Receive) {
 		place := "receive"
@@ -761,11 +767,8 @@ type Draft struct {
 	Children   map[string]*Draft
 	// needsAsk says a job in it is held for approval and it has no ask.
 	needsAsk bool
-	// asks are the machines it runs as an ask, each with its place.
-	asks map[string]string
-	// nearer says, of each machine it runs, whether only jobs that go to
-	// an ask nearer than its own run it.
-	nearer map[string]bool
+	// ask is the machine it runs as its ask, if its ask is a machine.
+	ask string
 	// size is the size of the definition as it is stored.
 	size int
 	// written is the definition as it is written out, with what it

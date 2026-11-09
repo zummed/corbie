@@ -18,7 +18,7 @@ A definition may carry `meta:`, with any value. Corbie keeps it with the stored 
 
 A definition may give `description:`, plain text that says what the machine is for. Corbie keeps it with the stored definition, and refuses an expression in it.
 
-A definition may give `title:`, which names a run to a person. Its expressions read `input`, `values` and `run`, and the controller fills it in when the run starts and keeps it in the run's record, never in its head, so only the client that owns the run's tree sees it. A title is one line of at most 200 characters: each run of white space, line breaks among it, becomes one space, and a longer title is cut.
+A definition may give `title:`, which names a run to a person. Its expressions read `input`, `values` and `run`, and the controller fills it in when the run starts and keeps it in the run's record, never in its head, so only the clients that read the run's record see it. A title is one line of at most 200 characters: each run of white space, line breaks among it, becomes one space, and a longer title is cut.
 
 ```yaml
 title: "${input.channel}: ${input.said}"     # a run's title: "#testing: give me a release card for 4.2"
@@ -117,7 +117,7 @@ A client submits a directory at a prefix, and the directory becomes a tree (see 
 |---|---|---|
 | `singleton` | one | the submit |
 | `keyed` | one per key, statecharts only | a send to a key with no running run (see statechart.md) |
-| `transient` | any number; the default | a call, or `corbie run submit <location>` by the tree's client |
+| `transient` | any number; the default | a call, a send to `{ at }`, or `corbie run submit <location>` by the tree's client |
 
 ```
 $ corbie run submit house --at /home
@@ -126,14 +126,15 @@ $ corbie run submit house --at /home
 /home/services/weather   transient   recorded
 ```
 
-The submit starts the boiler's run. The thermostat starts a run for each room a send names, and the weather service one for each call. `house/.corbieignore` lists `shared/`, so `house/shared/base.yaml` has no location and is not printed.
+The submit starts the boiler's run. The thermostat starts a run for each room a send names, and the weather service one for each call or send. `house/.corbieignore` lists `shared/`, so `house/shared/base.yaml` has no location and is not printed.
 
 Every run has a location, and its authority comes from it: its file's `allow:` and `ask:`, its tree client's ceiling, and the secrets and values set at its location or above (see permission.md and secret.md).
 
 - A child started by `machine:` runs at its parent's location.
 - A machine made while running has no file of its own. It runs at the location of the job that starts it, narrowed by that job's list.
-- `limits: { runs: N }` on a keyed file caps how many of its runs are running at once (see statechart.md). N is at least 1, and `runs` on a file that is not keyed is refused.
-- `lifetime:`, `update:`, `receive:` and `limits: { runs: }` belong to a file at a location, and are refused in a machine written in place or made while running.
+- `limits: { runs: N }` on a keyed or transient file caps how many runs at its location are running at once. At the cap a send that would start a run is noted as undelivered, a call fails with the reason, and a client's start is refused in its receipt. N is at least 1, and `runs` on a singleton is refused.
+- `read: [client:wall]` lists the clients, beside the tree's, that read the runs at the location (see permission.md).
+- `lifetime:`, `update:`, `receive:`, `read:` and `limits: { runs: }` belong to a file at a location, and are refused in a machine written in place or made while running.
 
 A file of one line places a machine that a listed file holds at its own location:
 
@@ -191,8 +192,16 @@ Expressions are JavaScript. They read `input`, which is what the machine was sta
 ```
   run.id         the run's ID
   run.location   the run's location, such as /home/devices/boiler
+  run.key        the run's key at a keyed location, such as kitchen; null for any other run
+  run.address    the address other runs send to this run with: { at, run }, with key for a keyed run
   run.context    the absolute path of the directory last submitted at the run's tree
   run.tree       the prefix of the run's tree, such as /home
+```
+
+`run.address` is what `event.from` gives a receiver of this run's sends, so a run hands out its own return address:
+
+```yaml
+send: { to: { at: services/report }, event: make, data: { reply_to: "${run.address}" } }
 ```
 
 Everything else that varies from one run of a definition to the next comes in through `input`, and from one tree to the next through `values`.
@@ -267,7 +276,16 @@ A `default` that `properties` and `items` do not lead to from the top, such as o
 
 ## Jobs
 
-A machine contains jobs, which do its work. A job is a script, which a runner executes, or a machine, which the controller starts as a child run. Either way it has an input, the permissions it may use, a limit on time, and optionally a restart policy. A script also has a limit on memory and tags that choose which runners may take it.
+A machine contains jobs, which do its work. A job is a script, a machine, or a send. A machine is named by its file (`machine:`) or by its location (`call:`), and a send delivers an event and returns nothing.
+
+| Job | What runs |
+|---|---|
+| `script: ./fetch.js` | the script, on a runner |
+| `machine: ./child.yaml` | the machine of that file, as a child run |
+| `call: { at: services/weather }` | the machine at that location, as a run of its own whose result is the job's output (see Sending and calling) |
+| `send: { to, event, data }` | nothing: the job delivers the event to a run and returns nothing |
+
+A script or a machine has an input, the permissions it may use, a limit on time, and optionally a restart policy. A script also has a limit on memory and tags that choose which runners may take it.
 
 A program using Corbie as a library can list a definition's jobs, each with its place, such as `stages.a.job`.
 
@@ -324,6 +342,7 @@ A machine sends an event to a run by its address, or calls a location and waits 
 | Address | Sends to |
 |---|---|
 | `{ at: devices/boiler }` | the run of a `singleton` location |
+| `{ at: services/report }` | a new run of a `transient` location |
 | `{ at: rooms/thermostat, key: kitchen }` | the run for that key at a `keyed` location, started if none is running |
 | `{ at: devices/boiler, run: <ID> }` | one run by its ID, a child run included |
 
@@ -339,8 +358,15 @@ job: { call: { at: services/weather }, input: { days: 2 } }
 - A location in an address, a `send:` entry or a `receive:` entry is read from the tree's prefix, unless it starts with `/`, which is a full path into any tree. A name in it is not empty, `.`, `..` or `+`, and holds no `#`, backslash or control character.
 - `job: { send: … }` ends `done`, with no output, once the message is written. An event too large to write, past 256 KiB, fails the job, as any job's message does. Beside `send:` it takes `approve:`, `allow:` and `deny:`, and no other field of a job.
 - `at`, `key` and `run` may hold expressions, and `to` may be one expression that gives an address. An address is checked once it is filled in.
-- `job: { call: { at }, input }` starts a run of a `transient` location and waits. The job's output is that run's result. The job fails if the receiver refuses it, if the location is not `transient`, or if the run fails.
+- `job: { call: { at }, input }` starts a run of a `transient` location and waits. The job's output is that run's result. The job fails if the receiver refuses it, if the location is not `transient` or is at its `limits: { runs }`, or if the run fails.
 - A key is any text of 1 to 256 characters. It is written in the run's head, as a label is, so anyone who can list runs can read it, and it holds no secret.
+
+A send to a transient location's `{ at }` is a send to a key no other send names: it always starts a new run.
+
+1. The event's data is the new run's input.
+2. A statechart is then given the event, as a keyed run is. A flow or an agent takes no sent event, and is given only the start.
+
+`receive:`, the depth limit, `event.from` and `limits: { runs }` work as for a keyed run.
 
 A send or a call needs two lists to agree:
 
@@ -364,7 +390,7 @@ The controller writes the sender into `event.from`: `{ at, run }`, with `key` fo
 | the sender's own layers refuse it | `denied` |
 | the receiver's `receive:` refuses it | noted as undelivered in the sender's record |
 | no running statechart can take it: it names a flow or an agent run, a run that has ended, or a key that is empty or past 256 characters | noted as undelivered |
-| a keyed location is at its `limits: { runs: }` and no run has the key | noted as undelivered |
+| it would start a run at a location at its `limits: { runs: }` | noted as undelivered |
 | a run kept it under `defer:` and was cancelled or restarted | noted as undelivered |
 | it is named `start`, `done`, `failed`, `timer`, a timer's name or a ticket's name | noted as undelivered |
 
@@ -378,7 +404,7 @@ A run started by a send or a call:
 - Its held jobs go only to its own file's `ask:` (see Approval).
 - It holds a copy of the blobs the event names, so it needs nothing of the sender's record.
 
-A machine made while running sends only to its parent and its children. A send to an address or a call in it fails that machine.
+For what a machine made while running may address, see [Words from outside](#words-from-outside).
 
 ## Children
 
@@ -403,17 +429,22 @@ Services that carry questions to people, such as a chat program, are clients at 
 
 ## Approval
 
-A job can be made to wait for a yes before it starts. A job is held if it is marked for approval, or if a permission it asks for is one its machine, or a machine above it, has listed in `approve:`. Being approved gives a job nothing it was not already allowed; approval only ever holds. What gives the yes is the machine's ask: a job of its own, a script or a machine, named at the top of the definition. That job is called `ask`, and nothing else in a definition may take the name. A machine with no ask uses the nearest one above it. A type may give some of its jobs an ask nearer than the machine's, as an agent's toolkit does, and that ask is the nearest above every machine below those jobs.
-
-A machine made while running has no ask of its own. What it holds goes to the nearest ask above it that was not made while running, and with none the job is denied. An ask it writes, at the top of its definition or in an agent's toolkit, fails that machine as it starts, with the reason.
+A job can be made to wait for a yes before it starts. A job is held if it is marked for approval, or if a permission it asks for is one its machine, or a machine above it, has listed in `approve:`. Being approved gives a job nothing it was not already allowed; approval only ever holds. What gives the yes is the machine's ask: a job of its own, named at the top of the definition. That job is called `ask`, and nothing else in a definition may take the name. A machine with no ask uses the nearest one above it. For a machine made while running, see [Words from outside](#words-from-outside).
 
 A run started by a send or a call has no machine above it, so its held jobs go only to its own file's `ask:`, and are denied if it has none. A call or a `job: { send }` is a job, and declares only `send:` to the location it names, so the sender's `approve: [send:…]` holds it when the list names that location. A statechart's send action is never held.
 
-The controller does the holding. It gathers the jobs from one step that need approval, fills in each ask they go to once, and starts it once with them. The ask is told which machine is asking and, for each job, what it is and what input it would get. Its result, `{ approved: [names of jobs], note }`, names the jobs it approves and may add a note. Approved jobs start. A job not approved never starts, and its machine sees it as a failed job with the status denied, which it may handle like any other failure. An ask that cannot be filled in, that fails, or whose result does not list the jobs it approves, approves nothing, and the error of each job it denies says why.
+The controller does the holding. It gathers the jobs from one step that need approval, fills in their ask once, and starts it once with them. The ask is told which machine is asking and, for each job, what it is and what input it would get. Its result, `{ approved: [names of jobs], note }`, names the jobs it approves and may add a note. Approved jobs start. A job not approved never starts, and its machine sees it as a failed job with the status denied, which it may handle like any other failure. An ask that cannot be filled in, that fails, or whose result does not list the jobs it approves, approves nothing, and the error of each job it denies says why.
 
 Waiting for a person happens inside the ask, typically a statechart that issues a ticket and ends with the jobs it approves. An ask that waits for nobody, such as a model reviewing the jobs, is an ask all the same. An approval has no time limit of its own; the ask's timeout is how long it may take.
 
 An ask's job takes input like any other. The permissions an ask needs are its own, used by the ask's job and by nothing else in a machine that inherits it.
+
+## Words from outside
+
+A definition made while running, which a script or a model wrote, and the tools a `list:` job gives an agent are words from outside: no owner wrote them. Words from outside name no ask and no address. A step that reads them is taken in a process of its own (see Controller).
+
+- A machine made while running may address only its parent and its children. Its held jobs go to the nearest ask above it that was not made while running, and with none they are denied. One that writes `ask:` fails as it starts, and one that sends to an address or calls a location fails then.
+- A tool a `list:` gives runs the entry's `job:`, whose held jobs go to the agent's ask as any tool's do, and which addresses what that job names. A list gives each tool a name, a description and the shape of its arguments, and nothing else is read from it.
 
 ## Failure
 
@@ -449,4 +480,4 @@ A machine reacts to a failure as to any event. A failure it has no rule for fail
 
 ## Machine types
 
-A type is an extension like any other. It supplies the shape of its definitions, the filling-out of its short forms, the check of its definitions, its step, what a watcher is shown of its state, and its page of the manual. A type with asks of its own, or that takes shapes from outside as it runs, says so from a definition read as plain JSON. Everything in this area is supplied by Corbie, the same for every type, and no type has its own version of any of it.
+A type is an extension like any other. It supplies the shape of its definitions, the filling-out of its short forms, the check of its definitions, its step, the state of its run a watcher is shown (see Instances), and its page of the manual. A type that takes shapes from outside as it runs says so from a definition read as plain JSON. Everything in this area is supplied by Corbie, the same for every type, and no type has its own version of any of it.

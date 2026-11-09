@@ -245,75 +245,14 @@ func TestAgentToolkitOpenWaitsForTheAsk(t *testing.T) {
 	}
 }
 
-// A toolkit's ask is the ask for opening the toolkit and for the jobs of its
-// tools, before the agent's own. It is read from the toolkit's directory,
-// filled from the agent's input, and its permissions are its own. Calls
-// in one turn that go to different asks start each ask once.
-func TestAgentToolkitHasItsOwnAsk(t *testing.T) {
-	def := strings.Replace(helper("ADDR", ""), "net: { include: toolkits/net/net.yaml }", "net: { include: toolkits/net/net.yaml, approve: true }", 1)
-	def = strings.Replace(def, "\t\ttools:\n", "\t\task: ./ask.js\n\t\ttools:\n", 1)
-	files := map[string]string{}
-	for k, v := range toolkits {
-		files[k] = v
-	}
-	files["toolkits/net/net.yaml"] = strings.Replace(toolkits["toolkits/net/net.yaml"], "tools:\n", `ask: { script: ./ask.js, input: { who: "${input.question}" }, allow: [env:HOME] }
-		tools:
-		  sneak:
-		    description: Read HOME
-		    job: { script: ./sneak.js }
-`, 1)
-	files["toolkits/net/net.yaml"] = strings.Replace(files["toolkits/net/net.yaml"], `input: { command: "${args.command}" } }`, `input: { command: "${args.command}" }, approve: true }`, 1)
-	files["toolkits/net/sneak.js"] = `return env.get("HOME")`
-	files["toolkits/net/ask.js"] = `
-		env.get("HOME")
-		const ok = input.who === "q" && input.jobs.every((j) => j.asked.toolkit === "net")
-		return { approved: ok ? input.jobs.map((j) => j.name) : [], note: "the toolkit's ask" }`
-	def = strings.Replace(def, `input: { n: "${args.n}" } }`, `input: { n: "${args.n}" }, approve: true }`, 1)
-	files["ask.js"] = `return { approved: input.jobs.filter((j) => j.name === "add").map((j) => j.name), note: "the agent's ask" }`
-	openAndAdd := llmstandin.Reply{Calls: []llmstandin.ToolCall{{ID: "c1", Name: "open", Args: `{"toolkit": "net"}`}, {ID: "c2", Name: "add", Args: `{"n": 1}`}}}
-	showAndSneak := llmstandin.Reply{Calls: []llmstandin.ToolCall{{ID: "c3", Name: "show", Args: `{"command": "show route"}`}, {ID: "c4", Name: "sneak", Args: `{}`}}}
-	m := newModel(t, openAndAdd, showAndSneak, says("done"))
-	l := local(t, "all")
-	setSecret(t, l, "TEST_KEY", "sk-test-key")
-	id, err := l.Run(ctx, draft(t, strings.Replace(def, "ADDR", m.URL, 1), files), client.Start{
-		Input: map[string]any{"question": "q"}})
-	if err != nil {
-		t.Fatal(err)
-	}
-	var asks []string
-	r, err := l.Follow(ctx, id, 20*time.Millisecond, func(e client.Entry) {
-		for _, ask := range e.Asks {
-			if ask.Kind == "script" && strings.HasPrefix(ask.Name, "ask") {
-				asks = append(asks, fmt.Sprintf("%d:%s", e.Step, ask.Name))
-			}
-		}
-	})
-	if err != nil || r.Status != "done" {
-		t.Fatalf("the agent ended %+v, %v", r, err)
-	}
-	// The open goes to the toolkit's ask and the call of add to the agent's,
-	// each started once, in the same step.
-	if len(asks) != 3 || !strings.HasSuffix(asks[0], ":ask") || asks[1] != strings.TrimSuffix(asks[0], ":ask")+":ask#2" || !strings.HasSuffix(asks[2], ":ask#3") {
-		t.Errorf("the asks were: %v", asks)
-	}
-	if shown := lastShown(m.Calls[1]); strings.Contains(shown, "denied") {
-		t.Errorf("the second turn was shown: %s", shown)
-	}
-	// What the toolkit's ask is allowed goes into the ask's job and into no
-	// tool's.
-	if shown := lastShown(m.Calls[2]); strings.Count(shown, "denied") != 1 || !strings.Contains(shown, "shown: show route") || !strings.Contains(shown, "env:HOME") {
-		t.Errorf("the last turn was shown: %s", shown)
-	}
-	// A toolkit that has an ask needs none from the agent, and a machine run as
-	// a toolkit's ask takes none from above it.
-	alone := strings.Replace(strings.Replace(strings.Replace(def, "\t\task: ./ask.js\n", "", 1), ", approve: true }", " }", 1), "ADDR", "http://127.0.0.1:1", 1)
-	if _, err := machineParse(alone, files); err != nil {
-		t.Errorf("an agent whose toolkit has its own ask was refused: %v", err)
-	}
-	files["toolkits/net/net.yaml"] = strings.Replace(files["toolkits/net/net.yaml"], "ask: { script: ./ask.js,", "ask: { machine: ./approval.yaml,", 1)
-	files["toolkits/net/approval.yaml"] = "flow: approval\nstages:\n  a: { job: { script: ./ask.js, approve: true } }\noutput: ${stages.a.output}\n"
-	if _, err := machineParse(alone, files); err == nil || !strings.Contains(err.Error(), "toolkits.net.ask: the machine run as the ask marks a job for approval") {
-		t.Errorf("a toolkit's ask that needs an ask: %v", err)
+// A toolkit has no ask: one that writes ask: is refused, saying where its
+// held jobs go.
+func TestAgentToolkitHasNoAsk(t *testing.T) {
+	files := maps.Clone(toolkits)
+	files["toolkits/net/net.yaml"] = strings.Replace(toolkits["toolkits/net/net.yaml"], "tools:\n", "ask: ./ask.js\n\t\ttools:\n", 1)
+	_, err := machineParse(helper("http://127.0.0.1:1", ""), files)
+	if err == nil || !strings.Contains(err.Error(), "toolkits.net.ask: a toolkit has no ask: its held jobs go to the agent's ask") {
+		t.Errorf("a toolkit with an ask: %v", err)
 	}
 }
 
@@ -467,27 +406,23 @@ func TestAgentConversationOpensNoToolkit(t *testing.T) {
 	}
 }
 
-// netAsking gives the files of the helper with net's tool show marked for
-// approval and net naming an ask whose input is the value given.
-func netAsking(askInput string) map[string]string {
-	files := map[string]string{}
-	for k, v := range toolkits {
-		files[k] = v
-	}
-	net := strings.Replace(toolkits["toolkits/net/net.yaml"], "tools:\n", "ask: { script: ./ask.js, input: "+askInput+" }\n\t\ttools:\n", 1)
-	files["toolkits/net/net.yaml"] = strings.Replace(net, `input: { command: "${args.command}" } }`, `input: { command: "${args.command}" }, approve: true }`, 1)
-	files["toolkits/net/ask.js"] = `return { approved: input.jobs.map((j) => j.name), note: "net's ask" }`
-	return files
+// asking gives the helper's ask, whose input is the value given, and its
+// files, with net's tool show marked for approval.
+func asking(askInput string) (extra string, files map[string]string) {
+	files = maps.Clone(toolkits)
+	files["toolkits/net/net.yaml"] = strings.Replace(toolkits["toolkits/net/net.yaml"], `input: { command: "${args.command}" } }`, `input: { command: "${args.command}" }, approve: true }`, 1)
+	files["ask.js"] = `return { approved: input.jobs.map((j) => j.name), note: "the agent's ask" }`
+	return "ask: { script: ./ask.js, input: " + askInput + " }", files
 }
 
-// The held jobs of one step that go to one ask start it once, though
-// filling its values in twice would give two different values.
-func Test_mach_one_run_of_each_ask_for_a_step(t *testing.T) {
-	files := netAsking(`{ r: "${Math.random()}" }`)
+// The held jobs of one step start the ask once, though filling its values
+// in twice would give two different values.
+func Test_mach_one_run_of_the_ask_for_a_step(t *testing.T) {
+	extra, files := asking(`{ r: "${Math.random()}" }`)
 	twice := llmstandin.Reply{Calls: []llmstandin.ToolCall{{ID: "c1", Name: "show", Args: `{"command": "a"}`}, {ID: "c2", Name: "show", Args: `{"command": "b"}`}}}
 	m := newModel(t, calls("c0", "open", `{"toolkit": "net"}`), twice, says("done"))
 	l := local(t, "all")
-	id := startWith(t, l, helper(m.URL, ""), files, map[string]any{"question": "q"})
+	id := startWith(t, l, helper(m.URL, extra), files, map[string]any{"question": "q"})
 	var asks []string
 	r, err := l.Follow(ctx, id, 20*time.Millisecond, func(e client.Entry) {
 		for _, ask := range e.Asks {
@@ -507,108 +442,17 @@ func Test_mach_one_run_of_each_ask_for_a_step(t *testing.T) {
 	}
 }
 
-// A toolkit's ask whose values cannot be filled in denies the jobs held for
-// it, with a note that names the fault, as a definition's ask does, and
-// the agent carries on.
-func Test_agent_toolkit_ask_that_cannot_be_filled_denies(t *testing.T) {
-	files := netAsking(`{ who: "${input.question.nothing.here}" }`)
+// An ask whose values cannot be filled in denies the jobs held for it, with
+// a note that names the fault, and the agent carries on.
+func TestAgentAskThatCannotBeFilledDenies(t *testing.T) {
+	extra, files := asking(`{ who: "${input.question.nothing.here}" }`)
 	m := newModel(t, calls("c0", "open", `{"toolkit": "net"}`), calls("c1", "show", `{"command": "a"}`), says("done"))
 	l := local(t, "all")
-	r := wait(t, l, startWith(t, l, helper(m.URL, ""), files, map[string]any{"question": "q"}))
+	r := wait(t, l, startWith(t, l, helper(m.URL, extra), files, map[string]any{"question": "q"}))
 	if r.Status != "done" {
 		t.Fatalf("the agent ended %s: %s", r.Status, r.Error)
 	}
-	if shown := lastShown(m.Calls[2]); !strings.Contains(shown, "denied: the ask could not be started: toolkits.net.ask.input") || strings.Contains(shown, "shown: a") {
-		t.Errorf("the call was shown as: %s", shown)
-	}
-}
-
-// A toolkit's ask is the nearest ask above every machine below its tools'
-// jobs, before the agent's, with its own values and permissions, filled
-// from the agent's input; a machine below that names an ask of its own
-// uses its own. An agent with no ask of its own is accepted when the
-// toolkit's ask covers it.
-func Test_agent_toolkit_ask_is_nearest_above_its_tools_machines(t *testing.T) {
-	def := strings.Replace(helper("ADDR", "ask: ./yes.js"), "payments: { include: toolkits/payments/payments.yaml }", "", 1)
-	files := map[string]string{"add.js": scripts["add.js"], "yes.js": `return { approved: input.jobs.map((j) => j.name) }`}
-	files["toolkits/net/net.yaml"] = `
-		description: The firewall and the switch.
-		ask: { script: ./ask.js, input: { who: "${input.question}" }, allow: [env:HOME] }
-		tools:
-		  deep:
-		    description: Do deep work
-		    job: { machine: ./outer.yaml }
-	`
-	files["toolkits/net/ask.js"] = `
-		env.get("HOME")
-		return { approved: input.who === "q" ? input.jobs.map((j) => j.name) : [], note: "net's ask, for " + input.asking.machine }`
-	files["toolkits/net/outer.yaml"] = "flow: outer\nstages:\n  in: { job: { machine: ./inner.yaml } }\noutput: ${stages.in.output}\n"
-	files["toolkits/net/inner.yaml"] = "flow: inner\nstages:\n  work: { job: { script: ./work.js, approve: true } }\noutput: ${stages.work.output}\n"
-	files["toolkits/net/work.js"] = `return "worked"`
-	files["toolkits/net/own.js"] = `return { approved: [], note: "inner's own ask" }`
-	l := local(t, "all")
-	for _, run := range []struct {
-		question, inner, want string
-	}{
-		{"q", "", "worked"},
-		{"other", "", "net's ask, for inner"},
-		{"q", "ask: ./own.js\n", "inner's own ask"},
-	} {
-		files["toolkits/net/inner.yaml"] = strings.Replace(files["toolkits/net/inner.yaml"], "flow: inner\n", "flow: inner\n"+run.inner, 1)
-		m := newModel(t, calls("c0", "open", `{"toolkit": "net"}`), calls("c1", "deep", `{}`), says("done"))
-		r := wait(t, l, startWith(t, l, strings.Replace(def, "ADDR", m.URL, 1), files, map[string]any{"question": run.question}))
-		if r.Status != "done" {
-			t.Fatalf("the agent ended %s: %s", r.Status, r.Error)
-		}
-		if shown := lastShown(m.Calls[2]); !strings.Contains(shown, run.want) {
-			t.Errorf("asked %q with %q in inner, the call was shown as: %s", run.question, run.inner, shown)
-		}
-		files["toolkits/net/inner.yaml"] = strings.Replace(files["toolkits/net/inner.yaml"], run.inner, "", 1)
-	}
-	// The toolkit's ask covers inner's job, and the agent needs no ask of its
-	// own; without the toolkit's ask, it does.
-	def = strings.Replace(strings.Replace(def, "\t\task: ./yes.js\n", "", 1), "ADDR", "http://127.0.0.1:1", 1)
-	if _, err := machineParse(def, files); err != nil {
-		t.Errorf("an agent whose toolkit's ask covers its tool's machine was refused: %v", err)
-	}
-	files["toolkits/net/net.yaml"] = strings.Replace(files["toolkits/net/net.yaml"], "ask:", "meta:", 1)
-	if _, err := machineParse(def, files); err == nil || !strings.Contains(err.Error(), "there is no ask for it to go to") {
-		t.Errorf("a toolkit's tool whose machine holds a job, with no ask: %v", err)
-	}
-}
-
-// A toolkit's ask was not made while running, and it is the nearest above a
-// machine made while running below one of the toolkit's tools.
-func Test_agent_toolkit_ask_is_reached_from_a_made_machine_below_its_tool(t *testing.T) {
-	m := newModel(t, calls("c0", "open", `{"toolkit": "net"}`), calls("c1", "deep", `{}`), says("done"))
-	def := `
-		flow: top
-		stages:
-		  make: { job: ./make.js }
-		  go:
-		    job:
-		      machine: ./helper.yaml
-		      input: { question: q, made: "${stages.make.output}" }
-	`
-	files := map[string]string{"add.js": scripts["add.js"]}
-	files["helper.yaml"] = strings.Replace(strings.Replace(helper(m.URL, ""), "payments: { include: toolkits/payments/payments.yaml }", "", 1), "../toolkits", "./toolkits", 1)
-	files["make.js"] = `return machines.define("flow: made\nstages:\n  work: { job: { script: ./step.js, approve: true } }\n",
-		{ files: { "./step.js": "return 7" } })`
-	files["toolkits/net/net.yaml"] = `
-		description: The firewall and the switch.
-		ask: ./ask.js
-		tools:
-		  deep:
-		    description: Do deep work
-		    job: { machine: "${input.made}" }
-	`
-	files["toolkits/net/ask.js"] = `return { approved: [], note: "net's ask, for " + input.asking.machine }`
-	l := local(t, "all")
-	r := wait(t, l, startWith(t, l, def, files, nil))
-	if r.Status != "done" {
-		t.Fatalf("the agent ended %s: %s", r.Status, r.Error)
-	}
-	if shown := lastShown(m.Calls[2]); !strings.Contains(shown, "net's ask, for made") {
+	if shown := lastShown(m.Calls[2]); !strings.Contains(shown, "denied: the ask could not be started: ask.input") || strings.Contains(shown, "shown: a") {
 		t.Errorf("the call was shown as: %s", shown)
 	}
 }
@@ -644,42 +488,35 @@ tools:
 	}
 }
 
-// The list of an entry in a toolkit goes to the toolkit's ask when it is held,
-// and the ask is shown the toolkit's name, as for a call of the toolkit's tools:
-// with no ask of the agent's, and with one, which is not asked.
-func Test_agent_toolkit_list_goes_to_the_toolkits_ask(t *testing.T) {
-	files := map[string]string{}
-	for k, v := range toolkits {
-		files[k] = v
-	}
-	net := strings.Replace(toolkits["toolkits/net/net.yaml"], "tools:\n", "ask: ./ask.js\n\t\ttools:\n", 1)
-	files["toolkits/net/net.yaml"] = strings.Replace(net, "list: { script: ./list.js }", "list: { script: ./list.js, approve: true }", 1)
-	files["toolkits/net/ask.js"] = `return { approved: input.jobs.filter((j) => j.name === "files" && j.asked.toolkit === "net").map((j) => j.name) }`
-	files["no.js"] = `return { approved: [], note: "the agent's ask" }`
-	for _, extra := range []string{"", "ask: ./no.js"} {
-		m := newModel(t, calls("c1", "open", `{"toolkit": "net"}`), calls("c2", "files_read", `{}`), says("done"))
-		l := local(t, "all")
-		id := startWith(t, l, helper(m.URL, extra), files, map[string]any{"question": "q"})
-		var held, asks []string
-		r, err := l.Follow(ctx, id, 20*time.Millisecond, func(e client.Entry) {
-			for _, ask := range e.Asks {
-				switch {
-				case ask.Kind == "hold":
-					held = append(held, ask.Name)
-				case ask.Kind == "script" && strings.HasPrefix(ask.Name, "ask"):
-					asks = append(asks, ask.Name)
-				}
+// The list of an entry in a toolkit, when it is held, goes to the agent's
+// ask, which is shown the toolkit's name, as for a call of the toolkit's
+// tools.
+func TestAgentToolkitListIsShownItsToolkit(t *testing.T) {
+	files := maps.Clone(toolkits)
+	files["toolkits/net/net.yaml"] = strings.Replace(toolkits["toolkits/net/net.yaml"], "list: { script: ./list.js }", "list: { script: ./list.js, approve: true }", 1)
+	files["ask.js"] = `return { approved: input.jobs.filter((j) => j.name === "files" && j.asked.toolkit === "net").map((j) => j.name) }`
+	m := newModel(t, calls("c1", "open", `{"toolkit": "net"}`), calls("c2", "files_read", `{}`), says("done"))
+	l := local(t, "all")
+	id := startWith(t, l, helper(m.URL, "ask: ./ask.js"), files, map[string]any{"question": "q"})
+	var held, asks []string
+	r, err := l.Follow(ctx, id, 20*time.Millisecond, func(e client.Entry) {
+		for _, ask := range e.Asks {
+			switch {
+			case ask.Kind == "hold":
+				held = append(held, ask.Name)
+			case ask.Kind == "script" && strings.HasPrefix(ask.Name, "ask"):
+				asks = append(asks, ask.Name)
 			}
-		})
-		if err != nil || r.Status != "done" {
-			t.Fatalf("with %q, the agent ended %+v, %v", extra, r, err)
 		}
-		if got := strings.Join(held, " ") + " / " + strings.Join(asks, " "); got != "files / ask" {
-			t.Errorf("with %q, the jobs held, and the asks: %s", extra, got)
-		}
-		if shown := lastShown(m.Calls[2]); !strings.Contains(shown, "ran read") {
-			t.Errorf("with %q, the listed tool's call was shown as: %s", extra, shown)
-		}
+	})
+	if err != nil || r.Status != "done" {
+		t.Fatalf("the agent ended %+v, %v", r, err)
+	}
+	if got := strings.Join(held, " ") + " / " + strings.Join(asks, " "); got != "files / ask" {
+		t.Errorf("the jobs held, and the asks: %s", got)
+	}
+	if shown := lastShown(m.Calls[2]); !strings.Contains(shown, "ran read") {
+		t.Errorf("the listed tool's call was shown as: %s", shown)
 	}
 }
 

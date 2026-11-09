@@ -1,6 +1,8 @@
 # Corbie
 
-Corbie runs machines. A machine is a flow, a statechart or an agent, written as a definition in YAML, and it contains jobs, which do its work: a job is a script, which a runner executes, or another machine. One binary does everything. What a process does is set by the roles it is started with and by nothing else.
+Corbie runs machines. A machine is a flow, a statechart or an agent, written as a definition in YAML, and it contains jobs, which do its work. A job is a script, a machine, or a send. A machine is named by its file (`machine:`) or by its location (`call:`), and a send delivers an event and returns nothing.
+
+One binary does everything. What a process does is set by the roles it is started with and by nothing else.
 
 ## How it holds together
 
@@ -8,7 +10,7 @@ Everything Corbie knows is in the store, which is a directory or a bucket. Every
 
 There are three kinds of party. A **controller** advances machines. It takes each message addressed to it, works out which instance the message is for, runs one step of that instance and writes down the result. A step only asks for work; the work is done elsewhere. A **runner** does the work: it takes jobs from its inbox, runs each script with the permissions the job was given, and writes the result back. A **client** submits machine files, starts runs and reads what happened to them. The command line, the gateway and an application using Corbie as a library are all clients.
 
-Each instance of a machine has a head and a record. The head is a small public card saying where the instance stands. The record is everything that happened to it, in order, readable only by the controller and by the client that owns the run's tree. Watching a run, listing runs, reading a result and streaming a run's progress are all the same act: reading heads and records from the store.
+Each instance of a machine has a head and a record. The head is a small public card saying where the instance stands. The record is everything that happened to it, in order, readable only by the controller, the client that owns the run's tree and the clients its file's `read:` lists. Watching a run, listing runs, reading a result and streaming a run's progress are all the same act: reading heads and records from the store.
 
 One script job's trip looks like this. Every step of it is a write to the store.
 
@@ -37,7 +39,7 @@ house/thermostats/kitchen.yaml   /home/thermostats/kitchen
 house/shared/base.yaml           listed in .corbieignore: no location
 ```
 
-- A tree belongs to the client that first submitted it. Only that client submits there, and reads or cancels the runs at its locations.
+- A tree belongs to the client that first submitted it. Only that client submits there and cancels the runs at its locations. It and the clients a file's `read:` lists read the runs there.
 - Trees do not nest. A client submits only at prefixes its ceiling's `at:` entries match.
 - A run's authority comes from its location: its file's `allow:` and `ask:`, its tree client's ceiling, and the secrets and values set at its location or above.
 - A sender or a caller, machine or client, adds nothing to the run's authority and takes nothing away. Its input may fill an allow scope, within the run's own patterns and every ceiling.
@@ -49,7 +51,7 @@ A file's `lifetime:` says how runs start at its location.
 ```
 singleton   the submit starts the one run
 keyed       one run per key, started by a send to a key with no running run; statecharts only
-transient   a new run for each call or corbie run submit <location>; the default
+transient   a new run for each call, each send to { at }, or corbie run submit <location>; the default
 ```
 
 The gateway starts a run by calling a location (see client.md).
@@ -65,7 +67,7 @@ Removing a file cancels every run at its location.
 
 ## How machines talk
 
-A statechart sends an event with a `send:` action, and a flow stage or an agent tool with `job: { send: … }`. `job: { call: { at }, input }` starts a run of a transient location and waits for its result. Only a statechart takes a sent event. An address is `{ at }` for a singleton, `{ at, key }` for a keyed run, or `{ at, run }` for one run.
+A statechart sends an event with a `send:` action, and a flow stage or an agent tool with `job: { send: … }`. `job: { call: { at }, input }` starts a run of a transient location and waits for its result. An address is `{ at }` for a singleton or a new run of a transient location, `{ at, key }` for a keyed run, or `{ at, run }` for one run. A run hands out its own address as `${run.address}`.
 
 Two lists must agree:
 
@@ -115,6 +117,7 @@ corbie run submit house --at /home
 
 - Only jobs of runs at `/home/devices/boiler` get `BOILER_PASSWORD`.
 - The controller writes the sender into `event.from`, here `{ at: /home/thermostats/kitchen, run: <ID> }`. A reply is a send to that address.
+- A send to a transient location's `{ at }` starts a new run with the event's data as its input, as a send to a key no one else names does. A statechart is then given the event; a flow or an agent takes no sent event and is given only the start.
 - A send the sender's own layers refuse is `denied`. A send the receiver refuses is noted in the sender's record and fails nothing.
 
 ## Reading these specs

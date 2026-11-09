@@ -174,11 +174,13 @@ var shared = []Field{
 	{Name: "title", Kind: KindText, Like: `"${input.channel}: ${input.said}"`, Description: "what a run is called, filled in from its input when it starts; only the client of its tree sees it"},
 	{Name: "meta", Kind: KindValue, Like: `{ on: { at: "02:00 Europe/London" } }`, Description: "data of any kind, which Corbie keeps with the definition and never reads"},
 	{Name: "lifetime", Kind: KindWord, Like: "singleton", Values: []string{LifetimeSingleton, LifetimeKeyed, LifetimeTransient},
-		Description: "how runs start at its location: singleton, one started by the submit; keyed, one for each key a send names; transient, the default, one for each call or start"},
+		Description: "how runs start at its location: singleton, one started by the submit; keyed, one for each key a send names; transient, the default, a new one for each call, start or send"},
 	{Name: "update", Kind: KindWord, Like: "restart", Values: []string{UpdateRestart, UpdateDrain},
 		Description: "what a changed file does to the runs already running at its location: restart cancels them; drain, the default but for a singleton, lets them finish"},
 	{Name: "receive", Kind: KindList, Like: "[thermostats/*, client:panel]",
 		Description: "who may send to its runs or call it: locations and client:<name>, for every event or by event name; with none, its own tree and its tree's client"},
+	{Name: "read", Kind: KindList, Like: "[client:wall]",
+		Description: "the clients, beside its tree's, that read its runs' records, as client:<name>"},
 }
 
 // The limits every type of machine takes. A type may add its own.
@@ -191,7 +193,7 @@ var limits = []Field{
 
 // AddressShape is the shape of an address: the run a send goes to.
 var AddressShape = &Shape{Name: "address", What: "an address", Fields: []Field{
-	{Name: "at", Kind: KindWord, Like: "devices/boiler", Description: "the location: read from the tree's prefix, or a full path from /"},
+	{Name: "at", Kind: KindWord, Like: "devices/boiler", Description: "the location: read from the tree's prefix, or a full path from /; alone, the run of a singleton, or a new run of a transient location"},
 	{Name: "key", Kind: KindWord, Like: "${event.data.room}", Description: "the key, at a keyed location: its run, started if none is running"},
 	{Name: "run", Kind: KindWord, Like: "${event.data.run}", Description: "one run at the location, by its ID"},
 }}

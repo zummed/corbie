@@ -5,34 +5,35 @@ A message is a file written to the receiver's `inbox/` directory.
 Layout
 ------
 
-  version                         the layout's version, written when the store is set up
+  version                            the layout's version, written when the store is set up
   <controller>/
-    inbox/<sender>/<message>      messages from clients and runners, and its own for child runs
+    inbox/<sender>/<message>         messages from clients and runners, and its own for child runs
     receipts/<sender>/<message>/
-        receipt                   its answer to a message from a client
-        result                    how a run the client called in another client's tree ended
-        blobs/<name>              each file that result names
-    running/<client>/<run>        the status of each run in progress
-    finished/<client>/<run>       the status of each run that has ended
+        receipt                      its answer to a message from a client
+        result                       how a run the client called in another client's tree ended
+        blobs/<name>                 each file that result names
+    running/<client>/<run>           the status of each run in progress
+    finished/<client>/<run>          the status of each run that has ended
     records/<client>/<run>/
-        steps/<number>            one file for each step, written by the controller
-        emits/<job>/<number>      what a script logged or emitted, written by its runner
-        blobs/<name>              the definition, the scripts, and each file or large value
-        carried                   how much of a large step the controller has acted on
-    wakes/<time>/<run>/<name>     an empty file per timer, job timeout, run timeout, restart and deletion
-    trust/<name>                  the card of each runner and client it trusts, with tags or ceiling
+        steps/<number>               one file for each step, written by the controller
+        emits/<job number>/<number>  what a script logged or emitted, written by its runner
+        blobs/<name>                 the definition, the scripts, and each file or large value
+        carried                      how much of a large step the controller has acted on
+        tried                        how many times a step has been taken in a process of its own
+    wakes/<time>/<run>/<name>        an empty file per timer, job timeout, run timeout, restart and deletion
+    trust/<name>                     the card of each runner and client it trusts, with tags or ceiling
     locations/<location>/+/
-        tree                      at a tree's prefix: the client that owns it, and its directory
-        file                      the machine file recorded at the location
-        blobs/<name>              the scripts and machines that file names
-        keys/<hash>               which run a key names
-        secrets/<name>            a secret set at the location
-        values/<name>             a value set at the location
+        tree                         at a tree's prefix: the client that owns it, and its directory
+        file                         the machine file recorded at the location
+        blobs/<name>                 the scripts and machines that file names
+        keys/<hash>                  which run a key names
+        secrets/<name>               a secret set at the location
+        values/<name>                a value set at the location
     uploads/<client>/<message>/
-        <name>                    a file a client sends with a message
+        <name>                       a file a client sends with a message
   <runner>/
-    inbox/<sender>/<message>      jobs for the runner
-    taken/<due time>/<job>        one file for each job it has taken
+    inbox/<sender>/<message>         jobs for the runner
+    taken/<due time>/<job>           one file for each job it has taken
 
 `<client>/<run>` is a run's ID. `<run>` begins with the time the run was
 named, and a child run has the `<client>` of its parent. What is set at `/`
@@ -45,18 +46,18 @@ a secret or a value set at one is refused while the other has that name set.
 Who may read and write
 ----------------------
 
-  files                       controller   runner        client                viewer
-  version                     reads        reads         reads                 reads
-  <controller>/inbox/         all          adds          adds                  -
-  receipts/                   all          -             reads its own         -
-  uploads/                    all          -             adds its own          -
-  running/, finished/         all          -             reads its own         reads
-  records: steps/, carried    all          -             reads its own         -
-  records: emits/             all          adds          reads its own         -
-  records: blobs/             all          reads, adds   reads, adds its own   -
-  wakes/, trust/, locations/  all          -             -                     -
-  <runner>/inbox/             adds         all           -                     -
-  <runner>/taken/             -            all           -                     -
+  files                             controller   runner        client                viewer
+  version                           reads        reads         reads                 reads
+  <controller>/inbox/               all          adds          adds                  -
+  receipts/                         all          -             reads its own         -
+  uploads/                          all          -             adds its own          -
+  running/, finished/               all          -             reads                 reads
+  records: steps/, carried, tried   all          -             reads                 -
+  records: emits/                   all          adds          reads                 -
+  records: blobs/                   all          reads, adds   reads, adds its own   -
+  wakes/, trust/, locations/        all          -             -                     -
+  <runner>/inbox/                   adds         all           -                     -
+  <runner>/taken/                   -            all           -                     -
 
   all       reads, writes and deletes
   adds      writes a new file, and cannot change or delete one
@@ -64,7 +65,13 @@ Who may read and write
   viewer    reads the status files only, for a dashboard
 
 A runner can add to any run's record. Each file it adds names a job, and
-readers ignore a file from a runner that was not sent that job.
+readers ignore a file from a runner that was not sent that job. A client reads
+every record and decrypts only the files encrypted for it.
+
+A record's file names are numbers and times. `<job>` is the number the
+controller gives each attempt at a script, and the job's name is inside its
+encrypted files. A client that may not read a run learns from its record only
+how many files it has, with their sizes and times.
 
 Signing and encryption
 ----------------------
@@ -92,7 +99,7 @@ signed by another writer.
   that key      HPKE, for the X25519 public key of each reader
 
   a message in an inbox           encrypted for the process whose inbox it is in
-  a step, an emit                 encrypted for the controller and the client in the run's ID
+  a step, an emit                 encrypted for the controller and each client that reads the run
   an answer under receipts/       encrypted for the client that sent the message
   a secret, a value               encrypted for the controller
   a blob                          encrypted under its own key, and not signed

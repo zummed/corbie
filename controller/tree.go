@@ -59,8 +59,9 @@ type changes struct {
 	Cancel []string `json:"cancel,omitzero"`
 	Remove []string `json:"remove,omitzero"`
 	// Before is the directory submitted before, when it was another.
-	Before  string   `json:"before,omitzero"`
-	Missing []string `json:"missing,omitzero"`
+	Before    string   `json:"before,omitzero"`
+	Missing   []string `json:"missing,omitzero"`
+	Untrusted []string `json:"untrusted,omitzero"`
 }
 
 // A located is what the controller keeps at a location: the file recorded
@@ -71,8 +72,8 @@ type located struct {
 	Definition blob.Ref `json:"definition"`
 	Hash       string   `json:"hash"`
 	Lifetime   string   `json:"lifetime"`
-	// Runs is how many runs of a keyed file may be running at once: no
-	// limit where it is none.
+	// Runs is how many runs of a keyed or transient file may be running at
+	// once: no limit where it is none.
 	Runs int `json:"runs,omitzero"`
 }
 
@@ -311,6 +312,15 @@ func (p *pass) plan(a *arrival, base string, before *treeEntry) (*treeEntry, err
 		for _, name := range missing {
 			d.Missing = append(d.Missing, name+" for "+location)
 		}
+		for _, entry := range def.Read {
+			t, err := p.trusted(strings.TrimPrefix(entry, "client:"))
+			if err != nil {
+				return nil, err
+			}
+			if !t.Trusted() || t.Card.Kind != identity.Client {
+				d.Untrusted = append(d.Untrusted, entry+" for "+location)
+			}
+		}
 	}
 	for _, location := range msg.Problems {
 		d.Done = append(d.Done, instance.Recorded{Location: location, What: didProblem})
@@ -369,7 +379,7 @@ func (p *pass) carryTree(a *arrival, base string, entry *treeEntry) error {
 	slices.Sort(cancelled)
 	for _, done := range d.Done {
 		if done.Run != "" {
-			if err := p.startSingleton(base, done, running[done.Location]); err != nil {
+			if err := p.startSingleton(entry.Client, base, done, running[done.Location]); err != nil {
 				return err
 			}
 		}
@@ -379,8 +389,7 @@ func (p *pass) carryTree(a *arrival, base string, entry *treeEntry) error {
 			return err
 		}
 	}
-	missing := d.Missing
-	receipt := &instance.Receipt{Taken: true, Tree: &instance.Submitted{Locations: d.Done, Cancelled: cancelled, Before: d.Before, Missing: missing}}
+	receipt := &instance.Receipt{Taken: true, Tree: &instance.Submitted{Locations: d.Done, Cancelled: cancelled, Before: d.Before, Missing: d.Missing, Untrusted: d.Untrusted}}
 	if err := p.writeReceipt(a.sender, a.name, receipt); err != nil {
 		return err
 	}
@@ -530,7 +539,7 @@ func (p *pass) runningAt(client, location, other string) (bool, error) {
 // cancelled; with none, the run its key's file names, if that run has the
 // key. A start still waiting is never the one replaced: it waits itself, and
 // is left once the key's file names this one.
-func (p *pass) startSingleton(base string, done instance.Recorded, running []string) error {
+func (p *pass) startSingleton(client, base string, done instance.Recorded, running []string) error {
 	at := store.Key(p.ctl, done.Location, "")
 	name := store.Message(p.ctl, p.ctl, store.JobMessage(done.Run, base+".start"))
 	for {
@@ -555,7 +564,7 @@ func (p *pass) startSingleton(base string, done instance.Recorded, running []str
 		// its seed.
 		seed := make([]byte, 32)
 		rand.Read(seed)
-		msg := &instance.Message{Kind: instance.KindStart, Instance: done.Run,
+		msg := &instance.Message{Kind: instance.KindStart, Instance: done.Run, Cause: &instance.Cause{Client: client, Message: base},
 			Start: &instance.Start{Location: done.Location, Replaces: replaces, Seed: seed}}
 		if _, err := p.send(name, noEnd, msg, p.c.ID.Card); err != nil {
 			return err
@@ -682,8 +691,10 @@ func (b *build) located(start *arrival) (*instance.Start, error) {
 		return nil, b.callIn(start, file, &s)
 	case store.InstanceClient(b.inst) != file.Client:
 		return no("%s is in a tree of the client %s, and only that client starts a run there", s.Location, file.Client)
-	case sent && file.Lifetime != machine.LifetimeKeyed:
+	case sent && s.Key != "" && file.Lifetime != machine.LifetimeKeyed:
 		return no("%s is not keyed", s.Location)
+	case sent && s.Key == "" && file.Lifetime != machine.LifetimeTransient:
+		return no("%s is not transient", s.Location)
 	case sent:
 	case call && file.Lifetime != machine.LifetimeTransient:
 		return no("%s is %s: a call starts a run only of a transient location", s.Location, file.Lifetime)
@@ -695,6 +706,18 @@ func (b *build) located(start *arrival) (*instance.Start, error) {
 	case start.kind == identity.Controller && file.Lifetime != machine.LifetimeSingleton:
 		b.drop(start)
 		return nil, nil
+	}
+	// A transient location at its limits: { runs } starts no run. Its runs
+	// are counted by their key files, as a keyed location's are. A start
+	// taken again finds the key file of its own ID, and is counted already.
+	if file.Lifetime == machine.LifetimeTransient && file.Runs > 0 {
+		files, err := store.Names(p.store.List(p.ctx, store.Keys(p.ctl, s.Location)))
+		if err != nil {
+			return nil, err
+		}
+		if len(files) >= file.Runs && !slices.Contains(files, store.Key(p.ctl, s.Location, b.inst)) {
+			return no("%s is at its limit of %d runs", s.Location, file.Runs)
+		}
 	}
 	// A singleton started again waits for every run it replaces to end,
 	// children included, and so does everything waiting for it: until no
@@ -734,9 +757,8 @@ func (b *build) located(start *arrival) (*instance.Start, error) {
 	above := &instance.Above{Values: values}
 	if (sent || call) && s.Above != nil {
 		// A run a send or a call starts is a root: it takes from its sender
-		// how far down it is, who sent, and the call it answers, and
-		// nothing else.
-		above.Depth, above.StartedBy = s.Above.Depth, s.Above.StartedBy
+		// how far down it is and the call it answers, and nothing else.
+		above.Depth = s.Above.Depth
 		above.CallJob, above.CallReceipt = s.Above.CallJob, s.Above.CallReceipt
 	}
 	if tree != nil {

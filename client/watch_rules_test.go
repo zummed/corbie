@@ -298,9 +298,9 @@ func Test_store_listed_name_gone_on_read_is_skipped(t *testing.T) {
 	a.head(long, instance.Done, 8)
 	// Each is removed by another copy between the listing and the read.
 	remove := map[string]bool{
-		store.RunningHead("controller", gone):       true,
-		store.Step("controller", long, 5):           true,
-		store.Emit("controller", long, "work.6", 1): true,
+		store.RunningHead("controller", gone):                 true,
+		store.Step("controller", long, 5):                     true,
+		store.Emit("controller", long, a.number("work.6"), 1): true,
 	}
 	a.hooked.before = func(act, name string) error {
 		if act == "read" && remove[name] {
@@ -574,7 +574,7 @@ func Test_inst_watch_reads_only_heads_that_changed(t *testing.T) {
 		switch {
 		case act == "read":
 			reads[name]++
-		case name == store.Running("controller")+"/client":
+		case name == store.Running("controller"):
 			looks++
 		}
 		return nil

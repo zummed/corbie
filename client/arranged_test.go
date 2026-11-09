@@ -24,6 +24,8 @@ type arranged struct {
 	owner    store.Store
 	ctl, run *identity.Identity
 	hooked   *hooked
+	// numbers are the numbers the jobs it sends are given, by name.
+	numbers map[string]int
 }
 
 // hooked is a client's store that tells a test of each look before it is
@@ -160,7 +162,18 @@ func (a *arranged) step(id string, number int, status string, asks ...instance.A
 
 // job is what a step asks for when it sends a job to the runner.
 func (a *arranged) job(name string) instance.Ask {
-	return instance.Ask{Kind: instance.AskScript, Name: name, Runner: "runner", Card: a.run.Card}
+	return instance.Ask{Kind: instance.AskScript, Name: name, Number: a.number(name), Runner: "runner", Card: a.run.Card}
+}
+
+// number is the number a job of a name is given.
+func (a *arranged) number(name string) int {
+	if a.numbers == nil {
+		a.numbers = map[string]int{}
+	}
+	if _, ok := a.numbers[name]; !ok {
+		a.numbers[name] = len(a.numbers) + 1
+	}
+	return a.numbers[name]
 }
 
 // child is what a step asks for when it starts a child.
@@ -171,7 +184,7 @@ func child(name, id string) instance.Ask {
 // emit writes one emit entry of a job as its runner would.
 func (a *arranged) emit(id, job string, number int, data any) {
 	a.t.Helper()
-	at := store.Emit("controller", id, job, number)
+	at := store.Emit("controller", id, a.number(job), number)
 	entry := &instance.Emit{Job: job, Number: number, Values: []instance.Emitted{{Name: "note", Data: data, At: time.Now()}}}
 	value, err := a.run.Write(at, time.Now(), time.Time{}, entry, a.ctl.Card, a.ID.Card)
 	a.put(at, value, err)

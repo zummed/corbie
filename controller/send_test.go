@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/zummed/corbie/client"
+	"github.com/zummed/corbie/controller"
 	"github.com/zummed/corbie/identity"
 	"github.com/zummed/corbie/instance"
 	"github.com/zummed/corbie/machine"
@@ -458,6 +459,61 @@ func Test_ctl_limit_runs_caps_a_transient_location(t *testing.T) {
 	}
 	if r := start(); !r.Taken {
 		t.Fatalf("the start after the run ended was refused: %s", r.Refused)
+	}
+}
+
+// A controller stopped after any write of a start at a transient location
+// with limits: { runs: 1 } carries on to the same end: the start taken
+// again finds the key file of its own ID, the run runs, and its key file is
+// gone once it ends.
+func Test_ctl_limit_runs_transient_start_stopped_after_every_write(t *testing.T) {
+	for n := int64(0); ; n++ {
+		w := newWorld(t)
+		w.rooms(map[string]string{"/t/bell": `
+		statechart: bell
+		limits: { runs: 1 }
+		initial: a
+		states:
+		  a: { on: { rang: b } }
+		  b: { end: done }
+	`})
+		run, err := w.client.Start(ctx, client.Start{At: "/t/bell"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		inner := w.ctrl.Store
+		s := &stopping{Store: inner}
+		s.left.Store(n)
+		w.ctrl = controller.New(w.ctl, s)
+		w.ctrl.Now = w.clock
+		for range 4 {
+			if _, err := w.ctrl.Pass(ctx); err != nil {
+				break
+			}
+		}
+		w.ctrl = controller.New(w.ctl, inner)
+		w.ctrl.Now = w.clock
+		w.settle()
+		r, err := w.client.Receipt(ctx, strings.SplitN(run, "/", 2)[1])
+		if err != nil || r == nil || !r.Taken {
+			t.Fatalf("stopped after %d writes, the start gave %+v %v", n, r, err)
+		}
+		if _, err := w.client.Send(ctx, w.to(run), "rang", nil, time.Hour); err != nil {
+			t.Fatal(err)
+		}
+		w.settle()
+		if head := w.head(run); head.Status != instance.Done {
+			t.Fatalf("stopped after %d writes, the run is %s", n, head.Status)
+		}
+		if left := w.list(store.Keys("ctl", "/t/bell")); len(left) != 0 {
+			t.Fatalf("stopped after %d writes, the run ended and the key files are %v", n, left)
+		}
+		if !s.stopped.Load() {
+			if n < 3 {
+				t.Fatalf("the start made only %d writes", n)
+			}
+			return
+		}
 	}
 }
 

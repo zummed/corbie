@@ -206,7 +206,7 @@ job:
 
 A key's file is at its location (see store.md), named by the SHA-256 of the key. It holds the key, the run and the message that starts the run, signed by the controller and sealed to it. A singleton's run is named the same way, by the file of the empty key, which the submit writes as it starts the run. A send to a singleton's `{ at }` never starts a run: with no running singleton it is noted as undelivered.
 
-A send to a transient location's `{ at }` is a send to a key no other send names. It always starts a new run, named from the sender's message. The run's first step takes the start and the event, as a keyed run's does; a flow or an agent takes the start alone. A transient run takes a key's file only where its file has `limits: { runs }`: the file of its own ID, which counts it, freed as a key's is.
+A send to a transient location's `{ at }` is a send to a key no other send names. It always starts a new run, named from the sender's message. The run's first step takes the start and the event, as a keyed run's does; a flow or an agent takes the start alone. A transient run takes a key's file only where its file has `limits: { runs }`: the file of its own ID, which counts it, freed as a key's is. A start taken again after the controller stopped finds that file, and the limit does not refuse it.
 
 1. A send reads the file once, while the step is worked out, and the step names the run the event goes to: the run the file names or, when it names none at a keyed location, a new run. A carry-out done again goes to the same run.
 2. A message to a key carries the event, and what would start a run there. The new run's first step takes both, and the run with the key takes the event alone.

@@ -708,13 +708,14 @@ func (b *build) located(start *arrival) (*instance.Start, error) {
 		return nil, nil
 	}
 	// A transient location at its limits: { runs } starts no run. Its runs
-	// are counted by their key files, as a keyed location's are.
+	// are counted by their key files, as a keyed location's are. A start
+	// taken again finds the key file of its own ID, and is counted already.
 	if file.Lifetime == machine.LifetimeTransient && file.Runs > 0 {
 		files, err := store.Names(p.store.List(p.ctx, store.Keys(p.ctl, s.Location)))
 		if err != nil {
 			return nil, err
 		}
-		if len(files) >= file.Runs {
+		if len(files) >= file.Runs && !slices.Contains(files, store.Key(p.ctl, s.Location, b.inst)) {
 			return no("%s is at its limit of %d runs", s.Location, file.Runs)
 		}
 	}

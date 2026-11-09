@@ -10,7 +10,7 @@ import (
 func Test_store_numbered_names_sort_by_number(t *testing.T) {
 	var names []string
 	for _, n := range []int{10, 9, 1, 100, 2, 99999} {
-		names = append(names, Step("ctl", "c1/i", n), Emit("ctl", "c1/i", "job", n))
+		names = append(names, Step("ctl", "c1/i", n), Emit("ctl", "c1/i", 3, n))
 	}
 	slices.Sort(names)
 	last := map[bool]int{}
@@ -64,7 +64,7 @@ func Test_store_no_name_is_a_path_above_another(t *testing.T) {
 	names := []string{
 		VersionName, Message("ctl", "c1", "m1"), Receipt("ctl", "c1", "m1"),
 		RunningHead("ctl", i), FinishedHead("ctl", i), RunningHead("ctl", child),
-		Step("ctl", i, 1), Emit("ctl", i, "fetch", 1), Blob("ctl", i, "b1"), Step("ctl", child, 1),
+		Step("ctl", i, 1), Emit("ctl", i, 1, 1), Blob("ctl", i, "b1"), Step("ctl", child, 1),
 		Wake("ctl", now, i, "timer.x"), Trust("ctl", "r1"),
 		Message("r1", "ctl", JobMessage(i, "fetch")), Taken("r1", now, JobMessage(i, "fetch")),
 		Message("ctl", "ctl", LinkMessage(i, 3, 0, "start")),

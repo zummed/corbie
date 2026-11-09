@@ -437,7 +437,7 @@ func (p *pass) job(inst string, step *instance.Step, ask *instance.Ask) (*instan
 		return nil, none, nil, err
 	}
 	request, _, _ := strings.Cut(ask.Name, "@")
-	job := &instance.Job{Instance: inst, Name: ask.Name, Attempt: ask.Attempt, Request: inst + "/" + request,
+	job := &instance.Job{Instance: inst, Name: ask.Name, Attempt: ask.Attempt, Number: ask.Number, Request: inst + "/" + request,
 		Script: asked.Found.Blob, Path: asked.Script, Files: asked.Found.Files,
 		Input: asked.Input, Timeout: timeoutOf(asked), Memory: asked.Memory, Due: ask.At, Wants: asked.Wants, Readers: readers}
 

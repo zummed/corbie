@@ -89,8 +89,9 @@ These are true of the store.
 - Whoever operates the store can read every file path, delete any file and
   restore the store to an earlier state. They cannot read an encrypted file,
   and a file they alter is refused by its reader.
-- Every client can read every run's status and list every record, with the
-  names, sizes and times of its files and the names of its jobs.
+- Every client can read every run's status, and how many files each run's
+  record has, with their sizes and times. It reads nothing else of a run it
+  may not read.
 - A client a file's `read:` lists can answer the tickets of the runs there.
   Taken off the list, it still reads what was encrypted for it, and the runs
   still running keep the list they started with.

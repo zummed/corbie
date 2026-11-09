@@ -35,9 +35,10 @@ version                                  the layout's version
   finished/<client>/<instance>           heads of instances that have ended
   records/<client>/<instance>/
       steps/<number>                     written by the controller
-      emits/<job>/<number>               written by the runner doing that job
+      emits/<job number>/<number>        written by the runner doing that job
       blobs/<name>                       written by whoever made the blob
       carried                            how far a large step has been carried out
+      tried                              how many times a step has been taken in a process of its own
   wakes/<time>/<instance>/<name>         when an instance is next due attention
   locations/<location>/+/
       tree                               at a tree's prefix: the client that owns the tree, and the directory last submitted there
@@ -54,7 +55,7 @@ version                                  the layout's version
   taken/<due time>/<job>                 one mark for each job it has taken
 ```
 
-The version is written once, when the store is first set up, and a Corbie that does not know it refuses to use the store. An instance's name begins with the client that owns its root's tree and carries the time it was named, so anything that names an instance says where its head and record are and how old it is.
+The version is written once, when the store is first set up, and a Corbie that does not know it refuses to use the store. A store whose version is older is refused the same way: nothing is carried over from it, and `corbie init` sets up a new one. An instance's name begins with the client that owns its root's tree and carries the time it was named, so anything that names an instance says where its head and record are and how old it is.
 
 A location's entries are under `+` after its path. No part of a location is empty, `.`, `..` or `+`, and none holds `#`. A part that starts with a dot, as `.rook` does, is kept after a `#`, as `locations/#.rook/`, so that a directory does not hide it. A tree's entry is at its prefix. Secrets and values may be set at a path above a location as well, and those set at `/` are under `locations/+/`. For example, these commands:
 
@@ -81,12 +82,22 @@ The layout is drawn so that the right to read or write is only ever a matter of 
 |---|---|---|
 | Controller | everything in its own area; jobs into runners' inboxes | everything in its own area |
 | Runner | results into the controller's inbox; new emits and blobs in records; its own inbox and marks | its own inbox and marks; blobs in records |
-| Client | messages into the controller's inbox; its own uploads; new blobs in the records of its own runs | its own receipts; every head and record |
+| Client | messages into the controller's inbox; its own uploads; new blobs in the records of its own runs | its own receipts; every head; every record, opening only what is sealed to it |
 | A viewer given heads only | nothing | every head |
 
 Every party can read the layout's version. A runner or a client adds to a record only-if-new: it can never change or remove what is there. A runner is not limited to the records of the jobs it holds, so a runner can add junk to any record. What it adds is signed by it and tied to a job, and readers ignore an entry from a runner that had no such job.
 
 Blobs are encrypted and their keys travel only in sealed messages, so the right to read a blob's bytes gives nothing without its reference. A record's entries are sealed, so a client opens only those sealed to it.
+
+A record's names say nothing a definition or a person chose:
+
+| Name | Made of |
+|---|---|
+| `steps/<number>` | the step's number |
+| `emits/<job number>/<number>` | the number the controller gives each attempt at a script when it asks for it, and the entry's number |
+| `blobs/<name>` | the time the blob was made and random characters |
+
+The job's name is inside its sealed entries. A client that lists a record learns that the run exists and how many entries its record has, with their sizes and times.
 
 ## Kinds of store
 

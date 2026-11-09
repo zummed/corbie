@@ -95,7 +95,7 @@ func (w *world) cancel(message string) string {
 func (w *world) emitted(job string) []*instance.Emit {
 	w.t.Helper()
 	var entries []*instance.Emit
-	names, _ := store.Names(w.owner.List(ctx, store.Emits("ctl", inst)+"/"+job))
+	names, _ := store.Names(w.owner.List(ctx, store.Emits("ctl", inst)+fmt.Sprintf("/%08d", w.number(job))))
 	for _, name := range names {
 		data, _, _ := w.owner.Read(ctx, name)
 		var entry instance.Emit
@@ -339,7 +339,7 @@ func Test_run_result_written_after_all_emits(t *testing.T) {
 			continue
 		}
 		switch {
-		case strings.Contains(op.Name, "/emits/work/"):
+		case strings.Contains(op.Name, "/emits/"):
 			var entry instance.Emit
 			if _, err := identity.Read(op.Value, op.Name, w.run.Card, w.ctl, &entry); err != nil {
 				t.Fatal(err)

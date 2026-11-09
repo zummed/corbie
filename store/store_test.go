@@ -355,6 +355,10 @@ func TestVersion(t *testing.T) {
 			if err := SetUp(ctx, s); err != nil {
 				t.Fatal("setting up twice:", err)
 			}
+			must[bool](t)(s.Write(ctx, VersionName, []byte("1\n"), Overwrite))
+			if err := Check(ctx, s); err == nil || !strings.Contains(err.Error(), "does not know") || !strings.Contains(err.Error(), "older Corbie") {
+				t.Fatalf("an older version: %v", err)
+			}
 			must[bool](t)(s.Write(ctx, VersionName, []byte("999\n"), Overwrite))
 			if err := Check(ctx, s); err == nil || !strings.Contains(err.Error(), "does not know") {
 				t.Fatalf("an unknown version: %v", err)

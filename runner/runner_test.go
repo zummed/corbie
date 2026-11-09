@@ -53,6 +53,21 @@ type world struct {
 	run   *identity.Identity
 	mu    sync.Mutex
 	ops   []store.Op
+	// numbers are the numbers the jobs sent are given, by name.
+	numbers map[string]int
+}
+
+// number is the number a job of a name is given.
+func (w *world) number(name string) int {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	if w.numbers == nil {
+		w.numbers = map[string]int{}
+	}
+	if _, ok := w.numbers[name]; !ok {
+		w.numbers[name] = len(w.numbers) + 1
+	}
+	return w.numbers[name]
 }
 
 func newWorld(t *testing.T) *world {
@@ -94,7 +109,7 @@ func (w *world) leave(as *identity.Identity, name, script string, change func(*i
 	if err != nil {
 		return "", err
 	}
-	job := &instance.Job{Instance: inst, Name: name, Attempt: 1, Request: inst + "/" + name, Script: ref,
+	job := &instance.Job{Instance: inst, Name: name, Attempt: 1, Number: w.number(name), Request: inst + "/" + name, Script: ref,
 		Layers: []permission.Layer{{Name: "the definition", Allow: []string{"all"}}}, Timeout: machine.Duration(10 * time.Second),
 		Due: time.Now().Add(time.Minute), Readers: []identity.Card{w.c1.Card}}
 	if change != nil {

@@ -36,11 +36,11 @@ A watcher is shown, for each step, the run's `state`, in one shape for every typ
 | `states` | statechart | the active states, outermost first |
 | `turn` | agent | how many turns the agent has taken |
 
-An **emit** entry is written by a job while it runs: a log line, a note of progress, a piece of a model's reply, a named value. The job's runner writes it straight into the record, in order, and a watcher sees it as soon as it is there. If the machine has said it wants to act on values of that name, the runner also tells the controller, which costs one more message; otherwise the controller plays no part.
+An **emit** entry is written by a job while it runs: a log line, a note of progress, a piece of a model's reply, a named value. The job's runner writes it straight into the record, in order, under the number the controller gave the job, and a watcher sees it as soon as it is there. If the machine has said it wants to act on values of that name, the runner also tells the controller, which costs one more message; otherwise the controller plays no part.
 
 The record also holds the instance's **blobs**: the larger values its entries refer to. Among them is the definition the instance started with, which a later submit at its location does not change.
 
-Everything in a record is sealed so that only the controller, the client that owns the root's tree and the clients the root's file's `read:` lists can read it (see permission.md). A client `read:` lists that the controller does not trust when an entry is written cannot read that entry.
+Everything in a record is sealed so that only the controller, the client that owns the root's tree and the clients the root's file's `read:` lists can read it (see permission.md). A client `read:` lists that the controller does not trust when an entry is written cannot read that entry. Steps and emits are named by number and blobs by a time and random characters, so another client learns only how many entries a record has, with their sizes and times (see store.md).
 
 ## How long it is kept
 

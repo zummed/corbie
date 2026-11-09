@@ -149,6 +149,10 @@ type State struct {
 	Asked map[string]int `json:"asked,omitzero"`
 	// JobsStarted counts the jobs the instance has started.
 	JobsStarted int `json:"jobs_started,omitzero"`
+	// Scripts counts the attempts at scripts the instance has sent to
+	// runners, and numbers each: what an attempt adds to the record is
+	// filed under its number, never its name.
+	Scripts int `json:"scripts,omitzero"`
 	// Heard is the name of the last message taken from each of the most
 	// recent MaxHeard senders, oldest first: the instance's parent and each
 	// run that sent to it by address. The controller writes those under
@@ -329,8 +333,10 @@ type Ask struct {
 	// Name is the job a script, a child, a cancel or a failure is about.
 	Name string       `json:"name,omitzero"`
 	Job  *machine.Job `json:"job,omitzero"`
-	// Attempt is which attempt at the job this is.
+	// Attempt is which attempt at the job this is, and Number a script's
+	// number in the instance, under which its emits are filed.
 	Attempt int    `json:"attempt,omitzero"`
+	Number  int    `json:"number,omitzero"`
 	Runner  string `json:"runner,omitzero"`
 	// Card is the card of the runner a job goes to: what that job adds to
 	// the record is checked against it.

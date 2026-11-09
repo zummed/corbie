@@ -676,7 +676,7 @@ func TestEmitEntriesAreTrimmedEachByItsOwnAge(t *testing.T) {
 		// The job writes an entry as it starts, one thirty hours on and one
 		// eighty-two hours on.
 		for number, hours := range map[int]int{1: 0, 2: 30, 3: 82} {
-			at := store.Emit("ctl", run, job, number)
+			at := store.Emit("ctl", run, msg.Job.Number, number)
 			entry := &instance.Emit{Job: job, Number: number, Values: []instance.Emitted{{Name: "log", Data: number}}}
 			data, err := r1.Write(at, started.Add(time.Duration(hours)*time.Hour), time.Time{}, entry, w.ctl.Card, w.c1.Card)
 			if err != nil {
@@ -697,7 +697,7 @@ func TestEmitEntriesAreTrimmedEachByItsOwnAge(t *testing.T) {
 		// At a hundred hours the entries are a hundred, seventy and eighteen
 		// hours old, and the keep is a day.
 		got := w.list(store.Emits("ctl", run))
-		if len(got) != 1 || got[0] != store.Emit("ctl", run, job, 3) {
+		if len(got) != 1 || got[0] != store.Emit("ctl", run, msg.Job.Number, 3) {
 			t.Fatalf("job ended %v: with a keep of a day, at a hundred hours these emit entries are left: %v", ended, got)
 		}
 	}

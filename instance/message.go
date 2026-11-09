@@ -150,6 +150,9 @@ type Job struct {
 	Instance string `json:"instance"`
 	Name     string `json:"name"` // the job's full name, its attempt included
 	Attempt  int    `json:"attempt"`
+	// Number is the job's number in the instance: the runner files its
+	// emits under it.
+	Number int `json:"number"`
 	// Request names what asked: every attempt at the same job has the same.
 	Request string `json:"request"`
 

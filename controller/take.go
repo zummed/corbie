@@ -1180,8 +1180,9 @@ func (b *build) launch(job *instance.Going) {
 	job.Runner = runner
 	job.Due = b.time.Add(time.Duration(timeout(job)) + dueGrace)
 	job.Wake = b.wakeFor(wakeDue, full)
+	b.st.Scripts++
 	// The job, and then the wake for when its result is due.
-	b.ask(instance.Ask{Kind: instance.AskScript, Name: full, Job: &job.Job, Attempt: job.Attempt, Runner: runner, Card: card,
+	b.ask(instance.Ask{Kind: instance.AskScript, Name: full, Job: &job.Job, Attempt: job.Attempt, Number: b.st.Scripts, Runner: runner, Card: card,
 		At: job.Due, What: job.Wake, Message: store.JobMessage(b.inst, full)})
 }
 

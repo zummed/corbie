@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 )
 
@@ -12,7 +13,7 @@ import (
 const VersionName = "version"
 
 // Version is the layout this Corbie knows.
-const Version = "1"
+const Version = 2
 
 // Open opens the store an address names. The address alone says which kind
 // it is: "memory:" is a new memory store, "s3://…" a bucket, "corbie://…" a
@@ -48,7 +49,7 @@ func IsDirectory(address string) bool {
 
 // SetUp writes the layout's version into a store that has none.
 func SetUp(ctx context.Context, s Store) error {
-	if _, err := s.Write(ctx, VersionName, []byte(Version+"\n"), OnlyIfNew); err != nil {
+	if _, err := s.Write(ctx, VersionName, []byte(strconv.Itoa(Version)+"\n"), OnlyIfNew); err != nil {
 		return err
 	}
 	return Check(ctx, s)
@@ -70,8 +71,12 @@ func Check(ctx context.Context, s Store) error {
 		}
 		return fmt.Errorf("store: this is not a Corbie store: it has no %s (corbie init sets one up)", VersionName)
 	}
-	if v := strings.TrimSpace(string(value)); v != Version {
-		return fmt.Errorf("store: the store's layout is version %q, which this Corbie does not know (it knows %s)", v, Version)
+	v := strings.TrimSpace(string(value))
+	if n, err := strconv.Atoi(v); err == nil && n > 0 && strconv.Itoa(n) == v && n < Version {
+		return fmt.Errorf("store: the store's layout is version %s, set up by an older Corbie, and this Corbie does not know it (it knows %d and reads nothing older; corbie init sets up a new store in an empty directory or bucket)", v, Version)
+	}
+	if v != strconv.Itoa(Version) {
+		return fmt.Errorf("store: the store's layout is version %q, which this Corbie does not know (it knows %d)", v, Version)
 	}
 	return nil
 }

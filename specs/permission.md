@@ -151,7 +151,7 @@ A gateway is a client, and a request to it is a call to a location by the gatewa
 
 ## Reading
 
-A file's `read:` lists the clients, beside its tree's, that read its runs.
+Every client reads every head; everything else is sealed to the clients that may read the run. A file's `read:` lists the clients, beside its tree's, that read its runs.
 
 ```yaml
 # home/door.yaml                        location /home/door
@@ -226,7 +226,7 @@ A script cannot reach outside itself except through the kinds above, and those a
 ```
 
 - Whoever holds a gateway's token calls every location that accepts the gateway's client, with any input.
-- Every client reads every head, and lists every record and the names, sizes and times of its entries, the names of its jobs among them. It opens only what is sealed to it.
+- A client browsing the store sees that runs exist, their heads, and how many entries each record has, with their sizes and times. It opens only what is sealed to it.
 - A client a file's `read:` lists reads the tickets of the runs there, and so can answer them, as any client that holds a ticket can.
 - A client taken off `read:` still opens what was sealed to it, and the runs still running keep the list they started with until they end.
 - What is at a location is not secret from those who may send there. A run whose layers allow `send:` to a location learns from an undelivered note or a failed call, before `receive:` is read, whether a file is recorded there, its lifetime, whether its singleton is running and whether a keyed location is at its `limits: { runs }`. A client learns from a refused start or call whether a file is recorded at a location and the client whose tree it is in, whatever its ceiling, and the location's lifetime when its ceiling allows `send:` there.

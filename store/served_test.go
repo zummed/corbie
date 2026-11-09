@@ -176,7 +176,7 @@ func Test_store_served_directory_holds_each_party_to_its_row(t *testing.T) {
 	if done, err := runner.Delete(ctx, "run/inbox/ctl/job1", Overwrite); !done || err != nil {
 		t.Errorf("a runner removing its job: %v %v", done, err)
 	}
-	if done, err := runner.Write(ctx, "ctl/records/cli/i1/emits/job1/1", []byte("emit"), OnlyIfNew); !done || err != nil {
+	if done, err := runner.Write(ctx, "ctl/records/cli/i1/emits/00000001/00000001", []byte("emit"), OnlyIfNew); !done || err != nil {
 		t.Errorf("a runner's emit: %v %v", done, err)
 	}
 	if v, _ := read(t, runner, "ctl/records/cli/i1/steps/1"); v != "" {

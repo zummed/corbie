@@ -185,7 +185,7 @@ sleep 30 >/dev/null 2>&1 & wait`)
 // corbie help lists the commands as a tree: a word and its summary, or the
 // words that follow it.
 const commands = `Corbie runs machines. A machine is a YAML definition of type flow, statechart
-or agent, and each of its jobs is a script or another machine.
+or agent, and each of its jobs is a script, a machine, or a send.
 
   init         create a controller, a runner and a client on this computer
   start        run the controller, a runner, the gateway, the store's server or

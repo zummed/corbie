@@ -70,7 +70,7 @@ var shape = &machine.Shape{Name: "flow", What: "a flow", Fields: []machine.Field
 		Of: &machine.Shape{Name: "stage", What: "a stage", Fields: []machine.Field{
 			{Name: "when", Kind: machine.KindWord, Like: "${stages.summarise.failed}", Description: "a condition, one expression: the stage runs only if it holds"},
 			{Name: "follows", Kind: machine.KindList, Like: "[fetch]", Description: "stages it runs after, though it reads nothing of them"},
-			{Name: "job", Kind: machine.KindJob, Like: "{ script: ./fetch.js }", Description: "what the stage does: a script, or a machine"},
+			{Name: "job", Kind: machine.KindJob, Like: "{ script: ./fetch.js }", Description: "what the stage does: a script, a machine, or a send"},
 			{Name: "each", Kind: machine.KindValue, Like: "${input.urls}",
 				Description: "runs the stage once for every item, read as ${item}: { items: … }, { emitted: … } or { blob: … }, or a list or an expression that gives one",
 				Of: &machine.Shape{Name: "each", What: "where a stage's items come from", Fields: []machine.Field{

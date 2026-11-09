@@ -96,7 +96,8 @@ func (e *Error) Value() any {
 }
 
 // A Job is a filled-in request for work: a script, which a runner
-// executes, or a machine, which the controller starts as a child.
+// executes, a machine, which the controller starts as a child run or, named
+// by its location, as a run of its own, or a send.
 type Job struct {
 	// Name says what asked for the job: a stage, a state, a tool, an
 	// agent's turn, the ask; an item of a list adds its position.

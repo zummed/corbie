@@ -675,7 +675,7 @@ func (t table) groupHelp(group string) string {
 func overview() string {
 	commands := own().rows("")
 	var b strings.Builder
-	b.WriteString("Corbie runs machines. A machine is a YAML definition of type flow, statechart\nor agent, and each of its jobs is a script or another machine.\n\n")
+	b.WriteString("Corbie runs machines. A machine is a YAML definition of type flow, statechart\nor agent, and each of its jobs is a script, a machine, or a send.\n\n")
 	b.WriteString(lines(commands, width(commands)))
 	if found := programs(); len(found) > 0 {
 		b.WriteString("\n" + wrap("Programs on PATH, which corbie <name> runs: "+strings.Join(found, ", ")+".", 0) + "\n")

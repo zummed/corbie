@@ -121,7 +121,7 @@ func init() {
 	stateShape.Fields = []machine.Field{
 		{Name: "initial", Kind: machine.KindWord, Like: "drafting", Description: "of the states it holds, the one it starts in"},
 		{Name: "states", Kind: machine.KindNamed, Of: stateShape, Description: "states of its own"},
-		{Name: "job", Kind: machine.KindJob, Like: "{ script: ./draft.js }", Description: "a script or a machine, started on entry and cancelled on leaving"},
+		{Name: "job", Kind: machine.KindJob, Like: "{ script: ./draft.js }", Description: "a script, a machine, or a send, started on entry and cancelled on leaving"},
 		{Name: "jobs", Kind: machine.KindNamed, Of: machine.JobShape, Description: "several named jobs; the state is done when all are, and its output is each one's by name"},
 		{Name: "defer", Kind: machine.KindList, Like: "[said]", Description: "events kept while the state is active and no rule takes them, and offered again once no active state defers them"},
 		{Name: "ticket", Kind: machine.KindWord, Like: "verdict", Description: "the name of a ticket the state issues while it is active, read as ${tickets.name}; its answer is an event of that name"},

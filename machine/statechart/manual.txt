@@ -69,7 +69,8 @@ Fields
 
 A state has these fields, and at most one of `job:`, `jobs:` and `states:`.
 
-  job        a script or a machine, started on entry and cancelled on leaving
+  job        a script, a machine, or a send, started on entry and cancelled on
+             leaving
   jobs       several named jobs: the state is done when all are, and its
              output is each job's output by name
   states     states inside this one, with their own `initial:`

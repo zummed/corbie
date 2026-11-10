@@ -173,7 +173,7 @@ A run keeps the definition it started with, and a submit changes what new runs g
 
 | `update:` | Runs already running |
 |---|---|
-| `restart` | are cancelled; a singleton starts again on the new definition, handed what the old run's `handover:` names (see statechart.md), and a keyed run starts fresh on the next send to its key |
+| `restart` | are cancelled; a singleton starts again on the new definition with no input, and a keyed run starts fresh on the next send to its key |
 | `drain` | finish on the definition they started with; the default for keyed and transient |
 
 - A file is changed when the machine written out from it differs. Where its values are written takes no part, so moving a line changes nothing.

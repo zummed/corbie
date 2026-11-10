@@ -1455,11 +1455,6 @@ func (b *build) first(s *instance.Start, start *arrival) (refused bool, err erro
 	if err != nil || refused {
 		return refused, err
 	}
-	if len(s.Replaces) > 0 && !gone {
-		if s, err = b.handed(s); err != nil {
-			return false, err
-		}
-	}
 	b.above(def)
 	read := &stepOut{Problems: problems}
 	if len(problems) == 0 && !gone {
@@ -1603,23 +1598,6 @@ func (b *build) ownCopy(s *instance.Start, start *arrival, call bool) (gone, ref
 		return false, true, nil
 	}
 	return true, false, nil
-}
-
-// handed gives a singleton started again what the run it replaces hands
-// over as its input, with the blobs that names copied into its own record.
-func (b *build) handed(s *instance.Start) (*instance.Start, error) {
-	value, note, err := b.p.handedOver(s.Replaces)
-	if err != nil {
-		return nil, err
-	}
-	handed := *s
-	if handed.Input, err = b.p.handUp(value, b.inst); err != nil {
-		return nil, err
-	}
-	if note != "" {
-		b.ask(instance.Ask{Kind: instance.AskNote, Text: note})
-	}
-	return &handed, nil
 }
 
 // above writes what the run takes from its definition for itself and for

@@ -16,6 +16,12 @@ Change these commands.
 `corbie run submit` records a file or a directory, and takes `--at` and a
 script file's flags only.
 
+These are gone.
+
+- `handover:` on a singleton statechart. A singleton started again is given
+  no input. A machine that must keep data across a change to its file writes
+  it to a file of its own, with `fs.write:`, and reads it as it starts.
+
 These behave differently.
 
 - An `approve:` entry holds a job whose `allow:` entry of the same kind matches

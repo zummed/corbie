@@ -66,8 +66,6 @@ Fields
 
   initial    the first state, needed where there is more than one
   states     the states, by name; a name is used once in a statechart
-  handover   of a singleton: the state whose latest output, or else this run's
-             input, is the input of the run a changed file starts in its place
 
 A state has these fields, and at most one of `job:`, `jobs:` and `states:`.
 

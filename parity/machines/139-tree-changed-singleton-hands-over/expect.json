@@ -1,9 +1,0 @@
-{
-  "status": "done",
-  "output": { "n": 2 },
-  "record": [
-    { "machine": "asker", "event": { "name": "said", "data": { "n": 2 } } },
-    { "machine": "asker", "order": ["said", "said"] }
-  ],
-  "note": "R-ctl-133: a singleton started again is given the output of the state the replaced run's handover: names."
-}

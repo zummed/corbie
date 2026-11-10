@@ -165,12 +165,6 @@ The detailed rules behind the [Statechart overview](../statechart.md). Area code
 
 **C-chart-13** A chart keeps at most 100 events; one more is dropped, and the receipt for it says the chart did not act on it. Every step reads the chart's state whole, so a sender could otherwise make each step slower than the last. *Test:* `chart_kept_events_are_bounded`
 
-**R-chart-84** `handover:` names one state of a singleton chart. It is refused on a chart of any other lifetime, and when it names a state the chart does not have.
-*Accept:* `Test_chart_handover_names_a_state_of_a_singleton`.
-
-**R-chart-85** A singleton chart a submit replaces hands over, by its own `handover:`, the latest output of that state in the run, or, when that state gave none, the run's input. A chart with no `handover:` hands over nothing.
-*Accept:* `Test_chart_handover_gives_the_state_output_or_the_input`.
-
 ## Interfaces
 
 Uses:
@@ -182,6 +176,6 @@ Uses:
 
 Used by:
 
-- **Machines.** A statechart is one of the four types, and supplies the filling-out of its short forms, its check, its step, the state a watcher is shown (R-inst-72), its manual page, and the value a singleton run hands over (R-chart-85).
+- **Machines.** A statechart is one of the four types, and supplies the filling-out of its short forms, its check, its step, the state a watcher is shown (R-inst-72), and its manual page.
 - **Flow, Agent.** Either may run a chart as a child, and a chart may run either.
 - **Machines, for approval.** An ask that waits for a person is typically a chart that hands out a ticket and ends with the jobs it approves.

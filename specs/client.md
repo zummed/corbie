@@ -291,7 +291,7 @@ A tree belongs to the client that first submitted it. Every run keeps the defini
 - A file beside a directory of the same name, as `boiler.yaml` beside `boiler/x.yaml`, is refused with the files below it, because a location has nothing below it. They are reported among the files with problems.
 - A file with a problem is reported, and its location keeps what was recorded before. A problem with one file leaves the rest done. In JSON, `problems` gives each problem's text by location.
 - A file whose approvals have no ask is recorded, since it may run as another machine's child under that machine's ask. A run started at its location is refused.
-- A singleton is given no input unless a submit starts it again in place of a run with `handover:` (see statechart.md). One whose `input:` needs some is refused, and reported. It reads the context's absolute path as `${run.context}`.
+- A singleton is given no input. One whose `input:` needs some is refused, and reported. It reads the context's absolute path as `${run.context}`.
 - When a client submits a different directory at a prefix it holds, the submit prints `/home: last submitted from /srv/old-house`.
 - `corbie run cancel <location>` after a submit cancels the runs there, so the next of each starts on the new definition.
 - `corbie test` given directories reads their machines as this command does, prints each one ok or its problems and each listed path, and starts and cancels nothing. It reads no config and no store, so it changes nothing wherever it runs.

@@ -399,23 +399,6 @@ func Kept(typ string, state jsontext.Value) []Event {
 	return nil
 }
 
-// A HandingOver is a type whose singleton runs hand a value to the run a
-// submit starts in place of them.
-type HandingOver interface {
-	HandsOver(def *Definition, state jsontext.Value, input any) (any, bool, error)
-}
-
-// HandsOver gives what a run hands to the run a submit starts in place of
-// it, by its definition, its state and its input, and whether its
-// definition names anything to hand over.
-func HandsOver(def *Definition, state jsontext.Value, input any) (any, bool, error) {
-	t, _ := TypeOf(def.Type)
-	if h, ok := t.(HandingOver); ok {
-		return h.HandsOver(def, state, input)
-	}
-	return nil, false, nil
-}
-
 // An Owner is a type that gives events names of its own, such as a timer's
 // or a ticket's, which no sender may take.
 type Owner interface {

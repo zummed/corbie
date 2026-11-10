@@ -18,9 +18,6 @@ import (
 type Chart struct {
 	Initial string            `json:"initial,omitzero"`
 	States  map[string]*State `json:"states"`
-	// Handover names the state whose latest output a singleton's run hands
-	// to the run a submit starts in its place.
-	Handover string `json:"handover,omitzero"`
 }
 
 // State is one state in full form.
@@ -116,8 +113,6 @@ var (
 	shape      = &machine.Shape{Name: "statechart", What: "a statechart", Fields: []machine.Field{
 		{Name: "initial", Kind: machine.KindWord, Like: "drafting", Description: "the state it starts in"},
 		{Name: "states", Kind: machine.KindNamed, Of: stateShape, Description: "its states"},
-		{Name: "handover", Kind: machine.KindWord, Like: "checking",
-			Description: "of a singleton, the state whose latest output, or else this run's input, is the input of the run a submit starts in its place"},
 	}}
 )
 
@@ -145,7 +140,7 @@ func (chartType) Shape() *machine.Shape { return shape }
 
 // Fill reads a chart as written and gives its full form.
 func (chartType) Fill(p *machine.Parser, f *machine.Fields) any {
-	chart := &Chart{Initial: f.Text("initial"), Handover: f.Text("handover")}
+	chart := &Chart{Initial: f.Text("initial")}
 	states, order := f.Map("states")
 	chart.States = fillStates(p, "states", states, order)
 	return chart
@@ -348,14 +343,6 @@ func (chartType) Check(c *machine.Checker, def *machine.Definition) {
 		return
 	}
 	checkInitial(c, "", chart.Initial, chart.States)
-	if chart.Handover != "" {
-		switch _, known := all[chart.Handover]; {
-		case def.Lifetime != machine.LifetimeSingleton:
-			c.Problem("handover", "only a singleton is started again in place of its run, so only a singleton hands over")
-		case !known:
-			c.Problem("handover", "there is no state named %q", chart.Handover)
-		}
-	}
 	// The children a send may be addressed to: the job of a state, or a
 	// named job, that is a machine.
 	children, scripts, jobState := map[string]bool{}, map[string]bool{}, map[string]string{}

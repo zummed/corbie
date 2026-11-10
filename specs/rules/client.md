@@ -187,7 +187,7 @@ The detailed rules behind [the Client overview](../client.md).
 
 **R-client-148** A file with a problem is reported, its location keeps what was recorded before and its runs, and the rest of the tree is done. The command then fails, whether it prints text or JSON, and its JSON gives each problem's text by location. *Test:* `TestFileWithAProblemKeepsItsLocation` and `client_submit_problems_in_json`
 
-**R-client-149** A run reads the tree's directory as `run.context` and its location as `run.location`, and so does what it starts. A singleton is given no input unless a submit starts it again in place of a run with `handover:`, and a singleton file whose `input:` needs a value is a file with a problem. *Test:* `TestContextIsReadByARunAndItsChildren` and `mach_singleton_needing_input_refused`
+**R-client-149** A run reads the tree's directory as `run.context` and its location as `run.location`, and so does what it starts. A singleton is given no input, and a singleton file whose `input:` needs a value is a file with a problem. *Test:* `TestContextIsReadByARunAndItsChildren` and `mach_singleton_needing_input_refused`
 
 **R-client-164** `corbie test <file> --definition` prints the machine as the client writes it out, in the order it is written, each value with its file and line, and runs nothing. *Test:* `Test_client_test_definition_prints_file_and_line`
 

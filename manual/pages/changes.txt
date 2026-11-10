@@ -21,6 +21,8 @@ These behave differently.
 - An `approve:` entry holds a job whose `allow:` entry of the same kind matches
   a value the `approve:` entry matches. Before, an `approve:` entry that began
   with `*`, as `net:*.internal`, held every job of its kind.
+- `llm.chat` with no `service:` uses the service the model's name is of, and
+  refuses a model no service claims. Before, it used `anthropic`.
 - A program using the client package is given the error by `Watch` when a
   look fails after the first listing. Before, `Watch` went on.
 

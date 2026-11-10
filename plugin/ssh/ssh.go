@@ -1,4 +1,4 @@
-// Package ssh is the plugin for running a command on another machine.
+// Package ssh is the plugin for running a command on another computer.
 package ssh
 
 import (
@@ -25,7 +25,7 @@ func init() {
 }
 
 func run(job *plugin.Job, first any, opt plugin.Options) (any, error) {
-	address, err := plugin.Text(first, "the machine's address")
+	address, err := plugin.Text(first, "the computer's address")
 	if err != nil {
 		return nil, err
 	}
@@ -111,7 +111,7 @@ func run(job *plugin.Job, first any, opt plugin.Options) (any, error) {
 		}
 		auth = []ssh.AuthMethod{ssh.PublicKeys(signer)}
 	}
-	// Nothing is taken from the machine: no keys, no agent, no list of
+	// Nothing is taken from the computer: no keys, no agent, no list of
 	// known hosts.
 	link, channels, requests, err := ssh.NewClientConn(conn, address, &ssh.ClientConfig{
 		User: user, Auth: auth, HostKeyCallback: check, HostKeyAlgorithms: algorithms,
@@ -157,7 +157,7 @@ func run(job *plugin.Job, first any, opt plugin.Options) (any, error) {
 	return map[string]any{"status": float64(status), "out": out, "err": errOut.Text()}, nil
 }
 
-// hostKey reads which key the other machine must show: a key, a key's
+// hostKey reads which key the other computer must show: a key, a key's
 // fingerprint, or the word that says outright that it is not checked.
 func hostKey(opt plugin.Options) (ssh.HostKeyCallback, []string, error) {
 	given, err := opt.Text("hostKey", "")
@@ -165,11 +165,11 @@ func hostKey(opt plugin.Options) (ssh.HostKeyCallback, []string, error) {
 		return nil, nil, err
 	}
 	differs := func(shown ssh.PublicKey) error {
-		return plugin.Errorf(plugin.Refused, "the machine showed a key that is not the one given: its key has changed, or it is another machine. The key it showed is %s %s", shown.Type(), ssh.FingerprintSHA256(shown))
+		return plugin.Errorf(plugin.Refused, "the computer showed a key that is not the one given: its key has changed, or it is another computer. The key it showed is %s %s", shown.Type(), ssh.FingerprintSHA256(shown))
 	}
 	switch {
 	case given == "":
-		return nil, nil, plugin.Errorf(plugin.BadInput, "ssh.run needs hostKey: the other machine's key, as \"ssh-ed25519 AAAA...\", or its fingerprint, as \"SHA256:...\"; or \"unchecked\", to take whatever key it shows")
+		return nil, nil, plugin.Errorf(plugin.BadInput, "ssh.run needs hostKey: the other computer's key, as \"ssh-ed25519 AAAA...\", or its fingerprint, as \"SHA256:...\"; or \"unchecked\", to take whatever key it shows")
 	case given == "unchecked":
 		return ssh.InsecureIgnoreHostKey(), nil, nil
 	case strings.HasPrefix(given, "SHA256:"):
@@ -184,7 +184,7 @@ func hostKey(opt plugin.Options) (ssh.HostKeyCallback, []string, error) {
 	if err != nil {
 		return nil, nil, plugin.Errorf(plugin.BadInput, "hostKey: is not a key that can be read: it is a line such as \"ssh-ed25519 AAAA...\", a fingerprint such as \"SHA256:...\", or \"unchecked\"")
 	}
-	// The machine is asked for the kind of key that was given, of the
+	// The computer is asked for the kind of key that was given, of the
 	// several it may have.
 	algorithms := []string{want.Type()}
 	if want.Type() == ssh.KeyAlgoRSA {

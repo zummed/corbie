@@ -520,7 +520,8 @@ gives its name. Any other blob fails the call before anything is sent.
 Options:
   service         anthropic, openai (the Responses API), openai-chat (the
                   Chat Completions API) or claude-code (the claude program
-                  on the runner's computer); default anthropic
+                  on the runner's computer); default the one the
+                  model's name is of, as anthropic for claude-…
   model           the model's name; required
   address         the service's URL, when it is not https://api.anthropic.com
                   or https://api.openai.com

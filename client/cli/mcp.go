@@ -118,7 +118,7 @@ func cmdMCP(e *Env, args []string) error {
 
 // briefing is what a model is told when it connects to corbie mcp: how to
 // work for the person who asked it.
-const briefing = `Corbie runs machines. A machine is a YAML definition of type flow, statechart or agent, and each of its jobs is a JavaScript script, a machine, or a send. A person has asked you to write, change, run or set up a machine.
+const briefing = `Corbie runs machines. A machine is a YAML definition of type flow, statechart, agent or decision, and each of its jobs is a JavaScript script, a machine, or a send. A person has asked you to write, change, run or set up a machine.
 
 1. Read the manual with the manual tool before you write or change a definition or a script. Read the pages "corbie" and "first-machine" first. Then read "definitions", "scripts", "permissions", the page of the machine type ("flow", "statechart" or "agent") and the page of each plugin the script calls. The manual gives every field and every call, so never guess one.
 2. Give each job only the permissions it needs, in its allow list, and tell the person what you allowed.

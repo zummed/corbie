@@ -1,8 +1,8 @@
 Definitions: every type of machine shares these fields, expressions, jobs, events and approval.
 
 A definition is a YAML file. One field gives the machine's type and name:
-`flow: digest`, `statechart: review` or `agent: librarian`. It may be written
-anywhere in the file, or come from a file it includes. A name is letters,
+`flow: digest`, `statechart: review`, `agent: librarian` or
+`decision: urgent`. It may be written anywhere in the file, or come from a file it includes. A name is letters,
 digits, `_` and `-`, and starts with a letter. No stage, state, tool or job is
 named `ask`, the name of the definition's ask.
 
@@ -332,7 +332,7 @@ A send or a call needs the sender's permissions, a send or call job's own
   `${run.address}`, and its key as `${run.key}`, which is null except at a keyed
   location.
 - A send to a transient location starts a new run with the event's data as
-  its input. A statechart is then given the event; a flow or an agent is given
+  its input. A statechart is then given the event; any other machine is given
   only the start.
 - A send the receiver refuses, or that no running statechart can take, is
   noted as undelivered in the sender's record and fails nothing, after the
@@ -445,5 +445,6 @@ Reference
   corbie manual flow           the fields of a flow
   corbie manual statechart     the fields of a statechart
   corbie manual agent          the fields of an agent
+  corbie manual decision       the fields of a decision
   corbie manual scripts        what a script reads, calls and returns
   corbie manual permissions    how an entry is written, and the layers that limit a job

@@ -29,7 +29,7 @@ here.
    "started":"2026-10-13T18:51:26.25Z","ended":"2026-10-13T18:51:27.31Z"}
 
   id                    the name of the client that owns its tree, a slash, the time and a random part
-  machine, type         the definition's name, and flow, statechart or agent
+  machine, type         the definition's name, and flow, statechart, agent or decision
   title                 the definition's `title:`, filled in when the run started
   status                waiting until a controller starts it, then running, done, failed or cancelled
   failure               for a failed run: denied, timeout or error

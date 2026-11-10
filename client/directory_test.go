@@ -335,7 +335,7 @@ func TestEveryYAMLIsAMachine(t *testing.T) {
 		"notes.yaml":  "the definition is empty; " + listIt,
 		"empty.yaml":  "the definition is empty; " + listIt,
 		"list.yaml":   "a definition is a mapping; " + listIt,
-		"people.yaml": "it gives no type: a machine writes one of agent:, flow:, statechart: with its name, or takes it from a file it includes; " + listIt,
+		"people.yaml": "it gives no type: a machine writes one of agent:, decision:, flow:, statechart: with its name, or takes it from a file it includes; " + listIt,
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("read %q", got)

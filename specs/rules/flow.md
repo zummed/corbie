@@ -108,6 +108,6 @@ Uses:
 
 Used by:
 
-- **Machines.** A flow is one of the three types, and supplies the shape of its definitions, the filling-out of its short forms, its check, its step, the state a watcher is shown (R-inst-72), and its manual page.
+- **Machines.** A flow is one of the four types, and supplies the shape of its definitions, the filling-out of its short forms, its check, its step, the state a watcher is shown (R-inst-72), and its manual page.
 - **Statechart, Agent.** Either may run a flow as a child, and a flow may run either.
 - **Client.** Wraps a script submitted by itself in a flow of one stage.

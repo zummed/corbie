@@ -896,7 +896,7 @@ func Test_mach_type_is_one_field_anywhere(t *testing.T) {
 		}
 	}
 	for def, want := range map[string]string{
-		"stages: { s: { job: ./s.js } }\n": "it gives no type: a machine writes one of agent:, flow:, statechart: with its name, or takes it from a file it includes",
+		"stages: { s: { job: ./s.js } }\n": "it gives no type: a machine writes one of agent:, decision:, flow:, statechart: with its name, or takes it from a file it includes",
 		"flow: a\ninclude: ./b.yaml\n":     "it gives more than one type, flow: a at line 1, statechart: b at b.yaml:1: a machine has one",
 		"include: [./m.yaml, ./b.yaml]\n":  "it gives more than one type, flow: post at m.yaml:1, statechart: b at b.yaml:1: a machine has one",
 	} {

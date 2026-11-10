@@ -1,6 +1,6 @@
 # Machines
 
-A machine is a definition that Corbie runs. There are three types, flow, statechart and agent, and each has its own area. This area is what they all share: how a machine runs, how a definition is written, where it lives, and what a machine can receive and ask for.
+A machine is a definition that Corbie runs. There are four types: flow, statechart, agent and decision. Flow and statechart each have an area, and agent and decision, which call a model, share one. This area is what they all share: how a machine runs, how a definition is written, where it lives, and what a machine can receive and ask for.
 
 ## Steps
 
@@ -12,7 +12,7 @@ A machine runs until it reaches an end of its own, is cancelled, or passes its t
 
 ## Definitions
 
-A definition is data, written in YAML. Exactly one of its fields is `flow:`, `statechart:` or `agent:`, which gives its type and its name. That field may be written anywhere in the mapping, or come from a file the definition includes, and a definition with none or with two is refused. It may give the shape of its input, how long its instances are kept, and its limits.
+A definition is data, written in YAML. Exactly one of its fields is `flow:`, `statechart:`, `agent:` or `decision:`, which gives its type and its name. That field may be written anywhere in the mapping, or come from a file the definition includes, and a definition with none or with two is refused. It may give the shape of its input, how long its instances are kept, and its limits.
 
 A definition may carry `meta:`, with any value. Corbie keeps it with the stored definition, never reads it, and fills in no expression in it. An application keeps its own data there, such as when to start the machine.
 
@@ -364,7 +364,7 @@ job: { call: { at: services/weather }, input: { days: 2 } }
 A send to a transient location's `{ at }` is a send to a key no other send names: it always starts a new run.
 
 1. The event's data is the new run's input.
-2. A statechart is then given the event, as a keyed run is. A flow or an agent takes no sent event, and is given only the start.
+2. A statechart is then given the event, as a keyed run is. Any other machine takes no sent event, and is given only the start.
 
 `receive:`, the depth limit, `event.from` and `limits: { runs }` work as for a keyed run.
 
@@ -389,7 +389,7 @@ The controller writes the sender into `event.from`: `{ at, run }`, with `key` fo
 |---|---|
 | the sender's own layers refuse it | `denied` |
 | the receiver's `receive:` refuses it | noted as undelivered in the sender's record |
-| no running statechart can take it: it names a flow or an agent run, a run that has ended, or a key that is empty or past 256 characters | noted as undelivered |
+| no running statechart can take it: it names a run that is no statechart's, a run that has ended, or a key that is empty or past 256 characters | noted as undelivered |
 | it would start a run at a location at its `limits: { runs: }` | noted as undelivered |
 | a run kept it under `defer:` and was cancelled or restarted | noted as undelivered |
 | it is named `start`, `done`, `failed`, `timer`, a timer's name or a ticket's name | noted as undelivered |

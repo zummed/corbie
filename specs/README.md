@@ -1,6 +1,6 @@
 # Corbie
 
-Corbie runs machines. A machine is a flow, a statechart or an agent, written as a definition in YAML, and it contains jobs, which do its work. A job is a script, a machine, or a send. A machine is named by its file (`machine:`) or by its location (`call:`), and a send delivers an event and returns nothing.
+Corbie runs machines. A machine is a flow, a statechart, an agent or a decision, written as a definition in YAML, and it contains jobs, which do its work. A job is a script, a machine, or a send. A machine is named by its file (`machine:`) or by its location (`call:`), and a send delivers an event and returns nothing.
 
 One binary does everything. What a process does is set by the roles it is started with and by nothing else.
 
@@ -117,7 +117,7 @@ corbie run submit house --at /home
 
 - Only jobs of runs at `/home/devices/boiler` get `BOILER_PASSWORD`.
 - The controller writes the sender into `event.from`, here `{ at: /home/thermostats/kitchen, run: <ID> }`. A reply is a send to that address.
-- A send to a transient location's `{ at }` starts a new run with the event's data as its input, as a send to a key no one else names does. A statechart is then given the event; a flow or an agent takes no sent event and is given only the start.
+- A send to a transient location's `{ at }` starts a new run with the event's data as its input, as a send to a key no one else names does. A statechart is then given the event; any other machine takes no sent event and is given only the start.
 - A send the sender's own layers refuse is `denied`. A send the receiver refuses is noted in the sender's record and fails nothing.
 
 ## Reading these specs
@@ -140,7 +140,7 @@ Each area below has an overview in this directory, written to be read. The detai
 
 **[Machines](machine.md).** What every machine type shares: the definition, values filled in from input, the events a machine receives, the requests it makes, and the contract a type keeps with the controller.
 
-**[Flow](flow.md), [Statechart](statechart.md), [Agent](agent.md).** One area for each machine type.
+**[Flow](flow.md), [Statechart](statechart.md), [Agent](agent.md).** One area for each of flow and statechart, and one for the two types that call a model, agent and decision.
 
 **[Runner](runner.md).** What a runner's pass does with a job, and the world a script runs in.
 

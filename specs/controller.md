@@ -179,7 +179,7 @@ The sender's record names the run the step named, or the run the send started. A
 These sends are noted as undelivered in the sender's record and fail nothing:
 
 - The receiver's `receive:` does not list the sender.
-- No run at the address is running, or the run is a flow or an agent.
+- No run at the address is running, or the run is no statechart's.
 - The send would start a run, and its location has `limits: { runs }` running already.
 - The event is named `start`, `done`, `failed`, a timer's name or a ticket's name.
 - The address names a run by its ID that is not at the location the address gives, or a client.

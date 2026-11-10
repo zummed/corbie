@@ -6,3 +6,8 @@ import _ "embed"
 //
 //go:embed manual.txt
 var manual string
+
+// decisionManual is the decision's page of the manual.
+//
+//go:embed decision.txt
+var decisionManual string

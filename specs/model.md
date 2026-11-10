@@ -33,7 +33,7 @@ An answer's `confidence` is how concentrated its probabilities are, not how like
 
 The `systemone` service is at `https://api.typesafe.ai`, and a `jev-…` model is of it by default. `address:` sends the call to another host, such as a model served on the runner's computer, and a call with no `key:` sends no key.
 
-An agent's model is of a service that has `chat`. A definition that names a model of `systemone` is refused when it is checked.
+An agent's model is of a service that has `chat`, and a decision's of one that has `decide` (see [Agent](agent.md#decisions)). A definition that names a model of the other kind is refused when it is checked.
 
 ## Services
 

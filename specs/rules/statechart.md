@@ -182,6 +182,6 @@ Uses:
 
 Used by:
 
-- **Machines.** A statechart is one of the three types, and supplies the filling-out of its short forms, its check, its step, the state a watcher is shown (R-inst-72), its manual page, and the value a singleton run hands over (R-chart-85).
+- **Machines.** A statechart is one of the four types, and supplies the filling-out of its short forms, its check, its step, the state a watcher is shown (R-inst-72), its manual page, and the value a singleton run hands over (R-chart-85).
 - **Flow, Agent.** Either may run a chart as a child, and a chart may run either.
 - **Machines, for approval.** An ask that waits for a person is typically a chart that hands out a ticket and ends with the jobs it approves.

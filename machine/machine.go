@@ -327,7 +327,7 @@ type Type interface {
 }
 
 // Shown is the state of a run a watcher is shown for each step, beside
-// what its head says. Each type fills one field.
+// what its head says. A flow, a statechart and an agent each fill one field.
 type Shown struct {
 	// Stages are a flow's stages, each with its status: waiting, running,
 	// done, failed or skipped.

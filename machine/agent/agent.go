@@ -202,7 +202,12 @@ func (m Model) check() error {
 	if service.Program != "" {
 		return nil
 	}
-	u, err := url.Parse(m.addressOf())
+	return checkAddress(m.addressOf())
+}
+
+// checkAddress says what is wrong with the address of a model on the web.
+func checkAddress(address string) error {
+	u, err := url.Parse(address)
 	if err != nil || u.Host == "" || (u.Scheme != "http" && u.Scheme != "https") {
 		return fmt.Errorf("the model's address is not a web address")
 	}

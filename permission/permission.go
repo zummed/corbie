@@ -15,6 +15,8 @@ import (
 	"strings"
 	"sync"
 	"unicode"
+
+	"github.com/zummed/corbie/store"
 )
 
 // A Layer is one hand's say over what a job may do: what its deny list
@@ -168,17 +170,12 @@ func checkList(entries []string, check func(string) error) error {
 }
 
 // checkLocation says what is wrong with a location or a pattern of
-// locations, whole or read from a tree's prefix: every part is named, none
-// is ., .. or +, and none holds #.
+// locations, whole or read from a tree's prefix: each part is one the store
+// takes.
 func checkLocation(written string) error {
 	for _, part := range strings.Split(strings.TrimPrefix(written, "/"), "/") {
-		switch {
-		case part == "":
-			return fmt.Errorf("a location has no empty part and does not end with /")
-		case part == "." || part == ".." || part == "+":
-			return fmt.Errorf("a location has no part that is %s", part)
-		case strings.Contains(part, "#"):
-			return fmt.Errorf("a location has no part that holds #")
+		if err := store.CheckLocationPart(part); err != nil {
+			return fmt.Errorf("a location has %w, and does not end with /", err)
 		}
 	}
 	return nil

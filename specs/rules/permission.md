@@ -205,4 +205,5 @@ The detailed rules behind the [Permissions overview](../permission.md). Requirem
 - **Secrets** supply the values that may fill a scope, and use the `secret` kind and its rule for a secret's name: its destination, which values a job is sent (R-sec-14), that being allowed a secret is not being sent it, and the check that every secret in a handle may go where it is going.
 - **Client** carries a start's narrowing list, and shows a run's `denied` with its refusal and the permissions a finished run used. It shows a client a run whose head lists it as it shows one of its own.
 - **Instances** seal a record's entries to the controller, the tree's client and the clients `read:` lists (R-inst-32).
+- **Store** gives what a part of a location may be (`CheckLocationPart`), so a pattern matches no location the store refuses.
 - **Manual** carries the statements of what is not defended, and each plugin's page says which kinds its calls need.

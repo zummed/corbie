@@ -3,6 +3,7 @@
 package permission
 
 import (
+	"github.com/zummed/corbie/store"
 	"os"
 	"path/filepath"
 	"strings"
@@ -590,5 +591,17 @@ func Test_perm_all_only_in_a_list(t *testing.T) {
 	}
 	if (&Set{Layers: []Layer{{Name: "all", Allow: []string{"all"}}}}).Check(Env, "HOME") != nil {
 		t.Fatal("all in a list did not allow")
+	}
+}
+
+// A pattern matches no location the store refuses.
+func TestMatchLocationRefusesWhatTheStoreRefuses(t *testing.T) {
+	for _, location := range []string{"/a/b\\c", "/a/b\x00c", "/a/b#c", "/a/+", "/a//b"} {
+		if store.CheckLocation(location) == nil || MatchLocation("/a/**", location) {
+			t.Errorf("%q: the store takes it: %v, a pattern matches it: %v", location, store.CheckLocation(location) == nil, MatchLocation("/a/**", location))
+		}
+	}
+	if !MatchLocation("/a/*", "/a/.hidden") {
+		t.Error("a part that starts with a dot is a part")
 	}
 }

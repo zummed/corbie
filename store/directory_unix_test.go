@@ -48,6 +48,7 @@ func Test_store_directory_list_when_read_only(t *testing.T) {
 		}
 	}
 }
+
 // A directory store this user may not read is reported as that, and not as
 // a directory that holds no store.
 func TestCheckSaysADirectoryItMayNotRead(t *testing.T) {

@@ -137,7 +137,7 @@ func init() {
 			Description: "where to go on each event, by its name: a state's name, one transition, or a list. done and failed are the state's jobs ending, and any other is a timer, a ticket's answer, an event from the parent or a child, or a value a job emitted"},
 		{Name: "end", Kind: machine.KindWord, Like: "done", Values: []string{machine.Done, machine.Failed},
 			Description: "makes it a final state, which ends the state that holds it, or the chart, as done or failed"},
-		{Name: "output", Kind: machine.KindValue, Like: "${states.drafting.output}", Description: "of a final state: the result"},
+		{Name: "output", Kind: machine.KindValue, Like: "${states.drafting.output}", Description: "of a final state: the result; of a state with no job: its output, given as it is entered, after which it is done"},
 	}
 }
 
@@ -439,8 +439,8 @@ func (chartType) Check(c *machine.Checker, def *machine.Definition) {
 		case s.End != "" && (holds || s.Job != nil || s.Jobs != nil || s.Defer != nil || s.Ticket != "" || s.Timers != nil ||
 			s.On != nil || s.Entry != nil || s.Exit != nil):
 			c.Problem(n.place, "a final state only ends: it has end: and may give an output, and nothing else")
-		case s.End == "" && s.Output != nil:
-			c.Problem(n.place, "only a final state gives an output: give it end: done or end: failed")
+		case s.End == "" && s.Output != nil && (holds || s.Job != nil || s.Jobs != nil):
+			c.Problem(n.place, "a state with a job or with states inside it takes its output from them: only a final state or a state with no job gives an output")
 		}
 		c.Job(n.place+".job", s.Job, names...)
 		for _, job := range sortedNames(s.Jobs) {

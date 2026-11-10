@@ -41,7 +41,7 @@ A state may instead have several named jobs, which all start when it is entered.
 
 A state's `on:` says where to go on each event, by the event's name.
 
-- `done` is the state's jobs finishing, or the states inside it reaching a final state.
+- `done` is the state's jobs finishing, the states inside it reaching a final state, or a state with no job giving its `output:`.
 - `failed` is a job failing.
 - A timer's name is the timer being due.
 - A ticket's name is the ticket's answer.
@@ -59,9 +59,24 @@ One event may set off a chain of transitions. A chain that does not come to rest
 
 A chart has no variables. Each state's latest output is remembered and can be read by name from any expression, along with the chart's input and the event that caused the current move.
 
-A state's output is set only when the state is done: by its jobs ending well, or by a final state inside it. A job that fails leaves the state's earlier output as it was.
+A state's output is set only when the state is done: by its jobs ending well, by a final state inside it, or, in a state with no job and no states inside it, by its own `output:`. A job that fails leaves the state's earlier output as it was.
 
-A value built up over a loop goes through a script: in as its input and out as its output.
+A state with no job that gives `output:` is done as it is entered:
+
+1. Its `output:` is filled in, reading the event that entered it and every state's earlier output, its own included.
+2. That value is the state's output.
+3. The state is given `done` with the value as its data. With no rule for `done` it stays, and waits as any state does.
+
+```yaml
+states:
+  listening:
+    on: { message: gathering }
+  gathering:
+    output: "${(states.gathering.output ?? []).concat(event.data)}"
+    on: { done: listening }
+```
+
+Each `message` adds its data to the list `states.gathering.output` holds. A value built up over a loop is kept this way, or goes through a script: in as its input and out as its output.
 
 ## Sending
 

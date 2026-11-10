@@ -51,7 +51,7 @@ type stepper struct {
 	// fresh names what this step made: an event that arrived for an earlier
 	// job, timer or ticket of the same name is not for these.
 	fresh    map[string]bool
-	finished []string // final states entered and not yet acted on
+	finished []string // states entered that are done as they are entered, and not yet acted on
 	moves    int
 	tickets  int
 	ended    bool
@@ -341,11 +341,20 @@ func (s *stepper) enter(name string) error {
 }
 
 // enterOne enters one state: its ticket exists first, then its entry sends
-// are made, its timers start and its jobs are asked for.
+// are made, its timers start and its jobs are asked for. A state with no
+// job that gives an output gives it first, and is done.
 func (s *stepper) enterOne(name string) error {
 	n := s.all[name]
 	st := n.state
 	s.st.Active = append(s.st.Active, name)
+	if st.End == "" && st.Output != nil {
+		output, err := s.eval.Fill(st.Output, s.scope(name), n.place+".output")
+		if err != nil {
+			return err
+		}
+		s.setOutput(name, output)
+		s.finished = append(s.finished, name)
+	}
 	if st.Ticket != "" {
 		s.tickets++
 		mac := hmac.New(sha256.New, s.in.Seed)
@@ -474,9 +483,11 @@ func (s *stepper) send(holder, place string, sends []Send) error {
 	return nil
 }
 
-// settle acts on the final states entered: innermost first, each once. A
-// final state ends the state that holds it, one at the top ends the chart,
-// and one marked as a failure fails the chart from any depth.
+// settle acts on the states entered that are done as they are entered,
+// each once and in the order entered. A state with no job that gave an
+// output is given done. A final state ends the state that holds it, one at
+// the top ends the chart, and one marked as a failure fails the chart from
+// any depth.
 func (s *stepper) settle() error {
 	for len(s.finished) > 0 && !s.ended {
 		name := s.finished[0]
@@ -485,6 +496,13 @@ func (s *stepper) settle() error {
 			continue
 		}
 		n := s.all[name]
+		if n.state.End == "" {
+			s.event = machine.Event{Name: machine.Done, From: name, Data: s.st.Outputs[name]}
+			if _, err := s.offer(name, func(st *State) []Transition { return st.On[machine.Done] }); err != nil {
+				return err
+			}
+			continue
+		}
 		output, err := s.eval.Fill(n.state.Output, s.scope(name), n.place+".output")
 		if err != nil {
 			return err

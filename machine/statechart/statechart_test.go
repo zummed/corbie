@@ -414,7 +414,8 @@ func TestChartsRefused(t *testing.T) {
 	refused(t, head+"initial: a\nstates:\n\ta: { on: { next: { go: a, when: '${nothing.here}' } } }\n", `reads "nothing"`)
 	refused(t, head+"initial: a\nstates:\n\ta: { end: finished }\n", "ends as done or as failed")
 	refused(t, head+"initial: a\nstates:\n\ta: { end: done, on: { x: a } }\n", "a final state only ends")
-	refused(t, head+"initial: a\nstates:\n\ta: { output: 1 }\n", "only a final state gives an output")
+	refused(t, head+"initial: a\nstates:\n\ta: { output: 1, job: ./a.js }\n", "only a final state or a state with no job gives an output")
+	refused(t, head+"initial: a\nstates:\n\ta: { output: 1, initial: b, states: { b: { end: done } } }\n", "only a final state or a state with no job gives an output")
 	refused(t, head+"initial: a\nstates:\n\ta: { on: { timer: a } }\n", "cannot be named under on")
 	refused(t, head+"initial: a\nstates:\n\ta: { ticket: x, on: { x: b } }\n\tb: { ticket: x, on: { x: a } }\n", "a ticket's name is used once")
 	refused(t, head+"initial: a\nstates:\n\ta: { on: { x: b } }\n\tb: { ticket: x, on: { x: a } }\n", `the state "a" can never receive "x". "x" is the ticket of the state "b"`)
@@ -1097,5 +1098,67 @@ states:
 	c.give(start(), done("checking", 1.0))
 	if value, named, err := machine.HandsOver(c.def, c.state, c.input); err != nil || named || value != nil {
 		t.Fatalf("a chart with no handover: hands over %v, %v, %v", value, named, err)
+	}
+}
+
+// A state with no job gives its output as it is entered and is done. With
+// no rule for done it stays, and takes a later event; entered again, it
+// reads its own earlier output.
+func TestStateWithNoJobGivesAnOutput(t *testing.T) {
+	c := newChart(t, `statechart: gathers
+initial: listening
+states:
+	listening:
+		on: { message: gathering, stop: finished }
+	gathering:
+		output: "${(states.gathering.output ?? []).concat(event.data)}"
+		on: { done: listening }
+	holding:
+		output: { held: "${event.data}" }
+		ticket: go
+		on: { go: finished }
+	finished:
+		end: done
+		output: { gathered: "${states.gathering.output}", held: "${states.holding.output}" }
+`)
+	c.give(start())
+	c.give(machine.Event{Name: "message", Data: "a"})
+	c.give(machine.Event{Name: "message", Data: "b"})
+	if got := c.active(); !slices.Equal(got, []string{"listening"}) {
+		t.Fatalf("after two messages the chart is in %v, want listening", got)
+	}
+	var st state
+	json.Unmarshal(c.state, &st)
+	if got := fmt.Sprint(st.Outputs["gathering"]); got != "[a b]" {
+		t.Fatalf("the gathering state's output is %s, want [a b]", got)
+	}
+
+	// A state that gives an output and has no rule for done stays, with its
+	// ticket, until another event moves it.
+	c = newChart(t, `statechart: holds
+initial: holding
+states:
+	holding:
+		output: { n: "${input.n}" }
+		ticket: go
+		on: { go: finished }
+	finished:
+		end: done
+		output: "${states.holding.output}"
+`)
+	if told := c.give(start()); !slices.Equal(c.active(), []string{"holding"}) || len(told) != 1 {
+		t.Fatalf("a state with an output and no rule for done is in %v and asked for %v", c.active(), told)
+	}
+	json.Unmarshal(c.state, &st)
+	ticket := st.Tickets["holding"]
+	c.give(machine.Event{Name: "go", From: "holding", Answer: true, Data: ticket})
+	var ending *machine.Ending
+	for _, r := range c.out.Requests {
+		if r.End != nil {
+			ending = r.End
+		}
+	}
+	if ending == nil || fmt.Sprint(ending.Output) != "map[n:1]" {
+		t.Fatalf("the chart ended with %+v, want the held output", ending)
 	}
 }

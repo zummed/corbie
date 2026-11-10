@@ -80,6 +80,8 @@ A state has these fields, and at most one of `job:`, `jobs:` and `states:`.
   defer      [<event>, ...]: events kept while the state is active and no
              rule takes them, and offered again once no active state defers
              them
+  output     of a state with no job: its output, given on entry, after which
+             the state is done
   timers     { <name>: <time> }: timers started on entry, cancelled on leaving
   entry      { send: ... }, sent on entering the state
   exit       { send: ... }, sent on leaving it
@@ -187,5 +189,8 @@ The state that a transition enters reads the same `event` in its job's input,
 its `entry:` and its `output:`. A final state returns a ticket's answer with
 `output: "${event.data}"`.
 
-A statechart has no variables. To build a value over a loop, pass it through a
-script job.
+A statechart has no variables. A state with no job may give `output:`: the
+value is filled in as the state is entered and is the state's output, and the
+state is then given `done`. To build a value over a loop, enter such a state
+on each round with `output: "${(states.gathering.output ?? []).concat(event.data)}"`,
+or pass the value through a script job.

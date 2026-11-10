@@ -37,7 +37,7 @@ The detailed rules behind the [Statechart overview](../statechart.md). Area code
 
 ## Transitions
 
-**R-chart-22** A state's rule for `done` is taken when the state's jobs finish, or when the states inside it reach a final state, and the event carries the output; its rule for `failed` is taken when a job fails, and the event carries the error.
+**R-chart-22** A state's rule for `done` is taken when the state's jobs finish, when the states inside it reach a final state, or when a state with no job gives its output (R-chart-86), and the event carries the output; its rule for `failed` is taken when a job fails, and the event carries the error.
 *Accept:* parity case 16: the rules for `done` and `failed` each taken, the state entered reading the event's error and its name. Parity case 18: the holder's rule for `done` is given the final state's output.
 
 **R-chart-25** A state's rules are under `on:`, by the name of the event: `done`, `failed`, a timer's name, an answer to a ticket, an event sent by the parent, by a child or to the run by its address, a value a job emitted.
@@ -74,6 +74,9 @@ The detailed rules behind the [Statechart overview](../statechart.md). Area code
 
 **R-chart-38** A chart has no variables.
 *Accept:* a chart written with a field that sets or stores a value is refused when checked.
+
+**R-chart-86** A state with no job and no states inside it may give `output:`. As it is entered the value is filled in, reading the event that entered it and each state's earlier output, its own included; the value is the state's output, and the state is given `done` with it. `output:` on a state with a job or with states inside it is refused.
+*Accept:* parity case 140: a state reads the input, the next reads that state's output and the `done` event, a state entered twice adds to its own earlier output, and the final state reads all three. A state that gives `output:` and has no rule for `done` stays, and takes a later event. *Test:* `TestStateWithNoJobGivesAnOutput`
 
 **R-chart-39** Each state's latest output is remembered and can be read by name from any expression; a job that fails leaves it as it was, and a state that has produced no output reads as nothing.
 *Accept:* parity case 20: the final state reads the output of `inner`, a state held by another and left earlier. Parity case 16: after the third round's job fails, the output read for `working` is the second round's. Parity case 26: the output read for `leaving_on_emit`, whose job was cancelled, is null.

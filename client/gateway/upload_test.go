@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"path/filepath"
 	"slices"
 	"strings"
 	"sync/atomic"
@@ -196,7 +197,9 @@ func TestStartLeavesNothingOfItsUploadsBehind(t *testing.T) {
 	t.Setenv("TMPDIR", temp)
 	local, _ := served(t)
 	kept := func() int64 {
-		entries, err := os.ReadDir(temp)
+		// The upload's files alone: the runner of this process keeps files
+		// of its own here while a job runs.
+		entries, err := filepath.Glob(filepath.Join(temp, "multipart-*"))
 		if err != nil {
 			t.Error(err)
 		}

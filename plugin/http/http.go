@@ -419,7 +419,7 @@ Needs these permissions:
 
 This script sends a secret in a header.
 
-    allow: [net:api.github.com, "secret:GITHUB_TOKEN@net:api.github.com"]
+    allow: ["secret:GITHUB_TOKEN@net:api.github.com"]
 
     const r = http.get("https://api.github.com/user", {
       headers: { Authorization: secrets.text` + "`" + `Bearer ${secrets.get("GITHUB_TOKEN")}` + "`" + ` },

@@ -28,6 +28,14 @@ These behave differently.
 
 These are new, and make a definition shorter.
 
+- A flow of one stage with no `output:` gives that stage's output, so
+  `output: ${stages.<name>.output}` can go. Before, it gave no output. A
+  stage with `each:` keeps its flow's `output:`.
+- A `secret:` entry allows its destination. `allow: ["secret:KEY@net:host"]`
+  is enough, and `net:host` beside it can go. `secret:KEY@*` allows no
+  destination.
+- An `at:` entry in a client's ceiling allows sends to every location at or
+  under its prefix. `send:/work/**` beside `at:/work` can go.
 - A state with no job may give `output:`. The value is filled in as the state
   is entered and is the state's output, and the state is then given `done`.
   It replaces a script job that only returns a value, and a final state

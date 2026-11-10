@@ -320,7 +320,7 @@ message, the job needs one of these.
 
 This script sends a token in a header, subscribes and returns the first message.
 
-    allow: [net:feed.example.com, "secret:FEED_TOKEN@net:feed.example.com"]
+    allow: ["secret:FEED_TOKEN@net:feed.example.com"]
 
     const ws = websocket.connect("wss://feed.example.com/v1", {
       headers: { Authorization: secrets.text` + "`Bearer ${secrets.get(\"FEED_TOKEN\")}`" + ` },

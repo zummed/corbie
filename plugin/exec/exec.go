@@ -175,7 +175,7 @@ This script runs git in a directory and checks its exit code.
 
 This script sends a secret to a program in an environment variable.
 
-    allow: [exec:deploy, "secret:DEPLOY_TOKEN@exec:deploy"]
+    allow: ["secret:DEPLOY_TOKEN@exec:deploy"]
 
     const sent = exec.run("deploy", { args: ["site"], env: { DEPLOY_TOKEN: secrets.get("DEPLOY_TOKEN") } })
     return sent.out                                          // gives "deployed site\n"

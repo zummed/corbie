@@ -587,7 +587,8 @@ Errors:
   not_found   the claude program could not be started
   failed      the claude program ended without a reply
 
-Needs net:host for the service and secret:NAME@net:host for its key.
+Needs secret:NAME@net:host for the service's key, which allows the connection
+too. A service with no key needs net:host.
 claude-code needs these in their place.
   exec:claude                to start the program
   env:HOME                   with no key: the program is signed in as the runner's user
@@ -602,7 +603,7 @@ and says how Corbie starts the claude program.
 
 This script asks for a reply as data.
 
-    allow: [net:api.anthropic.com, "secret:ANTHROPIC_KEY@net:api.anthropic.com"]
+    allow: ["secret:ANTHROPIC_KEY@net:api.anthropic.com"]
 
     const reply = llm.chat([{ role: "user", content: "Say hello." }], {
       model: "claude-sonnet-5-5", key: secrets.get("ANTHROPIC_KEY"),
@@ -612,7 +613,7 @@ This script asks for a reply as data.
 
 This script sends an image with its question.
 
-    allow: [fs.read:/srv/reports/**, net:api.anthropic.com, "secret:ANTHROPIC_KEY@net:api.anthropic.com"]
+    allow: [fs.read:/srv/reports/**, "secret:ANTHROPIC_KEY@net:api.anthropic.com"]
 
     const chart = blobs.file("/srv/reports/chart.png")
     llm.takes(chart, { service: "anthropic" })       // gives true
@@ -630,7 +631,7 @@ This script calls the claude program, signed in as the runner's user.
 
 This script puts two questions to a System One model.
 
-    allow: [net:api.typesafe.ai, "secret:TYPESAFE_KEY@net:api.typesafe.ai"]
+    allow: ["secret:TYPESAFE_KEY@net:api.typesafe.ai"]
 
     const r = llm.decide("Checkout has been failing for every customer for the last hour.", {
       model: "jev-latest", key: secrets.get("TYPESAFE_KEY"),

@@ -89,7 +89,7 @@ states:
     job:
       script: ./boiler.js
       input: { target: "${event.data.target}" }
-      allow: [net:boiler.lan:443, "secret:BOILER_PASSWORD@net:boiler.lan:443"]
+      allow: ["secret:BOILER_PASSWORD@net:boiler.lan:443"]
     on: { done: idle, failed: idle }
 
 # house/thermostats/kitchen.yaml       location /home/thermostats/kitchen

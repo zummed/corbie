@@ -148,11 +148,11 @@ tools:
   github:
     list:
       script: ./github.js
-      allow: [net:api.githubcopilot.com, "secret:GITHUB_TOKEN@net:api.githubcopilot.com"]
+      allow: ["secret:GITHUB_TOKEN@net:api.githubcopilot.com"]
     job:
       script: ./github.js
       input: { tool: "${tool}", args: "${args}" }
-      allow: [net:api.githubcopilot.com, "secret:GITHUB_TOKEN@net:api.githubcopilot.com"]
+      allow: ["secret:GITHUB_TOKEN@net:api.githubcopilot.com"]
 ```
 
 ```js

@@ -244,7 +244,7 @@ states:
 # house/shared/boiler-job.yaml            listed: no location
 script: ./boiler.js
 input: { target: "${event.data.target}" }
-allow: [net:boiler.lan:443, "secret:BOILER_PASSWORD@net:boiler.lan:443"]
+allow: ["secret:BOILER_PASSWORD@net:boiler.lan:443"]
 
 # house/schedules/away.yaml
 flow: away

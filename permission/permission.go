@@ -428,12 +428,31 @@ func (s *Set) passes(layer Layer, kind string, values []string) (bool, string) {
 	}
 	for _, entry := range layer.Allow {
 		for _, value := range values {
-			if s.matches(entry, kind, value) {
+			if s.matches(entry, kind, value) || s.matches(destination(entry), kind, value) {
 				return true, ""
 			}
 		}
 	}
 	return false, ""
+}
+
+// destination gives the entry a secret's entry allows beside the secret's
+// travel: the connection, the program or the file it names as where the
+// secret may go. An entry that is no secret's, or whose secret may go
+// anywhere, gives none.
+func destination(entry string) string {
+	scope, ok := strings.CutPrefix(entry, Secret+":")
+	if !ok {
+		return ""
+	}
+	_, to, _ := strings.Cut(scope, "@")
+	if host, ok := strings.CutPrefix(to, Unencrypted+":"); ok {
+		return Net + ":" + host
+	}
+	if to == "*" {
+		return ""
+	}
+	return to
 }
 
 // readsDeny says whether a deny entry can be read. One that cannot refuses
@@ -455,6 +474,10 @@ func (s *Set) matches(entry, kind, value string) bool {
 		return slices.Contains(in, kind)
 	}
 	entryKind, scope, ok := strings.Cut(entry, ":")
+	if ok && entryKind == At && kind == Send {
+		// Where a client submits trees, its runs send.
+		return MatchLocation(scope, value) || MatchLocation(scope+"/**", value)
+	}
 	if !ok || entryKind != kind {
 		return false
 	}
@@ -727,10 +750,17 @@ func AllowsSecret(layers []Layer, name string) bool {
 // either list is read from the tree's prefix.
 func Declares(allow []string, listed []string, prefix string) bool {
 	set := &Set{Prefix: prefix}
+	// A secret's entry declares its destination too.
+	declared := slices.Clone(allow)
+	for _, entry := range allow {
+		if to := destination(entry); to != "" {
+			declared = append(declared, to)
+		}
+	}
 	for _, want := range listed {
 		wantKinds, wantGroup := groups[want]
 		wantKind, wantScope, _ := strings.Cut(want, ":")
-		for _, entry := range allow {
+		for _, entry := range declared {
 			in, isGroup := groups[entry]
 			kind, scope, _ := strings.Cut(entry, ":")
 			switch {
@@ -855,7 +885,11 @@ func (s *Set) Peek(kind string, values ...string) bool {
 func (s *Set) AllowsAnAddress() bool {
 	for _, layer := range s.Layers {
 		for _, entry := range layer.Allow {
-			if scope, ok := strings.CutPrefix(entry, Net+":"); ok {
+			for _, entry := range []string{entry, destination(entry)} {
+				scope, ok := strings.CutPrefix(entry, Net+":")
+				if !ok {
+					continue
+				}
 				host, _ := splitHost(scope)
 				if addressScope(host) {
 					return true

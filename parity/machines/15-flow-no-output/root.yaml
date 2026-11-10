@@ -1,5 +1,7 @@
-# A flow with no output: of its own.
+# A flow of two stages with no output: of its own.
 flow: no-output
 stages:
   a:
     job: { script: ./echo.js, input: { n: 1 } }
+  b:
+    job: { script: ./echo.js, input: { n: 2 } }

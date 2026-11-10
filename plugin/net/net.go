@@ -323,7 +323,7 @@ This script reads a WHOIS answer line by line until the server closes.
 
 This script writes a secret to a connection encrypted from the first byte.
 
-    allow: [net:queue.example.com, "secret:QUEUE_TOKEN@net:queue.example.com"]
+    allow: ["secret:QUEUE_TOKEN@net:queue.example.com"]
 
     const c = net.connect("queue.example.com:6380", { tls: true })
     c.write(secrets.text` + "`AUTH ${secrets.get(\"QUEUE_TOKEN\")}\\r\\n`" + `)

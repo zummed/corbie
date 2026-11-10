@@ -237,12 +237,12 @@ Errors:
   not_found   the host's name could not be resolved
   bad_input   out or err is over 64 MiB
 
-Needs net:host for the other computer, and secret:NAME@net:host for the key
-or password.
+Needs secret:NAME@net:host for the key or password, which allows the
+connection to the other computer too.
 
 This script runs uptime on a build server.
 
-    allow: [net:build.example, "secret:BUILD_KEY@net:build.example"]
+    allow: ["secret:BUILD_KEY@net:build.example"]
 
     const r = ssh.run("build.example", {
       user: "deploy",

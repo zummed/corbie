@@ -15,9 +15,9 @@ There are eight kinds.
 | `net` | connecting to a host | a host, with a port if it matters |
 | `exec` | starting a program | a program's name or path |
 | `env` | reading a variable of the runner's | a name |
-| `secret` | sending a secret somewhere | a secret's name and a destination |
+| `secret` | sending a secret somewhere, and what that destination needs | a secret's name and a destination |
 | `send` | sending to or calling a location | a location |
-| `at` | submitting a tree, in a client's ceiling only | a prefix, starting with `/` |
+| `at` | submitting a tree and sending within it, in a client's ceiling only | a prefix, starting with `/` |
 
 A scope is one of four things, matched the same way wherever it appears: a path, a host, a name, or a location. Any of them may use `*` for a part. A host with no port means every port, a host of `*` means every host, and a host written as an address, `10.0.0.*`, matches no name. A path is checked where it really points, after links are followed.
 
@@ -89,10 +89,11 @@ secrets and values                those set at its location or above; the neares
 A tree belongs to the client that first submitted it. Only that client submits there and cancels the runs at its locations, and it and the clients a file's `read:` lists read them (see Reading). A client submits trees only at prefixes its ceiling's `at:` entries match.
 
 ```
-work$ corbie client card | ssh ctl corbie controller enrol - --ceiling "at:/work,send:/work/**,network,secret:*@*"
-shop$ corbie client card | ssh ctl corbie controller enrol - --ceiling "at:/shop,send:/shop/**,send:/work/services/lookup,network,secret:ANTHROPIC_KEY@*"
+work$ corbie client card | ssh ctl corbie controller enrol - --ceiling "at:/work,network,secret:*@*"
+shop$ corbie client card | ssh ctl corbie controller enrol - --ceiling "at:/shop,send:/work/services/lookup,network,secret:ANTHROPIC_KEY@*"
 ```
 
+- An `at:` entry is a `send:` entry for every location at or under its prefix, so each client's runs send within its own tree.
 - The shop client can call `/work/services/lookup`, and cannot submit at `/work` or cancel the runs there.
 - A run of `/work/services/lookup` has the work client's ceiling and the secrets set at its location, whoever called it.
 
@@ -128,7 +129,7 @@ stages:
     job:
       script: ./lookup.js
       input: { customer: "${input.customer}" }
-      allow: [net:db.internal:5432, "secret:DB_PASSWORD@net:db.internal:5432"]
+      allow: ["secret:DB_PASSWORD@net:db.internal:5432"]
 output: ${stages.find.output}
 
 # shop/helper.yaml                      location /shop/helper

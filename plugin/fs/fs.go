@@ -382,7 +382,7 @@ This script makes the other calls.
 
 This script writes a secret to a file.
 
-    allow: [fs.write:/srv/app/key, "secret:APP_KEY@fs.write:/srv/app/key"]
+    allow: ["secret:APP_KEY@fs.write:/srv/app/key"]
 
     fs.write("/srv/app/key", { secret: secrets.get("APP_KEY") })
 `

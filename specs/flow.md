@@ -23,7 +23,7 @@ output: ${stages.summarise.output}
 
 Each stage has a job. A stage that uses another stage's output runs after it, so the arrows of a flow come from its data and are not written separately. `follows:` orders two stages that pass nothing. Stages that do not depend on each other run at the same time. A flow with a cycle is refused.
 
-A flow's `output:` is its result, filled in once every stage has settled. It reads the flow's input and its stages.
+A flow's `output:` is its result, filled in once every stage has settled. It reads the flow's input and its stages. A flow of one stage needs no `output:`, and gives that stage's output. A stage with `each:` is the exception: its flow writes `output:` to read the items, since reading them handles their failures.
 
 ## Skipping
 

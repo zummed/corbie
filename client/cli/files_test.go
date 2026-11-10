@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -47,7 +48,17 @@ func TestSubmitGivesAFileAsInput(t *testing.T) {
 	}
 	// A file given wrongly is a mistake, one that is not there a failure,
 	// and neither uploads or sends anything.
-	before := len(stored(t, storeDir))
+	// What the client has sent: its messages, the files with them and the
+	// receipts for them. The controller and the runner go on writing for a
+	// moment after a run ends.
+	sent := func() []string {
+		var names []string
+		for _, kind := range []string{"inbox", "uploads", "receipts"} {
+			names = append(names, stored(t, filepath.Join(storeDir, "box-controller", kind, "box-client"))...)
+		}
+		return names
+	}
+	before := sent()
 	for status, flags := range map[int][]string{
 		2: {"--input-file", "report"},
 		1: {"--input-file", "report=" + filepath.Join(dir, "missing.pdf")},
@@ -63,8 +74,10 @@ func TestSubmitGivesAFileAsInput(t *testing.T) {
 	if got, _, said := m.run("", "run", "start", read, "--input-file", "report="+filepath.Join(dir, "report.pdf"), "--input", `[1]`); got != 1 || !strings.Contains(said, "not a map") {
 		t.Errorf("a file given with an input that is a list ended %d: %s", got, said)
 	}
-	if after := len(stored(t, storeDir)); after != before {
-		t.Fatalf("the refused commands left %d new values in the store", after-before)
+	for _, name := range sent() {
+		if !slices.Contains(before, name) {
+			t.Fatalf("a refused command sent %s", name)
+		}
 	}
 }
 

@@ -104,6 +104,10 @@ func Test_store_directory_value_whole_or_absent(t *testing.T) {
 		if !bytes.Equal(value, a) && !bytes.Equal(value, b) {
 			t.Fatalf("read part of a value: %d bytes", len(value))
 		}
+		// On Windows a file that is open cannot be replaced, so a reader
+		// that never pauses can keep the writer out for as long as it
+		// reads.
+		time.Sleep(time.Millisecond)
 	}
 	close(stop)
 	wg.Wait()

@@ -10,6 +10,8 @@ A plugin's or a library's page is the full account of how to call it: every call
 
 The examples in every page are run as tests. A page whose example no longer works fails the build.
 
+One page, `changes`, lists for each release what a user changes in definitions, scripts and commands written for the release before, the newest first.
+
 The pages for commands are made from the one table of commands, and the list of plugins and their permission kinds is made from what the binary actually holds.
 
 ## Reading it

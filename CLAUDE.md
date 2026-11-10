@@ -36,6 +36,7 @@ And these hold everywhere:
 - A rule says nothing its overview does not. If a behaviour is needed and no overview gives it, the overview changes first, and only after the author agrees.
 - A behaviour change updates its overview and its rules in the same commit as the code.
 - Rule IDs are stable and never reused. A cut rule's number disappears.
+- A change that a user's definitions, scripts or commands must follow is added to `manual/pages/changes.txt` in the same commit, under the release it comes after.
 - The author thinks visually. Worked examples and concrete runs help more than abstract description. Write as the next section says.
 
 ## Writing

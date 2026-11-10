@@ -59,6 +59,7 @@ var order = []struct{ name, group string }{
 	{"runs", "Reference"},
 	{"routes", "Reference"},
 	{"parties", "Reference"},
+	{"changes", "Reference"},
 }
 
 var more []func() []Page

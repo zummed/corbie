@@ -1,0 +1,39 @@
+Changes: what to change in definitions, scripts and commands written for an earlier version.
+
+Each section lists what changed after one release, the newest first.
+`corbie version` prints the version of this binary. Nothing is kept backwards
+compatible before version 1: a file or a command written the old way is
+refused.
+
+After 0.22.0
+------------
+
+Change these commands.
+
+  corbie run submit <location>      corbie run start <location>, with the same flags
+  corbie mcp --allow "run submit"   add --allow "run start" for a model that starts runs
+
+`corbie run submit` records a file or a directory, and takes `--at` and a
+script file's flags only.
+
+These behave differently.
+
+- An `approve:` entry holds a job whose `allow:` entry of the same kind matches
+  a value the `approve:` entry matches. Before, an `approve:` entry that began
+  with `*`, as `net:*.internal`, held every job of its kind.
+- A program using the client package is given the error by `Watch` when a
+  look fails after the first listing. Before, `Watch` went on.
+
+These are new, and make a definition shorter.
+
+- A state with no job may give `output:`. The value is filled in as the state
+  is entered and is the state's output, and the state is then given `done`.
+  It replaces a script job that only returns a value, and a final state
+  inside a state that only gives the outer state an output.
+
+Reference
+---------
+
+  corbie manual runs         the commands that act on runs
+  corbie manual statechart   a state's fields
+  corbie manual definitions  `approve:`

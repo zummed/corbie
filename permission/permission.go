@@ -725,8 +725,8 @@ func AllowsSecret(layers []Layer, name string) bool {
 }
 
 // Declares says whether a job's allow list declares a permission that is
-// listed in an approve: list: an entry of the same kind where either scope
-// covers the other, or a group that contains it, or all. A location in
+// listed in an approve: list: an entry of the same kind whose scope matches
+// a value the listed scope matches, or a group that contains it, or all. A location in
 // either list is read from the tree's prefix.
 func Declares(allow []string, listed []string, prefix string) bool {
 	set := &Set{Prefix: prefix}
@@ -754,14 +754,14 @@ func Declares(allow []string, listed []string, prefix string) bool {
 			case kind == wantKind && (kind == Send || kind == At):
 				entryFull, err := ReadLocation(prefix, scope)
 				wantFull, wantErr := ReadLocation(prefix, wantScope)
-				if err == nil && wantErr == nil && (matchLocation(wantFull, entryFull) || matchLocation(entryFull, wantFull) ||
-					covers(wantFull, entryFull) || covers(entryFull, wantFull)) {
+				if err == nil && wantErr == nil && (matchLocation(wantFull, entryFull) || matchLocation(entryFull, wantFull) || overlaps(kind, wantFull, entryFull)) {
 					return true
 				}
 			case kind == wantKind:
-				// Either scope covers the other: a pattern is matched as
-				// if the other were a value.
-				if set.matches(want, kind, scope) || set.matches(entry, kind, wantScope) || covers(wantScope, scope) || covers(scope, wantScope) {
+				// The two scopes match a common value: a pattern is matched
+				// as if the other were a value, and two patterns are
+				// compared as texts.
+				if set.matches(want, kind, scope) || set.matches(entry, kind, wantScope) || overlaps(kind, wantScope, scope) {
 					return true
 				}
 			}
@@ -770,12 +770,61 @@ func Declares(allow []string, listed []string, prefix string) bool {
 	return false
 }
 
-// covers says whether one path pattern reaches at least everything under
-// the fixed start of another.
-func covers(wide, narrow string) bool {
-	fixed, _, _ := strings.Cut(narrow, "*")
-	head, _, found := strings.Cut(wide, "*")
-	return found && strings.HasPrefix(fixed, head)
+// overlaps says whether two scopes of a kind, read as texts in which * is
+// any characters, match a common text. A host with no port has every port,
+// and a secret's name and destination are compared apart.
+func overlaps(kind, a, b string) bool {
+	switch kind {
+	case Net:
+		hostA, portA := splitHost(a)
+		hostB, portB := splitHost(b)
+		return overlap(NormalHost(hostA), NormalHost(hostB)) && (portA == "" || portB == "" || overlap(portA, portB))
+	case Secret:
+		nameA, toA, _ := strings.Cut(a, "@")
+		nameB, toB, _ := strings.Cut(b, "@")
+		if !overlap(nameA, nameB) {
+			return false
+		}
+		if toA == "*" || toB == "*" {
+			return true
+		}
+		kindA, scopeA, _ := strings.Cut(toA, ":")
+		kindB, scopeB, _ := strings.Cut(toB, ":")
+		// Bound to a host over any connection, a secret is bound over an
+		// encrypted one too.
+		if kindA == Unencrypted {
+			kindA = Net
+		}
+		if kindB == Unencrypted {
+			kindB = Net
+		}
+		return kindA == kindB && overlaps(kindA, scopeA, scopeB)
+	}
+	return overlap(a, b)
+}
+
+// overlap says whether two patterns match a common text.
+func overlap(a, b string) bool {
+	// from[i][j] says it of a[i:] and b[j:].
+	from := make([][]bool, len(a)+1)
+	for i := len(a); i >= 0; i-- {
+		from[i] = make([]bool, len(b)+1)
+		for j := len(b); j >= 0; j-- {
+			switch {
+			case i == len(a) && j == len(b):
+				from[i][j] = true
+			case i == len(a):
+				from[i][j] = b[j] == '*' && from[i][j+1]
+			case j == len(b):
+				from[i][j] = a[i] == '*' && from[i+1][j]
+			case a[i] == '*' || b[j] == '*':
+				from[i][j] = from[i+1][j] || from[i][j+1]
+			default:
+				from[i][j] = a[i] == b[j] && from[i+1][j+1]
+			}
+		}
+	}
+	return from[0][0]
 }
 
 // Denied says whether a deny entry of any layer matches the thing, without

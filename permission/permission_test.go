@@ -473,6 +473,30 @@ func TestDeclares(t *testing.T) {
 	if !Declares([]string{"exec:git"}, []string{"exec"}, "") || Declares([]string{"net:x"}, []string{"exec"}, "") {
 		t.Error("a listed group stands for every scope of its kinds")
 	}
+	// A listed pattern holds what it matches, and no other entry of its kind.
+	for _, c := range []struct {
+		listed, entry string
+		want          bool
+	}{
+		{"net:*.internal", "net:api.github.com", false},
+		{"net:*.internal", "net:db.internal:5432", true},
+		{"net:*.internal", "net:db.*", true},
+		{"net:*.internal", "net:db.*:443", true},
+		{"net:*.internal:22", "net:db.*:443", false},
+		{"net:db.internal", "net:*.example.com", false},
+		{"exec:*-deploy", "exec:git", false},
+		{"exec:*-deploy", "exec:kube-*", true},
+		{"fs.write:/srv/*/out", "fs.write:/srv/a/*", true},
+		{"fs.write:/srv/*/out", "fs.write:/var/**", false},
+		{"secret:DB_*@net:*.internal", "secret:*_PASSWORD@net:db.*", true},
+		{"secret:DB_*@net:*.internal", "secret:API_KEY@net:db.internal", false},
+		{"send:services/*", "send:*/lookup", true},
+		{"send:services/*", "send:agents/*", false},
+	} {
+		if got := Declares([]string{c.entry}, []string{c.listed}, "/work"); got != c.want {
+			t.Errorf("%s declares %s: %v, want %v", c.entry, c.listed, got, c.want)
+		}
+	}
 	// A location in either list is read from the tree's prefix.
 	listed = []string{"send:/work/**"}
 	for entry, want := range map[string]bool{"send:/work/services/lookup": true, "send:services/lookup": true, "all": true,

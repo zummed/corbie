@@ -378,7 +378,7 @@ holds a job in two cases.
 
 - The job has `approve: true`.
 - The job's `allow:` list declares a permission that `approve:` lists, in
-  its definition or in one above it. Two entries match when they have the same
+  kind and their scopes match a common value, or when one is a group of that kind.
   kind and either scope covers the other, or when one is a group of that kind.
   A call or a send job declares only `send:` for its location.
 

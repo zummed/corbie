@@ -232,11 +232,10 @@ func Test_ssh_refused_without_permission(t *testing.T) {
 	for missing, job := range map[string]*plugin.Job{
 		"net:" + address:                  newJob(t, secrets),
 		"secret:BUILD_KEY@net:" + address: newJob(t, secrets, "net:"+host),
-		"net:" + address + " ":            newJob(t, secrets, "secret:BUILD_KEY@net:"+host),
 	} {
 		_, err := runOn(job, address, opt)
 		var refusal *permission.Refusal
-		if !errors.As(err, &refusal) || refusal.What != strings.TrimSpace(missing) {
+		if !errors.As(err, &refusal) || refusal.What != missing {
 			t.Fatalf("run gave %v, not a refusal naming %s", err, missing)
 		}
 	}

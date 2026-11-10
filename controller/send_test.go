@@ -204,14 +204,14 @@ func Test_ctl_send_denied_by_a_layer_fails_the_chart(t *testing.T) {
 	}
 
 	w = newWorld(t)
-	w.enrol(w.c1, permission.Layer{Allow: []string{"at:/**"}}, nil)
+	w.enrol(w.c1, permission.Layer{Allow: []string{"at:/**"}, Deny: []string{"send:/t/room"}}, nil)
 	w.rooms(nil)
 	run = w.startAt(w.client, "/t/router", client.Start{})
 	w.settle()
 	w.say(run, "say", 1, "one")
 	w.settle()
 	if st := w.latest(run).State; st.Status != instance.Failed || !strings.Contains(st.Error.Layer, `the ceiling of the client "c1"`) ||
-		!strings.Contains(st.Error.Fix, "corbie controller enrol c1 --allow send:/t/room") {
+		!strings.Contains(st.Error.Fix, "take the deny entry send:/t/room out of") {
 		t.Fatalf("the chart is %s: %+v", st.Status, st.Error)
 	}
 	if len(w.runsOf("talk")) != 0 {

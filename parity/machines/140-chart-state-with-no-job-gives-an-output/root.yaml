@@ -1,0 +1,22 @@
+# A state with no job gives its output as it is entered, and is done. noted
+# reads the input, added reads noted's output and the done event, and
+# counted is entered twice and adds to its own earlier output.
+statechart: kept
+input: { first: number }
+initial: noted
+states:
+  noted:
+    output: { seen: ["${input.first}"] }
+    on: { done: added }
+  added:
+    output: { seen: "${states.noted.output.seen.concat(event.data.seen.length)}", came_by: "${event.name}" }
+    on: { done: counted }
+  counted:
+    output: "${(states.counted.output ?? 0) + 1}"
+    on:
+      done:
+        - { go: counted, when: "${event.data < 2}" }
+        - finished
+  finished:
+    end: done
+    output: { noted: "${states.noted.output}", added: "${states.added.output}", counted: "${states.counted.output}" }

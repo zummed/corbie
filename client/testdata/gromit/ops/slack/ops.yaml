@@ -1,9 +1,0 @@
-# The router of a second bot, ops, in the same workspace. It runs the same
-# listener with its own token, set at /<project>/ops, and routes nothing yet.
-statechart: ops
-description: The router of the ops bot in Slack.
-lifetime: singleton
-initial: listening
-states:
-  listening:
-    job: { machine: .rook/slack/listen.yaml, restart: { after: always } }

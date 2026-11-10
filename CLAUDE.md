@@ -1,6 +1,6 @@
 # Corbie
 
-Corbie runs machines (flows, statecharts and agents) whose work is done by JavaScript jobs on runners. Every party reads and writes one store directly, and nothing important is held in memory.
+Corbie runs machines (flows, statecharts, and the two that call an AI model: agents and decisions) whose work is done by JavaScript jobs on runners. Every party reads and writes one store directly, and nothing important is held in memory.
 
 It is one Go module, one package per area of the design, and the binary in `cmd/corbie`.
 
@@ -36,6 +36,7 @@ And these hold everywhere:
 - A rule says nothing its overview does not. If a behaviour is needed and no overview gives it, the overview changes first, and only after the author agrees.
 - A behaviour change updates its overview and its rules in the same commit as the code.
 - Rule IDs are stable and never reused. A cut rule's number disappears.
+- A change that a user's definitions, scripts or commands must follow is added to `manual/pages/changes.txt` in the same commit, under the release it comes after.
 - The author thinks visually. Worked examples and concrete runs help more than abstract description. Write as the next section says.
 
 ## Writing
@@ -49,7 +50,7 @@ Words:
 - No metaphor and no soft verbs. Not "decides", "reaches", "touches", "meets", "holds on to", "is owed", "stands", "says so". Not "unless it says": write "by default".
 - One word for one thing, the same in the specs, the code, the manual and what is printed. A word with two meanings is a fault, and so is a second word for the same thing. A word is changed everywhere or not at all.
 - These words are settled:
-  - **machine**: a YAML definition of type flow, statechart or agent. Never a computer.
+  - **machine**: a YAML definition of type flow, statechart, agent or decision. Never a computer.
   - **job**: the `job:` block of a stage, a state, a tool or an ask. A job is a script, a machine, or a send. A machine is named by its file (`machine:`) or by its location (`call:`), and a send delivers an event and returns nothing. A runner executes a script; a machine named by its file runs as a child run, and one named by its location as a run of its own whose result is the job's output.
   - **run**: one execution of a machine, which a client starts, lists and shows.
   - **tree**: a directory a client submitted at a prefix. It belongs to that client.

@@ -1,6 +1,0 @@
-flow: gitlab-repository-commits-create
-description: Change one file of a project in a commit.
-input: { project: string, path: string, text: string }
-stages:
-  commit: { job: { script: .rook/gitlab/given.js, input: "${input}" } }
-output: ${stages.commit.output}

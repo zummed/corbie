@@ -141,7 +141,7 @@ A submit changes no other tree. Only the tree's client cancels the runs at its l
 |---|---|
 | `singleton` | at a submit, when the location has no running run |
 | `keyed` | at a send to a key with no running run, with the event's data as input |
-| `transient` (default) | at a call, at a send to `{ at }` with the event's data as input, or at `corbie run submit <location>` from the tree's client |
+| `transient` (default) | at a call, at a send to `{ at }` with the event's data as input, or at `corbie run start <location>` from the tree's client |
 
 - Every run keeps the definition it started with, in its own record.
 - A run's authority comes from its location: its file's `allow:` and `ask:`, its tree client's ceiling, and the secrets and values set at its location or above (see permission.md).
@@ -159,7 +159,7 @@ A submit changes no other tree. Only the tree's client cancels the runs at its l
 | a file gone from the tree | cancels every run at its location |
 
 - `drain` is the default for keyed and transient files. A singleton is always `restart`, and its new run starts once every run it replaces has ended, their children included.
-- A singleton started again is given, as its input, what the run it replaces hands over by that run's `handover:`, read once that run has ended. The controller copies the blobs the value names into the new run's record before its first step.
+- A singleton started again is given no input, as one started the first time.
 - Only the controller's start of a singleton names the runs it replaces. A client's start that names any is refused.
 - A keyed run cancelled by a restart starts fresh at the next send to its key.
 - Events a cancelled run had kept under `defer:` are noted as undelivered in each sender's record.
@@ -179,7 +179,7 @@ The sender's record names the run the step named, or the run the send started. A
 These sends are noted as undelivered in the sender's record and fail nothing:
 
 - The receiver's `receive:` does not list the sender.
-- No run at the address is running, or the run is a flow or an agent.
+- No run at the address is running, or the run is no statechart's.
 - The send would start a run, and its location has `limits: { runs }` running already.
 - The event is named `start`, `done`, `failed`, a timer's name or a ticket's name.
 - The address names a run by its ID that is not at the location the address gives, or a client.

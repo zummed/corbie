@@ -10,13 +10,13 @@ through these eight kinds, and Corbie checks each use.
   env:HOME                   read an environment variable of the runner
   secret:TOKEN@net:host      send a secret to one place
   send:thermostats/*         send to or call a location; no leading / means under the tree's prefix
-  at:/home                   submit a tree at a prefix; in a client's ceiling only
+  at:/home                   submit a tree at a prefix, and send within it; in a client's ceiling only
 
   *     any characters in one part of a path or location, between two /, or of a host, between two dots
   **    any number of parts of a path or location
 
-A secret goes to one of these places. The job also needs an entry for the
-place itself, such as `net:host`.
+A secret goes to one of these places. Its entry allows the place too, so the
+job needs no `net:host` beside `secret:TOKEN@net:host`.
 
   secret:TOKEN@net:host                to that host, over an encrypted connection
   secret:TOKEN@net.unencrypted:host    to that host, encrypted or not
@@ -39,7 +39,7 @@ Several layers limit a job. A script's call is allowed only if every layer
 allows it.
 
   the job in its definition    allow: [network, fs.read:/srv/**, exec:git]
-  the start message            corbie run submit /digest --allow network --allow 'fs.read:/srv/reports/**'
+  the start message            corbie run start /digest --allow network --allow 'fs.read:/srv/reports/**'
   each parent's job            the `allow:` of a job that started a child run, if it has one
   the client's ceiling         corbie controller enrol <client> --ceiling network,disk
   the runner's ceiling         corbie runner trust <controller> --ceiling disk,exec

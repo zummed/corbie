@@ -118,7 +118,7 @@ func cmdMCP(e *Env, args []string) error {
 
 // briefing is what a model is told when it connects to corbie mcp: how to
 // work for the person who asked it.
-const briefing = `Corbie runs machines. A machine is a YAML definition of type flow, statechart or agent, and each of its jobs is a JavaScript script, a machine, or a send. A person has asked you to write, change, run or set up a machine.
+const briefing = `Corbie runs machines. A machine is a YAML definition of type flow, statechart, agent or decision, and each of its jobs is a JavaScript script, a machine, or a send. A person has asked you to write, change, run or set up a machine.
 
 1. Read the manual with the manual tool before you write or change a definition or a script. Read the pages "corbie" and "first-machine" first. Then read "definitions", "scripts", "permissions", the page of the machine type ("flow", "statechart" or "agent") and the page of each plugin the script calls. The manual gives every field and every call, so never guess one.
 2. Give each job only the permissions it needs, in its allow list, and tell the person what you allowed.
@@ -177,7 +177,7 @@ func (t table) tools(allow []string) []any {
 	allowed := "No commands are allowed to you."
 	if len(commands) > 0 {
 		allowed = "The commands allowed to you:\n" + strings.Join(commands, "\n") +
-			"\nrun show and run submit also stay until the run ends when given --wait or --watch, and run ls --watch stays until it is stopped."
+			"\nrun show and run start also stay until the run ends when given --wait or --watch, and run ls --watch stays until it is stopped."
 	}
 	return []any{
 		map[string]any{"name": "manual",

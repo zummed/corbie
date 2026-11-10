@@ -15,6 +15,8 @@ import (
 	"strings"
 	"sync"
 	"unicode"
+
+	"github.com/zummed/corbie/store"
 )
 
 // A Layer is one hand's say over what a job may do: what its deny list
@@ -168,17 +170,12 @@ func checkList(entries []string, check func(string) error) error {
 }
 
 // checkLocation says what is wrong with a location or a pattern of
-// locations, whole or read from a tree's prefix: every part is named, none
-// is ., .. or +, and none holds #.
+// locations, whole or read from a tree's prefix: each part is one the store
+// takes.
 func checkLocation(written string) error {
 	for _, part := range strings.Split(strings.TrimPrefix(written, "/"), "/") {
-		switch {
-		case part == "":
-			return fmt.Errorf("a location has no empty part and does not end with /")
-		case part == "." || part == ".." || part == "+":
-			return fmt.Errorf("a location has no part that is %s", part)
-		case strings.Contains(part, "#"):
-			return fmt.Errorf("a location has no part that holds #")
+		if err := store.CheckLocationPart(part); err != nil {
+			return fmt.Errorf("a location has %w, and does not end with /", err)
 		}
 	}
 	return nil
@@ -431,12 +428,31 @@ func (s *Set) passes(layer Layer, kind string, values []string) (bool, string) {
 	}
 	for _, entry := range layer.Allow {
 		for _, value := range values {
-			if s.matches(entry, kind, value) {
+			if s.matches(entry, kind, value) || s.matches(destination(entry), kind, value) {
 				return true, ""
 			}
 		}
 	}
 	return false, ""
+}
+
+// destination gives the entry a secret's entry allows beside the secret's
+// travel: the connection, the program or the file it names as where the
+// secret may go. An entry that is no secret's, or whose secret may go
+// anywhere, gives none.
+func destination(entry string) string {
+	scope, ok := strings.CutPrefix(entry, Secret+":")
+	if !ok {
+		return ""
+	}
+	_, to, _ := strings.Cut(scope, "@")
+	if host, ok := strings.CutPrefix(to, Unencrypted+":"); ok {
+		return Net + ":" + host
+	}
+	if to == "*" {
+		return ""
+	}
+	return to
 }
 
 // readsDeny says whether a deny entry can be read. One that cannot refuses
@@ -458,6 +474,10 @@ func (s *Set) matches(entry, kind, value string) bool {
 		return slices.Contains(in, kind)
 	}
 	entryKind, scope, ok := strings.Cut(entry, ":")
+	if ok && entryKind == At && kind == Send {
+		// Where a client submits trees, its runs send.
+		return MatchLocation(scope, value) || MatchLocation(scope+"/**", value)
+	}
 	if !ok || entryKind != kind {
 		return false
 	}
@@ -725,15 +745,22 @@ func AllowsSecret(layers []Layer, name string) bool {
 }
 
 // Declares says whether a job's allow list declares a permission that is
-// listed in an approve: list: an entry of the same kind where either scope
-// covers the other, or a group that contains it, or all. A location in
+// listed in an approve: list: an entry of the same kind whose scope matches
+// a value the listed scope matches, or a group that contains it, or all. A location in
 // either list is read from the tree's prefix.
 func Declares(allow []string, listed []string, prefix string) bool {
 	set := &Set{Prefix: prefix}
+	// A secret's entry declares its destination too.
+	declared := slices.Clone(allow)
+	for _, entry := range allow {
+		if to := destination(entry); to != "" {
+			declared = append(declared, to)
+		}
+	}
 	for _, want := range listed {
 		wantKinds, wantGroup := groups[want]
 		wantKind, wantScope, _ := strings.Cut(want, ":")
-		for _, entry := range allow {
+		for _, entry := range declared {
 			in, isGroup := groups[entry]
 			kind, scope, _ := strings.Cut(entry, ":")
 			switch {
@@ -754,14 +781,14 @@ func Declares(allow []string, listed []string, prefix string) bool {
 			case kind == wantKind && (kind == Send || kind == At):
 				entryFull, err := ReadLocation(prefix, scope)
 				wantFull, wantErr := ReadLocation(prefix, wantScope)
-				if err == nil && wantErr == nil && (matchLocation(wantFull, entryFull) || matchLocation(entryFull, wantFull) ||
-					covers(wantFull, entryFull) || covers(entryFull, wantFull)) {
+				if err == nil && wantErr == nil && (matchLocation(wantFull, entryFull) || matchLocation(entryFull, wantFull) || overlaps(kind, wantFull, entryFull)) {
 					return true
 				}
 			case kind == wantKind:
-				// Either scope covers the other: a pattern is matched as
-				// if the other were a value.
-				if set.matches(want, kind, scope) || set.matches(entry, kind, wantScope) || covers(wantScope, scope) || covers(scope, wantScope) {
+				// The two scopes match a common value: a pattern is matched
+				// as if the other were a value, and two patterns are
+				// compared as texts.
+				if set.matches(want, kind, scope) || set.matches(entry, kind, wantScope) || overlaps(kind, wantScope, scope) {
 					return true
 				}
 			}
@@ -770,12 +797,61 @@ func Declares(allow []string, listed []string, prefix string) bool {
 	return false
 }
 
-// covers says whether one path pattern reaches at least everything under
-// the fixed start of another.
-func covers(wide, narrow string) bool {
-	fixed, _, _ := strings.Cut(narrow, "*")
-	head, _, found := strings.Cut(wide, "*")
-	return found && strings.HasPrefix(fixed, head)
+// overlaps says whether two scopes of a kind, read as texts in which * is
+// any characters, match a common text. A host with no port has every port,
+// and a secret's name and destination are compared apart.
+func overlaps(kind, a, b string) bool {
+	switch kind {
+	case Net:
+		hostA, portA := splitHost(a)
+		hostB, portB := splitHost(b)
+		return overlap(NormalHost(hostA), NormalHost(hostB)) && (portA == "" || portB == "" || overlap(portA, portB))
+	case Secret:
+		nameA, toA, _ := strings.Cut(a, "@")
+		nameB, toB, _ := strings.Cut(b, "@")
+		if !overlap(nameA, nameB) {
+			return false
+		}
+		if toA == "*" || toB == "*" {
+			return true
+		}
+		kindA, scopeA, _ := strings.Cut(toA, ":")
+		kindB, scopeB, _ := strings.Cut(toB, ":")
+		// Bound to a host over any connection, a secret is bound over an
+		// encrypted one too.
+		if kindA == Unencrypted {
+			kindA = Net
+		}
+		if kindB == Unencrypted {
+			kindB = Net
+		}
+		return kindA == kindB && overlaps(kindA, scopeA, scopeB)
+	}
+	return overlap(a, b)
+}
+
+// overlap says whether two patterns match a common text.
+func overlap(a, b string) bool {
+	// from[i][j] says it of a[i:] and b[j:].
+	from := make([][]bool, len(a)+1)
+	for i := len(a); i >= 0; i-- {
+		from[i] = make([]bool, len(b)+1)
+		for j := len(b); j >= 0; j-- {
+			switch {
+			case i == len(a) && j == len(b):
+				from[i][j] = true
+			case i == len(a):
+				from[i][j] = b[j] == '*' && from[i][j+1]
+			case j == len(b):
+				from[i][j] = a[i] == '*' && from[i+1][j]
+			case a[i] == '*' || b[j] == '*':
+				from[i][j] = from[i+1][j] || from[i][j+1]
+			default:
+				from[i][j] = a[i] == b[j] && from[i+1][j+1]
+			}
+		}
+	}
+	return from[0][0]
 }
 
 // Denied says whether a deny entry of any layer matches the thing, without
@@ -809,7 +885,11 @@ func (s *Set) Peek(kind string, values ...string) bool {
 func (s *Set) AllowsAnAddress() bool {
 	for _, layer := range s.Layers {
 		for _, entry := range layer.Allow {
-			if scope, ok := strings.CutPrefix(entry, Net+":"); ok {
+			for _, entry := range []string{entry, destination(entry)} {
+				scope, ok := strings.CutPrefix(entry, Net+":")
+				if !ok {
+					continue
+				}
 				host, _ := splitHost(scope)
 				if addressScope(host) {
 					return true

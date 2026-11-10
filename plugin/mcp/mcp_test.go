@@ -421,7 +421,7 @@ func TestSignIn(t *testing.T) {
 	}
 	// Without the sign-in server's host the sign-in is refused, naming it,
 	// and so is a secret bound to the server and not the sign-in server.
-	if err := works(newJob(t, secrets, "net:"+server, "secret:CLIENT_SECRET@net.unencrypted:"+signer), plugin.Options{"client": client}); refusedAs(err) != "net:"+signer {
+	if err := works(newJob(t, secrets, "net:"+server), plugin.Options{"client": client}); refusedAs(err) != "net:"+signer {
 		t.Errorf("a sign-in without its host gave %v", err)
 	}
 	if err := works(newJob(t, secrets, "net:"+server, "net:"+signer, "secret:CLIENT_SECRET@net.unencrypted:"+server), plugin.Options{"client": client}); refusedAs(err) != "secret:CLIENT_SECRET@net.unencrypted:"+signer {

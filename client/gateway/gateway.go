@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"io"
 	"maps"
+	"mime"
 	"mime/multipart"
 	"net/http"
 	"net/url"
@@ -121,7 +122,8 @@ func (g *Gateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 		if query.Has("watch") {
 			s := newStream(w)
-			g.Client.Watch(ctx, filter, g.interval(), func(u client.Update) { s.send("run", u) })
+			err := g.Client.Watch(ctx, filter, g.interval(), func(u client.Update) { s.send("run", u) })
+			s.failed(ctx, err)
 			return
 		}
 		runs, err := g.Client.List(ctx, filter)
@@ -206,55 +208,63 @@ func partsOf(form *multipart.Form) (map[string]part, error) {
 //
 // A part the gateway does not know is refused, and so is one given twice.
 func (g *Gateway) start(w http.ResponseWriter, r *http.Request) {
-	const shape = "a start is an upload form (multipart/form-data) whose parts are start and input:<name>"
-	if err := r.ParseMultipartForm(held); err != nil {
-		fail(w, http.StatusBadRequest, fmt.Errorf("%s: %v", shape, err))
-		return
-	}
-	// What was not held in memory is in temporary files, and they go
-	// before the gateway answers: it keeps nothing.
-	defer r.MultipartForm.RemoveAll()
-	parts, err := partsOf(r.MultipartForm)
-	if err != nil {
-		fail(w, http.StatusBadRequest, err)
-		return
-	}
-	if _, given := parts["start"]; !given {
-		fail(w, http.StatusBadRequest, fmt.Errorf("the form has no part named start; %s", shape))
-		return
-	}
+	const shape = "a start is JSON, or an upload form (multipart/form-data) whose parts are start and input:<name>"
 	var s start
 	var st client.Start
 	files := map[string]client.InputFile{}
-	for name, p := range parts {
-		kind, rest, _ := strings.Cut(name, ":")
-		var err error
-		switch {
-		case name == "start":
-			var text string
-			if text, err = p.text(); err == nil {
-				if err := json.Unmarshal([]byte(text), &s, json.RejectUnknownMembers(true)); err != nil {
-					fail(w, http.StatusBadRequest, fmt.Errorf("the part start cannot be read: %v", err))
-					return
-				}
-			}
-		case kind == "input" && rest != "":
-			var contents io.ReadCloser
-			if contents, err = p.open(); err == nil {
-				defer contents.Close()
-				files[rest] = client.InputFile{Name: p.filename, Contents: contents}
-			}
-		default:
-			fail(w, http.StatusBadRequest, fmt.Errorf("the form has a part named %q; %s", name, shape))
+	if kind, _, _ := mime.ParseMediaType(r.Header.Get("Content-Type")); kind == "application/json" {
+		// A start with no file is the part start alone, as the request's body.
+		if !read(w, r, &s) {
 			return
 		}
-		if err != nil {
-			fail(w, http.StatusInternalServerError, err)
+	} else {
+		if err := r.ParseMultipartForm(held); err != nil {
+			fail(w, http.StatusBadRequest, fmt.Errorf("%s: %v", shape, err))
 			return
+		}
+		// What was not held in memory is in temporary files, and they go
+		// before the gateway answers: it keeps nothing.
+		defer r.MultipartForm.RemoveAll()
+		parts, err := partsOf(r.MultipartForm)
+		if err != nil {
+			fail(w, http.StatusBadRequest, err)
+			return
+		}
+		if _, given := parts["start"]; !given {
+			fail(w, http.StatusBadRequest, fmt.Errorf("the form has no part named start; %s", shape))
+			return
+		}
+		for name, p := range parts {
+			kind, rest, _ := strings.Cut(name, ":")
+			var err error
+			switch {
+			case name == "start":
+				var text string
+				if text, err = p.text(); err == nil {
+					if err := json.Unmarshal([]byte(text), &s, json.RejectUnknownMembers(true)); err != nil {
+						fail(w, http.StatusBadRequest, fmt.Errorf("the part start cannot be read: %v", err))
+						return
+					}
+				}
+			case kind == "input" && rest != "":
+				var contents io.ReadCloser
+				if contents, err = p.open(); err == nil {
+					defer contents.Close()
+					files[rest] = client.InputFile{Name: p.filename, Contents: contents}
+				}
+			default:
+				fail(w, http.StatusBadRequest, fmt.Errorf("the form has a part named %q; %s", name, shape))
+				return
+			}
+			if err != nil {
+				fail(w, http.StatusInternalServerError, err)
+				return
+			}
 		}
 	}
+	var err error
 	if err := store.CheckLocation(s.At); err != nil {
-		fail(w, http.StatusBadRequest, fmt.Errorf("the part start names the location the run starts at, as at: %v", err))
+		fail(w, http.StatusBadRequest, fmt.Errorf("a start names the location the run starts at, as at: %v", err))
 		return
 	}
 	// An input of null is no input.
@@ -330,6 +340,7 @@ func (g *Gateway) run(w http.ResponseWriter, r *http.Request, id string, rest []
 		if err == nil && run.HasEnded() {
 			s.send("end", run)
 		}
+		s.failed(ctx, err)
 	case what == "definition" && r.Method == http.MethodGet:
 		def, err := g.Client.Definition(ctx, id)
 		reply(w, def, err)
@@ -431,6 +442,14 @@ func fail(w http.ResponseWriter, status int, err error) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 	w.Write(append(data, '\n'))
+}
+
+// failed tells the caller of a stream why it stopped, when the caller did
+// not stop it.
+func (s *stream) failed(ctx context.Context, err error) {
+	if err != nil && ctx.Err() == nil {
+		s.send("error", map[string]any{"error": err.Error()})
+	}
 }
 
 // stream is a stream of events to a caller.

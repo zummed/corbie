@@ -959,6 +959,9 @@ func cmdControllerCancel(e *Env, args []string) error {
 	if head == nil {
 		return client.ErrNoRun
 	}
+	if head.HasEnded() {
+		return fmt.Errorf("the run has ended (it is %s)", head.Status)
+	}
 	var sender store.Sender
 	now := time.Now()
 	name := store.Message(ctl.Name, ctl.Name, "owner-"+sender.Next(now))

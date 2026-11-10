@@ -335,7 +335,7 @@ func TestEveryYAMLIsAMachine(t *testing.T) {
 		"notes.yaml":  "the definition is empty; " + listIt,
 		"empty.yaml":  "the definition is empty; " + listIt,
 		"list.yaml":   "a definition is a mapping; " + listIt,
-		"people.yaml": "it gives no type: a machine writes one of agent:, flow:, statechart: with its name, or takes it from a file it includes; " + listIt,
+		"people.yaml": "it gives no type: a machine writes one of agent:, decision:, flow:, statechart: with its name, or takes it from a file it includes; " + listIt,
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("read %q", got)
@@ -438,9 +438,9 @@ func TestBadIgnoreLineFailsTheRead(t *testing.T) {
 func TestOneLinePlacement(t *testing.T) {
 	dir := house(t, map[string]string{
 		".corbieignore":              ".rook/\n",
-		".rook/slack/chat/post.yaml": "flow: post\nreceive: [gromit]\nstages:\n  s: { job: { script: ./post.js, input: \"${input}\" } }\noutput: ${stages.s.output}\n",
+		".rook/slack/chat/post.yaml": "flow: post\nreceive: [bot]\nstages:\n  s: { job: { script: ./post.js, input: \"${input}\" } }\noutput: ${stages.s.output}\n",
 		".rook/slack/chat/post.js":   "return 'posted ' + input.text",
-		"gromit/chat/post.yaml":      "include: .rook/slack/chat/post.yaml\n",
+		"bot/chat/post.yaml":         "include: .rook/slack/chat/post.yaml\n",
 		"ops/chat/post.yaml":         "include: .rook/slack/chat/post.yaml\nreceive: [ops]\n",
 	})
 	tree, err := client.ReadTree(dir, "/x")
@@ -450,7 +450,7 @@ func TestOneLinePlacement(t *testing.T) {
 	if !slices.Equal(tree.Listed, []string{".rook/"}) || len(tree.Machines) != 2 {
 		t.Fatalf("read %+v", tree)
 	}
-	for i, want := range []struct{ at, receive string }{{"/x/gromit/chat/post", "gromit"}, {"/x/ops/chat/post", "ops"}} {
+	for i, want := range []struct{ at, receive string }{{"/x/bot/chat/post", "bot"}, {"/x/ops/chat/post", "ops"}} {
 		m := tree.Machines[i]
 		if m.Problem != nil {
 			t.Fatalf("%s: %v", m.Path, m.Problem)
@@ -467,7 +467,7 @@ func TestOneLinePlacement(t *testing.T) {
 		}
 	}
 	l := local(t, "all")
-	alone, err := client.ReadFile(dir, "gromit/chat/post.yaml", "/alone", client.ScriptJob{})
+	alone, err := client.ReadFile(dir, "bot/chat/post.yaml", "/alone", client.ScriptJob{})
 	if err != nil || alone.Machines[0].Problem != nil {
 		t.Fatalf("read alone: %v, %v", err, alone.Machines[0].Problem)
 	}

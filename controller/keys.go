@@ -4,6 +4,7 @@ import (
 	"crypto/hmac"
 	"crypto/rand"
 	"crypto/sha256"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -448,7 +449,7 @@ func (b *build) sent(a *arrival) {
 	}
 	if b.def == nil {
 		def, err := b.p.definition(b.st)
-		if err != nil && !errorsIs(err, machine.ErrDefinition) {
+		if err != nil && !errors.Is(err, machine.ErrDefinition) {
 			b.err = err
 			return
 		}
@@ -739,19 +740,6 @@ func (p *pass) redirect(a *arrival) error {
 	}
 	base, tail := a.name[strings.LastIndexByte(a.name, '/')+1:], run[strings.LastIndexByte(run, '/')+1:]
 	return p.tell(msg.From, run, base+".moved."+tail, fmt.Sprintf("the event %s sent to %s went to the run %s, not %s", msg.Event.Name, addressText(msg.To), run, before), msg.Cause)
-}
-
-// holder gives the run that has a key, whose file is named at: none where
-// its file names a run that has ended or never began.
-func (p *pass) holder(at, key string) (string, error) {
-	file, _, err := instance.ReadKey(p.ctx, p.store, p.c.ID.Card, p.c.ID, at, key)
-	if err != nil && !isAltered(err) || file == nil {
-		return "", err
-	}
-	if live, err := p.live(file); err != nil || !live {
-		return "", err
-	}
-	return file.Run, nil
 }
 
 // route takes a client's send to an address. The controller checks it as

@@ -1,0 +1,6 @@
+# A flow of one stage that writes no output: gives that stage's output.
+flow: one-stage
+input: { n: any }
+stages:
+  add:
+    job: { script: ./add.js, input: { n: "${input.n}" } }

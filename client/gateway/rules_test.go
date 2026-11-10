@@ -494,3 +494,65 @@ states:
 		}
 	}
 }
+
+// A start with no file is JSON: the request's body is what the part start
+// of an upload form holds.
+func TestStartIsJSONWhenItHasNoFile(t *testing.T) {
+	_, c := served(t)
+	at := c.place("statechart: sees\ninitial: over\nstates:\n  over: { end: done, output: \"${input.n}\" }\n", nil)
+	status, started, text := c.send("POST", "/runs", "application/json", strings.NewReader(`{"at": "`+at+`", "input": {"n": 7}}`))
+	id, _ := started["id"].(string)
+	if status != 200 || id == "" {
+		t.Fatalf("a start that is JSON was answered %d %s", status, text)
+	}
+	if _, run, text := c.do("GET", "/runs/"+id+"?wait", ""); run["status"] != "done" || run["output"] != float64(7) {
+		t.Fatalf("the run ended %s", text)
+	}
+	if status, _, text := c.send("POST", "/runs", "application/json", strings.NewReader(`{"at": "`+at+`", "definition": "x"}`)); status != 400 || !strings.Contains(text, "definition") {
+		t.Fatalf("a start that is JSON with a definition was answered %d %s", status, text)
+	}
+}
+
+// failing is a store whose listings fail once it is told to.
+type failing struct {
+	store.Store
+	fail chan struct{}
+}
+
+func (f failing) List(ctx context.Context, under string) ([]store.Listed, error) {
+	select {
+	case <-f.fail:
+		return nil, io.ErrUnexpectedEOF
+	default:
+		return f.Store.List(ctx, under)
+	}
+}
+
+// A stream the gateway stops because a look failed carries a last message
+// named error that gives the failure.
+func TestStreamSaysWhyItStopped(t *testing.T) {
+	mem := store.NewMemory()
+	ctl, _ := identity.New("controller", identity.Controller)
+	cli, _ := identity.New("client", identity.Client)
+	if err := store.SetUp(context.Background(), mem.As(store.Party{Kind: store.Owner})); err != nil {
+		t.Fatal(err)
+	}
+	f := failing{mem.As(store.Party{Kind: store.Client, Name: "client", Controller: "controller"}), make(chan struct{})}
+	c := serve(t, client.New(cli, ctl.Card, f))
+	req, _ := http.NewRequest("GET", c.url+"/runs?watch", nil)
+	req.Header.Set("Authorization", "Bearer "+c.token)
+	resp, err := (&http.Client{Timeout: 15 * time.Second}).Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	lines := bufio.NewReader(resp.Body)
+	if first, err := lines.ReadString('\n'); err != nil || !strings.HasPrefix(first, "event: run") {
+		t.Fatalf("the stream began %q, %v", first, err)
+	}
+	close(f.fail)
+	rest, _ := io.ReadAll(lines)
+	if !strings.Contains(string(rest), "event: error\ndata: {\"error\":") || !strings.Contains(string(rest), io.ErrUnexpectedEOF.Error()) {
+		t.Fatalf("the stream ended %q", rest)
+	}
+}

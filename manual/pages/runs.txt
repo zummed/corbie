@@ -1,14 +1,14 @@
 Runs: the commands that start, list, show and cancel a run, and the fields of a run as JSON.
 
 A run is one execution of a machine. `<id>` below is the ID that
-`corbie run submit` prints for a run it starts. Each command has a page with its flags, such as
+`corbie run start` prints. Each command has a page with its flags, such as
 `corbie manual run show`.
 
 Commands
 --------
 
   corbie run submit <file or directory>   records a tree, and starts its singletons
-  corbie run submit <location>            starts a run there and prints its ID
+  corbie run start <location>             starts a run there and prints its ID
   corbie run ls                           lists the runs in progress of this client's trees and of files whose `read:` lists it
   corbie run show <id>                    prints one run's status, input and output
   corbie run cancel <id>                  cancels a run in this client's trees; a location cancels each run there, location#key one
@@ -29,7 +29,7 @@ here.
    "started":"2026-10-13T18:51:26.25Z","ended":"2026-10-13T18:51:27.31Z"}
 
   id                    the name of the client that owns its tree, a slash, the time and a random part
-  machine, type         the definition's name, and flow, statechart or agent
+  machine, type         the definition's name, and flow, statechart, agent or decision
   title                 the definition's `title:`, filled in when the run started
   status                waiting until a controller starts it, then running, done, failed or cancelled
   failure               for a failed run: denied, timeout or error
@@ -72,7 +72,7 @@ To give a blob of one run to another run, write it in the new input with the
 first run's ID added. Both runs must be in this client's trees. Corbie copies the blob
 into the new run's record, so it remains after the first run is deleted.
 
-  corbie run submit /next --input '{"doc": {"$blob": "report", "run": "<id>"}}'
+  corbie run start /next --input '{"doc": {"$blob": "report", "run": "<id>"}}'
 
 The record
 ----------

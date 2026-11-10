@@ -1,5 +1,7 @@
 # Agent
 
+This area is the two types of machine that call a model: an agent, and a decision, which the last section gives.
+
 An agent is a machine whose tools a model picks. The model is asked what to do, the tools it picks are run, the results go back to it, and this repeats until it answers without asking for a tool.
 
 Corbie itself knows nothing about models. A turn is an ordinary job and so is a tool, and an agent is held to its permissions and its ask like any machine.
@@ -146,11 +148,11 @@ tools:
   github:
     list:
       script: ./github.js
-      allow: [net:api.githubcopilot.com, "secret:GITHUB_TOKEN@net:api.githubcopilot.com"]
+      allow: ["secret:GITHUB_TOKEN@net:api.githubcopilot.com"]
     job:
       script: ./github.js
       input: { tool: "${tool}", args: "${args}" }
-      allow: [net:api.githubcopilot.com, "secret:GITHUB_TOKEN@net:api.githubcopilot.com"]
+      allow: ["secret:GITHUB_TOKEN@net:api.githubcopilot.com"]
 ```
 
 ```js
@@ -313,3 +315,43 @@ An agent's record holds these entries, under these names:
 | job named after an entry with `list:` | the list of that entry's tools, made before the first turn |
 
 `stop` is `end`, `tools` or `length`.
+
+## Decisions
+
+A decision is the second type of machine that calls a model. It puts named questions with fixed answers to a decision model, and its output is the probability of each answer (see [Models](model.md#decide)). It has no conversation, no tools and no loop.
+
+```yaml
+# urgent.yaml
+decision: urgent
+input: { text: string }
+model: { name: jev-latest, secret: TYPESAFE_KEY }
+state: ${input.text}
+questions:
+  urgent: { type: noul, instructions: The customer cannot use the product. }
+```
+
+1. At its start the decision fills in `state:` and `questions:` from its input.
+2. One job, named `decide`, calls `llm.decide` with them. Corbie supplies its script.
+3. The job's output is the decision's output, `{ answers, model, usage }`, and the job's failure is the decision's.
+
+```
+  model       the model, written as an agent's is, of a service that has decide; it holds name, secret, service and address
+  state       the text or data the questions are about
+  questions   each question under its name, as the model's service takes it
+```
+
+A flow or a statechart runs a decision as a job and reads a probability in a condition:
+
+```yaml
+stages:
+  triage:
+    job: { machine: ./urgent.yaml, input: { text: "${input.text}" } }
+  page:
+    when: ${stages.triage.output.answers.urgent.noul > 0.8}
+    job: { script: ./page.js }
+```
+
+- The client writes into the `decide` job's permissions the connection to the model's service and the key bound to that connection, as it does for an agent's turn. The job gets nothing else from the definition's permissions.
+- Corbie does not read the questions or the answers.
+- A decision ignores every event but its start and its job's end. A send to a decision's run is noted as undelivered, as one to an agent's is.
+

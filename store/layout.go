@@ -164,9 +164,8 @@ func ParseLocation(ctl, name string) (location, entry string, ok bool) {
 }
 
 // CheckLocation says whether a text can be a location: "/", or "/" then
-// parts, none of them empty, ".", ".." or "+", and none holding "#", which
-// separates a key from its location, "*", which makes a pattern, a slash, a
-// backslash or a control character.
+// parts, each as CheckLocationPart has it and none holding "*", which
+// makes a pattern.
 func CheckLocation(location string) error {
 	if location == "/" {
 		return nil
@@ -176,9 +175,23 @@ func CheckLocation(location string) error {
 		return fmt.Errorf("%w: the location %q does not start with /", ErrName, location)
 	}
 	for part := range strings.SplitSeq(rest, "/") {
-		if part == "." || part == ".." || part == "+" || strings.ContainsAny(part, "#*") || CheckPart(stored(part)) != nil {
-			return fmt.Errorf("%w: the location %q has the part %q: a part is not empty, ., .. or +, and holds no #, *, backslash or control character", ErrName, location, part)
+		if err := CheckLocationPart(part); err != nil {
+			return fmt.Errorf("%w: the location %q: %w", ErrName, location, err)
 		}
+		if strings.Contains(part, "*") {
+			return fmt.Errorf("%w: the location %q has the part %q: a location holds no *", ErrName, location, part)
+		}
+	}
+	return nil
+}
+
+// CheckLocationPart says whether a text can be one part of a location or of
+// a pattern of locations: not empty, ".", ".." or "+", and holding no "#",
+// which separates a key from its location, slash, backslash or control
+// character.
+func CheckLocationPart(part string) error {
+	if part == "." || part == ".." || part == "+" || strings.Contains(part, "#") || CheckPart(stored(part)) != nil {
+		return fmt.Errorf("the part %q: a part is not empty, ., .. or +, and holds no #, backslash or control character", part)
 	}
 	return nil
 }

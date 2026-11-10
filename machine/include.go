@@ -215,12 +215,8 @@ func (p *Parser) mapping(n *node, held func(string) *Field, place string, chain 
 // place names, one or a list, merged in order.
 func (p *Parser) included(written *node, held func(string) *Field, mapPlace string, chain []string) *node {
 	place := placeOf(mapPlace, includeField)
-	names := []*node{written}
-	if written.list {
-		names = written.items
-	}
 	var all *node
-	for _, name := range names {
+	for _, name := range listed(written) {
 		text, ok := name.value.(string)
 		if !ok || name.isMap() || name.list {
 			p.problemIn(name.file, place, "include: names a file or a list of them, and this is %s", describe(plain(name)))
@@ -286,13 +282,9 @@ func (p *Parser) text(n *node, place string, chain []string) *node {
 	if !n.list && !n.isMap() {
 		return asWritten(n, chain)
 	}
-	pieces := []*node{n}
-	if n.list {
-		pieces = n.items
-	}
 	var joined []string
 	var first *node
-	for i, piece := range pieces {
+	for i, piece := range listed(n) {
 		at := place
 		if n.list {
 			at = fmt.Sprintf("%s[%d]", place, i)
@@ -379,16 +371,35 @@ func (p *Parser) include(n *node, name, place string, chain []string) (*node, []
 	if !ok {
 		return nil, nil
 	}
-	if at != "" {
-		for _, part := range strings.Split(at, ".") {
-			if !v.isMap() || v.m[part] == nil {
-				p.problemIn(n.file, place, "%q has nothing at %s", file, at)
-				return nil, nil
-			}
-			v = v.m[part]
-		}
+	if v = under(v, at); v == nil {
+		p.problemIn(n.file, place, "%q has nothing at %s", file, at)
+		return nil, nil
 	}
 	return v, append(slices.Clip(chain), full)
+}
+
+// listed gives what is written as one thing or a list of them: the one, or
+// each item of the list.
+func listed(n *node) []*node {
+	if n.list {
+		return n.items
+	}
+	return []*node{n}
+}
+
+// under gives the value at a path in a value, its names joined by dots, or
+// nil when nothing is there. With no path it is the value.
+func under(v *node, at string) *node {
+	if at == "" {
+		return v
+	}
+	for _, part := range strings.Split(at, ".") {
+		if !v.isMap() {
+			return nil
+		}
+		v = v.m[part]
+	}
+	return v
 }
 
 // A read is a file a definition includes, read once however often it is
@@ -471,11 +482,7 @@ func (p *Parser) typesOf(n *node, chain []string) []typed {
 		if inc == nil {
 			return
 		}
-		names := []*node{inc}
-		if inc.list {
-			names = inc.items
-		}
-		for _, name := range names {
+		for _, name := range listed(inc) {
 			text, ok := name.value.(string)
 			file, at, _ := strings.Cut(text, "#")
 			full := kept(p.cleanPath(p.moved(name, file)))
@@ -484,12 +491,7 @@ func (p *Parser) typesOf(n *node, chain []string) []typed {
 			}
 			seen[full+"#"+at] = true
 			v, err := p.loaded(full).yaml(full)
-			for _, part := range strings.Split(at, ".") {
-				if at != "" && v.isMap() {
-					v = v.m[part]
-				}
-			}
-			if err == nil && v.isMap() {
+			if v = under(v, at); err == nil && v.isMap() {
 				walk(v, append(slices.Clip(chain), full))
 			}
 		}

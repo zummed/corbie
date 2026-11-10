@@ -16,6 +16,9 @@ The detailed rules behind [the Manual overview](../manual.md).
 **R-man-14** The examples in every page are run as tests, and a page whose example no longer works fails the build.
 *Accept:* the build's tests include every example of every page in the binary, a script as a job, a definition as a run and a command as a command; a page added with an example gains a test with no other change. A plugin is changed so that an option an example uses is refused: the build fails and names the page and the example.
 
+**R-man-27** The page `changes` lists, for each release, what a user changes in definitions, scripts and commands written for the release before, and what behaves differently, the newest release first.
+*Accept:* `corbie manual changes` prints a section headed by the release its changes came after, and names `corbie run start`.
+
 **R-man-16** The pages for commands are made from the one table of commands, and the list of plugins, with the kinds of permission each needs, is made from what the binary holds.
 *Accept:* each command's page gives the arguments, the flags and the line saying what it does that the command's help gives, and a flag added to the table appears on the page with no other change. The list names every plugin in this binary and no other, each with the kinds its calls ask for; a binary built with one more plugin lists it with its kinds, with no page edited by hand.
 

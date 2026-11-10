@@ -3,7 +3,6 @@ package controller
 import (
 	"errors"
 	"slices"
-	"strings"
 
 	"github.com/zummed/corbie/identity"
 	"github.com/zummed/corbie/instance"
@@ -156,7 +155,7 @@ func uses(step *instance.Step, waiting []*arrival) bool {
 }
 
 func isAltered(err error) bool {
-	return err != nil && strings.Contains(err.Error(), identity.ErrAltered.Error())
+	return errors.Is(err, identity.ErrAltered)
 }
 
 // readers are the clients everything in an instance's record is sealed to,

@@ -65,7 +65,7 @@ A plugin's page in the manual is its specification. It lists each call, its opti
 | `llm` | calling a model |
 | `mcp` | the tools of an MCP server, over the web or from a program it starts, and calls to them |
 
-`mcp` is a plugin and not a library because a server it starts is a program kept open, reading and writing, for several calls, which `exec` does not give a script.
+`mcp` is a plugin so that a script uses any MCP server with one call: it speaks the protocol and its versions, signs in to a server on the web, and keeps a server it starts as a program open for several calls, which `exec` does not give a script.
 
 Corbie also comes with libraries written in script, among them the standard turn of an agent.
 

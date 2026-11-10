@@ -19,7 +19,7 @@ states:
   closed: { on: { open: opened } }
   opened: { end: done }
 `})
-	id := strings.TrimSpace(m.ok("", "run", "submit", m.recorded(filepath.Join(dir, "door.yaml")), "--input", `{"channel": "#testing", "said": "give me a release card"}`))
+	id := strings.TrimSpace(m.ok("", "run", "start", m.recorded(filepath.Join(dir, "door.yaml")), "--input", `{"channel": "#testing", "said": "give me a release card"}`))
 	until(t, "the run", func() bool { return strings.Contains(m.ok("", "run", "ls"), id) })
 	if out := m.ok("", "run", "show", id); !strings.Contains(out, "\n  title: #testing: give me a release card\n") {
 		t.Fatalf("corbie run show printed %s", out)

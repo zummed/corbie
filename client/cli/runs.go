@@ -6,7 +6,6 @@ import (
 	"flag"
 	"fmt"
 	"io"
-	"io/fs"
 	"maps"
 	"os"
 	"path/filepath"
@@ -45,7 +44,15 @@ func (s *starting) close() {
 	}
 }
 
+// flags sets every flag of a start and of a script file's job, which corbie
+// test takes.
 func (s *starting) flags(e *Env) {
+	s.startFlags(e)
+	s.jobFlags(e)
+}
+
+// startFlags sets the flags of a start.
+func (s *starting) startFlags(e *Env) {
 	e.Flags.StringVar(&s.input, "input", "", "")
 	e.Flags.Var(&s.files, "input-file", "")
 	e.Flags.Var(&s.labels, "label", "")
@@ -53,15 +60,20 @@ func (s *starting) flags(e *Env) {
 	e.Flags.Var(&s.deny, "deny", "")
 	e.Flags.StringVar(&s.life, "life", "", "")
 	e.Flags.StringVar(&s.timeout, "timeout", "", "")
+	e.Flags.BoolVar(&s.watch, "watch", false, "")
+}
+
+// jobFlags sets the flags of a script file's job that a start does not
+// take. --allow, --deny and --timeout are a start's too.
+func (s *starting) jobFlags(e *Env) {
 	e.Flags.StringVar(&s.memory, "memory", "", "")
 	e.Flags.Var(&s.tags, "tag", "")
-	e.Flags.BoolVar(&s.watch, "watch", false, "")
 }
 
 // startOnly lists the flags that are for starting a run, and scriptOnly
 // those that set a script file's job.
 var (
-	startOnly  = []string{"input", "input-file", "label", "allow", "deny", "life", "timeout", "memory", "tag", "watch", "wait"}
+	startOnly  = []string{"input", "input-file", "label", "allow", "deny", "life", "timeout", "memory", "tag", "watch"}
 	scriptOnly = []string{"allow", "deny", "timeout", "memory", "tag"}
 )
 
@@ -233,18 +245,6 @@ func (s *starting) testSecrets(e *Env) (map[string]string, error) {
 	return given, nil
 }
 
-// isLocation says whether an argument of run submit names a location: it
-// starts with /, does not end in .yaml or .js, and is no file or directory
-// on this computer. A file's name that is not there is read as a file, and
-// is reported as not found.
-func isLocation(arg string) bool {
-	if !strings.HasPrefix(arg, "/") || strings.HasSuffix(arg, ".yaml") || isScript(arg) {
-		return false
-	}
-	_, err := os.Stat(arg)
-	return errors.Is(err, fs.ErrNotExist)
-}
-
 // interval is how often a command that waits looks again at a store that
 // cannot tell it when something was written.
 const interval = time.Second
@@ -369,48 +369,37 @@ func (e *Env) printDefinition(file string, starts []string) error {
 func cmdSubmit(e *Env, args []string) error {
 	var s starting
 	var at string
-	s.flags(e)
-	e.Flags.BoolVar(&s.wait, "wait", false, "")
+	e.Flags.Var(&s.allow, "allow", "")
+	e.Flags.Var(&s.deny, "deny", "")
+	e.Flags.StringVar(&s.timeout, "timeout", "", "")
+	s.jobFlags(e)
 	e.Flags.StringVar(&at, "at", "", "")
 	names, err := e.Parse(args)
 	if err != nil {
 		return err
 	}
 	if len(names) != 1 {
-		return Mistake("name one directory, one definition, one script file or one location: each directory or file is a tree of its own")
+		return Mistake("name one directory, one definition or one script file: each directory or file is a tree of its own")
 	}
 	name := names[0]
 	if e.Given("at") && at == "" {
 		return Mistake("--at is empty: a prefix is / and the names of one or more directories, as /home")
 	}
-	if isLocation(name) {
-		return e.startAt(&s, name, at)
+	// The flags are a script file's job's. A definition gives its jobs
+	// their own.
+	if given := given(e, scriptOnly); len(given) > 0 && !isScript(name) {
+		return Mistake("%s applies only to a script file; a definition gives its jobs their own", strings.Join(given, ", "))
 	}
 	info, err := os.Stat(name)
-	switch {
-	case err != nil:
+	if err != nil {
 		return err
-	case info.IsDir():
-		if given := given(e, startOnly); len(given) > 0 {
-			return Mistake("%s applies to one definition; a directory takes only --at", strings.Join(given, ", "))
-		}
+	}
+	if info.IsDir() {
 		tree, err := client.ReadTree(name, at)
 		if err != nil {
 			return Mistake("%v", err)
 		}
 		return e.submit(tree)
-	}
-	// A file is recorded as a tree of one file. A script file's flags set
-	// its job, and any other flag of a start is for a start of a location.
-	// --memory and --tag with a definition are reported as for a script
-	// file only, when the file is read.
-	setsJob := []string{"memory", "tag"}
-	if isScript(name) {
-		setsJob = scriptOnly
-	}
-	flags := slices.DeleteFunc(slices.Clone(startOnly), func(f string) bool { return slices.Contains(setsJob, f) })
-	if starts := given(e, flags); len(starts) > 0 {
-		return Mistake("%s applies to a start of a location; a file is recorded as a tree, which takes only --at, and corbie run submit <location> starts a run there", strings.Join(starts, ", "))
 	}
 	tree, err := s.record(name, at, true)
 	if err != nil {
@@ -419,13 +408,20 @@ func cmdSubmit(e *Env, args []string) error {
 	return e.submit(tree)
 }
 
-// startAt starts a run of a location.
-func (e *Env) startAt(s *starting, location, at string) error {
-	if at != "" {
-		return Mistake("--at applies to a file or a directory, and %s is a location", location)
+// cmdRunStart starts a run of a location.
+func cmdRunStart(e *Env, args []string) error {
+	var s starting
+	s.startFlags(e)
+	e.Flags.BoolVar(&s.wait, "wait", false, "")
+	names, err := e.Parse(args)
+	if err != nil {
+		return err
 	}
-	if given := given(e, []string{"memory", "tag"}); len(given) > 0 {
-		return Mistake("%s does not apply to a start of a location: the file recorded there gives its jobs their own, and its secrets are set at the location", strings.Join(given, ", "))
+	if len(names) != 1 {
+		return Mistake("name one location")
+	}
+	if !strings.HasPrefix(names[0], "/") {
+		return Mistake("%s is not a location: a location starts with /, as /title; corbie run submit records a file or a directory", names[0])
 	}
 	if s.wait && s.watch {
 		return Mistake("--wait and --watch are two ways of staying; give one")
@@ -439,12 +435,12 @@ func (e *Env) startAt(s *starting, location, at string) error {
 	if err != nil {
 		return err
 	}
-	start.At = location
+	start.At = names[0]
 	id, err := c.Start(e.ctx, start)
 	if err != nil {
 		return err
 	}
-	return e.started(c, id, s, start.Life)
+	return e.started(c, id, &s, start.Life)
 }
 
 // started prints the ID of a run that was started, or stays until it ends:

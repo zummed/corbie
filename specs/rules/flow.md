@@ -16,8 +16,8 @@ The detailed rules behind the [Flow overview](../flow.md). Area code: `flow`. Wh
 **R-flow-06** A flow with a cycle is refused.
 *Accept:* stage `a` reads `b`'s output and `b` has `follows: a`; the definition is refused when checked, and the refusal names both stages.
 
-**R-flow-07** A flow's `output:` is its result, filled in once every stage has settled; it reads the flow's input and its stages, and a flow with no `output:` ends well with no output.
-*Accept:* parity case 54. The digest flow's `output: ${stages.summarise.output}` gives the summary, and an `output:` of `${input.urls.length}` gives the number of addresses. Parity case 15.
+**R-flow-07** A flow's `output:` is its result, filled in once every stage has settled; it reads the flow's input and its stages. A flow of one stage that has no `each:`, with no `output:`, gives that stage's output, and any other flow with no `output:` ends well with no output.
+*Accept:* parity case 54. The digest flow's `output: ${stages.summarise.output}` gives the summary, and an `output:` of `${input.urls.length}` gives the number of addresses. Parity case 15. Parity case 141.
 
 **C-flow-01** Two ways of writing one reference to a stage draw the same arrow. An arrow the check misses lets a stage run before the one it reads. *Test:* `flow_reference_spellings_draw_the_same_arrow`
 
@@ -108,6 +108,6 @@ Uses:
 
 Used by:
 
-- **Machines.** A flow is one of the three types, and supplies the shape of its definitions, the filling-out of its short forms, its check, its step, the state a watcher is shown (R-inst-72), and its manual page.
+- **Machines.** A flow is one of the four types, and supplies the shape of its definitions, the filling-out of its short forms, its check, its step, the state a watcher is shown (R-inst-72), and its manual page.
 - **Statechart, Agent.** Either may run a flow as a child, and a flow may run either.
 - **Client.** Wraps a script submitted by itself in a flow of one stage.

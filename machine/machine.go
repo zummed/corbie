@@ -327,7 +327,7 @@ type Type interface {
 }
 
 // Shown is the state of a run a watcher is shown for each step, beside
-// what its head says. Each type fills one field.
+// what its head says. A flow, a statechart and an agent each fill one field.
 type Shown struct {
 	// Stages are a flow's stages, each with its status: waiting, running,
 	// done, failed or skipped.
@@ -397,23 +397,6 @@ func Kept(typ string, state jsontext.Value) []Event {
 		return k.Kept(state)
 	}
 	return nil
-}
-
-// A HandingOver is a type whose singleton runs hand a value to the run a
-// submit starts in place of them.
-type HandingOver interface {
-	HandsOver(def *Definition, state jsontext.Value, input any) (any, bool, error)
-}
-
-// HandsOver gives what a run hands to the run a submit starts in place of
-// it, by its definition, its state and its input, and whether its
-// definition names anything to hand over.
-func HandsOver(def *Definition, state jsontext.Value, input any) (any, bool, error) {
-	t, _ := TypeOf(def.Type)
-	if h, ok := t.(HandingOver); ok {
-		return h.HandsOver(def, state, input)
-	}
-	return nil, false, nil
 }
 
 // An Owner is a type that gives events names of its own, such as a timer's

@@ -23,7 +23,8 @@ Routes
 Start a run
 -----------
 
-`POST /runs` takes `multipart/form-data` with these parts.
+`POST /runs` takes JSON with the fields below. A start whose input has a
+file is `multipart/form-data` with these parts.
 
   start          JSON with the fields below
   input:<name>   a file that a script reads as the blob `input.<name>`; its file name sets the type
@@ -45,7 +46,7 @@ Query parameters
 ----------------
 
   GET /runs?all                 includes runs that have ended
-  GET /runs?status=failed       only that status: running, done, failed or cancelled
+  GET /runs?status=failed       only that status: running, done, failed or cancelled; needs no `all`
   GET /runs?parent=<id>         only the child runs of that run
   GET /runs?label=team=ops      only runs with that label; `label=team` matches any value; repeatable
   GET /runs?at=<location>       only runs at that location
@@ -84,9 +85,10 @@ A stream is `text/event-stream`. Each event has a name and one line of JSON.
   run     { "listed": true }: sent once, after the runs that already existed
   entry   one entry of the record: those so far, then each as it is written
   end     the run, sent once when the run and its child runs have ended
+  error   { "error": "<text>" }: the gateway could not read the store, and closes the stream
 
-A `run` event has "new": true the first time a run is sent. A record stream
-that closes with no `end` event lost its connection.
+A `run` event has "new": true the first time a run is sent. A stream that
+closes with neither an `end` nor an `error` event lost its connection.
 
 Reference
 ---------

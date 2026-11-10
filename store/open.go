@@ -2,7 +2,9 @@ package store
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -64,10 +66,22 @@ func Check(ctx context.Context, s Store) error {
 	if mark == None {
 		// A directory that is not there is said to be that, as a bucket that
 		// cannot be reached is.
-		if f, ok := s.(*directory); ok {
+		// A read the store refuses counts as "not there", so a directory
+		// this user may not read is said to be that, and a bucket, which
+		// answers a refused read as it answers a name that holds nothing,
+		// is said to be one or the other.
+		switch f := s.(type) {
+		case *directory:
 			if _, err := os.Stat(f.root); gone(err) {
 				return fmt.Errorf("store: the directory %q is not there (corbie init sets a store up)", f.root)
 			}
+			if file, err := openFile(f.path(VersionName)); errors.Is(err, fs.ErrPermission) {
+				return fmt.Errorf("store: %w", err)
+			} else if err == nil {
+				file.Close()
+			}
+		case *bucket:
+			return fmt.Errorf("store: this is not a Corbie store, or this key may not read it: the bucket gave no %s (corbie init sets a store up)", VersionName)
 		}
 		return fmt.Errorf("store: this is not a Corbie store: it has no %s (corbie init sets one up)", VersionName)
 	}

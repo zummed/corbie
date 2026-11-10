@@ -1,0 +1,60 @@
+Decision: a decision puts questions with fixed answers to a decision model, and its output is the probability of each answer.
+
+A decision model writes no text. It is given a state, the text or data the
+questions are about, and named questions, and answers all of them at once.
+
+1. The decision fills in `state:` and `questions:` from its input.
+2. One job, `decide`, sends them to the model.
+3. The job's output is the decision's output: `{ answers, model, usage }`.
+
+    # urgent.yaml
+    decision: urgent
+    input: { text: string }
+    model: { name: jev-latest, secret: TYPESAFE_KEY }
+    state: ${input.text}
+    questions:
+      urgent: { type: noul, instructions: The customer cannot use the product. }
+
+    corbie test urgent.yaml --input '{"text": "Checkout has been failing for every customer for an hour."}' --secret-env TYPESAFE_KEY
+      output: {"answers":{"urgent":{"noul":0.99,"type":"noul"}},"model":"jev-1.13.0","usage":{"input":174,"output":2}}
+
+A flow or a statechart runs a decision as a job, and reads a probability in a
+condition.
+
+    # ticket.yaml
+    flow: ticket
+    input: { text: string }
+    stages:
+      triage:
+        job: { machine: ./urgent.yaml, input: { text: "${input.text}" } }
+      page:
+        when: ${stages.triage.output.answers.urgent.noul > 0.8}
+        job: { script: ./page.js, input: { text: "${input.text}" } }
+    output: ${stages.page.output}
+
+    // page.js
+    return "paged: " + input.text
+
+    corbie test ticket.yaml --input '{"text": "Checkout has been failing for every customer for an hour."}' --secret-env TYPESAFE_KEY
+      output: "paged: Checkout has been failing for every customer for an hour."
+
+Fields
+------
+
+  model       { name, secret, service, address }: the model, written as an
+              agent's is; `service:` follows from the name for jev-… models
+  state       the text or data the questions are about
+  questions   each question under its name: { type, instructions, criteria }
+
+`state:` and `questions:` read `input`, `values` and `run`. A decision ignores
+events sent to it, and has no tools, no ask and no approval.
+
+Corbie gives the `decide` job the connection to the model's service and the
+key bound to that connection, and nothing from the definition's `allow:`.
+
+Reference
+---------
+
+  corbie manual llm           the types of question, and what an answer holds
+  corbie manual agent         a model that writes text and calls tools
+  corbie manual definitions   the fields every definition has

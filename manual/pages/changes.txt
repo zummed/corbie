@@ -1,0 +1,62 @@
+Changes: what to change in definitions, scripts and commands written for an earlier version.
+
+Each section lists what changed after one release, the newest first.
+`corbie version` prints the version of this binary. Nothing is kept backwards
+compatible before version 1: a file or a command written the old way is
+refused.
+
+After 0.22.0
+------------
+
+Change these commands.
+
+  corbie run submit <location>      corbie run start <location>, with the same flags
+  corbie mcp --allow "run submit"   add --allow "run start" for a model that starts runs
+
+`corbie run submit` records a file or a directory, and takes `--at` and a
+script file's flags only.
+
+These are gone.
+
+- `handover:` on a singleton statechart. A singleton started again is given
+  no input. A machine that must keep data across a change to its file writes
+  it to a file of its own, with `fs.write:`, and reads it as it starts.
+
+These behave differently.
+
+- An `approve:` entry holds a job whose `allow:` entry of the same kind matches
+  a value the `approve:` entry matches. Before, an `approve:` entry that began
+  with `*`, as `net:*.internal`, held every job of its kind.
+- `llm.chat` with no `service:` uses the service the model's name is of, and
+  refuses a model no service claims. Before, it used `anthropic`.
+- A program using the client package is given the error by `Watch` when a
+  look fails after the first listing. Before, `Watch` went on.
+
+These are new, and make a definition shorter.
+
+- A flow of one stage with no `output:` gives that stage's output, so
+  `output: ${stages.<name>.output}` can go. Before, it gave no output. A
+  stage with `each:` keeps its flow's `output:`.
+- A `secret:` entry allows its destination. `allow: ["secret:KEY@net:host"]`
+  is enough, and `net:host` beside it can go. `secret:KEY@*` allows no
+  destination.
+- An `at:` entry in a client's ceiling allows sends to every location at or
+  under its prefix. `send:/work/**` beside `at:/work` can go.
+- A state with no job may give `output:`. The value is filled in as the state
+  is entered and is the state's output, and the state is then given `done`.
+  It replaces a script job that only returns a value, and a final state
+  inside a state that only gives the outer state an output.
+- The gateway's `POST /runs` takes JSON when the input has no file.
+- A stream of the gateway ends with an `error` event when the gateway could
+  not read the store.
+- `decision:` is a fourth type of machine. It puts questions to a decision
+  model and gives the probability of each answer, with no script and no
+  `allow:` entry. It replaces a script that only calls `llm.decide`.
+
+Reference
+---------
+
+  corbie manual runs         the commands that act on runs
+  corbie manual statechart   a state's fields
+  corbie manual decision     a decision's fields
+  corbie manual definitions  `approve:`

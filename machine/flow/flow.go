@@ -148,7 +148,17 @@ func (flowType) Fill(p *machine.Parser, f *machine.Fields) any {
 		sf.Done()
 		flow.Stages[name] = stage
 	}
-	flow.Output, _ = f.Value("output")
+	given := false
+	if flow.Output, given = f.Value("output"); !given && len(flow.Stages) == 1 {
+		// A flow of one stage gives that stage's output. A stage with
+		// each: is left out: reading its output would handle the failure
+		// of every item.
+		for name, stage := range flow.Stages {
+			if stage.Each == nil && stage.Emits == "" && stage.Blob == nil {
+				flow.Output = "${stages." + name + ".output}"
+			}
+		}
+	}
 	flow.Emit = f.Text("emit")
 	return flow
 }

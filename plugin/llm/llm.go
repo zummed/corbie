@@ -204,18 +204,24 @@ func chat(job *plugin.Job, first any, opt plugin.Options) (any, error) {
 	if !ok {
 		return nil, plugin.Errorf(plugin.BadInput, "llm.chat takes the conversation so far, a list, first")
 	}
-	name, err := opt.Text("service", "anthropic")
+	model, err := opt.Text("model", "")
+	if err != nil || model == "" {
+		return nil, plugin.Errorf(plugin.BadInput, "llm.chat needs model:, the model's name")
+	}
+	// The service is the one given, or the one the model's name is of.
+	chats := strings.Join(Having(func(s *Service) bool { return s.Chat != nil }), ", ")
+	name, err := opt.Text("service", Of(model))
 	if err != nil {
 		return nil, err
 	}
+	if name == "" {
+		return nil, plugin.Errorf(plugin.BadInput, "it is not clear which service the model %q is of: give service: one of %s", model, chats)
+	}
 	svc, ok := services[name]
 	if !ok || svc.Chat == nil {
-		return nil, plugin.Errorf(plugin.BadInput, "service: is one of %s, not %q", strings.Join(Having(func(s *Service) bool { return s.Chat != nil }), ", "), name)
+		return nil, plugin.Errorf(plugin.BadInput, "service: is one of %s, not %q", chats, name)
 	}
-	c := &Call{Said: ownKept(said, name), Key: opt["key"]}
-	if c.Model, err = opt.Text("model", ""); err != nil || c.Model == "" {
-		return nil, plugin.Errorf(plugin.BadInput, "llm.chat needs model:, the model's name")
-	}
+	c := &Call{Said: ownKept(said, name), Key: opt["key"], Model: model}
 	if c.System, err = opt.Text("system", ""); err != nil {
 		return nil, err
 	}

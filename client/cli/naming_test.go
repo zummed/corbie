@@ -120,7 +120,7 @@ func Test_client_record_names_calls_clients_and_notes(t *testing.T) {
 	}
 	m.ok("", "run", "submit", dir)
 
-	id := strings.TrimSpace(m.ok("", "run", "submit", "/t/c"))
+	id := strings.TrimSpace(m.ok("", "run", "start", "/t/c"))
 	m.ok("", "run", "show", id, "--wait")
 	out := m.ok("", "run", "show", id, "--record")
 	called := regexp.MustCompile(`-> job c: a call to /t/w, (box-client/\S+)`).FindStringSubmatch(out)
@@ -131,7 +131,7 @@ func Test_client_record_names_calls_clients_and_notes(t *testing.T) {
 		t.Errorf("the called run printed:\n%s", shown)
 	}
 
-	id = strings.TrimSpace(m.ok("", "run", "submit", "/t/poke"))
+	id = strings.TrimSpace(m.ok("", "run", "start", "/t/poke"))
 	m.ok("", "run", "show", id, "--wait")
 	until(t, "the note", func() bool {
 		out = m.ok("", "run", "show", id, "--record")

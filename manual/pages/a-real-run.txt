@@ -27,10 +27,10 @@ Submit a run
 
     corbie run submit title.yaml
       /title   transient   recorded
-    corbie run submit /title --input '{"url": "https://example.com"}'
+    corbie run start /title --input '{"url": "https://example.com"}'
 
-The first `run submit` records the definition and its script in the store, at
-the location `/title`. The second starts a run there with the input, prints the
+`run submit` records the definition and its script in the store, at
+the location `/title`. `run start` starts a run there with the input, prints the
 run's ID and exits. `<id>` below is that ID.
 
     corbie run show <id> --wait

@@ -354,7 +354,7 @@ func Test_model_openai_tools_not_strict(t *testing.T) {
 func Test_model_address_with_login_refused(t *testing.T) {
 	job := &plugin.Job{Context: context.Background(), Perms: &permission.Set{Layers: []permission.Layer{{Name: "test", Allow: []string{"network"}}}}}
 	for call, err := range map[string]error{
-		"chat":   second(chat(job, []any{}, plugin.Options{"model": "m", "address": "https://user:hunter2@models.example"})),
+		"chat":   second(chat(job, []any{}, plugin.Options{"model": "m", "service": "anthropic", "address": "https://user:hunter2@models.example"})),
 		"decide": second(decide(job, "a state", plugin.Options{"model": "m", "address": "https://user:hunter2@models.example", "questions": urgent})),
 	} {
 		if err == nil || !strings.Contains(err.Error(), "may not hold a user name or a password") || strings.Contains(err.Error(), "hunter2") || strings.Contains(err.Error(), "models.example") {
@@ -708,5 +708,19 @@ func Test_model_openai_two_forms(t *testing.T) {
 	}
 	if of := Of("gpt-5"); of != "openai" {
 		t.Fatalf("a gpt model is taken to be of the service %q", of)
+	}
+}
+
+// A chat's service is the one the model's name is of, and a model no
+// service claims needs its service given.
+func TestChatTakesItsServiceFromTheModelsName(t *testing.T) {
+	job := &plugin.Job{Context: context.Background(), Perms: &permission.Set{Layers: []permission.Layer{{Name: "test", Allow: []string{"net:api.anthropic.com"}}}}}
+	// A gpt model is of openai: the call is refused for its host, not sent
+	// to Anthropic's, which is allowed.
+	if err := second(chat(job, []any{}, plugin.Options{"model": "gpt-5"})); err == nil || !strings.Contains(err.Error(), "api.openai.com") {
+		t.Errorf("a gpt model with no service gave %v, want a refusal of api.openai.com", err)
+	}
+	if err := second(chat(job, []any{}, plugin.Options{"model": "my-model"})); err == nil || !strings.Contains(err.Error(), `which service the model "my-model" is of`) {
+		t.Errorf("a model no service claims gave %v", err)
 	}
 }

@@ -3,6 +3,7 @@
 package permission
 
 import (
+	"github.com/zummed/corbie/store"
 	"os"
 	"path/filepath"
 	"strings"
@@ -375,7 +376,7 @@ func Test_perm_address_scope_matches_only_an_address(t *testing.T) {
 		}
 	}
 	// * alone is not an address: it is every host.
-	s = set(allow("net:*:443", "secret:K@net:*"))
+	s = set(allow("net:*:443", "secret:K@net:*:443"))
 	for _, value := range []string{"a.b.example.com:443", "10.0.3.7:443"} {
 		if r := s.Check(Net, value); r != nil {
 			t.Fatalf("net:*:443 refused %s: %v", value, r)
@@ -473,6 +474,30 @@ func TestDeclares(t *testing.T) {
 	if !Declares([]string{"exec:git"}, []string{"exec"}, "") || Declares([]string{"net:x"}, []string{"exec"}, "") {
 		t.Error("a listed group stands for every scope of its kinds")
 	}
+	// A listed pattern holds what it matches, and no other entry of its kind.
+	for _, c := range []struct {
+		listed, entry string
+		want          bool
+	}{
+		{"net:*.internal", "net:api.github.com", false},
+		{"net:*.internal", "net:db.internal:5432", true},
+		{"net:*.internal", "net:db.*", true},
+		{"net:*.internal", "net:db.*:443", true},
+		{"net:*.internal:22", "net:db.*:443", false},
+		{"net:db.internal", "net:*.example.com", false},
+		{"exec:*-deploy", "exec:git", false},
+		{"exec:*-deploy", "exec:kube-*", true},
+		{"fs.write:/srv/*/out", "fs.write:/srv/a/*", true},
+		{"fs.write:/srv/*/out", "fs.write:/var/**", false},
+		{"secret:DB_*@net:*.internal", "secret:*_PASSWORD@net:db.*", true},
+		{"secret:DB_*@net:*.internal", "secret:API_KEY@net:db.internal", false},
+		{"send:services/*", "send:*/lookup", true},
+		{"send:services/*", "send:agents/*", false},
+	} {
+		if got := Declares([]string{c.entry}, []string{c.listed}, "/work"); got != c.want {
+			t.Errorf("%s declares %s: %v, want %v", c.entry, c.listed, got, c.want)
+		}
+	}
 	// A location in either list is read from the tree's prefix.
 	listed = []string{"send:/work/**"}
 	for entry, want := range map[string]bool{"send:/work/services/lookup": true, "send:services/lookup": true, "all": true,
@@ -566,5 +591,63 @@ func Test_perm_all_only_in_a_list(t *testing.T) {
 	}
 	if (&Set{Layers: []Layer{{Name: "all", Allow: []string{"all"}}}}).Check(Env, "HOME") != nil {
 		t.Fatal("all in a list did not allow")
+	}
+}
+
+// A pattern matches no location the store refuses.
+func TestMatchLocationRefusesWhatTheStoreRefuses(t *testing.T) {
+	for _, location := range []string{"/a/b\\c", "/a/b\x00c", "/a/b#c", "/a/+", "/a//b"} {
+		if store.CheckLocation(location) == nil || MatchLocation("/a/**", location) {
+			t.Errorf("%q: the store takes it: %v, a pattern matches it: %v", location, store.CheckLocation(location) == nil, MatchLocation("/a/**", location))
+		}
+	}
+	if !MatchLocation("/a/*", "/a/.hidden") {
+		t.Error("a part that starts with a dot is a part")
+	}
+}
+
+// A secret's entry allows its destination, in every layer, and one bound to
+// anywhere allows none. An approve: entry for the destination holds the job.
+func TestSecretEntryAllowsItsDestination(t *testing.T) {
+	set := &Set{Layers: []Layer{
+		{Name: "the job", Allow: []string{"secret:GITHUB_TOKEN@net:api.github.com", "secret:HOME@net.unencrypted:192.0.2.8:8123", "secret:DEPLOY@exec:deploy", "secret:TG_BOT@*"}},
+		{Name: "the ceiling", Allow: []string{"secret:*@net:*.github.com", "secret:HOME@net.unencrypted:192.0.2.8", "exec", "secret:*@*"}},
+	}}
+	for _, c := range []struct {
+		kind, value string
+		passes      bool
+	}{
+		{Net, "api.github.com:443", true},
+		{Net, "192.0.2.8:8123", true},
+		{Exec, "deploy", true},
+		{Net, "example.com:443", false},
+		{Net, "192.0.2.8:22", false},
+		{Exec, "git", false},
+		{Read, "/etc/hosts", false},
+	} {
+		if got := set.Check(c.kind, c.value) == nil; got != c.passes {
+			t.Errorf("%s:%s passes: %v, want %v", c.kind, c.value, got, c.passes)
+		}
+	}
+	denied := &Set{Layers: []Layer{{Name: "the job", Allow: []string{"secret:K@net:a.example"}, Deny: []string{"net:a.example"}}}}
+	if denied.Check(Net, "a.example:443") == nil {
+		t.Error("a deny entry for the destination did not refuse it")
+	}
+	if !Declares([]string{"secret:K@net:api.github.com"}, []string{"net:api.github.com"}, "") || Declares([]string{"secret:K@*"}, []string{"net:api.github.com"}, "") {
+		t.Error("a secret's entry declares its destination, and one bound to anywhere declares none")
+	}
+}
+
+// An at: entry is a send: entry for every location at or under its prefix.
+func TestAtEntryAllowsSendsUnderItsPrefix(t *testing.T) {
+	set := &Set{Layers: []Layer{{Name: "the ceiling", Allow: []string{"at:/work", "at:/labs/*"}}}}
+	for location, passes := range map[string]bool{"/work": true, "/work/a": true, "/work/b/c": true, "/labs/x/a": true,
+		"/shop/a": false, "/workshop": false, "/labs": false} {
+		if got := set.Check(Send, location) == nil; got != passes {
+			t.Errorf("a send to %s passes: %v, want %v", location, got, passes)
+		}
+	}
+	if set.Check(At, "/work/a") == nil {
+		t.Error("at:/work let a tree be submitted at /work/a")
 	}
 }

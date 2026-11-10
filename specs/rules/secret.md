@@ -47,8 +47,8 @@ The detailed rules behind the [Secrets overview](../secret.md). Requirements are
 **R-sec-24** `secret:NAME@*` lets the secret go anywhere the job may go. `net`, `net.unencrypted`, `exec`, `fs.write` and `*` are the only destinations.
 *Accept:* a job allowed `net:api.telegram.org`, `exec:notify` and `secret:TG_BOT@*` sends the secret to that host and hands it to that program. A destination of any kind but `net`, `net.unencrypted`, `exec`, `fs.write` or `*` fails the check of the definition that writes it.
 
-**R-sec-25** A secret's entry opens nothing by itself. The connection, the program or the file needs its own entry.
-*Accept:* a job allowed only `secret:GITHUB_TOKEN@net:api.github.com` is refused a request to `api.github.com`, with the secret or without, and the fix names `net:api.github.com`. A job allowed only `secret:TG_BOT@*` is refused a connection to anywhere.
+**R-sec-25** A secret's entry allows its destination, in every layer: the connection, the program or the file it names needs no entry of its own. An entry whose destination is `*` allows no destination.
+*Accept:* a job allowed only `secret:GITHUB_TOKEN@net:api.github.com` makes a request to `api.github.com`, with the secret and without, and is refused one to `example.com`. A job allowed only `secret:TG_BOT@*` is refused a connection to anywhere. A job allowed only `secret:GITHUB_TOKEN@net:api.github.com`, in a machine with `approve: [net:api.github.com]`, is held. *Test:* `TestSecretEntryAllowsItsDestination`
 
 **R-sec-26** A secret's name is always written out; its destination is a scope like any other and may be filled from the machine's input or a value.
 *Accept:* a definition with the entry `secret:${input.which}@*` fails its check, the report naming the entry. A job allows `net:${input.board}` and `secret:BOARD_TOKEN@net:${input.board}`; in a run started with `board: board.example`, the job sends the secret to `board.example`, and nowhere else.

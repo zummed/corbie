@@ -172,6 +172,17 @@ The detailed rules behind the [Agent overview](../agent.md). Area code: `agent`.
 **R-agent-70** An agent's record names its entries as the overview's table gives them: a turn is the job `turn`, whatever script makes it; `llm.chat` emits the reply's pieces under `text`; a turn's `done` holds `turn`, `text`, `calls`, `stop` and `usage`; and a tool call is a job named after the tool the model named.
 *Accept:* an agent whose model calls `add` once and then answers is followed: its script jobs are `turn`, `add` and `turn#2`; `text` is emitted under `turn`; the turn's input names the model; the first turn's `done` holds one call, a `stop`, a `turn` and a `usage`, and the last holds the answer as `text` with `stop` `end`. *Test:* `Test_agent_record_names_its_entries`
 
+## Decisions
+
+**R-agent-71** A decision gives `model:`, `state:` and `questions:`. At its start it fills in `state:` and `questions:` from its input and asks for one job, named `decide`, which calls `llm.decide` with them by a script Corbie supplies. The job's output is the decision's output, and the job's failure fails the decision. A decision acts on no other event.
+*Accept:* the manual page `decision`: a decision run alone ends `done` with `{ answers, model, usage }`, and a flow that runs it as a job reads `answers.urgent.noul` in a `when:`. A decision with no `state:` or no `questions:` is refused when checked. *Test:* `TestDecisionAsksOneJobAndEndsWithIt`
+
+**R-agent-72** A decision's model is of a service that has `decide`, and holds `name`, `secret`, `service` and `address` and no other field. A model of a service that has only `chat` is refused when the definition is checked.
+*Accept:* `model: { name: jev-latest }` is of `systemone` by its name. `model: { name: claude-sonnet-5-5 }` is refused, naming the services that have decide, and so is a model that writes `effort:`. *Test:* `TestDecisionModelHasDecide`
+
+**R-agent-73** The `decide` job is written the connection to the model's service and the key bound to that connection, and gets nothing else from the definition's permissions.
+*Accept:* a decision whose definition allows `disk` and names `secret: TYPESAFE_KEY` has a `decide` job that allows `net:api.typesafe.ai:443` and `secret:TYPESAFE_KEY@net:api.typesafe.ai:443` and no other entry. *Test:* `TestDecisionModelHasDecide`
+
 ## Interfaces
 
 Uses:
@@ -185,5 +196,5 @@ Uses:
 
 Used by:
 
-- **Machines.** An agent is one of the three types, and supplies the filling-out of its short forms, its check, its step, the state a watcher is shown (R-inst-72), and its manual page.
+- **Machines.** An agent and a decision are two of the four types, and each supplies the filling-out of its short forms, its check, its step, the state a watcher is shown (R-inst-72), and its manual page.
 - **Flow, Statechart.** Either may run an agent as a child, and an agent may run either, or another agent, as a tool.

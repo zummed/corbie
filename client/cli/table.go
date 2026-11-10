@@ -9,7 +9,7 @@ var Commands []Command
 // command takes, which the overview describes.
 const everywhere = "Every command takes --json, --config and --store: see corbie --help."
 
-// starts is the help for what a start may be given, at corbie run submit and
+// starts is the help for what a start may be given, at corbie run start and
 // at corbie test.
 const starts = `
   --input <json>           the run's input; --input @file reads the JSON from
@@ -186,22 +186,7 @@ tree: a send or a call to one of its locations is checked against the file
 there and the sender's own allow: and deny:, and a location with no machine
 is printed, which fails nothing.
 ` + scripts},
-		{Name: "run submit", Usage: "<directory or file> [--at <prefix>] | <location> [--input <json>] [--wait | --watch]", Summary: "record a tree, or start a run of a location and print its ID", Run: cmdSubmit, Help: `
-Given a location, it starts a run of the file recorded there: it uploads the
-input's files and sends the start message. It prints the run's ID and exits,
-unless --wait or --watch is given. A location starts with /, does not end in
-.yaml or .js, and is no file or directory on this computer.
-` + starts + `
-  --wait                   wait until the run ends, then print it
-  --watch                  print each entry of the run's record as it is
-                           written, until the run ends
-
-With --wait or --watch the command fails unless the run ends with status done.
-
-Given a file, it records it as a tree of one file, at --at: by default / and
-the file's name without its extension. A flag of a start given with a file is
-refused, but for a script file's flags below.
-
+		{Name: "run submit", Usage: "<directory or file> [--at <prefix>]", Summary: "record a directory or a file as a tree", Run: cmdSubmit, Help: `
 Given a directory, it records it as a tree. Each *.yaml in it and below it, but
 for .git and what the directory's .corbieignore lists, is a machine at a
 location: its path under the prefix, without .yaml. It starts each singleton with no running run,
@@ -210,11 +195,29 @@ running runs do as its update: says. A file with a problem is reported, and its
 location keeps what was recorded before. It prints what it did at each
 location, and the secrets and values the files use that are not set.
 
+Given a file, it records it as a tree of one file.
+
   --at <prefix>   where the tree is recorded; by default / and the
                   directory's or the file's name, without .yaml or .js
 
-  corbie manual a-directory   a tree of machines
+  corbie run start <location>   start a run of a transient location
+  corbie manual a-directory     a tree of machines
 ` + scripts},
+		{Name: "run start", Usage: "<location> [--input <json>] [--wait | --watch]", Summary: "start a run of a transient location and print its ID", Run: cmdRunStart, Help: `
+It starts a run of the file recorded at the location: it uploads the input's
+files and sends the start message. It prints the run's ID and exits, unless
+--wait or --watch is given.
+` + starts + `
+  --wait                   wait until the run ends, then print it
+  --watch                  print each entry of the run's record as it is
+                           written, until the run ends
+
+With --wait or --watch the command fails unless the run ends with status done.
+
+  corbie manual permissions   the entries --allow and --deny take
+  corbie manual runs          a run as JSON, and one run's file as another
+                              run's input
+`},
 		{Name: "run ls", Usage: "[--watch] [--all] [--label k=v] [--status <status>] [--parent <id>]", Summary: "list runs", Run: cmdLs, Help: `
 It lists the runs in progress of this client's trees and of the files whose
 read: lists it, child runs included. A run with status waiting, which no controller has started, is not
@@ -224,7 +227,7 @@ listed.
   --label k=v         only runs with this label; --label k takes any value;
                       repeatable
   --status <status>   only runs with this status: running, done, failed or
-                      cancelled; the last three need --all
+                      cancelled; the last three are of runs that have ended
   --parent <id>       only the child runs that this run started
   --watch             keep running: print the runs that exist, then a line
                       that ends them, then each run as it appears, changes

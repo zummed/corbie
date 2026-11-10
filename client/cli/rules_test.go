@@ -156,26 +156,28 @@ func Test_client_flag_without_effect_refused(t *testing.T) {
 		"steady.yaml": "statechart: steady\nlifetime: singleton\ninitial: waiting\nstates:\n  waiting: {}\n", "a#b.yaml": hello})
 	definition := filepath.Join(dir, "hello.yaml")
 	// With no controller, the start waits.
-	id := strings.TrimSpace(m.ok("", "run", "submit", "/hello", "--input", `{"name": "x"}`))
+	id := strings.TrimSpace(m.ok("", "run", "start", "/hello", "--input", `{"name": "x"}`))
 	before := stored(t, storeDir)
 	for flag, mistaken := range map[string][]string{
 		// For a script file only: a definition gives its jobs their own.
 		"--memory applies only to a script file": {"run", "submit", definition, "--memory", "64MB"},
 		"--tag applies only to a script file":    {"run", "submit", definition, "--tag", "gpu"},
-		// A location's file gives its jobs their own. A start carries no
-		// secret.
-		"--memory does not apply to a start of a location": {"run", "submit", "/hello", "--memory", "64MB"},
-		"--tag does not apply to a start of a location":    {"run", "submit", "/hello", "--tag", "gpu"},
-		"flag provided but not defined: -secret-env":       {"run", "submit", "/hello", "--secret-env", "HOME"},
-		"flag provided but not defined: -secret\n":         {"run", "submit", "/hello", "--secret", "CORBIE_TEST_TOKEN"},
+		// A location's file gives its jobs their own, and a start carries no
+		// secret. A file is not a location.
+		"hello.yaml is not a location":               {"run", "start", "hello.yaml"},
+		"--allow applies only to a script file":      {"run", "submit", definition, "--allow", "network"},
+		"flag provided but not defined: -memory":     {"run", "start", "/hello", "--memory", "64MB"},
+		"flag provided but not defined: -tag\n":      {"run", "start", "/hello", "--tag", "gpu"},
+		"flag provided but not defined: -secret-env": {"run", "start", "/hello", "--secret-env", "HOME"},
+		"flag provided but not defined: -secret\n":   {"run", "start", "/hello", "--secret", "CORBIE_TEST_TOKEN"},
 		// The submit starts a singleton, and a start carries nothing to it.
 		"--deny, --input does not apply to a singleton": {"test", filepath.Join(dir, "steady.yaml"), "--deny", "net:*", "--input", "{}"},
 		// A file is recorded at --at, and a location is where it was.
-		"--at applies to a file or a directory":                                                  {"run", "submit", "/hello", "--at", "/other"},
+		"flag provided but not defined: -at":                                                     {"run", "start", "/hello", "--at", "/other"},
 		"gives the location /a#b, which cannot be one: give the file another name, or give --at": {"run", "submit", filepath.Join(dir, "a#b.yaml")},
 		"gives the location /a#b, which cannot be one: give the file another name\n":             {"test", filepath.Join(dir, "a#b.yaml")},
-		"--input applies to a start of a location; a file is recorded as a tree":                 {"run", "submit", definition, "--at", "/other", "--input", "{}"},
-		"--wait applies to a start of a location; a file is recorded as a tree":                  {"run", "submit", definition, "--wait"},
+		"flag provided but not defined: -input\n":                                                {"run", "submit", definition, "--at", "/other", "--input", "{}"},
+		"flag provided but not defined: -wait":                                                   {"run", "submit", definition, "--wait"},
 		// test always stays until the run ends.
 		"-wait": {"test", definition, "--wait"},
 		// A role's flag written after another role.
@@ -192,7 +194,7 @@ func Test_client_flag_without_effect_refused(t *testing.T) {
 		"--watch and --definition each":       {"run", "show", id, "--watch", "--definition"},
 		"--record and --watch each ask":       {"run", "show", id, "--record", "--watch"},
 		// The two ways of staying.
-		"--wait and --watch are two ways": {"run", "submit", "/hello", "--wait", "--watch"},
+		"--wait and --watch are two ways": {"run", "start", "/hello", "--wait", "--watch"},
 	} {
 		status, out, errOut := m.run("", mistaken...)
 		if status != 2 || out != "" || !strings.Contains(errOut, flag) || !strings.Contains(errOut, "usage: corbie "+mistaken[0]) {
@@ -223,7 +225,7 @@ func Test_client_results_on_stdout_progress_on_stderr(t *testing.T) {
 	ended := func(v map[string]any) bool { return v["status"] == "done" && v["output"] != nil }
 
 	// The run is the result of a wait; its ID is said on the way.
-	status, out, errOut := m.run("", append([]string{"run", "submit", location, "--wait", "--json"}, input...)...)
+	status, out, errOut := m.run("", append([]string{"run", "start", location, "--wait", "--json"}, input...)...)
 	printed := lines(t, out)
 	if status != 0 || len(printed) != 1 || !ended(printed[0]) || !strings.Contains(errOut, printed[0]["id"].(string)) {
 		t.Fatalf("submit --wait --json printed %s and said %s", out, errOut)
@@ -232,7 +234,7 @@ func Test_client_results_on_stdout_progress_on_stderr(t *testing.T) {
 	// The entries of a record that is followed are what was asked for:
 	// they are printed, each a JSON value on a line, and the run after them.
 	for _, command := range [][]string{append([]string{"test", definition, "--watch"}, input...), {"run", "show", id, "--watch"},
-		append([]string{"run", "submit", location, "--watch"}, input...)} {
+		append([]string{"run", "start", location, "--watch"}, input...)} {
 		status, out, errOut = m.run("", append(command, "--json")...)
 		printed = lines(t, out)
 		if status != 0 || len(printed) < 4 || printed[0]["step"] != 1.0 || !ended(printed[len(printed)-1]) || strings.Contains(errOut, "{") {
@@ -288,9 +290,9 @@ func Test_client_submit_prints_only_the_id(t *testing.T) {
 	m.ok("", "init", "--store", filepath.Join(t.TempDir(), "store"), "--name", "box")
 	shape := regexp.MustCompile(`^box-client/\d{8}T\d{6}\.\d{3}Z-[0-9a-f]{10}\n$`)
 	for _, command := range [][]string{
-		{"run", "submit", "/hello", "--input", `{"name": "x"}`},
-		{"run", "submit", "/hello", "--input", `{"name": "x"}`, "--label", "team=ops", "--timeout", "1h", "--life", "10m", "--allow", "network"},
-		{"run", "submit", "/tools/double", "--input", `{"n": 2}`, "--timeout", "5s"},
+		{"run", "start", "/hello", "--input", `{"name": "x"}`},
+		{"run", "start", "/hello", "--input", `{"name": "x"}`, "--label", "team=ops", "--timeout", "1h", "--life", "10m", "--allow", "network"},
+		{"run", "start", "/tools/double", "--input", `{"n": 2}`, "--timeout", "5s"},
 	} {
 		status, out, errOut := m.run("", command...)
 		if status != 0 || !shape.MatchString(out) || errOut != "" {
@@ -334,7 +336,7 @@ func Test_client_run_name_is_one_field_everywhere(t *testing.T) {
 		return string(data)
 	}
 	location := m.recorded(filepath.Join(dir, "hello.yaml"))
-	one := strings.TrimSpace(m.ok("", "run", "submit", location, "--input", `{"name": "x"}`))
+	one := strings.TrimSpace(m.ok("", "run", "start", location, "--input", `{"name": "x"}`))
 	m.ok("", "run", "show", one, "--wait")
 	var request bytes.Buffer
 	form := multipart.NewWriter(&request)
@@ -362,7 +364,7 @@ func Test_client_run_name_is_one_field_everywhere(t *testing.T) {
 		}
 	}
 	shown := map[string]string{
-		"submit --json":       m.ok("", "run", "submit", location, "--input", `{"name": "z"}`, "--json", "--life", "1s"),
+		"submit --json":       m.ok("", "run", "start", location, "--input", `{"name": "z"}`, "--json", "--life", "1s"),
 		"show --json":         m.ok("", "run", "show", one, "--json"),
 		"show --wait --json":  m.ok("", "run", "show", two, "--wait", "--json"),
 		"show --watch --json": m.ok("", "run", "show", one, "--watch", "--json"),
@@ -445,7 +447,7 @@ func Test_client_secret_value_never_on_command_line(t *testing.T) {
 		refused("", "never given on the command line", append(test, flag, "CORBIE_TEST_TOKEN=hunter2-on-the-line")...)
 	}
 	// A run's secrets are set at its location, and a start carries none.
-	refused("", "flag provided but not defined: -secret-env", "run", "submit", "/hello", "--secret-env", "CORBIE_TEST_TOKEN")
+	refused("", "flag provided but not defined: -secret-env", "run", "start", "/hello", "--secret-env", "CORBIE_TEST_TOKEN")
 	set := []string{"controller", "secret", "set"}
 	refused("", `the environment variable "CORBIE_TEST_TOKEN" is not set`, append(set, "CORBIE_TEST_TOKEN", "--env")...)
 	refused("hunter2-on-standard-input\n", `the secret "CORBIE_TEST_TOKEN" is typed at a terminal, and there is none`, append(set, "CORBIE_TEST_TOKEN")...)
@@ -575,7 +577,7 @@ func Test_client_saved_file_names_checked_first(t *testing.T) {
 	made := func(returns string) string {
 		t.Helper()
 		dir := files(t, map[string]string{"make.js": "const b = (text) => blobs.make(text)\nreturn " + returns})
-		status, out, errOut := m.run("", "run", "submit", m.recorded(filepath.Join(dir, "make.js")), "--wait", "--json")
+		status, out, errOut := m.run("", "run", "start", m.recorded(filepath.Join(dir, "make.js")), "--wait", "--json")
 		if status != 0 {
 			t.Fatalf("the run that makes the files ended %d: %s%s", status, out, errOut)
 		}
@@ -719,7 +721,7 @@ func Test_client_store_flag_beats_environment_beats_config(t *testing.T) {
 	submit := func(extra ...string) [3]int {
 		t.Helper()
 		before := counts()
-		m.ok("", append([]string{"run", "submit", "/hello", "--input", `{"name": "x"}`}, extra...)...)
+		m.ok("", append([]string{"run", "start", "/hello", "--input", `{"name": "x"}`}, extra...)...)
 		after := counts()
 		return [3]int{after[0] - before[0], after[1] - before[1], after[2] - before[2]}
 	}
@@ -783,7 +785,7 @@ states:
 		return entries[:len(entries)-1], entries[len(entries)-1]
 	}
 	tested, testedRun := record("test", filepath.Join(dir, "outer.yaml"))
-	submitted, submittedRun := record("run", "submit", m.recorded(filepath.Join(dir, "outer.yaml")))
+	submitted, submittedRun := record("run", "start", m.recorded(filepath.Join(dir, "outer.yaml")))
 	if len(tested) < 8 || !slices.Equal(tested, submitted) {
 		t.Errorf("corbie test left the record\n  %s\nand corbie start with corbie run submit the record\n  %s", strings.Join(tested, "\n  "), strings.Join(submitted, "\n  "))
 	}
@@ -877,7 +879,7 @@ func (m machine) model(allow []string, calls ...[]string) []struct {
 func Test_client_allowed_name_and_command_from_one_reading(t *testing.T) {
 	m, _ := working(t, "all")
 	dir := files(t, map[string]string{"hello.yaml": hello, "greet.js": `return 1`})
-	id := strings.TrimSpace(m.ok("", "run", "submit", m.recorded(filepath.Join(dir, "hello.yaml")), "--input", `{"name": "x"}`))
+	id := strings.TrimSpace(m.ok("", "run", "start", m.recorded(filepath.Join(dir, "hello.yaml")), "--input", `{"name": "x"}`))
 	m.ok("", "run", "show", id, "--wait")
 	refused := "not one this server was started with permission for"
 	// Allowed run cancel, a model cannot run controller cancel, which ends
@@ -894,7 +896,8 @@ func Test_client_allowed_name_and_command_from_one_reading(t *testing.T) {
 	if !answers[0].Failed || !strings.Contains(answers[0].Text, `"run cancel"`) || !strings.Contains(answers[0].Text, refused) {
 		t.Errorf("allowed controller cancel, a model's run cancel was answered %+v", answers[0])
 	}
-	if answers[1].Failed || !strings.Contains(answers[1].Said, "the cancel is in the controller's inbox") {
+	// The command ran: the run has ended, and the command says so.
+	if strings.Contains(answers[1].Text, refused) || !strings.Contains(answers[1].Said, "the run has ended (it is done)") {
 		t.Errorf("allowed controller cancel, a model's controller cancel was answered %+v", answers[1])
 	}
 	// A command's name among another's arguments allows nothing, and
@@ -924,7 +927,7 @@ func Test_client_model_refused_command_does_nothing(t *testing.T) {
 	before := stored(t, storeDir)
 	configBefore := stored(t, m.config)
 	answers := m.model([]string{"run ls"},
-		[]string{"run", "submit", "/hello", "--input", `{"name": "x"}`},
+		[]string{"run", "start", "/hello", "--input", `{"name": "x"}`},
 		[]string{"test", filepath.Join(dir, "writes.js"), "--allow", "fs.write:" + marker},
 		[]string{"run", "submit", filepath.Join(dir, "broken.yaml")},
 		[]string{"run", "submit", filepath.Join(dir, "no-such-file.yaml")},
@@ -1129,7 +1132,7 @@ states:
 func Test_client_model_server_answers_beside_a_call_that_stays(t *testing.T) {
 	m, _ := working(t, "all")
 	dir := files(t, map[string]string{"door.yaml": door})
-	id := strings.TrimSpace(m.ok("", "run", "submit", m.recorded(filepath.Join(dir, "door.yaml"))))
+	id := strings.TrimSpace(m.ok("", "run", "start", m.recorded(filepath.Join(dir, "door.yaml"))))
 	in, toServer, err := os.Pipe()
 	if err != nil {
 		t.Fatal(err)
@@ -1180,7 +1183,7 @@ func Test_client_model_server_answers_beside_a_call_that_stays(t *testing.T) {
 func TestShowRecordIsWatchWithoutStaying(t *testing.T) {
 	m, _ := working(t, "all")
 	dir := files(t, map[string]string{"door.yaml": door})
-	id := strings.TrimSpace(m.ok("", "run", "submit", m.recorded(filepath.Join(dir, "door.yaml"))))
+	id := strings.TrimSpace(m.ok("", "run", "start", m.recorded(filepath.Join(dir, "door.yaml"))))
 	until(t, "the run's first step", func() bool { return strings.Contains(m.ok("", "run", "show", id), "waiting on ticket knock") })
 	// For a run in progress it returns, where --watch would stay.
 	out := m.ok("", "run", "show", id, "--record")
@@ -1247,7 +1250,7 @@ func Test_client_model_told_which_commands_stay(t *testing.T) {
 			t.Errorf("a model is not told that corbie %s stays: %s", name, lineOf[name])
 		}
 	}
-	for _, want := range []string{"run show and run submit also stay until the run ends when given --wait or --watch", "run ls --watch stays until it is stopped",
+	for _, want := range []string{"run show and run start also stay until the run ends when given --wait or --watch", "run ls --watch stays until it is stopped",
 		"a run waiting on a ticket cannot be answered from inside the same call"} {
 		if !strings.Contains(told, want) {
 			t.Errorf("a model is not told: %s\nIt is told:\n%s", want, told)

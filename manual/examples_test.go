@@ -58,7 +58,7 @@ import (
 //
 // A command must end well, unless the page shows it printing a line that
 // starts "error:" or "refused:", and then it must not. In a command, <id>
-// is the ID of the run the page's last corbie run submit that started one
+// is the ID of the run the page's last corbie run submit or corbie run start that started one
 // printed, and <ticket> the ticket that run waits on, once it does.
 
 // An example is one block of a page, read.
@@ -341,7 +341,7 @@ type session struct {
 	dir     string
 	home    string
 	running []*left
-	id      string // the run the last corbie run submit that started one printed
+	id      string // the run the last corbie run submit or corbie run start that started one printed
 }
 
 // A left command is one a page left running: what it has printed so far,
@@ -499,8 +499,8 @@ func (s *session) run(ex example) outcome {
 			return fail(err.Error())
 		}
 		said := s.w.seen(printed)
-		if len(args) > 2 && args[1] == "run" && args[2] == "submit" {
-			// A submit that records a tree and starts nothing prints no ID.
+		if len(args) > 2 && args[1] == "run" && (args[2] == "submit" || args[2] == "start") {
+			// A submit that starts no singleton prints no ID.
 			if id := runID.FindString(said); id != "" {
 				s.id = id
 			}
@@ -650,7 +650,7 @@ func printedAs(line, shown string) bool {
 var runID = regexp.MustCompile(`[\w.-]+/\d{8}T\d{6}\.\d{3}Z-[0-9a-f]+`)
 
 // named gives a command with the run and the ticket it speaks of written in:
-// the run the page's last corbie run submit started, and the ticket that run
+// the run the page's last corbie run submit or corbie run start started, and the ticket that run
 // waits on, which is asked for until the run has come to wait on it. A
 // command that prints the tickets waits for the same.
 func (s *session) named(command string) (string, error) {
@@ -659,7 +659,7 @@ func (s *session) named(command string) (string, error) {
 		return command, nil
 	}
 	if s.id == "" {
-		return "", fmt.Errorf("the command %q speaks of a run, and the page has started none with corbie run submit", command)
+		return "", fmt.Errorf("the command %q speaks of a run, and the page has started none with corbie run submit or corbie run start", command)
 	}
 	command = strings.ReplaceAll(command, "<id>", s.id)
 	if !ticket {

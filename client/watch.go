@@ -32,8 +32,13 @@ type Filter struct {
 	Location string
 	// Key keeps the runs of a keyed location with this key.
 	Key string
-	// Finished takes in the runs that have ended and are still kept.
+	// Finished takes in the runs that have ended and are still kept. A
+	// Status of a run that has ended takes them in as well.
 	Finished bool
+}
+
+func (f Filter) finished() bool {
+	return f.Finished || (f.Status != "" && f.Status != instance.Running)
 }
 
 // Statuses are the words a listing can be narrowed to by status: what a
@@ -65,7 +70,7 @@ func (f Filter) keeps(r *Run) bool {
 // every instance, not only roots. A client sees its own and those whose
 // file's read: lists it; a viewer with access to heads sees everyone's.
 func (c *Client) List(ctx context.Context, filter Filter) ([]*Run, error) {
-	heads, _, _, err := c.heads(ctx, filter.Finished, nil)
+	heads, _, _, err := c.heads(ctx, filter.finished(), nil)
 	var runs []*Run
 	for _, run := range heads {
 		if filter.keeps(run) {
@@ -199,7 +204,7 @@ func (c *Client) Watch(ctx context.Context, filter Filter, interval time.Duratio
 		case err == nil && first:
 			tell(Update{Listed: true})
 			first = false
-		case err != nil && first && ctx.Err() == nil && !errors.Is(err, store.ErrUnreachable):
+		case err != nil && ctx.Err() == nil && !errors.Is(err, store.ErrUnreachable):
 			return err
 		}
 		if !pause(ctx, interval, notice) {
@@ -224,12 +229,12 @@ type watched struct {
 // not listed before: a run that started and ended between two looks is
 // among them.
 func (c *Client) changes(ctx context.Context, filter Filter, w *watched, tell func(Update)) error {
-	runs, marks, read, err := c.heads(ctx, filter.Finished, w.read)
+	runs, marks, read, err := c.heads(ctx, filter.finished(), w.read)
 	if err != nil {
 		return err
 	}
 	var ended []string
-	if !filter.Finished {
+	if !filter.finished() {
 		if ended, err = store.Names(c.listHeads(ctx, store.Finished(c.ctl()))); err != nil {
 			return err
 		}
@@ -287,7 +292,7 @@ func (c *Client) changes(ctx context.Context, filter Filter, w *watched, tell fu
 			w.ended[store.FinishedHead(c.ctl(), id)] = true
 		}
 	}
-	if !filter.Finished {
+	if !filter.finished() {
 		w.ended = map[string]bool{}
 		for _, name := range ended {
 			w.ended[name] = true

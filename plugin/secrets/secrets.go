@@ -82,7 +82,7 @@ Needs nothing. The plugin that sends a handle checks where its secret may go.
 
 This script signs in with a user's name and a secret, encoded together in base64.
 
-    allow: [net:api.github.com, "secret:GITHUB_TOKEN@net:api.github.com"]
+    allow: ["secret:GITHUB_TOKEN@net:api.github.com"]
 
     const gh = secrets.get("GITHUB_TOKEN")
     const login = secrets.encoded(secrets.text` + "`octocat:${gh}`" + `, { as: "base64" })
@@ -94,7 +94,7 @@ This script signs in with a user's name and a secret, encoded together in base64
 This script writes a secret into a JSON body. With as: "json", a quote or a
 backslash in the value does not end the JSON string.
 
-    allow: [net:example.com, "secret:PORTAL_PASSWORD@net:example.com"]
+    allow: ["secret:PORTAL_PASSWORD@net:example.com"]
 
     const password = secrets.encoded(secrets.get("PORTAL_PASSWORD"), { as: "json" })
     const signIn = http.post("https://example.com/login", {

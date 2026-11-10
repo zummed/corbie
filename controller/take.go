@@ -7,6 +7,7 @@ import (
 	"encoding/binary"
 	"encoding/hex"
 	"encoding/json/v2"
+	"errors"
 	"fmt"
 	"slices"
 	"strings"
@@ -534,7 +535,7 @@ func (b *build) renew(job *instance.Going) {
 	var err error
 	if b.def == nil {
 		if b.def, err = b.p.definition(b.st); err != nil {
-			if !errorsIs(err, machine.ErrDefinition) {
+			if !errors.Is(err, machine.ErrDefinition) {
 				b.err = err
 				return
 			}
@@ -738,7 +739,7 @@ func (b *build) machine() error {
 func (b *build) consult() (ignored []int, stepped bool, err error) {
 	if b.def == nil {
 		if b.def, err = b.p.definition(b.st); err != nil {
-			if !errorsIs(err, machine.ErrDefinition) {
+			if !errors.Is(err, machine.ErrDefinition) {
 				return nil, false, err
 			}
 			b.breach(nil, b.p.failf("%v", err))
@@ -1435,123 +1436,34 @@ func sentEvent(msg *instance.Message) machine.Event {
 // another run, before any instance exists.
 func (b *build) first(s *instance.Start, start *arrival) (refused bool, err error) {
 	p, st := b.p, b.st
-
-	// The controller checks the definition again with the same code as the
-	// client: it does not take a client's word.
-	def, err := p.definitionAt(s.Definition)
-	read := &stepOut{}
-	switch {
-	case err == nil:
-	case errorsIs(err, machine.ErrDefinition):
-		read.Problems = machine.Problems{{Text: err.Error()}}
-		def = &machine.Definition{}
-	default:
+	def, problems, err := b.checked(s)
+	if err != nil {
 		return false, err
 	}
 	b.def = def
-	// A run a send starts takes the event only where its location's file
-	// takes it. One whose file cannot be read fails as it starts. A flow or
-	// an agent takes no sent event, so a send that starts one is its start
-	// alone.
-	given := start.isSend()
-	if given && len(read.Problems) == 0 {
-		if why := b.refuses(start.msg, def); why != "" {
-			b.undeliver(start, why)
-			return true, nil
-		}
-		if !machine.Receives(def) {
-			given, b.events = false, nil
-		}
-	}
-	// A call is taken only where its location's file takes the caller. Its
-	// receive: is read as for every event: a mapping, which names events,
-	// takes a call from no one but the tree's client.
 	call := isCall(s)
-	if call && len(read.Problems) == 0 && !b.receives(def, start.msg.Sender, "") {
-		b.noCall(start, fmt.Sprintf("%s does not receive a call from %s", st.Location, addressText(start.msg.Sender)))
-		return true, nil
-	}
-	// The key is taken before anything of the run is written, so a run that
-	// loses it has done nothing.
-	if st.Lifetime == machine.LifetimeKeyed || st.Lifetime == machine.LifetimeSingleton {
-		inUse, err := p.claim(b.inst, store.Key(p.ctl, st.Location, s.Key), s.Key, start.name)
-		if err != nil {
-			return false, err
-		}
-		switch {
-		case inUse != "" && start.isSend():
-			b.move(start)
-			return true, nil
-		case inUse != "":
-			// A later submit started the singleton again: this start is left.
-			b.drop(start)
+	given := start.isSend()
+	if len(problems) == 0 {
+		if given, refused = b.taken(start, def, call); refused {
 			return true, nil
 		}
 	}
-	// A run started at a location keeps its own copy of the file recorded
-	// there, and of what that names.
-	gone := false
-	if b.fromLocation {
-		copied, err := blob.CopyWhole(p.ctx, p.store, s.Definition, p.ctl, store.Blobs(p.ctl, b.inst))
-		switch {
-		case err == nil:
-			st.Definition = copied
-		case p.blobError(err) != nil:
-			return false, p.blobError(err)
-		case start.kind == identity.Client || call:
-			b.noCall(start, fmt.Sprintf("the file at %s is no longer in the store", st.Location))
-			return true, nil
-		default:
-			gone = true
-		}
+	if lost, err := b.claimed(s, start); err != nil || lost {
+		return lost, err
 	}
-	// A singleton started again is given what the run it replaces hands
-	// over, with the blobs that names copied into its own record.
-	if len(s.Replaces) > 0 && !gone {
-		value, note, err := p.handedOver(s.Replaces)
-		if err != nil {
-			return false, err
-		}
-		handed := *s
-		if handed.Input, err = p.handUp(value, b.inst); err != nil {
-			return false, err
-		}
-		s = &handed
-		if note != "" {
-			b.ask(instance.Ask{Kind: instance.AskNote, Text: note})
-		}
+	gone, refused, err := b.ownCopy(s, start, call)
+	if err != nil || refused {
+		return refused, err
 	}
-	st.Machine, st.Type = def.Name, def.Type
-	if b.fromLocation {
-		// A run started at its location is read by the clients its file
-		// lists, and so is everything below it.
-		st.Above.Readers = nil
-		for _, entry := range def.Read {
-			st.Above.Readers = append(st.Above.Readers, strings.TrimPrefix(entry, "client:"))
-		}
-	}
-	// A machine made while running has no ask of its own, and what it wrote
-	// of one is not kept.
-	if !st.Above.Made {
-		st.Ask = def.Ask
-	}
-	st.Keep = machine.Duration(p.keepFor(def, &st.Above))
-	st.Above.Approve = append(slices.Clone(st.Above.Approve), def.Approve...)
-	if len(read.Problems) == 0 && !gone {
+	b.above(def)
+	read := &stepOut{Problems: problems}
+	if len(problems) == 0 && !gone {
 		if read, err = b.readStep(s, start); err != nil || read == nil {
 			return false, err
 		}
+		problems = read.Problems
 	}
-	problems := read.Problems
-	switch {
-	case len(problems) > 0 && start.callJob():
-		// Refused before any instance exists.
-		b.noCall(start, fmt.Sprintf("the definition did not pass its check: %s", strings.ReplaceAll(problems.Error(), "\n", "; ")))
-		return true, nil
-	case len(problems) > 0 && (start.kind == identity.Client || call):
-		// Refused before any instance exists, in the receipt.
-		b.out.dropped = append(b.out.dropped, dropped{a: start, receipt: &instance.Receipt{
-			Refused: "the definition did not pass its check", Problems: problems}})
+	if len(problems) > 0 && b.refusedStart(start, call, problems) {
 		return true, nil
 	}
 	if len(problems) == 0 {
@@ -1570,57 +1482,24 @@ func (b *build) first(s *instance.Start, start *arrival) (refused bool, err erro
 	if given {
 		b.record(sentEvent(start.msg), start, false)
 	}
-	if start.kind == identity.Client || st.Lifetime != "" {
-		// A root started at its location counts its depth from its own
-		// file.
-		st.Above.MaxDepth = machine.DefaultDepth
-		if def.Depth != nil {
-			st.Above.MaxDepth = *def.Depth
-		}
-	}
-	if call && st.Above.CallReceipt != nil {
-		// The client that called is told the call was taken, and which run
-		// it started.
-		b.ask(instance.Ask{Kind: instance.AskReceipt, Sender: st.Above.CallReceipt.Client, Message: st.Above.CallReceipt.Message,
-			Run: b.inst, Receipt: &instance.Receipt{Taken: true, Run: b.inst}})
-	}
-	if start.kind == identity.Client {
-		b.ask(instance.Ask{Kind: instance.AskReceipt, Sender: start.sender, Message: start.name, Receipt: &instance.Receipt{Taken: true}})
-		if s.Allow != nil {
-			layer := *s.Allow
-			layer.Name = "the list the run was started with"
-			layer.Fix = "start the run with %s in its list as well (corbie run submit --allow)"
-			st.Above.Layers = []permission.Layer{layer}
-		}
-	}
-	answer := func(ignored []int, stepped bool) {
-		// A client whose send started the run is told the run took it.
-		client, message, ok := start.client()
-		if !ok || !start.isSend() {
-			return
-		}
-		receipt := &instance.Receipt{Taken: true, Run: b.inst}
-		if stepped {
-			acted := !slices.Contains(ignored, 1)
-			receipt.Acted = &acted
-		}
-		b.ask(instance.Ask{Kind: instance.AskReceipt, Sender: client, Message: message, Receipt: receipt})
-	}
+	b.started(s, start, call)
+
+	failure := ""
 	switch {
 	case gone:
-		answer(nil, false)
-		b.end(instance.Failed, nil, b.p.failf("its machine is no longer in the store"))
-		return false, nil
+		failure = "its machine is no longer in the store"
 	case len(problems) > 0:
-		answer(nil, false)
-		b.end(instance.Failed, nil, b.p.failf("the definition did not pass its check: %s", strings.ReplaceAll(problems.Error(), "\n", "; ")))
-		return false, nil
+		failure = "the definition did not pass its check: " + strings.ReplaceAll(problems.Error(), "\n", "; ")
 	case st.Above.Depth > st.Above.MaxDepth:
-		answer(nil, false)
-		b.end(instance.Failed, nil, b.p.failf("depth limit reached: the run counts %d levels below the run that began its chain of sends and calls, and its file allows %d", st.Above.Depth, st.Above.MaxDepth))
+		failure = fmt.Sprintf("depth limit reached: the run counts %d levels below the run that began its chain of sends and calls, and its file allows %d", st.Above.Depth, st.Above.MaxDepth)
+	}
+	switch {
+	case failure != "":
+		b.tookSend(start, nil, false)
+		b.end(instance.Failed, nil, b.p.failf("%s", failure))
 		return false, nil
 	case read.Failure != "":
-		answer(nil, false)
+		b.tookSend(start, nil, false)
 		_, _, err = b.follow(read)
 		return false, err
 	}
@@ -1635,8 +1514,173 @@ func (b *build) first(s *instance.Start, start *arrival) (refused bool, err erro
 		b.ask(instance.Ask{Kind: instance.AskWake, At: st.TimeoutAt, What: wakeTimeout})
 	}
 	ignored, stepped, err := b.follow(read)
-	answer(ignored, stepped)
+	b.tookSend(start, ignored, stepped)
 	return false, err
+}
+
+// checked reads the definition a start names. The controller checks it
+// again with the same code as the client: it does not take a client's word.
+// One that does not pass gives its problems and an empty definition.
+func (b *build) checked(s *instance.Start) (*machine.Definition, machine.Problems, error) {
+	def, err := b.p.definitionAt(s.Definition)
+	switch {
+	case err == nil:
+		return def, nil, nil
+	case errors.Is(err, machine.ErrDefinition):
+		return &machine.Definition{}, machine.Problems{{Text: err.Error()}}, nil
+	}
+	return nil, nil, err
+}
+
+// taken says whether the location's file takes what starts the run: a send
+// only where the file takes the event, and a call only where it takes the
+// caller. given says the run is given the event that started it: a flow or
+// an agent takes no sent event, so a send that starts one is its start
+// alone. A call's receive: is read as for every event: a mapping, which
+// names events, takes a call from no one but the tree's client.
+func (b *build) taken(start *arrival, def *machine.Definition, call bool) (given, refused bool) {
+	given = start.isSend()
+	if given {
+		if why := b.refuses(start.msg, def); why != "" {
+			b.undeliver(start, why)
+			return false, true
+		}
+		if !machine.Receives(def) {
+			given, b.events = false, nil
+		}
+	}
+	if call && !b.receives(def, start.msg.Sender, "") {
+		b.noCall(start, fmt.Sprintf("%s does not receive a call from %s", b.st.Location, addressText(start.msg.Sender)))
+		return false, true
+	}
+	return given, false
+}
+
+// claimed takes the key of a keyed run or a singleton, before anything of
+// the run is written, so a run that loses it has done nothing. A send that
+// loses it moves on to the run that has it, and a start of a singleton a
+// later submit started again is left.
+func (b *build) claimed(s *instance.Start, start *arrival) (lost bool, err error) {
+	p, st := b.p, b.st
+	if st.Lifetime != machine.LifetimeKeyed && st.Lifetime != machine.LifetimeSingleton {
+		return false, nil
+	}
+	inUse, err := p.claim(b.inst, store.Key(p.ctl, st.Location, s.Key), s.Key, start.name)
+	switch {
+	case err != nil || inUse == "":
+		return false, err
+	case start.isSend():
+		b.move(start)
+	default:
+		b.drop(start)
+	}
+	return true, nil
+}
+
+// ownCopy gives a run started at a location its own copy of the file
+// recorded there, and of what that names. gone says the file is no longer
+// in the store; a client's start or a call is then refused, and any other
+// run fails as it starts.
+func (b *build) ownCopy(s *instance.Start, start *arrival, call bool) (gone, refused bool, err error) {
+	p, st := b.p, b.st
+	if !b.fromLocation {
+		return false, false, nil
+	}
+	copied, err := blob.CopyWhole(p.ctx, p.store, s.Definition, p.ctl, store.Blobs(p.ctl, b.inst))
+	switch {
+	case err == nil:
+		st.Definition = copied
+		return false, false, nil
+	case p.blobError(err) != nil:
+		return false, false, p.blobError(err)
+	case start.kind == identity.Client || call:
+		b.noCall(start, fmt.Sprintf("the file at %s is no longer in the store", st.Location))
+		return false, true, nil
+	}
+	return true, false, nil
+}
+
+// above writes what the run takes from its definition for itself and for
+// everything below it.
+func (b *build) above(def *machine.Definition) {
+	st := b.st
+	st.Machine, st.Type = def.Name, def.Type
+	if b.fromLocation {
+		// A run started at its location is read by the clients its file
+		// lists, and so is everything below it.
+		st.Above.Readers = nil
+		for _, entry := range def.Read {
+			st.Above.Readers = append(st.Above.Readers, strings.TrimPrefix(entry, "client:"))
+		}
+	}
+	// A machine made while running has no ask of its own, and what it wrote
+	// of one is not kept.
+	if !st.Above.Made {
+		st.Ask = def.Ask
+	}
+	st.Keep = machine.Duration(b.p.keepFor(def, &st.Above))
+	st.Above.Approve = append(slices.Clone(st.Above.Approve), def.Approve...)
+}
+
+// refusedStart refuses a client's start or a call whose definition did not
+// pass its check, before any instance exists. Any other run is started and
+// fails.
+func (b *build) refusedStart(start *arrival, call bool, problems machine.Problems) bool {
+	switch {
+	case start.callJob():
+		b.noCall(start, fmt.Sprintf("the definition did not pass its check: %s", strings.ReplaceAll(problems.Error(), "\n", "; ")))
+		return true
+	case start.kind == identity.Client || call:
+		b.out.dropped = append(b.out.dropped, dropped{a: start, receipt: &instance.Receipt{
+			Refused: "the definition did not pass its check", Problems: problems}})
+		return true
+	}
+	return false
+}
+
+// started sets the depth a root counts from, tells the client that started
+// or called the run that it was taken, and adds the list a client started
+// it with.
+func (b *build) started(s *instance.Start, start *arrival, call bool) {
+	st := b.st
+	if start.kind == identity.Client || st.Lifetime != "" {
+		// A root started at its location counts its depth from its own
+		// file.
+		st.Above.MaxDepth = machine.DefaultDepth
+		if b.def.Depth != nil {
+			st.Above.MaxDepth = *b.def.Depth
+		}
+	}
+	if call && st.Above.CallReceipt != nil {
+		// The client that called is told which run its call started.
+		b.ask(instance.Ask{Kind: instance.AskReceipt, Sender: st.Above.CallReceipt.Client, Message: st.Above.CallReceipt.Message,
+			Run: b.inst, Receipt: &instance.Receipt{Taken: true, Run: b.inst}})
+	}
+	if start.kind != identity.Client {
+		return
+	}
+	b.ask(instance.Ask{Kind: instance.AskReceipt, Sender: start.sender, Message: start.name, Receipt: &instance.Receipt{Taken: true}})
+	if s.Allow != nil {
+		layer := *s.Allow
+		layer.Name = "the list the run was started with"
+		layer.Fix = "start the run with %s in its list as well (corbie run submit --allow)"
+		st.Above.Layers = []permission.Layer{layer}
+	}
+}
+
+// tookSend tells a client whose send started the run that the run took it,
+// and, once the run has stepped, whether the machine acted on the event.
+func (b *build) tookSend(start *arrival, ignored []int, stepped bool) {
+	client, message, ok := start.client()
+	if !ok || !start.isSend() {
+		return
+	}
+	receipt := &instance.Receipt{Taken: true, Run: b.inst}
+	if stepped {
+		acted := !slices.Contains(ignored, 1)
+		receipt.Acted = &acted
+	}
+	b.ask(instance.Ask{Kind: instance.AskReceipt, Sender: client, Message: message, Receipt: receipt})
 }
 
 // holds says whether a job waits for a yes before it starts: it is marked
@@ -1696,7 +1740,7 @@ func (b *build) startAsk() {
 	if above {
 		beside = b.st.Above.Ask.Definition
 		if def, err = b.p.definitionAt(beside); err != nil {
-			if !errorsIs(err, machine.ErrDefinition) {
+			if !errors.Is(err, machine.ErrDefinition) {
 				b.err = err
 				return
 			}

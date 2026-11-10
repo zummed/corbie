@@ -1,0 +1,9 @@
+{
+  "note": "R-chart-86",
+  "status": "done",
+  "output": {
+    "noted": { "seen": [7] },
+    "added": { "seen": [7, 1], "came_by": "done" },
+    "counted": 2
+  }
+}

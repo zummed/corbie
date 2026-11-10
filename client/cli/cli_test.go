@@ -171,7 +171,7 @@ func TestInitRunSubmitStart(t *testing.T) {
 	<-roles
 
 	// With the controller stopped, a run started is waiting to start.
-	id := strings.TrimSpace(m.ok("", "run", "submit", "/hello", "--input", `{"name": "directory"}`, "--label", "team=ops"))
+	id := strings.TrimSpace(m.ok("", "run", "start", "/hello", "--input", `{"name": "directory"}`, "--label", "team=ops"))
 	if strings.ContainsAny(id, " \n") || !strings.HasPrefix(id, "box-client/") {
 		t.Fatalf("submit printed %q", id)
 	}
@@ -197,13 +197,13 @@ func TestInitRunSubmitStart(t *testing.T) {
 	// names the command that changes it. The script's own list allowed it,
 	// so nothing is said of adding to the command line.
 	reads := files(t, map[string]string{"reads.js": `return fs.read("/etc/hostname")`})
-	_, out, _ = m.run("", "run", "submit", m.recorded(filepath.Join(reads, "reads.js"), "--allow", "disk"), "--wait")
+	_, out, _ = m.run("", "run", "start", m.recorded(filepath.Join(reads, "reads.js"), "--allow", "disk"), "--wait")
 	if !strings.Contains(out, "denied") || !strings.Contains(out, "corbie controller enrol box-client --allow fs.read:/etc/hostname") || strings.Contains(out, "add to the command") {
 		t.Fatalf("a denied run printed %s", out)
 	}
 	m.ok("", "controller", "enrol", "box-client", "--allow", "fs.read:/etc/hostname")
 	m.ok("", "runner", "trust", "box-controller", "--allow", "fs.read:/etc/hostname")
-	if _, out, _ := m.run("", "run", "submit", "/reads", "--wait"); !strings.Contains(out, "done") {
+	if _, out, _ := m.run("", "run", "start", "/reads", "--wait"); !strings.Contains(out, "done") {
 		t.Fatalf("after the ceilings were raised: %s", out)
 	}
 	stop()
@@ -225,7 +225,7 @@ func TestInitWithNoStoreSetsItUpInTheConfig(t *testing.T) {
 	}
 	m.staying("start", "controller", "--interval", "20ms", "runner", "--interval", "20ms")
 	dir := files(t, map[string]string{"one.js": `return 1`})
-	if out := m.ok("", "run", "submit", m.recorded(filepath.Join(dir, "one.js")), "--wait", "--json"); !strings.Contains(out, `"status":"done"`) || !strings.Contains(out, `"output":1`) {
+	if out := m.ok("", "run", "start", m.recorded(filepath.Join(dir, "one.js")), "--wait", "--json"); !strings.Contains(out, `"status":"done"`) || !strings.Contains(out, `"output":1`) {
 		t.Fatalf("the run ended as %s", out)
 	}
 }
@@ -462,7 +462,7 @@ func TestViewerNeedsNoIdentity(t *testing.T) {
 		var out, said bytes.Buffer
 		done <- cli.Run(ctx, []string{"start", "controller", "--interval", "100ms", "runner", "--interval", "100ms", "--config", m.config}, strings.NewReader(""), &out, &said)
 	}()
-	id := strings.TrimSpace(m.ok("", "run", "submit", m.recorded(filepath.Join(dir, "hello.yaml")), "--input", `{"name": "x"}`))
+	id := strings.TrimSpace(m.ok("", "run", "start", m.recorded(filepath.Join(dir, "hello.yaml")), "--input", `{"name": "x"}`))
 	m.ok("", "run", "show", id, "--wait")
 	// The record says the run has ended a moment before its head does:
 	// let the controller finish the step before it is stopped.
@@ -536,41 +536,6 @@ func TestTestReadsADirectory(t *testing.T) {
 	status, out, _ := m.run("", "test", "on")
 	if status != 1 || !strings.Contains(out, "on/hello.yaml\n    ") {
 		t.Fatalf("with its script gone, corbie test on ended %d and printed %q", status, out)
-	}
-}
-
-// corbie test on the worked example in client/testdata/gromit prints each
-// machine ok, then each path .corbieignore lists.
-func TestTestListsTheWorkedExample(t *testing.T) {
-	m := machine{t, t.TempDir()}
-	from, err := os.Getwd()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := os.Chdir("../testdata"); err != nil {
-		t.Fatal(err)
-	}
-	defer os.Chdir(from)
-	want := `gromit/agents/support.yaml                    ok
-gromit/conversation.yaml                      ok
-gromit/deploys.yaml                           ok
-gromit/gitlab/pipeline/create.yaml            ok
-gromit/gitlab/repository/commits/create.yaml  ok
-gromit/gitlab/repository/files/read.yaml      ok
-gromit/gromit/slack/chat/ask.yaml             ok
-gromit/gromit/slack/chat/post.yaml            ok
-gromit/gromit/slack/gromit.yaml               ok
-gromit/infra/vms/restart.yaml                 ok
-gromit/infra/vms/status.yaml                  ok
-gromit/ops/slack/chat/post.yaml               ok
-gromit/ops/slack/ops.yaml                     ok
-gromit/people/find.yaml                       ok
-gromit/.rook/                                 listed
-gromit/people/scopes.yaml                     listed
-gromit/toolkits/                              listed
-`
-	if out := m.ok("", "test", "gromit"); out != want {
-		t.Fatalf("corbie test gromit printed:\n%s", out)
 	}
 }
 

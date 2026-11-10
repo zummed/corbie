@@ -665,7 +665,7 @@ exec:program for a program. A handle needs one of these.
 This script lists the tools of a server on the web and calls one, with a token
 in a header.
 
-    allow: [net:notes.example.com, "secret:NOTES_TOKEN@net:notes.example.com"]
+    allow: ["secret:NOTES_TOKEN@net:notes.example.com"]
 
     const server = mcp.connect("https://notes.example.com/mcp", {
       headers: { Authorization: secrets.text` + "`Bearer ${secrets.get(\"NOTES_TOKEN\")}`" + ` },
@@ -675,7 +675,7 @@ in a header.
 
 This script lists the tools of a server it starts, and calls one.
 
-    allow: [exec:notes-server, "secret:NOTES_KEY@exec:notes-server"]
+    allow: ["secret:NOTES_KEY@exec:notes-server"]
 
     const server = mcp.start("notes-server", { env: { NOTES_KEY: secrets.get("NOTES_KEY") } })
     const names = server.tools().map((tool) => tool.name)   // ["add_note", "find_notes"]

@@ -385,7 +385,7 @@ func TestModelServiceErrorIsSearchedBeforeItIsCut(t *testing.T) {
 	defer server.Close()
 	job := newJob(t, map[string]string{"K": key}, "network", "secret:K@*")
 	_, err := call(job, "llm", "chat", []any{map[string]any{"role": "user", "text": "hello"}},
-		plugin.Options{"model": "any", "address": server.URL, "key": plugin.NewSecret("K")})
+		plugin.Options{"model": "any", "service": "anthropic", "address": server.URL, "key": plugin.NewSecret("K")})
 	if codeOf(err) != plugin.Refused || !strings.Contains(err.Error(), "answered 401") || strings.Contains(err.Error(), "sk-key") {
 		t.Fatalf("the service's error was handed on as: %v", err)
 	}

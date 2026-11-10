@@ -763,3 +763,42 @@ func TestBlobShownInAnEntryIsFetchedByItsPath(t *testing.T) {
 		}
 	}
 }
+
+// A look that fails for any reason but a store out of reach ends the watch
+// with that failure, after the first listing as before it.
+func TestWatchReturnsAFailureOfALaterLook(t *testing.T) {
+	a := arrange(t)
+	root := a.named("root")
+	a.step(root, 1, instance.Done)
+	a.head(root, instance.Done, 1)
+
+	broken := errors.New("the disk gave an error")
+	listed := make(chan struct{}, 1)
+	fail := false
+	a.hooked.before = func(act, name string) error {
+		if fail {
+			return broken
+		}
+		return nil
+	}
+	ended := make(chan error, 1)
+	go func() {
+		ended <- a.Watch(ctx, client.Filter{Finished: true}, time.Millisecond, func(u client.Update) {
+			if u.Listed {
+				listed <- struct{}{}
+			}
+		})
+	}()
+	<-listed
+	a.hooked.mu.Lock()
+	fail = true
+	a.hooked.mu.Unlock()
+	select {
+	case err := <-ended:
+		if !errors.Is(err, broken) {
+			t.Fatalf("the watch ended with %v, want the store's failure", err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("the watch went on after a look failed")
+	}
+}

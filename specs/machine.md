@@ -145,11 +145,11 @@ A file of one line places a machine that a listed file holds at its own location
 # project/.rook/slack/chat/post.yaml        listed: no location
 flow: post
 input: { in: string, text: string }
-receive: [gromit/gromit]
+receive: [bot/bot]
 stages:
   post: { job: { script: ./post.js, input: "${input}", allow: [net:slack.com] } }
 
-# project/gromit/chat/post.yaml
+# project/bot/chat/post.yaml
 include: .rook/slack/chat/post.yaml
 
 # project/ops/chat/post.yaml
@@ -159,8 +159,8 @@ receive: [ops/ops]
 
 ```
 $ corbie run submit project --at /x
-/x/gromit/chat/post   transient   recorded
-/x/ops/chat/post      transient   recorded
+/x/bot/chat/post   transient   recorded
+/x/ops/chat/post   transient   recorded
 ```
 
 - A placed file takes its type, its name and every field from the file it includes, `lifetime:` and `receive:` among them. Placing a singleton gives a singleton.

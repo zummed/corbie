@@ -1,5 +1,0 @@
-flow: status
-description: The state of every virtual machine.
-stages:
-  status: { job: ./status.js }
-output: ${stages.status.output}

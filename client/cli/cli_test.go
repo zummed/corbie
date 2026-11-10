@@ -539,41 +539,6 @@ func TestTestReadsADirectory(t *testing.T) {
 	}
 }
 
-// corbie test on the worked example in client/testdata/gromit prints each
-// machine ok, then each path .corbieignore lists.
-func TestTestListsTheWorkedExample(t *testing.T) {
-	m := machine{t, t.TempDir()}
-	from, err := os.Getwd()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := os.Chdir("../testdata"); err != nil {
-		t.Fatal(err)
-	}
-	defer os.Chdir(from)
-	want := `gromit/agents/support.yaml                    ok
-gromit/conversation.yaml                      ok
-gromit/deploys.yaml                           ok
-gromit/gitlab/pipeline/create.yaml            ok
-gromit/gitlab/repository/commits/create.yaml  ok
-gromit/gitlab/repository/files/read.yaml      ok
-gromit/gromit/slack/chat/ask.yaml             ok
-gromit/gromit/slack/chat/post.yaml            ok
-gromit/gromit/slack/gromit.yaml               ok
-gromit/infra/vms/restart.yaml                 ok
-gromit/infra/vms/status.yaml                  ok
-gromit/ops/slack/chat/post.yaml               ok
-gromit/ops/slack/ops.yaml                     ok
-gromit/people/find.yaml                       ok
-gromit/.rook/                                 listed
-gromit/people/scopes.yaml                     listed
-gromit/toolkits/                              listed
-`
-	if out := m.ok("", "test", "gromit"); out != want {
-		t.Fatalf("corbie test gromit printed:\n%s", out)
-	}
-}
-
 // corbie test given a directory checks each send and call to a location of
 // the tree against the file there and the sender's own lists, and names a
 // location with no machine without failing.

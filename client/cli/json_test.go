@@ -81,9 +81,9 @@ states:
 	asked(m, "", true, "test", filepath.Join(dir, "make.js"), "--watch")
 	asked(m, "", true, "run", "submit", filepath.Join(dir, "make.js"))
 	asked(m, "", true, "run", "submit", filepath.Join(dir, "door.yaml"))
-	id, _ := object(asked(m, "", true, "run", "submit", "/make"))["id"].(string)
-	asked(m, "", true, "run", "submit", "/make", "--wait")
-	asked(m, "", true, "run", "submit", "/make", "--watch")
+	id, _ := object(asked(m, "", true, "run", "start", "/make"))["id"].(string)
+	asked(m, "", true, "run", "start", "/make", "--wait")
+	asked(m, "", true, "run", "start", "/make", "--watch")
 	asked(m, "", true, "run", "show", id, "--wait")
 	asked(m, "", true, "run", "show", id)
 	asked(m, "", true, "run", "show", id, "--record")
@@ -113,7 +113,7 @@ states:
 		t.Errorf("corbie check --json printed %v", found)
 	}
 	door := func() string {
-		id, _ := object(asked(m, "", true, "run", "submit", "/door"))["id"].(string)
+		id, _ := object(asked(m, "", true, "run", "start", "/door"))["id"].(string)
 		return id
 	}
 	asked(m, "", true, "run", "send", door(), "open")

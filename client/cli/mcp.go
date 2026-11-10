@@ -177,7 +177,7 @@ func (t table) tools(allow []string) []any {
 	allowed := "No commands are allowed to you."
 	if len(commands) > 0 {
 		allowed = "The commands allowed to you:\n" + strings.Join(commands, "\n") +
-			"\nrun show and run submit also stay until the run ends when given --wait or --watch, and run ls --watch stays until it is stopped."
+			"\nrun show and run start also stay until the run ends when given --wait or --watch, and run ls --watch stays until it is stopped."
 	}
 	return []any{
 		map[string]any{"name": "manual",

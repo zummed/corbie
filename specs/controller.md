@@ -141,7 +141,7 @@ A submit changes no other tree. Only the tree's client cancels the runs at its l
 |---|---|
 | `singleton` | at a submit, when the location has no running run |
 | `keyed` | at a send to a key with no running run, with the event's data as input |
-| `transient` (default) | at a call, at a send to `{ at }` with the event's data as input, or at `corbie run submit <location>` from the tree's client |
+| `transient` (default) | at a call, at a send to `{ at }` with the event's data as input, or at `corbie run start <location>` from the tree's client |
 
 - Every run keeps the definition it started with, in its own record.
 - A run's authority comes from its location: its file's `allow:` and `ask:`, its tree client's ceiling, and the secrets and values set at its location or above (see permission.md).

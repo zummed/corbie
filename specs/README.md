@@ -51,7 +51,7 @@ A file's `lifetime:` says how runs start at its location.
 ```
 singleton   the submit starts the one run
 keyed       one run per key, started by a send to a key with no running run; statecharts only
-transient   a new run for each call, each send to { at }, or corbie run submit <location>; the default
+transient   a new run for each call, each send to { at }, or corbie run start <location>; the default
 ```
 
 The gateway starts a run by calling a location (see client.md).

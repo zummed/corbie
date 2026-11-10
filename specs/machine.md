@@ -117,7 +117,7 @@ A client submits a directory at a prefix, and the directory becomes a tree (see 
 |---|---|---|
 | `singleton` | one | the submit |
 | `keyed` | one per key, statecharts only | a send to a key with no running run (see statechart.md) |
-| `transient` | any number; the default | a call, a send to `{ at }`, or `corbie run submit <location>` by the tree's client |
+| `transient` | any number; the default | a call, a send to `{ at }`, or `corbie run start <location>` by the tree's client |
 
 ```
 $ corbie run submit house --at /home

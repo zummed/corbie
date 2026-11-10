@@ -75,7 +75,7 @@ A file of one line places a listed machine at its own location. It takes the typ
 
   singleton             the submit starts its one run, when none is running
   keyed                 a send to a key with no running run starts one
-  transient, default    corbie run submit <location>, a call or a send to { at } starts a new one
+  transient, default    corbie run start <location>, a call or a send to { at } starts a new one
 
 What the submit does at a location:
 

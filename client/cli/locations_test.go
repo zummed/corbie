@@ -3,6 +3,7 @@ package cli_test
 import (
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -27,9 +28,17 @@ states:
 		t.Fatalf("a transient file submitted alone printed %q", out)
 	}
 	// A start prints the run's ID and nothing else.
-	status, out, said := m.run("", "run", "submit", "/hello", "--input", `{"name": "world"}`)
+	status, out, said := m.run("", "run", "start", "/hello", "--input", `{"name": "world"}`)
 	if status != 0 || !regexp.MustCompile(`^box-client/\d{8}T\d{6}\.\d{3}Z-[0-9a-f]{10}\n$`).MatchString(out) || said != "" {
 		t.Fatalf("a start of /hello ended %d, printed %q and said %q", status, out, said)
+	}
+	// A location with the name of a directory on this computer is started
+	// as any other, and the directory is not read.
+	if runtime.GOOS != "windows" {
+		m.ok("", "run", "submit", filepath.Join(dir, "hello.yaml"), "--at", dir)
+		if out := m.ok("", "run", "start", dir, "--input", `{"name": "world"}`, "--wait"); !strings.Contains(out, `output: "hello, world"`) {
+			t.Fatalf("a start of the location %s, which is a directory here, printed:\n%s", dir, out)
+		}
 	}
 	id := strings.TrimSpace(out)
 	if out := m.ok("", "run", "show", id, "--wait"); !strings.Contains(out, `output: "hello, world"`) {
@@ -42,7 +51,7 @@ states:
 		says string
 		args []string
 	}{
-		{"--at applies to a file or a directory, and /hello is a location", []string{"run", "submit", "/hello", "--at", "/x"}},
+		{"flag provided but not defined: -at", []string{"run", "start", "/hello", "--at", "/x"}},
 		{"--at /: a prefix is / and the names", []string{"run", "submit", filepath.Join(dir, "hello.yaml"), "--at", "/"}},
 	} {
 		if status, _, said := m.run("", mistake.args...); status != 2 || !strings.Contains(said, mistake.says) {
@@ -57,7 +66,7 @@ states:
 	if status, out, said := m.run("", "run", "submit", filepath.Join(dir, "broken.yaml")); status != 1 || out != "" || !strings.Contains(said, "stages") {
 		t.Errorf("a file with a problem submitted alone ended %d, printed %q and said:\n%s", status, out, said)
 	}
-	if status, out, said := m.run("", "run", "submit", "/broken", "--wait"); status != 1 || !strings.Contains(out+said, "/broken") {
+	if status, out, said := m.run("", "run", "start", "/broken", "--wait"); status != 1 || !strings.Contains(out+said, "/broken") {
 		t.Errorf("a start of a location where nothing was recorded ended %d, printed:\n%s\nand said:\n%s", status, out, said)
 	}
 }

@@ -103,7 +103,7 @@ A statechart sends to a run by its address
     corbie run submit house
       /house/desk   transient   recorded
       /house/room   keyed       recorded
-    corbie run submit /house/desk --watch
+    corbie run start /house/desk --watch
       step 1  <- start
       step 1  -> send knock to /house/room#1 · started <id>
       step 1  -> send leave to /house/room#1 · <id>

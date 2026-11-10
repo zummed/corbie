@@ -36,7 +36,7 @@ corbie test flow.yaml                   run a definition or a script in this pro
 
 corbie run submit flow.yaml             record one file as a tree, and start it if it is a singleton
 corbie run submit <dir> --at <prefix>   record a directory as a tree, and start its singletons
-corbie run submit <location>            start a run of a transient location and print its ID
+corbie run start <location>             start a run of a transient location and print its ID
 corbie run ls                           list runs
 corbie run show <id>                    show one run: its status and its result
 corbie run cancel <id>                  cancel a run in one of this client's trees
@@ -53,7 +53,7 @@ corbie mcp                              serve the manual and the commands to a m
 corbie version                          print the version, the machine types and the plugins
 ```
 
-The commands form a tree. A word at the top is a command, or begins several commands, as `run` begins the six that act on runs. `corbie help` prints the top, each word with its summary or the words that follow it, then the names of the programs on PATH. With `corbie-ui` and `corbie-rook` on PATH it prints:
+The commands form a tree. A word at the top is a command, or begins several commands, as `run` begins the seven that act on runs. `corbie help` prints the top, each word with its summary or the words that follow it, then the names of the programs on PATH. With `corbie-ui` and `corbie-rook` on PATH it prints:
 
 ```
   init         create a controller, a runner and a client on this computer
@@ -62,7 +62,7 @@ The commands form a tree. A word at the top is a command, or begins several comm
   check        start one small run, and report which part of a setup did not
                respond
   test         run a definition or a script in this process, with no setup
-  run          submit, ls, show, cancel, send, reply
+  run          submit, start, ls, show, cancel, send, reply
   controller   card, enrol, remove, parties, secret, value, policy, cancel
   runner       card, trust, remove
   client       card, trust, remove
@@ -110,7 +110,7 @@ Following from a terminal is one flag, `--watch`. It prints what the command pri
 
 `run show` prints a run's title, and `run ls` does not, since a listing reads only the heads. For a run another run started, `run show` prints `cause: <id> step <n>`. In `--json`, a listing's row and `run show` give `cause`, and each step of a record gives the cause of each event and the run's `state` (see instance.md). `run show` can also print one step, one job's input and output, or the definition, can save a result's files to a directory, and with `--wait` stays until the run ends and prints its result.
 
-`run submit <location>` sends a start; `run submit --wait` waits for the run it started and `run submit --watch` follows it. The tree's client starts a transient location with no `send:` entry. Another client's start is a call: its ceiling needs `send:` for the location, the file's `receive:` must list `client:<its name>`, and the start takes no labels or `--allow`. Under the ID it printed, it is shown only the call's result: the run's status and its output or error, and the result's files. A cancel of that ID is refused, naming the run the call started and its tree's client, which alone cancels it.
+`run start <location>` sends a start; `run start --wait` waits for the run it started and `run start --watch` follows it. The tree's client starts a transient location with no `send:` entry. Another client's start is a call: its ceiling needs `send:` for the location, the file's `receive:` must list `client:<its name>`, and the start takes no labels or `--allow`. Under the ID it printed, it is shown only the call's result: the run's status and its output or error, and the result's files. A cancel of that ID is refused, naming the run the call started and its tree's client, which alone cancels it.
 
 A secret's value is never on the command line. It is read only from the source the command names, and a value not found there is a mistake that sends nothing:
 
@@ -127,7 +127,7 @@ corbie controller value set DB_HOST db.prod.lan --at /prod
 corbie controller value list
 ```
 
-A file given alone is a tree of one file, at `--at`, by default `/` and the file's name without its extension. An argument of `run submit` that starts with `/`, does not end in `.yaml` or `.js`, and is no file or directory on this computer is read as a location. A file's name that is not there is reported as not found. `run show`, `run cancel` and `run send` read every argument that starts with `/` as a location.
+A file given alone is a tree of one file, at `--at`, by default `/` and the file's name without its extension. `run submit` reads its argument as a file or a directory, and `run start` as a location. `run show`, `run cancel` and `run send` read every argument that starts with `/` as a location.
 
 A script file can be submitted as it is. The package wraps it in a flow of one stage, with the permissions it may use and its limits, which the command line takes as flags.
 
@@ -260,7 +260,7 @@ $ corbie run submit house --at /home
 /home/schedules/away   transient   recorded
 not set at its location or above: secret BOILER_PASSWORD for /home/devices/boiler
 
-$ corbie run submit /home/schedules/away --wait
+$ corbie run start /home/schedules/away --wait
 ```
 
 A submit does this, and exits when each run it cancelled has ended and each start has been taken. The controller's start of a singleton is good until it is taken, so the submit waits for it with no limit:
@@ -302,7 +302,7 @@ A tree belongs to the client that first submitted it. Every run keeps the defini
 
 The gateway offers the package over HTTP for applications not written in Go. Its routes start a run of a location with an input, list, show and cancel runs, read a run's record, definition and files, and send events and answers to a run. A listing and a record are each given as they stand, and with `?watch` as a stream that follows them. Files in an input go in as uploads and come out by their path in a result.
 
-A start is the gateway's client starting a transient location, as `corbie run submit <location>` does. The location's file lists `client:<the gateway's client>` in `receive:`, or the gateway's client owns the tree. A start in a tree another client owns is a call, and the run is shown from the call's result. A route names a run by its ID. A listing narrowed with `?at=<location>`, and `&key=<key>` at a keyed location, gives the IDs of the runs there.
+A start is the gateway's client starting a transient location, as `corbie run start <location>` does. The location's file lists `client:<the gateway's client>` in `receive:`, or the gateway's client owns the tree. A start in a tree another client owns is a call, and the run is shown from the call's result. A route names a run by its ID. A listing narrowed with `?at=<location>`, and `&key=<key>` at a keyed location, gives the IDs of the runs there.
 
 A gateway is started with `corbie start gateway`, alone or beside a controller and a runner. It is one client with one ceiling. Callers show it a token it was given when it was started, and all of them act as that client. Different ceilings need different gateways. A request with a field the gateway does not know is refused.
 

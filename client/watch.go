@@ -199,7 +199,7 @@ func (c *Client) Watch(ctx context.Context, filter Filter, interval time.Duratio
 		case err == nil && first:
 			tell(Update{Listed: true})
 			first = false
-		case err != nil && first && ctx.Err() == nil && !errors.Is(err, store.ErrUnreachable):
+		case err != nil && ctx.Err() == nil && !errors.Is(err, store.ErrUnreachable):
 			return err
 		}
 		if !pause(ctx, interval, notice) {

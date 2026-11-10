@@ -3,7 +3,6 @@ package controller
 import (
 	"crypto/hmac"
 	"crypto/sha256"
-	"errors"
 	"fmt"
 	"slices"
 	"strings"
@@ -17,8 +16,6 @@ import (
 	"github.com/zummed/corbie/secret"
 	"github.com/zummed/corbie/store"
 )
-
-func errorsIs(err, target error) bool { return errors.Is(err, target) }
 
 // finish finishes a step that has been written: it carries out what the
 // entry asks for, brings the head up to date, and last deletes the

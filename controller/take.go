@@ -7,6 +7,7 @@ import (
 	"encoding/binary"
 	"encoding/hex"
 	"encoding/json/v2"
+	"errors"
 	"fmt"
 	"slices"
 	"strings"
@@ -534,7 +535,7 @@ func (b *build) renew(job *instance.Going) {
 	var err error
 	if b.def == nil {
 		if b.def, err = b.p.definition(b.st); err != nil {
-			if !errorsIs(err, machine.ErrDefinition) {
+			if !errors.Is(err, machine.ErrDefinition) {
 				b.err = err
 				return
 			}
@@ -738,7 +739,7 @@ func (b *build) machine() error {
 func (b *build) consult() (ignored []int, stepped bool, err error) {
 	if b.def == nil {
 		if b.def, err = b.p.definition(b.st); err != nil {
-			if !errorsIs(err, machine.ErrDefinition) {
+			if !errors.Is(err, machine.ErrDefinition) {
 				return nil, false, err
 			}
 			b.breach(nil, b.p.failf("%v", err))
@@ -1442,7 +1443,7 @@ func (b *build) first(s *instance.Start, start *arrival) (refused bool, err erro
 	read := &stepOut{}
 	switch {
 	case err == nil:
-	case errorsIs(err, machine.ErrDefinition):
+	case errors.Is(err, machine.ErrDefinition):
 		read.Problems = machine.Problems{{Text: err.Error()}}
 		def = &machine.Definition{}
 	default:
@@ -1696,7 +1697,7 @@ func (b *build) startAsk() {
 	if above {
 		beside = b.st.Above.Ask.Definition
 		if def, err = b.p.definitionAt(beside); err != nil {
-			if !errorsIs(err, machine.ErrDefinition) {
+			if !errors.Is(err, machine.ErrDefinition) {
 				b.err = err
 				return
 			}

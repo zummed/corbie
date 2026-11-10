@@ -300,7 +300,7 @@ A tree belongs to the client that first submitted it. Every run keeps the defini
 
 ## The gateway
 
-The gateway offers the package over HTTP for applications not written in Go. Its routes start a run of a location with an input, list, show and cancel runs, read a run's record, definition and files, and send events and answers to a run. A listing and a record are each given as they stand, and with `?watch` as a stream that follows them. Files in an input go in as uploads and come out by their path in a result.
+The gateway offers the package over HTTP for applications not written in Go. Its routes start a run of a location with an input, list, show and cancel runs, read a run's record, definition and files, and send events and answers to a run. A listing and a record are each given as they stand, and with `?watch` as a stream that follows them. A stream the gateway closes ends with a message: `end` with the run when the run has ended, or `error` with the failure when the gateway could not read the store. A start is JSON, or an upload form when its input has files, which come out by their path in a result.
 
 A start is the gateway's client starting a transient location, as `corbie run start <location>` does. The location's file lists `client:<the gateway's client>` in `receive:`, or the gateway's client owns the tree. A start in a tree another client owns is a call, and the run is shown from the call's result. A route names a run by its ID. A listing narrowed with `?at=<location>`, and `&key=<key>` at a keyed location, gives the IDs of the runs there.
 

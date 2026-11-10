@@ -40,11 +40,11 @@ two files from `corbie manual first-machine`, submitted by that client.
   corbie run submit title.yaml
     /title   transient   recorded
 
-The request is a multipart form. Its part `start` is JSON with the location
-and the input.
+The request is JSON with the location and the input.
 
   curl -H "Authorization: Bearer $TOKEN" http://127.0.0.1:8371/runs \
-       -F 'start={"at": "/title", "input": {"url": "https://example.com"}}'
+       -H "Content-Type: application/json" \
+       -d '{"at": "/title", "input": {"url": "https://example.com"}}'
     {"id":"laptop-client/20261013T185126.250Z-571d935912"}
 
 Read the result

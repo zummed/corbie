@@ -14,7 +14,6 @@ import (
 	"os"
 	"path"
 	"path/filepath"
-	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -589,13 +588,4 @@ func (r *Runner) ceiling(s Served) permission.Layer {
 	layer.Name = "the ceiling of the runner " + strconv.Quote(r.ID.Name)
 	layer.Fix = fmt.Sprintf("the runner's owner runs, on the runner's computer: corbie runner trust %s --allow %%s", s.Controller.Name)
 	return layer
-}
-
-func sortedNames[V any](m map[string]V) []string {
-	names := make([]string, 0, len(m))
-	for name := range m {
-		names = append(names, name)
-	}
-	slices.Sort(names)
-	return names
 }

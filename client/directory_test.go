@@ -440,7 +440,7 @@ func TestOneLinePlacement(t *testing.T) {
 		".corbieignore":              ".rook/\n",
 		".rook/slack/chat/post.yaml": "flow: post\nreceive: [bot]\nstages:\n  s: { job: { script: ./post.js, input: \"${input}\" } }\noutput: ${stages.s.output}\n",
 		".rook/slack/chat/post.js":   "return 'posted ' + input.text",
-		"bot/chat/post.yaml":      "include: .rook/slack/chat/post.yaml\n",
+		"bot/chat/post.yaml":         "include: .rook/slack/chat/post.yaml\n",
 		"ops/chat/post.yaml":         "include: .rook/slack/chat/post.yaml\nreceive: [ops]\n",
 	})
 	tree, err := client.ReadTree(dir, "/x")

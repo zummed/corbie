@@ -276,9 +276,6 @@ type table struct {
 // own is corbie's own table.
 func own() table { return table{name: "corbie", commands: Commands, ends: everywhere} }
 
-// word is the last word of the table's name: corbie, or a program's name.
-func (t table) word() string { return t.name[strings.LastIndex(t.name, " ")+1:] }
-
 // own says whether the table is corbie's own.
 func (t table) own() bool { return t.name == own().name }
 
@@ -710,16 +707,6 @@ func (t table) helpOf(c *Command) string {
 		text += "\n" + group
 	}
 	return text
-}
-
-// Pages gives a page of the manual for each command, made from the table.
-func Pages() map[string]string {
-	pages := map[string]string{}
-	for i := range Commands {
-		c := &Commands[i]
-		pages["corbie "+c.Name] = own().helpOf(c)
-	}
-	return pages
 }
 
 func sortedKeys[V any](m map[string]V) []string {

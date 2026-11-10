@@ -896,7 +896,8 @@ func Test_client_allowed_name_and_command_from_one_reading(t *testing.T) {
 	if !answers[0].Failed || !strings.Contains(answers[0].Text, `"run cancel"`) || !strings.Contains(answers[0].Text, refused) {
 		t.Errorf("allowed controller cancel, a model's run cancel was answered %+v", answers[0])
 	}
-	if answers[1].Failed || !strings.Contains(answers[1].Said, "the cancel is in the controller's inbox") {
+	// The command ran: the run has ended, and the command says so.
+	if strings.Contains(answers[1].Text, refused) || !strings.Contains(answers[1].Said, "the run has ended (it is done)") {
 		t.Errorf("allowed controller cancel, a model's controller cancel was answered %+v", answers[1])
 	}
 	// A command's name among another's arguments allows nothing, and

@@ -503,3 +503,21 @@ func Test_client_read_lists_clients_that_read_the_records(t *testing.T) {
 		t.Errorf("another client reading the record: %v", err)
 	}
 }
+
+// A listing narrowed to a status of a run that has ended gives the runs
+// that have ended with it, with nothing more asked.
+func TestListingByAnEndedStatusTakesInEndedRuns(t *testing.T) {
+	a := arrange(t)
+	ended, going := a.named("ended"), a.named("going")
+	a.step(ended, 1, instance.Done)
+	a.head(ended, instance.Done, 1)
+	a.step(going, 1, instance.Running)
+	a.head(going, instance.Running, 1)
+	runs, err := a.List(ctx, client.Filter{Status: instance.Done})
+	if err != nil || len(runs) != 1 || runs[0].ID != ended {
+		t.Fatalf("a listing of done runs gave %+v, %v", runs, err)
+	}
+	if runs, err := a.List(ctx, client.Filter{}); err != nil || len(runs) != 1 || runs[0].ID != going {
+		t.Fatalf("a listing with no status gave %+v, %v", runs, err)
+	}
+}

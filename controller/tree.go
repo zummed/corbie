@@ -263,7 +263,7 @@ func (p *pass) plan(a *arrival, base string, before *treeEntry) (*treeEntry, err
 	for _, location := range sortedKeys(msg.Files) {
 		file := msg.Files[location]
 		def, err := machine.Load(p.ctx, p.store, file.Definition)
-		if err != nil && !errorsIs(err, machine.ErrDefinition) {
+		if err != nil && !errors.Is(err, machine.ErrDefinition) {
 			return nil, err
 		}
 		if err != nil {
@@ -521,7 +521,7 @@ func (p *pass) handedOver(replaces []string) (value any, note string, err error)
 			continue
 		}
 		def, err := p.definitionAt(step.State.Definition)
-		if errorsIs(err, machine.ErrDefinition) {
+		if errors.Is(err, machine.ErrDefinition) {
 			return nil, unread(replaces[:i+1]), nil
 		}
 		if err != nil {

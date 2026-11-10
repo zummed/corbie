@@ -32,6 +32,9 @@ These are new, and make a definition shorter.
   is entered and is the state's output, and the state is then given `done`.
   It replaces a script job that only returns a value, and a final state
   inside a state that only gives the outer state an output.
+- The gateway's `POST /runs` takes JSON when the input has no file.
+- A stream of the gateway ends with an `error` event when the gateway could
+  not read the store.
 - `decision:` is a fourth type of machine. It puts questions to a decision
   model and gives the probability of each answer, with no script and no
   `allow:` entry. It replaces a script that only calls `llm.decide`.

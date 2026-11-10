@@ -227,7 +227,7 @@ listed.
   --label k=v         only runs with this label; --label k takes any value;
                       repeatable
   --status <status>   only runs with this status: running, done, failed or
-                      cancelled; the last three need --all
+                      cancelled; the last three are of runs that have ended
   --parent <id>       only the child runs that this run started
   --watch             keep running: print the runs that exist, then a line
                       that ends them, then each run as it appears, changes

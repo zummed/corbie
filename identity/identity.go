@@ -177,15 +177,21 @@ type identityFile struct {
 	Seal string `json:"seal"`
 }
 
+// encode is the identity as it is kept, in a file or in a bucket.
+func (id *Identity) encode() ([]byte, error) {
+	data, err := json.Marshal(identityFile{id.Name, id.Kind,
+		b64.EncodeToString(id.signKey.Seed()), b64.EncodeToString(id.sealKey.Bytes())})
+	return append(data, '\n'), err
+}
+
 // Save writes the identity to a file only its owner can read, whole or not
 // at all.
 func (id *Identity) Save(path string) error {
-	data, err := json.Marshal(identityFile{id.Name, id.Kind,
-		b64.EncodeToString(id.signKey.Seed()), b64.EncodeToString(id.sealKey.Bytes())})
+	data, err := id.encode()
 	if err != nil {
 		return err
 	}
-	return writeWhole(path, append(data, '\n'))
+	return writeWhole(path, data)
 }
 
 // Load reads an identity from its file. A file that anyone but its owner
@@ -202,7 +208,12 @@ func Load(path string) (*Identity, error) {
 	if err != nil {
 		return nil, err
 	}
-	damaged := fmt.Errorf("the identity file %q is damaged", path)
+	return decode(data, fmt.Errorf("the identity file %q is damaged", path))
+}
+
+// decode reads an identity as it is kept. What it was read from being
+// damaged is the one error it gives, and that holds nothing of the keys.
+func decode(data []byte, damaged error) (*Identity, error) {
 	var f identityFile
 	if json.Unmarshal(data, &f, json.RejectUnknownMembers(true)) != nil || CheckName(f.Name) != nil || !f.Kind.valid() {
 		return nil, damaged

@@ -208,6 +208,7 @@ A script cannot reach outside itself except through the kinds above, and those a
 - A permission to connect to a host governs the connection and nothing sent over it. A job allowed an MCP server can call any of its tools; what a call can do is set by the credentials the server is given.
 - An agent's listed tools are described by whoever wrote the list, and the model reads that text as it reads a tool's result.
 - A job that may read the runner's own files can read the runner's key, and with it every job sent to that runner.
+- Whoever may read an identity's object in a bucket has that party's keys. Corbie does not check the bucket's policy.
 - A script allowed to reach a secret's destination can learn the secret from the other side.
 - A tool that a model's own program runs for itself, where a definition has switched one on, is not checked by Corbie: it has everything its group allows, and only its use is noted (see Models).
 - A plugin is trusted. One that opens something by itself, or uses a library that reads the computer's settings unasked, is a hole, and only review prevents it.

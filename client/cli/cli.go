@@ -535,7 +535,7 @@ func (e *Env) Client() (*client.Client, error) {
 	}
 	var id *identity.Identity
 	if cfg.Has(identity.Client) {
-		if id, err = cfg.Load(identity.Client); err != nil {
+		if id, err = cfg.Load(e.ctx, identity.Client); err != nil {
 			return nil, err
 		}
 	}
@@ -552,7 +552,7 @@ func (e *Env) Controller() (*identity.Identity, store.Store, error) {
 	if err != nil {
 		return nil, nil, err
 	}
-	id, err := cfg.Load(identity.Controller)
+	id, err := cfg.Load(e.ctx, identity.Controller)
 	if err != nil {
 		return nil, nil, err
 	}

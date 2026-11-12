@@ -47,21 +47,24 @@ a flow of one stage, and these flags set that stage's job. With a definition,
 
 func init() {
 	Commands = []Command{
-		{Name: "init", Usage: "[--store <address>] [--ceiling <list>] [--deny <entry>] [--name <name>] | store [--listen host:port]", Summary: "create a controller, a runner and a client on this computer", Run: cmdInit, Help: `
+		{Name: "init", Usage: "[--store <address>] [--identity <address>] [--ceiling <list>] [--deny <entry>] [--name <name>] | store [--listen host:port]", Summary: "create a controller, a runner and a client on this computer", Run: cmdInit, Help: `
 It creates the three in the config directory, makes each trust the others,
 sets up the store and prints what it did. Running it again replaces the
 ceiling with the one then given.
 
-  --store <address>   the store: a directory, or an S3 bucket as s3://…;
-                      default the one the config records, or CORBIE_STORE,
-                      or on a new config the directory store in it
-  --ceiling <list>    the most any job on this computer may be allowed, as
-                      entries separated by commas: all, or network,disk, or
-                      net:api.github.com,fs.read:/srv/**; default nothing
-  --deny <entry>      a permission the ceiling refuses, whatever it allows;
-                      repeatable
-  --name <name>       names the three <name>-controller, <name>-runner and
-                      <name>-client; default this computer's host name
+  --store <address>      the store: a directory, or an S3 bucket as s3://…;
+                         default the one the config records, or CORBIE_STORE,
+                         or on a new config the directory store in it
+  --identity <address>   keeps the three identities in an S3 bucket, as
+                         s3://…, and not in the config; only on a new config
+  --ceiling <list>       the most any job on this computer may be allowed, as
+                         entries separated by commas: all, or network,disk,
+                         or net:api.github.com,fs.read:/srv/**; default
+                         nothing
+  --deny <entry>         a permission the ceiling refuses, whatever it
+                         allows; repeatable
+  --name <name>          names the three <name>-controller, <name>-runner and
+                         <name>-client; default this computer's host name
 
 corbie init store sets up only the store's server, which gives other
 computers this computer's store directory, on a config that holds the
@@ -289,13 +292,16 @@ is refused.
   --life <time>   how long the answer is valid while no controller takes it,
                   and how long the command waits for the answer; default 5m`},
 
-		{Name: "controller card", Usage: "--store <address> [--name <name>]", Summary: "create this computer's controller and print its card", Run: cmdCard(identity.Controller), Help: `
+		{Name: "controller card", Usage: "--store <address> [--name <name>] [--identity <address>]", Summary: "create this computer's controller and print its card", Run: cmdCard(identity.Controller), Help: `
 It creates the controller's identity if the config has none, sets up the
 store and prints the controller's card.
 
-  --store <address>   the controller's store: a directory, or an S3 bucket as
-                      s3://…; required the first time
-  --name <name>       the controller's name; default <host name>-controller
+  --store <address>      the controller's store: a directory, or an S3
+                         bucket as s3://…; required the first time
+  --name <name>          the controller's name; default
+                         <host name>-controller
+  --identity <address>   keeps the identity in an S3 bucket, as s3://…, and
+                         not in the config; only where none is made yet
 
   corbie manual parties            cards and trust
   corbie manual served-directory   serving the store directory`},
@@ -370,16 +376,21 @@ process reads and writes.
   <name>     the controller itself, or an enrolled runner or client
   --viewer   a key that can only list runs and read their status
 
+Where this config keeps a party's identity in a bucket, that party's policy
+also allows reading it.
+
   corbie manual bucket   creating the keys`},
 		{Name: "controller cancel", Usage: "<id>", Summary: "cancel any run, in any client's tree", Run: cmdControllerCancel, Help: `
 It writes the cancel to the controller's inbox and does not wait. The
 controller cancels the run the next time it polls.`},
 
-		{Name: "runner card", Usage: "[--name <name>]", Summary: "create this computer's runner and print its card", Run: cmdCard(identity.Runner), Help: `
+		{Name: "runner card", Usage: "[--name <name>] [--identity <address>]", Summary: "create this computer's runner and print its card", Run: cmdCard(identity.Runner), Help: `
 It creates the runner's identity if the config has none, and prints its card,
 which corbie controller enrol takes.
 
-  --name <name>   the runner's name; default <host name>-runner`},
+  --name <name>          the runner's name; default <host name>-runner
+  --identity <address>   keeps the identity in an S3 bucket, as s3://…, and
+                         not in the config; only where none is made yet`},
 		{Name: "runner trust", Usage: "<what enrol printed | - | name> [--ceiling <list>] [--allow <entry>] [--deny <entry>] [--replace]", Summary: "trust a controller, up to a ceiling", Run: cmdTrust(identity.Runner), Help: `
 It takes what corbie controller enrol printed, which is the controller's card
 and the store's address, and saves both in the config.
@@ -403,11 +414,13 @@ and the store's address, and saves both in the config.
 The config keeps the controller's name with its key, so a card with another
 key under that name is refused without --replace.`},
 
-		{Name: "client card", Usage: "[--name <name>]", Summary: "create this computer's client and print its card", Run: cmdCard(identity.Client), Help: `
+		{Name: "client card", Usage: "[--name <name>] [--identity <address>]", Summary: "create this computer's client and print its card", Run: cmdCard(identity.Client), Help: `
 It creates the client's identity if the config has none, and prints its card,
 which corbie controller enrol takes.
 
-  --name <name>   the client's name; default <host name>-client`},
+  --name <name>          the client's name; default <host name>-client
+  --identity <address>   keeps the identity in an S3 bucket, as s3://…, and
+                         not in the config; only where none is made yet`},
 		{Name: "client trust", Usage: "<what enrol printed | -> [--replace]", Summary: "trust a controller", Run: cmdTrust(identity.Client), Help: `
 It takes what corbie controller enrol printed, which is the controller's card
 and the store's address, and saves both in the config. A client trusts one

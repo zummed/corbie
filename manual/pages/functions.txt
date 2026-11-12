@@ -44,6 +44,24 @@ stopped by Lambda at that point, and the step's machine fails.
 
 A function's code can be replaced while runs are in progress.
 
+Keep the private keys in a bucket
+---------------------------------
+
+By default each package holds its party's private keys, in
+`config/<kind>/identity`. With `--identity`, `init` writes them to a bucket,
+and each package holds their address.
+
+  corbie init --store 's3://my-bucket/main?region=eu-west-2' --identity 's3://my-keys/cloud?region=eu-west-2' --ceiling exec --name cloud
+
+  the objects   cloud/controller/identity, cloud/runner/identity, cloud/client/identity
+  the package   config/controller/identity-address, and no private key
+  the policy    `corbie controller policy` allows each party to read its own object
+
+A function reads its keys each time it starts. Whoever may read an object has
+that party's keys, and Corbie does not check the key bucket's policy. To
+replace the keys, run `init` with a new config, a new `--identity` path and a
+new store.
+
 Have the bucket call each function
 ----------------------------------
 

@@ -150,10 +150,10 @@ func calls(t *testing.T, n int, done func(), answered func(body string)) *httpte
 // singleton waiting there: once sent says whether its message is in the
 // controller's inbox. The submit is stopped then, since no controller
 // answers it.
-func setUp(t *testing.T, address string, sent func() bool) (config string) {
+func setUp(t *testing.T, address string, sent func() bool, more ...string) (config string) {
 	t.Helper()
 	config = filepath.Join(t.TempDir(), "config")
-	if status, said := corbie(ctx, "init", "--config", config, "--store", address, "--name", "host"); status != 0 {
+	if status, said := corbie(ctx, append([]string{"init", "--config", config, "--store", address, "--name", "host"}, more...)...); status != 0 {
 		t.Fatalf("corbie init: %s", said)
 	}
 	definition := filepath.Join(t.TempDir(), "waits.yaml")
@@ -219,6 +219,57 @@ func Test_role_serverless_host_refuses_directory_and_memory(t *testing.T) {
 	}
 	if err := role.StoreFits("s3://bucket/path?region=eu-west-1"); err != nil {
 		t.Fatalf("a bucket is refused: %v", err)
+	}
+}
+
+func TestHostReadsIdentityFromBucket(t *testing.T) {
+	held := &bucket{values: map[string][]byte{}}
+	served := httptest.NewServer(held)
+	defer served.Close()
+	t.Setenv("AWS_ACCESS_KEY_ID", "the-key")
+	t.Setenv("AWS_SECRET_ACCESS_KEY", "the-secret")
+	t.Setenv("AWS_SESSION_TOKEN", "")
+	// The identities are made in a bucket, and a submit is waiting.
+	keys := "s3://bkt/keys?region=test-1&endpoint=" + served.URL
+	config := setUp(t, "s3://bkt/main?region=test-1&endpoint="+served.URL, func() bool { return held.has("/inbox/") }, "--identity", keys)
+	for _, kind := range []string{"controller", "runner", "client"} {
+		if !held.has("keys/" + kind + "/identity") {
+			t.Fatalf("the bucket holds no identity for the %s", kind)
+		}
+		if _, err := os.Stat(filepath.Join(config, kind, "identity")); err == nil {
+			t.Fatalf("the config holds the %s's identity file", kind)
+		}
+		if recorded, _ := os.ReadFile(filepath.Join(config, kind, "identity-address")); strings.TrimSpace(string(recorded)) != keys {
+			t.Fatalf("the config records %q for the %s", recorded, kind)
+		}
+	}
+	// Run again, also with another name, init keeps the identities.
+	before := string(held.values["keys/controller/identity"])
+	if status, said := corbie(ctx, "init", "--config", config, "--name", "other", "--identity", keys); status != 0 || string(held.values["keys/controller/identity"]) != before {
+		t.Fatalf("corbie init run again ended %d and kept the identity %v: %s", status, string(held.values["keys/controller/identity"]) == before, said)
+	}
+	// On the host the controller reads its identity from the bucket, and
+	// takes the host's call and the submit that was waiting.
+	t.Setenv("TMPDIR", t.TempDir())
+	var answers []string
+	serving, stop := context.WithCancel(ctx)
+	host := calls(t, 1, stop, func(body string) { answers = append(answers, body) })
+	t.Setenv("AWS_LAMBDA_RUNTIME_API", strings.TrimPrefix(host.URL, "http://"))
+	defer time.AfterFunc(20*time.Second, stop).Stop()
+	if status, said := corbie(serving, "start", "controller", "--config", config); status != 0 {
+		t.Fatalf("with its identity in a bucket, corbie start ended %d: %s", status, said)
+	}
+	if len(answers) != 1 || !strings.Contains(answers[0], `"controller":"done"`) || !held.has("/receipts/") {
+		t.Fatalf("the controller answered the host's call with %v, and took the submit: %v", answers, held.has("/receipts/"))
+	}
+	// The policy printed for the controller lets it read its identity.
+	var out, said bytes.Buffer
+	if status := cli.Run(ctx, []string{"controller", "policy", "host-controller", "--config", config}, strings.NewReader(""), &out, &said); status != 0 || !strings.Contains(out.String(), `"arn:aws:s3:::bkt/keys/controller/identity"`) || strings.Contains(out.String(), "keys/runner") {
+		t.Fatalf("corbie controller policy ended %d: %s%s", status, out.String(), said.String())
+	}
+	out.Reset()
+	if status := cli.Run(ctx, []string{"controller", "policy", "host-runner", "--config", config}, strings.NewReader(""), &out, &said); status != 0 || !strings.Contains(out.String(), `"arn:aws:s3:::bkt/keys/runner/identity"`) || strings.Contains(out.String(), "keys/controller") {
+		t.Fatalf("corbie controller policy for the runner ended %d: %s%s", status, out.String(), said.String())
 	}
 }
 

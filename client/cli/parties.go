@@ -118,7 +118,7 @@ func sharing(e *Env, args []string) (listen string, shared bool, err error) {
 // config whose controller it proves the key of, or with no address stops
 // the directory being served.
 func initStore(e *Env, listen string) error {
-	for _, flag := range []string{"ceiling", "deny", "name"} {
+	for _, flag := range []string{"ceiling", "deny", "name", "identity"} {
 		if e.Given(flag) {
 			return Mistake("--%s sets up the controller, the runner and the client, and store sets up only the store's server: run corbie init and corbie init store as two commands", flag)
 		}
@@ -189,8 +189,9 @@ func servedAt(listen string) (string, error) {
 }
 
 func cmdInit(e *Env, args []string) error {
-	var ceilingText, name string
+	var ceilingText, name, keys string
 	var deny list
+	e.Flags.StringVar(&keys, "identity", "", "")
 	e.Flags.StringVar(&ceilingText, "ceiling", "", "")
 	e.Flags.Var(&deny, "deny", "")
 	e.Flags.StringVar(&name, "name", hostName(), "")
@@ -251,15 +252,22 @@ func cmdInit(e *Env, args []string) error {
 			return fmt.Errorf("the name %q is taken on that store: another controller holds trust there under it. Give this computer's parties another name with --name", name+"-controller")
 		}
 	}
-	ctl, err := cfg.Make(identity.Controller, name+"-controller")
+	if keys != "" {
+		for _, kind := range []identity.Kind{identity.Controller, identity.Runner, identity.Client} {
+			if err := cfg.SetIdentityAddress(kind, keys); err != nil {
+				return err
+			}
+		}
+	}
+	ctl, err := cfg.Make(e.ctx, identity.Controller, name+"-controller")
 	if err != nil {
 		return err
 	}
-	run, err := cfg.Make(identity.Runner, name+"-runner")
+	run, err := cfg.Make(e.ctx, identity.Runner, name+"-runner")
 	if err != nil {
 		return err
 	}
-	cli, err := cfg.Make(identity.Client, name+"-client")
+	cli, err := cfg.Make(e.ctx, identity.Client, name+"-client")
 	if err != nil {
 		return err
 	}
@@ -349,14 +357,20 @@ func cmdInit(e *Env, args []string) error {
 // step of a pipe reads.
 func cmdCard(kind identity.Kind) func(e *Env, args []string) error {
 	return func(e *Env, args []string) error {
-		var name string
+		var name, keys string
 		e.Flags.StringVar(&name, "name", hostName()+"-"+string(kind), "")
+		e.Flags.StringVar(&keys, "identity", "", "")
 		if _, err := e.Parse(args); err != nil {
 			return err
 		}
 		cfg, err := e.Config()
 		if err != nil {
 			return err
+		}
+		if keys != "" {
+			if err := cfg.SetIdentityAddress(kind, keys); err != nil {
+				return err
+			}
 		}
 		if kind == identity.Controller {
 			// A controller's identity is made together with the address
@@ -385,7 +399,7 @@ func cmdCard(kind identity.Kind) func(e *Env, args []string) error {
 			}
 
 		}
-		id, err := cfg.Make(kind, name)
+		id, err := cfg.Make(e.ctx, kind, name)
 		if err != nil {
 			return err
 		}
@@ -989,7 +1003,7 @@ func cmdPolicy(e *Env, args []string) error {
 	if err != nil {
 		return err
 	}
-	ctl, err := cfg.Load(identity.Controller)
+	ctl, err := cfg.Load(e.ctx, identity.Controller)
 	if err != nil {
 		return err
 	}
@@ -1002,10 +1016,13 @@ func cmdPolicy(e *Env, args []string) error {
 		return fmt.Errorf("the store is a directory, which keeps no party out of anything: a policy is for a bucket")
 	}
 	party := store.Party{Kind: store.Viewer, Controller: ctl.Name}
+	// kind is which of this config's parties the policy is for, where it is
+	// one of them: a party whose identity a bucket keeps reads it there.
+	var kind identity.Kind
 	switch {
 	case viewer && len(rest) == 0:
 	case !viewer && len(rest) == 1 && rest[0] == ctl.Name:
-		party = store.Party{Kind: store.Controller, Name: ctl.Name}
+		party, kind = store.Party{Kind: store.Controller, Name: ctl.Name}, identity.Controller
 	case !viewer && len(rest) == 1:
 		s, err := e.Open(recorded, ctl, ctl.Card)
 		if err != nil {
@@ -1022,10 +1039,25 @@ func cmdPolicy(e *Env, args []string) error {
 		if trust.Card.Kind == identity.Runner {
 			party.Kind = store.Runner
 		}
+		if cfg.Has(trust.Card.Kind) {
+			here, err := cfg.Load(e.ctx, trust.Card.Kind)
+			if err != nil {
+				return err
+			}
+			if here.Card.Same(trust.Card) {
+				kind = trust.Card.Kind
+			}
+		}
 	default:
 		return Mistake("name one party, or give --viewer for one who may only see where runs stand")
 	}
-	policy, err := store.PolicyFor(address, party)
+	var kept string
+	if kind != "" {
+		if kept, err = cfg.IdentityAddress(kind); err != nil {
+			return err
+		}
+	}
+	policy, err := store.PolicyFor(address, party, kept, identity.Kept(kind))
 	if err != nil {
 		return err
 	}

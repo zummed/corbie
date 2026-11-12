@@ -4,11 +4,35 @@ Every controller, runner and client is a party with an identity of its own. This
 
 ## Identities and cards
 
-An identity is a pair of private keys, one for signing and one for decrypting, kept in a file only its owner can read. Its public side is a **card**: one line of text holding the party's name, whether it is a controller, a runner or a client, and its two public keys, signed by itself. A card has a short fingerprint, and both sides of an enrolment show it, so two people can check they mean the same card. A party's signing key is also how it proves itself to a served directory, and how the computer that serves the directory proves it holds the controller's.
+An identity is a pair of private keys, one for signing and one for decrypting, kept in a file only its owner can read, or in an S3 bucket. Its public side is a **card**: one line of text holding the party's name, whether it is a controller, a runner or a client, and its two public keys, signed by itself. A card has a short fingerprint, and both sides of an enrolment show it, so two people can check they mean the same card. A party's signing key is also how it proves itself to a served directory, and how the computer that serves the directory proves it holds the controller's.
 
 A party's name is chosen when its identity is made and never changes. The store has no identity. It is storage.
 
 A computer's parties live in one config directory, with a place each for a controller, a runner and a client. One computer can be all three.
+
+## An identity in a bucket
+
+By default an identity is a file in the config. `--identity <address>`, on a command that makes an identity, keeps it in an S3 bucket. `corbie init` takes it for all three parties, and `corbie controller card`, `corbie runner card` and `corbie client card` for one.
+
+```
+corbie init --store 's3://work/main?region=eu-west-2' --identity 's3://work-keys/billing?region=eu-west-2'
+```
+
+```
+the address      a bucket, a path and a region, written as a store's address is
+the object       <path>/<kind>/identity, with the content the file has
+the access key   the one the process reads the store with
+the config       records the address in <kind>/identity-address, and holds no private key
+```
+
+- The command writes the object only where none exists, so running it again replaces no key.
+- A process reads the object each time it starts.
+- An identity stays where it was made. A config that holds the file takes no address, and one that records an address takes no other.
+- A config that holds both the file and the address is refused.
+- `corbie controller policy <name>` allows a party of this config to read its own identity's object.
+- Corbie refuses a file that anyone but its owner can read. It cannot tell who may read a bucket, so the bucket's policy is the only limit on who reads the keys.
+
+The keys are replaced by making a new identity and a new store.
 
 ## Enrolment
 

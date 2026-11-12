@@ -17,7 +17,8 @@ import (
 // carries If-None-Match, which is what makes it only-if-new. The steps of a
 // large upload that put nothing under a name are allowed without it, as is
 // giving such an upload up. Listing is allowed only under the paths the
-// party may list.
+// party may list. Each name in also is an object in a bucket of its own
+// that the party reads beside its row.
 //
 // Amazon S3 enforces all of this. A service that takes the same requests
 // but does not know the condition key s3:if-none-match cannot hold a party
@@ -26,7 +27,7 @@ import (
 // A policy cannot say "any one part of a name", so where the table has any
 // one part the policy has any path. A limited party can therefore add names
 // deeper than the layout draws; it still can never replace or remove one.
-func Policy(p Party, bucket, prefix string) (string, error) {
+func Policy(p Party, bucket, prefix string, also ...string) (string, error) {
 	if err := policyName(bucket); err != nil {
 		return "", err
 	}
@@ -59,6 +60,10 @@ func Policy(p Party, bucket, prefix string) (string, error) {
 		if g.acts&ActList != 0 {
 			list = append(list, pattern)
 		}
+	}
+
+	for _, object := range also {
+		read = append(read, "arn:aws:s3:::"+object)
 	}
 
 	type conditions map[string]map[string]any
@@ -118,10 +123,23 @@ func policyName(name string) error {
 }
 
 // PolicyFor prints the policy for a party of the bucket an address names.
-func PolicyFor(address string, p Party) (string, error) {
+// Where kept is the address of another bucket, the policy lets the party
+// read the object of that name there as well.
+func PolicyFor(address string, p Party, kept, name string) (string, error) {
 	b, err := newBucket(address, bucketKey{})
 	if err != nil {
 		return "", err
 	}
-	return Policy(p, b.name, strings.TrimSuffix(b.prefix, "/"))
+	var also []string
+	if kept != "" {
+		k, err := newBucket(kept, bucketKey{})
+		if err != nil {
+			return "", err
+		}
+		if err := policyName(k.name + "/" + k.prefix + name); err != nil {
+			return "", err
+		}
+		also = []string{k.name + "/" + k.prefix + name}
+	}
+	return Policy(p, b.name, strings.TrimSuffix(b.prefix, "/"), also...)
 }

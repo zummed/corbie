@@ -41,13 +41,13 @@ func passFrom(name, config, address string) (role.Pass, error) {
 	}
 	switch name {
 	case "controller":
-		id, err := cfg.Load(identity.Controller)
+		id, err := cfg.Load(ctx, identity.Controller)
 		if err != nil {
 			return nil, err
 		}
 		return controller.New(id, s).Pass, nil
 	case "runner":
-		id, err := cfg.Load(identity.Runner)
+		id, err := cfg.Load(ctx, identity.Runner)
 		if err != nil {
 			return nil, err
 		}
@@ -129,7 +129,7 @@ func Test_role_fresh_process_every_pass_same_store(t *testing.T) {
 		cfg := identity.Config{Dir: config}
 		ids := map[identity.Kind]*identity.Identity{}
 		for kind, name := range map[identity.Kind]string{identity.Controller: "ctl", identity.Runner: "r1", identity.Client: "c1"} {
-			id, err := cfg.Make(kind, name)
+			id, err := cfg.Make(ctx, kind, name)
 			if err != nil {
 				t.Fatal(err)
 			}

@@ -4,7 +4,7 @@ The detailed rules behind the [Identity overview](../identity.md).
 
 ## Identities and cards
 
-**R-id-01** An identity is two private keys, one for signing and one for decrypting, kept in a file only its owner can read.
+**R-id-01** An identity is two private keys, one for signing and one for decrypting, kept in a file only its owner can read, or in an S3 bucket.
 *Accept:* after `corbie runner card` on an empty config, the runner's place in the config holds an identity file that the system reports as readable and writable by its owner alone; with that file and nothing else the runner signs a message and opens one sealed to it.
 
 **R-id-02** A party's card is one line of text holding its name, whether it is a controller's, a runner's or a client's, and its two public keys, signed by itself; a card whose signature does not hold is refused wherever a card is taken.
@@ -27,6 +27,16 @@ The detailed rules behind the [Identity overview](../identity.md).
 **C-id-04** A private key never appears in an error, a log line or any other output, also when the identity file is damaged or cannot be read. Errors are copied into logs and reports that others read. *Test:* `id_private_key_never_printed`
 
 **C-id-05** Names inside a card, and inside anything else that is signed, are matched exactly, letter case included, and a value that gives one name twice is refused. A reader that takes `NAME` for `name` can be handed a value in which the two disagree: signed over one, read by the other. *Test:* `id_signed_value_names_matched_exactly`
+
+**R-id-51** `--identity <address>`, on `corbie init` for all three parties and on `corbie controller card`, `corbie runner card` and `corbie client card` for one, keeps an identity in an S3 bucket: the object `<path>/<kind>/identity` holds what the file would, the config records the address in `<kind>/identity-address` and holds no private key, and a process reads the object each time it starts, with the access key it reads the store with.
+*Accept:* `corbie init --store <a bucket> --identity <another path>`: the bucket holds `controller/identity`, `runner/identity` and `client/identity` under the path, and the config holds an `identity-address` for each and no `identity` file. `corbie start controller` with that config, on a serverless host, takes a submit that was waiting. An address that is not a bucket's is refused.
+
+**R-id-52** `corbie controller policy <name>` allows a party of this config whose identity a bucket keeps to read its own identity's object, and no other party's.
+*Accept:* after the `init` above, the policy printed for the controller names `<path>/controller/identity` and not the runner's, and the policy printed for the runner names `<path>/runner/identity` and not the controller's.
+
+**C-id-22** An identity in a bucket is written only where none exists, and the address a config records is not changed. A second `init` that wrote a new key would leave every secret and record encrypted to the first unreadable, and every party trusting a key nobody holds. *Test:* `id_identity_in_bucket_never_replaced`
+
+**C-id-23** A config that holds both the identity file and the address of one in a bucket is refused, and a config that holds the file takes no address. Reading one of the two quietly lets a party run with keys its owner believes are no longer in use. *Test:* `id_config_with_file_and_address_refused`
 
 ## Enrolment
 

@@ -240,7 +240,7 @@ func cmdStart(e *Env, args []string) error {
 			running = append(running, role.Role{Name: name, Pass: controller.New(id, s).Pass, Interval: set.interval, Notice: notice})
 			e.Say("controller %s  (%s)", id.Name, id.Fingerprint())
 		case "runner":
-			id, err := cfg.Load(identity.Runner)
+			id, err := cfg.Load(e.ctx, identity.Runner)
 			if err != nil {
 				return err
 			}

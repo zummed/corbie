@@ -97,12 +97,12 @@ func Test_id_identity_file_written_whole(t *testing.T) {
 		t.Fatal("half an identity is under the name")
 	}
 	c := Config{Dir: dir}
-	id, err := c.Make(Runner, "r1")
+	id, err := c.Make(context.Background(), Runner, "r1")
 	if err != nil {
 		t.Fatal(err)
 	}
 	// Made once, it is never made again, whatever name is asked for.
-	again, err := c.Make(Runner, "other")
+	again, err := c.Make(context.Background(), Runner, "other")
 	if err != nil || again.Name != "r1" || !again.Same(id.Card) {
 		t.Fatalf("a second making changed the identity: %v", err)
 	}

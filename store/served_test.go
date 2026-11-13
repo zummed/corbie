@@ -417,7 +417,10 @@ func (f *servedDirectory) sending(party, name string) (io.WriteCloser, <-chan in
 		Certificates: []tls.Certificate{proofOf(f.t, f.parties[party].key)}, InsecureSkipVerify: true}}}
 	f.t.Cleanup(wire.CloseIdleConnections)
 	value, to := io.Pipe()
-	f.t.Cleanup(func() { to.Close() })
+	ended := make(chan struct{})
+	// A value left unfinished is ended before the test's directory is
+	// removed: Windows removes no file the server still has open.
+	f.t.Cleanup(func() { to.Close(); <-ended })
 	req, err := http.NewRequest(http.MethodPost, "https://"+strings.TrimPrefix(f.address, ServedScheme)+"/write?how="+howNew+"&name="+name, value)
 	if err != nil {
 		f.t.Fatal(err)
@@ -425,6 +428,7 @@ func (f *servedDirectory) sending(party, name string) (io.WriteCloser, <-chan in
 	req.Header.Set(headParty, party)
 	answered := make(chan int, 1)
 	go func() {
+		defer close(ended)
 		resp, err := wire.Do(req)
 		if err != nil {
 			answered <- 0

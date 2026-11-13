@@ -113,6 +113,8 @@ corbie <name> ….
                                    it
   store --listen host:port         where it listens this time; default where
                                    corbie init store --listen said
+  store --timeout <time>           closes a connection that sends nothing for
+                                   this long; default 60s
 
 A controller and a runner in one process notify each other, and do not wait
 for the interval.

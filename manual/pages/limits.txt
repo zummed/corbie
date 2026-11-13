@@ -98,6 +98,9 @@ These are true of the store.
 - Someone on the network between a served directory and a computer that uses
   it can see that the two communicate and how much data they exchange, and can
   delay or cut the connection. They can do nothing else.
+- A runner or a client that a served directory's controller trusts can fill
+  that computer's disk with files. A client can list every run's record, which
+  reads every file in them, and many such lists at once slow every run.
 
 Corbie makes no check where there is no real boundary.
 

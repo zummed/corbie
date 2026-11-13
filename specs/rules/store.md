@@ -123,6 +123,9 @@ Each rule here is checked on the memory store opened as the party named, and on 
 **R-store-64** A served directory's wire is private to the two computers. A party speaks only to the computer that holds its controller's key, and the server only to a party whose key is the one in the controller's trust list for the name it gives. Someone between two computers can see that they talk and how much, and hold work up or cut it off, and nothing else.
 *Accept:* a party given the address of a computer that does not hold its controller's key sends it nothing, and says the store cannot be reached. A request made in the plain, or over a connection that proves no key, reaches no store. A party's name given over a connection made with another key, a stranger's or another party's, is turned away.
 
+**R-store-66** A served directory's server closes a connection that sends nothing for its timeout, between two requests or in the middle of a value. The timeout is a minute by default, and `corbie start store --timeout` sets it. A party that keeps sending is not cut off, however long its value takes, and a value sent slowly delays no other party's write.
+*Accept:* with a timeout of 300 ms, a client that begins a value and sends no more is answered within seconds, and nothing of the value is in the directory; one that sends a byte every 100 ms for 800 ms has its value written; a connection that asks once and sends no more is closed. With twenty values begun and left unfinished, the controller writes a head at once. `corbie start store --timeout 0` and `corbie start runner --timeout 5m` are mistakes.
+
 **R-store-55** The memory store enforces the table as a bucket does, so under `corbie test` each role works under its own row.
 *Accept:* every acceptance check under "Who may touch what" passes on the memory store with no bucket. Under `corbie test`, a build in which the runner tries to read a step entry is given nothing, and one in which a client writes into another client's record is refused, exactly as each would be on a bucket.
 
@@ -137,6 +140,10 @@ Each rule here is checked on the memory store opened as the party named, and on 
 **C-store-42** What goes wrong on the serving computer is told to that computer; the party is told only that something did, at once, and does not ask again. An error's own text names the serving computer's paths, and a failure that is asked for again for ten seconds and then called a store out of reach hides what it was. *Test:* `store_served_directory_failure_names_nothing_of_the_machine`
 
 **C-store-43** Each end of a served directory's wire proves its identity key as the connection is made, and goes by nothing else: a party sends nothing to a computer that proves any key but its controller's, a request that comes by no such connection reaches no store, and whose key a name's is, is asked at every request, not once for a connection. The server keeps nothing from one request to the next; a list of what it had taken would be lost each time it stopped. *Test:* `store_served_directory_speaks_only_to_its_parties`
+
+**C-store-51** A value streamed into a directory takes a turn to change it for each piece written, and gives it back while the next piece is read. A process changes sixteen names at once, so with a turn kept for the whole value, sixteen values begun from another computer and left unfinished stop every write of the controller's own. *Test:* `store_served_directory_slow_value_holds_up_no_other_write`
+
+**C-store-52** The server's timeout starts again at each read of a value, and is the time a connection may wait between two requests. A connection left open and silent keeps a file handle and a temporary file on the serving computer for as long as the other end chooses, and a limit on a whole value would refuse a large one sent in good order. *Test:* `store_served_directory_cuts_off_a_silent_party`
 
 **C-store-12** A party's key for a bucket is never part of the store's address, and no error or log line shows it. The address is printed at enrolment and handed to every party. *Test:* `store_address_and_errors_carry_no_key`
 

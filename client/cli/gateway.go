@@ -66,7 +66,7 @@ func (e *Env) gateway() (func(), error) {
 // request comes by a connection its party made with its own key, and the
 // party is found in the controller's own list of who it trusts, read afresh
 // each time: a party that is removed is turned away from then on.
-func (e *Env) serve(listen string) (func(), error) {
+func (e *Env) serve(listen string, timeout time.Duration) (func(), error) {
 	if role.Serverless() {
 		return nil, fmt.Errorf("serving a directory needs a process that stays up, and this is a serverless host")
 	}
@@ -124,9 +124,9 @@ func (e *Env) serve(listen string) (func(), error) {
 		}
 		return store.Party{Kind: kind, Name: name, Controller: ctl.Name}, trust.Card.SignKey(), nil
 	}
-	served := &store.Server{Directory: directory, Who: who,
+	served := &store.Server{Directory: directory, Who: who, Timeout: timeout,
 		Failed: func(err error) { e.Say("store: %s", e.clean(err.Error())) }}
-	server := &http.Server{Handler: served, ReadHeaderTimeout: 10 * time.Second}
+	server := served.HTTP()
 	go server.Serve(store.ServedListener(listener, proof))
 	e.Say("store of the controller %s, served at %s, listening on %s", ctl.Name, at, listener.Addr())
 	return func() {

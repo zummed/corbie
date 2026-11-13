@@ -13,6 +13,7 @@ import (
 	"math/big"
 	"net"
 	"net/http"
+	"os"
 	"strconv"
 	"strings"
 	"sync"
@@ -96,6 +97,9 @@ type Server struct {
 	// Failed is told of what went wrong at this end. A party is told only
 	// that something did: the error itself can name this computer's paths.
 	Failed func(err error)
+	// Timeout is how long a party may send nothing of a value it is sending.
+	// None is no limit.
+	Timeout time.Duration
 
 	mu       sync.Mutex
 	stop     sync.Once
@@ -115,6 +119,12 @@ func (s *Server) stopped() chan struct{} {
 	return s.stopping
 }
 
+// HTTP gives the server that takes the requests. A connection that sends
+// nothing for the timeout, between two requests, is closed.
+func (s *Server) HTTP() *http.Server {
+	return &http.Server{Handler: s, ReadHeaderTimeout: 10 * time.Second, IdleTimeout: s.Timeout}
+}
+
 // an answer is what the server says to one request.
 type servedAnswer struct {
 	status int
@@ -127,7 +137,38 @@ func said(status int, format string, args ...any) servedAnswer {
 	return servedAnswer{status: status, body: fmt.Appendf(nil, format, args...)}
 }
 
+// notParty turns away a name that is no party and a party's name given
+// with another key in the same words, so that neither says which names are
+// parties.
+func notParty(name string) servedAnswer {
+	return said(http.StatusUnauthorized, "%s is no party of this store's controller, or the connection was not made with its key", name)
+}
+
+// unhurried is the value of a request, read with the server's timeout begun
+// again at each read: a party that sends nothing for that long is cut off,
+// and one that goes on sending has as long as its value needs.
+type unhurried struct {
+	value   io.ReadCloser
+	conn    *http.ResponseController
+	timeout time.Duration
+}
+
+func (u unhurried) Read(p []byte) (int, error) {
+	u.conn.SetReadDeadline(time.Now().Add(u.timeout))
+	n, err := u.value.Read(p)
+	if err != nil {
+		// Whatever the request then takes on this computer is not timed.
+		u.conn.SetReadDeadline(time.Time{})
+	}
+	return n, err
+}
+
+func (u unhurried) Close() error { return u.value.Close() }
+
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	if s.Timeout > 0 {
+		r.Body = unhurried{r.Body, http.NewResponseController(w), s.Timeout}
+	}
 	a := s.answer(r)
 	select {
 	case <-s.stopped():
@@ -153,12 +194,12 @@ func (s *Server) answer(r *http.Request) servedAnswer {
 		return s.failed(err)
 	}
 	if key == nil {
-		return said(http.StatusUnauthorized, "%s is no party of this store's controller", name)
+		return notParty(name)
 	}
 	// The party is whoever holds the key of that name, and the connection
 	// was made by whoever holds the key it proved.
 	if !key.Equal(proven(r.TLS)) {
-		return said(http.StatusUnauthorized, "the connection was not made with the key of %s", name)
+		return notParty(name)
 	}
 
 	held := held{s.Directory, party}
@@ -229,6 +270,8 @@ func (s *Server) answer(r *http.Request) servedAnswer {
 		return saidAs(http.StatusBadRequest, ErrName, err)
 	case errors.Is(err, ErrNothing):
 		return saidAs(http.StatusGone, ErrNothing, err)
+	case errors.Is(err, os.ErrDeadlineExceeded):
+		return said(http.StatusRequestTimeout, "the request sent nothing for %s", s.Timeout)
 	case err != nil:
 		return s.failed(err)
 	}

@@ -110,6 +110,7 @@ type setting struct {
 	wrapper           string
 	listen, tokenFile string
 	listened          bool // --listen was written, if empty
+	timeout           time.Duration
 }
 
 // roleFlags gives the flags written after a role, which set what the role
@@ -129,6 +130,7 @@ func roleFlags(role string, set *setting, every *string) *flag.FlagSet {
 		flags.StringVar(&set.tokenFile, "token-file", "", "")
 	case "store":
 		flags.StringVar(&set.listen, "listen", "", "")
+		flags.DurationVar(&set.timeout, "timeout", time.Minute, "")
 	}
 	return flags
 }
@@ -164,6 +166,9 @@ func settings(it item) (setting, error) {
 	flags.Visit(func(f *flag.Flag) { set.listened = set.listened || f.Name == "listen" })
 	if flags.NArg() > 0 {
 		return set, Mistake("%q is neither a role nor a program corbie-%s on PATH, and %s takes only flags", flags.Arg(0), flags.Arg(0), it.name)
+	}
+	if it.name == "store" && set.timeout <= 0 {
+		return set, Mistake("store: --timeout is a length of time, such as 60s")
 	}
 	if every != "" {
 		var err error
@@ -299,7 +304,7 @@ func cmdStart(e *Env, args []string) error {
 			}
 			defer gateway()
 		case "store":
-			stop, err := e.serve(set.listen)
+			stop, err := e.serve(set.listen, set.timeout)
 			if err != nil {
 				return err
 			}

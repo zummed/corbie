@@ -11,7 +11,7 @@ Fields every type takes
 
   description: Sums a list.    what the machine is for, in plain text with no expression
   input: { urls: list }        the shape of a run's input, as below
-  keep: 7d                     how long a run is kept after it ends; default 7d
+  keep: 7d                     how long an ended run, and each step and log line of a running run, is kept; default 7d
   limits: { timeout: 1h }      how much a run may use, as below
   allow: [net:example.com]     permissions of every script job in the definition
   deny: [exec]                 what no script job in the definition may do

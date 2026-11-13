@@ -15,6 +15,9 @@ Serve the directory
   --listen addr   after store, where it listens: 192.168.1.10:8372, and other
                   computers are given that address
 
+`corbie start store --timeout 5m` closes a connection that sends nothing for
+five minutes. The default is one minute.
+
 `corbie manual one-computer` has the systemd unit and the backup.
 
 Add a runner on another computer

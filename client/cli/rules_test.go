@@ -186,6 +186,8 @@ func Test_client_flag_without_effect_refused(t *testing.T) {
 		"--listen is for the gateway or the store, not the runner": {"start", "controller", "runner", "--listen", "127.0.0.1:0"},
 		"--token-file is for the gateway, not the runner":          {"start", "runner", "--token-file", filepath.Join(dir, "token")},
 		"--interval is for the controller or the runner":           {"start", "gateway", "--interval", "5s"},
+		"--timeout is for the store, not the runner":               {"start", "runner", "--timeout", "5m"},
+		"store: --timeout is a length of time, such as 60s":        {"start", "store", "--timeout", "0"},
 		"--interval is written before any name":                    {"start", "--interval", "5s", "controller"},
 		// show prints one thing.
 		"--watch and --wait each ask":         {"run", "show", id, "--wait", "--watch"},

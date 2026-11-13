@@ -102,7 +102,12 @@ func (f *directory) ReadPart(ctx context.Context, name string, from, length int6
 		return nil, err
 	}
 	defer file.Close()
-	part := make([]byte, length)
+	info, err := file.Stat()
+	if err != nil {
+		return nil, err
+	}
+	// No more is set aside than the file holds from there on.
+	part := make([]byte, max(min(length, info.Size()-from), 0))
 	n, err := file.ReadAt(part, from)
 	if errors.Is(err, syscall.EISDIR) {
 		return nil, nil // a path with names under it holds no value
@@ -172,15 +177,33 @@ func (f *directory) WriteFrom(ctx context.Context, name string, r io.Reader) (bo
 	if err := checkName(name); err != nil {
 		return false, err
 	}
-	end, err := startChange(ctx)
-	if err != nil {
-		return false, err
-	}
-	defer end()
+	// A turn is taken for each piece written and given back while the next
+	// is read: the value can come from another computer, which sends it as
+	// slowly as it likes. The last turn is kept until the name is placed.
+	end := func() {}
+	defer func() { end() }()
 	path := f.path(name)
 	tmp, err := writeTemp(filepath.Dir(path), func(w io.Writer) error {
-		_, err := io.Copy(w, r)
-		return err
+		piece := make([]byte, 256<<10)
+		for {
+			n, rerr := r.Read(piece)
+			if rerr != nil && rerr != io.EOF {
+				return rerr
+			}
+			turn, err := startChange(ctx)
+			if err != nil {
+				return err
+			}
+			_, err = w.Write(piece[:n])
+			if rerr == io.EOF {
+				end = turn
+				return err
+			}
+			turn()
+			if err != nil {
+				return err
+			}
+		}
 	})
 	if err != nil {
 		return false, err

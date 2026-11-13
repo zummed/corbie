@@ -117,6 +117,7 @@ For example, the computer `desk` holds the directory and runs `corbie start cont
 corbie init store                            listens on :8372; others are given corbie://<host name>:8372
 corbie init store --listen 10.0.0.5:8372     listens there; others are given corbie://10.0.0.5:8372
 corbie start store --listen :9000            listens there this time; others are given what init saved
+corbie start store --timeout 5m              closes a connection that sends nothing for five minutes; a minute by default
 ```
 
 The address other computers are given is the one `corbie init store` saved, with this computer's host name where it names every network interface. `corbie start store --listen` never changes it, and `corbie init store --listen ""` serves the directory to no other computer.
@@ -124,6 +125,10 @@ The address other computers are given is the one `corbie init store` saved, with
 There are no keys to a served directory: a party uses the identity it already has. A served directory's wire is private to the two computers. When a connection is made each end proves its own identity key: the party speaks only to the computer that holds its controller's key, and the server speaks only to a party whose key is the one in the controller's trust list for the name it gives, read afresh for every request, so a party that is removed is turned away from its next request on. The server holds each party to its row of the table, exactly as the table is drawn.
 
 Someone on the network between them can see that the two computers talk and how much, and can hold work up or cut it off; they can read nothing, write nothing, change nothing and answer nothing. Nothing of a connection is kept once it ends, and the server keeps nothing of its own.
+
+The server closes a connection that sends nothing for a minute, between two requests or in the middle of a value. `corbie start store --timeout 5m` sets another time. A party that keeps sending is not cut off, and a value sent slowly delays no other party's write.
+
+A party the controller trusts can fill the serving computer's disk with values, and a client's listing of the records reads every file in them. Corbie limits neither.
 
 A party waiting on its inbox is told the moment something is written there, as roles in one process are, and is told nothing of names it may not read.
 

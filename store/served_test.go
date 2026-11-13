@@ -6,8 +6,13 @@ import (
 	"crypto/rand"
 	"crypto/tls"
 	"errors"
+	"fmt"
+	"io"
 	"net"
 	"net/http"
+	"path/filepath"
+	"runtime"
+	"strconv"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -71,13 +76,14 @@ func newServedDirectory(t *testing.T) *servedDirectory {
 // listen serves the directory to the connections a listener takes, as the
 // machine that holds the directory does.
 func (f *servedDirectory) listen(l net.Listener) {
-	listening := &http.Server{Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	listening := f.server.HTTP()
+	listening.Handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var h http.Handler = f.server
 		if f.between != nil {
 			h = f.between(h)
 		}
 		h.ServeHTTP(w, r)
-	})}
+	})
 	f.t.Cleanup(func() { listening.Close() })
 	go listening.Serve(ServedListener(l, proofOf(f.t, f.keeper)))
 }
@@ -399,5 +405,168 @@ func Test_store_served_directory_stopping_answers_what_it_has_in_hand(t *testing
 	}
 	if closing[0] != "close" {
 		t.Errorf("a stopping server answered and kept the connection: %q", closing[0])
+	}
+}
+
+// sending begins a write of a value only-if-new by a party, over a
+// connection of the party's own, and gives what the value is written to
+// and what the server answered once the value is closed.
+func (f *servedDirectory) sending(party, name string) (io.WriteCloser, <-chan int) {
+	f.t.Helper()
+	wire := &http.Client{Transport: &http.Transport{TLSClientConfig: &tls.Config{
+		Certificates: []tls.Certificate{proofOf(f.t, f.parties[party].key)}, InsecureSkipVerify: true}}}
+	f.t.Cleanup(wire.CloseIdleConnections)
+	value, to := io.Pipe()
+	ended := make(chan struct{})
+	// A value left unfinished is ended before the test's directory is
+	// removed: Windows removes no file the server still has open.
+	f.t.Cleanup(func() { to.Close(); <-ended })
+	req, err := http.NewRequest(http.MethodPost, "https://"+strings.TrimPrefix(f.address, ServedScheme)+"/write?how="+howNew+"&name="+name, value)
+	if err != nil {
+		f.t.Fatal(err)
+	}
+	req.Header.Set(headParty, party)
+	answered := make(chan int, 1)
+	go func() {
+		defer close(ended)
+		resp, err := wire.Do(req)
+		if err != nil {
+			answered <- 0
+			return
+		}
+		resp.Body.Close()
+		answered <- resp.StatusCode
+	}()
+	return to, answered
+}
+
+// A party that sends a value slowly holds up nobody else's write: more
+// values than a process changes at once are each begun and left unfinished,
+// and the directory's own holder still writes.
+func Test_store_served_directory_slow_value_holds_up_no_other_write(t *testing.T) {
+	f := newServedDirectory(t)
+	f.as(Party{Kind: Client, Name: "cli", Controller: "ctl"})
+	var first io.WriteCloser
+	var answered <-chan int
+	for i := range changesAtOnce + 4 {
+		to, done := f.sending("cli", "ctl/uploads/cli/a/"+strconv.Itoa(i))
+		if _, err := to.Write([]byte("begun")); err != nil {
+			t.Fatal(err)
+		}
+		if i == 0 {
+			first, answered = to, done
+		}
+	}
+	within, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	if done, err := f.directory.Write(within, "ctl/running/cli/i1", []byte("head"), Overwrite); !done || err != nil {
+		t.Fatalf("with values half sent, the directory's holder could not write: %v, %v", done, err)
+	}
+	// A value that is then finished is written whole.
+	first.Write([]byte(" and ended"))
+	first.Close()
+	if status := <-answered; status != http.StatusOK {
+		t.Fatalf("a value sent slowly was answered %d", status)
+	}
+	if v, _, _ := f.directory.Read(ctx, "ctl/uploads/cli/a/0"); string(v) != "begun and ended" {
+		t.Errorf("a value sent slowly was written as %q", v)
+	}
+}
+
+// A party that sends nothing for the server's timeout is cut off, in the
+// middle of a value and between two requests, and one that goes on sending
+// is not.
+func Test_store_served_directory_cuts_off_a_silent_party(t *testing.T) {
+	f := newServedDirectory(t)
+	f.as(Party{Kind: Client, Name: "cli", Controller: "ctl"})
+	f.server.Timeout = 300 * time.Millisecond
+	l, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	f.address = ServedScheme + l.Addr().String()
+	f.listen(l)
+
+	// Silent in the middle of a value: answered that it was, and nothing
+	// is written, not even a temporary file.
+	silent, answered := f.sending("cli", "ctl/uploads/cli/a/silent")
+	silent.Write([]byte("begun"))
+	select {
+	case status := <-answered:
+		if status != http.StatusRequestTimeout && status != 0 {
+			t.Errorf("a party that went silent was answered %d", status)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("a party that went silent was not cut off")
+	}
+	if left, _ := f.directory.(*directory).names(ctx, ""); len(left) != 0 {
+		t.Errorf("a value cut off left %v", left)
+	}
+	if left, _ := filepath.Glob(filepath.Join(f.directory.(*directory).root, "ctl/uploads/cli/a/*")); len(left) != 0 {
+		t.Errorf("a value cut off left the files %v", left)
+	}
+
+	// Slow and never silent for so long: written, though the whole value
+	// takes longer than the timeout.
+	slow, answered := f.sending("cli", "ctl/uploads/cli/a/slow")
+	for range 8 {
+		slow.Write([]byte("x"))
+		time.Sleep(100 * time.Millisecond)
+	}
+	slow.Close()
+	if status := <-answered; status != http.StatusOK {
+		t.Errorf("a party that sent slowly was answered %d", status)
+	}
+
+	// Silent between two requests: the connection is closed.
+	conn, err := tls.Dial("tcp", l.Addr().String(), &tls.Config{
+		Certificates: []tls.Certificate{proofOf(t, f.parties["cli"].key)}, InsecureSkipVerify: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close()
+	fmt.Fprintf(conn, "GET /read?name=%s HTTP/1.1\r\nHost: desk\r\n%s: cli\r\n\r\n", VersionName, headParty)
+	conn.SetReadDeadline(time.Now().Add(5 * time.Second))
+	if _, err := io.Copy(io.Discard, conn); err != nil {
+		t.Errorf("a connection that sent nothing more was kept open: %v", err)
+	}
+}
+
+// A part asked for beyond what a file holds costs the server the file's
+// size, not what was asked.
+func TestServedPartIsNoLargerThanTheFile(t *testing.T) {
+	f := newServedDirectory(t)
+	client := f.as(Party{Kind: Client, Name: "cli", Controller: "ctl"})
+	if _, err := f.directory.Write(ctx, "ctl/running/cli/i1", []byte("head"), Overwrite); err != nil {
+		t.Fatal(err)
+	}
+	var before, after runtime.MemStats
+	runtime.ReadMemStats(&before)
+	for range 8 {
+		if part, err := client.ReadPart(ctx, "ctl/running/cli/i1", 1, servedValue); string(part) != "ead" || err != nil {
+			t.Fatalf("a part was read as %q: %v", part, err)
+		}
+	}
+	runtime.ReadMemStats(&after)
+	if used := after.TotalAlloc - before.TotalAlloc; used > servedValue {
+		t.Errorf("eight parts of a file of four bytes took %d MiB", used>>20)
+	}
+}
+
+// A name that is no party and a party's name with another key are turned
+// away in the same words.
+func TestServedRefusalNamesNoParty(t *testing.T) {
+	f := newServedDirectory(t)
+	f.as(Party{Kind: Client, Name: "cli", Controller: "ctl"})
+	_, unknown, _ := ed25519.GenerateKey(rand.Reader)
+	said := func(name string) string {
+		_, _, err := f.opened(f.address, name, unknown, keyOf(f.keeper)).Read(ctx, VersionName)
+		if !errors.Is(err, ErrRefused) {
+			t.Fatalf("%s with a stranger's key: %v", name, err)
+		}
+		return strings.ReplaceAll(err.Error(), name, "<name>")
+	}
+	if a, b := said("cli"), said("stranger"); a != b {
+		t.Errorf("a party's name was turned away with %q and a name that is none with %q", a, b)
 	}
 }

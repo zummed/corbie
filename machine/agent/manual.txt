@@ -83,8 +83,8 @@ The result
 
   reply           the model's last reply, as text or in the shape of `reply:`
   tokens          { input, output, cached }, counted over the agent's own turns
-  conversation    { turns, blobs }: a blob for each turn, and each blob the
-                  model was shown by its handle's name
+  conversation    { turns, blobs, opened }: a blob for each turn, each blob the
+                  model was shown by its handle's name, and the toolkits open
 
 A reply that does not fit `reply:` is returned to the model, which takes
 another turn. A failed agent's output has `conversation` and `tokens`.
@@ -205,9 +205,7 @@ A toolkit has these fields.
   tools         the toolkit's tools, written as under Tools
   meta          data Corbie keeps and never reads
 
-- With no `instructions:`, `open` returns `Opened net.`. A run that carries
-  the conversation on and opens the toolkit again is given its instructions
-  again.
+- With no `instructions:`, `open` returns `Opened net.`.
 - No tool of a toolkit has the name of another tool of the agent.
 - The list of an entry with `list:` in a toolkit runs before the first turn.
   An error names it as `toolkits.net.tools.files.list`.
@@ -217,9 +215,12 @@ A toolkit has these fields.
 - The ask for `open` gets `asked: { tool, toolkit, description, args, said }`,
   where `description` is the toolkit's. An open that is not approved opens
   nothing.
-- An agent given a `conversation` opens no toolkit: the model calls `open` for
-  each toolkit it needs, and a toolkit marked `approve: true` waits for the ask
+- An agent given a `conversation` opens each toolkit its `opened` names, when
+  the toolkit's `when:` holds and it has no `approve: true`. The model is
+  shown the toolkit's tools from the first turn, and not its instructions
   again.
+- A toolkit marked `approve: true` stays closed, and its open waits for the
+  ask again.
 
 Who is offered what
 -------------------

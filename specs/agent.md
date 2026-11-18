@@ -221,7 +221,7 @@ tools:
 | `meta:` | data Corbie keeps and never reads |
 
 - A toolkit's tools have their own permissions, as every tool has. Opening a toolkit gives the model names and instructions, and nothing else.
-- The instructions are filled from the agent's input when the toolkit is opened. With none, `open` gives `Opened net.`. A run that carries the conversation on and opens the toolkit again is given them again.
+- The instructions are filled from the agent's input when the toolkit is opened. With none, `open` gives `Opened net.`. A toolkit that a carried conversation opens is not given them again (see [The conversation](#the-conversation)).
 - The result of `open` is shown to the model whole, and is never stored as a blob.
 - A tool of a toolkit may not take the name of another tool of the agent.
 - `open` is supplied by Corbie, as the blob tools are, and no tool may take its name. It is not shown while no toolkit can be opened.
@@ -270,13 +270,23 @@ An agent has a number of turns, twenty by default, and the model is told when fe
 
 The conversation is everything the model has been shown and has said: the prompt, each reply and tool call, and each call's result, error or denial. It is kept as its turns, each written once as the turn ends. Nothing is rewritten as the conversation grows.
 
-In a result the conversation is one value: its turns and the blobs the model was shown, each under the name the model knows it by.
+In a result the conversation is one value: its turns, the blobs the model was shown, each under the name the model knows it by, and the toolkits open when the run ended, in the order they were opened. With none open, `opened` is left out.
 
 ```
-conversation: { turns: [ turn 1, turn 2, … ], blobs: { blob1: …, blob2: … } }
+conversation: { turns: [ turn 1, turn 2, … ], blobs: { blob1: …, blob2: … }, opened: [ net ] }
 ```
 
-An agent started with it carries on where the other stopped. Every name goes on meaning the blob it meant, and a blob the conversation has not shown takes a name it has not used. It opens no toolkit: the model calls `open` for each toolkit it needs, and a toolkit marked `approve: true` waits for the ask again.
+An agent started with it carries on where the other stopped. Every name goes on meaning the blob it meant, and a blob the conversation has not shown takes a name it has not used.
+
+The agent opens the toolkits in `opened` that the model could open with one call:
+
+1. The run checks each `when:` against its own input.
+2. It opens each toolkit in `opened` that the agent has, whose `when:` holds, and that is not marked `approve: true`.
+3. From the first turn, the model is shown the toolkit's tools of the run's own definition, and `open` does not name it.
+
+- The instructions are not given again: the conversation holds them as the result of the earlier `open`.
+- Any other name in `opened` is passed over. The model opens such a toolkit with `open`, and a toolkit marked `approve: true` waits for the ask again.
+- The conversation is input, written by whoever starts the run, so `opened` opens nothing a call of `open` would not.
 
 ## Blobs and the model
 

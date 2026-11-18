@@ -384,11 +384,10 @@ func (s *stepper) begin() error {
 	if err != nil {
 		return err
 	}
+	carried, _ := so.(map[string]any)
 	if so != nil {
 		// A conversation carried on brings its turns and the blobs they
-		// name, so each name goes on meaning the blob it meant. It is input,
-		// and opens no toolkit: the model opens what it needs again.
-		carried, _ := so.(map[string]any)
+		// name, so each name goes on meaning the blob it meant.
 		turns, isTurns := carried["turns"].([]any)
 		blobs, isBlobs := carried["blobs"].(map[string]any)
 		for _, held := range blobs {
@@ -411,6 +410,7 @@ func (s *stepper) begin() error {
 	if err := s.offer(scope); err != nil {
 		return err
 	}
+	s.reopen(carried["opened"])
 	// The entries that list their tools list them once, now; the first
 	// turn waits for them as it waits for its previews.
 	for _, name := range sortedNames(s.a.Tools) {
@@ -481,6 +481,21 @@ func (s *stepper) opened(c *call) {
 	args, _ := c.Args.(map[string]any)
 	if toolkit, _ := args["toolkit"].(string); c.Tool == openTool && !slices.Contains(s.st.Opened, toolkit) {
 		s.st.Opened = append(s.st.Opened, toolkit)
+	}
+}
+
+// reopen opens the toolkits a conversation carried on had open, in their
+// order. The conversation is input, so it opens only what one call of open
+// would: a toolkit the agent has, whose when: held, and whose open waits for
+// no ask.
+func (s *stepper) reopen(opened any) {
+	names, _ := opened.([]any)
+	for _, n := range names {
+		name, _ := n.(string)
+		toolkit, ok := s.a.Toolkits[name]
+		if ok && !toolkit.Approve && (s.st.Unoffered == nil || !slices.Contains(s.st.Unoffered.Toolkits, name)) && !slices.Contains(s.st.Opened, name) {
+			s.st.Opened = append(s.st.Opened, name)
+		}
 	}
 }
 
@@ -824,8 +839,8 @@ func (s *stepper) finish(text string) error {
 }
 
 // result is what an agent's result, or its error, always carries: the
-// conversation, as its turns and the blobs they name, and a count of the
-// tokens its own turns used.
+// conversation, as its turns, the blobs they name and the toolkits open,
+// and a count of the tokens its own turns used.
 func (s *stepper) result(reply any) map[string]any {
 	turns, blobs := s.st.Turns, s.st.Handles
 	if turns == nil {
@@ -834,7 +849,11 @@ func (s *stepper) result(reply any) map[string]any {
 	if blobs == nil {
 		blobs = map[string]any{}
 	}
-	out := map[string]any{"conversation": map[string]any{"turns": turns, "blobs": blobs},
+	conversation := map[string]any{"turns": turns, "blobs": blobs}
+	if len(s.st.Opened) > 0 {
+		conversation["opened"] = s.st.Opened
+	}
+	out := map[string]any{"conversation": conversation,
 		"tokens": map[string]any{"input": s.st.Tokens["input"], "output": s.st.Tokens["output"], "cached": s.st.Tokens["cached"]}}
 	if reply != nil {
 		out["reply"] = s.real(reply)

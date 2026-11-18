@@ -520,12 +520,8 @@ func cmdEnrol(e *Env, args []string) error {
 	// With no --tags the tags on record stay, and --tags none takes them
 	// away.
 	limited := ceilingText != "" || len(allow)+len(deny) > 0
-	var had []string
-	if old != nil && old.Card.Same(card) {
-		had = old.Prefixes
-		if tags == "" {
-			trust.Tags = old.Tags
-		}
+	if tags == "" && old != nil && old.Card.Same(card) {
+		trust.Tags = old.Tags
 	}
 	if card.Kind == identity.Runner && limited {
 		return Mistake("a runner is given tags; its ceiling is the runner's own to set, with corbie runner trust")
@@ -533,7 +529,9 @@ func cmdEnrol(e *Env, args []string) error {
 	if card.Kind == identity.Client && (tags != "" || len(at) > 0) {
 		return Mistake("a client is given a ceiling, with at: entries for its prefixes; tags and --at are for runners")
 	}
-	if trust.Prefixes, err = prefixes(at, had); err != nil {
+	// A runner keeps the prefixes on record, a replacement's included, by
+	// default.
+	if trust.Prefixes, err = prefixes(at, trust.Prefixes); err != nil {
 		return err
 	}
 	// The card and the address are printed only after the trust is
@@ -631,11 +629,7 @@ func cmdTrust(kind identity.Kind) func(e *Env, args []string) error {
 		if trust.Ceiling, err = ceiling(ceilingText, allow, deny, has(old, card), permission.CheckList); err != nil {
 			return err
 		}
-		var had []string
-		if old != nil && old.Card.Same(card) {
-			had = old.Prefixes
-		}
-		if trust.Prefixes, err = prefixes(at, had); err != nil {
+		if trust.Prefixes, err = prefixes(at, trust.Prefixes); err != nil {
 			return err
 		}
 		trust.Store = address

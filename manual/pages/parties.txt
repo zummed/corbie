@@ -33,7 +33,7 @@ A name is at most 64 letters, digits, `.`, `-` and `_`, and cannot be changed
 after its keys are created. It stays bound to the keys it was first trusted
 with, also after `remove`, and a card with other keys under it is refused.
 With `--replace` the new card takes the name, with none of the old card's tags
-or ceiling.
+or ceiling. A runner's prefixes stay unless the command gives `--at`.
 
 Ceilings, tags and prefixes
 ---------------------------

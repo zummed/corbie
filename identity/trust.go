@@ -35,7 +35,8 @@ func (t *Trust) Trusted() bool { return t != nil && !t.Removed }
 // Take is what trusting a card gives, given what is on record under its
 // name. A name stays tied to the key it was first taken with, also after
 // the party was removed: a different key is refused unless replace says it
-// takes the old one's place. What the old key was given is not carried over.
+// takes the old one's place. What the old key was given is not carried over,
+// but a runner's prefixes are: they limit what is sent under the name.
 func Take(old *Trust, card Card, want Kind, replace bool) (Trust, error) {
 	if card.Kind != want && want != "" {
 		return Trust{}, fmt.Errorf("this is the card of a %s, and a %s's is needed", card.Kind, want)
@@ -43,6 +44,9 @@ func Take(old *Trust, card Card, want Kind, replace bool) (Trust, error) {
 	if old != nil && !old.Card.Same(card) && !replace {
 		return Trust{}, fmt.Errorf("the name %q is already used with another key (%s); to let this card (%s) take its place, say --replace",
 			card.Name, old.Card.Fingerprint(), card.Fingerprint())
+	}
+	if old != nil {
+		return Trust{Card: card, Prefixes: old.Prefixes}, nil
 	}
 	return Trust{Card: card}, nil
 }

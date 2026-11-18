@@ -473,21 +473,21 @@ func callsProject(t *testing.T) string {
 	t.Helper()
 	dir := t.TempDir()
 	write(t, dir, map[string]string{
-		".corbieignore":    "toolkits/\n",
+		".corbieignore":    "toolkits/orders/toolkit.yaml\ntoolkits/infra/toolkit.yaml\n",
 		"people/find.yaml": "flow: find\ndescription: Find a person by email.\ninput: { table: string, email: string }\nstages:\n  a: { job: { script: ./find.js } }\n",
 		"people/find.js":   "return 1",
 		"agents/support.yaml": "agent: support\n" + agentHead + "toolkits:\n" +
-			"  orders: { include: toolkits/orders.yaml, when: \"${input.asker.scopes.includes('orders:read')}\" }\n" +
+			"  orders: { include: toolkits/orders/toolkit.yaml, when: \"${input.asker.scopes.includes('orders:read')}\" }\n" +
 			"tools:\n  who: { call: people/find, input: { table: staff } }\n",
-		"agents/ops.yaml": "agent: ops\n" + agentHead + "toolkits:\n  infra: { include: toolkits/infra.yaml }\n",
+		"agents/ops.yaml": "agent: ops\n" + agentHead + "toolkits:\n  infra: { include: toolkits/infra/toolkit.yaml }\n",
 		"chat/post.yaml":  "flow: post\ndescription: Post a message.\nstages:\n  a: { job: { script: ./post.js } }\n",
 		"chat/post.js":    "return 1",
-		"toolkits/orders.yaml": "description: The orders app.\ninstructions: { include: ./orders.md }\ntools:\n" +
+		"toolkits/orders/toolkit.yaml": "description: The orders app.\ninstructions: { include: ./instructions.md }\ntools:\n" +
 			"  find: { call: people/find, input: { table: customers }, approve: true, when: \"${input.asker.name != ''}\" }\n" +
 			"  tell: { description: Tell the room., job: { call: { at: chat/post }, input: { room: orders }, approve: true } }\n" +
 			"  ping: { description: Ping the room., job: { send: { to: { at: chat/post }, event: ping } } }\n",
-		"toolkits/orders.md": "Use these for orders.\nAsk first.\n",
-		"toolkits/infra.yaml": "description: The machines.\ninstructions: |\n  Restart only when asked.\n  Say so.\ntools:\n" +
+		"toolkits/orders/instructions.md": "Use these for orders.\nAsk first.\n",
+		"toolkits/infra/toolkit.yaml": "description: The machines.\ninstructions: |\n  Restart only when asked.\n  Say so.\ntools:\n" +
 			"  restart: { call: people/find, input: { table: vms }, when: \"${input.x}\" }\n" +
 			"  tell: { description: Tell the room., job: { call: { at: chat/post }, input: { room: infra }, approve: true } }\n" +
 			"  ping: { description: Ping the room., job: { send: { to: { at: chat/post, key: infra }, event: ping } } }\n",
@@ -505,7 +505,7 @@ func Test_machines_toolkits_call_machines_by_their_location(t *testing.T) {
 		t.Fatalf("the project has problems: %+v", v.Problems)
 	}
 	orders := v.Open
-	if orders == nil || orders.File != "toolkits/orders.yaml" || orders.InstructionsFile != "toolkits/orders.md" || orders.Instructions != "" {
+	if orders == nil || orders.File != "toolkits/orders/toolkit.yaml" || orders.InstructionsFile != "toolkits/orders/instructions.md" || orders.Instructions != "" {
 		t.Fatalf("the toolkit is %+v", orders)
 	}
 	if len(orders.Offered) != 1 || orders.Offered[0].When != "input.asker.scopes.includes('orders:read')" {
@@ -550,7 +550,7 @@ func Test_machines_toolkits_call_machines_by_their_location(t *testing.T) {
 	}
 	body := do(h, "GET", "/toolkits?toolkit=orders", nil).Body.String()
 	for _, want := range []string{
-		`<p class="instructions">instructions <a href="/machines?file=toolkits%2forders.md"`,
+		`<p class="instructions">instructions <a href="/machines?file=toolkits%2forders%2finstructions.md"`,
 		`<code class="when">when: input.asker.scopes.includes(&#39;orders:read&#39;)</code>`,
 		`<section class="tool when" title="when: input.asker.name != &#39;&#39;">`,
 		`<p class="job">call <a href="/machines?file=people%2ffind.yaml" title="people/find.yaml"><code>people/find</code></a></p><p class="job">input: table</p>`,

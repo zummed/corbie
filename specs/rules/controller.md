@@ -180,6 +180,8 @@ The detailed rules behind the [Controller overview](../controller.md). What the 
 
 **C-ctl-65** That an agent has a `list:` tool is read by the controller from the definition, as plain JSON, and every step after its first is taken in a process of its own. Nothing a step's process gives back has a say in it. A list's shapes come from outside the definition, and a step compiles them: in the controller, one would stop every run. A step past a limit fails that agent, with the reason. *Test:* `ctl_listed_agent_steps_after_its_first_are_taken_in_a_process`, `ctl_listed_step_past_a_limit_fails_that_agent` and `ctl_listed_shape_past_a_limit_fails_that_agent`
 
+**C-ctl-106** Which locations a run reads at its first step is read by the controller from the definition, as plain JSON, and a machine made while running reads none. A made machine names no address, and what it read would tell words from outside about a location. *Test:* `ctl_made_machine_reads_no_recorded_machine`
+
 **C-ctl-66** A client's start names a location, and its run begins from the file recorded there, which the controller copies into the run's record; a definition the start names is not read, and a start that names no location is refused. A definition a client wrote would be read in the controller as an owner's is, and one that ends the process would end the controller on every pass. *Test:* `ctl_client_start_names_a_location`
 
 ## Trees and locations
@@ -214,6 +216,9 @@ The detailed rules behind the [Controller overview](../controller.md). What the 
 
 **R-ctl-113** A run reads the values set at its location or above once, at its first step, the one set nearest winning, and keeps them; a job's secrets are those set nearest its run's location. A child runs at its parent's location, with its parent's values and context. A value a run reads that is not set fails it, naming the value and the location.
 *Accept:* `Test_ctl_values_are_read_at_the_first_step` and `Test_ctl_values_and_secrets_by_location`.
+
+**R-ctl-152** At a run's first step the controller reads the machine recorded at each location its definition's type names: its description, its input, its type and its lifetime. It gives them to the step only where a call from the run would pass, and otherwise the refusal a call would get, and the run keeps what it read.
+*Accept:* the tests of R-agent-92.
 
 **R-ctl-114** A root a client or a submit starts counts its depth limit from its own file's `limits: { depth }`, sixteen by default.
 *Accept:* parity case 79.
@@ -337,7 +342,7 @@ Uses:
 - **Role**: is run as passes, and is told how long a pass may take; starts the process of a step of a machine made while running.
 - **Identity**: asks whether a sender is trusted, reads a client's ceiling and a runner's tags and prefixes, opens messages sealed to it, signs heads, and seals jobs, cancels, receipts and the results of calls; a message it does not accept is deleted without a receipt (R-id-47).
 - **Instance**: writes heads, step entries, receipts and the results of calls in the form that area gives, moves a head from running to finished, and removes what is past keeping by that area's rules.
-- **Machine**: gives a type's step the definition, the state before and the events, and takes back the new state and the requests; checks a definition with the same code as the client (R-mach-17); starts children, counts depth and jobs, makes tickets and takes their answers, and holds jobs for the ask, as the Machines rules state (R-mach-65 to R-mach-115); gives a run its location and values, and carries out sends and calls to addresses (R-mach-153 to R-mach-160).
+- **Machine**: gives a type's step the definition, the state before and the events, and takes back the new state and the requests; checks a definition with the same code as the client (R-mach-17); starts children, counts depth and jobs, makes tickets and takes their answers, and holds jobs for the ask, as the Machines rules state (R-mach-65 to R-mach-115); gives a run its location and values, and what it read of the machines recorded at the locations its type names (R-ctl-152), and carries out sends and calls to addresses (R-mach-153 to R-mach-160).
 - **Blob**: copies what a child hands up into the parent's record, once and for every type (R-blob-23); copies a submit's uploads to their locations, a location's file into each run's record and a called run's output beside the call's result (R-blob-19), and a singleton's handed-over value into the run started in its place (R-ctl-133); reads the small blobs a step needs.
 - **Permission**: puts each layer that applies into a job by name, and reads the permissions a job declares against the `approve:` lists (R-perm-42); checks `send:` against a sender's layers and the receiver's `receive:` for a send or a call, and `at:` against the client's ceiling at a submit.
 - **Secret**: puts into a job the values of the secrets it names and every layer allows, set nearest its run's location (R-sec-14); fails a job that names a secret that is not set (R-sec-20), and denies one that names a secret a layer does not allow; reads a run's values at its first step, and the secrets and values a submit's files use that are not set. Sets, removes and lists a client's secrets and values as the owner's are (R-sec-64).

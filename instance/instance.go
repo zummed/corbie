@@ -133,6 +133,9 @@ type State struct {
 	Keep machine.Duration `json:"keep,omitzero"`
 	// Ask is the ask its definition names, for what it starts.
 	Ask *machine.JobSpec `json:"ask,omitzero"`
+	// Recorded is what the instance read at its first step of the machine
+	// recorded at each location its definition calls in full, by location.
+	Recorded map[string]machine.Recorded `json:"recorded,omitzero"`
 
 	// Above is what the instance was started under.
 	Above Above `json:"above"`

@@ -239,7 +239,6 @@ func TestAgentCallToolIsRefused(t *testing.T) {
 		{"description beside call", "{ call: gitlab/files/read, description: Read }", "tools.t.description: a tool with call: has no description:", nil},
 		{"a singleton", "{ call: always }", "tools.t.call: the machine at always is singleton: a call starts a run only of a transient location",
 			map[string]string{"always.yaml": "statechart: always\ndescription: Always.\nlifetime: singleton\ninitial: a\nstates: { a: {} }\n"}},
-		{"an absolute location", "{ call: /x/gitlab/files/read }", `tools.t.call: "/x/gitlab/files/read": the location is one in the same tree`, nil},
 		{"an expression", `{ call: "${input.where}" }`, "tools.t.call: \"${input.where}\": the location is written out", nil},
 		{"input without call", `{ description: D, args: {}, job: gitlab/files/given.js, input: { a: 1 } }`, "tools.t.input: input: belongs to a tool with call:", nil},
 		{"approve without call", `{ description: D, args: {}, job: gitlab/files/given.js, approve: true }`, "tools.t.approve: approve: belongs to a tool with call:", nil},
@@ -264,20 +263,36 @@ func TestAgentCallToolIsRefused(t *testing.T) {
 	}
 }
 
-// A tool that calls a location is read with its tree: it is refused in a
-// machine made while running, and in a file read alone.
+// A tool that calls a location in the same tree is read with its tree: it
+// is refused in a machine made while running, and in a file read alone. One
+// that calls a location in full is refused in a machine made while running,
+// is read alone, and corbie test names its location where the tree has no
+// machine there.
 func Test_agent_call_tool_needs_its_tree(t *testing.T) {
-	support := dedent(orders("http://127.0.0.1:1")["agents/support.yaml"])
-	support = strings.Replace(support, "toolkits:\n  orders: { include: toolkits/orders.yaml }\n", "tools:\n  t: { call: gitlab/files/read }\n", 1)
-	if _, err := machine.ParseMade([]byte(support), machine.Given(nil)); err == nil || !strings.Contains(err.Error(), "tools.t.call: a machine made while running has no tree, and calls no location") {
-		t.Errorf("made while running: %v", err)
+	for _, at := range []string{"gitlab/files/read", "/netops/tools/show"} {
+		support := dedent(orders("http://127.0.0.1:1")["agents/support.yaml"])
+		support = strings.Replace(support, "toolkits:\n  orders: { include: toolkits/orders.yaml }\n", "tools:\n  t: { call: "+at+" }\n", 1)
+		if _, err := machine.ParseMade([]byte(support), machine.Given(nil)); err == nil || !strings.Contains(err.Error(), "tools.t.call: a machine made while running has no tree, and calls no location") {
+			t.Errorf("made while running, calling %s: %v", at, err)
+		}
 	}
-	dir := house(t, orders("http://127.0.0.1:1"))
+	files := orders("http://127.0.0.1:1")
+	files["agents/support.yaml"] = strings.Replace(files["agents/support.yaml"], "toolkits:\n",
+		"tools:\n\t\t\t  show: { call: /netops/tools/show }\n\t\t\t  here: { call: /x/nothing/here }\n\t\t\ttoolkits:\n", 1)
+	dir := house(t, files)
 	alone, err := client.ReadFile(dir, "agents/support.yaml", "/alone", client.ScriptJob{})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := alone.Machines[0].Problem; err == nil || !strings.Contains(err.Error(), "toolkits/orders.yaml: toolkits.orders.tools.read_file.call: the machine at gitlab/files/read is read from the tree this file is in: give the directory, as in corbie test <dir>") {
+	if err := alone.Machines[0].Problem; err == nil || !strings.Contains(err.Error(), "toolkits/orders.yaml: toolkits.orders.tools.read_file.call: the machine at gitlab/files/read is read from the tree this file is in: give the directory, as in corbie test <dir>") ||
+		strings.Contains(err.Error(), "tools.show") || strings.Contains(err.Error(), "tools.here") {
 		t.Errorf("read alone: %v", err)
+	}
+	tree, err := client.ReadTree(dir, "/x")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, empty := tree.Unsent(); !reflect.DeepEqual(empty, map[string][]string{"/x/nothing/here": {"agents/support.yaml tools.here.call"}}) {
+		t.Errorf("corbie test names %v", empty)
 	}
 }

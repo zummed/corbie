@@ -2,6 +2,7 @@ package agent
 
 import (
 	"encoding/json/v2"
+	"errors"
 	"fmt"
 	"maps"
 	"slices"
@@ -112,6 +113,9 @@ type stepper struct {
 	st   *state
 	out  *machine.StepOut
 	eval *machine.Evaluator
+	// unread says, by the tool's name, why a tool written call: with a
+	// location in full has no description and no arguments.
+	unread map[string][]string
 }
 
 func (agentType) Step(in *machine.StepIn) (*machine.StepOut, error) {
@@ -120,6 +124,7 @@ func (agentType) Step(in *machine.StepIn) (*machine.StepOut, error) {
 		return nil, err
 	}
 	s := &stepper{a: &a, in: in, st: &state{}, out: &machine.StepOut{}, eval: machine.NewEvaluator(in.Time, in.Seed, in.Run)}
+	s.unread = s.recorded()
 	if in.State != nil {
 		if err := json.Unmarshal(in.State, s.st); err != nil {
 			return nil, err
@@ -411,6 +416,9 @@ func (s *stepper) begin() error {
 		return err
 	}
 	s.reopen(carried["opened"])
+	if err := s.readable(); err != nil {
+		return err
+	}
 	// The entries that list their tools list them once, now; the first
 	// turn waits for them as it waits for its previews.
 	for _, name := range sortedNames(s.a.Tools) {
@@ -464,6 +472,37 @@ func (s *stepper) offer(scope machine.Scope) error {
 	}
 	if len(not.Toolkits) > 0 || len(not.Tools) > 0 {
 		s.st.Unoffered = not
+	}
+	return nil
+}
+
+// recorded fills in each tool written call: with a location in full from
+// what the run read of the machine there as it started, and gives what is
+// wrong with each that cannot be filled in, by the tool's name.
+func (s *stepper) recorded() map[string][]string {
+	unread := map[string][]string{}
+	for name, tool := range s.a.Tools {
+		if !strings.HasPrefix(tool.Call, "/") {
+			continue
+		}
+		for _, w := range tool.called(tool.Call, s.in.Run.Recorded[tool.Call]) {
+			unread[name] = append(unread[name], tool.place(name)+w.at+": "+w.text)
+		}
+	}
+	return unread
+}
+
+// readable says what is wrong with each tool that is offered and calls a
+// location in full whose machine could not be read.
+func (s *stepper) readable() error {
+	var wrong []string
+	for _, name := range sortedNames(s.unread) {
+		if s.offers(name, s.a.Tools[name]) {
+			wrong = append(wrong, s.unread[name]...)
+		}
+	}
+	if len(wrong) > 0 {
+		return errors.New(strings.Join(wrong, "; "))
 	}
 	return nil
 }

@@ -831,7 +831,7 @@ func (b *build) run() machine.Run { return runOf(b.inst, b.st) }
 // runOf is what an expression reads of an instance in a state. Only a run
 // at a keyed location has a key.
 func runOf(inst string, st *instance.State) machine.Run {
-	run := machine.Run{ID: inst, Location: st.Location, Context: st.Above.Context, Tree: st.Tree, Values: st.Above.Values}
+	run := machine.Run{ID: inst, Location: st.Location, Context: st.Above.Context, Tree: st.Tree, Values: st.Above.Values, Recorded: st.Recorded}
 	if st.Lifetime == machine.LifetimeKeyed {
 		key := st.Key
 		run.Key = &key
@@ -1467,8 +1467,12 @@ func (b *build) first(s *instance.Start, start *arrival) (refused bool, err erro
 		return refused, err
 	}
 	b.above(def)
+	b.narrowed(s, start)
 	read := &stepOut{Problems: problems}
 	if len(problems) == 0 && !gone {
+		if err := b.recorded(def); err != nil {
+			return false, err
+		}
 		if read, err = b.readStep(s, start); err != nil || read == nil {
 			return false, err
 		}
@@ -1649,9 +1653,8 @@ func (b *build) refusedStart(start *arrival, call bool, problems machine.Problem
 	return false
 }
 
-// started sets the depth a root counts from, tells the client that started
-// or called the run that it was taken, and adds the list a client started
-// it with.
+// started sets the depth a root counts from, and tells the client that
+// started or called the run that it was taken.
 func (b *build) started(s *instance.Start, start *arrival, call bool) {
 	st := b.st
 	if start.kind == identity.Client || st.Lifetime != "" {
@@ -1671,12 +1674,18 @@ func (b *build) started(s *instance.Start, start *arrival, call bool) {
 		return
 	}
 	b.ask(instance.Ask{Kind: instance.AskReceipt, Sender: start.sender, Message: start.name, Receipt: &instance.Receipt{Taken: true}})
-	if s.Allow != nil {
-		layer := *s.Allow
-		layer.Name = "the list the run was started with"
-		layer.Fix = "start the run with %s in its list as well (corbie run submit --allow)"
-		st.Above.Layers = []permission.Layer{layer}
+}
+
+// narrowed adds the list a client started the run with, before the run's
+// first step reads anything under it.
+func (b *build) narrowed(s *instance.Start, start *arrival) {
+	if start.kind != identity.Client || s.Allow == nil {
+		return
 	}
+	layer := *s.Allow
+	layer.Name = "the list the run was started with"
+	layer.Fix = "start the run with %s in its list as well (corbie run submit --allow)"
+	b.st.Above.Layers = []permission.Layer{layer}
 }
 
 // tookSend tells a client whose send started the run that the run took it,

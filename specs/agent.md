@@ -63,7 +63,12 @@ tools:
 - The called run's record belongs to its own tree's client. Cancelling the call cancels the run.
 - A send ends `done` once the message is written. A send the receiver does not take is noted in the agent's record, and the model is not told.
 
-A tool written `call:` names a location in the same tree and takes its description and arguments from the machine there. The client reads that machine's file when it reads the tree. `input:` fixes part of the machine's input, and the model gives the rest.
+A tool written `call:` takes its description and arguments from the machine at a location. `input:` fixes part of the machine's input, and the model gives the rest. The machine is read at one of two moments, and a leading `/` tells them apart:
+
+```
+call: gitlab/files/read     a location in the same tree, read by the client when it reads the tree
+call: /netops/tools/show    a location in full, in any tree, read by the controller when the run starts
+```
 
 ```yaml
 # toolkits/orders.yaml
@@ -85,13 +90,47 @@ input: { project: string, path: string, ref: "string?" }
 - A blob in the machine's input is an argument the model gives by the name it was shown. An input written as JSON Schema gives arguments only through `properties`.
 - A machine that is an agent is shown to the model as its reply.
 
-The location is written out, from the tree's prefix. These are refused when the tree is read:
+A location in the same tree is written out, from the tree's prefix. These are refused when the tree is read:
 
 - a location with no machine, or a file `.corbieignore` lists;
 - a machine with no `description:`, or one that is not `transient`;
 - a fixed name the machine's input does not give;
 - a machine whose input is written as JSON Schema with a keyword other than `type`, `properties`, `required`, `additionalProperties`, `description` and `title`, such as `allOf` or `$ref`;
-- a tool written `call:` in a file read alone or in a machine made while running, which have no tree.
+- a location in the same tree in a file read alone, which has no tree;
+- a tool written `call:` in a machine made while running, which names no address.
+
+A location in full is read as the run starts:
+
+1. The stored definition holds the tool with its location, the input it fixes, `approve:`, `when:` and `send:` for the location, and no description or arguments.
+2. At the run's first step the controller reads the machine recorded at the location: its `description:`, the shape of its `input:`, its type and its lifetime.
+3. It gives them to the agent only where a call from the run would pass: every layer of the agent holds `send:` for the location, its tree's client's ceiling included, and the location's `receive:` accepts the agent's location.
+4. The run keeps what it read, and the model is offered the tool as one in the same tree.
+
+```yaml
+# x/agents/support.yaml            location /x/agents/support
+tools:
+  show: { call: /netops/tools/show, input: { device: fw1 } }
+
+# netops/tools/show.yaml           location /netops/tools/show, in the client netops's tree
+flow: show
+description: Run one show command on a device.
+input: { device: string, command: string }
+receive: [/x/agents/support]
+```
+
+- The model is offered `show` as `Run one show command on a device.`, with the argument `command`.
+- When netops submits a changed `show.yaml`, a run that starts after it is offered the change, and a run already started is not.
+- A run that carries a conversation on reads at its own start, and so does an agent that is a child or a tool's machine.
+- A call the model makes is checked again, as any call is.
+
+A tool that is offered, as its `when:` and its toolkit's say, fails the agent at its start, naming the tool's place and the reason, where:
+
+- nothing is recorded at the location;
+- a layer of the agent refuses `send:` to it, with the refusal a call would get;
+- its `receive:` does not accept the agent's location;
+- the machine there has no `description:`, is not `transient`, lacks a fixed name in its input, or writes its input with a keyword a tool cannot take.
+
+A tool that is not offered fails nothing.
 
 A tool may give `when:`, a condition on the agent's input. It is checked once, when the run starts, and a tool whose `when:` does not hold is not offered (see [Who is offered what](#who-is-offered-what)).
 

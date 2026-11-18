@@ -207,6 +207,7 @@ A script cannot reach outside itself except through the kinds above, and those a
 - A program a job starts does its own reading, writing and connecting, as the runner's user. The permissions govern the start and nothing after. A runner's owner can put a box around started programs (see Runner); Corbie does not build one.
 - A permission to connect to a host governs the connection and nothing sent over it. A job allowed an MCP server can call any of its tools; what a call can do is set by the credentials the server is given.
 - An agent's listed tools are described by whoever wrote the list, and the model reads that text as it reads a tool's result.
+- A tool that calls a machine in another tree is described by that tree's owner, and the model reads that text as it reads a tool's result. It changes when that owner submits.
 - A job that may read the runner's own files can read the runner's key, and with it every job sent to that runner.
 - A runner takes a job only of a run at or under its prefixes, and the run's location is the controller's word. A controller can send a runner any job it signs.
 - Whoever may read an identity's object in a bucket has that party's keys. Corbie does not check the bucket's policy.
@@ -235,6 +236,7 @@ A script cannot reach outside itself except through the kinds above, and those a
 - A client a file's `read:` lists reads the tickets of the runs there, and so can answer them, as any client that holds a ticket can.
 - A client taken off `read:` still opens what was sealed to it, and the runs still running keep the list they started with until they end.
 - What is at a location is not secret from those who may send there. A run whose layers allow `send:` to a location learns from an undelivered note or a failed call, before `receive:` is read, whether a file is recorded there, its lifetime, whether its singleton is running and whether the location is at its `limits: { runs }`. A client learns from a refused start or call whether a file is recorded at a location and the client whose tree it is in, whatever its ceiling, and the location's lifetime and whether it is at its `limits: { runs }` when its ceiling allows `send:` there.
+- A run whose tool calls a location in full, and whose call there would pass, learns the description and the shape of the input of the machine there.
 - Machines made while running that each use a step's whole time delay other machines: a pass waits for four of those steps at a time, up to 10 seconds, and every other run pays that in each pass it needs. Beside four such machines, a run of 20 ms took 10 seconds.
 - A step that asks for as much as fits in its 4 MiB delays other machines for as long as carrying it out takes.
 - A host with less memory than four steps' 4 GiB stops a step's process or the whole controller. The step is then taken once more, and its machine fails.

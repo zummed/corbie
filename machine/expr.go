@@ -282,6 +282,9 @@ type Run struct {
 	Context  string
 	Tree     string
 	Values   map[string]string
+	// Recorded is what the run read at its first step of the machines
+	// recorded at the locations its definition calls, by location.
+	Recorded map[string]Recorded
 }
 
 // Address is the address another run sends to this run with, as event.from

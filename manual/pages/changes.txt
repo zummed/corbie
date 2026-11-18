@@ -66,6 +66,11 @@ These are new, and make a definition shorter.
 - The gateway's `POST /runs` takes JSON when the input has no file.
 - A stream of the gateway ends with an `error` event when the gateway could
   not read the store.
+- An agent's tool written `call:` takes a location in another tree, written
+  from `/`, as `call: /netops/tools/show`. Its description and arguments are
+  read from the machine there when the run starts. It replaces a tool
+  written with `description:`, `args:` and `job: { call: … }` for that
+  location.
 - `decision:` is a fourth type of machine. It puts questions to a decision
   model and gives the probability of each answer, with no script and no
   `allow:` entry. It replaces a script that only calls `llm.decide`.

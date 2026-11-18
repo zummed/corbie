@@ -448,9 +448,10 @@ func (p *Parser) MachineType(name string) string {
 // tool that calls it needs it: its type, description, input in full form
 // and lifetime, and nothing else. Its includes are joined, and no machine
 // or tool it names is read, so two machines that name each other are read
-// once each. The location is written out, from the tree's prefix. Where
-// there is no such machine it notes the problem at the place, and gives
-// nil.
+// once each. The location is written out, from the tree's prefix, or in
+// full from /, which no tree read gives: it gives nil, and the run reads
+// that machine as it starts. Where there is no such machine it notes the
+// problem at the place, and gives nil.
 func (p *Parser) MachineAt(place, at string) *Definition {
 	switch {
 	case p.made:
@@ -459,11 +460,8 @@ func (p *Parser) MachineAt(place, at string) *Definition {
 	case HasExpr(at):
 		p.Problem(place, "%q: the location is written out", at)
 		return nil
-	case strings.HasPrefix(at, "/"):
-		p.Problem(place, "%q: the location is one in the same tree, written from its prefix with no / at its start", at)
-		return nil
-	case CheckLocation(at) != nil:
-		return nil // the check says what is wrong with it
+	case CheckLocation(at) != nil, strings.HasPrefix(at, "/"):
+		return nil // the check says what is wrong with it, or the run reads it
 	case p.located == nil:
 		p.Problem(place, "the machine at %s is read from the tree this file is in: give the directory, as in corbie test <dir>", at)
 		return nil

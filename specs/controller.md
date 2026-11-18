@@ -158,6 +158,7 @@ The message taken again after a stop is answered by the receipt already written,
 - Every run keeps the definition it started with, in its own record.
 - A run's authority comes from its location: its file's `allow:` and `ask:`, its tree client's ceiling, and the secrets and values set at its location or above (see permission.md).
 - The controller reads the values at a run's first step and keeps them in its record.
+- At the same step it reads the machine recorded at each location an agent's tool calls in full: its description, the shape of its input, its type and its lifetime, given only where a call from the run would pass, and otherwise the refusal a call would get. It keeps what it read in the run's record (see Agent). A machine made while running reads none.
 - A child started by `machine:` runs at its parent's location.
 - A run started by a send or a call counts one level below its sender, and fails as it starts if that passes its own file's depth limit.
 

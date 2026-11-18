@@ -101,8 +101,8 @@ Tools
   list         a job that returns tools, [{ name, description, args }], in
                place of `description:` and `args:`; `job:` runs each, and
                reads `tool`, its name
-  call         a location in the same tree, in place of `description:`,
-               `args:` and `job:`: the tool calls the machine there
+  call         a location, in place of `description:`, `args:` and `job:`:
+               the tool calls the machine there
   input        with `call:`, the names of that machine's input the tool fixes
   approve      with `call:`, `true` holds the call for the ask
   when         a condition on the agent's input, checked when the run
@@ -128,7 +128,10 @@ any depth.
 - No tool is named turn, preview, open, blob_read, blob_search or blob_code.
 
 A tool written `call:` takes its description and arguments from the machine
-it calls. The client reads that machine's file when it reads the tree.
+it calls. A leading `/` says when that machine is read:
+
+  call: gitlab/files/read    in the same tree, read when the tree is read
+  call: /netops/tools/show   in any tree, read when the run starts
 
   tools:
     read_file: { call: gitlab/files/read, input: { project: group/orders } }
@@ -147,11 +150,17 @@ arguments `path` and `ref`. A call `{ path: a.txt }` starts a run of
 - An argument the model leaves out is absent from the machine's input.
 - `input:` may read the agent's input, as `${input.team}`.
 - The tool has `send:` for the location, and nothing else is written for it.
-- The location is written from the tree's prefix. Its machine is transient
-  and has a `description:`, and a file `.corbieignore` lists is no machine.
+- The machine is transient and has a `description:`, and a file
+  `.corbieignore` lists is no machine.
 - A machine that is an agent is shown to the model as its reply.
-- A tool written `call:` is refused in a file read alone and in a machine
-  made while running.
+- A tool written `call:` is refused in a machine made while running. One in
+  the same tree is refused in a file read alone.
+
+A location written from `/` is read at the run's start, where a call from
+the run would pass: `send:` in every layer, the client's ceiling included,
+and the machine's `receive:`. A run keeps what it read, so a change
+submitted there reaches the next run. When the tool is offered and the
+machine cannot be read, the agent fails at its start with the reason.
 
 An entry with `list:` gives tools that come from elsewhere, such as the tools
 of an MCP server (`corbie manual mcp`), which change without the definition

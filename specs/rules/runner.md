@@ -16,6 +16,9 @@ The detailed rules behind the [Runner overview](../runner.md).
 **R-run-04** A runner takes a job by writing its mark only-if-new, and only the copy that wrote the mark runs it, so a job is run once; a copy that finds the mark already there leaves the job alone.
 *Accept:* ten copies of one runner and thirty jobs, each script adding one line to a file they share: thirty lines, one for each job, and thirty results. Copy B looks at a job that copy A has marked and is running: B starts nothing and writes no result, and the job's message is still in the inbox.
 
+**R-run-80** A runner takes a job only of a run at or under one of the prefixes it gave the job's controller, `/` where `corbie runner trust` named none, by the location the job carries. A job outside them ends `denied`, and its refusal names the location, the runner's trust of the controller as the layer, and the `corbie runner trust` command that allows it.
+*Accept:* a runner trusts a controller with `--at /netops/tools`, and the controller's record of the runner has the prefix `/`: a job of a run at `/home` ends `denied`, no script starts, and the error names `/home`, the runner's trust of the controller and `corbie runner trust <controller> --at /netops/tools --at /home`. A job of a run at `/netops/tools/ping` runs.
+
 **R-run-06** A runner runs several jobs at once, up to a number its owner sets, and leaves the rest waiting.
 *Accept:* with the number set to two and five jobs waiting, never more than two scripts run at once, and all five have run in the end.
 
@@ -187,7 +190,7 @@ Uses:
 - **Store**: lists and reads its own inbox, writes and removes its marks, deletes jobs and cancels it has dealt with, adds emits and blobs to records only-if-new, reads blobs in records, and writes results into the controller's inbox.
 - **Role**: is run as passes, and is told how long its host will let a pass run; starts each job's process.
 - **Controller**: the process that runs a job also takes a step of a machine made while running, by the same argument (C-role-18).
-- **Identity**: opens jobs and cancels from controllers it trusts, signs what it adds to a record, seals results, and takes the ceiling it gave the controller that signed a job.
+- **Identity**: opens jobs and cancels from controllers it trusts, signs what it adds to a record, seals results, and takes the ceiling and the prefixes it gave the controller that signed a job.
 - **Permission**: checks every call that reaches outside against each layer in the job and the runner's own ceiling, and notes what was used for the result (R-perm-50); the scratch directory needs an entry like any path (R-perm-12).
 - **Secret**: gets the values a job carries, hands scripts handles to them, and has what comes back to a script, and what a job's process prints, searched for them (C-sec-25).
 - **Plugin**: supplies the calls a script makes, the libraries a bare name loads and the reading of a document of YAML or JSON that `require` of a data file gives; a program is started through the one way out that the exec wrapper is put in front of; what a script leaves open is closed by its plugin when the job ends (C-plug-07).

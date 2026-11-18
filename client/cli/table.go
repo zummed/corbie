@@ -307,7 +307,7 @@ store and prints the controller's card.
 
   corbie manual parties            cards and trust
   corbie manual served-directory   serving the store directory`},
-		{Name: "controller enrol", Usage: "<card | - | name> [--ceiling <list>] [--allow <entry>] [--deny <entry>] [--tags <list>] [--replace]", Summary: "trust a runner or a client, and print what it needs to trust this controller", Run: cmdEnrol, Help: `
+		{Name: "controller enrol", Usage: "<card | - | name> [--ceiling <list>] [--allow <entry>] [--deny <entry>] [--tags <list>] [--at <prefix>] [--replace]", Summary: "trust a runner or a client, and print what it needs to trust this controller", Run: cmdEnrol, Help: `
 It takes a runner's or a client's card, writes to the store that the
 controller trusts it, and prints the controller's card and the store's
 address. corbie runner trust and corbie client trust take those two lines.
@@ -315,8 +315,8 @@ address. corbie runner trust and corbie client trust take those two lines.
   <card>   the card, as corbie runner card or corbie client card prints it
   -        the card is read from standard input, so the commands join in a
            pipe
-  <name>   a runner or client already enrolled: sets its ceiling or tags
-           again
+  <name>   a runner or client already enrolled: sets its ceiling, tags or
+           prefixes again
 
   --ceiling <list>   sets a client's ceiling, the most any run in its trees
                      may be allowed, with at:<prefix> for where it may
@@ -328,11 +328,14 @@ address. corbie runner trust and corbie client trust take those two lines.
   --tags <list>      sets a runner's tags, separated by commas; a job's tags:
                      selects a runner that has every one; none removes them;
                      without the flag they stay as they are
+  --at <prefix>      the runner is sent only the jobs of runs at or under the
+                     prefix; repeatable; / is every tree, the default;
+                     without the flag the prefixes stay as they are
   --replace          accept a card with another key under a name already
                      enrolled; by default it is refused
 
-A runner takes no ceiling here, and a client no tags. A runner sets its own
-ceiling with corbie runner trust.
+A runner takes no ceiling here, and a client no tags or --at. A runner sets
+its own ceiling, and the same prefixes, with corbie runner trust.
 
   corbie manual served-directory   the three commands as one pipe
   corbie manual permissions   the entries of a ceiling`},
@@ -342,7 +345,8 @@ that name is refused without --replace. corbie controller parties lists it as
 removed.`},
 		{Name: "controller parties", Usage: "", Summary: "list the runners and clients the controller trusts", Run: cmdParties, Help: `
 Each line gives a runner's or a client's kind, name and card fingerprint, then
-its ceiling, deny list and tags if set, then removed if it was removed.`},
+its ceiling, deny list and tags if set, a runner's prefixes, then removed if
+it was removed.`},
 		{Name: "controller secret set", Usage: "<NAME> [- | --env] [--at <location>]", Summary: "set a secret for the runs at a location and below", Run: cmdSecretSet, Help: `
 The value is typed at the terminal and not shown. It is never given on the
 command line. A run uses the secret set nearest its location.
@@ -393,13 +397,14 @@ which corbie controller enrol takes.
   --name <name>          the runner's name; default <host name>-runner
   --identity <address>   keeps the identity in an S3 bucket, as s3://…, and
                          not in the config; only where none is made yet`},
-		{Name: "runner trust", Usage: "<what enrol printed | - | name> [--ceiling <list>] [--allow <entry>] [--deny <entry>] [--replace]", Summary: "trust a controller, up to a ceiling", Run: cmdTrust(identity.Runner), Help: `
+		{Name: "runner trust", Usage: "<what enrol printed | - | name> [--ceiling <list>] [--allow <entry>] [--deny <entry>] [--at <prefix>] [--replace]", Summary: "trust a controller, up to a ceiling", Run: cmdTrust(identity.Runner), Help: `
 It takes what corbie controller enrol printed, which is the controller's card
 and the store's address, and saves both in the config.
 
   <what enrol printed>   the card, then the address
   -                      both are read from standard input
-  <name>                 a controller already trusted: sets its ceiling again
+  <name>                 a controller already trusted: sets its ceiling or
+                         prefixes again
 
   --ceiling <list>   sets the ceiling, the most this controller's jobs may be
                      allowed on this computer: entries separated by commas;
@@ -407,6 +412,10 @@ and the store's address, and saves both in the config.
   --allow <entry>    adds one entry to the ceiling; repeatable
   --deny <entry>     adds one permission the ceiling refuses, whatever it
                      allows; repeatable
+  --at <prefix>      takes only the jobs of runs at or under the prefix, as
+                     the controller's enrol --at gives; repeatable; / is
+                     every tree, the default; without the flag the prefixes
+                     stay as they are
   --replace          accept a card with another key under a name already
                      trusted; by default it is refused
 

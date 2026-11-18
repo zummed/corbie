@@ -13,17 +13,20 @@ import (
 
 // Trust is what one party holds about another it has taken the card of:
 // the card, and the limit trust was given with. A controller gives a client
-// a ceiling and a runner its tags; a runner gives a controller a ceiling,
-// and notes the address of that controller's store, as a client does.
+// a ceiling and a runner its tags and prefixes; a runner gives a controller
+// a ceiling and the same prefixes, and notes the address of that
+// controller's store, as a client does. A runner is sent, and takes, only
+// the jobs of runs at or under one of its prefixes; none is "/".
 //
 // A removed party stays on record with its key, so its name stays tied to
 // that key.
 type Trust struct {
-	Card    Card             `json:"card"`
-	Ceiling permission.Layer `json:"ceiling,omitzero"`
-	Tags    []string         `json:"tags,omitzero"`
-	Store   string           `json:"store,omitzero"`
-	Removed bool             `json:"removed,omitzero"`
+	Card     Card             `json:"card"`
+	Ceiling  permission.Layer `json:"ceiling,omitzero"`
+	Tags     []string         `json:"tags,omitzero"`
+	Prefixes []string         `json:"prefixes,omitzero"`
+	Store    string           `json:"store,omitzero"`
+	Removed  bool             `json:"removed,omitzero"`
 }
 
 // Trusted says whether anything from the party is accepted.
@@ -103,4 +106,19 @@ func (t Trust) HasTags(tags []string) bool {
 		}
 	}
 	return true
+}
+
+// Holds says whether one of the prefixes holds the location: whether it is
+// the location or above it. No prefix is "/", which holds every location.
+func Holds(prefixes []string, location string) bool {
+	if len(prefixes) == 0 {
+		return true
+	}
+	above := store.Above(location)
+	for _, prefix := range prefixes {
+		if prefix == "/" || slices.Contains(above, prefix) {
+			return true
+		}
+	}
+	return false
 }

@@ -76,8 +76,8 @@ The detailed rules behind the [Identity overview](../identity.md).
 **R-id-24** A controller gives each client a ceiling, and no run in that client's trees is allowed more, and its `at:` entries are the prefixes it may submit a tree at; a runner gives each controller it serves a ceiling, and no job from that controller is allowed more on the runner's computer; a party trusted with no ceiling may do nothing outside the job itself.
 *Accept:* a client enrolled with `--ceiling disk` submits a tree at `/x`: refused, naming the client's ceiling and `at:/x`; enrolled with `--ceiling disk,at:/x`, the submit is taken. A client enrolled with `--ceiling disk` starts a run whose definition allows `network`: the job's connection is refused, and the refusal names the client's ceiling. A runner trusts a controller with `--ceiling disk`; a job from it that every other layer allows to start a program is refused, and the refusal names the runner's ceiling. A client enrolled with no `--ceiling` starts a script that only computes: done; one that reads a file: denied, naming the client's ceiling. The same two results follow when it is the runner that trusted the controller with no `--ceiling`, naming the runner's ceiling.
 
-**R-id-27** A controller gives each runner its tags, and they are the tags by which jobs choose that runner; a card carries none.
-*Accept:* enrol one runner with `--tags laptop` and another with no tags: a job that names `laptop` goes to the first every time. `corbie runner card` takes no tags.
+**R-id-27** A controller gives each runner its tags, which are the tags by which jobs choose that runner, and its prefixes, `/` where `--at` names none; a prefix is a location with no `*`. A card carries neither.
+*Accept:* enrol one runner with `--tags laptop` and another with no tags: a job that names `laptop` goes to the first every time. `corbie runner card` takes no tags. Enrol a runner with `--tags onprem --at /netops/tools`: `enrol` prints its tags and that prefix, and `corbie controller parties` shows `at: /netops/tools`; one enrolled with no `--at` is shown with `at: /`. `--at none`, `--at /netops/*` and `--at netops` are refused as mistakes, and nothing is written.
 
 **R-id-29** A runner can serve several controllers, each with its own ceiling and its own store.
 *Accept:* a runner trusts controller A with the ceiling `disk` and store 1, and controller B with the ceiling `exec` and store 2. A job from A that starts a program is refused by the runner's ceiling; the same job from B runs; each result is written to its own controller's store.
@@ -89,8 +89,8 @@ The detailed rules behind the [Identity overview](../identity.md).
 
 ## Changing and ending trust
 
-**R-id-32** A ceiling or a runner's tags can be set again at any time by the command that gave them. A command that names neither leaves both as they are, and `none` takes them away.
-*Accept:* a client enrolled with `--ceiling disk` is enrolled again with the same card and `--ceiling disk,network`: a run it starts afterwards may connect. A runner that runs `trust` again for the same controller with another ceiling applies the new one to the next job. A runner enrolled with `--tags a` is enrolled again with `--tags b`: a job started afterwards that names `a` finds no runner, and one that names `b` goes to it. Enrolled again by name with no flag, the runner keeps `b` and a client keeps its ceiling; with `--tags none` the runner has no tags, and with `--ceiling none` the client has no ceiling.
+**R-id-32** A ceiling or a runner's tags or prefixes can be set again at any time by the command that gave them. A command leaves what it does not name as it is; `none` takes a ceiling or tags away, and `--at /` gives a runner every tree again.
+*Accept:* a client enrolled with `--ceiling disk` is enrolled again with the same card and `--ceiling disk,network`: a run it starts afterwards may connect. A runner that runs `trust` again for the same controller with another ceiling applies the new one to the next job. A runner enrolled with `--tags a` is enrolled again with `--tags b`: a job started afterwards that names `a` finds no runner, and one that names `b` goes to it. Enrolled again by name with no flag, the runner keeps `b` and a client keeps its ceiling; with `--tags none` the runner has no tags, and with `--ceiling none` the client has no ceiling. A runner enrolled with `--at /a` is enrolled again with `--tags b`: it keeps `/a`; enrolled again with `--at /`, a job of a run at `/c` goes to it. The same holds for `corbie runner trust` and `--at`.
 
 **R-id-34** Either side can remove the other's card, and from then on nothing from that party is accepted.
 *Accept:* after a client is removed, a start it sends creates no instance. After a runner is removed, no job is sent to it and a result it writes is not accepted. After a runner removes a controller, a job that controller leaves in the runner's inbox is not run.
@@ -141,7 +141,7 @@ Uses:
 
 Used by:
 
-- **Controller**: asks whether a sender is trusted, reads a client's ceiling and a runner's tags, opens messages sealed to it, signs heads, and seals jobs and receipts; which of a client's accepted messages it then acts on, and how a late one is answered, are its own (R-ctl-07, R-inst-67).
+- **Controller**: asks whether a sender is trusted, reads a client's ceiling and a runner's tags and prefixes, opens messages sealed to it, signs heads, and seals jobs and receipts; which of a client's accepted messages it then acts on, and how a late one is answered, are its own (R-ctl-07, R-inst-67).
 - **Runner**: opens jobs and cancels, applies the ceiling it gave the controller that signed a job, signs what it adds to a record, and seals results.
 - **Client**: signs and seals what it sends, opens its receipts and records, and checks heads against the controller's card.
 - **Instance**: a head carries the controller's signature; record entries are sealed to the controller and to the client that owns the root's tree.

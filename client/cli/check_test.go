@@ -72,7 +72,7 @@ func TestCheckSaysWhichPartDidNotAnswer(t *testing.T) {
 func TestCheckOfARunThatEndsForItsOwnReason(t *testing.T) {
 	m, _ := working(t, "")
 	status, f := m.check("--tag", "gpu")
-	if status != 1 || f.OK || len(f.Legs) != 1 || f.Legs[0].Status != "ok" || !strings.Contains(f.Run.Error, "no runner has the tags") {
+	if status != 1 || f.OK || len(f.Legs) != 1 || f.Legs[0].Status != "ok" || !strings.Contains(f.Run.Error, "has the tags the job names") {
 		t.Fatalf("a check sent to a tag no runner has found %d %+v", status, f)
 	}
 }

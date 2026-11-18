@@ -1191,22 +1191,33 @@ func (b *build) launch(job *instance.Going) {
 // allowed to take to arrive.
 const dueGrace = 30 * time.Second
 
-// pick chooses the runner for an attempt at a job from those that have
-// every tag the job names. It takes no account of load: the same attempt
-// always goes to the same runner, and a later attempt to a different one
-// where more than one qualifies.
+// pick chooses the runner for an attempt at a job from those one of whose
+// prefixes holds the location of the job's run and that have every tag the
+// job names. It takes no account of load: the same attempt always goes to
+// the same runner, and a later attempt to a different one where more than
+// one qualifies.
 func (b *build) pick(job *instance.Going, runners []identity.Trust) (string, identity.Card, error) {
-	var fit []identity.Card
+	location := b.st.Location
+	var at, fit []identity.Card
 	for _, r := range runners {
-		if r.HasTags(job.Tags) || b.p.c.AnyRunner {
-			fit = append(fit, r.Card)
+		if b.p.c.AnyRunner {
+			at, fit = append(at, r.Card), append(fit, r.Card)
+			continue
+		}
+		if identity.Holds(r.Prefixes, location) {
+			at = append(at, r.Card)
+			if r.HasTags(job.Tags) {
+				fit = append(fit, r.Card)
+			}
 		}
 	}
-	if len(fit) == 0 {
-		if len(job.Tags) == 0 {
-			return "", identity.Card{}, fmt.Errorf("the controller has no runner to send the job to")
-		}
-		return "", identity.Card{}, fmt.Errorf("no runner has the tags the job names: %s", strings.Join(job.Tags, ", "))
+	switch {
+	case len(runners) == 0:
+		return "", identity.Card{}, fmt.Errorf("the controller has no runner to send the job to")
+	case len(at) == 0:
+		return "", identity.Card{}, fmt.Errorf("no runner is sent the jobs of runs at %s", location)
+	case len(fit) == 0:
+		return "", identity.Card{}, fmt.Errorf("no runner that is sent the jobs of runs at %s has the tags the job names: %s", location, strings.Join(job.Tags, ", "))
 	}
 	sum := sha256.Sum256([]byte(b.inst + "\x00" + machine.JobName(job.Name, job.Asked, 1)))
 	card := fit[(binary.BigEndian.Uint64(sum[:8])+uint64(job.Attempt-1))%uint64(len(fit))]

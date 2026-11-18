@@ -35,27 +35,37 @@ with, also after `remove`, and a card with other keys under it is refused.
 With `--replace` the new card takes the name, with none of the old card's tags
 or ceiling.
 
-Ceilings and tags
------------------
+Ceilings, tags and prefixes
+---------------------------
 
   a controller gives a client a ceiling   the most any run in that client's trees may be allowed; its at: entries are the prefixes it may submit at
   a runner gives a controller a ceiling   the most that controller's jobs may be allowed on the runner
   a controller gives a runner tags        a job with `tags:` goes to a runner that has every tag it names
+  a controller gives a runner prefixes    with `--at`, the runner is sent only the jobs of runs at or under them; by default `/`
+  a runner gives a controller prefixes    with `--at`, the same prefixes; the runner refuses any other job as `denied`
 
 A ceiling is permission entries with commas between them, such as
 `network,disk`. With an empty ceiling, jobs are allowed no permission.
 
-`enrol <name>` and `trust <name>` set the tags or the ceiling of one already
-trusted or removed. `--ceiling` and `--tags` replace what was set, and
-`--allow` and `--deny` add one entry. A change needs no restart.
+A runner set apart for one team's tools is enrolled with that team's prefix.
+A job names a tag to choose among the runners it may use:
 
-Tags and a ceiling stay as they are unless a flag changes them. `--tags none`
-and `--ceiling none` remove them.
+  corbie runner card | ssh ctl corbie controller enrol - --tags onprem --at /netops/tools | corbie runner trust - --ceiling exec --at /netops/tools
+
+`enrol <name>` and `trust <name>` set the tags, the prefixes or the ceiling of
+one already trusted or removed. `--ceiling`, `--tags` and `--at` replace what
+was set, and `--allow` and `--deny` add one entry. A change needs no restart.
+
+Tags, prefixes and a ceiling stay as they are unless a flag changes them.
+`--tags none` and `--ceiling none` remove them, and `--at /` gives a runner
+every tree again.
 
     corbie init --ceiling all --name laptop
     corbie controller enrol laptop-client --allow net:api.github.com
     corbie runner trust laptop-controller --allow exec:git
     corbie runner trust laptop-controller --deny 'fs.read:/home/**'
+    corbie controller enrol laptop-runner --tags onprem --at /netops/tools
+    corbie runner trust laptop-controller --at /netops/tools
     corbie controller parties
     corbie controller remove laptop-runner
 

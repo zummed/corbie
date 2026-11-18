@@ -97,7 +97,11 @@ Any other machine is an owner's words, and its steps are taken in the controller
 
 A script job is sent as a message to a runner, signed by the controller and sealed to that runner. The message carries everything the runner needs to know: where in the record to read the script, its files and the input; each layer of permissions that applies, by name, so a refusal can say which layer refused; the values of the secrets it may use, set at its location or above; its limits; where in the record the job writes what it emits, and the clients that is sealed to; and which emitted names the machine wants to hear about.
 
-A job's tags choose its runner. The job goes to a runner that has every tag it names, and a job that names none may go to any runner. Where several qualify the controller picks one from the request and the attempt, so the same attempt always goes to the same runner, and a later attempt goes to a different one where more than one qualifies. It takes no account of load. A job whose tags no runner has, or which names a value or secret not set at its location or above, fails before anything is sent, naming the name and the location.
+A job goes to a runner that has every tag the job names and one of whose prefixes holds the location of the job's run. A job that names no tag may go to any runner whose prefixes hold that location. It is any such runner, not the nearest: the tag chooses and the prefix limits. Where several qualify the controller picks one from the request and the attempt, so the same attempt always goes to the same runner, and a later attempt goes to a different one where more than one qualifies. It takes no account of load.
+
+A job's run is at the run's own location: a child, and a machine made while running, is at the location of the run that starts it. The job carries that location to its runner.
+
+A job no runner qualifies for fails before anything is sent, and its error says which of the two failed: no runner is sent the jobs of runs at that location, or none of those has the tags. A job that names a value or secret not set at its location or above fails the same way, naming the name and the location.
 
 Every job has a time by which its result is due. If none has come by then, the machine receives a timeout in its place. A result that has arrived always wins over its own due time, however late the controller is in looking.
 

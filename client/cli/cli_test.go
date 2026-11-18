@@ -279,6 +279,57 @@ func TestEnrolPipe(t *testing.T) {
 	}
 }
 
+// A runner's prefixes are given with --at on both sides, shown, and set
+// again as tags are.
+func TestEnrolAtPrefixes(t *testing.T) {
+	ctl := machine{t, filepath.Join(t.TempDir(), "ctl")}
+	tools := machine{t, filepath.Join(t.TempDir(), "tools")}
+	storeDir := filepath.Join(t.TempDir(), "store")
+	ctl.ok("", "controller", "card", "--store", storeDir, "--name", "ctl")
+	_, card, _ := tools.run("", "runner", "card", "--name", "tools")
+	_, enrolled, said := ctl.run(card, "controller", "enrol", "-", "--tags", "onprem", "--at", "/netops/tools")
+	if !strings.Contains(said, "at or under /netops/tools, with the tags: onprem") {
+		t.Fatalf("enrol said %q", said)
+	}
+	if _, _, said := tools.run(enrolled, "runner", "trust", "-", "--at", "/netops/tools"); !strings.Contains(said, "at or under /netops/tools") {
+		t.Fatalf("trust said %q", said)
+	}
+	parties := func(want string) {
+		t.Helper()
+		if out := ctl.ok("", "controller", "parties"); !strings.Contains(out, want) {
+			t.Fatalf("the controller's parties do not show %q: %s", want, out)
+		}
+	}
+	parties("at: /netops/tools")
+	// Named again with no --at, the prefixes stay, on both sides.
+	ctl.ok("", "controller", "enrol", "tools", "--tags", "gpu")
+	parties("at: /netops/tools")
+	if _, _, said := tools.run("", "runner", "trust", "ctl", "--ceiling", "exec"); !strings.Contains(said, "at or under /netops/tools") {
+		t.Fatalf("trust again said %q", said)
+	}
+	// --at / is every tree again, and is shown.
+	ctl.ok("", "controller", "enrol", "tools", "--at", "/")
+	parties("at: /\n")
+	if _, _, said := tools.run("", "runner", "trust", "ctl", "--at", "/"); !strings.Contains(said, "at or under /\n") {
+		t.Fatalf("trust with --at / said %q", said)
+	}
+	// A prefix is a location with no *, and none is no prefix. A client is
+	// given no --at.
+	for _, bad := range []string{"none", "/netops/*", "netops"} {
+		if status, _, said := ctl.run("", "controller", "enrol", "tools", "--at", bad); status != 2 || !strings.Contains(said, "--at") {
+			t.Fatalf("enrol --at %s: %d %s", bad, status, said)
+		}
+		if status, _, _ := tools.run("", "runner", "trust", "ctl", "--at", bad); status != 2 {
+			t.Fatalf("trust --at %s ended %d", bad, status)
+		}
+	}
+	parties("at: /\n")
+	_, clientCard, _ := tools.run("", "client", "card", "--name", "someone")
+	if status, _, said := ctl.run(clientCard, "controller", "enrol", "-", "--at", "/x"); status != 2 || !strings.Contains(said, "--at") {
+		t.Fatalf("a client enrolled with --at: %d %s", status, said)
+	}
+}
+
 func TestManualAndHelp(t *testing.T) {
 	t.Setenv("PATH", t.TempDir())
 	m := machine{t, t.TempDir()}

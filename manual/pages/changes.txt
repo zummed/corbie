@@ -32,6 +32,13 @@ These behave differently.
 - A program using the client package is given the error by `Watch` when a
   look fails after the first listing. Before, `Watch` went on.
 
+These are new.
+
+- `corbie controller enrol` and `corbie runner trust` take `--at <prefix>`
+  for a runner, once for each prefix. The runner is sent, and takes, only the
+  jobs of runs at or under its prefixes. A runner enrolled with no `--at` is
+  sent the jobs of every tree, as before.
+
 These are new, and make a definition shorter.
 
 - A flow of one stage with no `output:` gives that stage's output, so

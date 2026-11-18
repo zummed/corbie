@@ -1,11 +1,13 @@
 package client_test
 
 import (
+	"context"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/zummed/corbie/client"
+	"github.com/zummed/corbie/identity"
 	"github.com/zummed/corbie/store"
 )
 
@@ -121,8 +123,56 @@ func TestTagsNoRunnerHas(t *testing.T) {
 		stages:
 		  it: { job: { script: ./add.js, input: { n: 1 }, tags: [gpu, eu] } }
 	`, scripts, nil)
-	if r.Status != "failed" || !strings.Contains(r.Error, "no runner has the tags the job names: gpu, eu") {
+	if r.Status != "failed" || !strings.Contains(r.Error, "has the tags the job names: gpu, eu") {
 		t.Fatalf("the run ended %s: %s", r.Status, r.Error)
+	}
+}
+
+// A child started by machine: and a machine made while running are at the
+// location of the run that starts them: their jobs go to a runner whose
+// prefix holds it, and fail where none does.
+func Test_ctl_child_and_made_machine_count_at_their_parents_location(t *testing.T) {
+	l := local(t)
+	ctl := l.Controller
+	if err := identity.WriteTrust(ctx, ctl.Store, ctl.ID, identity.Trust{Card: l.Runner.ID.Card, Prefixes: []string{"/team"}}); err != nil {
+		t.Fatal(err)
+	}
+	src := `
+		flow: maker
+		input: { text: any }
+		stages:
+		  make: { job: { script: ./make.js, input: { text: "${input.text}" } } }
+		  made: { job: { machine: "${stages.make.output}" } }
+		  child:
+		    job:
+		      machine:
+		        flow: child
+		        stages:
+		          a: { job: { script: ./add.js, input: { n: 1 } } }
+		        output: ${stages.a.output.n}
+		output: { made: "${stages.made.output}", child: "${stages.child.output}" }
+	`
+	files := map[string]string{"add.js": scripts["add.js"], "make.js": makes["make.js"]}
+	input := map[string]any{"text": "flow: m\nstages:\n  a: { job: { script: ./step.js, input: 3 } }\noutput: ${stages.a.output}\n"}
+	at := func(prefix string) *client.Run {
+		d := draft(t, src, files)
+		id, err := l.RunTree(ctx, &client.Tree{Prefix: prefix, Machines: []*client.Machine{{Path: "maker.yaml", Location: prefix + "/maker", Draft: d}}},
+			client.Start{Input: input})
+		if err != nil {
+			t.Fatal(err)
+		}
+		waitCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
+		defer cancel()
+		r, err := l.Wait(waitCtx, id, 50*time.Millisecond)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return r
+	}
+	r := at("/team")
+	check(t, r.Status, r.Output, "done", `{"child": 2, "made": 3}`)
+	if r = at("/other"); r.Status != "failed" || !strings.Contains(r.Error, "no runner is sent the jobs of runs at /other/maker") {
+		t.Fatalf("the run at /other ended %s: %s", r.Status, r.Error)
 	}
 }
 

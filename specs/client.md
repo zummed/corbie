@@ -43,7 +43,7 @@ corbie run cancel <id>                  cancel a run in one of this client's tre
 corbie run send <id> <event> [data]     send an event to a run
 corbie run reply <id> <ticket> [value]  answer a ticket that a run waits on
 
-corbie controller …                     enrol and remove runners and clients, set ceilings and tags, manage secrets and values, cancel any run
+corbie controller …                     enrol and remove runners and clients, set ceilings, tags and prefixes, manage secrets and values, cancel any run
 corbie runner …                         print a card, trust a controller
 corbie client …                         print a card, trust a controller
 

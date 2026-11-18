@@ -279,7 +279,7 @@ func cmdStart(e *Env, args []string) error {
 							}
 						}()
 					}
-					serves = append(serves, runner.Served{Controller: t.Card, Ceiling: t.Ceiling, Store: s})
+					serves = append(serves, runner.Served{Controller: t.Card, Ceiling: t.Ceiling, Prefixes: t.Prefixes, Store: s})
 				}
 				return serves, nil
 			}

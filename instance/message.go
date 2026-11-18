@@ -155,6 +155,9 @@ type Job struct {
 	Number int `json:"number"`
 	// Request names what asked: every attempt at the same job has the same.
 	Request string `json:"request"`
+	// Location is the location of the job's run, as the controller gives
+	// it: the runner takes only the jobs of runs at or under its prefixes.
+	Location string `json:"location,omitzero"`
 
 	Script blob.Ref `json:"script"`
 	// Path is the script's path as the definition names it, and none for

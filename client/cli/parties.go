@@ -64,6 +64,33 @@ func has(old *identity.Trust, card identity.Card) permission.Layer {
 	return permission.Layer{}
 }
 
+// prefixes reads the --at flags given for a runner: the prefixes of the
+// runs whose jobs it is sent, or takes. With none given those on record
+// stay, and "/" is every tree, which is kept as no prefix.
+func prefixes(given []string, had []string) ([]string, error) {
+	if len(given) == 0 {
+		return had, nil
+	}
+	for _, at := range given {
+		if err := store.CheckLocation(at); err != nil {
+			return nil, Mistake("--at %q: a prefix is a location: it starts with /, as /netops/tools, and no part of it is empty, ., .. or +, or holds # or *", at)
+		}
+	}
+	if slices.Contains(given, "/") {
+		return nil, nil
+	}
+	return given, nil
+}
+
+// shownPrefixes gives a runner's prefixes as they are shown: "/" where
+// none is kept.
+func shownPrefixes(p []string) []string {
+	if len(p) == 0 {
+		return []string{"/"}
+	}
+	return p
+}
+
 func hostName() string {
 	name, err := os.Hostname()
 	if err != nil || identity.CheckName(name) != nil {
@@ -429,12 +456,13 @@ func (e *Env) read(rest []string, what string) ([]string, error) {
 
 func cmdEnrol(e *Env, args []string) error {
 	var ceilingText, tags string
-	var allow, deny list
+	var allow, deny, at list
 	var replace bool
 	e.Flags.StringVar(&ceilingText, "ceiling", "", "")
 	e.Flags.Var(&allow, "allow", "")
 	e.Flags.Var(&deny, "deny", "")
 	e.Flags.StringVar(&tags, "tags", "", "")
+	e.Flags.Var(&at, "at", "")
 	e.Flags.BoolVar(&replace, "replace", false, "")
 	rest, err := e.Parse(args)
 	if err != nil {
@@ -492,14 +520,21 @@ func cmdEnrol(e *Env, args []string) error {
 	// With no --tags the tags on record stay, and --tags none takes them
 	// away.
 	limited := ceilingText != "" || len(allow)+len(deny) > 0
-	if tags == "" && old != nil && old.Card.Same(card) {
-		trust.Tags = old.Tags
+	var had []string
+	if old != nil && old.Card.Same(card) {
+		had = old.Prefixes
+		if tags == "" {
+			trust.Tags = old.Tags
+		}
 	}
 	if card.Kind == identity.Runner && limited {
 		return Mistake("a runner is given tags; its ceiling is the runner's own to set, with corbie runner trust")
 	}
-	if card.Kind == identity.Client && tags != "" {
-		return Mistake("a client is given a ceiling; tags are for runners")
+	if card.Kind == identity.Client && (tags != "" || len(at) > 0) {
+		return Mistake("a client is given a ceiling, with at: entries for its prefixes; tags and --at are for runners")
+	}
+	if trust.Prefixes, err = prefixes(at, had); err != nil {
+		return err
 	}
 	// The card and the address are printed only after the trust is
 	// written.
@@ -520,6 +555,9 @@ func cmdEnrol(e *Env, args []string) error {
 		}
 	}
 	e.Say("enrolled the %s %s  (%s)", card.Kind, card.Name, card.Fingerprint())
+	if card.Kind == identity.Runner {
+		e.Say("it is sent the jobs of runs at or under %s, with the tags: %s", strings.Join(shownPrefixes(trust.Prefixes), ", "), cmp.Or(strings.Join(trust.Tags, ","), none))
+	}
 	e.Say("this controller is %s  (%s)", ctl.Name, ctl.Fingerprint())
 	return e.Print(map[string]string{"card": ctl.Card.String(), "store": address}, func() string {
 		return ctl.Card.String() + "\n" + address + "\n"
@@ -531,13 +569,14 @@ func cmdEnrol(e *Env, args []string) error {
 func cmdTrust(kind identity.Kind) func(e *Env, args []string) error {
 	return func(e *Env, args []string) error {
 		var ceilingText string
-		var allow, deny list
+		var allow, deny, at list
 		var replace bool
 		if kind == identity.Runner {
-			// A runner gives a ceiling; a client gives none.
+			// A runner gives a ceiling and prefixes; a client gives neither.
 			e.Flags.StringVar(&ceilingText, "ceiling", "", "")
 			e.Flags.Var(&allow, "allow", "")
 			e.Flags.Var(&deny, "deny", "")
+			e.Flags.Var(&at, "at", "")
 		}
 		e.Flags.BoolVar(&replace, "replace", false, "")
 		rest, err := e.Parse(args)
@@ -592,6 +631,13 @@ func cmdTrust(kind identity.Kind) func(e *Env, args []string) error {
 		if trust.Ceiling, err = ceiling(ceilingText, allow, deny, has(old, card), permission.CheckList); err != nil {
 			return err
 		}
+		var had []string
+		if old != nil && old.Card.Same(card) {
+			had = old.Prefixes
+		}
+		if trust.Prefixes, err = prefixes(at, had); err != nil {
+			return err
+		}
 		trust.Store = address
 		if address == "" && old != nil {
 			trust.Store = old.Store
@@ -603,6 +649,9 @@ func cmdTrust(kind identity.Kind) func(e *Env, args []string) error {
 			return err
 		}
 		e.Say("this %s now trusts the controller %s  (%s)", kind, card.Name, card.Fingerprint())
+		if kind == identity.Runner {
+			e.Say("it takes the jobs of runs at or under %s", strings.Join(shownPrefixes(trust.Prefixes), ", "))
+		}
 		return nil
 	}
 }
@@ -677,11 +726,16 @@ func cmdParties(e *Env, args []string) error {
 		Ceiling     []string `json:"ceiling,omitzero"`
 		Deny        []string `json:"deny,omitzero"`
 		Tags        []string `json:"tags,omitzero"`
+		At          []string `json:"at,omitzero"`
 		Removed     bool     `json:"removed,omitzero"`
 	}
 	rows := []row{}
 	for _, t := range all {
-		rows = append(rows, row{t.Card.Name, string(t.Card.Kind), t.Card.Fingerprint(), t.Ceiling.Allow, t.Ceiling.Deny, t.Tags, t.Removed})
+		var at []string
+		if t.Card.Kind == identity.Runner {
+			at = shownPrefixes(t.Prefixes)
+		}
+		rows = append(rows, row{t.Card.Name, string(t.Card.Kind), t.Card.Fingerprint(), t.Ceiling.Allow, t.Ceiling.Deny, t.Tags, at, t.Removed})
 	}
 	return e.Print(rows, func() string {
 		var b strings.Builder
@@ -695,6 +749,9 @@ func cmdParties(e *Env, args []string) error {
 			}
 			if len(r.Tags) > 0 {
 				fmt.Fprintf(&b, "  tags: %s", strings.Join(r.Tags, ","))
+			}
+			if len(r.At) > 0 {
+				fmt.Fprintf(&b, "  at: %s", strings.Join(r.At, ","))
 			}
 			if r.Removed {
 				b.WriteString("  removed")

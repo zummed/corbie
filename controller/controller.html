@@ -3,7 +3,7 @@
   {{- if eq .Kind "runner"}}<td>{{join .At ", "}}</td><td>{{if .Tags}}{{join .Tags ", "}}{{else}}<span class="dim">—</span>{{end}}</td>
   {{- else}}<td class="cut" title="{{join .Ceiling ", "}}{{if .Deny}}; deny {{join .Deny ", "}}{{end}}">{{if .Ceiling}}{{join .Ceiling ", "}}{{else}}<span class="dim">nothing</span>{{end}}{{if .Deny}} <span class="dim">deny {{join .Deny ", "}}</span>{{end}}</td>{{end}}
   <td class="row-acts">{{if .Removed}}<span class="dim">removed</span> <a href="#enrol-{{.Kind}}">Enrol</a>
-  {{- else if eq .Kind "runner"}}<details><summary class="btn sm">Tags</summary><form data-act method="post" action="/controller/tags"><input type="hidden" name="name" value="{{.Name}}"><input name="tags" value="{{join .Tags ","}}" size="14" aria-label="Its tags"><button class="btn sm" data-cmd="corbie controller enrol {{.Name}} --tags &lt;list&gt;">Set</button><span class="said"></span></form></details><form data-act method="post" action="/controller/remove"><input type="hidden" name="name" value="{{.Name}}"><button class="btn sm stop" data-cmd="corbie controller remove {{.Name}}">Remove</button><span class="said"></span></form>
+  {{- else if eq .Kind "runner"}}<details><summary class="btn sm">Tags</summary><form data-act method="post" action="/controller/tags"><input type="hidden" name="name" value="{{.Name}}"><input name="tags" value="{{join .Tags ","}}" size="14" aria-label="Its tags"><button class="btn sm" data-cmd="corbie controller enrol {{.Name}} --tags &lt;list&gt;">Set</button><span class="said"></span></form></details><details><summary class="btn sm">Prefixes</summary><form data-act method="post" action="/controller/prefixes"><input type="hidden" name="name" value="{{.Name}}"><input name="prefixes" value="{{join .At ","}}" size="14" aria-label="Its prefixes" required><button class="btn sm" data-cmd="corbie controller enrol {{.Name}} --at &lt;prefix&gt;">Set</button><span class="said"></span></form></details><form data-act method="post" action="/controller/remove"><input type="hidden" name="name" value="{{.Name}}"><button class="btn sm stop" data-cmd="corbie controller remove {{.Name}}">Remove</button><span class="said"></span></form>
   {{- else}}<details><summary class="btn sm">Ceiling</summary><form data-act method="post" action="/controller/ceiling"><input type="hidden" name="name" value="{{.Name}}"><input name="ceiling" value="{{join .Ceiling ","}}" size="18" aria-label="Its ceiling"><button class="btn sm" data-cmd="corbie controller enrol {{.Name}} --ceiling &lt;list&gt;">Set</button><span class="said"></span></form></details><form data-act method="post" action="/controller/remove"><input type="hidden" name="name" value="{{.Name}}"><button class="btn sm stop" data-cmd="corbie controller remove {{.Name}}">Remove</button><span class="said"></span></form>{{end}}</td>
 </tr>{{end}}
 
@@ -15,8 +15,9 @@
     <form class="enrol" id="enrol-runner" data-act="reset" method="post" action="/controller/enrol">
       <textarea name="card" rows="2" placeholder="a runner's card" aria-label="A runner's card" required></textarea>
       <input name="tags" placeholder="tags, such as gpu,big" aria-label="Its tags">
+      <input name="prefixes" placeholder="prefixes, such as /home,/netops" aria-label="Its prefixes">
       <label><input type="checkbox" name="replace" value="1"> Replace</label>
-      <button class="btn go" data-cmd="corbie controller enrol &lt;card&gt; --tags &lt;list&gt;">Enrol</button>
+      <button class="btn go" data-cmd="corbie controller enrol &lt;card&gt; --tags &lt;list&gt; --at &lt;prefix&gt;">Enrol</button>
       <pre class="said"></pre>
     </form>
   </div>

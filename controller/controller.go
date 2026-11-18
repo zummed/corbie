@@ -236,6 +236,14 @@ func (h *handler) act(w http.ResponseWriter, r *http.Request) {
 	list := func(name string) string {
 		return strings.Join(strings.Fields(strings.ReplaceAll(r.FormValue(name), ",", " ")), ",")
 	}
+	// A runner's prefixes go to the command as --at, once for each.
+	prefixes := func() []string {
+		var flags []string
+		for _, p := range strings.Fields(strings.ReplaceAll(r.FormValue("prefixes"), ",", " ")) {
+			flags = append(flags, "--at="+p)
+		}
+		return flags
+	}
 	at := "--at=" + cmp.Or(strings.TrimSpace(r.FormValue("at")), "/")
 	var call page.Call
 	switch r.PathValue("act") {
@@ -244,13 +252,14 @@ func (h *handler) act(w http.ResponseWriter, r *http.Request) {
 		if tags := list("tags"); tags != "" {
 			call.Flags = append(call.Flags, "--tags="+tags)
 		}
+		call.Flags = append(call.Flags, prefixes()...)
 		if ceiling := list("ceiling"); ceiling != "" {
 			call.Flags = append(call.Flags, "--ceiling="+ceiling)
 		}
 		if r.FormValue("replace") != "" {
 			call.Flags = append(call.Flags, "--replace")
 		}
-	case "tags", "ceiling":
+	case "tags", "prefixes", "ceiling":
 		name := r.FormValue("name")
 		v, err := h.read(r.Context())
 		if err != nil {
@@ -263,6 +272,9 @@ func (h *handler) act(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		call = page.Call{Words: []string{"controller", "enrol"}, Args: []string{name}, Flags: []string{"--" + r.PathValue("act") + "=" + list(r.PathValue("act"))}}
+		if r.PathValue("act") == "prefixes" {
+			call.Flags = prefixes()
+		}
 	case "remove":
 		call = page.Call{Words: []string{"controller", "remove"}, Args: []string{r.FormValue("name")}}
 	case "secret-set":

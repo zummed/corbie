@@ -4,11 +4,15 @@
 
 <p align="center"><a href="https://zummed.github.io/corbie/"><b>Read the manual</b></a></p>
 
+> [!WARNING]
+> Corbie is before version 1, and most releases break something. A release can change definitions, scripts, commands and the store's files, with no migration: a definition written the old way is refused, and a store made by an older Corbie is made again. `corbie manual changes` lists what to change after each release.
+
 <br>
 
 <h2 align="center">Composable machines</h2>
 
-<p align="center"><img src=".github/readme/flow.svg" width="270" alt="Flow: Streaming, parallel data processing. Fetch sends each item on as it has it, sum up and translate take each one at the same time, and send follows."><img src=".github/readme/statechart.svg" width="270" alt="Statechart: React, sleep, loop and run work in parallel. A draft waits for an answer, goes round again on a no, is done on a yes, and gives up after two days."><img src=".github/readme/agent.svg" width="270" alt="Agent: An AI choosing its tools, with limits and a human in the loop. An AI model decides which tool to use, here search and then send mail."></p>
+<p align="center"><img src=".github/readme/flow.svg" width="270" alt="Flow: Streaming, parallel data processing. Fetch sends each item on as it has it, sum up and translate take each one at the same time, and send follows."><img src=".github/readme/statechart.svg" width="270" alt="Statechart: React, sleep, loop and run work in parallel. A draft waits for an answer, goes round again on a no, is done on a yes, and gives up after two days."></p>
+<p align="center"><img src=".github/readme/agent.svg" width="270" alt="Agent: An AI choosing its tools, with limits and a human in the loop. An AI model decides which tool to use, here search and then send mail."><img src=".github/readme/decision.svg" width="270" alt="Decision: An AI answering fixed questions with a probability for each. A ticket goes to the model, which answers three questions at once: urgent 0.91, refund 0.34, angry 0.07."></p>
 <p align="center">Mix predictable workflows with dynamic agents.</p>
 
 <br>

@@ -1,0 +1,39 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 316 270" width="316" height="270" role="img" aria-labelledby="t d">
+  <title id="t">Decision</title>
+  <desc id="d">Decision: An AI answering fixed questions with a probability for each. A ticket goes to the model, which answers three questions at once: urgent 0.91, refund 0.34, angry 0.07.</desc>
+  <defs>
+    <linearGradient id="edge" gradientUnits="userSpaceOnUse" x1="8" y1="56" x2="308" y2="212"><stop offset="0" stop-color="#5FC0CF"/><stop offset=".5" stop-color="#84ACE2"/><stop offset="1" stop-color="#BBA0E6"/></linearGradient>
+    <radialGradient id="g1" cx="0.5" cy="0.5" r=".42"><stop offset="0" stop-color="#5FC0CF" stop-opacity=".22"/><stop offset="1" stop-color="#5FC0CF" stop-opacity="0"/></radialGradient>
+    <pattern id="grain" width="9" height="9" patternUnits="userSpaceOnUse" patternTransform="rotate(28)"><line x1="0" y1="0" x2="0" y2="9" stroke="#fff" stroke-opacity=".03"/></pattern>
+    <linearGradient id="name" gradientUnits="userSpaceOnUse" x1="97" y1="0" x2="219" y2="0"><stop offset="0" stop-color="#3AA9BC"/><stop offset=".55" stop-color="#6593E0"/><stop offset="1" stop-color="#A283E2"/></linearGradient>
+    <marker id="ah3" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6.5" markerHeight="6.5" orient="auto"><path d="M0 0L10 5L0 10z" fill="#A3AFB2"/></marker>
+    <clipPath id="win"><rect x="8" y="56" width="300" height="156"/></clipPath>
+  </defs>
+  <style>
+    text { font-family: -apple-system, "Segoe UI", "Helvetica Neue", Arial, sans-serif; }
+    .th { font-family: Georgia, "Times New Roman", serif; }
+    .tm { font-family: ui-monospace, "SF Mono", Menlo, Consolas, "DejaVu Sans Mono", monospace; }
+  </style>
+  <text x="158.0" y="43" text-anchor="middle" class="th" style="font-size:26px;font-weight:700;letter-spacing:-.5px;fill:url(#name)">Decision</text>
+  <rect x="8" y="56" width="300" height="156" fill="#090C11"/><rect x="8" y="56" width="300" height="156" fill="url(#g1)"/><rect x="8" y="56" width="300" height="156" fill="url(#grain)"/>
+  <g clip-path="url(#win)">
+<path d="M80 134H100" fill="none" stroke="#A3AFB2" stroke-width="1.3" stroke-linecap="round" marker-end="url(#ah3)"/>
+<path d="M168 134C182 134 180 96 192 96" fill="none" stroke="#A3AFB2" stroke-width="1.3" stroke-linecap="round"/>
+<path d="M168 134H192" fill="none" stroke="#A3AFB2" stroke-width="1.3" stroke-linecap="round"/>
+<path d="M168 134C182 134 180 172 192 172" fill="none" stroke="#A3AFB2" stroke-width="1.3" stroke-linecap="round"/>
+<rect x="18" y="119" width="62" height="30" rx="3" fill="#090C11" stroke="#EEF2EF" stroke-width="1.5"/><text x="49.0" y="138.5" class="tm" text-anchor="middle" style="font-size:12.5px;fill:#EEF2EF">ticket</text>
+<rect x="104" y="119" width="64" height="30" rx="15" fill="#090C11" stroke="#EEF2EF" stroke-width="1.5"><animate attributeName="stroke" dur="9s" repeatCount="indefinite" values="#EEF2EF;#EEF2EF;#5FC0CF;#5FC0CF;#EEF2EF;#EEF2EF" keyTimes="0;0.1222;0.1389;0.3;0.3278;1"/><animate attributeName="fill" dur="9s" repeatCount="indefinite" values="#090C11;#090C11;#143740;#143740;#090C11;#090C11" keyTimes="0;0.1222;0.1389;0.3;0.3278;1"/></rect><text x="136.0" y="138.5" class="tm" text-anchor="middle" style="font-size:12.5px;fill:#EEF2EF">decide</text>
+<text x="196" y="90" class="tm" style="font-size:11.5px;fill:#EEF2EF">urgent</text><text x="296" y="90" class="tm" text-anchor="end" style="font-size:11.5px;fill:#96C781" opacity="0">0.91<animate attributeName="opacity" dur="9s" repeatCount="indefinite" values="0;0;1;1;0;0" keyTimes="0;0.48;0.5;0.88;0.9;1"/></text>
+<rect x="196" y="95" width="100" height="5" rx="2.5" fill="#1E2630"/><rect x="196" y="95" width="0" height="5" rx="2.5" fill="#96C781"><animate attributeName="width" dur="9s" repeatCount="indefinite" values="0;0;91;91;0;0" keyTimes="0;0.36;0.5;0.88;0.92;1"/></rect>
+<text x="196" y="128" class="tm" style="font-size:11.5px;fill:#EEF2EF">refund</text><text x="296" y="128" class="tm" text-anchor="end" style="font-size:11.5px;fill:#5FC0CF" opacity="0">0.34<animate attributeName="opacity" dur="9s" repeatCount="indefinite" values="0;0;1;1;0;0" keyTimes="0;0.48;0.5;0.88;0.9;1"/></text>
+<rect x="196" y="133" width="100" height="5" rx="2.5" fill="#1E2630"/><rect x="196" y="133" width="0" height="5" rx="2.5" fill="#5FC0CF"><animate attributeName="width" dur="9s" repeatCount="indefinite" values="0;0;34;34;0;0" keyTimes="0;0.36;0.5;0.88;0.92;1"/></rect>
+<text x="196" y="166" class="tm" style="font-size:11.5px;fill:#EEF2EF">angry</text><text x="296" y="166" class="tm" text-anchor="end" style="font-size:11.5px;fill:#5FC0CF" opacity="0">0.07<animate attributeName="opacity" dur="9s" repeatCount="indefinite" values="0;0;1;1;0;0" keyTimes="0;0.48;0.5;0.88;0.9;1"/></text>
+<rect x="196" y="171" width="100" height="5" rx="2.5" fill="#1E2630"/><rect x="196" y="171" width="0" height="5" rx="2.5" fill="#5FC0CF"><animate attributeName="width" dur="9s" repeatCount="indefinite" values="0;0;7;7;0;0" keyTimes="0;0.36;0.5;0.88;0.92;1"/></rect>
+<circle r="4.5" fill="#090C11" stroke="#5FC0CF" stroke-width="2.6" opacity="0"><animateMotion dur="9s" repeatCount="indefinite" calcMode="spline" keyPoints="0;0;1;1" keyTimes="0;0.0667;0.1222;1" keySplines="0 0 1 1;.4 0 .2 1;0 0 1 1" path="M49 134H136"/><animate attributeName="opacity" dur="9s" repeatCount="indefinite" values="0;1;0" keyTimes="0;0.0667;0.1222" calcMode="discrete"/></circle>
+<circle r="4.5" fill="#090C11" stroke="#96C781" stroke-width="2.6" opacity="0"><animateMotion dur="9s" repeatCount="indefinite" calcMode="spline" keyPoints="0;0;1;1" keyTimes="0;0.3;0.36;1" keySplines="0 0 1 1;.4 0 .2 1;0 0 1 1" path="M168 134C182 134 180 96 192 96"/><animate attributeName="opacity" dur="9s" repeatCount="indefinite" values="0;1;0" keyTimes="0;0.3;0.36" calcMode="discrete"/></circle>
+<circle r="4.5" fill="#090C11" stroke="#5FC0CF" stroke-width="2.6" opacity="0"><animateMotion dur="9s" repeatCount="indefinite" calcMode="spline" keyPoints="0;0;1;1" keyTimes="0;0.3;0.36;1" keySplines="0 0 1 1;.4 0 .2 1;0 0 1 1" path="M168 134H192"/><animate attributeName="opacity" dur="9s" repeatCount="indefinite" values="0;1;0" keyTimes="0;0.3;0.36" calcMode="discrete"/></circle>
+<circle r="4.5" fill="#090C11" stroke="#5FC0CF" stroke-width="2.6" opacity="0"><animateMotion dur="9s" repeatCount="indefinite" calcMode="spline" keyPoints="0;0;1;1" keyTimes="0;0.3;0.36;1" keySplines="0 0 1 1;.4 0 .2 1;0 0 1 1" path="M168 134C182 134 180 172 192 172"/><animate attributeName="opacity" dur="9s" repeatCount="indefinite" values="0;1;0" keyTimes="0;0.3;0.36" calcMode="discrete"/></circle>
+  </g>
+  <rect x="8" y="56" width="300" height="156" fill="none" stroke="url(#edge)" stroke-width="1.2"/>
+  <text x="158.0" y="239" text-anchor="middle" style="font-size:16px;fill:#727E8A">An AI answering fixed questions</text><text x="158.0" y="259" text-anchor="middle" style="font-size:16px;fill:#727E8A">with a probability for each.</text>
+</svg>

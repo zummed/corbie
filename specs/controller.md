@@ -8,7 +8,7 @@ It brings nothing with it but its private key. Its list of trusted parties, its 
 
 Everything that makes a machine move arrives as a message in the controller's inbox or as a wake coming due.
 
-A message comes from a client submitting a tree, starting a run, cancelling one, sending an event, calling a location or answering a ticket; from a runner returning a job's result or passing on an emit the machine wants; or from the controller itself, which is how a child's start, a child's ending, events between a parent and a child, and sends and calls between runs travel. A wake is anything owed to time: a machine's timer, a machine's timeout, a job's result falling due, the next attempt at a job.
+A message comes from a client submitting a tree, starting a run, cancelling one, sending an event, calling a location, answering a ticket or setting, removing or listing its secrets and values; from a runner returning a job's result or passing on an emit the machine wants; or from the controller itself, which is how a child's start, a child's ending, events between a parent and a child, and sends and calls between runs travel. A wake is anything owed to time: a machine's timer, a machine's timeout, a job's result falling due, the next attempt at a job.
 
 The controller accepts a message only from a party it trusts, signed by that party and sealed to itself. A client may cancel only runs at its own trees' locations, and may answer any ticket it holds. It starts a run in another client's tree only with a call or a send: its start of a location in another client's tree is a call. A client's send or call is checked as a run's is (see Sending and calling). A result or an emit is accepted only for a job the instance is still waiting on, from the runner the job was sent to.
 
@@ -138,6 +138,14 @@ $ corbie run submit house --at /home
 5. The receipt names the directory that last submitted there, the values and secrets the files use that are not set at their locations or above, and the clients the files' `read:` lists that the controller does not trust.
 
 A submit changes no other tree. Only the tree's client cancels the runs at its locations, and it and the clients a file's `read:` lists read them. Another client starts a run there only with a call or a send (see Sending and calling).
+
+A client's set or remove of a secret or a value names a location. The controller takes it where the client could submit a tree at the location or above it, by the checks of steps 1 and 2, and keeps it as one the owner set (see secret.md). It refuses one where the client may not set before it reads what is set there, so the refusal says nothing of another client's tree.
+
+1. The controller writes the receipt, sealed to the client and to itself.
+2. It carries out what a taken receipt says: it sets the secret or the value, or removes it.
+3. It deletes the message.
+
+The message taken again after a stop is answered by the receipt already written, and a taken set or remove is carried out again. A list is answered in its receipt.
 
 ## Starting runs
 

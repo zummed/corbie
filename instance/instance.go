@@ -393,6 +393,17 @@ type Receipt struct {
 	Acted *bool `json:"acted,omitzero"`
 	// Run is, for an event sent to an address, the run that took it.
 	Run string `json:"run,omitzero"`
+	// Listed is, for a list of secrets or values, each name set at a
+	// location the client may set at; a secret's with no value.
+	Listed []Listed `json:"listed,omitzero"`
+}
+
+// Listed is one secret or value a list gives: its name, the location it is
+// set at, and a plain value's value.
+type Listed struct {
+	Name  string `json:"name"`
+	At    string `json:"at"`
+	Value string `json:"value,omitzero"`
 }
 
 // Submitted is what a submit did: what became of each location of the

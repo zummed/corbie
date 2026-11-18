@@ -17,7 +17,7 @@ There are eight kinds.
 | `env` | reading a variable of the runner's | a name |
 | `secret` | sending a secret somewhere, and what that destination needs | a secret's name and a destination |
 | `send` | sending to or calling a location | a location |
-| `at` | submitting a tree and sending within it, in a client's ceiling only | a prefix, starting with `/` |
+| `at` | submitting a tree, sending within it and setting secrets and values at or under it, in a client's ceiling only | a prefix, starting with `/` |
 
 A scope is one of four things, matched the same way wherever it appears: a path, a host, a name, or a location. Any of them may use `*` for a part. A host with no port means every port, a host of `*` means every host, and a host written as an address, `10.0.0.*`, matches no name. A path is checked where it really points, after links are followed.
 
@@ -229,6 +229,7 @@ A script cannot reach outside itself except through the kinds above, and those a
   14 levels of files that each name the next twice   3.9 seconds   230 MiB, twice that with each level
 ```
 
+- Two clients whose ceilings match one prefix each set secrets and values there while it holds no tree. What one set stays when the other submits a tree there, and that tree's runs use it. The controller's owner gives each client its own prefix.
 - Whoever holds a gateway's token calls every location that accepts the gateway's client, with any input.
 - A client browsing the store sees that runs exist, their heads, and how many entries each record has, with their sizes and times. It opens only what is sealed to it.
 - A client a file's `read:` lists reads the tickets of the runs there, and so can answer them, as any client that holds a ticket can.

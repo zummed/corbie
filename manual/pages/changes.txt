@@ -34,9 +34,8 @@ These behave differently.
 - An agent's `conversation` names the toolkits open under `opened`. An agent
   given it opens each of them whose `when:` holds and that has no
   `approve: true`, and the model is shown its tools from the first turn.
-  Before, it opened none. A
-  `system:` text that tells the model to open a toolkit again in each run
-  can go.
+  Before, it opened none. A `system:` text that tells the model to open a
+  toolkit again in each run can go.
 
 These are new.
 
@@ -44,6 +43,11 @@ These are new.
   for a runner, once for each prefix. The runner is sent, and takes, only the
   jobs of runs at or under its prefixes. A runner enrolled with no `--at` is
   sent the jobs of every tree, as before.
+- `corbie client secret set|remove|list` and `corbie client value
+  set|remove|list` set a client's secrets and values in its own trees, by
+  `--at`. Before, only the controller's owner set them.
+- `usage` from `llm.chat`, and an agent's `tokens`, hold `cached`: how many
+  of `input` the model's service read from its cache.
 
 These are new, and make a definition shorter.
 

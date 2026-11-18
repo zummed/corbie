@@ -196,7 +196,7 @@ agent or decision, and each of its jobs is a script, a machine, or a send.
   run          submit, start, ls, show, cancel, send, reply
   controller   card, enrol, remove, parties, secret, value, policy, cancel
   runner       card, trust, remove
-  client       card, trust, remove
+  client       card, trust, remove, secret, value
   manual       print a page of the manual, or list the pages; web
   mcp          serve the manual and the commands to a model, as an MCP server
   version      print the version, the machine types and the plugins

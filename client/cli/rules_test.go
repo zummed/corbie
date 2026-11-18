@@ -457,6 +457,14 @@ func Test_client_secret_value_never_on_command_line(t *testing.T) {
 	refused("hunter2-on-standard-input\n", "give one", append(set, "CORBIE_TEST_TOKEN", "-", "--env")...)
 	refused("", "never given on the command line", append(set, "CORBIE_TEST_TOKEN=hunter2-on-the-line")...)
 	refused("", "never given on the command line", append(set, "CORBIE_TEST_TOKEN", "hunter2-on-the-line")...)
+	// A client's set reads its value the same way, and names its location.
+	mine := []string{"client", "secret", "set", "--at", "/mine"}
+	refused("", `the environment variable "CORBIE_TEST_TOKEN" is not set`, append(mine, "CORBIE_TEST_TOKEN", "--env")...)
+	refused("hunter2-on-standard-input\n", `the secret "CORBIE_TEST_TOKEN" is typed at a terminal, and there is none`, append(mine, "CORBIE_TEST_TOKEN")...)
+	refused("", `standard input gave no value for the secret "CORBIE_TEST_TOKEN"`, append(mine, "CORBIE_TEST_TOKEN", "-")...)
+	refused("", "never given on the command line", append(mine, "CORBIE_TEST_TOKEN=hunter2-on-the-line")...)
+	refused("", "never given on the command line", append(mine, "CORBIE_TEST_TOKEN", "hunter2-on-the-line")...)
+	refused("hunter2-on-standard-input\n", "--at names the location", "client", "secret", "set", "CORBIE_TEST_TOKEN", "-")
 	t.Setenv("CORBIE_TEST_TOKEN", "")
 	refused("", `the environment variable "CORBIE_TEST_TOKEN" is empty`, append(test, "--secret-env", "CORBIE_TEST_TOKEN")...)
 	refused("", `the environment variable "CORBIE_TEST_TOKEN" is empty`, append(set, "CORBIE_TEST_TOKEN", "--env")...)
@@ -489,6 +497,11 @@ func Test_client_secret_value_never_on_command_line(t *testing.T) {
 	m.ok("", "controller", "secret", "remove", "CORBIE_TEST_OTHER", "--at", "/home/devices")
 	if listed := m.ok("", "controller", "secret", "list"); listed != "CORBIE_TEST_OTHER  /\nCORBIE_TEST_TOKEN  /\n" {
 		t.Errorf("after a remove the controller's secrets are listed as %q", listed)
+	}
+	m.staying("start", "controller", "--interval", "20ms")
+	m.ok("hunter2-of-the-client\n", append(mine, "CORBIE_TEST_MINE", "-")...)
+	if listed := m.ok("", "client", "secret", "list"); listed != "CORBIE_TEST_MINE  /mine\n" {
+		t.Errorf("the client's secrets are listed as %q", listed)
 	}
 	for _, name := range stored(t, storeDir) {
 		if value, _ := os.ReadFile(name); strings.Contains(string(value), "hunter2") {

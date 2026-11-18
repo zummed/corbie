@@ -39,6 +39,9 @@ The detailed rules behind the [Secrets overview](../secret.md). Requirements are
 **R-sec-51** A job that names a value not set at its run's location or above fails before anything is sent, naming the value and the location.
 *Accept:* a job allows `net:${values.HUB}` in a run at `/home/devices/boiler`, and `HUB` is set nowhere. The job fails with an error naming `HUB` and `/home/devices/boiler`, and no runner's inbox ever holds it.
 
+**R-sec-64** A client sets, removes and lists secrets and values with `corbie client secret set|remove|list` and `corbie client value set|remove|list`, always naming the location. The controller takes a set or a remove only where the client could submit a tree at the location or above it, by the check a submit is given (R-ctl-108), and keeps it as it keeps the owner's: at the same place, sealed to itself, found by the same lookup, with nothing recording who set it. A later set at the same location and name replaces an earlier one, whoever set either. A remove fails when the name is not set there. The receipt says taken, or the refusal and its fix, and holds no secret's value. The client's list gives each name and location at or under where it may set, and each value's value; the owner's list gives every one.
+*Accept:* `Test_sec_a_client_sets_at_its_own_prefix` and `Test_sec_a_clients_secret_in_no_receipt`. A client with `at:/work` owns the tree `/work` and sets `K` at `/work` and at `/work/m`, the second over the owner's: a run at `/work/m` uses the client's at `/work/m`, one at `/work/other` the client's at `/work`, and one at `/home/m` the owner's at `/`. Sets at `/`, in another client's tree and at a prefix its ceiling does not match are refused, naming `/`, the tree's client and the line `at:<prefix>`. Its list gives `K` at `/work` and `/work/m` and no value; the owner's list gives every `K`.
+
 ## Binding
 
 **R-sec-21** A secret's entry says where the secret may go, and the destination is written as another permission: `secret:NAME@net:host` lets it go into a connection to that host, `secret:NAME@exec:program` to that program, `secret:NAME@fs.write:path` into that file.
@@ -131,6 +134,6 @@ The detailed rules behind the [Secrets overview](../secret.md). Requirements are
 - **Permissions** supply the `secret` kind and how its scope is matched (R-perm-09), the rule for a secret's name (C-sec-04), the layers a value must pass, the check at the moment of acting, and the refusal.
 - **Plugins** get a value only with a way out. The `secrets` plugin makes handles, and masking is done at the line every plugin's results cross.
 - **Runner** holds a job's values for the life of the job, applies its own ceiling when the script acts, and has what its job's process prints masked before it is kept.
-- **Client**: the controller's commands set, list and remove secrets and values at a location, with `--at`.
+- **Client**: the controller's commands set, list and remove secrets and values at a location, with `--at`; a client's commands send the controller a set, a remove or a list (R-sec-64).
 - **Models** use a secret as a model service's key, bound to the service's connection (R-model-15).
 - **Manual** says where a secret's protection ends, as the overview does.

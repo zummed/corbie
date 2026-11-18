@@ -21,6 +21,7 @@ const (
 	KindJob    = "job"    // a job for a runner
 	KindSend   = "send"   // an event sent to an address, with what starts a run for it if there is one
 	KindNote   = "note"   // something to be written in a run's record
+	KindSet    = "set"    // set, remove or list a client's secrets or values
 )
 
 // A Message is what one party leaves in another's inbox. Kind says which
@@ -49,6 +50,7 @@ type Message struct {
 	Emit   *EmitNote      `json:"emit,omitzero"`
 	Job    *Job           `json:"job,omitzero"`
 	Note   string         `json:"note,omitzero"`
+	Set    *Setting       `json:"set,omitzero"`
 	// Cancel names, for a runner, the job that is cancelled.
 	Cancel string `json:"cancel,omitzero"`
 }
@@ -113,6 +115,26 @@ type SubmitFile struct {
 	Secrets    []string `json:"secrets,omitzero"`
 	Values     []string `json:"values,omitzero"`
 }
+
+// A Setting is a client's set, remove or list of the secrets or the plain
+// values at the locations it may set them at. Of is secret or value, and Act
+// set, remove or list. Value is what set sets.
+type Setting struct {
+	Of    string `json:"of"`
+	Act   string `json:"act"`
+	At    string `json:"at,omitzero"`
+	Name  string `json:"name,omitzero"`
+	Value string `json:"value,omitzero"`
+}
+
+// What a Setting is of, and what it does.
+const (
+	OfSecret  = "secret"
+	OfValue   = "value"
+	ActSet    = "set"
+	ActRemove = "remove"
+	ActList   = "list"
+)
 
 // An Answer answers a ticket: the ticket's value and the answer.
 type Answer struct {

@@ -200,6 +200,10 @@ The detailed rules behind the [Controller overview](../controller.md). What the 
 
 **C-ctl-79** The controller reads a submit's files, and every blob they name, only from that submit's own uploads, and keeps a tree's entry and each location's file sealed to itself. A file named elsewhere could be another client's upload, and a location's file holds the keys of its blobs. *Test:* `ctl_submit_reads_only_its_own_uploads`
 
+**C-ctl-100** A client's set, remove or list of secrets or values is answered by a receipt written before it is carried out, sealed to the client and to the controller; taken again, the message is answered by that receipt, and a taken set or remove is carried out again. Carried out first, a remove taken again after a stop would be refused as not set, and two copies taking it at once could answer it both ways. *Test:* `ctl_setting_taken_again_gives_the_same_answer`
+
+**C-ctl-101** A set or a remove where the client may not set is refused before the controller reads what is set there, and a list gives nothing set where the client may not set. A remove refused as not set would tell a client which names are set in another client's tree. *Test:* `ctl_setting_refused_learns_nothing`
+
 ## Starting runs
 
 **R-ctl-111** A submit starts a singleton when its location has no running run, and starts nothing for a singleton that runs. A run of a transient location is started by its tree's client naming the location; a start of a singleton or keyed location by a client, or of a location in another client's tree, is refused.
@@ -336,11 +340,11 @@ Uses:
 - **Machine**: gives a type's step the definition, the state before and the events, and takes back the new state and the requests; checks a definition with the same code as the client (R-mach-17); starts children, counts depth and jobs, makes tickets and takes their answers, and holds jobs for the ask, as the Machines rules state (R-mach-65 to R-mach-115); gives a run its location and values, and carries out sends and calls to addresses (R-mach-153 to R-mach-160).
 - **Blob**: copies what a child hands up into the parent's record, once and for every type (R-blob-23); copies a submit's uploads to their locations, a location's file into each run's record and a called run's output beside the call's result (R-blob-19), and a singleton's handed-over value into the run started in its place (R-ctl-133); reads the small blobs a step needs.
 - **Permission**: puts each layer that applies into a job by name, and reads the permissions a job declares against the `approve:` lists (R-perm-42); checks `send:` against a sender's layers and the receiver's `receive:` for a send or a call, and `at:` against the client's ceiling at a submit.
-- **Secret**: puts into a job the values of the secrets it names and every layer allows, set nearest its run's location (R-sec-14); fails a job that names a secret that is not set (R-sec-20), and denies one that names a secret a layer does not allow; reads a run's values at its first step, and the secrets and values a submit's files use that are not set.
+- **Secret**: puts into a job the values of the secrets it names and every layer allows, set nearest its run's location (R-sec-14); fails a job that names a secret that is not set (R-sec-20), and denies one that names a secret a layer does not allow; reads a run's values at its first step, and the secrets and values a submit's files use that are not set. Sets, removes and lists a client's secrets and values as the owner's are (R-sec-64).
 
 Used by:
 
-- **Client**: leaves submits, starts, cancels, events and answers in the controller's inbox, with a submit's files among its uploads, and reads the receipts, heads and records the controller writes.
+- **Client**: leaves submits, starts, cancels, events, answers and sets of secrets and values in the controller's inbox, with a submit's files among its uploads, and reads the receipts, heads and records the controller writes.
 - **Runner**: is sent jobs and cancels; returns results and the emits a machine wants.
 - **Flow, Statechart, Agent**: each supplies the step the controller runs, and relies on the controller for attempts, children, timers, tickets, limits and approval.
 - **Role**: a controller's pass is the unit that area starts and bounds.

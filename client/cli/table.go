@@ -448,6 +448,38 @@ controller: remove the other first with corbie client remove.
 The config keeps the controller's name with its key, so a card with another
 key under that name is refused without --replace.`},
 
+		{Name: "client secret set", Usage: "<NAME> [- | --env] --at <location>", Summary: "set a secret for the runs at a location and below, in this client's trees", Run: cmdClientSecretSet, Help: `
+The controller takes it at a location where this client could submit a tree,
+or in one of its trees. The value is typed at the terminal and not shown. It
+is never given on the command line. A run uses the secret set nearest its
+location.
+
+  -                the value is read from standard input, to the end
+  --env            the value is read from the environment variable NAME
+  --at <location>  where the secret is set; required
+
+  corbie manual using-secrets   how a job uses a secret`},
+		{Name: "client secret remove", Usage: "<NAME> --at <location>", Summary: "remove a secret set at a location in this client's trees", Run: cmdClientSecretRemove, Help: `
+A secret of the name set above the location is then the one used.
+
+  --at <location>  where the secret is set; required`},
+		{Name: "client secret list", Usage: "", Summary: "list the names of the secrets set where this client may set them, and where each is set", Run: cmdClientSecretList},
+		{Name: "client value set", Usage: "<NAME> <VALUE> --at <location>", Summary: "set a value for the runs at a location and below, in this client's trees", Run: cmdClientValueSet, Help: `
+The controller takes it at a location where this client could submit a tree,
+or in one of its trees. A value is plain text, not secret. An expression
+reads it as ${values.NAME}, and a run uses the value set nearest its
+location.
+
+  --at <location>  where the value is set; required
+  --               a value that starts with - follows it, as in OFFSET -- -5
+
+  corbie manual using-secrets   secrets and values`},
+		{Name: "client value remove", Usage: "<NAME> --at <location>", Summary: "remove a value set at a location in this client's trees", Run: cmdClientValueRemove, Help: `
+A value of the name set above the location is then the one used.
+
+  --at <location>  where the value is set; required`},
+		{Name: "client value list", Usage: "", Summary: "list the values set where this client may set them, and where each is set", Run: cmdClientValueList},
+
 		{Name: "manual", Usage: "[page]", Summary: "print a page of the manual, or list the pages", Run: cmdManual, Help: `
 With no page it lists the pages. It reads no config and no store.`},
 		{Name: "manual web", Usage: "[--listen host:port]", Summary: "serve the pages to a browser on this computer, until stopped", Stays: true, Run: cmdManualWeb, Help: `

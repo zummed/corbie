@@ -421,6 +421,49 @@ func (c *Client) Reply(ctx context.Context, run, ticket string, value any, life 
 		Answer: &instance.Answer{Ticket: ticket, Value: value}})
 }
 
+// SetSecret sends the controller a secret to set at a location, at or under
+// a prefix where this client could submit a tree. It gives the name of the
+// message, by which its receipt is found; the receipt never holds the value.
+func (c *Client) SetSecret(ctx context.Context, at, name, value string, life time.Duration) (string, error) {
+	return c.setting(ctx, life, instance.Setting{Of: instance.OfSecret, Act: instance.ActSet, At: at, Name: name, Value: value})
+}
+
+// RemoveSecret asks the controller to remove a secret set at a location.
+func (c *Client) RemoveSecret(ctx context.Context, at, name string, life time.Duration) (string, error) {
+	return c.setting(ctx, life, instance.Setting{Of: instance.OfSecret, Act: instance.ActRemove, At: at, Name: name})
+}
+
+// ListSecrets asks the controller for the names of the secrets set where
+// this client may set them, and where each is set. The receipt lists them.
+func (c *Client) ListSecrets(ctx context.Context, life time.Duration) (string, error) {
+	return c.setting(ctx, life, instance.Setting{Of: instance.OfSecret, Act: instance.ActList})
+}
+
+// SetValue sends the controller a value to set at a location, as
+// SetSecret does a secret.
+func (c *Client) SetValue(ctx context.Context, at, name, value string, life time.Duration) (string, error) {
+	return c.setting(ctx, life, instance.Setting{Of: instance.OfValue, Act: instance.ActSet, At: at, Name: name, Value: value})
+}
+
+// RemoveValue asks the controller to remove a value set at a location.
+func (c *Client) RemoveValue(ctx context.Context, at, name string, life time.Duration) (string, error) {
+	return c.setting(ctx, life, instance.Setting{Of: instance.OfValue, Act: instance.ActRemove, At: at, Name: name})
+}
+
+// ListValues asks the controller for the values set where this client may
+// set them, and where each is set. The receipt lists them.
+func (c *Client) ListValues(ctx context.Context, life time.Duration) (string, error) {
+	return c.setting(ctx, life, instance.Setting{Of: instance.OfValue, Act: instance.ActList})
+}
+
+func (c *Client) setting(ctx context.Context, life time.Duration, set instance.Setting) (string, error) {
+	if err := c.identity(); err != nil {
+		return "", err
+	}
+	name := c.sender.Next(c.Now())
+	return name, c.send(ctx, name, life, &instance.Message{Kind: instance.KindSet, Set: &set})
+}
+
 func (c *Client) sendNext(ctx context.Context, life time.Duration, msg *instance.Message) (string, error) {
 	if err := c.identity(); err != nil {
 		return "", err

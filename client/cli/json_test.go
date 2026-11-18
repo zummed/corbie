@@ -129,6 +129,17 @@ states:
 		t.Errorf("corbie controller value list --json printed %s", listed)
 	}
 	asked(m, "", false, "controller", "value", "remove", "HUB", "--at", "/home")
+	asked(m, "the value\n", true, "client", "secret", "set", "A_SECRET_OF_THIS_TEST", "-", "--at", "/mine")
+	if listed := asked(m, "", true, "client", "secret", "list"); listed != `[{"name":"A_SECRET_OF_THIS_TEST","at":"/mine"}]`+"\n" {
+		t.Errorf("corbie client secret list --json printed %s", listed)
+	}
+	asked(m, "", true, "client", "secret", "remove", "A_SECRET_OF_THIS_TEST", "--at", "/mine")
+	asked(m, "", true, "client", "value", "set", "HUB", "hub.lan", "--at", "/mine")
+	if listed := asked(m, "", true, "client", "value", "list"); listed != `[{"name":"HUB","at":"/mine","value":"hub.lan"}]`+"\n" {
+		t.Errorf("corbie client value list --json printed %s", listed)
+	}
+	asked(m, "", true, "client", "value", "remove", "HUB", "--at", "/mine")
+	asked(m, "", true, "client", "value", "remove", "HUB", "--at", "/mine")
 	asked(m, "", true, "controller", "policy", "--viewer", "--store", "s3://bucket/prefix?region=eu-west-2")
 	asked(m, "", true, "manual")
 	asked(m, "", true, "manual", "runs")

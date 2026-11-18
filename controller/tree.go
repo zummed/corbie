@@ -99,9 +99,6 @@ func (p *pass) submit(a *arrival) error {
 	if err := store.CheckLocation(msg.Prefix); err != nil {
 		return p.refuseSubmit(a, base, err.Error())
 	}
-	if msg.Prefix == "/" {
-		return p.refuseSubmit(a, base, "/ is never a tree: it is where secrets and values every tree uses are set")
-	}
 	entry, mark, err := p.readTree(msg.Prefix)
 	var other otherCase
 	if errors.As(err, &other) {
@@ -125,10 +122,7 @@ func (p *pass) submit(a *arrival) error {
 	if refused != "" {
 		return p.refuseSubmit(a, base, refused)
 	}
-	switch {
-	case entry != nil && entry.Client != a.sender:
-		return p.refuseSubmit(a, base, fmt.Sprintf("the tree %s belongs to the client %s", msg.Prefix, entry.Client))
-	case entry != nil && entry.Submit > base:
+	if entry != nil && entry.Submit > base {
 		return p.refuseSubmit(a, base, fmt.Sprintf("a later submit of the tree %s was taken before this one", msg.Prefix))
 	}
 	if entry != nil {
@@ -166,42 +160,13 @@ func (p *pass) submit(a *arrival) error {
 	return p.carryTree(a, base, fresh)
 }
 
-// checkTree says why a submit is refused, if it is: a prefix the client's
-// ceiling does not allow, a tree inside or above another, a location not
-// in the tree or below another's, a file or a blob it names that is not
-// among the submit's uploads.
+// checkTree says why a submit is refused, if it is: a prefix the client
+// may not submit at, a location not in the tree or below another's, a file
+// or a blob it names that is not among the submit's uploads.
 func (p *pass) checkTree(a *arrival, msg *instance.Submit) (string, error) {
-	client, err := p.trusted(a.sender)
-	if err != nil {
-		return "", err
-	}
-	if !client.Trusted() {
-		return fmt.Sprintf("the client %s is not trusted", a.sender), nil
-	}
-	if r := (&permission.Set{Layers: []permission.Layer{ceilingOf(client)}}).Check(permission.At, msg.Prefix); r != nil {
-		return r.Error(), nil
-	}
-	// No tree is above it, and none below.
-	for _, above := range store.Above(msg.Prefix)[1:] {
-		if above == "/" {
-			break
-		}
-		_, mark, err := p.store.Read(p.ctx, store.Tree(p.ctl, above))
-		if err != nil {
-			return "", err
-		}
-		if mark != store.None {
-			return fmt.Sprintf("%s is inside the tree %s, and trees do not nest", msg.Prefix, above), nil
-		}
-	}
-	below, err := store.Names(p.store.List(p.ctx, strings.TrimSuffix(store.LocationDir(p.ctl, msg.Prefix), "/+")))
-	if err != nil {
-		return "", err
-	}
-	for _, name := range below {
-		if location, entry, ok := store.ParseLocation(p.ctl, name); ok && entry == "tree" && location != msg.Prefix {
-			return fmt.Sprintf("the tree %s is inside %s, and trees do not nest", location, msg.Prefix), nil
-		}
+	refused, err := p.refusePrefix(a.sender, msg.Prefix)
+	if err != nil || refused != "" {
+		return refused, err
 	}
 	locations := append(sortedKeys(msg.Files), msg.Problems...)
 	slices.Sort(locations)
@@ -244,6 +209,60 @@ func (p *pass) checkTree(a *arrival, msg *instance.Submit) (string, error) {
 				return fmt.Sprintf("the file at %s names a blob that is not among the submit's uploads", location), nil
 			}
 		}
+	}
+	return "", nil
+}
+
+// refusePrefix says why a client may not submit a tree at a prefix, if it
+// may not: the client is not trusted, the prefix is /, the client's
+// ceiling's at: entries do not match it, a tree is above it or below it, or
+// the tree there is another client's.
+func (p *pass) refusePrefix(sender, prefix string) (string, error) {
+	client, err := p.trusted(sender)
+	if err != nil {
+		return "", err
+	}
+	if !client.Trusted() {
+		return fmt.Sprintf("the client %s is not trusted", sender), nil
+	}
+	if prefix == "/" {
+		return "/ is never a tree: it is where secrets and values every tree uses are set", nil
+	}
+	if r := (&permission.Set{Layers: []permission.Layer{ceilingOf(client)}}).Check(permission.At, prefix); r != nil {
+		return r.Error(), nil
+	}
+	// No tree is above it, and none below.
+	for _, above := range store.Above(prefix)[1:] {
+		if above == "/" {
+			break
+		}
+		_, mark, err := p.store.Read(p.ctx, store.Tree(p.ctl, above))
+		if err != nil {
+			return "", err
+		}
+		if mark != store.None {
+			return fmt.Sprintf("%s is inside the tree %s, and trees do not nest", prefix, above), nil
+		}
+	}
+	below, err := store.Names(p.store.List(p.ctx, strings.TrimSuffix(store.LocationDir(p.ctl, prefix), "/+")))
+	if err != nil {
+		return "", err
+	}
+	for _, name := range below {
+		if location, entry, ok := store.ParseLocation(p.ctl, name); ok && entry == "tree" && location != prefix {
+			return fmt.Sprintf("the tree %s is inside %s, and trees do not nest", location, prefix), nil
+		}
+	}
+	entry, _, err := p.readTree(prefix)
+	var other otherCase
+	if errors.As(err, &other) {
+		return other.Error(), nil
+	}
+	if err != nil {
+		return "", err
+	}
+	if entry != nil && entry.Client != sender {
+		return fmt.Sprintf("the tree %s belongs to the client %s", prefix, entry.Client), nil
 	}
 	return "", nil
 }

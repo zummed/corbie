@@ -167,12 +167,13 @@ func (r *recorder) run(_ context.Context, c page.Call) page.Answer {
 func Test_controller_actions_run_their_commands(t *testing.T) {
 	r := &recorder{}
 	h := lab(t, r.run)
-	w := post(h, "enrol", url.Values{"card": {" corbie-card:runner:new-box:abc "}, "tags": {"gpu, big"}, "replace": {"1"}})
+	w := post(h, "enrol", url.Values{"card": {" corbie-card:runner:new-box:abc "}, "tags": {"gpu, big"}, "prefixes": {"/home, /netops/tools"}, "replace": {"1"}})
 	if !strings.Contains(w.Body.String(), "corbie-card:controller:lab-controller:x\n/srv/store") {
 		t.Errorf("Enrol did not show the controller's card and the store's address: %q", w.Body.String())
 	}
 	post(h, "enrol", url.Values{"card": {"corbie-card:client:new-client:abc"}, "ceiling": {"network,disk"}})
 	post(h, "tags", url.Values{"name": {"gpu-box"}, "tags": {"gpu"}})
+	post(h, "prefixes", url.Values{"name": {"gpu-box"}, "prefixes": {"/home /hello"}})
 	post(h, "ceiling", url.Values{"name": {"lab-client"}, "ceiling": {"all"}})
 	post(h, "remove", url.Values{"name": {"gpu-box"}})
 	post(h, "secret-remove", url.Values{"name": {"ANTHROPIC_KEY"}, "at": {"/"}})
@@ -180,9 +181,10 @@ func Test_controller_actions_run_their_commands(t *testing.T) {
 	post(h, "value-set", url.Values{"name": {"REGION"}, "value": {"eu-west-2"}})
 	post(h, "value-remove", url.Values{"name": {"HUB"}, "at": {" /home "}})
 	want := []string{
-		"corbie controller enrol corbie-card:runner:new-box:abc --tags=gpu,big --replace",
+		"corbie controller enrol corbie-card:runner:new-box:abc --tags=gpu,big --at=/home --at=/netops/tools --replace",
 		"corbie controller enrol corbie-card:client:new-client:abc --ceiling=network,disk",
 		"corbie controller enrol gpu-box --tags=gpu",
+		"corbie controller enrol gpu-box --at=/home --at=/hello",
 		"corbie controller enrol lab-client --ceiling=all",
 		"corbie controller remove gpu-box",
 		"corbie controller secret remove ANTHROPIC_KEY --at=/",
@@ -208,11 +210,14 @@ func Test_controller_removed_party_offers_only_enrol(t *testing.T) {
 	h := lab(t, r.run)
 	body := get(t, h)
 	row := regexp.MustCompile(`(?s)<tr data-key="old-box" class="removed">.*?</tr>`).FindString(body)
-	if row == "" || strings.Contains(row, "/controller/tags") || strings.Contains(row, "/controller/remove") || !strings.Contains(row, `href="#enrol-runner"`) {
+	if row == "" || strings.Contains(row, "/controller/tags") || strings.Contains(row, "/controller/prefixes") || strings.Contains(row, "/controller/remove") || !strings.Contains(row, `href="#enrol-runner"`) {
 		t.Errorf("the removed party's line offers more than Enrol:\n%s", row)
 	}
 	if w := post(h, "tags", url.Values{"name": {"old-box"}, "tags": {"gpu"}}); w.Code != http.StatusConflict || len(r.calls) != 0 {
 		t.Errorf("setting a removed party's tags answered %d and ran %v", w.Code, r.calls)
+	}
+	if w := post(h, "prefixes", url.Values{"name": {"old-box"}, "prefixes": {"/home"}}); w.Code != http.StatusConflict || len(r.calls) != 0 {
+		t.Errorf("setting a removed party's prefixes answered %d and ran %v", w.Code, r.calls)
 	}
 }
 

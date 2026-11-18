@@ -62,10 +62,10 @@ Above the list of Machines and of Toolkits, each problem of the directory's mach
 
 ```
 2 PROBLEMS
-toolkits/messages.yaml:5
+toolkits/messages/toolkit.yaml:5
 tools.tell.description  a tool says what it is for, for the model to choose by
 breaks 3 machines
-toolkits/messages.yaml:6
+toolkits/messages/toolkit.yaml:6
 tools.tell.does  "does" is not a field that belongs here
 breaks 3 machines
 ```
@@ -166,11 +166,11 @@ Acting as a client alone, it lists the names with no state, and one line gives t
 A toolkit is a group of tools under an agent's `toolkits:`. The Toolkits page lists each toolkit an agent's `toolkits:` names, written in place or included from a file, with its `description:` and its count of tools, and shows the one chosen:
 
 ```
-orders                                   toolkits/orders.yaml
+orders                                   toolkits/orders/toolkit.yaml
 Drawing   Text
 
 The orders app.
-instructions toolkits/orders.md
+instructions toolkits/orders/instructions.md
 
 Offered by                                                         Started by
 support  agents/support.yaml  when: input.asker.scopes.includes(…)  conversation  transient: a call, a send, or corbie run start /acme/agents/support, starts each run

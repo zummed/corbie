@@ -41,14 +41,14 @@ func lab(t *testing.T, command page.Command) http.Handler {
 	corbie(t, "", "init", "--store", at, "--name", "lab", "--ceiling", "network,disk", "--config", config)
 	corbie(t, "", "controller", "enrol", "lab-client", "--ceiling", "network,disk,at:/home,at:/hello", "--config", config)
 	card := regexp.MustCompile(`corbie-card:\S+`).FindString(corbie(t, "", "runner", "card", "--name", "gpu-box", "--config", filepath.Join(dir, "other")))
-	corbie(t, "", "controller", "enrol", card, "--tags", "gpu,big", "--config", config)
+	corbie(t, "", "controller", "enrol", card, "--tags", "gpu,big", "--at", "/home", "--at", "/hello", "--config", config)
 	corbie(t, "", "runner", "card", "--name", "old-box", "--config", filepath.Join(dir, "old"))
 	old := regexp.MustCompile(`corbie-card:\S+`).FindString(corbie(t, "", "runner", "card", "--config", filepath.Join(dir, "old")))
 	corbie(t, "", "controller", "enrol", old, "--config", config)
 	corbie(t, "", "controller", "remove", "old-box", "--config", config)
 	corbie(t, "swordfish", "controller", "secret", "set", "ANTHROPIC_KEY", "-", "--config", config)
 	corbie(t, "", "controller", "value", "set", "HUB", "192.0.2.8:8123", "--at", "/home", "--config", config)
-	ctl, err := identity.Config{Dir: config}.Load(identity.Controller)
+	ctl, err := identity.Config{Dir: config}.Load(t.Context(), identity.Controller)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -96,7 +96,7 @@ func write(t *testing.T, files map[string]string) string {
 func submit(t *testing.T, config string, s store.Store, ctl *identity.Identity, tree *client.Tree) {
 	t.Helper()
 	ctx := context.Background()
-	me, err := identity.Config{Dir: config}.Load(identity.Client)
+	me, err := identity.Config{Dir: config}.Load(t.Context(), identity.Client)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -133,7 +133,7 @@ func post(h http.Handler, act string, form url.Values) *httptest.ResponseRecorde
 
 func Test_controller_lists_parties_trees_secrets_and_values(t *testing.T) {
 	body := get(t, lab(t, nil))
-	for _, want := range []string{"lab-runner", "lab-client", "network, disk, at:/home", "gpu-box", "gpu, big", `<tr data-key="old-box" class="removed">`,
+	for _, want := range []string{"lab-runner", "lab-client", "network, disk, at:/home", "gpu-box", `<td>/home, /hello</td><td>gpu, big</td>`, `<tr data-key="old-box" class="removed">`,
 		`<a href="/runs?at=%2Fhome">/home</a></td><td class="dim cut" title="the tree of lab-client, last submitted from `, ">tree of lab-client, from ",
 		`<td class="in" title="/home/devices/boiler"><a href="/runs?at=%2Fhome%2Fdevices%2Fboiler">devices/boiler</a></td><td>singleton</td>`,
 		`>rooms/thermostat</a></td><td>keyed</td>`, `>tools/lookup</a></td><td>transient</td>`,
@@ -144,6 +144,9 @@ func Test_controller_lists_parties_trees_secrets_and_values(t *testing.T) {
 		if !strings.Contains(body, want) {
 			t.Errorf("the page does not show %s", want)
 		}
+	}
+	if !regexp.MustCompile(`<td>lab-runner</td><td class="dim">[^<]*</td><td>/</td>`).MatchString(body) {
+		t.Errorf("the page does not list at / a runner enrolled with no --at")
 	}
 	if strings.Index(body, "ANTHROPIC_KEY") > strings.Index(body, ">HUB<") {
 		t.Errorf("the secrets and values are not listed by location")

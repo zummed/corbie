@@ -1,6 +1,6 @@
 {{define "party"}}<tr data-key="{{.Name}}"{{if .Removed}} class="removed"{{end}}>
   <td>{{.Name}}</td><td class="dim">{{.Fingerprint}}</td>
-  {{- if eq .Kind "runner"}}<td>{{if .Tags}}{{join .Tags ", "}}{{else}}<span class="dim">—</span>{{end}}</td>
+  {{- if eq .Kind "runner"}}<td>{{join .At ", "}}</td><td>{{if .Tags}}{{join .Tags ", "}}{{else}}<span class="dim">—</span>{{end}}</td>
   {{- else}}<td class="cut" title="{{join .Ceiling ", "}}{{if .Deny}}; deny {{join .Deny ", "}}{{end}}">{{if .Ceiling}}{{join .Ceiling ", "}}{{else}}<span class="dim">nothing</span>{{end}}{{if .Deny}} <span class="dim">deny {{join .Deny ", "}}</span>{{end}}</td>{{end}}
   <td class="row-acts">{{if .Removed}}<span class="dim">removed</span> <a href="#enrol-{{.Kind}}">Enrol</a>
   {{- else if eq .Kind "runner"}}<details><summary class="btn sm">Tags</summary><form data-act method="post" action="/controller/tags"><input type="hidden" name="name" value="{{.Name}}"><input name="tags" value="{{join .Tags ","}}" size="14" aria-label="Its tags"><button class="btn sm" data-cmd="corbie controller enrol {{.Name}} --tags &lt;list&gt;">Set</button><span class="said"></span></form></details><form data-act method="post" action="/controller/remove"><input type="hidden" name="name" value="{{.Name}}"><button class="btn sm stop" data-cmd="corbie controller remove {{.Name}}">Remove</button><span class="said"></span></form>
@@ -10,7 +10,7 @@
 {{define "parties"}}<div class="contents" id="parties">
   <div class="panel">
     <div class="head"><h2>Runners</h2></div>
-    <table class="list"><thead><tr><th>Name</th><th>Card</th><th>Tags</th><th></th></tr></thead>
+    <table class="list"><thead><tr><th>Name</th><th>Card</th><th>At</th><th>Tags</th><th></th></tr></thead>
       <tbody>{{range .Parties}}{{if eq .Kind "runner"}}{{template "party" .}}{{end}}{{end}}</tbody></table>
     <form class="enrol" id="enrol-runner" data-act="reset" method="post" action="/controller/enrol">
       <textarea name="card" rows="2" placeholder="a runner's card" aria-label="A runner's card" required></textarea>

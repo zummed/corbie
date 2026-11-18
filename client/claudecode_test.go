@@ -98,7 +98,7 @@ func Test_model_local_program_starts_bare(t *testing.T) {
 		t.Fatalf("the agent ended %+v, %v", r, err)
 	}
 	out := r.Output.(map[string]any)
-	if out["reply"] != "It is 42." || jsonOf(out["tokens"]) != `{"input":200,"output":10}` {
+	if out["reply"] != "It is 42." || jsonOf(out["tokens"]) != `{"cached":180,"input":200,"output":10}` {
 		t.Fatalf("the result is %v", jsonOf(out))
 	}
 	// Its text was seen as it was written.

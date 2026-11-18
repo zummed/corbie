@@ -128,7 +128,7 @@ var arriving3 = map[string][]string{
 		`{"choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"id":"t1","type":"function","function":{"name":"look","arguments":"{\"at\":"}}]},"finish_reason":null}]}`,
 		`{"choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"function":{"arguments":" \"door\"}"}}]},"finish_reason":null}]}`,
 		`{"choices":[{"index":0,"delta":{},"finish_reason":"tool_calls"}]}`,
-		`{"choices":[],"usage":{"prompt_tokens":330,"completion_tokens":7}}`,
+		`{"choices":[],"usage":{"prompt_tokens":330,"completion_tokens":7,"prompt_tokens_details":{"cached_tokens":300}}}`,
 		`[DONE]`,
 	},
 	"openai": {
@@ -140,7 +140,7 @@ var arriving3 = map[string][]string{
 			`{"type":"reasoning","encrypted_content":"sealed"},` +
 			`{"type":"message","content":[{"type":"output_text","text":"Hello there."}]},` +
 			`{"type":"function_call","call_id":"t1","name":"look","arguments":"{\"at\": \"door\"}"}],` +
-			`"usage":{"input_tokens":330,"output_tokens":7}}}`,
+			`"usage":{"input_tokens":330,"output_tokens":7,"input_tokens_details":{"cached_tokens":300}}}}`,
 	},
 }
 
@@ -157,7 +157,7 @@ func TestReplyIsEmittedAsItArrives(t *testing.T) {
 		if got := text(out["calls"]); got != `[{"args":{"at":"door"},"id":"t1","name":"look"}]` || out["stop"] != StopTools {
 			t.Fatalf("%s: the tools asked for are %s, and it stopped for %v", service, got, out["stop"])
 		}
-		if got := text(out["usage"]); got != `{"input":330,"output":7}` {
+		if got := text(out["usage"]); got != `{"cached":300,"input":330,"output":7}` {
 			t.Fatalf("%s: the tokens used are %s", service, got)
 		}
 		if s.sent[0]["stream"] != true {
@@ -229,8 +229,20 @@ func Test_model_window_full_is_out_of_room(t *testing.T) {
 
 func Test_model_usage_counts_cached_input(t *testing.T) {
 	out := newStandIn(t, arriving3["anthropic"]...).must(t, "anthropic", nil)
-	if got := field(out["usage"], "input"); got != 330.0 {
+	if got := text(out["usage"]); got != `{"cached":300,"input":330,"output":7}` {
 		t.Fatalf("10 tokens read, 300 from the cache and 20 written to it count as %v", got)
+	}
+	// Each service that reports what it read from its cache gives it as
+	// cached, and one that reports none gives 0.
+	for service, events := range arriving3 {
+		if got := field(newStandIn(t, events...).must(t, service, nil)["usage"], "cached"); got != 300.0 {
+			t.Errorf("%s: 300 tokens read from the cache count as %v", service, got)
+		}
+	}
+	none := newStandIn(t, `{"choices":[{"index":0,"delta":{"content":"Hi."},"finish_reason":"stop"}]}`,
+		`{"choices":[],"usage":{"prompt_tokens":10,"completion_tokens":2}}`).must(t, "openai-chat", nil)
+	if got := text(none["usage"]); got != `{"cached":0,"input":10,"output":2}` {
+		t.Fatalf("a service that reports no cache gives %s", got)
 	}
 }
 

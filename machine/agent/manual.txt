@@ -75,14 +75,14 @@ service and `secret:<secret>@net:<host>`, and nothing from the definition's
     prompt: Say hello.
 
     corbie test elsewhere.yaml --secret-env MODELS_KEY
-      output: {"conversation":{"blobs":{},"turns":[{"$blob":"conversation.turns[0]","size":91,"type":"application/json"}]},"reply":"Hello.","tokens":{"input":10,"output":5}}
+      output: {"conversation":{"blobs":{},"turns":[{"$blob":"conversation.turns[0]","size":91,"type":"application/json"}]},"reply":"Hello.","tokens":{"cached":0,"input":10,"output":5}}
       used: net:models.example:443 secret:MODELS_KEY@net:models.example:443
 
 The result
 ----------
 
   reply           the model's last reply, as text or in the shape of `reply:`
-  tokens          { input, output }, counted over the agent's own turns
+  tokens          { input, output, cached }, counted over the agent's own turns
   conversation    { turns, blobs }: a blob for each turn, and each blob the
                   model was shown by its handle's name
 

@@ -190,7 +190,7 @@ A turn returns these fields.
           none, text is the agent's reply
   stop    "end", "tools" or "length"; on "length" the agent tells the model
           that its reply was cut short and takes another turn
-  usage   { input, output }, in tokens
+  usage   { input, output, cached }, in tokens, as llm.chat gives it
 
 This turn calls no model and answers at once.
 
@@ -204,7 +204,7 @@ This turn calls no model and answers at once.
     const reply = { role: "assistant", content: "Nothing to do.", calls: [] }
     return {
       turn: blobs.make((input.add || []).concat([reply]), { type: "application/json" }),
-      text: reply.content, calls: [], stop: "end", usage: { input: 0, output: 0 },
+      text: reply.content, calls: [], stop: "end", usage: { input: 0, output: 0, cached: 0 },
     }
 
     corbie test quiet.yaml

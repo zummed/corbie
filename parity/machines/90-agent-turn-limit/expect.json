@@ -17,7 +17,8 @@
           "output": {
             "tokens": {
               "input": 2,
-              "output": 2
+              "output": 2,
+              "cached": 0
             },
             "conversation": {
               "turns": [

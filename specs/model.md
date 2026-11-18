@@ -8,6 +8,16 @@ A script calls a model with one call: it gives the model's name, the conversatio
 
 Why the model stopped is always passed on. A reply that ended because it ran out of room is told apart from one that was finished.
 
+The tokens used are given as `usage`, with three counts:
+
+```
+  input    the whole of the input
+  output   the reply
+  cached   how many of input the service read from its cache; 0 from a service that reports none
+```
+
+A service keeps the start of a request it was sent in the last five minutes, and charges less to read it again. Corbie asks Anthropic's service to keep it with every request, and an agent's turn sends the tools, system text and messages of the turn before unchanged. When the tools offered change, as when a toolkit is opened, none of the request is read from the cache.
+
 ## Decide
 
 A System One model writes no text. It is given the text or data the questions are about, sent as `state`, and named questions, and answers every question at once with probabilities. A question has a type, its instructions, and for two of the types its criteria.

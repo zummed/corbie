@@ -693,7 +693,7 @@ func (s *stepper) replied(data any) error {
 		if s.st.Tokens == nil {
 			s.st.Tokens = map[string]float64{}
 		}
-		for _, name := range []string{"input", "output"} {
+		for _, name := range []string{"input", "output", "cached"} {
 			n, _ := usage[name].(float64)
 			s.st.Tokens[name] += n
 		}
@@ -835,7 +835,7 @@ func (s *stepper) result(reply any) map[string]any {
 		blobs = map[string]any{}
 	}
 	out := map[string]any{"conversation": map[string]any{"turns": turns, "blobs": blobs},
-		"tokens": map[string]any{"input": s.st.Tokens["input"], "output": s.st.Tokens["output"]}}
+		"tokens": map[string]any{"input": s.st.Tokens["input"], "output": s.st.Tokens["output"], "cached": s.st.Tokens["cached"]}}
 	if reply != nil {
 		out["reply"] = s.real(reply)
 	}

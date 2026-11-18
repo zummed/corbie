@@ -260,7 +260,7 @@ type usage struct {
 }
 
 func (u usage) counted() map[string]any {
-	return map[string]any{"input": u.Input + u.CacheMade + u.CacheRead, "output": u.Output}
+	return map[string]any{"input": u.Input + u.CacheMade + u.CacheRead, "output": u.Output, "cached": u.CacheRead}
 }
 
 // read follows what the program prints to its end and gives its result,

@@ -308,7 +308,7 @@ An agent's record holds these entries, under these names:
 |---|---|
 | job `turn`, `turn#2`, … | one turn, whatever script makes it; its input names the model as `model.name` |
 | emit `text` of a turn | a piece of the model's reply, as `llm.chat` gives it |
-| `done` from a turn | `{ turn, text, calls: [{ id, name, args }], stop, usage: { input, output } }` |
+| `done` from a turn | `{ turn, text, calls: [{ id, name, args }], stop, usage: { input, output, cached } }` |
 | job named after a tool, `shelf`, `shelf.1` | one call of the tool the model named; its `done` or `failed` goes back to the model |
 | job `open` | an open of a toolkit |
 | job `preview`, `preview.1` | the preview of a blob before the model is first shown it |

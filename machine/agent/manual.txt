@@ -162,6 +162,13 @@ and the machine's `receive:`. A run keeps what it read, so a change
 submitted there reaches the next run. When the tool is offered and the
 machine cannot be read, the agent fails at its start with the reason.
 
+A tool written in place, in the agent or in a toolkit's file, runs at the
+agent's location, so its secret can be set no narrower than the agent. A tool
+that uses a secret is a machine at a location of its own, called with
+`call:`, with the secret set there, as `corbie manual machines-together`
+shows. A tool that uses no secret is written in place: one file and one run
+fewer.
+
 An entry with `list:` gives tools that come from elsewhere, such as the tools
 of an MCP server (`corbie manual mcp`), which change without the definition
 changing.

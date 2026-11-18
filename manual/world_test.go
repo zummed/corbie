@@ -63,7 +63,7 @@ var buildHostSeed = []byte("corbie manual: build.example key")
 
 // The tool a stand-in model asks for when it is offered one, with the
 // arguments it gives; and what it says when it has nothing to ask.
-var modelAsks = map[string]string{"shelf": `{"shelf": "top"}`, "title": `{"url": "https://example.com"}`}
+var modelAsks = map[string]string{"shelf": `{"shelf": "top"}`, "title": `{"url": "https://example.com"}`, "ports": `{"switch": "core-1"}`}
 
 const modelSays = "Hello."
 
@@ -87,6 +87,7 @@ func newWorld() (*world, error) {
 		"APP_KEY":       "app-stand1n-key",
 		"NOTES_KEY":     "notes-stand1n-key",
 		"NOTES_TOKEN":   "notes-stand1n-t0ken",
+		"SWITCH_TOKEN":  "switch-stand1n-t0ken",
 		// A password with a quote and a backslash in it, which a body
 		// written as JSON must escape.
 		"PORTAL_PASSWORD": `a "quoted" pass\word`,
@@ -141,14 +142,15 @@ func newWorld() (*world, error) {
 	// The hosts that speak over an encrypted connection share one
 	// certificate, signed by an authority of the world's own.
 	web := map[string]http.HandlerFunc{
-		"api.github.com":    w.github,
-		"example.com":       w.news,
-		"www.iana.org":      w.iana,
-		"feed.example.com":  w.feed,
-		"api.anthropic.com": (&llmstandin.Server{Key: w.secrets["ANTHROPIC_KEY"], Answer: anthropic}).ServeHTTP,
-		"models.example":    w.chatModel,
-		"api.typesafe.ai":   w.systemOneModel,
-		"notes.example.com": (&standin.Server{Token: "notes-stand1n-t0ken", Only: notesTools}).ServeHTTP,
+		"api.github.com":     w.github,
+		"example.com":        w.news,
+		"www.iana.org":       w.iana,
+		"feed.example.com":   w.feed,
+		"api.anthropic.com":  (&llmstandin.Server{Key: w.secrets["ANTHROPIC_KEY"], Answer: anthropic}).ServeHTTP,
+		"models.example":     w.chatModel,
+		"api.typesafe.ai":    w.systemOneModel,
+		"notes.example.com":  (&standin.Server{Token: "notes-stand1n-t0ken", Only: notesTools}).ServeHTTP,
+		"switch.example.com": w.switches,
 	}
 	names := []string{"queue.example.com", "mail.example.com"}
 	for name := range web {
@@ -276,6 +278,17 @@ func (w *world) github(rw http.ResponseWriter, r *http.Request) {
 		rw.WriteHeader(404)
 		io.WriteString(rw, `{"message":"Not Found"}`)
 	}
+}
+
+// switches is switch.example.com: the ports of each switch that are down,
+// for the one who holds the token.
+func (w *world) switches(rw http.ResponseWriter, r *http.Request) {
+	if r.Header.Get("Authorization") != "Bearer "+w.secrets["SWITCH_TOKEN"] {
+		http.Error(rw, `{"message":"Bad credentials"}`, 401)
+		return
+	}
+	rw.Header().Set("Content-Type", "application/json")
+	fmt.Fprintf(rw, `{"switch":%q,"down":["ge-0/0/7"]}`, strings.TrimPrefix(r.URL.Path, "/ports/"))
 }
 
 // iana is www.iana.org: the one page about example domains, as far as its

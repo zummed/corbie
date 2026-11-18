@@ -36,6 +36,8 @@ import (
 //	anything else              a script
 //	corbie …                   a command, run where the files are; the
 //	                           lines set in under it are lines it prints
+//	corbie … | corbie …        a pipe: each command reads what the one
+//	                           before it printed to standard output
 //
 // An example with no command is run as corbie test runs its first file,
 // with the allow list and each secret the list names. The files and the
@@ -395,16 +397,67 @@ const limit = 30 * time.Second
 // with and what it printed.
 func do(args []string) (status int, printed string, err error) {
 	var said output
+	status, err = doWith(args, "", &said, &said)
+	return status, said.String(), err
+}
+
+// doWith runs one command of corbie's to its end, given what it reads on
+// standard input and where it prints.
+func doWith(args []string, in string, out, said *output) (int, error) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	// Not a deadline: a runner takes a context's deadline for its host's
 	// limit.
 	stopped := time.AfterFunc(limit, cancel)
-	status = cli.Run(ctx, args, strings.NewReader(""), &said, &said)
+	status := cli.Run(ctx, args, strings.NewReader(in), out, said)
 	if !stopped.Stop() {
-		return 0, "", fmt.Errorf("corbie %s was stopped after %s, and had printed:\n%s", strings.Join(args, " "), limit, inset(said.String()))
+		return 0, fmt.Errorf("corbie %s was stopped after %s, and had printed:\n%s", strings.Join(args, " "), limit, inset(said.String()))
+	}
+	return status, nil
+}
+
+// piped runs the commands of a pipe in turn, each reading what the one
+// before it printed to standard output. It gives the first status that is
+// not 0, and what each printed to standard error with what the last printed
+// to standard output.
+func piped(pipe [][]string) (status int, printed string, err error) {
+	var said output
+	in := ""
+	for i, args := range pipe {
+		out := &output{}
+		if i == len(pipe)-1 {
+			out = &said
+		}
+		got, err := doWith(args[1:], in, out, &said)
+		if err != nil {
+			return 0, "", err
+		}
+		if status == 0 {
+			status = got
+		}
+		in = out.String()
 	}
 	return status, said.String(), nil
+}
+
+// pipeOf splits a command line at each | outside quotes.
+func pipeOf(line string) []string {
+	var parts []string
+	quote, start := rune(0), 0
+	for i, r := range line {
+		switch {
+		case quote != 0:
+			if r == quote {
+				quote = 0
+			}
+		case r == '\'' || r == '"':
+			quote = r
+		case r == '|':
+			parts = append(parts, line[start:i])
+			start = i + 1
+		}
+	}
+	return append(parts, line[start:])
 }
 
 // inset sets a text in under the line that speaks of it, and says so when
@@ -479,9 +532,18 @@ func (s *session) run(ex example) outcome {
 		if err != nil {
 			return fail(err.Error())
 		}
-		args, leave, err := words(s.w.placed(text), s.home)
-		if err != nil {
-			return fail(err.Error())
+		var pipe [][]string
+		leave := false
+		for _, part := range pipeOf(s.w.placed(text)) {
+			args, left, err := words(part, s.home)
+			if err != nil {
+				return fail(err.Error())
+			}
+			pipe, leave = append(pipe, args), leave || left
+		}
+		args := pipe[len(pipe)-1]
+		if leave && len(pipe) > 1 {
+			return fail(c.text + " is a pipe left running, and only one command is")
 		}
 		if leave {
 			// Left running until the page has been gone through.
@@ -494,7 +556,7 @@ func (s *session) run(ex example) outcome {
 			took = append(took, c.text+"  (left running)")
 			continue
 		}
-		status, printed, err := do(args[1:])
+		status, printed, err := piped(pipe)
 		if err != nil {
 			return fail(err.Error())
 		}

@@ -30,7 +30,7 @@ type Call struct {
 	Turn     int    // 1 for the first call the server is sent
 	Key      string // the x-api-key header
 	System   string
-	Messages []any
+	Messages []any // without the marks that ask for the request's start to be kept
 	Tools    []any
 	Body     []byte `json:"-"` // the request's body, as it was sent
 }
@@ -81,6 +81,15 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.mu.Lock()
+	for _, message := range sent.Messages {
+		message, _ := message.(map[string]any)
+		blocks, _ := message["content"].([]any)
+		for _, block := range blocks {
+			if block, ok := block.(map[string]any); ok {
+				delete(block, "cache_control")
+			}
+		}
+	}
 	call := Call{Turn: len(s.Calls) + 1, Key: r.Header.Get("x-api-key"), System: sent.System, Messages: sent.Messages, Tools: sent.Tools, Body: body}
 	s.Calls = append(s.Calls, call)
 	s.mu.Unlock()

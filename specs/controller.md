@@ -6,7 +6,7 @@ The page reads the store through Corbie's packages: the parties as `corbie contr
 
 ## Runners and clients
 
-Each is one line: its name, its card's fingerprint, and a runner's tags or a client's ceiling and deny list. One that was removed is listed as removed.
+Each is one line: its name, its card's fingerprint, and a runner's prefixes and tags or a client's ceiling and deny list. A runner enrolled with no `--at` is listed at `/`. One that was removed is listed as removed.
 
 ```
 Enrol     corbie controller enrol <card> --tags <list>      trusts a runner, with its tags
@@ -17,6 +17,8 @@ Remove    corbie controller remove <name>                   stops trusting it
 ```
 
 Enrol shows what the command prints back, the controller's card and the store's address, for the other side's `corbie runner trust` or `corbie client trust`. A card with another key under a name already used is refused, unless Replace is ticked, as `--replace` allows it.
+
+Tags leaves a runner's prefixes as they are. A runner's prefixes are set with `corbie controller enrol <name> --at <prefix>`.
 
 Remove keeps the name with its key, marked as removed and signed by the controller. A removed party's line offers only Enrol, since setting its tags or ceiling again would trust it again.
 

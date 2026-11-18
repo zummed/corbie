@@ -52,7 +52,9 @@ var pages = template.Must(template.New("").Funcs(template.FuncMap{
 type party struct {
 	Name, Kind, Fingerprint string
 	Tags, Ceiling, Deny     []string
-	Removed                 bool
+	// At holds a runner's prefixes, "/" where it is sent every tree's jobs.
+	At      []string
+	Removed bool
 }
 
 // A Tree is one the controller recorded at its prefix: its client, the
@@ -106,8 +108,14 @@ func (h *handler) read(ctx context.Context) (view, error) {
 		return v, err
 	}
 	for _, t := range trusted {
-		v.Parties = append(v.Parties, party{Name: t.Card.Name, Kind: string(t.Card.Kind), Fingerprint: t.Card.Fingerprint(),
-			Tags: t.Tags, Ceiling: t.Ceiling.Allow, Deny: t.Ceiling.Deny, Removed: t.Removed})
+		p := party{Name: t.Card.Name, Kind: string(t.Card.Kind), Fingerprint: t.Card.Fingerprint(),
+			Tags: t.Tags, Ceiling: t.Ceiling.Allow, Deny: t.Ceiling.Deny, Removed: t.Removed}
+		if t.Card.Kind == identity.Runner {
+			if p.At = t.Prefixes; len(p.At) == 0 {
+				p.At = []string{"/"}
+			}
+		}
+		v.Parties = append(v.Parties, p)
 	}
 	slices.SortFunc(v.Parties, func(a, b party) int { return strings.Compare(a.Kind+a.Name, b.Kind+b.Name) })
 	if v.Trees, err = h.trees(ctx); err != nil {

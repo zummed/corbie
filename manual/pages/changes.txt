@@ -31,9 +31,11 @@ These behave differently.
   refuses a model no service claims. Before, it used `anthropic`.
 - A program using the client package is given the error by `Watch` when a
   look fails after the first listing. Before, `Watch` went on.
-- An agent's `conversation` names the toolkits open under `opened`. An agent
-  given it opens each of them whose `when:` holds and that has no
-  `approve: true`, and the model is shown its tools from the first turn.
+- An agent's `conversation` names each toolkit open under `opened`, with the
+  hash of its instructions: `opened: { net: "9f86d0…" }`. An agent given it
+  opens each of them whose `when:` holds, that has no `approve: true`, and
+  whose instructions are unchanged, and the model is shown its tools from the
+  first turn.
   Before, it opened none. A `system:` text that tells the model to open a
   toolkit again in each run can go.
 

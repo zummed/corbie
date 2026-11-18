@@ -84,7 +84,8 @@ The result
   reply           the model's last reply, as text or in the shape of `reply:`
   tokens          { input, output, cached }, counted over the agent's own turns
   conversation    { turns, blobs, opened }: a blob for each turn, each blob the
-                  model was shown by its handle's name, and the toolkits open
+                  model was shown by its handle's name, and each toolkit open,
+                  with the hash of what its `open` returned
 
 A reply that does not fit `reply:` is returned to the model, which takes
 another turn. A failed agent's output has `conversation` and `tokens`.
@@ -232,9 +233,10 @@ A toolkit has these fields.
   where `description` is the toolkit's. An open that is not approved opens
   nothing.
 - An agent given a `conversation` opens each toolkit its `opened` names, when
-  the toolkit's `when:` holds and it has no `approve: true`. The model is
-  shown the toolkit's tools from the first turn, and not its instructions
-  again.
+  the toolkit's `when:` holds, it has no `approve: true`, and its
+  instructions, filled from this run's input, are those the model was given.
+  The model is shown the toolkit's tools from the first turn, and not its
+  instructions again. A toolkit whose instructions changed stays closed.
 - A toolkit marked `approve: true` stays closed, and its open waits for the
   ask again.
 

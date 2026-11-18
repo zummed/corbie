@@ -1,6 +1,8 @@
 package agent
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json/v2"
 	"errors"
 	"fmt"
@@ -49,9 +51,9 @@ type state struct {
 	Lists []*listing `json:"lists,omitzero"`
 	// Listed are the tools the lists gave, by the name the model is shown.
 	Listed map[string]*listed `json:"listed,omitzero"`
-	// Opened are the toolkits the model has opened, in the order it opened
-	// them.
-	Opened []string `json:"opened,omitzero"`
+	// Opened are the toolkits the model has opened, each with the hash of
+	// the text its open gave.
+	Opened map[string]string `json:"opened,omitzero"`
 	// Unoffered are the toolkits and tools whose when: did not hold when the
 	// run started: the model is never shown them.
 	Unoffered *unoffered `json:"unoffered,omitzero"`
@@ -167,7 +169,7 @@ func (s *stepper) arrive(event machine.Event) (bool, error) {
 			}
 			c.Done = true
 			if event.Name == machine.Done {
-				s.opened(c)
+				s.opened(c, event.Data)
 				c.Result = s.shown(s.said(c, event.Data))
 				// What opening a toolkit gives is its instructions, which the
 				// model is shown whole.
@@ -514,26 +516,58 @@ func (s *stepper) offers(name string, tool *Tool) bool {
 	return not == nil || !slices.Contains(not.Tools, name) && !slices.Contains(not.Toolkits, tool.Toolkit)
 }
 
-// opened notes the toolkit an open call opened: its tools are shown from
-// the next turn.
-func (s *stepper) opened(c *call) {
+// opened notes the toolkit an open call opened, with the hash of what the
+// open gave: its tools are shown from the next turn.
+func (s *stepper) opened(c *call, gave any) {
 	args, _ := c.Args.(map[string]any)
-	if toolkit, _ := args["toolkit"].(string); c.Tool == openTool && !slices.Contains(s.st.Opened, toolkit) {
-		s.st.Opened = append(s.st.Opened, toolkit)
+	if toolkit, _ := args["toolkit"].(string); c.Tool == openTool {
+		s.open(toolkit, digest(gave))
 	}
 }
 
-// reopen opens the toolkits a conversation carried on had open, in their
-// order. The conversation is input, so it opens only what one call of open
-// would: a toolkit the agent has, whose when: held, and whose open waits for
-// no ask.
+func (s *stepper) open(toolkit, hash string) {
+	if s.st.Opened == nil {
+		s.st.Opened = map[string]string{}
+	}
+	s.st.Opened[toolkit] = hash
+}
+
+// gives is what opening a toolkit gives the model: its instructions, filled
+// from the agent's input, or with none, that it was opened.
+func (s *stepper) gives(name string) (any, error) {
+	instructions, err := s.eval.Fill(s.a.Toolkits[name].Instructions, machine.Scope{"input": s.in.Input}, toolkitPlace(name)+".instructions")
+	if instructions == nil || instructions == "" {
+		instructions = "Opened " + name + "."
+	}
+	return instructions, err
+}
+
+// digest is the SHA-256, in hex, of what an open gave.
+func digest(gave any) string {
+	text, ok := gave.(string)
+	if !ok {
+		data, _ := json.Marshal(gave, json.Deterministic(true))
+		text = string(data)
+	}
+	sum := sha256.Sum256([]byte(text))
+	return hex.EncodeToString(sum[:])
+}
+
+// reopen opens the toolkits a conversation carried on had open. The
+// conversation is input, so it opens only what one call of open would: a
+// toolkit the agent has, whose when: held, and whose open waits for no ask.
+// It opens one only where an open now would give what the model was given,
+// so that the model is given instructions that changed.
 func (s *stepper) reopen(opened any) {
-	names, _ := opened.([]any)
-	for _, n := range names {
-		name, _ := n.(string)
+	hashes, _ := opened.(map[string]any)
+	for _, name := range slices.Sorted(maps.Keys(hashes)) {
 		toolkit, ok := s.a.Toolkits[name]
-		if ok && !toolkit.Approve && (s.st.Unoffered == nil || !slices.Contains(s.st.Unoffered.Toolkits, name)) && !slices.Contains(s.st.Opened, name) {
-			s.st.Opened = append(s.st.Opened, name)
+		if !ok || toolkit.Approve || s.st.Unoffered != nil && slices.Contains(s.st.Unoffered.Toolkits, name) {
+			continue
+		}
+		gave, err := s.gives(name)
+		if hash, _ := hashes[name].(string); err == nil && hash == digest(gave) {
+			s.open(name, hash)
 		}
 	}
 }
@@ -546,7 +580,7 @@ func (s *stepper) opener() *Tool {
 	var lines []string
 	var names []any
 	for _, name := range sortedNames(s.a.Toolkits) {
-		if !slices.Contains(s.st.Opened, name) && (s.st.Unoffered == nil || !slices.Contains(s.st.Unoffered.Toolkits, name)) {
+		if _, open := s.st.Opened[name]; !open && (s.st.Unoffered == nil || !slices.Contains(s.st.Unoffered.Toolkits, name)) {
 			lines = append(lines, "- "+name+": "+s.a.Toolkits[name].Description)
 			names = append(names, name)
 		}
@@ -562,7 +596,8 @@ func (s *stepper) opener() *Tool {
 // shows says whether the model is shown a tool of the definition: one that
 // is offered, and in no toolkit or in a toolkit the model has opened.
 func (s *stepper) shows(name string, tool *Tool) bool {
-	return s.offers(name, tool) && (tool.Toolkit == "" || slices.Contains(s.st.Opened, tool.Toolkit))
+	_, open := s.st.Opened[tool.Toolkit]
+	return s.offers(name, tool) && (tool.Toolkit == "" || open)
 }
 
 // take keeps the tools one entry's list gave, each under the entry's name
@@ -827,11 +862,11 @@ func (s *stepper) replied(data any) error {
 			toolkit := s.a.Toolkits[in]
 			job.Approve = toolkit.Approve
 			shown["description"] = toolkit.Description
-			instructions, err := s.eval.Fill(toolkit.Instructions, machine.Scope{"input": s.in.Input}, toolkitPlace(in)+".instructions")
+			gives, err := s.gives(in)
 			if err != nil {
 				return err
 			}
-			job.Input = map[string]any{"toolkit": in, "instructions": instructions}
+			job.Input = map[string]any{"toolkit": in, "instructions": gives}
 		}
 		if in != "" {
 			shown["toolkit"] = in

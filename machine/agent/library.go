@@ -38,7 +38,7 @@ return { blob, items, preview }
 const (
 	openTool   = "open"
 	openScript = "corbie:open.js"
-	openSource = `return input.instructions || "Opened " + input.toolkit + "."
+	openSource = `return input.instructions
 `
 	openDescription = "Open a toolkit. Its instructions are the result, and its tools are shown to you from your next turn. The toolkits you can open:"
 )

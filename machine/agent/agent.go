@@ -363,7 +363,7 @@ func (agentType) Shape() *machine.Shape {
 		{Name: "system", Kind: machine.KindText, Like: "You answer questions about a library of files.", Description: "the system text"},
 		{Name: "prompt", Kind: machine.KindValue, Like: "${input.question}", Description: "what the agent is asked; an expression of its input"},
 		{Name: "tools", Kind: machine.KindNamed, Of: tool, Description: "the tools the model may pick, each a named job"},
-		{Name: "toolkits", Kind: machine.KindNamed, Of: toolkit, Like: "{ orders: { include: toolkits/orders.yaml } }", Description: "groups of tools the model is shown once it opens them"},
+		{Name: "toolkits", Kind: machine.KindNamed, Of: toolkit, Like: "{ orders: { include: toolkits/orders/toolkit.yaml } }", Description: "groups of tools the model is shown once it opens them"},
 		{Name: "reply", Kind: machine.KindTypes, Like: "{ outcome: string }", Description: "the shape of its reply where it is data: each name with the type of its value, or a JSON Schema with type: object"},
 		{Name: "conversation", Kind: machine.KindValue, Like: "${input.conversation}",
 			Description: "a conversation to carry on from: the conversation of an earlier agent's result, given whole"},

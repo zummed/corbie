@@ -19,7 +19,7 @@ Remove     corbie controller remove <name>                              stops tr
 
 Enrol shows what the command prints back, the controller's card and the store's address, for the other side's `corbie runner trust` or `corbie client trust`. A card with another key under a name already used is refused, unless Replace is ticked, as `--replace` allows it.
 
-A runner's prefixes are typed as a list, such as `/home,/netops/tools`, and go to the command as `--at` once for each. Tags leaves a runner's prefixes as they are, and Prefixes leaves its tags; the prefix `/` gives it every tree again.
+A runner's prefixes are typed as a list, such as `/home,/netops/tools`, and go to the command as `--at` once for each. Tags leaves a runner's prefixes as they are, and Prefixes leaves its tags. A runner set to the prefix `/` is sent every tree's jobs.
 
 Remove keeps the name with its key, marked as removed and signed by the controller. A removed party's line offers only Enrol, since setting its tags, prefixes or ceiling again would trust it again.
 

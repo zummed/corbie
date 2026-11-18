@@ -8,7 +8,7 @@ The client is a public Go package in the Corbie repository. An application writt
 
 It does two kinds of thing.
 
-It **sends**: submit a tree, start a run of a location, cancel runs, send an event, answer a ticket. To submit a tree it reads every file, writes each machine out with its includes resolved and its short forms filled out, checks the whole and reports everything wrong at once, and uploads the definitions and the files they name side by side, a bounded number at a time. A start names a location and may carry input, labels, a list that narrows what the run may do, and a timeout. Any value in the input may be a file, and the start is sent once every file is in the store.
+It **sends**: submit a tree, start a run of a location, cancel runs, send an event, answer a ticket, set, remove and list its secrets and values. To submit a tree it reads every file, writes each machine out with its includes resolved and its short forms filled out, checks the whole and reports everything wrong at once, and uploads the definitions and the files they name side by side, a bounded number at a time. A start names a location and may carry input, labels, a list that narrows what the run may do, and a timeout. Any value in the input may be a file, and the start is sent once every file is in the store.
 
 It **reads**: list runs and follow the list as it changes; show one run, where it stands and how it ended; read a run's record so far, children included, and follow it as it grows; fetch a file from a result; show the definition a run was started from.
 
@@ -43,9 +43,9 @@ corbie run cancel <id>                  cancel a run in one of this client's tre
 corbie run send <id> <event> [data]     send an event to a run
 corbie run reply <id> <ticket> [value]  answer a ticket that a run waits on
 
-corbie controller …                     enrol and remove runners and clients, set ceilings and tags, manage secrets and values, cancel any run
+corbie controller …                     enrol and remove runners and clients, set ceilings, tags and prefixes, manage secrets and values, cancel any run
 corbie runner …                         print a card, trust a controller
-corbie client …                         print a card, trust a controller
+corbie client …                         print a card, trust a controller, manage secrets and values in this client's trees
 
 corbie manual [page]                    print a page of the manual, or list the pages
 corbie manual web                       serve the pages to a browser on this computer, until stopped
@@ -65,7 +65,7 @@ The commands form a tree. A word at the top is a command, or begins several comm
   run          submit, start, ls, show, cancel, send, reply
   controller   card, enrol, remove, parties, secret, value, policy, cancel
   runner       card, trust, remove
-  client       card, trust, remove
+  client       card, trust, remove, secret, value
   manual       print a page of the manual, or list the pages; web
   mcp          serve the manual and the commands to a model, as an MCP server
   version      print the version, the machine types and the plugins
@@ -73,7 +73,7 @@ The commands form a tree. A word at the top is a command, or begins several comm
 Programs on PATH, which corbie <name> runs: rook, ui.
 ```
 
-- `corbie run` and `corbie run --help` list the commands of `corbie run` in the same rows, and the same holds for `controller`, `controller secret`, `controller value`, `runner` and `client`.
+- `corbie run` and `corbie run --help` list the commands of `corbie run` in the same rows, and the same holds for `controller`, `controller secret`, `controller value`, `runner`, `client`, `client secret` and `client value`.
 - `corbie manual`'s help ends with the row of `web`.
 - A command's usage line is in its own help, never in these rows.
 - The rows fit 80 columns: a text too long goes on below, under itself.
@@ -120,7 +120,9 @@ controller secret set NAME --env      the environment variable NAME
 controller secret set NAME -          standard input, to the end
 ```
 
-`--at <location>` sets a secret for the runs at that location and below. With no `--at` it is set at `/`, for every tree. A plain value is not secret, so it is given on the line (see secret.md):
+`client secret set` reads it from the same three sources.
+
+`--at <location>` sets a secret for the runs at that location and below. With no `--at`, `controller secret set` sets it at `/`, for every tree, and `client secret set` is a mistake. A client sets only where it could submit a tree, and its command prints `taken`, or the refusal and fails. A plain value is not secret, so it is given on the line (see secret.md):
 
 ```
 corbie controller value set DB_HOST db.prod.lan --at /prod

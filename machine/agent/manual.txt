@@ -75,16 +75,17 @@ service and `secret:<secret>@net:<host>`, and nothing from the definition's
     prompt: Say hello.
 
     corbie test elsewhere.yaml --secret-env MODELS_KEY
-      output: {"conversation":{"blobs":{},"turns":[{"$blob":"conversation.turns[0]","size":91,"type":"application/json"}]},"reply":"Hello.","tokens":{"input":10,"output":5}}
+      output: {"conversation":{"blobs":{},"turns":[{"$blob":"conversation.turns[0]","size":91,"type":"application/json"}]},"reply":"Hello.","tokens":{"cached":0,"input":10,"output":5}}
       used: net:models.example:443 secret:MODELS_KEY@net:models.example:443
 
 The result
 ----------
 
   reply           the model's last reply, as text or in the shape of `reply:`
-  tokens          { input, output }, counted over the agent's own turns
-  conversation    { turns, blobs }: a blob for each turn, and each blob the
-                  model was shown by its handle's name
+  tokens          { input, output, cached }, counted over the agent's own turns
+  conversation    { turns, blobs, opened }: a blob for each turn, each blob the
+                  model was shown by its handle's name, and each toolkit open,
+                  with the hash of what its `open` returned
 
 A reply that does not fit `reply:` is returned to the model, which takes
 another turn. A failed agent's output has `conversation` and `tokens`.
@@ -101,8 +102,8 @@ Tools
   list         a job that returns tools, [{ name, description, args }], in
                place of `description:` and `args:`; `job:` runs each, and
                reads `tool`, its name
-  call         a location in the same tree, in place of `description:`,
-               `args:` and `job:`: the tool calls the machine there
+  call         a location, in place of `description:`, `args:` and `job:`:
+               the tool calls the machine there
   input        with `call:`, the names of that machine's input the tool fixes
   approve      with `call:`, `true` holds the call for the ask
   when         a condition on the agent's input, checked when the run
@@ -128,7 +129,10 @@ any depth.
 - No tool is named turn, preview, open, blob_read, blob_search or blob_code.
 
 A tool written `call:` takes its description and arguments from the machine
-it calls. The client reads that machine's file when it reads the tree.
+it calls. A leading `/` says when that machine is read:
+
+  call: gitlab/files/read    in the same tree, read when the tree is read
+  call: /netops/tools/show   in any tree, read when the run starts
 
   tools:
     read_file: { call: gitlab/files/read, input: { project: group/orders } }
@@ -147,11 +151,24 @@ arguments `path` and `ref`. A call `{ path: a.txt }` starts a run of
 - An argument the model leaves out is absent from the machine's input.
 - `input:` may read the agent's input, as `${input.team}`.
 - The tool has `send:` for the location, and nothing else is written for it.
-- The location is written from the tree's prefix. Its machine is transient
-  and has a `description:`, and a file `.corbieignore` lists is no machine.
+- The machine is transient and has a `description:`, and a file
+  `.corbieignore` lists is no machine.
 - A machine that is an agent is shown to the model as its reply.
-- A tool written `call:` is refused in a file read alone and in a machine
-  made while running.
+- A tool written `call:` is refused in a machine made while running. One in
+  the same tree is refused in a file read alone.
+
+A location written from `/` is read at the run's start, where a call from
+the run would pass: `send:` in every layer, the client's ceiling included,
+and the machine's `receive:`. A run keeps what it read, so a change
+submitted there reaches the next run. When the tool is offered and the
+machine cannot be read, the agent fails at its start with the reason.
+
+A tool written in place, in the agent or in a toolkit's file, runs at the
+agent's location, so its secret can be set no narrower than the agent. A tool
+that uses a secret is a machine at a location of its own, called with
+`call:`, with the secret set there, as `corbie manual machines-together`
+shows. A tool that uses no secret is written in place: one file and one run
+fewer.
 
 An entry with `list:` gives tools that come from elsewhere, such as the tools
 of an MCP server (`corbie manual mcp`), which change without the definition
@@ -205,9 +222,7 @@ A toolkit has these fields.
   tools         the toolkit's tools, written as under Tools
   meta          data Corbie keeps and never reads
 
-- With no `instructions:`, `open` returns `Opened net.`. A run that carries
-  the conversation on and opens the toolkit again is given its instructions
-  again.
+- With no `instructions:`, `open` returns `Opened net.`.
 - No tool of a toolkit has the name of another tool of the agent.
 - The list of an entry with `list:` in a toolkit runs before the first turn.
   An error names it as `toolkits.net.tools.files.list`.
@@ -217,9 +232,13 @@ A toolkit has these fields.
 - The ask for `open` gets `asked: { tool, toolkit, description, args, said }`,
   where `description` is the toolkit's. An open that is not approved opens
   nothing.
-- An agent given a `conversation` opens no toolkit: the model calls `open` for
-  each toolkit it needs, and a toolkit marked `approve: true` waits for the ask
-  again.
+- An agent given a `conversation` opens each toolkit its `opened` names, when
+  the toolkit's `when:` holds, it has no `approve: true`, and its
+  instructions, filled from this run's input, are those the model was given.
+  The model is shown the toolkit's tools from the first turn, and not its
+  instructions again. A toolkit whose instructions changed stays closed.
+- A toolkit marked `approve: true` stays closed, and its open waits for the
+  ask again.
 
 Who is offered what
 -------------------

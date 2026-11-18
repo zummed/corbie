@@ -308,3 +308,35 @@ func Test_ctl_owner_step_spawns_no_process(t *testing.T) {
 		t.Fatalf("the run ended %+v", head)
 	}
 }
+
+// A machine made while running reads nothing recorded at a location, even
+// where its stored definition names one in a tool written call:.
+func Test_ctl_made_machine_reads_no_recorded_machine(t *testing.T) {
+	w := newWorld(t)
+	run := w.startMade(`
+		agent: made
+		model: { name: test-model, service: anthropic, address: "http://127.0.0.1:1", secret: K }
+		tools:
+		  show: { call: /anywhere/show }
+	`)
+	w.settle()
+	child := ""
+	for _, step := range w.steps(run) {
+		for _, ask := range step.Asks {
+			if ask.Child != "" {
+				child = ask.Child
+			}
+		}
+	}
+	if child == "" {
+		t.Fatal("the made machine did not start")
+	}
+	for _, step := range w.steps(child) {
+		if step.State.Recorded != nil {
+			t.Fatalf("the made machine read %v", step.State.Recorded)
+		}
+	}
+	if last := w.latest(child); last == nil || last.State.Status != instance.Failed {
+		t.Fatalf("the made machine is %+v", last)
+	}
+}

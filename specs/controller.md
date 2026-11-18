@@ -8,7 +8,7 @@ It brings nothing with it but its private key. Its list of trusted parties, its 
 
 Everything that makes a machine move arrives as a message in the controller's inbox or as a wake coming due.
 
-A message comes from a client submitting a tree, starting a run, cancelling one, sending an event, calling a location or answering a ticket; from a runner returning a job's result or passing on an emit the machine wants; or from the controller itself, which is how a child's start, a child's ending, events between a parent and a child, and sends and calls between runs travel. A wake is anything owed to time: a machine's timer, a machine's timeout, a job's result falling due, the next attempt at a job.
+A message comes from a client submitting a tree, starting a run, cancelling one, sending an event, calling a location, answering a ticket or setting, removing or listing its secrets and values; from a runner returning a job's result or passing on an emit the machine wants; or from the controller itself, which is how a child's start, a child's ending, events between a parent and a child, and sends and calls between runs travel. A wake is anything owed to time: a machine's timer, a machine's timeout, a job's result falling due, the next attempt at a job.
 
 The controller accepts a message only from a party it trusts, signed by that party and sealed to itself. A client may cancel only runs at its own trees' locations, and may answer any ticket it holds. It starts a run in another client's tree only with a call or a send: its start of a location in another client's tree is a call. A client's send or call is checked as a run's is (see Sending and calling). A result or an emit is accepted only for a job the instance is still waiting on, from the runner the job was sent to.
 
@@ -97,7 +97,11 @@ Any other machine is an owner's words, and its steps are taken in the controller
 
 A script job is sent as a message to a runner, signed by the controller and sealed to that runner. The message carries everything the runner needs to know: where in the record to read the script, its files and the input; each layer of permissions that applies, by name, so a refusal can say which layer refused; the values of the secrets it may use, set at its location or above; its limits; where in the record the job writes what it emits, and the clients that is sealed to; and which emitted names the machine wants to hear about.
 
-A job's tags choose its runner. The job goes to a runner that has every tag it names, and a job that names none may go to any runner. Where several qualify the controller picks one from the request and the attempt, so the same attempt always goes to the same runner, and a later attempt goes to a different one where more than one qualifies. It takes no account of load. A job whose tags no runner has, or which names a value or secret not set at its location or above, fails before anything is sent, naming the name and the location.
+A job goes to a runner that has every tag the job names and one of whose prefixes holds the location of the job's run. A job that names no tag may go to any runner whose prefixes hold that location. It is any such runner, not the nearest: the tag chooses and the prefix limits. Where several qualify the controller picks one from the request and the attempt, so the same attempt always goes to the same runner, and a later attempt goes to a different one where more than one qualifies. It takes no account of load.
+
+A job's run is at the run's own location: a child, and a machine made while running, is at the location of the run that starts it. The job carries that location to its runner.
+
+A job no runner qualifies for fails before anything is sent, and its error says which of the two failed: no runner is sent the jobs of runs at that location, or none of those has the tags. A job that names a value or secret not set at its location or above fails the same way, naming the name and the location.
 
 Every job has a time by which its result is due. If none has come by then, the machine receives a timeout in its place. A result that has arrived always wins over its own due time, however late the controller is in looking.
 
@@ -133,7 +137,20 @@ $ corbie run submit house --at /home
 4. It records each file, written out with its includes, at its location, and acts on what changed (see A changed or removed file).
 5. The receipt names the directory that last submitted there, the values and secrets the files use that are not set at their locations or above, and the clients the files' `read:` lists that the controller does not trust.
 
+The controller writes the tree's entry before anything else, naming the submit and the SHA-256 of what its message says. Nothing of a submit is recorded unless steps 1 to 3 pass at that moment, and a submit is carried on only where it is the one the tree's entry was written for:
+
+- A submit taken again after a stop is carried on however late it is, once steps 1 to 3 pass again.
+- A message under the same name with another content is refused, and records nothing.
+
 A submit changes no other tree. Only the tree's client cancels the runs at its locations, and it and the clients a file's `read:` lists read them. Another client starts a run there only with a call or a send (see Sending and calling).
+
+A client's set or remove of a secret or a value names a location. The controller takes it where the client could submit a tree at the location or above it, by the checks of steps 1 and 2, and keeps it as one the owner set (see secret.md). It refuses one where the client may not set before it reads what is set there, so the refusal says nothing of another client's tree.
+
+1. The controller writes the receipt, sealed to the client and to itself, with the SHA-256 of the setting it answers: kind, act, location, name and value.
+2. It checks again that the client may set at the location, and only then sets the secret or the value, or removes it, as a taken receipt says.
+3. It deletes the message.
+
+The controller carries out a set or a remove only where the client may set there at that moment, and only the one the receipt answered. A message taken again after a stop is answered by the receipt already written, and a taken set or remove is carried out again. A message under a name whose receipt answered another setting is deleted, and nothing is carried out. A list is answered in its receipt.
 
 ## Starting runs
 
@@ -146,6 +163,7 @@ A submit changes no other tree. Only the tree's client cancels the runs at its l
 - Every run keeps the definition it started with, in its own record.
 - A run's authority comes from its location: its file's `allow:` and `ask:`, its tree client's ceiling, and the secrets and values set at its location or above (see permission.md).
 - The controller reads the values at a run's first step and keeps them in its record.
+- At the same step it reads the machine recorded at each location an agent's tool calls in full: its description, the shape of its input, its type and its lifetime, given only where a call from the run would pass, and otherwise the refusal a call would get. It keeps what it read in the run's record (see Agent). A machine made while running reads none.
 - A child started by `machine:` runs at its parent's location.
 - A run started by a send or a call counts one level below its sender, and fails as it starts if that passes its own file's depth limit.
 

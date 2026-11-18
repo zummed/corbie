@@ -26,28 +26,26 @@ type Entry struct {
 // Set keeps a secret at a location, in place of any kept there before
 // under the name.
 func Set(ctx context.Context, s store.Store, ctl *identity.Identity, at, name, value string) error {
-	if err := permission.CheckSecretName(name); err != nil {
-		return err
-	}
-	return keep(ctx, s, ctl, "secret", name, at, store.Secret(ctl.Name, at, name), value)
+	return keep(ctx, s, ctl, Secret, at, name, value)
 }
 
 // SetValue keeps a value at a location, in place of any kept there before
 // under the name.
 func SetValue(ctx context.Context, s store.Store, ctl *identity.Identity, at, name, value string) error {
-	if err := CheckValueName(name); err != nil {
-		return err
-	}
-	return keep(ctx, s, ctl, "value", name, at, store.Value(ctl.Name, at, name), value)
+	return keep(ctx, s, ctl, Value, at, name, value)
 }
 
-func keep(ctx context.Context, s store.Store, ctl *identity.Identity, kind, name, at, path, value string) error {
-	if err := store.CheckLocation(at); err != nil {
+// What is kept at a location: a secret or a value.
+const (
+	Secret = "secret"
+	Value  = "value"
+)
+
+func keep(ctx context.Context, s store.Store, ctl *identity.Identity, kind, at, name, value string) error {
+	if err := refuse(ctx, s, ctl, kind, at, name, false); err != nil {
 		return err
 	}
-	if _, err := held(ctx, s, ctl, kind, name, at, path); err != nil {
-		return err
-	}
+	path := entry(ctl.Name, kind, at, name)
 	data, err := ctl.Write(path, time.Now(), time.Time{}, value, ctl.Card)
 	if err != nil {
 		return err
@@ -56,19 +54,65 @@ func keep(ctx context.Context, s store.Store, ctl *identity.Identity, kind, name
 	return err
 }
 
-// held says whether a secret or a value is kept under a path. On a file
-// system that ignores case, /Work and /work are one directory: it refuses
-// where what is kept there was set at a location of another case.
-func held(ctx context.Context, s store.Store, ctl *identity.Identity, kind, name, at, path string) (bool, error) {
+// Refusal says why a secret or a value cannot be set at a location under
+// a name, or removed from it, if it cannot: the name or the location is not
+// one it can have, or a remove's name is not set there. On a file system
+// that ignores case, /Work and /work are one directory: it refuses where
+// what is kept there was set at a location of another case.
+func Refusal(ctx context.Context, s store.Store, ctl *identity.Identity, kind, at, name string, remove bool) (string, error) {
+	refused, err := check(ctx, s, ctl, kind, at, name, remove)
+	if err != nil || refused == nil {
+		return "", err
+	}
+	return refused.Error(), nil
+}
+
+// refuse gives Refusal's refusal as an error.
+func refuse(ctx context.Context, s store.Store, ctl *identity.Identity, kind, at, name string, remove bool) error {
+	refused, err := check(ctx, s, ctl, kind, at, name, remove)
+	if err != nil {
+		return err
+	}
+	return refused
+}
+
+func check(ctx context.Context, s store.Store, ctl *identity.Identity, kind, at, name string, remove bool) (refused, err error) {
+	if err := checkName(kind, name); err != nil {
+		return err, nil
+	}
+	if err := store.CheckLocation(at); err != nil {
+		return err, nil
+	}
+	path := entry(ctl.Name, kind, at, name)
 	data, mark, err := s.Read(ctx, path)
-	if err != nil || mark == store.None {
-		return false, err
+	switch {
+	case err != nil:
+		return nil, err
+	case mark == store.None && remove:
+		return fmt.Errorf("the %s %s is not set at %s", kind, name, at), nil
+	case mark == store.None:
+		return nil, nil
 	}
 	if v, err := identity.Parse(data); err == nil && v.At != path && strings.EqualFold(v.At, path) {
 		other, _, _ := store.ParseLocation(ctl.Name, v.At)
-		return true, fmt.Errorf("the %s %s is set at %s, which this store keeps in the same file as %s because its file system ignores case", kind, name, other, at)
+		return fmt.Errorf("the %s %s is set at %s, which this store keeps in the same file as %s because its file system ignores case", kind, name, other, at), nil
 	}
-	return true, nil
+	return nil, nil
+}
+
+// entry is where a secret or a value set at a location is kept.
+func entry(ctl, kind, at, name string) string {
+	if kind == Value {
+		return store.Value(ctl, at, name)
+	}
+	return store.Secret(ctl, at, name)
+}
+
+func checkName(kind, name string) error {
+	if kind == Value {
+		return CheckValueName(name)
+	}
+	return permission.CheckSecretName(name)
 }
 
 // Get reads the secret a run at a location uses: the one set nearest it,
@@ -154,33 +198,20 @@ func open(ctx context.Context, s store.Store, ctl *identity.Identity, name strin
 // Remove removes a secret set at a location. One set above it is then the
 // one used.
 func Remove(ctx context.Context, s store.Store, ctl *identity.Identity, at, name string) error {
-	if err := permission.CheckSecretName(name); err != nil {
-		return err
-	}
-	return remove(ctx, s, ctl, "secret", name, at, store.Secret(ctl.Name, at, name))
+	return remove(ctx, s, ctl, Secret, at, name)
 }
 
 // RemoveValue removes a value set at a location. One set above it is then
 // the one used.
 func RemoveValue(ctx context.Context, s store.Store, ctl *identity.Identity, at, name string) error {
-	if err := CheckValueName(name); err != nil {
-		return err
-	}
-	return remove(ctx, s, ctl, "value", name, at, store.Value(ctl.Name, at, name))
+	return remove(ctx, s, ctl, Value, at, name)
 }
 
-func remove(ctx context.Context, s store.Store, ctl *identity.Identity, kind, name, at, path string) error {
-	if err := store.CheckLocation(at); err != nil {
+func remove(ctx context.Context, s store.Store, ctl *identity.Identity, kind, at, name string) error {
+	if err := refuse(ctx, s, ctl, kind, at, name, true); err != nil {
 		return err
 	}
-	set, err := held(ctx, s, ctl, kind, name, at, path)
-	if err != nil {
-		return err
-	}
-	if !set {
-		return fmt.Errorf("the %s %s is not set at %s", kind, name, at)
-	}
-	_, err = s.Delete(ctx, path, store.Overwrite)
+	_, err := s.Delete(ctx, entry(ctl.Name, kind, at, name), store.Overwrite)
 	return err
 }
 

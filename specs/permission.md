@@ -17,7 +17,7 @@ There are eight kinds.
 | `env` | reading a variable of the runner's | a name |
 | `secret` | sending a secret somewhere, and what that destination needs | a secret's name and a destination |
 | `send` | sending to or calling a location | a location |
-| `at` | submitting a tree and sending within it, in a client's ceiling only | a prefix, starting with `/` |
+| `at` | submitting a tree, sending within it and setting secrets and values at or under it, in a client's ceiling only | a prefix, starting with `/` |
 
 A scope is one of four things, matched the same way wherever it appears: a path, a host, a name, or a location. Any of them may use `*` for a part. A host with no port means every port, a host of `*` means every host, and a host written as an address, `10.0.0.*`, matches no name. A path is checked where it really points, after links are followed.
 
@@ -207,7 +207,9 @@ A script cannot reach outside itself except through the kinds above, and those a
 - A program a job starts does its own reading, writing and connecting, as the runner's user. The permissions govern the start and nothing after. A runner's owner can put a box around started programs (see Runner); Corbie does not build one.
 - A permission to connect to a host governs the connection and nothing sent over it. A job allowed an MCP server can call any of its tools; what a call can do is set by the credentials the server is given.
 - An agent's listed tools are described by whoever wrote the list, and the model reads that text as it reads a tool's result.
+- A tool that calls a machine in another tree is described by that tree's owner, and the model reads that text as it reads a tool's result. It changes when that owner submits.
 - A job that may read the runner's own files can read the runner's key, and with it every job sent to that runner.
+- A runner takes a job only of a run at or under its prefixes, and the run's location is the controller's word. A controller can send a runner any job it signs.
 - Whoever may read an identity's object in a bucket has that party's keys. Corbie does not check the bucket's policy.
 - A script allowed to reach a secret's destination can learn the secret from the other side.
 - A tool that a model's own program runs for itself, where a definition has switched one on, is not checked by Corbie: it has everything its group allows, and only its use is noted (see Models).
@@ -228,11 +230,13 @@ A script cannot reach outside itself except through the kinds above, and those a
   14 levels of files that each name the next twice   3.9 seconds   230 MiB, twice that with each level
 ```
 
+- Two clients whose ceilings match one prefix each set secrets and values there while it holds no tree. What one set stays when the other submits a tree there, and that tree's runs use it. The controller's owner gives each client its own prefix.
 - Whoever holds a gateway's token calls every location that accepts the gateway's client, with any input.
 - A client browsing the store sees that runs exist, their heads, and how many entries each record has, with their sizes and times. It opens only what is sealed to it.
 - A client a file's `read:` lists reads the tickets of the runs there, and so can answer them, as any client that holds a ticket can.
 - A client taken off `read:` still opens what was sealed to it, and the runs still running keep the list they started with until they end.
 - What is at a location is not secret from those who may send there. A run whose layers allow `send:` to a location learns from an undelivered note or a failed call, before `receive:` is read, whether a file is recorded there, its lifetime, whether its singleton is running and whether the location is at its `limits: { runs }`. A client learns from a refused start or call whether a file is recorded at a location and the client whose tree it is in, whatever its ceiling, and the location's lifetime and whether it is at its `limits: { runs }` when its ceiling allows `send:` there.
+- A run whose tool calls a location in full, and whose call there would pass, learns the description and the shape of the input of the machine there.
 - Machines made while running that each use a step's whole time delay other machines: a pass waits for four of those steps at a time, up to 10 seconds, and every other run pays that in each pass it needs. Beside four such machines, a run of 20 ms took 10 seconds.
 - A step that asks for as much as fits in its 4 MiB delays other machines for as long as carrying it out takes.
 - A host with less memory than four steps' 4 GiB stops a step's process or the whole controller. The step is then taken once more, and its machine fails.
@@ -247,4 +251,4 @@ A script cannot reach outside itself except through the kinds above, and those a
   forty $refs that each name the next twice          never ends
 ```
 
-Jobs that must be kept apart go to different runners.
+Jobs that must be kept apart go to different runners. A runner enrolled with `--at` is sent only the jobs of runs at or under its prefixes.

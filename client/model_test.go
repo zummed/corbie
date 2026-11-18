@@ -1,6 +1,8 @@
 package client_test
 
 import (
+	"bytes"
+	"encoding/json"
 	"net/url"
 	"strings"
 	"testing"
@@ -43,5 +45,65 @@ func Test_model_plain_address_key_bound_to_it(t *testing.T) {
 	}
 	if want := `"allow":["net:models.example:443","secret:TEST_KEY@net:models.example:443"]`; !strings.Contains(jsonOf(encrypted.Definition), want) {
 		t.Fatalf("at an encrypted address the turn is not given %s: %s", want, jsonOf(encrypted.Definition))
+	}
+}
+
+// Each turn of an agent asks Anthropic's service to keep the request's
+// start, and starts with the tools, the system text and the messages of
+// the turn before, byte for byte.
+func Test_model_turn_starts_with_the_turn_before(t *testing.T) {
+	m := newModel(t, calls("call_1", "add", `{"n": 41}`), calls("call_2", "double", `{"n": 42}`), says("It is 84."))
+	def := strings.ReplaceAll(`
+		agent: sums
+		input: { question: any }
+		model: { name: test-model, service: anthropic, address: ADDRESS, secret: TEST_KEY }
+		system: You add numbers.
+		prompt: ${input.question}
+		tools:
+		  add:
+		    description: Add one to a number
+		    args: { n: number }
+		    job: { script: ./add.js, input: { n: "${args.n}" } }
+		  double:
+		    description: Double a number
+		    args: { n: number }
+		    job: { script: ./echo.js, input: { n: "${args.n}" } }
+	`, "ADDRESS", m.URL)
+	if r := runAgent(t, local(t, "all"), def, scripts); r.Status != "done" {
+		t.Fatalf("the agent ended %s: %s", r.Status, r.Error)
+	}
+	if len(m.Calls) != 3 {
+		t.Fatalf("the model was called %d times", len(m.Calls))
+	}
+	type sent struct {
+		Cache    json.RawMessage   `json:"cache_control"`
+		Tools    json.RawMessage   `json:"tools"`
+		System   json.RawMessage   `json:"system"`
+		Messages []json.RawMessage `json:"messages"`
+	}
+	var turns []sent
+	for _, c := range m.Calls {
+		var s sent
+		if err := json.Unmarshal(c.Body, &s); err != nil {
+			t.Fatal(err)
+		}
+		if string(s.Cache) != `{"type":"ephemeral"}` {
+			t.Errorf("turn %d asked the service to keep %s", c.Turn, s.Cache)
+		}
+		turns = append(turns, s)
+	}
+	for i := 1; i < len(turns); i++ {
+		before, now := turns[i-1], turns[i]
+		if !bytes.Equal(before.Tools, now.Tools) || !bytes.Equal(before.System, now.System) {
+			t.Errorf("turn %d was sent the tools %s and the system text %s, after %s and %s", i+1, now.Tools, now.System, before.Tools, before.System)
+		}
+		if len(now.Messages) <= len(before.Messages) {
+			t.Fatalf("turn %d was sent %d messages, after %d", i+1, len(now.Messages), len(before.Messages))
+		}
+		for j, message := range before.Messages {
+			if !bytes.Equal(message, now.Messages[j]) {
+				t.Errorf("turn %d sent message %d as %s, after %s", i+1, j+1, now.Messages[j], message)
+			}
+		}
 	}
 }

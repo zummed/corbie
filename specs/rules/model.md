@@ -8,7 +8,7 @@ The detailed rules behind the [Models overview](../model.md). Requirements are `
 *Accept:* a script makes the call with a conversation of two messages, one tool and a shape. The stand-in service receives all three. The `llm` page of the manual lists the call, and the standard turn of an agent uses it.
 
 **R-model-02** The call gives back what the model said, the tools it asked for, why it stopped, and how many tokens were used.
-*Accept:* the stand-in answers with a sentence and a request for one tool. The script's result holds the sentence, the tool's name and arguments, the reason the model stopped, and the tokens in and out.
+*Accept:* the stand-in answers with a sentence and a request for one tool. The script's result holds the sentence, the tool's name and arguments, the reason the model stopped, and the tokens in, out and read from the cache.
 
 **R-model-23** `chat` takes a tool's arguments and the shape of answer only as JSON Schema, and refuses any other form as bad input. A field marked `format: blob` with no `description` is described to the model as the name of a blob as it was shown.
 *Accept:* a script calls `chat` with a tool whose arguments are `{ shelf: string }`: the call is refused as bad input. With the same arguments as a JSON Schema whose `cover` is marked `format: blob`, the stand-in receives `cover` described as a blob's name; with a `description` of its own, it receives that one.
@@ -25,7 +25,9 @@ The detailed rules behind the [Models overview](../model.md). Requirements are `
 
 **C-model-03** A service's running out of its whole window is passed on as running out of room. To whoever called, both mean the reply was cut short. *Test:* `model_window_full_is_out_of_room`
 
-**C-model-04** The tokens counted as input include what the service read from and wrote to its own cache. Left out, the count is far too small. *Test:* `model_usage_counts_cached_input`
+**C-model-04** The tokens counted as input include what the service read from and wrote to its own cache, and `cached` counts those it read, for every service, 0 where a service reports none. Left out, the input is far too small, and no record shows whether the cache was read. *Test:* `model_usage_counts_cached_input`
+
+**C-model-21** Every request to Anthropic's service asks it to keep the request's start, and an agent's turn offered the same tools as the turn before sends that turn's tools, system text and messages byte for byte, with its new messages after them. The service reads from its cache only a start it was sent before; without both, each turn pays for the whole conversation again. *Test:* `model_turn_starts_with_the_turn_before`
 
 **C-model-05** Parts of a reply that a service wants back unchanged, such as its own reasoning, are kept as they came and sent back with the next call, and are dropped when the conversation is sent to another service. A service turns away, or loses its place in, a conversation whose parts were altered, and another model cannot read them. *Test:* `model_kept_parts_sent_back_unchanged`
 

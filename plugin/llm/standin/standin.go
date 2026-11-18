@@ -32,6 +32,7 @@ type Call struct {
 	System   string
 	Messages []any
 	Tools    []any
+	Body     []byte `json:"-"` // the request's body, as it was sent
 }
 
 // A Reply is the model's answer: its text, then the tools it calls. Each
@@ -80,7 +81,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.mu.Lock()
-	call := Call{Turn: len(s.Calls) + 1, Key: r.Header.Get("x-api-key"), System: sent.System, Messages: sent.Messages, Tools: sent.Tools}
+	call := Call{Turn: len(s.Calls) + 1, Key: r.Header.Get("x-api-key"), System: sent.System, Messages: sent.Messages, Tools: sent.Tools, Body: body}
 	s.Calls = append(s.Calls, call)
 	s.mu.Unlock()
 	reply := s.Answer(call)

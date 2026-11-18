@@ -1,6 +1,9 @@
 package instance
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json/v2"
 	"time"
 
 	"github.com/zummed/corbie/blob"
@@ -21,6 +24,7 @@ const (
 	KindJob    = "job"    // a job for a runner
 	KindSend   = "send"   // an event sent to an address, with what starts a run for it if there is one
 	KindNote   = "note"   // something to be written in a run's record
+	KindSet    = "set"    // set, remove or list a client's secrets or values
 )
 
 // A Message is what one party leaves in another's inbox. Kind says which
@@ -49,6 +53,7 @@ type Message struct {
 	Emit   *EmitNote      `json:"emit,omitzero"`
 	Job    *Job           `json:"job,omitzero"`
 	Note   string         `json:"note,omitzero"`
+	Set    *Setting       `json:"set,omitzero"`
 	// Cancel names, for a runner, the job that is cancelled.
 	Cancel string `json:"cancel,omitzero"`
 }
@@ -114,6 +119,34 @@ type SubmitFile struct {
 	Values     []string `json:"values,omitzero"`
 }
 
+// A Setting is a client's set, remove or list of the secrets or the plain
+// values at the locations it may set them at. Of is secret or value, and Act
+// set, remove or list. Value is what set sets.
+type Setting struct {
+	Of    string `json:"of"`
+	Act   string `json:"act"`
+	At    string `json:"at,omitzero"`
+	Name  string `json:"name,omitzero"`
+	Value string `json:"value,omitzero"`
+}
+
+// Hash is the SHA-256 of everything a Setting says, its value included: a
+// receipt names by it the one setting it answered.
+func (s Setting) Hash() string {
+	data, _ := json.Marshal(s)
+	sum := sha256.Sum256(data)
+	return hex.EncodeToString(sum[:])
+}
+
+// What a Setting is of, and what it does.
+const (
+	OfSecret  = "secret"
+	OfValue   = "value"
+	ActSet    = "set"
+	ActRemove = "remove"
+	ActList   = "list"
+)
+
 // An Answer answers a ticket: the ticket's value and the answer.
 type Answer struct {
 	Ticket string `json:"ticket"`
@@ -155,6 +188,9 @@ type Job struct {
 	Number int `json:"number"`
 	// Request names what asked: every attempt at the same job has the same.
 	Request string `json:"request"`
+	// Location is the location of the job's run, as the controller gives
+	// it: the runner takes only the jobs of runs at or under its prefixes.
+	Location string `json:"location,omitzero"`
 
 	Script blob.Ref `json:"script"`
 	// Path is the script's path as the definition names it, and none for

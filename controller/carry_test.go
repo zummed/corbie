@@ -3,6 +3,7 @@ package controller_test
 import (
 	"context"
 	"fmt"
+	"path"
 	"slices"
 	"strings"
 	"testing"
@@ -435,7 +436,7 @@ func Test_ctl_stopped_after_attempt_failed_next_attempt_still_made(t *testing.T)
 func Test_ctl_job_that_cannot_be_sent_fails_though_controller_stops(t *testing.T) {
 	for job, want := range map[string]string{
 		// Decided when the step is taken: no runner has the tag.
-		`{ script: ./work.js, tags: [gpu] }`: "no runner has the tags the job names: gpu",
+		`{ script: ./work.js, tags: [gpu] }`: "has the tags the job names: gpu",
 		// Found when the entry is carried out: the secret is not set.
 		`{ script: ./work.js, allow: ["secret:NONE@net:api.example"] }`: `NONE is not set at /unsent-1/unsent or above`,
 	} {
@@ -642,5 +643,79 @@ func TestEventTooLargeToSendFailsItsJob(t *testing.T) {
 		if left := append(w.list(store.Inbox("ctl")), w.wakes()...); len(left) != 0 {
 			t.Fatalf("%s: this is left waiting: %v", direction, left)
 		}
+	}
+}
+
+// onprem is a statechart whose one job names the tag onprem, or with TAGS
+// replaced none, and which ends with the job's error where it failed.
+const onprem = `
+	statechart: onprem
+	initial: working
+	states:
+	  working:
+	    job: { script: ./work.js, TAGS }
+	    on: { done: finished, failed: broken }
+	  finished: { end: done }
+	  broken: { end: done, output: "${event.data.error}" }
+`
+
+// A runner with a prefix is sent the jobs of runs under it that name its
+// tag, and never the jobs of runs elsewhere; the job carries its run's
+// location.
+func Test_ctl_a_runner_is_sent_only_the_jobs_under_its_prefixes(t *testing.T) {
+	w := newWorld(t)
+	files := map[string]string{"work.js": "return 1"}
+	tagged := strings.Replace(onprem, "TAGS", "tags: [onprem]", 1)
+	team, _ := w.place(w.client, tagged, files)
+	other, _ := w.place(w.client, strings.Replace(onprem, ", TAGS", "", 1), files)
+	elsewhere, _ := w.place(w.client, tagged, files)
+	c, d := w.party("c", identity.Runner), w.party("d", identity.Runner)
+	if err := identity.WriteTrust(ctx, w.ctrl.Store, w.ctl, identity.Trust{Card: c.Card, Tags: []string{"onprem"}, Prefixes: []string{path.Dir(team)}}); err != nil {
+		t.Fatal(err)
+	}
+	w.enrol(d, permission.Layer{}, nil)
+
+	w.startAt(w.client, team, client.Start{})
+	w.settle()
+	jobs := w.inboxOf(c)
+	if at := w.jobsAt(); len(at) != 1 || at["c"] != 1 || len(jobs) != 1 {
+		t.Fatalf("the job of a run under the prefix that names the tag went to %v", at)
+	}
+	for _, msg := range jobs {
+		if msg.Job.Location != team {
+			t.Fatalf("the job carries the location %q, and its run is at %s", msg.Job.Location, team)
+		}
+	}
+	for range 16 {
+		w.startAt(w.client, other, client.Start{})
+	}
+	w.settle()
+	if at := w.jobsAt(); at["c"] != 1 || at["d"] != 16 {
+		t.Fatalf("the jobs of runs elsewhere that name no tag went to %v", at)
+	}
+
+	// Elsewhere, the one runner with the tag is not sent the job, and the
+	// error says that none of the runners there has the tag.
+	run := w.startAt(w.client, elsewhere, client.Start{})
+	w.settle()
+	want := "no runner that is sent the jobs of runs at " + elsewhere + " has the tags the job names: onprem"
+	if out := fmt.Sprint(w.latest(run).State.Output); !strings.Contains(out, want) {
+		t.Fatalf("the job of a run elsewhere that names the tag failed with %q", out)
+	}
+	if at := w.jobsAt(); at["c"] != 1 || at["d"] != 16 {
+		t.Fatalf("a job that failed was sent: %v", at)
+	}
+
+	// With no runner there at all, the error says so and names no tag.
+	if err := identity.WriteTrust(ctx, w.ctrl.Store, w.ctl, identity.Trust{Card: d.Card, Removed: true}); err != nil {
+		t.Fatal(err)
+	}
+	run = w.startAt(w.client, elsewhere, client.Start{})
+	w.settle()
+	if out := fmt.Sprint(w.latest(run).State.Output); !strings.Contains(out, "no runner is sent the jobs of runs at "+elsewhere) || strings.Contains(out, "tags") {
+		t.Fatalf("the job of a run where no runner is failed with %q", out)
+	}
+	if at := w.jobsAt(); at["c"] != 1 || at["d"] != 16 {
+		t.Fatalf("a job that failed was sent: %v", at)
 	}
 }

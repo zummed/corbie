@@ -13,17 +13,20 @@ import (
 
 // Trust is what one party holds about another it has taken the card of:
 // the card, and the limit trust was given with. A controller gives a client
-// a ceiling and a runner its tags; a runner gives a controller a ceiling,
-// and notes the address of that controller's store, as a client does.
+// a ceiling and a runner its tags and prefixes; a runner gives a controller
+// a ceiling and the same prefixes, and notes the address of that
+// controller's store, as a client does. A runner is sent, and takes, only
+// the jobs of runs at or under one of its prefixes; none is "/".
 //
 // A removed party stays on record with its key, so its name stays tied to
 // that key.
 type Trust struct {
-	Card    Card             `json:"card"`
-	Ceiling permission.Layer `json:"ceiling,omitzero"`
-	Tags    []string         `json:"tags,omitzero"`
-	Store   string           `json:"store,omitzero"`
-	Removed bool             `json:"removed,omitzero"`
+	Card     Card             `json:"card"`
+	Ceiling  permission.Layer `json:"ceiling,omitzero"`
+	Tags     []string         `json:"tags,omitzero"`
+	Prefixes []string         `json:"prefixes,omitzero"`
+	Store    string           `json:"store,omitzero"`
+	Removed  bool             `json:"removed,omitzero"`
 }
 
 // Trusted says whether anything from the party is accepted.
@@ -32,7 +35,8 @@ func (t *Trust) Trusted() bool { return t != nil && !t.Removed }
 // Take is what trusting a card gives, given what is on record under its
 // name. A name stays tied to the key it was first taken with, also after
 // the party was removed: a different key is refused unless replace says it
-// takes the old one's place. What the old key was given is not carried over.
+// takes the old one's place. What the old key was given is not carried over,
+// but a runner's prefixes are: they limit what is sent under the name.
 func Take(old *Trust, card Card, want Kind, replace bool) (Trust, error) {
 	if card.Kind != want && want != "" {
 		return Trust{}, fmt.Errorf("this is the card of a %s, and a %s's is needed", card.Kind, want)
@@ -40,6 +44,9 @@ func Take(old *Trust, card Card, want Kind, replace bool) (Trust, error) {
 	if old != nil && !old.Card.Same(card) && !replace {
 		return Trust{}, fmt.Errorf("the name %q is already used with another key (%s); to let this card (%s) take its place, say --replace",
 			card.Name, old.Card.Fingerprint(), card.Fingerprint())
+	}
+	if old != nil {
+		return Trust{Card: card, Prefixes: old.Prefixes}, nil
 	}
 	return Trust{Card: card}, nil
 }
@@ -103,4 +110,19 @@ func (t Trust) HasTags(tags []string) bool {
 		}
 	}
 	return true
+}
+
+// Holds says whether one of the prefixes holds the location: whether it is
+// the location or above it. No prefix is "/", which holds every location.
+func Holds(prefixes []string, location string) bool {
+	if len(prefixes) == 0 {
+		return true
+	}
+	above := store.Above(location)
+	for _, prefix := range prefixes {
+		if prefix == "/" || slices.Contains(above, prefix) {
+			return true
+		}
+	}
+	return false
 }

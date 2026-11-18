@@ -4,7 +4,8 @@
     "text": "Waited.",
     "usage": {
       "input": 2,
-      "output": 2
+      "output": 2,
+      "cached": 0
     }
   },
   "record": [

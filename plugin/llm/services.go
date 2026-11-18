@@ -137,7 +137,10 @@ var anthropic = &web{
 		if room == 0 {
 			room = defaultRoom // this service refuses a call without it
 		}
-		body := map[string]any{"model": c.Model, "max_tokens": room, "messages": messages}
+		// The service is asked to keep the request's start in its cache,
+		// which the next turn starts with.
+		body := map[string]any{"model": c.Model, "max_tokens": room, "messages": messages,
+			"cache_control": map[string]any{"type": "ephemeral"}}
 		if c.System != "" {
 			body["system"] = c.System
 		}
@@ -173,9 +176,11 @@ var anthropic = &web{
 		// The input counted includes what the service read from and wrote
 		// to its own cache.
 		usage := body["usage"]
+		read := number(field(usage, "cache_read_input_tokens"))
 		r.Usage = map[string]any{
-			"input":  number(field(usage, "input_tokens")) + number(field(usage, "cache_creation_input_tokens")) + number(field(usage, "cache_read_input_tokens")),
+			"input":  number(field(usage, "input_tokens")) + number(field(usage, "cache_creation_input_tokens")) + read,
 			"output": number(field(usage, "output_tokens")),
+			"cached": read,
 		}
 		return r, nil
 	},
@@ -331,7 +336,8 @@ var openaiChat = &web{
 			r.Stop = StopLength
 		}
 		usage := body["usage"]
-		r.Usage = map[string]any{"input": number(field(usage, "prompt_tokens")), "output": number(field(usage, "completion_tokens"))}
+		r.Usage = map[string]any{"input": number(field(usage, "prompt_tokens")), "output": number(field(usage, "completion_tokens")),
+			"cached": number(field(field(usage, "prompt_tokens_details"), "cached_tokens"))}
 		return r, nil
 	},
 	// The answer arrives as pieces of one message: its text, and the tools
@@ -472,7 +478,8 @@ var openaiResponses = &web{
 			r.Stop = StopLength
 		}
 		usage := body["usage"]
-		r.Usage = map[string]any{"input": number(field(usage, "input_tokens")), "output": number(field(usage, "output_tokens"))}
+		r.Usage = map[string]any{"input": number(field(usage, "input_tokens")), "output": number(field(usage, "output_tokens")),
+			"cached": number(field(field(usage, "input_tokens_details"), "cached_tokens"))}
 		return r, nil
 	},
 	// The answer arrives as its text a piece at a time, and then the whole
@@ -544,7 +551,8 @@ Returns:
   calls   the tool calls the model made: [{ id, name, args }]
   stop    "end", "tools" when it made tool calls, or "length" when the reply
           was cut at its limit
-  usage   { input, output }, in tokens
+  usage   { input, output, cached }, in tokens; cached is how many of input
+          the service read from its cache, 0 from a service that reports none
   kept    what the service needs back unchanged, or null; put it in the
           assistant part
 

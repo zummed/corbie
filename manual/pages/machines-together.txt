@@ -98,7 +98,7 @@ A statechart sends to a run by its address
         on: { pause: last }
       last: { end: done }
 
-    corbie init --ceiling all
+    corbie init --ceiling all --name laptop
     corbie start &
     corbie run submit house
       /house/desk   transient   recorded
@@ -125,6 +125,84 @@ second goes to that run, and nothing is recorded at `/house/bell`.
   location of its tree and the tree's client.
 - `limits: { runs: 50 }` in a keyed or transient file caps how many of its runs
   are running at once; a send that would start a run past it is not delivered.
+
+An agent uses another team's tools
+----------------------------------
+
+Two teams share one controller, each a client with its own prefix. The
+controller's owner enrols each with a ceiling: `at:` gives its prefix, and
+`send:` lets the runs of `support` call the tools of `netops`. In this example
+all three use one computer, and `--config` names each team's config.
+
+    corbie client card --name netops --config ~/netops | corbie controller enrol - --ceiling 'at:/netops,secret:SWITCH_TOKEN@net:switch.example.com' | corbie client trust - --config ~/netops
+    corbie client card --name support --config ~/support | corbie controller enrol - --ceiling 'at:/support,send:/netops/tools/*,secret:ANTHROPIC_KEY@net:api.anthropic.com' | corbie client trust - --config ~/support
+
+`netops` writes a tool as a machine, sets its secret at the tool's location,
+and submits it.
+
+    # netops/tools/ports.yaml
+    flow: ports
+    description: Give the ports of a switch that are down.
+    input: { switch: string }
+    receive: [/support/triage]
+
+    stages:
+      read:
+        job:
+          script: ./ports.js
+          input: { switch: "${input.switch}" }
+          allow: ["secret:SWITCH_TOKEN@net:switch.example.com"]
+
+    output: ${stages.read.output}
+
+    // netops/tools/ports.js
+    const token = secrets.get("SWITCH_TOKEN")
+    const reply = http.get("https://switch.example.com/ports/" + input.switch, {
+      headers: { Authorization: secrets.text`Bearer ${token}` },
+      as: "json",
+    })
+    return reply.body.down
+
+    corbie client secret set SWITCH_TOKEN --at /netops/tools/ports --env --config ~/netops
+      taken
+    corbie run submit netops --at /netops --config ~/netops
+      /netops/tools/ports   transient   recorded
+
+`support` gives the tool to its agent with `call:`.
+
+    # support/triage.yaml
+    agent: triage
+    input: { question: string }
+    model: { name: claude-haiku-5-5, secret: ANTHROPIC_KEY }
+    prompt: ${input.question}
+
+    tools:
+      ports: { call: /netops/tools/ports }
+
+    corbie client secret set ANTHROPIC_KEY --at /support/triage --env --config ~/support
+      taken
+    corbie run submit support --at /support --config ~/support
+      /support/triage   transient   recorded
+    corbie run start /support/triage --input '{"question": "Which ports of core-1 are down?"}' --watch --config ~/support
+      step 1  -> job turn: a script, on laptop-runner
+      step 2  -> job ports: a call to /netops/tools/ports, <id>
+      step 3  <- done from ports ["ge-0/0/7"]
+      step 3  -> job turn#2: a script, on laptop-runner
+      step 4  done
+
+- The model is shown the tool `ports` as
+  `Give the ports of a switch that are down.`, with the argument `switch`.
+  The agent reads both from the file when its run starts.
+- The call is a run at `/netops/tools/ports`, with that file's `allow:`, the
+  ceiling of `netops` and the secret set there. The agent gets its output.
+- The ceiling of `support` holds no `SWITCH_TOKEN`, and no run at `/support`
+  gets the secret.
+
+`receive:` lists the one agent that may call the tool, so the client
+`support` is refused:
+
+    corbie run start /netops/tools/ports --input '{"switch": "core-1"}' --watch --config ~/support
+      error: /netops/tools/ports does not receive a call from client:support
 
 Next: `corbie manual install` covers running Corbie on several computers, on a
 bucket and as serverless functions.

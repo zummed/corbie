@@ -158,7 +158,7 @@ The detailed rules behind [the Client overview](../client.md).
 
 **C-client-28** A flag that has no effect on what was given is refused as a mistake: one that applies only to a script file is refused with a definition, a script file's flag with a directory, and a flag of a start with a singleton under `corbie test`, whose submit starts it, and a flag of a start beside `--definition`, which runs nothing. A flag taken and ignored leaves a person believing a limit is in force. *Test:* `client_flag_without_effect_refused`
 
-**C-client-31** A secret's value, for `corbie test` or for `controller secret set`, is never given on the command line, and is read only from the source the command names: the terminal, the environment variable of its name, or standard input. A value not found there is a mistake that sends nothing. A command line can be read by every user and many jobs on the computer, and a value picked up from an unnamed source is not the one meant. *Test:* `client_secret_value_never_on_command_line`
+**C-client-31** A secret's value, for `corbie test`, `controller secret set` or `client secret set`, is never given on the command line, and is read only from the source the command names: the terminal, the environment variable of its name, or standard input. A value not found there is a mistake that sends nothing. A command line can be read by every user and many jobs on the computer, and a value picked up from an unnamed source is not the one meant. *Test:* `client_secret_value_never_on_command_line`
 
 **C-client-32** Saving a result's files checks every name before writing any file: a name that is `.` or `..`, holds a slash, or is shared by two blobs is refused. Names come from a run's output, and a run must not choose where on the caller's disk a file lands. *Test:* `client_saved_file_names_checked_first`
 
@@ -269,8 +269,8 @@ Uses:
 - **Machines, Flow, Statechart, Agent.** The writing out of includes, the filling-out of short forms and the check of a definition, which the controller runs again with the same code (R-mach-12, R-mach-17, C-mach-25, C-mach-26); the state a watcher is shown of each type's run (R-inst-72).
 - **Models.** What an agent's turn needs, the connection and the key, written into the definition as it is submitted (R-model-15).
 - **Permissions.** The form of a narrowing list and of the permissions given with a script file; the three parts of a refusal.
-- **Secrets.** `corbie test` sets secrets and values at `/` of the controller in its process.
-- **Controller.** Takes the client's submits, starts, cancels, events and answers, and writes their receipts, the results of calls, heads and records. Nothing passes between them except through the store.
+- **Secrets.** `corbie test` sets secrets and values at `/` of the controller in its process; `client secret` and `client value` send the controller sets, removes and lists (R-sec-64).
+- **Controller.** Takes the client's submits, starts, cancels, events, answers and sets of secrets and values, and writes their receipts, the results of calls, heads and records. Nothing passes between them except through the store.
 - **Roles, Runner.** `corbie start` starts the roles named, and `corbie test` runs them all in one process.
 - **Plugins.** The extensions the binary holds, for `corbie version`.
 - **Manual.** The pages `corbie manual` and the model server's manual tool give (R-man-18, R-man-21).

@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/zummed/corbie/client/cli"
+	"github.com/zummed/corbie/identity"
 	"github.com/zummed/corbie/manual"
 	"github.com/zummed/corbie/runner"
 
@@ -276,6 +277,122 @@ func TestEnrolPipe(t *testing.T) {
 	_, clientCard, _ := laptop.run("", "client", "card", "--name", "someone")
 	if status, _, said := laptop.run(clientCard+" "+storeDir, "runner", "trust", "-"); status != 1 || !strings.Contains(said, "controller's is needed") {
 		t.Fatalf("a client's card given to runner trust: %d %s", status, said)
+	}
+}
+
+// A runner's prefixes are given with --at on both sides, shown, and set
+// again as tags are.
+func TestEnrolAtPrefixes(t *testing.T) {
+	ctl := machine{t, filepath.Join(t.TempDir(), "ctl")}
+	tools := machine{t, filepath.Join(t.TempDir(), "tools")}
+	storeDir := filepath.Join(t.TempDir(), "store")
+	ctl.ok("", "controller", "card", "--store", storeDir, "--name", "ctl")
+	_, card, _ := tools.run("", "runner", "card", "--name", "tools")
+	_, enrolled, said := ctl.run(card, "controller", "enrol", "-", "--tags", "onprem", "--at", "/netops/tools")
+	if !strings.Contains(said, "at or under /netops/tools, with the tags: onprem") {
+		t.Fatalf("enrol said %q", said)
+	}
+	if _, _, said := tools.run(enrolled, "runner", "trust", "-", "--at", "/netops/tools"); !strings.Contains(said, "at or under /netops/tools") {
+		t.Fatalf("trust said %q", said)
+	}
+	parties := func(want string) {
+		t.Helper()
+		if out := ctl.ok("", "controller", "parties"); !strings.Contains(out, want) {
+			t.Fatalf("the controller's parties do not show %q: %s", want, out)
+		}
+	}
+	parties("at: /netops/tools")
+	// Named again with no --at, the prefixes stay, on both sides.
+	ctl.ok("", "controller", "enrol", "tools", "--tags", "gpu")
+	parties("at: /netops/tools")
+	if _, _, said := tools.run("", "runner", "trust", "ctl", "--ceiling", "exec"); !strings.Contains(said, "at or under /netops/tools") {
+		t.Fatalf("trust again said %q", said)
+	}
+	// --at / is every tree again, and is shown.
+	ctl.ok("", "controller", "enrol", "tools", "--at", "/")
+	parties("at: /\n")
+	if _, _, said := tools.run("", "runner", "trust", "ctl", "--at", "/"); !strings.Contains(said, "at or under /\n") {
+		t.Fatalf("trust with --at / said %q", said)
+	}
+	// A prefix is a location with no *, and none is no prefix. A client is
+	// given no --at.
+	for _, bad := range []string{"none", "/netops/*", "netops"} {
+		if status, _, said := ctl.run("", "controller", "enrol", "tools", "--at", bad); status != 2 || !strings.Contains(said, "--at") {
+			t.Fatalf("enrol --at %s: %d %s", bad, status, said)
+		}
+		if status, _, _ := tools.run("", "runner", "trust", "ctl", "--at", bad); status != 2 {
+			t.Fatalf("trust --at %s ended %d", bad, status)
+		}
+	}
+	parties("at: /\n")
+	_, clientCard, _ := tools.run("", "client", "card", "--name", "someone")
+	if status, _, said := ctl.run(clientCard, "controller", "enrol", "-", "--at", "/x"); status != 2 || !strings.Contains(said, "--at") {
+		t.Fatalf("a client enrolled with --at: %d %s", status, said)
+	}
+}
+
+// A replacement keeps the prefixes of the one it replaces, on both sides,
+// unless the command names --at, and gets no tags or ceiling it is not
+// given.
+func TestReplacementKeepsPrefixes(t *testing.T) {
+	ctl := machine{t, filepath.Join(t.TempDir(), "ctl")}
+	tools := machine{t, filepath.Join(t.TempDir(), "tools")}
+	ctl.ok("", "controller", "card", "--store", filepath.Join(t.TempDir(), "store"), "--name", "ctl")
+	_, card, _ := tools.run("", "runner", "card", "--name", "tools")
+	enrolled := ctl.ok(card, "controller", "enrol", "-", "--tags", "onprem", "--at", "/netops/tools")
+	tools.ok(enrolled, "runner", "trust", "-", "--ceiling", "exec", "--at", "/netops/tools")
+	shown := func() string {
+		t.Helper()
+		var rows []struct {
+			Name string
+			Tags []string
+			At   []string
+		}
+		if err := json.Unmarshal([]byte(ctl.ok("", "controller", "parties", "--json")), &rows); err != nil || len(rows) != 1 {
+			t.Fatalf("the parties: %v %+v", err, rows)
+		}
+		if len(rows[0].Tags) != 0 {
+			t.Fatalf("the replacement was given the old tags: %+v", rows[0])
+		}
+		return strings.Join(rows[0].At, ",")
+	}
+
+	// The controller's side: a new key, with --replace and no --at.
+	again := machine{t, filepath.Join(t.TempDir(), "again")}
+	_, card, _ = again.run("", "runner", "card", "--name", "tools")
+	if _, _, said := ctl.run(card, "controller", "enrol", "-", "--replace"); !strings.Contains(said, "at or under /netops/tools,") {
+		t.Fatalf("enrol --replace said %q", said)
+	}
+	if at := shown(); at != "/netops/tools" {
+		t.Fatalf("the replacement is sent the jobs of runs at %s", at)
+	}
+	// Removed, then replaced: the record still holds the prefixes.
+	ctl.ok("", "controller", "remove", "tools")
+	_, card, _ = tools.run("", "runner", "card", "--name", "tools")
+	ctl.ok(card, "controller", "enrol", "-", "--replace")
+	if at := shown(); at != "/netops/tools" {
+		t.Fatalf("the replacement of a removed runner is sent the jobs of runs at %s", at)
+	}
+	_, card, _ = again.run("", "runner", "card", "--name", "tools")
+	ctl.ok(card, "controller", "enrol", "-", "--replace", "--at", "/")
+	if at := shown(); at != "/" {
+		t.Fatalf("replaced with --at /, the runner is sent the jobs of runs at %s", at)
+	}
+
+	// The runner's side: a controller of the same name with a new key.
+	other := machine{t, filepath.Join(t.TempDir(), "other")}
+	other.ok("", "controller", "card", "--store", filepath.Join(t.TempDir(), "store2"), "--name", "ctl")
+	_, card, _ = tools.run("", "runner", "card", "--name", "tools")
+	enrolled = other.ok(card, "controller", "enrol", "-")
+	if _, _, said := tools.run(enrolled, "runner", "trust", "-", "--replace"); !strings.Contains(said, "at or under /netops/tools") {
+		t.Fatalf("trust --replace said %q", said)
+	}
+	held, err := (&identity.Config{Dir: tools.config}).Trust(identity.Runner, "ctl")
+	if err != nil || held == nil || len(held.Prefixes) != 1 || held.Prefixes[0] != "/netops/tools" || len(held.Ceiling.Allow) != 0 {
+		t.Fatalf("the runner holds %+v (%v)", held, err)
+	}
+	if _, _, said := tools.run(enrolled, "runner", "trust", "-", "--replace", "--at", "/"); !strings.Contains(said, "at or under /\n") {
+		t.Fatalf("trust --replace --at / said %q", said)
 	}
 }
 

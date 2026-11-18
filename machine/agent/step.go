@@ -1,7 +1,10 @@
 package agent
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json/v2"
+	"errors"
 	"fmt"
 	"maps"
 	"slices"
@@ -48,9 +51,9 @@ type state struct {
 	Lists []*listing `json:"lists,omitzero"`
 	// Listed are the tools the lists gave, by the name the model is shown.
 	Listed map[string]*listed `json:"listed,omitzero"`
-	// Opened are the toolkits the model has opened, in the order it opened
-	// them.
-	Opened []string `json:"opened,omitzero"`
+	// Opened are the toolkits the model has opened, each with the hash of
+	// the text its open gave.
+	Opened map[string]string `json:"opened,omitzero"`
 	// Unoffered are the toolkits and tools whose when: did not hold when the
 	// run started: the model is never shown them.
 	Unoffered *unoffered `json:"unoffered,omitzero"`
@@ -112,6 +115,9 @@ type stepper struct {
 	st   *state
 	out  *machine.StepOut
 	eval *machine.Evaluator
+	// unread says, by the tool's name, why a tool written call: with a
+	// location in full has no description and no arguments.
+	unread map[string][]string
 }
 
 func (agentType) Step(in *machine.StepIn) (*machine.StepOut, error) {
@@ -120,6 +126,7 @@ func (agentType) Step(in *machine.StepIn) (*machine.StepOut, error) {
 		return nil, err
 	}
 	s := &stepper{a: &a, in: in, st: &state{}, out: &machine.StepOut{}, eval: machine.NewEvaluator(in.Time, in.Seed, in.Run)}
+	s.unread = s.recorded()
 	if in.State != nil {
 		if err := json.Unmarshal(in.State, s.st); err != nil {
 			return nil, err
@@ -162,7 +169,7 @@ func (s *stepper) arrive(event machine.Event) (bool, error) {
 			}
 			c.Done = true
 			if event.Name == machine.Done {
-				s.opened(c)
+				s.opened(c, event.Data)
 				c.Result = s.shown(s.said(c, event.Data))
 				// What opening a toolkit gives is its instructions, which the
 				// model is shown whole.
@@ -384,11 +391,10 @@ func (s *stepper) begin() error {
 	if err != nil {
 		return err
 	}
+	carried, _ := so.(map[string]any)
 	if so != nil {
 		// A conversation carried on brings its turns and the blobs they
-		// name, so each name goes on meaning the blob it meant. It is input,
-		// and opens no toolkit: the model opens what it needs again.
-		carried, _ := so.(map[string]any)
+		// name, so each name goes on meaning the blob it meant.
 		turns, isTurns := carried["turns"].([]any)
 		blobs, isBlobs := carried["blobs"].(map[string]any)
 		for _, held := range blobs {
@@ -409,6 +415,10 @@ func (s *stepper) begin() error {
 		s.st.Next = []any{map[string]any{"role": "user", "content": s.shown(prompt)}}
 	}
 	if err := s.offer(scope); err != nil {
+		return err
+	}
+	s.reopen(carried["opened"])
+	if err := s.readable(); err != nil {
 		return err
 	}
 	// The entries that list their tools list them once, now; the first
@@ -468,6 +478,37 @@ func (s *stepper) offer(scope machine.Scope) error {
 	return nil
 }
 
+// recorded fills in each tool written call: with a location in full from
+// what the run read of the machine there as it started, and gives what is
+// wrong with each that cannot be filled in, by the tool's name.
+func (s *stepper) recorded() map[string][]string {
+	unread := map[string][]string{}
+	for name, tool := range s.a.Tools {
+		if !strings.HasPrefix(tool.Call, "/") {
+			continue
+		}
+		for _, w := range tool.called(tool.Call, s.in.Run.Recorded[tool.Call]) {
+			unread[name] = append(unread[name], tool.place(name)+w.at+": "+w.text)
+		}
+	}
+	return unread
+}
+
+// readable says what is wrong with each tool that is offered and calls a
+// location in full whose machine could not be read.
+func (s *stepper) readable() error {
+	var wrong []string
+	for _, name := range sortedNames(s.unread) {
+		if s.offers(name, s.a.Tools[name]) {
+			wrong = append(wrong, s.unread[name]...)
+		}
+	}
+	if len(wrong) > 0 {
+		return errors.New(strings.Join(wrong, "; "))
+	}
+	return nil
+}
+
 // offers says whether a tool of the definition is offered: its when: and
 // its toolkit's held when the run started.
 func (s *stepper) offers(name string, tool *Tool) bool {
@@ -475,12 +516,59 @@ func (s *stepper) offers(name string, tool *Tool) bool {
 	return not == nil || !slices.Contains(not.Tools, name) && !slices.Contains(not.Toolkits, tool.Toolkit)
 }
 
-// opened notes the toolkit an open call opened: its tools are shown from
-// the next turn.
-func (s *stepper) opened(c *call) {
+// opened notes the toolkit an open call opened, with the hash of what the
+// open gave: its tools are shown from the next turn.
+func (s *stepper) opened(c *call, gave any) {
 	args, _ := c.Args.(map[string]any)
-	if toolkit, _ := args["toolkit"].(string); c.Tool == openTool && !slices.Contains(s.st.Opened, toolkit) {
-		s.st.Opened = append(s.st.Opened, toolkit)
+	if toolkit, _ := args["toolkit"].(string); c.Tool == openTool {
+		s.open(toolkit, digest(gave))
+	}
+}
+
+func (s *stepper) open(toolkit, hash string) {
+	if s.st.Opened == nil {
+		s.st.Opened = map[string]string{}
+	}
+	s.st.Opened[toolkit] = hash
+}
+
+// gives is what opening a toolkit gives the model: its instructions, filled
+// from the agent's input, or with none, that it was opened.
+func (s *stepper) gives(name string) (any, error) {
+	instructions, err := s.eval.Fill(s.a.Toolkits[name].Instructions, machine.Scope{"input": s.in.Input}, toolkitPlace(name)+".instructions")
+	if instructions == nil || instructions == "" {
+		instructions = "Opened " + name + "."
+	}
+	return instructions, err
+}
+
+// digest is the SHA-256, in hex, of what an open gave.
+func digest(gave any) string {
+	text, ok := gave.(string)
+	if !ok {
+		data, _ := json.Marshal(gave, json.Deterministic(true))
+		text = string(data)
+	}
+	sum := sha256.Sum256([]byte(text))
+	return hex.EncodeToString(sum[:])
+}
+
+// reopen opens the toolkits a conversation carried on had open. The
+// conversation is input, so it opens only what one call of open would: a
+// toolkit the agent has, whose when: held, and whose open waits for no ask.
+// It opens one only where an open now would give what the model was given,
+// so that the model is given instructions that changed.
+func (s *stepper) reopen(opened any) {
+	hashes, _ := opened.(map[string]any)
+	for _, name := range slices.Sorted(maps.Keys(hashes)) {
+		toolkit, ok := s.a.Toolkits[name]
+		if !ok || toolkit.Approve || s.st.Unoffered != nil && slices.Contains(s.st.Unoffered.Toolkits, name) {
+			continue
+		}
+		gave, err := s.gives(name)
+		if hash, _ := hashes[name].(string); err == nil && hash == digest(gave) {
+			s.open(name, hash)
+		}
 	}
 }
 
@@ -492,7 +580,7 @@ func (s *stepper) opener() *Tool {
 	var lines []string
 	var names []any
 	for _, name := range sortedNames(s.a.Toolkits) {
-		if !slices.Contains(s.st.Opened, name) && (s.st.Unoffered == nil || !slices.Contains(s.st.Unoffered.Toolkits, name)) {
+		if _, open := s.st.Opened[name]; !open && (s.st.Unoffered == nil || !slices.Contains(s.st.Unoffered.Toolkits, name)) {
 			lines = append(lines, "- "+name+": "+s.a.Toolkits[name].Description)
 			names = append(names, name)
 		}
@@ -508,7 +596,8 @@ func (s *stepper) opener() *Tool {
 // shows says whether the model is shown a tool of the definition: one that
 // is offered, and in no toolkit or in a toolkit the model has opened.
 func (s *stepper) shows(name string, tool *Tool) bool {
-	return s.offers(name, tool) && (tool.Toolkit == "" || slices.Contains(s.st.Opened, tool.Toolkit))
+	_, open := s.st.Opened[tool.Toolkit]
+	return s.offers(name, tool) && (tool.Toolkit == "" || open)
 }
 
 // take keeps the tools one entry's list gave, each under the entry's name
@@ -693,7 +782,7 @@ func (s *stepper) replied(data any) error {
 		if s.st.Tokens == nil {
 			s.st.Tokens = map[string]float64{}
 		}
-		for _, name := range []string{"input", "output"} {
+		for _, name := range []string{"input", "output", "cached"} {
 			n, _ := usage[name].(float64)
 			s.st.Tokens[name] += n
 		}
@@ -773,11 +862,11 @@ func (s *stepper) replied(data any) error {
 			toolkit := s.a.Toolkits[in]
 			job.Approve = toolkit.Approve
 			shown["description"] = toolkit.Description
-			instructions, err := s.eval.Fill(toolkit.Instructions, machine.Scope{"input": s.in.Input}, toolkitPlace(in)+".instructions")
+			gives, err := s.gives(in)
 			if err != nil {
 				return err
 			}
-			job.Input = map[string]any{"toolkit": in, "instructions": instructions}
+			job.Input = map[string]any{"toolkit": in, "instructions": gives}
 		}
 		if in != "" {
 			shown["toolkit"] = in
@@ -824,8 +913,8 @@ func (s *stepper) finish(text string) error {
 }
 
 // result is what an agent's result, or its error, always carries: the
-// conversation, as its turns and the blobs they name, and a count of the
-// tokens its own turns used.
+// conversation, as its turns, the blobs they name and the toolkits open,
+// and a count of the tokens its own turns used.
 func (s *stepper) result(reply any) map[string]any {
 	turns, blobs := s.st.Turns, s.st.Handles
 	if turns == nil {
@@ -834,8 +923,12 @@ func (s *stepper) result(reply any) map[string]any {
 	if blobs == nil {
 		blobs = map[string]any{}
 	}
-	out := map[string]any{"conversation": map[string]any{"turns": turns, "blobs": blobs},
-		"tokens": map[string]any{"input": s.st.Tokens["input"], "output": s.st.Tokens["output"]}}
+	conversation := map[string]any{"turns": turns, "blobs": blobs}
+	if len(s.st.Opened) > 0 {
+		conversation["opened"] = s.st.Opened
+	}
+	out := map[string]any{"conversation": conversation,
+		"tokens": map[string]any{"input": s.st.Tokens["input"], "output": s.st.Tokens["output"], "cached": s.st.Tokens["cached"]}}
 	if reply != nil {
 		out["reply"] = s.real(reply)
 	}

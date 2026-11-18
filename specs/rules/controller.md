@@ -85,14 +85,14 @@ The detailed rules behind the [Controller overview](../controller.md). What the 
 **R-ctl-37** A script job is sent as a message to one runner, signed by the controller and sealed to that runner, carrying everything its runner needs: with the message and the store, and nothing else from the controller, the runner can run the job.
 *Accept:* the job in a runner's inbox checks against the controller's card and opens with that runner's key and with no other party's. A runner that has never seen the definition runs the job from the message alone, reading the script, its files and the input from the places in the record that the job names.
 
-**R-ctl-43** A job goes to a runner that has every tag it names, and a job that names no tag may go to any runner.
-*Accept:* runner A has the tag `gpu`, runner B has `gpu` and `eu`: a job that names `gpu` and `eu` goes to B every time. Over many jobs that name no tag, with one runner that has tags and one that has none, both receive jobs.
+**R-ctl-43** A job goes to a runner that has every tag it names and one of whose prefixes holds the location of the job's run, and a job that names no tag may go to any runner whose prefixes hold it. A child and a machine made while running are at the location of the run that starts them, and the job carries the location to its runner.
+*Accept:* runner A has the tag `gpu`, runner B has `gpu` and `eu`: a job that names `gpu` and `eu` goes to B every time. Over many jobs that name no tag, with one runner that has tags and one that has none, both receive jobs. Runner C has the tag `onprem` and the prefix `/netops/tools`, and runner D no tag and the prefix `/`: a job of a run at `/netops/tools/ping` that names `onprem` goes to C, and its message carries `/netops/tools/ping`; over many jobs of runs at `/home` that name no tag, every one goes to D; the jobs of a child that run starts by `machine:`, and of a machine it makes while running, go to C when they name `onprem`.
 
 **R-ctl-45** Where several runners qualify the controller picks one from the request and the attempt, taking no account of load, so the same attempt always goes to the same runner and a later attempt goes to a different one.
 *Accept:* one step entry is carried out by two copies at once and again by a third later, with three runners that qualify: the job is in one runner's inbox and in no other's. A job with `restart: { limit: 2 }` and two runners that qualify, the first picked of which never answers: attempt two is in the other runner's inbox. Giving one of two qualifying runners a hundred waiting jobs changes none of the picks.
 
-**R-ctl-48** A job whose tags no runner has fails before anything is sent.
-*Accept:* a job names a tag no enrolled runner has: the machine receives `failed` with an error that names the tags, and no runner's inbox gains anything.
+**R-ctl-48** A job no runner qualifies for fails before anything is sent, and its error says which of the two failed: no runner is sent the jobs of runs at its location, or none of those has its tags.
+*Accept:* a job names a tag no enrolled runner has: the machine receives `failed` with an error that names the tags, and no runner's inbox gains anything. With one runner, at `/netops/tools` with the tag `onprem`, a job of a run at `/home` that names `onprem` fails with an error that names `/home` and no tag, and no runner's inbox gains anything.
 
 **R-ctl-50** Every job has a time by which its result is due; if none has come by then the machine receives a timeout in its place, and a result that has arrived always wins over its own due time, however late the controller is in looking.
 *Accept:* a job with a one-minute time limit and no further attempt goes to a runner that never answers: after the due time the machine receives `failed` as a timeout. A result is left one second before its job's due time and the controller's next pass comes an hour later, with the result and the due wake both waiting: the machine receives `done` with the output, and the record holds no timeout.
@@ -180,6 +180,8 @@ The detailed rules behind the [Controller overview](../controller.md). What the 
 
 **C-ctl-65** That an agent has a `list:` tool is read by the controller from the definition, as plain JSON, and every step after its first is taken in a process of its own. Nothing a step's process gives back has a say in it. A list's shapes come from outside the definition, and a step compiles them: in the controller, one would stop every run. A step past a limit fails that agent, with the reason. *Test:* `ctl_listed_agent_steps_after_its_first_are_taken_in_a_process`, `ctl_listed_step_past_a_limit_fails_that_agent` and `ctl_listed_shape_past_a_limit_fails_that_agent`
 
+**C-ctl-106** Which locations a run reads at its first step is read by the controller from the definition, as plain JSON, and a machine made while running reads none. A made machine names no address, and what it read would tell words from outside about a location. *Test:* `ctl_made_machine_reads_no_recorded_machine`
+
 **C-ctl-66** A client's start names a location, and its run begins from the file recorded there, which the controller copies into the run's record; a definition the start names is not read, and a start that names no location is refused. A definition a client wrote would be read in the controller as an owner's is, and one that ends the process would end the controller on every pass. *Test:* `ctl_client_start_names_a_location`
 
 ## Trees and locations
@@ -196,9 +198,17 @@ The detailed rules behind the [Controller overview](../controller.md). What the 
 **R-ctl-110** A file with a problem keeps what was recorded at its location before, and its runs, and the rest of the submit is done.
 *Accept:* a tree's singleton is running; its file is changed to one that does not read and another file is added: the new file's singleton starts, and the first runs on.
 
-**C-ctl-78** A submit can be taken again after a stop at any write and leaves what one never stopped leaves. The tree's entry is written first, naming the submit and what it does, and a submit taken again does exactly that, however late it is; every later write is only-if-new, writes what is there already, or deletes. Its receipt names as cancelled the runs still running when it is taken again, so a cancel another copy has carried out meanwhile is not named. Worked out again after its first writes, or refused as too late, a submit would find its own files recorded and do nothing to the runs it was to cancel or start. *Test:* `ctl_submit_stopped_after_every_write`
+**C-ctl-78** A submit can be taken again after a stop at any write and leaves what one never stopped leaves. The tree's entry is written first, naming the submit and what it does, and a submit taken again does exactly that, however late it is, as C-ctl-103 allows; every later write is only-if-new, writes what is there already, or deletes. Its receipt names as cancelled the runs still running when it is taken again, so a cancel another copy has carried out meanwhile is not named. Worked out again after its first writes, or refused as too late, a submit would find its own files recorded and do nothing to the runs it was to cancel or start. *Test:* `ctl_submit_stopped_after_every_write`
 
 **C-ctl-79** The controller reads a submit's files, and every blob they name, only from that submit's own uploads, and keeps a tree's entry and each location's file sealed to itself. A file named elsewhere could be another client's upload, and a location's file holds the keys of its blobs. *Test:* `ctl_submit_reads_only_its_own_uploads`
+
+**C-ctl-103** Nothing of a submit is recorded unless the checks a submit is given pass at that moment, and a submit is carried on only where it is the one the tree's entry was written for: the entry holds the SHA-256 of what its message says, a message under the same name with another content is refused, and the same message taken again is checked again (R-ctl-108, C-ctl-79) but not for its life. A client chooses its messages' names, and a day after a submit its receipt is gone while the tree's entry still names it: carried on from the entry alone, a message under that name would be recorded with no check of the ceiling, the message's life or where its files are. *Test:* `ctl_submit_carried_on_only_as_entered_and_allowed`
+
+**C-ctl-100** A client's set, remove or list of secrets or values is answered by a receipt written before it is carried out, sealed to the client and to the controller; taken again, the message is answered by that receipt, and a taken set or remove is carried out again, as C-ctl-102 allows. Carried out first, a remove taken again after a stop would be refused as not set, and two copies taking it at once could answer it both ways. *Test:* `ctl_setting_taken_again_gives_the_same_answer`
+
+**C-ctl-101** A set or a remove where the client may not set is refused before the controller reads what is set there, and a list gives nothing set where the client may not set. A remove refused as not set would tell a client which names are set in another client's tree. *Test:* `ctl_setting_refused_learns_nothing`
+
+**C-ctl-102** The controller carries out a set or a remove only where the client may set there at that moment, and only the one the receipt answered: the receipt holds the SHA-256 of the setting it answers (kind, act, location, name and value), and a message under that name with another setting is deleted, carried out not at all. A client chooses its messages' names and can send a message again under the name of one already deleted, and a receipt alone would let it carry out anything, at `/` included. *Test:* `ctl_setting_carried_out_only_as_answered_and_allowed`
 
 ## Starting runs
 
@@ -210,6 +220,9 @@ The detailed rules behind the [Controller overview](../controller.md). What the 
 
 **R-ctl-113** A run reads the values set at its location or above once, at its first step, the one set nearest winning, and keeps them; a job's secrets are those set nearest its run's location. A child runs at its parent's location, with its parent's values and context. A value a run reads that is not set fails it, naming the value and the location.
 *Accept:* `Test_ctl_values_are_read_at_the_first_step` and `Test_ctl_values_and_secrets_by_location`.
+
+**R-ctl-152** At a run's first step the controller reads the machine recorded at each location its definition's type names: its description, its input, its type and its lifetime. It gives them to the step only where a call from the run would pass, and otherwise the refusal a call would get, and the run keeps what it read.
+*Accept:* the tests of R-agent-92.
 
 **R-ctl-114** A root a client or a submit starts counts its depth limit from its own file's `limits: { depth }`, sixteen by default.
 *Accept:* parity case 79.
@@ -331,16 +344,16 @@ Uses:
 
 - **Store**: reads and writes everything in its own area with the three ways of writing, lists its inbox and its wakes in order, and writes jobs and cancels into runners' inboxes.
 - **Role**: is run as passes, and is told how long a pass may take; starts the process of a step of a machine made while running.
-- **Identity**: asks whether a sender is trusted, reads a client's ceiling and a runner's tags, opens messages sealed to it, signs heads, and seals jobs, cancels, receipts and the results of calls; a message it does not accept is deleted without a receipt (R-id-47).
+- **Identity**: asks whether a sender is trusted, reads a client's ceiling and a runner's tags and prefixes, opens messages sealed to it, signs heads, and seals jobs, cancels, receipts and the results of calls; a message it does not accept is deleted without a receipt (R-id-47).
 - **Instance**: writes heads, step entries, receipts and the results of calls in the form that area gives, moves a head from running to finished, and removes what is past keeping by that area's rules.
-- **Machine**: gives a type's step the definition, the state before and the events, and takes back the new state and the requests; checks a definition with the same code as the client (R-mach-17); starts children, counts depth and jobs, makes tickets and takes their answers, and holds jobs for the ask, as the Machines rules state (R-mach-65 to R-mach-115); gives a run its location and values, and carries out sends and calls to addresses (R-mach-153 to R-mach-160).
+- **Machine**: gives a type's step the definition, the state before and the events, and takes back the new state and the requests; checks a definition with the same code as the client (R-mach-17); starts children, counts depth and jobs, makes tickets and takes their answers, and holds jobs for the ask, as the Machines rules state (R-mach-65 to R-mach-115); gives a run its location and values, and what it read of the machines recorded at the locations its type names (R-ctl-152), and carries out sends and calls to addresses (R-mach-153 to R-mach-160).
 - **Blob**: copies what a child hands up into the parent's record, once and for every type (R-blob-23); copies a submit's uploads to their locations, a location's file into each run's record and a called run's output beside the call's result (R-blob-19), and a singleton's handed-over value into the run started in its place (R-ctl-133); reads the small blobs a step needs.
 - **Permission**: puts each layer that applies into a job by name, and reads the permissions a job declares against the `approve:` lists (R-perm-42); checks `send:` against a sender's layers and the receiver's `receive:` for a send or a call, and `at:` against the client's ceiling at a submit.
-- **Secret**: puts into a job the values of the secrets it names and every layer allows, set nearest its run's location (R-sec-14); fails a job that names a secret that is not set (R-sec-20), and denies one that names a secret a layer does not allow; reads a run's values at its first step, and the secrets and values a submit's files use that are not set.
+- **Secret**: puts into a job the values of the secrets it names and every layer allows, set nearest its run's location (R-sec-14); fails a job that names a secret that is not set (R-sec-20), and denies one that names a secret a layer does not allow; reads a run's values at its first step, and the secrets and values a submit's files use that are not set. Sets, removes and lists a client's secrets and values as the owner's are (R-sec-64).
 
 Used by:
 
-- **Client**: leaves submits, starts, cancels, events and answers in the controller's inbox, with a submit's files among its uploads, and reads the receipts, heads and records the controller writes.
+- **Client**: leaves submits, starts, cancels, events, answers and sets of secrets and values in the controller's inbox, with a submit's files among its uploads, and reads the receipts, heads and records the controller writes.
 - **Runner**: is sent jobs and cancels; returns results and the emits a machine wants.
 - **Flow, Statechart, Agent**: each supplies the step the controller runs, and relies on the controller for attempts, children, timers, tickets, limits and approval.
 - **Role**: a controller's pass is the unit that area starts and bounds.

@@ -10,7 +10,8 @@
     },
     "tokens": {
       "input": 1,
-      "output": 1
+      "output": 1,
+      "cached": 0
     }
   },
   "record": [

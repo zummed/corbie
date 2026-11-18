@@ -14,6 +14,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -69,7 +70,10 @@ type Served struct {
 	Controller identity.Card
 	// Ceiling is the most the runner lets that controller's jobs do.
 	Ceiling permission.Layer
-	Store   store.Store
+	// Prefixes are where the runs are whose jobs the runner takes from
+	// that controller; none is every tree.
+	Prefixes []string
+	Store    store.Store
 }
 
 // running is a job this copy is running.
@@ -462,6 +466,14 @@ func (r *Runner) take(ctx context.Context, s Served, w *waiting) (later bool, er
 	if isRunning || ran || r.full() {
 		return false, nil // a copy at its number of jobs writes no mark for the next
 	}
+	if !identity.Holds(s.Prefixes, job.Location) {
+		mine, err := r.mark(ctx, s, w.base, job.Due)
+		if err != nil || !mine {
+			return false, err
+		}
+		_, err = r.answer(ctx, s, w, r.outside(s, job))
+		return false, err
+	}
 	// It is taken only if its whole time limit fits in the time the host
 	// has left.
 	if deadline, ok := ctx.Deadline(); ok && r.Now().Add(time.Duration(job.Timeout)+hostMargin).After(deadline) {
@@ -580,6 +592,20 @@ func (r *Runner) sweep(ctx context.Context) error {
 		}
 	}
 	return nil
+}
+
+// outside is the result of a job of a run at none of the runner's prefixes
+// for its controller: denied by the runner's trust of that controller.
+func (r *Runner) outside(s Served, job *instance.Job) *instance.Result {
+	fix := "corbie runner trust " + s.Controller.Name
+	for _, prefix := range append(slices.Clone(s.Prefixes), job.Location) {
+		fix += " --at " + prefix
+	}
+	refusal := &permission.Refusal{What: "a job of a run at " + job.Location,
+		Layer: fmt.Sprintf("the trust the runner %q gives the controller %q", r.ID.Name, s.Controller.Name),
+		Fix:   "the runner's owner runs, on the runner's computer: " + fix}
+	return &instance.Result{Job: job.Name, Attempt: job.Attempt, Status: machine.StatusDenied, Final: true,
+		Error: &machine.Error{Status: machine.StatusDenied, Error: refusal.Error(), Refused: refusal.What, Layer: refusal.Layer, Fix: refusal.Fix}}
 }
 
 // ceiling is the runner's own layer for a controller's jobs.

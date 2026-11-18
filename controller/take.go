@@ -831,7 +831,7 @@ func (b *build) run() machine.Run { return runOf(b.inst, b.st) }
 // runOf is what an expression reads of an instance in a state. Only a run
 // at a keyed location has a key.
 func runOf(inst string, st *instance.State) machine.Run {
-	run := machine.Run{ID: inst, Location: st.Location, Context: st.Above.Context, Tree: st.Tree, Values: st.Above.Values}
+	run := machine.Run{ID: inst, Location: st.Location, Context: st.Above.Context, Tree: st.Tree, Values: st.Above.Values, Recorded: st.Recorded}
 	if st.Lifetime == machine.LifetimeKeyed {
 		key := st.Key
 		run.Key = &key
@@ -1191,22 +1191,33 @@ func (b *build) launch(job *instance.Going) {
 // allowed to take to arrive.
 const dueGrace = 30 * time.Second
 
-// pick chooses the runner for an attempt at a job from those that have
-// every tag the job names. It takes no account of load: the same attempt
-// always goes to the same runner, and a later attempt to a different one
-// where more than one qualifies.
+// pick chooses the runner for an attempt at a job from those one of whose
+// prefixes holds the location of the job's run and that have every tag the
+// job names. It takes no account of load: the same attempt always goes to
+// the same runner, and a later attempt to a different one where more than
+// one qualifies.
 func (b *build) pick(job *instance.Going, runners []identity.Trust) (string, identity.Card, error) {
-	var fit []identity.Card
+	location := b.st.Location
+	var at, fit []identity.Card
 	for _, r := range runners {
-		if r.HasTags(job.Tags) || b.p.c.AnyRunner {
-			fit = append(fit, r.Card)
+		if b.p.c.AnyRunner {
+			at, fit = append(at, r.Card), append(fit, r.Card)
+			continue
+		}
+		if identity.Holds(r.Prefixes, location) {
+			at = append(at, r.Card)
+			if r.HasTags(job.Tags) {
+				fit = append(fit, r.Card)
+			}
 		}
 	}
-	if len(fit) == 0 {
-		if len(job.Tags) == 0 {
-			return "", identity.Card{}, fmt.Errorf("the controller has no runner to send the job to")
-		}
-		return "", identity.Card{}, fmt.Errorf("no runner has the tags the job names: %s", strings.Join(job.Tags, ", "))
+	switch {
+	case len(runners) == 0:
+		return "", identity.Card{}, fmt.Errorf("the controller has no runner to send the job to")
+	case len(at) == 0:
+		return "", identity.Card{}, fmt.Errorf("no runner is sent the jobs of runs at %s", location)
+	case len(fit) == 0:
+		return "", identity.Card{}, fmt.Errorf("no runner that is sent the jobs of runs at %s has the tags the job names: %s", location, strings.Join(job.Tags, ", "))
 	}
 	sum := sha256.Sum256([]byte(b.inst + "\x00" + machine.JobName(job.Name, job.Asked, 1)))
 	card := fit[(binary.BigEndian.Uint64(sum[:8])+uint64(job.Attempt-1))%uint64(len(fit))]
@@ -1456,8 +1467,12 @@ func (b *build) first(s *instance.Start, start *arrival) (refused bool, err erro
 		return refused, err
 	}
 	b.above(def)
+	b.narrowed(s, start)
 	read := &stepOut{Problems: problems}
 	if len(problems) == 0 && !gone {
+		if err := b.recorded(def); err != nil {
+			return false, err
+		}
 		if read, err = b.readStep(s, start); err != nil || read == nil {
 			return false, err
 		}
@@ -1638,9 +1653,8 @@ func (b *build) refusedStart(start *arrival, call bool, problems machine.Problem
 	return false
 }
 
-// started sets the depth a root counts from, tells the client that started
-// or called the run that it was taken, and adds the list a client started
-// it with.
+// started sets the depth a root counts from, and tells the client that
+// started or called the run that it was taken.
 func (b *build) started(s *instance.Start, start *arrival, call bool) {
 	st := b.st
 	if start.kind == identity.Client || st.Lifetime != "" {
@@ -1660,12 +1674,18 @@ func (b *build) started(s *instance.Start, start *arrival, call bool) {
 		return
 	}
 	b.ask(instance.Ask{Kind: instance.AskReceipt, Sender: start.sender, Message: start.name, Receipt: &instance.Receipt{Taken: true}})
-	if s.Allow != nil {
-		layer := *s.Allow
-		layer.Name = "the list the run was started with"
-		layer.Fix = "start the run with %s in its list as well (corbie run submit --allow)"
-		st.Above.Layers = []permission.Layer{layer}
+}
+
+// narrowed adds the list a client started the run with, before the run's
+// first step reads anything under it.
+func (b *build) narrowed(s *instance.Start, start *arrival) {
+	if start.kind != identity.Client || s.Allow == nil {
+		return
 	}
+	layer := *s.Allow
+	layer.Name = "the list the run was started with"
+	layer.Fix = "start the run with %s in its list as well (corbie run submit --allow)"
+	b.st.Above.Layers = []permission.Layer{layer}
 }
 
 // tookSend tells a client whose send started the run that the run took it,

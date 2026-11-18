@@ -10,6 +10,9 @@ defend against the following.
   container with `corbie start --exec-wrapper`, and Corbie provides none.
 - A job allowed to read the runner's own files can read the runner's private
   key, and with it decrypt every job sent to that runner.
+- A runner given `--at` takes only the jobs of runs at or under its prefixes,
+  and a job's location is what the controller wrote. A controller can send a
+  runner any job it signs.
 - A script allowed to connect to a secret's destination can learn the secret's
   value from that destination.
 - A tool that a model's own program runs, switched on with `own:`, is not
@@ -22,7 +25,9 @@ defend against the following.
   encryption. Where a service's own protocol does it, Corbie relies on what
   the plugin reports.
 - Jobs on one runner are not isolated from each other. Send jobs that must be
-  isolated to different runners, which a job selects with `tags:`.
+  isolated to different runners: a runner enrolled with `--at` is sent only
+  the jobs of runs at or under its prefixes, and a job selects among runners
+  with `tags:`.
 
 These are true of definitions.
 

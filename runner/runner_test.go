@@ -590,3 +590,42 @@ func Test_run_empty_bytes_view_at_end_of_buffer_is_safe(t *testing.T) {
 		t.Fatalf("the result is %+v", got)
 	}
 }
+
+// A runner takes only the jobs of runs at or under the prefixes it gave the
+// controller, whatever the controller's record of it says: any other job
+// ends denied, and the refusal says what allows it.
+func Test_run_job_outside_its_prefixes_is_denied(t *testing.T) {
+	w := newWorld(t)
+	ran := filepath.Join(t.TempDir(), "ran")
+	w.job(w.ctl, "home", `fs.write(input.ran, "ran"); return 1`, func(j *instance.Job) {
+		j.Location, j.Input = "/home/devices/boiler", map[string]any{"ran": ran}
+	})
+	w.job(w.ctl, "tools", `return 2`, func(j *instance.Job) { j.Location = "/netops/tools/ping" })
+	w.job(w.ctl, "beside", `return 3`, func(j *instance.Job) { j.Location = "/netops/toolsx" })
+	r := w.runner("all")
+	r.Serves[0].Prefixes = []string{"/netops/tools"}
+	pass(t, r)
+	results := w.results()
+	home := results["home"]
+	if home == nil || home.Status != machine.StatusDenied || home.Error == nil {
+		t.Fatalf("the job of a run at /home ended %+v", home)
+	}
+	for _, want := range []string{"/home/devices/boiler", `the trust the runner "r1" gives the controller "ctl"`,
+		"corbie runner trust ctl --at /netops/tools --at /home/devices/boiler"} {
+		if !strings.Contains(home.Error.Error, want) {
+			t.Errorf("the refusal does not name %q: %s", want, home.Error.Error)
+		}
+	}
+	if home.Error.Layer == "" || home.Error.Fix == "" || home.Error.Refused == "" {
+		t.Errorf("the refusal is %+v", home.Error)
+	}
+	if _, err := os.Stat(ran); err == nil {
+		t.Error("the script of the job outside the prefixes ran")
+	}
+	if got := results["tools"]; got == nil || got.Status != instance.Done {
+		t.Fatalf("the job of a run under the prefix ended %+v", got)
+	}
+	if got := results["beside"]; got == nil || got.Status != machine.StatusDenied {
+		t.Fatalf("the job of a run at /netops/toolsx ended %+v", got)
+	}
+}

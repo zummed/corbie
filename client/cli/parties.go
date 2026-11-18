@@ -64,6 +64,33 @@ func has(old *identity.Trust, card identity.Card) permission.Layer {
 	return permission.Layer{}
 }
 
+// prefixes reads the --at flags given for a runner: the prefixes of the
+// runs whose jobs it is sent, or takes. With none given those on record
+// stay, and "/" is every tree, which is kept as no prefix.
+func prefixes(given []string, had []string) ([]string, error) {
+	if len(given) == 0 {
+		return had, nil
+	}
+	for _, at := range given {
+		if err := store.CheckLocation(at); err != nil {
+			return nil, Mistake("--at %q: a prefix is a location: it starts with /, as /netops/tools, and no part of it is empty, ., .. or +, or holds # or *", at)
+		}
+	}
+	if slices.Contains(given, "/") {
+		return nil, nil
+	}
+	return given, nil
+}
+
+// shownPrefixes gives a runner's prefixes as they are shown: "/" where
+// none is kept.
+func shownPrefixes(p []string) []string {
+	if len(p) == 0 {
+		return []string{"/"}
+	}
+	return p
+}
+
 func hostName() string {
 	name, err := os.Hostname()
 	if err != nil || identity.CheckName(name) != nil {
@@ -429,12 +456,13 @@ func (e *Env) read(rest []string, what string) ([]string, error) {
 
 func cmdEnrol(e *Env, args []string) error {
 	var ceilingText, tags string
-	var allow, deny list
+	var allow, deny, at list
 	var replace bool
 	e.Flags.StringVar(&ceilingText, "ceiling", "", "")
 	e.Flags.Var(&allow, "allow", "")
 	e.Flags.Var(&deny, "deny", "")
 	e.Flags.StringVar(&tags, "tags", "", "")
+	e.Flags.Var(&at, "at", "")
 	e.Flags.BoolVar(&replace, "replace", false, "")
 	rest, err := e.Parse(args)
 	if err != nil {
@@ -498,8 +526,13 @@ func cmdEnrol(e *Env, args []string) error {
 	if card.Kind == identity.Runner && limited {
 		return Mistake("a runner is given tags; its ceiling is the runner's own to set, with corbie runner trust")
 	}
-	if card.Kind == identity.Client && tags != "" {
-		return Mistake("a client is given a ceiling; tags are for runners")
+	if card.Kind == identity.Client && (tags != "" || len(at) > 0) {
+		return Mistake("a client is given a ceiling, with at: entries for its prefixes; tags and --at are for runners")
+	}
+	// A runner keeps the prefixes on record, a replacement's included, by
+	// default.
+	if trust.Prefixes, err = prefixes(at, trust.Prefixes); err != nil {
+		return err
 	}
 	// The card and the address are printed only after the trust is
 	// written.
@@ -520,6 +553,9 @@ func cmdEnrol(e *Env, args []string) error {
 		}
 	}
 	e.Say("enrolled the %s %s  (%s)", card.Kind, card.Name, card.Fingerprint())
+	if card.Kind == identity.Runner {
+		e.Say("it is sent the jobs of runs at or under %s, with the tags: %s", strings.Join(shownPrefixes(trust.Prefixes), ", "), cmp.Or(strings.Join(trust.Tags, ","), none))
+	}
 	e.Say("this controller is %s  (%s)", ctl.Name, ctl.Fingerprint())
 	return e.Print(map[string]string{"card": ctl.Card.String(), "store": address}, func() string {
 		return ctl.Card.String() + "\n" + address + "\n"
@@ -531,13 +567,14 @@ func cmdEnrol(e *Env, args []string) error {
 func cmdTrust(kind identity.Kind) func(e *Env, args []string) error {
 	return func(e *Env, args []string) error {
 		var ceilingText string
-		var allow, deny list
+		var allow, deny, at list
 		var replace bool
 		if kind == identity.Runner {
-			// A runner gives a ceiling; a client gives none.
+			// A runner gives a ceiling and prefixes; a client gives neither.
 			e.Flags.StringVar(&ceilingText, "ceiling", "", "")
 			e.Flags.Var(&allow, "allow", "")
 			e.Flags.Var(&deny, "deny", "")
+			e.Flags.Var(&at, "at", "")
 		}
 		e.Flags.BoolVar(&replace, "replace", false, "")
 		rest, err := e.Parse(args)
@@ -592,6 +629,9 @@ func cmdTrust(kind identity.Kind) func(e *Env, args []string) error {
 		if trust.Ceiling, err = ceiling(ceilingText, allow, deny, has(old, card), permission.CheckList); err != nil {
 			return err
 		}
+		if trust.Prefixes, err = prefixes(at, trust.Prefixes); err != nil {
+			return err
+		}
 		trust.Store = address
 		if address == "" && old != nil {
 			trust.Store = old.Store
@@ -603,6 +643,9 @@ func cmdTrust(kind identity.Kind) func(e *Env, args []string) error {
 			return err
 		}
 		e.Say("this %s now trusts the controller %s  (%s)", kind, card.Name, card.Fingerprint())
+		if kind == identity.Runner {
+			e.Say("it takes the jobs of runs at or under %s", strings.Join(shownPrefixes(trust.Prefixes), ", "))
+		}
 		return nil
 	}
 }
@@ -677,11 +720,16 @@ func cmdParties(e *Env, args []string) error {
 		Ceiling     []string `json:"ceiling,omitzero"`
 		Deny        []string `json:"deny,omitzero"`
 		Tags        []string `json:"tags,omitzero"`
+		At          []string `json:"at,omitzero"`
 		Removed     bool     `json:"removed,omitzero"`
 	}
 	rows := []row{}
 	for _, t := range all {
-		rows = append(rows, row{t.Card.Name, string(t.Card.Kind), t.Card.Fingerprint(), t.Ceiling.Allow, t.Ceiling.Deny, t.Tags, t.Removed})
+		var at []string
+		if t.Card.Kind == identity.Runner {
+			at = shownPrefixes(t.Prefixes)
+		}
+		rows = append(rows, row{t.Card.Name, string(t.Card.Kind), t.Card.Fingerprint(), t.Ceiling.Allow, t.Ceiling.Deny, t.Tags, at, t.Removed})
 	}
 	return e.Print(rows, func() string {
 		var b strings.Builder
@@ -696,6 +744,9 @@ func cmdParties(e *Env, args []string) error {
 			if len(r.Tags) > 0 {
 				fmt.Fprintf(&b, "  tags: %s", strings.Join(r.Tags, ","))
 			}
+			if len(r.At) > 0 {
+				fmt.Fprintf(&b, "  at: %s", strings.Join(r.At, ","))
+			}
 			if r.Removed {
 				b.WriteString("  removed")
 			}
@@ -706,52 +757,61 @@ func cmdParties(e *Env, args []string) error {
 }
 
 func cmdSecretSet(e *Env, args []string) error {
-	var fromEnv bool
-	e.Flags.BoolVar(&fromEnv, "env", false, "")
 	at := atFlag(e)
-	rest, err := e.Parse(args)
+	name, value, err := secretSet(e, args)
 	if err != nil {
-		return err
-	}
-	if len(rest) == 0 {
-		return Mistake("name the secret")
-	}
-	name := rest[0]
-	if err := checkSecretName(name); err != nil {
 		return err
 	}
 	if err := checkAt(*at); err != nil {
 		return err
 	}
-	fromStdin := len(rest) == 2 && rest[1] == "-"
-	if len(rest) != 1 && !fromStdin {
-		return Mistake("name the secret, and nothing else: a secret's value is never given on the command line")
-	}
-	if fromEnv && fromStdin {
-		return Mistake("--env and - each give the value: give one")
-	}
 	ctl, s, err := e.Controller()
 	if err != nil {
 		return err
 	}
-	var value string
-	switch {
-	case fromEnv:
-		value, err = secretFromEnv(name)
-	case fromStdin:
-		var data []byte
-		data, err = io.ReadAll(e.In)
-		value = strings.TrimRight(string(data), "\r\n")
-		if err == nil && value == "" {
-			err = Mistake("standard input gave no value for the secret %q", name)
-		}
-	default:
-		value, err = secretTyped(e, name, "--env reads it from the environment variable, and - from standard input")
-	}
+	given, err := value()
 	if err != nil {
 		return err
 	}
-	return secret.Set(e.ctx, s, ctl, *at, name, value)
+	return secret.Set(e.ctx, s, ctl, *at, name, given)
+}
+
+// secretSet reads a set of a secret: its name, and how its value is read, from the one source the command names.
+func secretSet(e *Env, args []string) (name string, value func() (string, error), err error) {
+	var fromEnv bool
+	e.Flags.BoolVar(&fromEnv, "env", false, "")
+	rest, err := e.Parse(args)
+	if err != nil {
+		return "", nil, err
+	}
+	if len(rest) == 0 {
+		return "", nil, Mistake("name the secret")
+	}
+	name = rest[0]
+	if err := checkSecretName(name); err != nil {
+		return "", nil, err
+	}
+	fromStdin := len(rest) == 2 && rest[1] == "-"
+	if len(rest) != 1 && !fromStdin {
+		return "", nil, Mistake("name the secret, and nothing else: a secret's value is never given on the command line")
+	}
+	if fromEnv && fromStdin {
+		return "", nil, Mistake("--env and - each give the value: give one")
+	}
+	return name, func() (string, error) {
+		switch {
+		case fromEnv:
+			return secretFromEnv(name)
+		case fromStdin:
+			data, err := io.ReadAll(e.In)
+			value := strings.TrimRight(string(data), "\r\n")
+			if err == nil && value == "" {
+				err = Mistake("standard input gave no value for the secret %q", name)
+			}
+			return value, err
+		}
+		return secretTyped(e, name, "--env reads it from the environment variable, and - from standard input")
+	}, nil
 }
 
 // atFlag is the flag --at: the location a secret or a value is set at, by
@@ -866,6 +926,11 @@ func cmdSecretList(e *Env, args []string) error {
 	if err != nil {
 		return err
 	}
+	return e.printSecrets(entries)
+}
+
+// printSecrets prints secrets' names and where each is set.
+func (e *Env) printSecrets(entries []secret.Entry) error {
 	type listed struct {
 		Name string `json:"name"`
 		At   string `json:"at"`
@@ -931,6 +996,11 @@ func cmdValueList(e *Env, args []string) error {
 	if err != nil {
 		return err
 	}
+	return e.printValues(entries)
+}
+
+// printValues prints values, where each is set and what it is.
+func (e *Env) printValues(entries []secret.Entry) error {
 	type listed struct {
 		Name  string `json:"name"`
 		At    string `json:"at"`
@@ -946,6 +1016,166 @@ func cmdValueList(e *Env, args []string) error {
 		rows = append(rows, []string{entry.Name, entry.At, value})
 	}
 	return e.Print(printed, func() string { return aligned(rows) })
+}
+
+// clientAt is the flag --at of a client's set or remove: the location,
+// which has no default, since / is not a client's.
+func clientAt(e *Env) *string {
+	return e.Flags.String("at", "", "")
+}
+
+// needAt refuses a client's set or remove that names no location.
+func needAt(e *Env, at string) error {
+	if !e.Given("at") {
+		return Mistake("--at names the location: a client sets nothing at / by default")
+	}
+	return checkAt(at)
+}
+
+func cmdClientSecretSet(e *Env, args []string) error {
+	at := clientAt(e)
+	name, value, err := secretSet(e, args)
+	if err != nil {
+		return err
+	}
+	if err := needAt(e, *at); err != nil {
+		return err
+	}
+	c, err := e.Client()
+	if err != nil {
+		return err
+	}
+	given, err := value()
+	if err != nil {
+		return err
+	}
+	return e.setting(c, func() (string, error) { return c.SetSecret(e.ctx, *at, name, given, 0) })
+}
+
+func cmdClientSecretRemove(e *Env, args []string) error {
+	at := clientAt(e)
+	rest, err := e.Parse(args)
+	if err != nil {
+		return err
+	}
+	if len(rest) != 1 {
+		return Mistake("name the secret to remove")
+	}
+	if err := needAt(e, *at); err != nil {
+		return err
+	}
+	c, err := e.Client()
+	if err != nil {
+		return err
+	}
+	return e.setting(c, func() (string, error) { return c.RemoveSecret(e.ctx, *at, rest[0], 0) })
+}
+
+func cmdClientValueSet(e *Env, args []string) error {
+	at := clientAt(e)
+	rest, err := e.Parse(args)
+	if err != nil {
+		return err
+	}
+	if len(rest) != 2 {
+		return Mistake("name the value, then give it")
+	}
+	if err := secret.CheckValueName(rest[0]); err != nil {
+		return Mistake("%v", err)
+	}
+	if err := needAt(e, *at); err != nil {
+		return err
+	}
+	c, err := e.Client()
+	if err != nil {
+		return err
+	}
+	return e.setting(c, func() (string, error) { return c.SetValue(e.ctx, *at, rest[0], rest[1], 0) })
+}
+
+func cmdClientValueRemove(e *Env, args []string) error {
+	at := clientAt(e)
+	rest, err := e.Parse(args)
+	if err != nil {
+		return err
+	}
+	if len(rest) != 1 {
+		return Mistake("name the value to remove")
+	}
+	if err := needAt(e, *at); err != nil {
+		return err
+	}
+	c, err := e.Client()
+	if err != nil {
+		return err
+	}
+	return e.setting(c, func() (string, error) { return c.RemoveValue(e.ctx, *at, rest[0], 0) })
+}
+
+func cmdClientSecretList(e *Env, args []string) error {
+	return e.clientList(args, false)
+}
+
+func cmdClientValueList(e *Env, args []string) error {
+	return e.clientList(args, true)
+}
+
+// setting sends a client's set or remove and prints the answer: taken, or
+// refused with the reason. It fails when the answer is refused.
+func (e *Env) setting(c *client.Client, send func() (string, error)) error {
+	receipt, err := e.sendSetting(c, send)
+	if err != nil {
+		return err
+	}
+	return e.Print(receipt, func() string { return "taken\n" })
+}
+
+// sendSetting sends a client's set, remove or list and gives the receipt
+// of one that was taken. One refused is printed, and the command fails.
+func (e *Env) sendSetting(c *client.Client, send func() (string, error)) (*instance.Receipt, error) {
+	message, err := send()
+	if err != nil {
+		return nil, err
+	}
+	receipt, err := c.WaitReceipt(e.ctx, message, 0, interval)
+	if err != nil {
+		return nil, err
+	}
+	if !receipt.Taken {
+		if err := e.Print(receipt, func() string { return "refused: " + receipt.Refused + "\n" }); err != nil {
+			return nil, err
+		}
+		return nil, errRunFailed
+	}
+	return receipt, nil
+}
+
+// clientList prints the secrets or the values set where this client may
+// set them, as the controller's owner's list prints them.
+func (e *Env) clientList(args []string, values bool) error {
+	if _, err := e.Parse(args); err != nil {
+		return err
+	}
+	c, err := e.Client()
+	if err != nil {
+		return err
+	}
+	list := c.ListSecrets
+	if values {
+		list = c.ListValues
+	}
+	receipt, err := e.sendSetting(c, func() (string, error) { return list(e.ctx, 0) })
+	if err != nil {
+		return err
+	}
+	entries := make([]secret.Entry, len(receipt.Listed))
+	for i, l := range receipt.Listed {
+		entries[i] = secret.Entry{Name: l.Name, At: l.At, Value: l.Value}
+	}
+	if values {
+		return e.printValues(entries)
+	}
+	return e.printSecrets(entries)
 }
 
 // cmdControllerCancel cancels any run, in any client's tree, with

@@ -4,6 +4,7 @@ import (
 	"crypto/hmac"
 	"crypto/rand"
 	"crypto/sha256"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -254,4 +255,57 @@ func (p *pass) result(ask *instance.Ask) error {
 	}
 	_, err = p.write(store.Result(p.ctl, ask.Sender, ask.Message), noEnd, &result, to.Card)
 	return err
+}
+
+// recorded reads, at a run's first step, the machine recorded at each
+// location the definition calls in full: its description, input, type and
+// lifetime, given only where a call from the run would pass, and otherwise
+// why a call would not. A machine made while running calls nothing, and
+// reads nothing.
+func (b *build) recorded(def *machine.Definition) error {
+	if b.st.Above.Made {
+		return nil
+	}
+	for _, at := range machine.Calls(def) {
+		r, err := b.recordedAt(def, at)
+		if err != nil {
+			return err
+		}
+		if b.st.Recorded == nil {
+			b.st.Recorded = map[string]machine.Recorded{}
+		}
+		b.st.Recorded[at] = r
+	}
+	return nil
+}
+
+// recordedAt reads the machine recorded at one location, checked as a call
+// to it is: against every layer of the run and the receiver's receive:.
+func (b *build) recordedAt(def *machine.Definition, at string) (machine.Recorded, error) {
+	own := fmt.Sprintf("the definition of %q", def.Name)
+	refused, err := b.refusedSend(at, permission.Layer{Name: own, Allow: []string{"send:" + at}, Deny: def.Deny, Fix: "add the line %s to the allow list of " + own})
+	if err != nil {
+		return machine.Recorded{}, err
+	}
+	if refused != nil {
+		return machine.Recorded{Refused: refused.Error}, nil
+	}
+	file, err := b.p.readLocated(at)
+	if err != nil && !isAltered(err) {
+		return machine.Recorded{}, err
+	}
+	if file == nil {
+		return machine.Recorded{Refused: fmt.Sprintf("nothing is recorded at %s: a call starts a run of a transient location", at)}, nil
+	}
+	target, err := b.p.definitionAt(file.Definition)
+	if errors.Is(err, machine.ErrDefinition) {
+		return machine.Recorded{Refused: fmt.Sprintf("the file at %s: %v", at, err)}, nil
+	}
+	if err != nil {
+		return machine.Recorded{}, err
+	}
+	if sender := b.run().Address(); !machine.ReceivesFrom(target, file.Tree, sender, "") {
+		return machine.Recorded{Refused: fmt.Sprintf("%s does not receive a call from %s", at, addressText(sender))}, nil
+	}
+	return machine.Recorded{Description: target.Description, Input: target.Input, Type: target.Type, Lifetime: file.Lifetime}, nil
 }

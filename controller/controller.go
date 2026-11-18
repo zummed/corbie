@@ -157,13 +157,20 @@ func (c *Controller) Pass(ctx context.Context) (next time.Time, err error) {
 		}
 		waiting[inst] = append(waiting[inst], a)
 	}
-	// Submits are taken first, one at a time, each client's in the order
-	// it sent them. What they start and cancel is for the next pass.
+	// Submits, and sets of secrets and values, are taken first, one at a
+	// time, each client's in the order it sent them. What a submit starts
+	// and cancels is for the next pass.
 	for _, a := range messages {
-		if a != nil && a.msg.Kind == instance.KindSubmit {
-			if err := p.submit(a); err != nil {
-				return next, err
-			}
+		var err error
+		switch {
+		case a == nil:
+		case a.msg.Kind == instance.KindSubmit:
+			err = p.submit(a)
+		case a.msg.Kind == instance.KindSet:
+			err = p.setting(a)
+		}
+		if err != nil {
+			return next, err
 		}
 	}
 	// A client's sends to addresses are routed next, each client's in the
@@ -176,7 +183,7 @@ func (c *Controller) Pass(ctx context.Context) (next time.Time, err error) {
 		}
 	}
 	for _, a := range messages {
-		if a != nil && a.msg.Kind != instance.KindSubmit && !routed(a) && !p.behind(a, sending) {
+		if a != nil && a.msg.Kind != instance.KindSubmit && a.msg.Kind != instance.KindSet && !routed(a) && !p.behind(a, sending) {
 			add(a.msg.Instance, a)
 		}
 	}
@@ -279,12 +286,13 @@ func (p *pass) accept(name string, data []byte) (*arrival, error) {
 	if v.Open(p.c.ID, &msg) != nil || !whole(&msg) {
 		return nil, nil
 	}
-	// A submit is for no instance, and only a client sends one; so is a
-	// client's send to an address, which the controller routes.
+	// A submit, and a set, is for no instance, and only a client sends
+	// one; so is a client's send to an address, which the controller routes.
 	clientSend := kind == identity.Client && msg.Kind == instance.KindSend
-	if msg.Kind == instance.KindSubmit && (kind != identity.Client || msg.Instance != "") ||
+	forNone := msg.Kind == instance.KindSubmit || msg.Kind == instance.KindSet
+	if forNone && (kind != identity.Client || msg.Instance != "") ||
 		clientSend && msg.Instance != "" ||
-		msg.Kind != instance.KindSubmit && !clientSend && store.CheckInstance(msg.Instance) != nil {
+		!forNone && !clientSend && store.CheckInstance(msg.Instance) != nil {
 		return nil, nil
 	}
 	// Only the controller says who sent an event.
@@ -307,6 +315,8 @@ func whole(msg *instance.Message) bool {
 	switch msg.Kind {
 	case instance.KindSubmit:
 		return msg.Submit != nil
+	case instance.KindSet:
+		return msg.Set != nil
 	case instance.KindStart:
 		return msg.Start != nil
 	case instance.KindEvent:

@@ -17,6 +17,26 @@ corbie controller secret set BOILER_PASSWORD --at /home/devices/boiler
 - The owner sets it again with the same command, removes it with `corbie controller secret remove NAME --at <location>`, and lists the names and locations with `corbie controller secret list`.
 - A remove fails when the name is not set at the location given.
 
+A client sets secrets in its own trees, and at a prefix where it could submit one. It sends the controller a message, and the controller keeps the secret exactly as it keeps the owner's.
+
+```
+corbie client secret set DB_PASSWORD --at /work/services/lookup
+corbie client secret remove DB_PASSWORD --at /work/services/lookup
+corbie client secret list
+```
+
+1. The client sends the name, the location and the value, sealed to the controller.
+2. The controller takes it where the client could submit a tree at the location or above it: a prefix its ceiling's `at:` entries match, with no tree above or below it and no other client's tree at it.
+3. The controller keeps it at the location, and the receipt says it was taken or why it was refused. No receipt holds the value.
+
+- A client always names the location. It has no default, since `/` is not a client's.
+- Set at the same location under the same name, a later secret replaces an earlier one, whoever set either. Nothing records who set it.
+- Where two clients' ceilings match a prefix with no tree, each sets there, and either replaces what the other set. Once one submits a tree there, the other sets nothing at it or below it.
+- A remove fails when the name is not set at the location given. Where the client may not set, the refusal says nothing of what is set there.
+- The client's list gives the names and locations at or under the prefixes where it may set. The owner's list gives every one, a client's included.
+
+This gives a client no more than it has. A secret goes only to a job that names it, under every ceiling, and only runs in the client's own trees use one set there. The controller's owner can read any secret, whoever set it, since the controller holds the key that opens it.
+
 A machine only ever holds a secret's name. A file brought in by `include:` is part of the machine that includes it, so its secret names are looked up at that machine's location.
 
 ## Getting to a job
@@ -43,6 +63,7 @@ corbie controller value list
 - A value may fill an allow scope, as in `net:${values.HUB}`.
 - A job that names a value not set at its run's location or above fails before anything is sent, as for a secret.
 - The owner removes it with `corbie controller value remove NAME --at <location>`.
+- A client sets, removes and lists values with `corbie client value set|remove|list`, where it sets secrets. Its list gives each value.
 
 ## Binding
 

@@ -12,7 +12,8 @@
     },
     "tokens": {
       "input": 3,
-      "output": 3
+      "output": 3,
+      "cached": 0
     }
   },
   "record": [

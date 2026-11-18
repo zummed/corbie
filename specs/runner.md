@@ -6,6 +6,8 @@ A runner does the work. It takes jobs from its inbox, runs each one's script wit
 
 A runner reads its inbox in the store of each controller it trusts. It acts on a job only if the job is from such a controller, signed by it, sealed to this runner, and still good. It does not start a job whose result is already overdue.
 
+A runner takes a job only of a run at or under one of the prefixes it gave that controller with `--at`, `/` by default. A job outside them ends `denied`, and the refusal names the job's location, the runner's trust of the controller as what refused it, and the `corbie runner trust` command on the runner's computer that allows it. The location is the one the job carries, which is the controller's word.
+
 A runner takes a job by writing its mark, only-if-new. Only one copy of a runner can write that mark, so a job is run once. A copy that finds the mark there leaves the job alone.
 
 A copy reads only what it can act on. It reads every cancel, and it reads a job only when it has a place for one and no copy has marked it, which the names of the marks tell it. So a copy among many, before an inbox of a thousand jobs, reads a few and not all of them. Among the jobs that are free it picks at random, so copies that look at the same moment seldom reach for the same one. A mark's name carries its job's due time, and marks whose time has passed are cleared from the listing alone.
@@ -80,4 +82,4 @@ Nothing a script chooses reaches the wrapper itself. It is started with the scra
 
 Everything on a runner shares that runner: its user, its key, its computer. A job that is permitted to read the runner's files can read its key. Scratch directories are removed, but jobs on one runner are not walled off from each other, and on a serverless host the jobs that land on one warm copy share it in the same way.
 
-Jobs that must be kept apart go to different runners. A runner is cheap to set apart: a container, a user of its own, or a function of its own, with tags to send the right jobs to it.
+Jobs that must be kept apart go to different runners. A runner is cheap to set apart: a container, a user of its own, or a function of its own. Enrolled with `--at`, it is sent only the jobs of runs at or under its prefixes.

@@ -10,7 +10,8 @@
       "text": "The answer is 2.",
       "usage": {
         "input": 2,
-        "output": 2
+        "output": 2,
+        "cached": 0
       }
     }
   }

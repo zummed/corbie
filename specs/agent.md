@@ -63,7 +63,12 @@ tools:
 - The called run's record belongs to its own tree's client. Cancelling the call cancels the run.
 - A send ends `done` once the message is written. A send the receiver does not take is noted in the agent's record, and the model is not told.
 
-A tool written `call:` names a location in the same tree and takes its description and arguments from the machine there. The client reads that machine's file when it reads the tree. `input:` fixes part of the machine's input, and the model gives the rest.
+A tool written `call:` takes its description and arguments from the machine at a location. `input:` fixes part of the machine's input, and the model gives the rest. The machine is read at one of two moments, and a leading `/` tells them apart:
+
+```
+call: gitlab/files/read     a location in the same tree, read by the client when it reads the tree
+call: /netops/tools/show    a location in full, in any tree, read by the controller when the run starts
+```
 
 ```yaml
 # toolkits/orders.yaml
@@ -85,13 +90,47 @@ input: { project: string, path: string, ref: "string?" }
 - A blob in the machine's input is an argument the model gives by the name it was shown. An input written as JSON Schema gives arguments only through `properties`.
 - A machine that is an agent is shown to the model as its reply.
 
-The location is written out, from the tree's prefix. These are refused when the tree is read:
+A location in the same tree is written out, from the tree's prefix. These are refused when the tree is read:
 
 - a location with no machine, or a file `.corbieignore` lists;
 - a machine with no `description:`, or one that is not `transient`;
 - a fixed name the machine's input does not give;
 - a machine whose input is written as JSON Schema with a keyword other than `type`, `properties`, `required`, `additionalProperties`, `description` and `title`, such as `allOf` or `$ref`;
-- a tool written `call:` in a file read alone or in a machine made while running, which have no tree.
+- a location in the same tree in a file read alone, which has no tree;
+- a tool written `call:` in a machine made while running, which names no address.
+
+A location in full is read as the run starts:
+
+1. The stored definition holds the tool with its location, the input it fixes, `approve:`, `when:` and `send:` for the location, and no description or arguments.
+2. At the run's first step the controller reads the machine recorded at the location: its `description:`, the shape of its `input:`, its type and its lifetime.
+3. It gives them to the agent only where a call from the run would pass: every layer of the agent holds `send:` for the location, its tree's client's ceiling included, and the location's `receive:` accepts the agent's location.
+4. The run keeps what it read, and the model is offered the tool as one in the same tree.
+
+```yaml
+# x/agents/support.yaml            location /x/agents/support
+tools:
+  show: { call: /netops/tools/show, input: { device: fw1 } }
+
+# netops/tools/show.yaml           location /netops/tools/show, in the client netops's tree
+flow: show
+description: Run one show command on a device.
+input: { device: string, command: string }
+receive: [/x/agents/support]
+```
+
+- The model is offered `show` as `Run one show command on a device.`, with the argument `command`.
+- When netops submits a changed `show.yaml`, a run that starts after it is offered the change, and a run already started is not.
+- A run that carries a conversation on reads at its own start, and so does an agent that is a child or a tool's machine.
+- A call the model makes is checked again, as any call is.
+
+A tool that is offered, as its `when:` and its toolkit's say, fails the agent at its start, naming the tool's place and the reason, where:
+
+- nothing is recorded at the location;
+- a layer of the agent refuses `send:` to it, with the refusal a call would get;
+- its `receive:` does not accept the agent's location;
+- the machine there has no `description:`, is not `transient`, lacks a fixed name in its input, or writes its input with a keyword a tool cannot take.
+
+A tool that is not offered fails nothing.
 
 A tool may give `when:`, a condition on the agent's input. It is checked once, when the run starts, and a tool whose `when:` does not hold is not offered (see [Who is offered what](#who-is-offered-what)).
 
@@ -221,7 +260,7 @@ tools:
 | `meta:` | data Corbie keeps and never reads |
 
 - A toolkit's tools have their own permissions, as every tool has. Opening a toolkit gives the model names and instructions, and nothing else.
-- The instructions are filled from the agent's input when the toolkit is opened. With none, `open` gives `Opened net.`. A run that carries the conversation on and opens the toolkit again is given them again.
+- The instructions are filled from the agent's input when the toolkit is opened. With none, `open` gives `Opened net.`. A toolkit that a carried conversation opens is not given them again (see [The conversation](#the-conversation)).
 - The result of `open` is shown to the model whole, and is never stored as a blob.
 - A tool of a toolkit may not take the name of another tool of the agent.
 - `open` is supplied by Corbie, as the blob tools are, and no tool may take its name. It is not shown while no toolkit can be opened.
@@ -270,13 +309,26 @@ An agent has a number of turns, twenty by default, and the model is told when fe
 
 The conversation is everything the model has been shown and has said: the prompt, each reply and tool call, and each call's result, error or denial. It is kept as its turns, each written once as the turn ends. Nothing is rewritten as the conversation grows.
 
-In a result the conversation is one value: its turns and the blobs the model was shown, each under the name the model knows it by.
+In a result the conversation is one value: its turns, the blobs the model was shown, each under the name the model knows it by, and each toolkit open when the run ended, with the SHA-256 in hex of the text its `open` gave. With none open, `opened` is left out.
 
 ```
-conversation: { turns: [ turn 1, turn 2, … ], blobs: { blob1: …, blob2: … } }
+conversation: { turns: [ turn 1, turn 2, … ], blobs: { blob1: …, blob2: … }, opened: { net: "9f86d0…" } }
 ```
 
-An agent started with it carries on where the other stopped. Every name goes on meaning the blob it meant, and a blob the conversation has not shown takes a name it has not used. It opens no toolkit: the model calls `open` for each toolkit it needs, and a toolkit marked `approve: true` waits for the ask again.
+An agent started with it carries on where the other stopped. Every name goes on meaning the blob it meant, and a blob the conversation has not shown takes a name it has not used.
+
+The agent opens the toolkits in `opened` that the model could open with one call, and whose instructions are the ones the model was given:
+
+1. The run checks each `when:` against its own input.
+2. It fills each named toolkit's instructions from its own input, as an `open` would.
+3. It opens each toolkit in `opened` that the agent has, whose `when:` holds, that is not marked `approve: true`, and whose text has the hash `opened` gives.
+4. From the first turn, the model is shown the toolkit's tools of the run's own definition, and `open` does not name it.
+
+- The instructions are not given again: the conversation holds them as the result of the earlier `open`. The toolkit keeps its hash in this run's `opened`.
+- A toolkit whose instructions changed, in its file or by the input they read, stays closed, so the model that opens it is given them as they now are.
+- Instructions that cannot be filled at the start leave the toolkit closed, and fail nothing until the model opens it.
+- Any other name in `opened` is passed over. The model opens such a toolkit with `open`, and a toolkit marked `approve: true` waits for the ask again.
+- The conversation is input, written by whoever starts the run, so `opened` opens nothing a call of `open` would not.
 
 ## Blobs and the model
 
@@ -308,7 +360,7 @@ An agent's record holds these entries, under these names:
 |---|---|
 | job `turn`, `turn#2`, … | one turn, whatever script makes it; its input names the model as `model.name` |
 | emit `text` of a turn | a piece of the model's reply, as `llm.chat` gives it |
-| `done` from a turn | `{ turn, text, calls: [{ id, name, args }], stop, usage: { input, output } }` |
+| `done` from a turn | `{ turn, text, calls: [{ id, name, args }], stop, usage: { input, output, cached } }` |
 | job named after a tool, `shelf`, `shelf.1` | one call of the tool the model named; its `done` or `failed` goes back to the model |
 | job `open` | an open of a toolkit |
 | job `preview`, `preview.1` | the preview of a blob before the model is first shown it |

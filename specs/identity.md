@@ -66,7 +66,20 @@ Trust is always given with a limit.
 
 A controller gives each **client** a ceiling: the most any run in that client's trees may be allowed, and in its `at:` entries the prefixes it may submit trees at. A runner gives each **controller** it serves a ceiling: the most it will let that controller's jobs do on its computer. A party trusted with no ceiling may do nothing outside the job itself.
 
-A controller also gives each runner its **tags**, which are how jobs choose runners.
+A controller also gives each runner its **tags** and its **prefixes**. A runner is sent only the jobs of runs at or under one of its prefixes, and a job names tags to choose among the runners it may use. A runner enrolled with no `--at` has the prefix `/`, which is every tree.
+
+```
+corbie controller enrol <card> --tags gpu                         the jobs of every run
+corbie controller enrol <card> --tags onprem --at /netops/tools   only the jobs of runs at or under /netops/tools
+```
+
+A runner gives the controller the same prefixes in its own trust, and takes a job only of a run at or under one of them. The two must agree, as `send:` and `receive:` must:
+
+```
+corbie runner card | ssh ctl corbie controller enrol - --tags onprem --at /netops/tools | corbie runner trust - --ceiling net:10.0.0.* --at /netops/tools
+```
+
+A prefix is a location with no `*`, and `--at` is given once for each.
 
 A runner can serve several controllers, each with its own ceiling and its own store. A client has one controller.
 
@@ -74,9 +87,9 @@ Someone who only wants to see where runs stand needs no identity at all: the con
 
 ## Changing and ending trust
 
-The same commands change what was given: a ceiling or tags can be set again at any time. A command that names neither leaves both as they are, and `none` in place of a ceiling or of tags takes them away. Either side can remove the other's card, and from then on nothing from that party is accepted.
+The same commands change what was given: a ceiling, tags or prefixes can be set again at any time. A command leaves what it does not name as it is. `none` in place of a ceiling or of tags takes them away, and `--at /` gives a runner every tree again. Either side can remove the other's card, and from then on nothing from that party is accepted.
 
-A name stays tied to the key it was enrolled with, and the controller's name to its own. A different key under a name already used is refused unless the person enrolling says it replaces the old one, and this holds after the party has been removed too. A replacement takes over the old key's trees: it can submit there, cancel their runs and send them events, though it cannot read what was sealed to the old key.
+A name stays tied to the key it was enrolled with, and the controller's name to its own. A different key under a name already used is refused unless the person enrolling says it replaces the old one, and this holds after the party has been removed too. A replacement takes over the old key's trees: it can submit there, cancel their runs and send them events, though it cannot read what was sealed to the old key. It gets only the ceiling and tags given with it. A runner's replacement keeps the prefixes of the one it replaces unless the command names `--at`, also after a removal, and so does a runner's trust of a controller that replaces another.
 
 ## Messages
 

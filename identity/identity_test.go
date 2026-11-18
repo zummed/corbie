@@ -308,6 +308,17 @@ func Test_id_replacement_does_not_inherit_ceiling(t *testing.T) {
 	if len(got.Ceiling.Allow) != 0 || len(got.Tags) != 0 || !got.Card.Same(second.Card) {
 		t.Fatalf("a replacement was given %+v", got)
 	}
+	// A runner's prefixes limit what is sent under its name, and stay with a
+	// replacement, also of a runner that was removed.
+	r1, r2 := party(t, "r1", Runner), party(t, "r1", Runner)
+	old = Trust{Card: r1.Card, Ceiling: permission.Layer{Allow: []string{"all"}}, Tags: []string{"x"}, Prefixes: []string{"/netops/tools"}, Removed: true}
+	got, err = Take(&old, r2.Card, Runner, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got.Ceiling.Allow) != 0 || len(got.Tags) != 0 || got.Removed || len(got.Prefixes) != 1 || got.Prefixes[0] != "/netops/tools" {
+		t.Fatalf("a runner's replacement was given %+v", got)
+	}
 }
 
 func TestConfigTrust(t *testing.T) {

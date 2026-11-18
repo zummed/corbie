@@ -349,6 +349,9 @@ type Limiter interface {
 type Reader interface {
 	// Lists says the definition takes shapes from outside as it runs.
 	Lists(def *Definition) bool
+	// Calls gives the locations, each a full path, whose recorded machines
+	// a run of the definition reads at its first step.
+	Calls(def *Definition) []string
 }
 
 // Lists says a definition takes shapes from outside as it runs.
@@ -356,6 +359,27 @@ func Lists(def *Definition) bool {
 	t, _ := TypeOf(def.Type)
 	r, ok := t.(Reader)
 	return ok && r.Lists(def)
+}
+
+// Calls gives the locations whose recorded machines a run of a definition
+// reads at its first step.
+func Calls(def *Definition) []string {
+	t, _ := TypeOf(def.Type)
+	if r, ok := t.(Reader); ok {
+		return r.Calls(def)
+	}
+	return nil
+}
+
+// Recorded is what a run read at its first step of the machine recorded at
+// a location: its description, its input, its type and its lifetime, or,
+// where a call from the run would not pass, why.
+type Recorded struct {
+	Description string         `json:"description,omitzero"`
+	Input       map[string]any `json:"input,omitzero"`
+	Type        string         `json:"type,omitzero"`
+	Lifetime    string         `json:"lifetime,omitzero"`
+	Refused     string         `json:"refused,omitzero"`
 }
 
 // A Receiver is a type whose runs take events sent to them by their address,

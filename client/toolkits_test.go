@@ -1,6 +1,8 @@
 package client_test
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"maps"
 	"slices"
@@ -99,8 +101,8 @@ func startWith(t *testing.T, l *client.Local, def string, files map[string]strin
 // The model is shown open, with the name and what it is for of each toolkit it
 // has not opened. Once it opens one, the toolkit's tools are shown from the
 // next turn, its own and those its lists give. A run that carries the
-// conversation on is shown the past calls of the toolkit's tools and has the toolkit
-// closed.
+// conversation on has the toolkit open from its first turn: the conversation
+// names it under opened, with the hash of what its open gave.
 func TestAgentToolkitsAreOpenedByTheModel(t *testing.T) {
 	m := newModel(t, calls("c1", "open", `{"toolkit": "net"}`), calls("c2", "show", `{"command": "show route"}`),
 		calls("c3", "files_read", `{}`), says("done"))
@@ -137,22 +139,25 @@ func TestAgentToolkitsAreOpenedByTheModel(t *testing.T) {
 		t.Errorf("the toolkit's tools did not run their own scripts: %s", shown)
 	}
 	conversation := r.Output.(map[string]any)["conversation"].(map[string]any)
-	if _, has := conversation["opened"]; has {
-		t.Errorf("the conversation names toolkits: %s", jsonOf(conversation))
+	if got, want := jsonOf(conversation["opened"]), `{"net":"`+hashOf("Opened net.")+`"}`; got != want {
+		t.Errorf("the conversation names the toolkits open as: %s", got)
 	}
-	m2 := newModel(t, says("again"))
-	next := wait(t, l, startHelper(t, l, helper(m2.URL, "conversation: ${input.so}"), map[string]any{"question": "and?", "so": carried(conversation, r.ID)}))
-	if next.Status != "done" {
-		t.Fatalf("the run that carried on ended %s: %s", next.Status, next.Error)
+	m2 := newModel(t, calls("c4", "show", `{"command": "show arp"}`), says("again"))
+	f := follow(t, l, startHelper(t, l, helper(m2.URL, "conversation: ${input.so}"), map[string]any{"question": "and?", "so": carried(conversation, r.ID)}))
+	if got := strings.Join(f.jobs, " "); got != "files turn show turn#2" {
+		t.Errorf("the run that carried on had the jobs: %s", got)
 	}
 	if shown := jsonOf(m2.Calls[0]); !strings.Contains(shown, `"show"`) {
 		t.Errorf("the run that carried on was not shown the past call: %s", shown)
 	}
-	if got := offeredNames(m2.Calls[0].Tools); got != "add "+blobTools+" open" {
+	if got := offeredNames(m2.Calls[0].Tools); got != "add "+blobTools+" files_read open show" {
 		t.Errorf("the run that carried on was offered: %s", got)
 	}
-	if got := openDescription(m2.Calls[0].Tools); !strings.Contains(got, "- net:") {
+	if got := openDescription(m2.Calls[0].Tools); strings.Contains(got, "net") || !strings.Contains(got, "- payments:") {
 		t.Errorf("for the run that carried on, open says: %s", got)
+	}
+	if shown := lastShown(m2.Calls[1]); !strings.Contains(shown, "shown: show arp") {
+		t.Errorf("the run that carried on ran show as: %s", shown)
 	}
 }
 
@@ -301,6 +306,9 @@ func TestAgentWhenSaysWhatIsOffered(t *testing.T) {
 	if got := openDescription(m2.Calls[0].Tools); strings.Contains(got, "payments") {
 		t.Errorf("the run that carried on, without the scope, was offered: %s", got)
 	}
+	if got := offeredNames(m2.Calls[0].Tools); strings.Contains(got, "pay") {
+		t.Errorf("the run that carried on, without the scope, had payments open: %s", got)
+	}
 	// A tool not offered is not shown, and a call of it runs nothing.
 	m = newModel(t, calls("c1", "add", `{"n": 1}`), says("done"))
 	f := follow(t, l, startHelper(t, l, def(m.URL, ""), map[string]any{"question": "no add"}))
@@ -355,10 +363,19 @@ func TestAgentWhenSaysWhatIsOffered(t *testing.T) {
 	}
 }
 
+// hashOf is the hash a conversation's opened gives a toolkit whose open gave
+// a text.
+func hashOf(text string) string {
+	sum := sha256.Sum256([]byte(text))
+	return hex.EncodeToString(sum[:])
+}
+
 // What open gives back is the toolkit's instructions, filled from the
 // agent's input when it is opened and shown whole, however long; with none,
 // it says the toolkit was opened. A run that carries the conversation on
-// and opens the toolkit again is given them again.
+// has the toolkit open and is not given them again while they are the same.
+// With instructions that changed, or the toolkit marked for approval, the
+// model opens it again and is given them as they now are.
 func TestAgentOpenGivesTheInstructions(t *testing.T) {
 	long := strings.Repeat("Check twice. ", 40<<10/13+1)
 	files := map[string]string{}
@@ -379,30 +396,98 @@ func TestAgentOpenGivesTheInstructions(t *testing.T) {
 		t.Errorf("the open of payments was shown as: %s", shown)
 	}
 	conversation := r.Output.(map[string]any)["conversation"]
-	m2 := newModel(t, calls("c3", "open", `{"toolkit": "net"}`), says("again"))
-	next := wait(t, l, startWith(t, l, helper(m2.URL, "conversation: ${input.so}"), files, map[string]any{"question": "Bo", "so": carried(conversation, r.ID)}))
+	m2 := newModel(t, says("again"))
+	next := wait(t, l, startWith(t, l, helper(m2.URL, "conversation: ${input.so}"), files, map[string]any{"question": "Ann", "so": carried(conversation, r.ID)}))
 	if next.Status != "done" {
 		t.Fatalf("the run that carried on ended %s: %s", next.Status, next.Error)
 	}
-	if shown := lastShown(m2.Calls[1]); !strings.Contains(shown, "Show only, for Bo.") {
+	if shown := jsonOf(m2.Calls[0]); strings.Count(shown, "Show only, for") != 1 || !strings.Contains(shown, "Show only, for Ann.") {
+		t.Errorf("the run that carried on was shown the instructions as: %.300s", shown)
+	}
+	if got := offeredNames(m2.Calls[0].Tools); !strings.Contains(got, "show") || openDescription(m2.Calls[0].Tools) != "" {
+		t.Errorf("the run that carried on was offered: %s", got)
+	}
+	if got := jsonOf(next.Output.(map[string]any)["conversation"].(map[string]any)["opened"]); got != jsonOf(conversation.(map[string]any)["opened"]) {
+		t.Errorf("the run that carried on gives opened as: %s", got)
+	}
+	// Instructions that changed, because the input they read differs or the
+	// definition does, close the toolkit, and its open gives them as they now
+	// are.
+	changed := maps.Clone(files)
+	changed["toolkits/net/net.yaml"] = strings.Replace(files["toolkits/net/net.yaml"], "Show only,", "Show and tell,", 1)
+	for _, run := range []struct {
+		question, want string
+		files          map[string]string
+	}{{"Bo", "Show only, for Bo.", files}, {"Ann", "Show and tell, for Ann.", changed}} {
+		m := newModel(t, calls("c3", "open", `{"toolkit": "net"}`), says("again"))
+		next := wait(t, l, startWith(t, l, helper(m.URL, "conversation: ${input.so}"), run.files, map[string]any{"question": run.question, "so": carried(conversation, r.ID)}))
+		if next.Status != "done" {
+			t.Fatalf("the run that carried on ended %s: %s", next.Status, next.Error)
+		}
+		if got := offeredNames(m.Calls[0].Tools); strings.Contains(got, "show") || !strings.Contains(openDescription(m.Calls[0].Tools), "- net:") {
+			t.Errorf("for %s, the run that carried on was offered: %s", run.want, got)
+		}
+		if shown := lastShown(m.Calls[1]); !strings.Contains(shown, run.want) {
+			t.Errorf("for %s, the open of net, again, was shown as: %.300s", run.want, shown)
+		}
+	}
+	// A toolkit marked for approval stays closed, and its open waits for the
+	// ask again.
+	asked := strings.Replace(helper("ADDR", "conversation: ${input.so}\n\t\task: ./ask.js"), "net: { include: toolkits/net/net.yaml }", "net: { include: toolkits/net/net.yaml, approve: true }", 1)
+	files["ask.js"] = `return { approved: input.jobs.map((j) => j.name) }`
+	m3 := newModel(t, calls("c3", "open", `{"toolkit": "net"}`), says("again"))
+	f := follow(t, l, startWith(t, l, strings.Replace(asked, "ADDR", m3.URL, 1), files, map[string]any{"question": "Bo", "so": carried(conversation, r.ID)}))
+	if got := strings.Join(f.held, " ") + " / " + strings.Join(f.asks, " "); got != "open / ask" {
+		t.Errorf("with net marked for approval, the jobs held, and the asks: %s", got)
+	}
+	if got := offeredNames(m3.Calls[0].Tools); strings.Contains(got, "show") || !strings.Contains(openDescription(m3.Calls[0].Tools), "- net:") {
+		t.Errorf("with net marked for approval, the run that carried on was offered: %s", got)
+	}
+	if shown := lastShown(m3.Calls[1]); !strings.Contains(shown, "Show only, for Bo.") {
 		t.Errorf("the open of net, again, was shown as: %.300s", shown)
 	}
 }
 
-// A conversation is input, and opens no toolkit, whatever it names.
-func TestAgentConversationOpensNoToolkit(t *testing.T) {
-	m := newModel(t, says("done"))
+// A conversation is input: its opened opens only what one call of open
+// would. A name the agent has no toolkit for, a toolkit whose when: does not
+// hold, one marked for approval and one whose hash is not of what its open
+// gives stay closed. A forged hash that is of it opens the toolkit.
+func Test_agent_conversation_opens_only_what_open_would(t *testing.T) {
 	l := local(t, "all")
-	so := map[string]any{"turns": []any{}, "blobs": map[string]any{}, "opened": []any{"net", "payments"}}
-	r := wait(t, l, startHelper(t, l, helper(m.URL, "conversation: ${input.so}"), map[string]any{"question": "q", "so": so}))
-	if r.Status != "done" {
-		t.Fatalf("the agent ended %s: %s", r.Status, r.Error)
+	first := func(def string, opened map[string]any) llmstandin.Call {
+		t.Helper()
+		m := newModel(t, says("done"))
+		so := map[string]any{"turns": []any{}, "blobs": map[string]any{}, "opened": opened}
+		files := maps.Clone(toolkits)
+		files["ask.js"] = `return { approved: [] }`
+		r := wait(t, l, startWith(t, l, strings.Replace(def, "ADDR", m.URL, 1), files, map[string]any{"question": "q", "so": so}))
+		if r.Status != "done" {
+			t.Fatalf("the agent ended %s: %s", r.Status, r.Error)
+		}
+		return m.Calls[0]
 	}
-	if got := offeredNames(m.Calls[0].Tools); got != "add blob_code blob_read blob_search open" {
-		t.Errorf("the first turn was offered: %s", got)
+	def := helper("ADDR", "conversation: ${input.so}")
+	net, payments := hashOf("Opened net."), hashOf("Opened payments.")
+	call := first(def, map[string]any{"nothing": net, "net": net})
+	if got := offeredNames(call.Tools); got != "add blob_code blob_read blob_search files_read open show" {
+		t.Errorf("with nothing and net opened, the first turn was offered: %s", got)
 	}
-	if got := openDescription(m.Calls[0].Tools); !strings.Contains(got, "- net:") || !strings.Contains(got, "- payments:") {
-		t.Errorf("open says: %s", got)
+	if got := openDescription(call.Tools); strings.Contains(got, "net") || !strings.Contains(got, "- payments:") {
+		t.Errorf("with nothing and net opened, open says: %s", got)
+	}
+	unoffered := strings.Replace(def, "payments: { include: toolkits/payments/payments.yaml }", `payments: { include: toolkits/payments/payments.yaml, when: "${input.question === 'pay'}" }`, 1)
+	call = first(unoffered, map[string]any{"payments": payments})
+	if got := offeredNames(call.Tools); strings.Contains(got, "pay") || strings.Contains(openDescription(call.Tools), "payments") {
+		t.Errorf("with payments not offered, the first turn was offered: %s", got)
+	}
+	held := strings.Replace(strings.Replace(def, "net: { include: toolkits/net/net.yaml }", "net: { include: toolkits/net/net.yaml, approve: true }", 1), "\t\ttools:\n", "\t\task: ./ask.js\n\t\ttools:\n", 1)
+	call = first(held, map[string]any{"net": net})
+	if got := offeredNames(call.Tools); strings.Contains(got, "show") || !strings.Contains(openDescription(call.Tools), "- net:") {
+		t.Errorf("with net marked for approval, the first turn was offered: %s", got)
+	}
+	call = first(def, map[string]any{"net": hashOf("Opened payments."), "payments": "net"})
+	if got := offeredNames(call.Tools); got != "add blob_code blob_read blob_search open" {
+		t.Errorf("with hashes not of what the opens give, the first turn was offered: %s", got)
 	}
 }
 

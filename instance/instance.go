@@ -133,6 +133,9 @@ type State struct {
 	Keep machine.Duration `json:"keep,omitzero"`
 	// Ask is the ask its definition names, for what it starts.
 	Ask *machine.JobSpec `json:"ask,omitzero"`
+	// Recorded is what the instance read at its first step of the machine
+	// recorded at each location its definition calls in full, by location.
+	Recorded map[string]machine.Recorded `json:"recorded,omitzero"`
 
 	// Above is what the instance was started under.
 	Above Above `json:"above"`
@@ -393,6 +396,20 @@ type Receipt struct {
 	Acted *bool `json:"acted,omitzero"`
 	// Run is, for an event sent to an address, the run that took it.
 	Run string `json:"run,omitzero"`
+	// Listed is, for a list of secrets or values, each name set at a
+	// location the client may set at; a secret's with no value.
+	Listed []Listed `json:"listed,omitzero"`
+	// Answers is, for a set, remove or list of secrets or values, the hash
+	// of the setting the receipt answered.
+	Answers string `json:"answers,omitzero"`
+}
+
+// Listed is one secret or value a list gives: its name, the location it is
+// set at, and a plain value's value.
+type Listed struct {
+	Name  string `json:"name"`
+	At    string `json:"at"`
+	Value string `json:"value,omitzero"`
 }
 
 // Submitted is what a submit did: what became of each location of the

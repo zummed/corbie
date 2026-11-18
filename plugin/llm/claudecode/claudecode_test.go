@@ -252,7 +252,7 @@ func Test_model_program_direct_call_is_the_call(t *testing.T) {
 	}
 	used, _ := json.Marshal(got["usage"])
 	var counted map[string]float64
-	if json.Unmarshal(used, &counted) != nil || len(counted) != 2 || counted["input"] != 100 || counted["output"] != 20 {
+	if json.Unmarshal(used, &counted) != nil || len(counted) != 3 || counted["input"] != 100 || counted["output"] != 20 || counted["cached"] != 10 {
 		t.Errorf("the usage is %s", used)
 	}
 

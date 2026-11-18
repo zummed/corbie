@@ -141,11 +141,11 @@ A submit changes no other tree. Only the tree's client cancels the runs at its l
 
 A client's set or remove of a secret or a value names a location. The controller takes it where the client could submit a tree at the location or above it, by the checks of steps 1 and 2, and keeps it as one the owner set (see secret.md). It refuses one where the client may not set before it reads what is set there, so the refusal says nothing of another client's tree.
 
-1. The controller writes the receipt, sealed to the client and to itself.
-2. It carries out what a taken receipt says: it sets the secret or the value, or removes it.
+1. The controller writes the receipt, sealed to the client and to itself, with the SHA-256 of the setting it answers: kind, act, location, name and value.
+2. It checks again that the client may set at the location, and only then sets the secret or the value, or removes it, as a taken receipt says.
 3. It deletes the message.
 
-The message taken again after a stop is answered by the receipt already written, and a taken set or remove is carried out again. A list is answered in its receipt.
+The controller carries out a set or a remove only where the client may set there at that moment, and only the one the receipt answered. A message taken again after a stop is answered by the receipt already written, and a taken set or remove is carried out again. A message under a name whose receipt answered another setting is deleted, and nothing is carried out. A list is answered in its receipt.
 
 ## Starting runs
 

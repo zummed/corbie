@@ -13,14 +13,20 @@ import (
 // A client's set, remove or list of its secrets or values is taken in this
 // order, and every write in it can be made again:
 //
-//  1. The receipt is written, sealed to the client and to the controller.
-//     Taken again after a stop, the message is answered by that receipt.
-//  2. What a taken receipt says is carried out: the secret or the value is
-//     set, or removed.
+//  1. The receipt is written, sealed to the client and to the controller,
+//     naming by its hash the setting it answers.
+//  2. What a taken receipt says is carried out, where the client may set
+//     at that moment: the secret or the value is set, or removed.
 //  3. The message is deleted.
+//
+// A message found under a name whose receipt answers another setting was
+// answered already, and is deleted with nothing carried out: a client
+// chooses its messages' names, and can send one again under a name whose
+// first message is gone.
 
 // setting takes a client's set, remove or list.
 func (p *pass) setting(a *arrival) error {
+	set := a.msg.Set
 	at := store.Receipt(p.ctl, a.sender, a.name[strings.LastIndexByte(a.name, '/')+1:])
 	receipt, err := p.ownReceipt(at)
 	if err != nil {
@@ -31,6 +37,7 @@ func (p *pass) setting(a *arrival) error {
 		if err != nil {
 			return err
 		}
+		decided.Answers = set.Hash()
 		to, err := p.trusted(a.sender)
 		if err != nil || to == nil {
 			return err
@@ -47,12 +54,16 @@ func (p *pass) setting(a *arrival) error {
 			}
 		}
 	}
-	if receipt.Taken {
-		set := a.msg.Set
-		switch set.Act {
-		case instance.ActSet:
+	if receipt.Taken && receipt.Answers == set.Hash() && (set.Act == instance.ActSet || set.Act == instance.ActRemove) {
+		// Nothing is set or removed without the check made now.
+		refused, err := p.maySet(a.sender, set.At)
+		if err != nil {
+			return err
+		}
+		if refused == "" && set.Act == instance.ActSet {
 			err = keep(p, set.Of, set.At, set.Name, set.Value)
-		case instance.ActRemove:
+		}
+		if refused == "" && set.Act == instance.ActRemove {
 			err = drop(p, set.Of, set.At, set.Name)
 		}
 		if err != nil {

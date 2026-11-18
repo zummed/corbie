@@ -399,6 +399,9 @@ type Receipt struct {
 	// Listed is, for a list of secrets or values, each name set at a
 	// location the client may set at; a secret's with no value.
 	Listed []Listed `json:"listed,omitzero"`
+	// Answers is, for a set, remove or list of secrets or values, the hash
+	// of the setting the receipt answered.
+	Answers string `json:"answers,omitzero"`
 }
 
 // Listed is one secret or value a list gives: its name, the location it is

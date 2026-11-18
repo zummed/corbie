@@ -1,6 +1,9 @@
 package instance
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json/v2"
 	"time"
 
 	"github.com/zummed/corbie/blob"
@@ -125,6 +128,14 @@ type Setting struct {
 	At    string `json:"at,omitzero"`
 	Name  string `json:"name,omitzero"`
 	Value string `json:"value,omitzero"`
+}
+
+// Hash is the SHA-256 of everything a Setting says, its value included: a
+// receipt names by it the one setting it answered.
+func (s Setting) Hash() string {
+	data, _ := json.Marshal(s)
+	sum := sha256.Sum256(data)
+	return hex.EncodeToString(sum[:])
 }
 
 // What a Setting is of, and what it does.

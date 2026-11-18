@@ -202,9 +202,11 @@ The detailed rules behind the [Controller overview](../controller.md). What the 
 
 **C-ctl-79** The controller reads a submit's files, and every blob they name, only from that submit's own uploads, and keeps a tree's entry and each location's file sealed to itself. A file named elsewhere could be another client's upload, and a location's file holds the keys of its blobs. *Test:* `ctl_submit_reads_only_its_own_uploads`
 
-**C-ctl-100** A client's set, remove or list of secrets or values is answered by a receipt written before it is carried out, sealed to the client and to the controller; taken again, the message is answered by that receipt, and a taken set or remove is carried out again. Carried out first, a remove taken again after a stop would be refused as not set, and two copies taking it at once could answer it both ways. *Test:* `ctl_setting_taken_again_gives_the_same_answer`
+**C-ctl-100** A client's set, remove or list of secrets or values is answered by a receipt written before it is carried out, sealed to the client and to the controller; taken again, the message is answered by that receipt, and a taken set or remove is carried out again, as C-ctl-102 allows. Carried out first, a remove taken again after a stop would be refused as not set, and two copies taking it at once could answer it both ways. *Test:* `ctl_setting_taken_again_gives_the_same_answer`
 
 **C-ctl-101** A set or a remove where the client may not set is refused before the controller reads what is set there, and a list gives nothing set where the client may not set. A remove refused as not set would tell a client which names are set in another client's tree. *Test:* `ctl_setting_refused_learns_nothing`
+
+**C-ctl-102** The controller carries out a set or a remove only where the client may set there at that moment, and only the one the receipt answered: the receipt holds the SHA-256 of the setting it answers (kind, act, location, name and value), and a message under that name with another setting is deleted, carried out not at all. A client chooses its messages' names and can send a message again under the name of one already deleted, and a receipt alone would let it carry out anything, at `/` included. *Test:* `ctl_setting_carried_out_only_as_answered_and_allowed`
 
 ## Starting runs
 

@@ -2,6 +2,9 @@ package controller
 
 import (
 	"crypto/rand"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"path"
@@ -20,9 +23,10 @@ import (
 
 // A submit is taken in this order, and every write in it can be made again:
 //
-//  1. The tree's entry is written, naming the submit and what it does. A
-//     submit taken again after a stop reads what it does from there, and
-//     is carried out however late it is.
+//  1. The tree's entry is written, naming the submit, the hash of its
+//     message and what it does. The same submit taken again after a stop
+//     is checked again, reads what it does from there, and is carried out
+//     however late it is.
 //  2. Each file that reads is copied to its location, then the entry of the
 //     location is written, then the blobs it no longer names go.
 //  3. The runs to be cancelled are sent a cancel, and each singleton to be
@@ -40,6 +44,8 @@ type treeEntry struct {
 	// that submit changes.
 	Submit  string  `json:"submit"`
 	Changes changes `json:"changes"`
+	// Message is the SHA-256 of what that submit's message says.
+	Message string `json:"message"`
 }
 
 // A treeFile is what the tree's entry keeps of one of its files.
@@ -108,8 +114,20 @@ func (p *pass) submit(a *arrival) error {
 		return err
 	}
 	if entry != nil && entry.Client == a.sender && entry.Submit == base {
-		// The entry names this submit: it was taken when the entry was
-		// written, and is carried out however late it is now.
+		// The entry names a submit under this name. The one it was written
+		// for was taken then, and is carried out however late it is now,
+		// once the checks a submit is given pass again. Another under the
+		// name is not that submit: a client chooses its messages' names.
+		if entry.Message != submitHash(msg) {
+			return p.refuseSubmit(a, base, fmt.Sprintf("the name %s is that of another submit of the tree %s: a submit is sent under a new name", base, msg.Prefix))
+		}
+		refused, err := p.checkTree(a, msg)
+		if err != nil {
+			return err
+		}
+		if refused != "" {
+			return p.refuseSubmit(a, base, refused)
+		}
 		return p.carryTree(a, base, entry)
 	}
 	if !a.good(p.now) {
@@ -158,6 +176,13 @@ func (p *pass) submit(a *arrival) error {
 		return err
 	}
 	return p.carryTree(a, base, fresh)
+}
+
+// submitHash is the SHA-256 of what a submit's message says.
+func submitHash(msg *instance.Submit) string {
+	data, _ := json.Marshal(msg, json.Deterministic(true))
+	sum := sha256.Sum256(data)
+	return hex.EncodeToString(sum[:])
 }
 
 // checkTree says why a submit is refused, if it is: a prefix the client
@@ -270,7 +295,7 @@ func (p *pass) refusePrefix(sender, prefix string) (string, error) {
 // plan works out what a submit does, from the tree's entry before it.
 func (p *pass) plan(a *arrival, base string, before *treeEntry) (*treeEntry, error) {
 	msg := a.msg.Submit
-	entry := &treeEntry{Client: a.sender, Directory: msg.Directory, Files: map[string]treeFile{}, Submit: base}
+	entry := &treeEntry{Client: a.sender, Directory: msg.Directory, Files: map[string]treeFile{}, Submit: base, Message: submitHash(msg)}
 	old := map[string]treeFile{}
 	if before != nil {
 		old = before.Files

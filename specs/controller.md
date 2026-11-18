@@ -137,6 +137,11 @@ $ corbie run submit house --at /home
 4. It records each file, written out with its includes, at its location, and acts on what changed (see A changed or removed file).
 5. The receipt names the directory that last submitted there, the values and secrets the files use that are not set at their locations or above, and the clients the files' `read:` lists that the controller does not trust.
 
+The controller writes the tree's entry before anything else, naming the submit and the SHA-256 of what its message says. Nothing of a submit is recorded unless steps 1 to 3 pass at that moment, and a submit is carried on only where it is the one the tree's entry was written for:
+
+- A submit taken again after a stop is carried on however late it is, once steps 1 to 3 pass again.
+- A message under the same name with another content is refused, and records nothing.
+
 A submit changes no other tree. Only the tree's client cancels the runs at its locations, and it and the clients a file's `read:` lists read them. Another client starts a run there only with a call or a send (see Sending and calling).
 
 A client's set or remove of a secret or a value names a location. The controller takes it where the client could submit a tree at the location or above it, by the checks of steps 1 and 2, and keeps it as one the owner set (see secret.md). It refuses one where the client may not set before it reads what is set there, so the refusal says nothing of another client's tree.

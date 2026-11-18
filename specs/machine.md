@@ -61,7 +61,7 @@ allow:
   - { include: ./base.yaml#allow }
   - send:devices/*
 toolkits:
-  home: { include: toolkits/home.yaml, approve: true }
+  home: { include: toolkits/home/toolkit.yaml, approve: true }
 ```
 
 ```yaml
@@ -100,7 +100,7 @@ allow:
 
 - A file is read as a definition is: a number is a number, and a value YAML would read as a date stays the text written. An empty file is refused.
 - A path in a file reads as any path does, and `./` from that file's own directory. What a shape gives as a value, such as `input:` or `meta:`, stays as it is written, whatever it holds.
-- A problem in an included file names that file: `toolkits/home.yaml: toolkits.home.colour: …`.
+- A problem in an included file names that file: `toolkits/home/toolkit.yaml: toolkits.home.colour: …`.
 - More than 1,000 includes written out by one definition, and what is below it, are refused. A file reached by two routes counts each time, though its values are merged once.
 
 A definition is checked as a whole, and everything wrong with it is reported together. Each problem names its place, and its file when the problem is in a child's file, as a path from the definition's directory: `kids/kid.yaml: value: …`. The client checks it before sending, so mistakes are found at once, and the controller checks it again with the same code, because it does not take a client's word.
@@ -297,7 +297,7 @@ The context is the directory a client submits as a tree. For a single file it is
 
 | A path written as | Is read from |
 |---|---|
-| `toolkits/net.yaml` | the context |
+| `toolkits/net/toolkit.yaml` | the context |
 | `./tools/pve.js` | the directory of the file it is written in |
 
 `../` and a path from the top of the disk are refused in a definition. A script that loads another with `require` names it from its own directory, with `./` or `../`, since a bare name there is a plugin.

@@ -202,14 +202,15 @@ toolkit. An agent with many tools shows the model the ones it has opened.
   toolkits:
     net: { description: The firewall and the switch., tools: { … } }
 
-A toolkit is often kept in its own file, which `include:` reads, as
-`corbie manual definitions` says.
+A toolkit is often kept in a directory of its own: its file, which `include:`
+reads as `corbie manual definitions` says, with its scripts and the machines
+its tools call. In a tree, `.corbieignore` lists the toolkit's file.
 
   toolkits:
-    net: { include: toolkits/net.yaml }
-    pay: { include: toolkits/pay.yaml, approve: true }    its open waits for the ask
+    net: { include: toolkits/net/toolkit.yaml }
+    pay: { include: toolkits/pay/toolkit.yaml, approve: true }    its open waits for the ask
     orders:
-      include: toolkits/orders.yaml
+      include: toolkits/orders/toolkit.yaml
       when: ${input.asker.scopes.includes('orders')}
 
 A toolkit has these fields.

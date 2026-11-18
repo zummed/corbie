@@ -88,6 +88,22 @@ var anthropicKinds = kinds{
 	},
 }
 
+// keep marks the last block of the last message, which asks the service to
+// keep the request up to there in its cache: the next turn starts with it.
+// The mark is on a block, where every server that speaks this way takes it.
+func keep(messages []any) {
+	if len(messages) == 0 {
+		return
+	}
+	last := messages[len(messages)-1].(map[string]any)
+	if last["role"] != "user" {
+		return
+	}
+	if blocks, _ := last["content"].([]any); len(blocks) > 0 {
+		blocks[len(blocks)-1].(map[string]any)["cache_control"] = map[string]any{"type": "ephemeral"}
+	}
+}
+
 var anthropic = &web{
 	path: "/v1/messages",
 	headers: func(key string) map[string]string {
@@ -130,6 +146,10 @@ var anthropic = &web{
 				if err != nil {
 					return nil, err
 				}
+				// Text is sent as a block, which can be marked, on every turn.
+				if said, ok := content.(string); ok && said != "" {
+					content = []any{anthropicKinds.text(said)}
+				}
 				messages = append(messages, map[string]any{"role": "user", "content": content})
 			}
 		}
@@ -137,10 +157,8 @@ var anthropic = &web{
 		if room == 0 {
 			room = defaultRoom // this service refuses a call without it
 		}
-		// The service is asked to keep the request's start in its cache,
-		// which the next turn starts with.
-		body := map[string]any{"model": c.Model, "max_tokens": room, "messages": messages,
-			"cache_control": map[string]any{"type": "ephemeral"}}
+		keep(messages)
+		body := map[string]any{"model": c.Model, "max_tokens": room, "messages": messages}
 		if c.System != "" {
 			body["system"] = c.System
 		}

@@ -49,8 +49,9 @@ func Test_model_plain_address_key_bound_to_it(t *testing.T) {
 }
 
 // Each turn of an agent asks Anthropic's service to keep the request's
-// start, and starts with the tools, the system text and the messages of
-// the turn before, byte for byte.
+// start, with a mark on the request's last block, and starts with the
+// tools, the system text and the messages of the turn before, the same
+// but for the mark.
 func Test_model_turn_starts_with_the_turn_before(t *testing.T) {
 	m := newModel(t, calls("call_1", "add", `{"n": 41}`), calls("call_2", "double", `{"n": 42}`), says("It is 84."))
 	def := strings.ReplaceAll(`
@@ -87,8 +88,36 @@ func Test_model_turn_starts_with_the_turn_before(t *testing.T) {
 		if err := json.Unmarshal(c.Body, &s); err != nil {
 			t.Fatal(err)
 		}
-		if string(s.Cache) != `{"type":"ephemeral"}` {
-			t.Errorf("turn %d asked the service to keep %s", c.Turn, s.Cache)
+		if s.Cache != nil {
+			t.Errorf("turn %d has the field cache_control beside its messages: %s", c.Turn, s.Cache)
+		}
+		// The mark is on the last block of the last message, and nowhere else.
+		marks := 0
+		for i, message := range s.Messages {
+			var m map[string]any
+			if err := json.Unmarshal(message, &m); err != nil {
+				t.Fatal(err)
+			}
+			blocks, _ := m["content"].([]any)
+			for j, block := range blocks {
+				block := block.(map[string]any)
+				if block["cache_control"] == nil {
+					continue
+				}
+				marks++
+				if i != len(s.Messages)-1 || j != len(blocks)-1 {
+					t.Errorf("turn %d marks block %d of message %d", c.Turn, j+1, i+1)
+				}
+				delete(block, "cache_control")
+			}
+			unmarked, err := json.Marshal(m)
+			if err != nil {
+				t.Fatal(err)
+			}
+			s.Messages[i] = unmarked
+		}
+		if marks != 1 {
+			t.Errorf("turn %d asked the service to keep its start %d times", c.Turn, marks)
 		}
 		turns = append(turns, s)
 	}

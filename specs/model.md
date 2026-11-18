@@ -16,7 +16,7 @@ The tokens used are given as `usage`, with three counts:
   cached   how many of input the service read from its cache; 0 from a service that reports none
 ```
 
-A service keeps the start of a request it was sent in the last five minutes, and charges less to read it again. Corbie asks Anthropic's service to keep it with every request, and an agent's turn sends the tools, system text and messages of the turn before unchanged. When the tools offered change, as when a toolkit is opened, none of the request is read from the cache.
+A service keeps the start of a request it was sent in the last five minutes, and charges less to read it again. Corbie asks Anthropic's service to keep it with every request, with `cache_control` on the request's last block, and an agent's turn sends the tools, system text and messages of the turn before unchanged. When the tools offered change, as when a toolkit is opened, none of the request is read from the cache.
 
 ## Decide
 

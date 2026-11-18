@@ -71,7 +71,7 @@ call: /netops/tools/show    a location in full, in any tree, read by the control
 ```
 
 ```yaml
-# toolkits/orders.yaml
+# toolkits/orders/toolkit.yaml
 description: The orders app.
 tools:
   read_file:   { call: gitlab/files/read,     input: { project: group/orders } }
@@ -226,15 +226,15 @@ input: { said: string, asker: any }
 model: { name: claude-sonnet-5-5, secret: ANTHROPIC_KEY }
 prompt: ${input.said}
 toolkits:
-  net: { include: toolkits/net.yaml }
+  net: { include: toolkits/net/toolkit.yaml }
   payments:
-    include: toolkits/payments.yaml
+    include: toolkits/payments/toolkit.yaml
     approve: true
     when: ${input.asker.scopes.includes('payments')}
 ```
 
 ```yaml
-# toolkits/net.yaml
+# toolkits/net/toolkit.yaml
 description: The firewall and the switch, and the network's docs.
 instructions: |
   Run show commands only. ${input.asker.name} is asking.

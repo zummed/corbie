@@ -48,7 +48,7 @@ func lab(t *testing.T, command page.Command) http.Handler {
 	corbie(t, "", "controller", "remove", "old-box", "--config", config)
 	corbie(t, "swordfish", "controller", "secret", "set", "ANTHROPIC_KEY", "-", "--config", config)
 	corbie(t, "", "controller", "value", "set", "HUB", "192.0.2.8:8123", "--at", "/home", "--config", config)
-	ctl, err := identity.Config{Dir: config}.Load(identity.Controller)
+	ctl, err := identity.Config{Dir: config}.Load(t.Context(), identity.Controller)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -96,7 +96,7 @@ func write(t *testing.T, files map[string]string) string {
 func submit(t *testing.T, config string, s store.Store, ctl *identity.Identity, tree *client.Tree) {
 	t.Helper()
 	ctx := context.Background()
-	me, err := identity.Config{Dir: config}.Load(identity.Client)
+	me, err := identity.Config{Dir: config}.Load(t.Context(), identity.Client)
 	if err != nil {
 		t.Fatal(err)
 	}

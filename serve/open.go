@@ -47,7 +47,7 @@ func open(ctx context.Context, e *cli.Env, cfg identity.Config, asClient, asCont
 		}
 	}
 	if asController || (held == nil && cfg.Has(identity.Controller)) {
-		ctl, err := cfg.Load(identity.Controller)
+		ctl, err := cfg.Load(ctx, identity.Controller)
 		if err != nil {
 			return nil, err
 		}
@@ -72,7 +72,7 @@ func open(ctx context.Context, e *cli.Env, cfg identity.Config, asClient, asCont
 		return nil, storeError{fmt.Errorf("this config knows no controller: corbie client trust takes a controller's card, or corbie init sets one computer up")}
 	}
 	if asClient {
-		if me, err = cfg.Load(identity.Client); err != nil {
+		if me, err = cfg.Load(ctx, identity.Client); err != nil {
 			return nil, err
 		}
 	}

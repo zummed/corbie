@@ -97,7 +97,7 @@ func labIn(t *testing.T) (string, *identity.Identity, store.Store) {
 	config, at := filepath.Join(dir, "config"), filepath.Join(dir, "store")
 	corbie(t, "", "init", "--store", at, "--name", "lab", "--ceiling", "all", "--config", config)
 	corbie(t, "swordfish", "controller", "secret", "set", "A", "-", "--config", config)
-	ctl, err := identity.Config{Dir: config}.Load(identity.Controller)
+	ctl, err := identity.Config{Dir: config}.Load(t.Context(), identity.Controller)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -708,7 +708,7 @@ func Test_machines_directory_is_read_at_its_recorded_prefix(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	me, err := identity.Config{Dir: config}.Load(identity.Client)
+	me, err := identity.Config{Dir: config}.Load(t.Context(), identity.Client)
 	if err != nil {
 		t.Fatal(err)
 	}

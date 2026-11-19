@@ -2,10 +2,17 @@
 // or shown as text, and the problems Corbie finds in them. A card's link in
 // the drawing, and a tab, show the file chosen again where it is, and the
 // page shows it again when it, or what Corbie found in it, changed on disk.
-import { createEffect, reconcile } from "solid-js";
+// Unfolding a card moves the drawing in to it, and folding it moves back
+// out to the card it was in.
+import { createEffect, createSignal, reconcile } from "solid-js";
 import { html, parts, setParts, mount, Icon, Handle, plural } from "ui";
 import { Drawing } from "drawing";
-import { Problems, Code, machineHref, base } from "/machines/shared.js";
+import { Problems, Code, machineHref, base, focusOf, focusAt } from "/machines/shared.js";
+
+// focus is the card the drawing moves in to, "" being the whole machine;
+// shownAt is the address the file chosen is shown as.
+const [focus, setFocus] = createSignal(focusAt(location.href));
+let shownAt = location.href;
 
 // show reads the page at an address, and puts the file chosen in place.
 async function show(href, push) {
@@ -16,8 +23,11 @@ async function show(href, push) {
   }
   const page = new DOMParser().parseFromString(await res.text(), "text/html");
   const next = JSON.parse(page.getElementById("parts").textContent);
+  const moved = focusOf(shownAt, href);
+  shownAt = new URL(href, location.href).href;
   // Merged in place, so only what changed is drawn again.
   setParts(s => { reconcile(next.view, null)(s.view); });
+  if (moved !== null) setFocus(moved);
   if (push) history.pushState(null, "", href);
 }
 
@@ -115,7 +125,7 @@ function View() {
       <Show when=${() => v().Uses.length}><${Uses} view=${v} /></Show>
       <Show when=${() => v().File}><${Included} files=${() => v().Included} /></Show>
       <Show when=${() => v().View === "drawing"} fallback=${() => html`<${Code} lines=${() => v().Text} written=${() => v().View === "written"} label=${() => v().Open} />`}>
-        <section class="drawn" id="drawing"><${Drawing} scene=${() => v().Drawing} /></section>
+        <section class="drawn" id="drawing"><${Drawing} scene=${() => v().Drawing} focus=${focus} /></section>
       </Show>
     </div>
   </Show>`;

@@ -9,6 +9,29 @@ export const machineHref = (file, view) => "/machines?" + new URLSearchParams(vi
 // base gives the last name of a path.
 export const base = p => p.slice(p.lastIndexOf("/") + 1);
 
+// opened gives the paths of the cards an address of the Machines page
+// unfolds: the names of the cards from the machine drawn down, joined by /.
+export const opened = href => new URL(href, "http://ui").searchParams.getAll("open");
+
+// focusOf gives the card a drawing moves in to as the address goes from one
+// to another: the card unfolded, or, where a card was folded, the card it
+// was in, "" being the whole machine. It gives null where no card was
+// unfolded or folded.
+export function focusOf(from, to) {
+  const was = opened(from), now = opened(to);
+  const deepest = list => list.reduce((a, b) => (b.split("/").length > a.split("/").length ? b : a));
+  const unfolded = now.filter(p => !was.includes(p));
+  if (unfolded.length) return deepest(unfolded);
+  const folded = was.filter(p => !now.includes(p));
+  if (!folded.length) return null;
+  const top = folded.reduce((a, b) => (b.split("/").length < a.split("/").length ? b : a));
+  return top.includes("/") ? top.slice(0, top.lastIndexOf("/")) : "";
+}
+
+// focusAt gives the card a drawing moves in to as a page opens at an
+// address: the deepest card it unfolds, or the whole machine.
+export const focusAt = href => focusOf("/machines", href) ?? "";
+
 function Problem(props) {
   const p = () => props.problem;
   return html`<div class="problem">

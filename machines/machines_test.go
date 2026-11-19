@@ -390,7 +390,7 @@ func Test_machines_problems_are_listed_once_at_their_file(t *testing.T) {
 		switch p.File {
 		case "toolkits/m/toolkit.yaml":
 			atToolkit++
-			if !slices.Equal(p.Breaks, []string{".kit/c.yaml", "a.yaml", "b.yaml"}) || !strings.HasPrefix(p.Place, "tools.tell") || p.Line == 0 {
+			if !slices.Equal(p.Breaks, []string{".kit/c.yaml", "a.yaml", "b.yaml"}) || !strings.HasPrefix(p.Place, "toolkits.messages.tools.tell") || p.Line == 0 {
 				t.Errorf("a problem in the toolkit is %+v", p)
 			}
 		case "z.yaml":

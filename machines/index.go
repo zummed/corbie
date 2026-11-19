@@ -5,6 +5,7 @@ import (
 	"path"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 
@@ -182,7 +183,9 @@ func filesOf(def *machine.Definition) []string {
 }
 
 // problemsOnce gives each problem of the directory's machines once, at the
-// file Corbie names, with the machines it breaks. A machine that reads
+// file and line Corbie names, with the machines it breaks. Machines that
+// include a file under different names give a problem in it a different
+// place each, and it is shown with the first. A machine that reads
 // without problems from a directory below this one gives one problem: that
 // directory is the top of its tree.
 func (d *dir) problemsOnce(own map[string][]problem) []problem {
@@ -199,7 +202,7 @@ func (d *dir) problemsOnce(own map[string][]problem) []problem {
 			continue
 		}
 		for _, p := range own[file] {
-			key := p.File + "\x00" + p.Place + "\x00" + p.Text
+			key := p.File + "\x00" + strconv.Itoa(p.Line) + "\x00" + p.Text
 			if found[key] == nil {
 				p.Breaks = nil
 				found[key] = &p

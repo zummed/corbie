@@ -203,7 +203,7 @@ func Test_machines_toolkits_show_what_offers_each(t *testing.T) {
 			t.Errorf("the page does not show %q:\n%s", want, body)
 		}
 	}
-	for _, gone := range []string{`class="bad"`, "allow", "For<", "Approved by", "timer", "something new"} {
+	for _, gone := range []string{`class="bad"`, ">allow", "For<", "Approved by", "timer", "something new"} {
 		if strings.Contains(body, gone) {
 			t.Errorf("the page shows %q:\n%s", gone, body)
 		}

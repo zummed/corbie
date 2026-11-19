@@ -63,14 +63,15 @@ Above the list of Machines and of Toolkits, each problem of the directory's mach
 ```
 2 PROBLEMS
 toolkits/messages/toolkit.yaml:5
-tools.tell.description  a tool says what it is for, for the model to choose by
+toolkits.messages.tools.tell.description  a tool says what it is for, for the model to choose by
 breaks 3 machines
 toolkits/messages/toolkit.yaml:6
-tools.tell.does  "does" is not a field that belongs here
+toolkits.messages.tools.tell.does  "does" is not a field that belongs here: a tool takes description, args, job, list, call, input, approve, when
 breaks 3 machines
 ```
 
-- The place is given as the file writes it, with the line where the text writes it. A place in a file that a machine includes is found in that file.
+- The file, the line and the place are Corbie's. The place is read from the top of the machine that includes the file.
+- A problem at the same file and line with the same text is one problem. Machines that include a file under different names give it different places, and the first machine's is shown.
 - Paths in a problem's text are written from the directory.
 - A problem is drawn the same way above a list, above a file's text and above a toolkit: a box with a rowan border, holding each problem's place, its text and the machines it breaks.
 - A file an `include:` names that cannot be read is one problem at that file, breaking each machine that includes it, however each writes its path. The other problems of those machines are not listed. Where that file is a machine, its own problem is the one problem, and it breaks that machine too.

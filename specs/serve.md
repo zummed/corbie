@@ -50,7 +50,7 @@ With nothing named after `corbie ui`, a store that cannot be opened leaves the d
 
 A page or an action the UI's parties may not use is not offered, and a request for one is refused. What the store lets the parties read limits the rest.
 
-An action runs its command in the UI's process with `--json`, and with `--config` and `--store` as the UI was given them, as `corbie manual mcp` runs a command. The page shows the command's answer, or its error, as the command gave it.
+An action runs its command in the UI's process with `--json`, and with `--config` and `--store` as the UI was given them, as `corbie mcp` runs a command. The page shows the command's answer, or its error, as the command gave it.
 
 - A value from a page that begins with `-` is refused before any command runs, since the command line reads it as a flag, as it does when a person types it.
 - While a command waits for its receipt, the page shows it waiting. Leaving the page stops the wait, and the message stays sent.

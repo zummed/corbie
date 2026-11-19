@@ -361,21 +361,21 @@ table.kids svg.g { margin-right: 6px; }
 .machine .camera.moving { transition: none; }
 .viewport > .zoom { position: absolute; right: 10px; bottom: 10px; display: flex; gap: 4px; }
 .viewport > .zoom .btn { min-width: 30px; justify-content: center; background: var(--plate); }
-.machine a { cursor: pointer; }
-.machine .state > rect.box { fill: var(--plate); stroke: var(--line); stroke-width: 1; transition: stroke .4s, fill .4s, stroke-width .4s, width var(--glide), height var(--glide); }
-.machine .state > rect.behind { fill: var(--plate); stroke: var(--line); stroke-width: 1; transition: width var(--glide), height var(--glide); }
-.machine .state > rect.outer { fill: none; stroke: var(--line); stroke-width: 1; transition: width var(--glide), height var(--glide); }
-.machine a:hover .state > rect.box { stroke: var(--accent); }
-.machine .state.unfolded > rect.box { fill: color-mix(in srgb, var(--plate) 45%, var(--paper)); }
-.machine .state.reply > rect.box, .machine .state.ask > rect.box { fill: var(--paper); }
-.machine .state.when > rect.box, .machine .state.sends > rect.box { stroke-dasharray: 5 3; }
-.machine .state.skipped > rect.box { stroke-dasharray: 3 3; }
+.machine a[href] { cursor: pointer; }
+.machine .state rect.box { fill: var(--plate); stroke: var(--line); stroke-width: 1; transition: stroke .4s, fill .4s, stroke-width .4s, width var(--glide), height var(--glide); }
+.machine .state rect.behind { fill: var(--plate); stroke: var(--line); stroke-width: 1; transition: width var(--glide), height var(--glide); }
+.machine .state rect.outer { fill: none; stroke: var(--line); stroke-width: 1; transition: width var(--glide), height var(--glide); }
+.machine .state > a.card[href]:hover rect.box { stroke: var(--accent); }
+.machine .state.unfolded rect.box { fill: color-mix(in srgb, var(--plate) 45%, var(--paper)); }
+.machine .state.reply rect.box, .machine .state.ask rect.box { fill: var(--paper); }
+.machine .state.when rect.box, .machine .state.sends rect.box { stroke-dasharray: 5 3; }
+.machine .state.skipped rect.box { stroke-dasharray: 3 3; }
 .machine .state.skipped text { fill: var(--ink2); }
-.machine .state.now > :is(rect.box, rect.outer) { stroke: var(--petrol); stroke-width: 2; animation: glow 2.6s ease-in-out infinite; }
-.machine .state.done > :is(rect.box, rect.outer) { stroke: var(--moss); }
-.machine .state.failed > :is(rect.box, rect.outer) { stroke: var(--rowan); }
-.machine .state.cancelled > :is(rect.box, rect.outer) { stroke: var(--ink2); }
-.machine .state.held > rect.box { stroke: var(--amber); stroke-width: 2; }
+.machine .state.now :is(rect.box, rect.outer) { stroke: var(--petrol); stroke-width: 2; animation: glow 2.6s ease-in-out infinite; }
+.machine .state.done :is(rect.box, rect.outer) { stroke: var(--moss); }
+.machine .state.failed :is(rect.box, rect.outer) { stroke: var(--rowan); }
+.machine .state.cancelled :is(rect.box, rect.outer) { stroke: var(--ink2); }
+.machine .state.held rect.box { stroke: var(--amber); stroke-width: 2; }
 .machine .state.never { opacity: .6; }
 @keyframes glow { 50% { stroke-opacity: .4; } }
 .machine .state rect.tile { stroke: none; fill: color-mix(in srgb, var(--s2) 16%, transparent); }
@@ -389,7 +389,7 @@ table.kids svg.g { margin-right: 6px; }
 .machine text.note { font: 500 10.5px var(--sans); fill: var(--ink2); }
 .machine text.note.taken { fill: var(--petrol); }
 .machine text.fold { font: 500 15px var(--sans); fill: var(--ink2); }
-.machine a:hover text.fold { fill: var(--accent); }
+.machine a.card[href]:hover text.fold { fill: var(--accent); }
 .machine .tag { font: 500 10.5px var(--mono); fill: var(--accent); }
 .machine .holder > rect { fill: color-mix(in srgb, var(--plate) 50%, transparent); stroke: var(--line); stroke-width: 1; transition: width var(--glide), height var(--glide); }
 .machine .holder.toolkit > rect { fill: var(--paper); }
@@ -401,7 +401,7 @@ table.kids svg.g { margin-right: 6px; }
 .machine .edge.taken { stroke: var(--petrol); stroke-width: 2.4; stroke-dasharray: 1; animation: take .7s var(--ease) both; }
 @keyframes take { from { stroke-dashoffset: 1; } to { stroke-dashoffset: 0; } }
 .machine .edge { transition: stroke .3s, stroke-width .3s, d var(--glide); }
-.machine .state.lit > rect.box, .machine .holder.lit > rect { stroke: var(--accent); }
+.machine .state.lit rect.box, .machine .holder.lit > rect { stroke: var(--accent); }
 .machine .edge.lit { stroke: var(--accent); stroke-width: 2; }
 .machine .arrowchip.lit > .chip { stroke: var(--accent); }
 .machine .arrowchip.lit > .on { fill: var(--accent); }
@@ -410,6 +410,12 @@ table.kids svg.g { margin-right: 6px; }
 .machine .chip { fill: var(--paper); stroke: var(--line); stroke-width: 1; transition: width var(--glide); }
 .machine .on { font: 500 10.5px var(--sans); fill: var(--ink2); }
 .machine .chip.taken + .on { fill: var(--petrol); }
+.machine .state.pick { cursor: pointer; }
+.machine .state.pick:focus-visible { outline: none; }
+.machine .state.pick:focus-visible rect.box { stroke: var(--accent); stroke-width: 2; }
+.machine a.line:hover text.title { fill: var(--accent); text-decoration: underline; }
+.machine .count > rect { fill: var(--petrol); stroke: var(--paper); stroke-width: 1.5; }
+.machine .count > text { font: 600 10.5px var(--mono); fill: var(--paper); }
 
 /* machines */
 .ide { flex: 1; min-height: 0; display: grid; grid-template-columns: var(--files, 300px) 18px minmax(0, 1fr); row-gap: 18px; }
@@ -514,3 +520,24 @@ form.enrol pre.said { flex: 1 1 100%; margin: 0; white-space: pre-wrap; overflow
 @media (prefers-reduced-motion: reduce) {
   ::view-transition-group(*), ::view-transition-old(*), ::view-transition-new(*) { animation: none !important; }
 }
+
+/* The Machines page: the line a card's name opens is lit, and a location counts its runs. */
+.code .l.here { background: color-mix(in srgb, var(--accent) 12%, transparent); }
+.place .counted { color: var(--ink2); }
+
+/* A run's page: why the run is where it is, the file that changed, a job's facts and logs, and how long a job took. */
+.why { margin: 2px 0 8px; font: 13px var(--mono); color: var(--ink2); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.why button.link { all: unset; cursor: pointer; color: var(--ink); }
+.why button.link:hover:not(:disabled) { color: var(--accent); text-decoration: underline 1px; text-underline-offset: 3px; }
+.why button.link:disabled { cursor: default; }
+.why .facts { color: var(--rowan); }
+.differs { margin: 0 0 8px; font: 12px var(--mono); color: var(--ink2); }
+.differs > summary { cursor: pointer; color: var(--amber, var(--ink2)); }
+.differs pre { margin: 6px 0 0; padding: 8px 12px; max-height: 160px; overflow: auto; background: var(--plate); border: 1px solid var(--line); border-radius: 6px; }
+.wait { flex-wrap: wrap; }
+.wait .jobfacts { font-size: 11.5px; }
+.logs { list-style: none; margin: 4px 0 0; padding: 0; width: 100%; font: 11.5px var(--mono); }
+.logs li { display: grid; grid-template-columns: 64px 70px minmax(0, 1fr); gap: 10px; padding: 1px 0; white-space: pre-wrap; }
+.logs .t, .logs .n { color: var(--ink3, var(--ink2)); }
+.details .pane .logs { padding: 0 16px; }
+.step .took { color: var(--ink2); }

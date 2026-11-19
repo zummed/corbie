@@ -40,6 +40,7 @@ test("controller_removed_party_offers_only_enrol", () => {
 test("controller_forms_show_their_commands", () => {
   const cmds = $$("main form.enrol button[data-cmd]").map(b => b.dataset.cmd);
   equal(cmds, [
+    "corbie check",
     "corbie controller enrol <card> --tags <list> --at <prefix>",
     "corbie controller enrol <card> --ceiling <list>",
     "corbie controller secret set <NAME> - --at <location>",
@@ -96,4 +97,24 @@ test("controller_panels_fit_their_rows", () => {
     assert(table.getBoundingClientRect().right <= p.getBoundingClientRect().right + 1, `the table of ${text($(".head h2", p))} is ${Math.round(table.getBoundingClientRect().width)}px in a panel of ${Math.round(p.getBoundingClientRect().width)}px: ${widest}`);
   }
   for (const cell of $$("main td.cut")) assert(getComputedStyle(cell).textOverflow === "ellipsis", "a cut cell is not cut with …");
+});
+
+test("controller_check_shows_each_part_of_the_setup", async () => {
+  const check = panel("Check");
+  const button = $("button[data-cmd]", check);
+  equal(button.dataset.cmd, "corbie check", "Check's command");
+  // The UI's answer, as the Go tests check it, is given inside the page:
+  // Chrome reports a refused answer as a fault.
+  const answer = "the controller took the start    ok     0.4s\na runner took the job            never  \n  no runner took the job: is a runner running?";
+  const fetched = window.fetch;
+  window.fetch = (url, init) => (url === "/controller/check" ? Promise.resolve(new Response(answer, { status: 409 })) : fetched(url, init));
+  try {
+    button.click();
+    const said = $(".said", check);
+    await until(() => said.textContent === answer, "the check's answer");
+    assert(said.classList.contains("bad"), "a check that failed is not shown as failed");
+    equal(said.tagName, "PRE", "the check's answer, line by line");
+  } finally {
+    window.fetch = fetched;
+  }
 });

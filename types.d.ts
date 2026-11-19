@@ -145,6 +145,20 @@ export interface DefinedAt {
   Cards: string;
 }
 
+export interface Fact {
+  Name: string;
+  Text: string;
+  Run: Link | null;
+}
+
+export interface Why {
+  Lead: string;
+  Since?: string;
+  Rest: string;
+  Row: string;
+  Facts: Fact[];
+}
+
 export interface SummaryPart {
   ID: string;
   Machine: string;
@@ -160,6 +174,26 @@ export interface SummaryPart {
   Ended: string;
   Took: string;
   Cancel: string;
+  Why: Why | null;
+  Differs: string[];
+}
+
+export interface LogLine {
+  Time: string;
+  Name: string;
+  Text: string;
+}
+
+export interface Going {
+  Name: string;
+  Runner: string;
+  Attempt: number;
+  Began?: string;
+  Sent: string;
+  Due: string;
+  Again: string;
+  Restarts: number;
+  Logs: LogLine[];
 }
 
 export interface Wait {
@@ -167,6 +201,7 @@ export interface Wait {
   Ticket: string;
   Value: string;
   Run: Link | null;
+  Job: Going | null;
 }
 
 export interface Label {
@@ -181,6 +216,7 @@ export interface WaitsPart {
   Reply: boolean;
   Send: boolean;
   Labels: Label[];
+  Timeout: string;
 }
 
 export interface File {
@@ -248,12 +284,6 @@ export interface Trace {
   Sent: Cause;
 }
 
-export interface Fact {
-  Name: string;
-  Text: string;
-  Run: Link | null;
-}
-
 export interface StepRow {
   Key: string;
   Run: Link;
@@ -266,6 +296,9 @@ export interface StepRow {
   Kind: string;
   Group: Group | null;
   Trace: Trace | null;
+  Job: string;
+  Took: string;
+  Cards: string[];
   Facts: Fact[];
 }
 
@@ -274,6 +307,7 @@ export interface StepsPart {
   Rows: StepRow[];
   Count: number;
   Dated: boolean;
+  Follows: string;
 }
 
 export interface Card {
@@ -284,11 +318,13 @@ export interface Card {
   Href: string;
   In?: Scene | null;
   Narrow: boolean;
+  Line: string;
 }
 
 export interface Stage {
   Card: Card;
   After: string[];
+  Why: Record<string, string>;
   When: boolean;
   Stack: boolean;
   Mark: string;
@@ -343,6 +379,7 @@ export interface Toolkit {
 export interface Agent {
   Model: string;
   Mark: string;
+  ModelLine: string;
   Turn: number;
   Turns: number;
   Toolkits: Toolkit[];
@@ -353,6 +390,7 @@ export interface Agent {
 export interface Decision {
   Model: string;
   Mark: string;
+  ModelLine: string;
   Answers: Card;
 }
 
@@ -384,6 +422,7 @@ export interface Shown {
   Lines: Line[];
   Input: string;
   Output: string;
+  Logs: LogLine[];
 }
 
 export interface RunParts {
@@ -400,6 +439,12 @@ export interface RunParts {
 export interface List {
   Dir: string;
   DirFull: string;
+}
+
+export interface AtLocation {
+  Running: number;
+  FailedToday: number;
+  In: Record<string, number>;
 }
 
 export interface Span {
@@ -475,6 +520,7 @@ export interface View {
 
 export interface MachinesParts {
   files: List;
+  runs: Record<string, AtLocation>;
   view?: View | null;
 }
 

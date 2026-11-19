@@ -60,7 +60,7 @@ function Span(props) {
 }
 
 // Code is a file's text, read only, a line at a time, the lines a problem
-// is found at marked.
+// is found at marked, and the line the address names lit.
 export function Code(props) {
-  return html`<pre class=${() => ["code", { written: props.written }]} aria-label=${() => props.label}><For each=${() => props.lines}>${l => html`<span class=${() => ["l", { err: l.Bad }]} id=${() => l.ID || undefined}><For each=${() => l.Spans}>${s => html`<${Span} span=${() => s} />`}</For></span>`}</For></pre>`;
+  return html`<pre class=${() => ["code", { written: props.written }]} aria-label=${() => props.label}><For each=${() => props.lines}>${l => html`<span class=${() => ["l", { err: l.Bad, here: !!l.ID && l.ID === props.here }]} id=${() => l.ID || undefined}><For each=${() => l.Spans}>${s => html`<${Span} span=${() => s} />`}</For></span>`}</For></pre>`;
 }

@@ -64,6 +64,12 @@ function Parties(props) {
 function Controller() {
   return html`<div class="cols">
     <div class="contents">
+      <div class="panel">
+        <div class="head"><h2>Check</h2></div>
+        <${Act} class="enrol check" action="/controller/check" block=${true} label="Check" button="go" cmd="corbie check">
+          <span class="dim">starts one small run, and gives each part of the setup that took it, how long it took, and which did not respond</span>
+        <//>
+      </div>
       <${Parties} kind="runner" title="Runners" heads=${["Name", "Card", "At", "Tags", ""]}>
         <${Act} class="enrol" action="/controller/enrol" reset=${true} block=${true} label="Enrol" button="go" cmd="corbie controller enrol <card> --tags <list> --at <prefix>">
           <textarea name="card" rows="2" placeholder="a runner's card" aria-label="A runner's card" required></textarea>

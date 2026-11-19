@@ -165,9 +165,15 @@ type stepRow struct {
 	Kind  string
 	Group *group
 	Trace *trace
+	// Job is the job the row is about, by the name its definition gives
+	// it, whose logs the row's details show, and Took how long it took,
+	// where the row is its end.
+	Job, Took string
+	// Cards are the cards of the page's drawing the row is about, each by
+	// its path: the names of the cards from the page's run down to it.
+	Cards []string
 	// What the row's details show: its facts, and what went in and came
-	// out.
-	// In and Out reach the page as the details' Input and Output.
+	// out. In and Out reach the page as the details' Input and Output.
 	Facts   []fact
 	In, Out any `json:"-"`
 }
@@ -255,7 +261,15 @@ func rowsAt(id string, entries []client.Entry, byID map[string]*client.Run, read
 		}
 	}
 	b := &rowBuilder{of: of, byID: byID, readable: readable, top: id, now: now, day: day, notes: notesOf(entries)}
-	return b.rows(id, depth)
+	return b.rows(id, depth, "")
+}
+
+// cardPath gives the path of a card below the card a run is drawn in.
+func cardPath(in, name string) string {
+	if in == "" {
+		return name
+	}
+	return in + "/" + name
 }
 
 // A sendNote is what the controller noted in a sender's record of an event
@@ -327,18 +341,32 @@ func (b *rowBuilder) steps(id string) int {
 	return n
 }
 
-func (b *rowBuilder) rows(id string, depth int) []stepRow {
+// rows gives a run's rows, the run drawn in the card at the path in, none
+// for the page's run.
+func (b *rowBuilder) rows(id string, depth int, in string) []stepRow {
 	run := linkOf(id, b.byID)
 	own := b.of[id]
 	var out []stepRow
 	var prev machine.Shown
 	jobs := map[string]*instance.Ask{} // the latest ask that started each job, by its name
+	began := map[string]time.Time{}    // when the latest ask of each job was made, by its name
+	// ended fills in, for a row about a job that ended at step e, how long
+	// the job took.
+	ended := func(r *stepRow, e client.Entry, job string) {
+		r.Job = jobOf(job)
+		if at, ok := began[named(job)]; ok {
+			r.Took = took(e.Time.Sub(at))
+		}
+	}
 	for i, e := range own {
 		n := 0
 		add := func(r stepRow) *stepRow {
 			if r.Key == "" {
 				r.Key = e.ID + "/" + strconv.Itoa(e.Step) + "/" + strconv.Itoa(n)
 				n++
+			}
+			for k, c := range r.Cards {
+				r.Cards[k] = cardPath(in, c)
 			}
 			r.Run, r.Step, r.At, r.Time, r.Depth = run, e.Step, e.Time, page.Clock(e.Time, b.day), depth
 			r.Exact = e.Time.Local().Format("2 Jan 2006 15:04:05.000")
@@ -369,7 +397,7 @@ func (b *rowBuilder) rows(id string, depth int) []stepRow {
 			switch {
 			case ev.Name == machine.Start:
 			case ev.Sender != nil:
-				add(b.gotOf(ev))
+				add(b.gotOf(ev, e))
 			case ev.Name == machine.Timer:
 				r := stepRow{What: say("timer ", bold(jobOf(ev.From)), " fired"), Facts: []fact{{Name: "timer", Text: jobOf(ev.From)}}}
 				if s, _ := ev.Data.(string); s != "" {
@@ -381,11 +409,12 @@ func (b *rowBuilder) rows(id string, depth int) []stepRow {
 			case ev.Answer:
 				add(stepRow{What: say("⇠ ", bold(ev.Name), " answered"), Kind: "got", In: ev.Data, Facts: []fact{{Name: "ticket", Text: ev.Name}}})
 			case ev.Name == machine.Failed && run.Type != "flow":
-				r := stepRow{What: say(bold(jobOf(ev.From)), " failed"), Kind: "failed", Out: ev.Data, Facts: jobFacts(jobs[named(ev.From)], b.byID)}
+				r := stepRow{What: say(bold(jobOf(ev.From)), " failed"), Kind: "failed", Out: ev.Data, Facts: jobFacts(jobs[named(ev.From)], b.byID), Cards: []string{jobOf(ev.From)}}
 				if a := jobs[named(ev.From)]; a != nil && a.Job != nil {
 					r.In = a.Job.Input
 				}
-				r.Facts = append(r.Facts, fact{Name: "error", Text: failure(ev.Data)})
+				r.Facts = append(r.Facts, failed(ev.Data)...)
+				ended(&r, e, ev.From)
 				add(r)
 			case run.Type == "agent" && ev.Name == machine.Done && isTurn(ev.From):
 				turn := prev.Turn
@@ -394,7 +423,7 @@ func (b *rowBuilder) rows(id string, depth int) []stepRow {
 				for _, c := range calls {
 					call, _ := c.(map[string]any)
 					name, _ := call["name"].(string)
-					add(stepRow{What: say("turn "+strconv.Itoa(turn)+" called ", bold(name), "("+argsOf(call["args"])+")"), In: call["args"], Out: b.resultOf(own[i+1:], name),
+					add(stepRow{What: say("turn "+strconv.Itoa(turn)+" called ", bold(name), "("+argsOf(call["args"])+")"), In: call["args"], Out: b.resultOf(own[i+1:], name), Cards: []string{name},
 						Facts: []fact{{Name: "tool", Text: name}, {Name: "args", Text: compact(call["args"])}, {Name: "turn " + strconv.Itoa(turn), Text: turnFacts(data)}}})
 				}
 				if len(calls) == 0 {
@@ -403,10 +432,11 @@ func (b *rowBuilder) rows(id string, depth int) []stepRow {
 						Facts: []fact{{Name: "turn " + strconv.Itoa(turn), Text: turnFacts(data)}}})
 				}
 			case run.Type == "agent" && ev.Name == machine.Done:
-				r := stepRow{What: say(bold(jobOf(ev.From)), " done"), Out: ev.Data, Facts: jobFacts(jobs[named(ev.From)], b.byID)}
+				r := stepRow{What: say(bold(jobOf(ev.From)), " done"), Out: ev.Data, Facts: jobFacts(jobs[named(ev.From)], b.byID), Cards: []string{jobOf(ev.From)}}
 				if a := jobs[named(ev.From)]; a != nil && a.Job != nil {
 					r.In = a.Job.Input
 				}
+				ended(&r, e, ev.From)
 				add(r)
 			}
 		}
@@ -426,7 +456,20 @@ func (b *rowBuilder) rows(id string, depth int) []stepRow {
 				w = append(append(w, word{Text: "entered "}), names(entered)...)
 			}
 			if w != nil {
-				add(stepRow{What: w, Facts: []fact{{Name: "states", Text: strings.Join(now, ", ")}}})
+				r := stepRow{What: w, Facts: []fact{{Name: "states", Text: strings.Join(now, ", ")}}, Cards: append(slices.Clone(left), entered...)}
+				// The row is about the job that ended at the step, or else the
+				// job of the state it entered.
+				for _, ev := range e.Events {
+					if ev.From != "" && (ev.Name == machine.Done || ev.Name == machine.Failed) && slices.Contains(left, jobOf(ev.From)) {
+						ended(&r, e, ev.From)
+					}
+				}
+				for _, a := range e.Asks {
+					if r.Job == "" && (a.Kind == instance.AskScript || a.Kind == instance.AskChild) && slices.Contains(entered, jobOf(a.Name)) {
+						r.Job = jobOf(a.Name)
+					}
+				}
+				add(r)
 			}
 		case "flow":
 			was, now := prev.Stages, e.Shown.Stages
@@ -435,15 +478,16 @@ func (b *rowBuilder) rows(id string, depth int) []stepRow {
 				if st == was[s] || (st != instance.Done && st != instance.Failed && st != "skipped") {
 					continue
 				}
-				r := stepRow{What: say("stage ", bold(s), " "+st), Facts: []fact{{Name: "stage", Text: s}, {Name: "status", Text: st}}}
+				r := stepRow{What: say("stage ", bold(s), " "+st), Facts: []fact{{Name: "stage", Text: s}, {Name: "status", Text: st}}, Cards: []string{s}, Job: s}
 				if st == instance.Failed {
 					r.Kind = "failed"
 				}
 				for _, ev := range e.Events {
 					if jobOf(ev.From) == s && (ev.Name == machine.Done || ev.Name == machine.Failed) {
+						ended(&r, e, ev.From)
 						r.Out = ev.Data
 						if ev.Name == machine.Failed {
-							r.Facts = append(r.Facts, fact{Name: "error", Text: failure(ev.Data)})
+							r.Facts = append(r.Facts, failed(ev.Data)...)
 						}
 						if a := jobs[named(ev.From)]; a != nil && a.Job != nil {
 							r.In = a.Job.Input
@@ -457,6 +501,9 @@ func (b *rowBuilder) rows(id string, depth int) []stepRow {
 			a := &e.Asks[k]
 			if a.Name != "" && (a.Kind == instance.AskScript || a.Kind == instance.AskChild || a.Kind == instance.AskHold || a.Kind == instance.AskCall) {
 				jobs[named(a.Name)] = a
+			}
+			if a.Name != "" && (a.Kind == instance.AskScript || a.Kind == instance.AskChild || a.Kind == instance.AskCall) {
+				began[named(a.Name)] = e.Time
 			}
 			switch a.Kind {
 			case instance.AskChild:
@@ -473,11 +520,11 @@ func (b *rowBuilder) rows(id string, depth int) []stepRow {
 				default:
 					w = say(bold(name), " started ", bold(child.Machine))
 				}
-				r := stepRow{What: w, Facts: jobFacts(a, b.byID), Out: b.resultOf(own[i+1:], a.Name)}
+				r := stepRow{What: w, Facts: jobFacts(a, b.byID), Out: b.resultOf(own[i+1:], a.Name), Job: name, Cards: []string{name}}
 				if a.Job != nil {
 					r.In = a.Job.Input
 				}
-				g := &group{Run: child, Steps: b.steps(a.Child), Rows: b.rows(a.Child, depth+1)}
+				g := &group{Run: child, Steps: b.steps(a.Child), Rows: b.rows(a.Child, depth+1, cardPath(in, name))}
 				if h := b.byID[a.Child]; h != nil {
 					g.Status, g.Failure, g.Ended = h.Status, h.Failure, h.HasEnded()
 					if g.Ended {
@@ -489,7 +536,7 @@ func (b *rowBuilder) rows(id string, depth int) []stepRow {
 			case instance.AskCall:
 				called := linkOf(a.Run, b.byID)
 				r := stepRow{Kind: "send", What: say("⇢ called ", bold(a.Location), " · ", linked(&called)),
-					Facts: append(jobFacts(a, b.byID), fact{Name: "location", Text: a.Location}), Out: b.resultOf(own[i+1:], a.Name)}
+					Facts: append(jobFacts(a, b.byID), fact{Name: "location", Text: a.Location}), Out: b.resultOf(own[i+1:], a.Name), Job: jobOf(a.Name), Cards: []string{jobOf(a.Name)}}
 				if a.Job != nil {
 					r.In = a.Job.Input
 				}
@@ -512,7 +559,7 @@ func (b *rowBuilder) rows(id string, depth int) []stepRow {
 				}
 				add(r)
 			case instance.AskHold:
-				r := stepRow{What: say("held ", bold(jobOf(a.Name)), " for approval"), Kind: "held", Facts: jobFacts(a, b.byID)}
+				r := stepRow{What: say("held ", bold(jobOf(a.Name)), " for approval"), Kind: "held", Facts: jobFacts(a, b.byID), Cards: []string{jobOf(a.Name)}}
 				if a.Job != nil {
 					r.In = a.Job.Input
 				}
@@ -524,7 +571,7 @@ func (b *rowBuilder) rows(id string, depth int) []stepRow {
 				}
 				add(r)
 			case instance.AskFail:
-				r := stepRow{What: say(bold(jobOf(a.Name)), " failed"), Kind: "failed", Facts: []fact{{Name: "job", Text: a.Name}}}
+				r := stepRow{What: say(bold(jobOf(a.Name)), " failed"), Kind: "failed", Facts: []fact{{Name: "job", Text: a.Name}}, Job: jobOf(a.Name), Cards: []string{jobOf(a.Name)}}
 				if a.Error != nil {
 					r.Facts = append(r.Facts, fact{Name: "error", Text: a.Error.Error})
 					if a.Error.Refused != "" {
@@ -534,7 +581,7 @@ func (b *rowBuilder) rows(id string, depth int) []stepRow {
 				}
 				add(r)
 			case instance.AskCancel:
-				add(stepRow{What: say("cancelled ", bold(jobOf(a.Name))), Facts: []fact{{Name: "job", Text: a.Name}}})
+				add(stepRow{What: say("cancelled ", bold(jobOf(a.Name))), Facts: []fact{{Name: "job", Text: a.Name}}, Cards: []string{jobOf(a.Name)}})
 			case instance.AskNote:
 				if !b.noted(e, a.Text) {
 					add(stepRow{What: say(a.Text), Facts: []fact{{Name: "note", Text: a.Text}}})
@@ -564,12 +611,21 @@ func (b *rowBuilder) rows(id string, depth int) []stepRow {
 }
 
 // gotOf is the row of an event a run or a client sent to the run by its
-// address, linked to the run that sent it.
-func (b *rowBuilder) gotOf(ev instance.Arrived) stepRow {
+// address, at step e, linked to the run that sent it. A client's event the
+// machine had no rule for says so, as the step's receipt for it gives.
+func (b *rowBuilder) gotOf(ev instance.Arrived, e client.Entry) stepRow {
 	from := senderOf(ev.Event)
 	r := stepRow{Kind: "got", In: ev.Data, Facts: []fact{{Name: "event", Text: ev.Name}, {Name: "from", Text: from}}}
 	if ev.Sender.Run == "" {
 		r.What = say("⇠ ", bold(ev.Name), " from ", bold(from))
+		for _, a := range e.Asks {
+			if a.Kind == instance.AskReceipt && a.Message != "" && a.Message == ev.Cause.Message && a.Receipt != nil && a.Receipt.Acted != nil && !*a.Receipt.Acted {
+				in := strings.Join(e.Shown.States, ", ")
+				r.What = append(r.What, word{Text: " · no rule in "}, bold(in))
+				r.Facts = append(r.Facts, fact{Name: "no rule", Text: "the machine has no rule for " + ev.Name + " in " + in})
+				r.Kind = "got unruled"
+			}
+		}
 		return r
 	}
 	by := linkOf(ev.Sender.Run, b.byID)
@@ -850,6 +906,20 @@ func compact(v any) string {
 }
 
 // failure gives the error a failed event carries.
+// failed gives the facts of a job's failure: its error, and where a
+// permission refused it, what was refused, which layer refused it and the
+// fix.
+func failed(data any) []fact {
+	facts := []fact{{Name: "error", Text: failure(data)}}
+	m, _ := data.(map[string]any)
+	if refused, _ := m["refused"].(string); refused != "" {
+		layer, _ := m["layer"].(string)
+		fix, _ := m["fix"].(string)
+		facts = append(facts, fact{Name: "refused", Text: refused}, fact{Name: "by", Text: layer}, fact{Name: "fix", Text: fix})
+	}
+	return facts
+}
+
 func failure(data any) string {
 	m, _ := data.(map[string]any)
 	if refused, _ := m["refused"].(string); refused != "" {

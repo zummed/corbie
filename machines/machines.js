@@ -9,9 +9,11 @@ import { Drawing } from "drawing";
 import { Problems, Code, machineHref, base, focusOf, focusAt } from "/machines/shared.js";
 
 // focus is the card the drawing moves in to, "" being the whole machine;
-// shownAt is the address the file chosen is shown as; failed is why the
-// file chosen could not be shown at the address asked for.
+// lineAt is the line of the text the address names, which is lit; shownAt is
+// the address the file chosen is shown as; failed is why the file chosen
+// could not be shown at the address asked for.
 const [focus, setFocus] = createSignal(focusAt(location.href));
+const [lineAt, setLineAt] = createSignal(location.hash.slice(1));
 const [failed, setFailed] = createSignal("");
 let shownAt = location.href;
 
@@ -40,6 +42,7 @@ async function show(href, push) {
       setFailed("");
       receive({ type: "part", id: "view", data: answer });
       if (moved !== null) setFocus(moved);
+      setLineAt(at.hash.slice(1));
       flush();
       if (other) document.querySelector(".ide > .view")?.scrollTo(0, 0);
       if (at.hash) document.getElementById(at.hash.slice(1))?.scrollIntoView({ block: "center" });
@@ -102,10 +105,27 @@ function List() {
   </div>`;
 }
 
+// counted gives the runs at a location in words: how many run there, and
+// how many failed today, or nothing where none do.
+function counted(at) {
+  const r = parts.runs[at];
+  const said = [];
+  if (r?.Running) said.push(`${r.Running} running`);
+  if (r?.FailedToday) said.push(`${r.FailedToday} failed today`);
+  return said.map(s => " · " + s).join("");
+}
+
+// lineHref gives the address of a line of a file, written "file:line", on
+// the Text tab.
+const lineHref = at => {
+  const i = at.lastIndexOf(":");
+  return machineHref(at.slice(0, i), "text") + "#L" + at.slice(i + 1);
+};
+
 function Place(props) {
   const p = () => props.place;
   return html`<section class="place">${() => (p().Description ? html`<p class="description">${() => p().Description}</p>` : "")}<div class="named">
-    <span>location</span><span>${() => (parts.view.Runs ? html`<a href=${() => "/runs?at=" + encodeURIComponent(p().Location)} title=${() => "the runs at " + p().Location}>${() => p().Location}</a>` : p().Location)}</span>
+    <span>location</span><span>${() => (parts.view.Runs ? html`<a href=${() => "/runs?at=" + encodeURIComponent(p().Location)} title=${() => "the runs at " + p().Location}>${() => p().Location}<span class="counted">${() => counted(p().Location)}</span></a>` : p().Location)}</span>
     <span>lifetime</span><span>${() => p().Lifetime}: ${() => p().Started}${() => (p().Runs ? `, at most ${p().Runs} running at once` : "")}</span>
     <span>update</span><span>${() => p().Update}: ${() => p().Updated}</span>
     <span>receives</span><span><For each=${() => p().Receives}>${r => html`${r}<br />`}</For>${() => (p().Receives.length ? "and anything from its tree's client" : "from its own tree and its tree's client")}</span>
@@ -147,8 +167,8 @@ function View() {
       <Show when=${() => v().Place}><${Place} place=${() => v().Place} /></Show>
       <Show when=${() => v().Uses.length}><${Uses} view=${v} /></Show>
       <Show when=${() => v().File}><${Included} files=${() => v().Included} /></Show>
-      <Show when=${() => v().View === "drawing"} fallback=${() => html`<${Code} lines=${() => v().Text} written=${() => v().View === "written"} label=${() => v().Open} />`}>
-        <section class="drawn" id="drawing"><For each=${() => [v().Open]}>${() => html`<${Drawing} scene=${() => v().Drawing} focus=${focus} />`}</For></section>
+      <Show when=${() => v().View === "drawing"} fallback=${() => html`<${Code} lines=${() => v().Text} written=${() => v().View === "written"} label=${() => v().Open} here=${lineAt} />`}>
+        <section class="drawn" id="drawing"><For each=${() => [v().Open]}>${() => html`<${Drawing} scene=${() => v().Drawing} focus=${focus} counts=${() => parts.runs[v().Place?.Location]?.In} lineHref=${lineHref} />`}</For></section>
       </Show>
     </div>
   </Show>`;

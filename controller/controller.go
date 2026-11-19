@@ -288,6 +288,8 @@ func (h *handler) act(w http.ResponseWriter, r *http.Request) {
 		call = page.Call{Words: []string{"controller", "secret", "set"}, Args: []string{r.FormValue("name")}, Flags: []string{"-", at}, Stdin: r.FormValue("value")}
 	case "value-set":
 		call = page.Call{Words: []string{"controller", "value", "set"}, Args: []string{r.FormValue("name"), r.FormValue("value")}, Flags: []string{at}}
+	case "check":
+		call = page.Call{Words: []string{"check"}}
 	case "secret-remove", "value-remove":
 		kind, _, _ := strings.Cut(r.PathValue("act"), "-")
 		call = page.Call{Words: []string{"controller", kind, "remove"}, Args: []string{r.FormValue("name")}, Flags: []string{at}}
@@ -296,12 +298,60 @@ func (h *handler) act(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	answer := h.Command(r.Context(), call)
+	if text, ok := checked(answer); ok {
+		status := http.StatusOK
+		if answer.Status != 0 {
+			status = http.StatusConflict
+		}
+		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+		w.WriteHeader(status)
+		io.WriteString(w, text)
+		return
+	}
 	if answer.Status != 0 {
 		page.Error(w, http.StatusConflict, answer.Error())
 		return
 	}
 	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 	io.WriteString(w, said(answer))
+}
+
+// legSays is what each leg of `corbie check` is, in Corbie's words for it.
+var legSays = map[string]string{
+	"start":  "the controller took the start",
+	"job":    "a runner took the job",
+	"result": "the controller took the result",
+	"timer":  "the timer fired",
+}
+
+// checked gives what `corbie check` printed, one line for each part of the
+// setup it checked: what it is, whether it responded (ok, late or never),
+// how long it took, and why where it did not. It says whether the answer is
+// a check's.
+func checked(a page.Answer) (string, bool) {
+	var c struct {
+		Legs []struct {
+			Leg     string  `json:"leg"`
+			Status  string  `json:"status"`
+			Seconds float64 `json:"seconds"`
+			Why     string  `json:"why"`
+		} `json:"legs"`
+	}
+	if json.Unmarshal([]byte(strings.TrimSpace(a.Out)), &c) != nil || len(c.Legs) == 0 {
+		return "", false
+	}
+	var b strings.Builder
+	for _, l := range c.Legs {
+		took := fmt.Sprintf("%.1fs", l.Seconds)
+		if l.Status == "never" {
+			took = ""
+		}
+		fmt.Fprintf(&b, "%-32s %-6s %s\n", cmp.Or(legSays[l.Leg], l.Leg), l.Status, took)
+		if l.Why != "" {
+			fmt.Fprintf(&b, "  %s\n", l.Why)
+		}
+	}
+	return strings.TrimRight(b.String(), "\n"), true
 }
 
 // said is what an action's command printed back: for an enrol, the

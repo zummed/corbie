@@ -322,3 +322,52 @@ func Test_controller_secret_value_goes_on_standard_input_only(t *testing.T) {
 		t.Errorf("a secret's value was sent back to the page")
 	}
 }
+
+func Test_controller_check_gives_each_part_of_the_setup(t *testing.T) {
+	var ran []string
+	answer := page.Answer{}
+	h := lab(t, func(ctx context.Context, c page.Call) page.Answer { ran = append(ran, c.String()); return answer })
+	printed, err := json.Marshal(cli.Checked{Legs: []cli.Leg{
+		{Leg: "start", Status: "ok", Seconds: 0.42},
+		{Leg: "job", Status: "never", Seconds: 90, Why: "no runner took the job: is a runner running?"},
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	answer = page.Answer{Status: 1, Out: string(printed)}
+	w := post(h, "check", url.Values{})
+	body := w.Body.String()
+	if len(ran) != 1 || ran[0] != "corbie check" {
+		t.Fatalf("Check ran %v", ran)
+	}
+	if w.Code != http.StatusConflict || body != "the controller took the start    ok     0.4s\na runner took the job            never  \n  no runner took the job: is a runner running?" {
+		t.Errorf("a check that failed answered %d:\n%s", w.Code, body)
+	}
+	printed, _ = json.Marshal(cli.Checked{OK: true, Legs: []cli.Leg{{Leg: "start", Status: "ok", Seconds: 0.1}}})
+	answer = page.Answer{Out: string(printed)}
+	if w := post(h, "check", url.Values{}); w.Code != http.StatusOK || !strings.HasPrefix(w.Body.String(), "the controller took the start") {
+		t.Errorf("a check that passed answered %d:\n%s", w.Code, w.Body.String())
+	}
+	// A check that could not start says why, as any action does.
+	answer = page.Answer{Status: 1, Said: "this config knows no client"}
+	if w := post(h, "check", url.Values{}); w.Code != http.StatusConflict || strings.TrimSpace(w.Body.String()) != "this config knows no client" {
+		t.Errorf("a check that could not start answered %d:\n%s", w.Code, w.Body.String())
+	}
+}
+
+// Test_controller_check_runs_corbie_check runs Check on a lab where no
+// controller process runs, as the UI runs it: the start is never taken.
+func Test_controller_check_runs_corbie_check(t *testing.T) {
+	config, ctl, s := labbed(t)
+	command := func(ctx context.Context, c page.Call) page.Answer {
+		args := append(append(append(append([]string{}, c.Words...), c.Args...), c.Flags...), "--json", "--config", config, "--wait", "1s")
+		var out, said bytes.Buffer
+		status := cli.Run(ctx, args, strings.NewReader(c.Stdin), &out, &said)
+		return page.Answer{Status: status, Out: out.String(), Said: said.String()}
+	}
+	h := New(Config{Controller: ctl, Store: s, Command: command, Interval: time.Second, Changed: (&signal{}).next})
+	w := post(h, "check", url.Values{})
+	if w.Code != http.StatusConflict || !regexp.MustCompile(`^the controller took the start\s+never`).MatchString(w.Body.String()) {
+		t.Errorf("Check on a lab with no controller running answered %d:\n%s", w.Code, w.Body.String())
+	}
+}

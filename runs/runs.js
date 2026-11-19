@@ -17,6 +17,18 @@ const breaks = location => location.split("/").flatMap((p, i, all) => (i < all.l
 
 const keyWidth = key => (key ? `--key: ${[...key].length}ch` : undefined);
 
+// now is the time, a second at a time, from which a page says how long ago
+// something was.
+const [now, setNow] = createSignal(Date.now());
+
+// ago says how long ago a time was: 12s, 4m, 3h 5m.
+function ago(time) {
+  const s = Math.max(0, Math.round((now() - Date.parse(time)) / 1000));
+  if (s < 60) return s + "s";
+  if (s < 3600) return Math.floor(s / 60) + "m";
+  return Math.floor(s / 3600) + "h " + (Math.floor(s / 60) % 60) + "m";
+}
+
 const go = href => e => {
   if (e.target.closest("a, button, input, form")) return;
   e.preventDefault();
@@ -132,6 +144,15 @@ function Words(props) {
 
 const said = row => row.What.map(w => w.Text).join("");
 
+// Why is one line under the run's head: why the run is where it is. A
+// click selects the row it is at.
+function Why() {
+  const steps = useContext(StepsContext);
+  const w = () => parts.summary.Why;
+  return html`<Show when=${w}>${y => html`<p class="why" id="why"><button type="button" class="link" onClick=${() => steps.select(y().Row)} disabled=${() => !y().Row}>${() => y().Lead}${() => (y().Since ? " " + ago(y().Since) : "")}${() => (y().Rest ? " " + y().Rest : "")}</button><Show when=${() => y().Facts?.length}>: <span class="facts">${() => y().Facts.map(f => f.Text).join(", ")}</span></Show></p>`}</Show>
+  <Show when=${() => parts.summary.Differs?.length}><details class="differs" id="differs"><summary>the file changed since this run started</summary><pre>${() => parts.summary.Differs.join("\n")}</pre></details></Show>`;
+}
+
 function Summary() {
   const s = () => parts.summary;
   return html`<div class="head" id="summary">
@@ -155,13 +176,33 @@ function Waits() {
   return html`<div id="waits">
     <div class="waitlist">
       <Show when=${() => w().Ended}><div class="wait dim">nothing: the run has ended</div></Show>
-      <For each=${() => w().Waits}>${x => html`<div class="wait"><Show when=${() => x.Run} fallback=${() => html`<span>${() => x.Text}</span>`}><span>${() => x.Text}${" "}<a href=${() => "/run/" + x.Run.ID} title=${() => x.Run.Tip}><${Icon} type=${() => x.Run.Type} />${() => x.Run.Machine}</a></span></Show><Show when=${() => x.Value}><code class="value" title="the ticket's value: whoever has it can answer">${() => x.Value}</code><${Act} action=${() => "/run/" + w().ID + "/reply"} reset=${true} button="sm" label="Reply" cmd=${() => `corbie run reply ${w().ID} ${x.Value} <answer>`}><input type="hidden" name="ticket" value=${() => x.Value} /><input name="value" placeholder="answer, as JSON" size="16" /><//></Show></div>`}</For>
+      <For each=${() => w().Waits}>${x => html`<div class="wait"><Show when=${() => x.Run} fallback=${() => html`<span>${() => x.Text}</span><Show when=${() => x.Job}>${j => html`<${JobFacts} job=${() => j()} />`}</Show>`}><span>${() => x.Text}${" "}<a href=${() => "/run/" + x.Run.ID} title=${() => x.Run.Tip}><${Icon} type=${() => x.Run.Type} />${() => x.Run.Machine}</a></span></Show><Show when=${() => x.Value}><code class="value" title="the ticket's value: whoever has it can answer">${() => x.Value}</code><${Act} action=${() => "/run/" + w().ID + "/reply"} reset=${true} button="sm" label="Reply" cmd=${() => `corbie run reply ${w().ID} ${x.Value} <answer>`}><input type="hidden" name="ticket" value=${() => x.Value} /><input name="value" placeholder="answer, as JSON" size="16" /><//></Show></div>`}</For>
       <Show when=${() => !w().Ended && !w().Waits.length}><div class="wait dim">nothing</div></Show>
+      <Show when=${() => w().Timeout}><div class="wait dim">the run times out ${() => w().Timeout}</div></Show>
     </div>
     <Show when=${() => w().Reply}><${Act} class="send" action=${() => "/run/" + w().ID + "/reply"} reset=${true} label="Reply" cmd=${() => `corbie run reply ${w().ID} <ticket> <answer>`}><input name="ticket" placeholder="a ticket's value" size="20" required /><input name="value" placeholder="answer, as JSON" size="16" /><//></Show>
     <Show when=${() => w().Send}><${Act} class="send" action=${() => "/run/" + w().ID + "/send"} reset=${true} label="Send" cmd=${() => `corbie run send ${w().ID} <event> <data>`}><input name="event" placeholder="event" size="12" required /><input name="data" placeholder="data, as JSON" size="18" /><//></Show>
     <Show when=${() => w().Labels.length}><dl class="labels"><For each=${() => w().Labels}>${l => html`<dt>${() => l.Name}</dt><dd title=${() => l.Value}>${() => l.Value}</dd>`}</For></dl></Show>
   </div>`;
+}
+
+// JobFacts are what is known of a job going, and what it has logged.
+function JobFacts(props) {
+  const j = () => props.job;
+  const facts = () => [
+    j().Runner && "on " + j().Runner,
+    j().Attempt > 1 && "attempt " + j().Attempt,
+    j().Sent && "sent " + j().Sent + (j().Began ? ", " + ago(j().Began) + " ago" : ""),
+    j().Due && "due " + j().Due,
+    j().Again && "restarts at " + j().Again,
+    j().Restarts && "restart " + j().Restarts,
+  ].filter(Boolean).join(" · ");
+  return html`<span class="jobfacts dim">${facts}</span><${Logs} logs=${() => j().Logs} />`;
+}
+
+// Logs are the values a job emitted, with their times.
+function Logs(props) {
+  return html`<Show when=${() => props.logs?.length}><ol class="logs"><For each=${() => props.logs}>${l => html`<li><span class="t">${() => l.Time}</span><span class="n">${() => (l.Name === "log" ? "" : l.Name)}</span><span class="w">${() => l.Text}</span></li>`}</For></ol></Show>`;
 }
 
 function Output() {
@@ -257,11 +298,9 @@ function followSteps() {
   const visible = createMemo(() => nodes().filter(n => n.groups.every(g => g.open)));
   // newest is the newest row of the run and the runs under it; the rows of
   // a send's or a call's group are of other runs, and are left out.
-  const newest = createMemo(() => {
-    let last;
-    for (const n of nodes()) if (!n.groups.some(g => g.trace) && (!last || Date.parse(n.row.At) >= Date.parse(last.row.At))) last = n;
-    return last;
-  });
+  // newest is the row the page selects while it follows the run: the
+  // newest, or a failed run's deepest failure, as the UI gives it.
+  const newest = createMemo(() => byKey().get(parts.steps?.Follows) ?? nodes().filter(n => !n.groups.some(g => g.trace)).at(-1));
   // shownOf gives the node that shows a node: itself, or the head of the
   // outermost folded group it is in.
   const shownOf = node => {
@@ -307,18 +346,60 @@ function followSteps() {
     setFolds(s => { s[g.key] = to; });
     if (!to && g.trace) setTraced(s => { delete s[g.key]; });
   };
+  // hovered is the row under the pointer, whose cards the drawing lights.
+  const [hovered, setHovered] = createSignal(null);
+  // playing is how fast the selection plays through the rows: none, a row
+  // a second, or three.
+  const [playing, setPlaying] = createSignal(0);
+  const choose = node => {
+    if (!node) return;
+    setFolds(s => { for (const g of node.groups) s[g.key] = true; });
+    setPicked(node.key);
+    setChosen(n => n + 1);
+  };
+  // The selection plays through the rows shown, one at a time, and stops at
+  // the last.
+  createEffect(
+    () => playing(),
+    speed => {
+      if (!speed) return;
+      const timer = setInterval(() => {
+        const rows = visible(), next = rows[rows.indexOf(selected()) + 1];
+        if (next) choose(next);
+        else setPlaying(0);
+      }, speed === 1 ? 1000 : 333);
+      return () => clearInterval(timer);
+    }
+  );
   return {
-    nodes, visible, selected, shown, picked, details, setDetails, traced, fold,
-    // pick selects a row the person chose, opening the groups it is in.
-    // Choosing the row chosen asks for its drawing again where it failed.
+    nodes, visible, selected, shown, picked, details, setDetails, traced, fold, hovered, setHovered, playing,
+    // pick selects a row the person chose, opening the groups it is in,
+    // and stops the selection playing. Choosing the row chosen asks for its
+    // drawing again where it failed.
     pick(node) {
       if (!node) return;
-      setFolds(s => { for (const g of node.groups) s[g.key] = true; });
-      setPicked(node.key);
-      setChosen(n => n + 1);
+      setPlaying(0);
+      choose(node);
     },
+    // select selects a row by its key.
+    select(key) {
+      this.pick(byKey().get(key));
+    },
+    // touched selects the newest row about a card of the drawing.
+    touched(path) {
+      const rows = nodes().filter(n => !n.groups.some(g => g.trace) && n.row.Cards?.includes(path));
+      this.pick(rows.sort((a, b) => Date.parse(a.row.At) - Date.parse(b.row.At)).at(-1));
+    },
+    // play plays from the row selected, faster when it plays already, and
+    // stops when it plays fast.
+    play: () => setPlaying(p => (p + 1) % 3),
+    // pause plays or stops.
+    pause: () => setPlaying(p => (p ? 0 : 1)),
     // follow selects the newest row, and goes on selecting each new row.
-    follow: () => setPicked(null),
+    follow() {
+      setPlaying(0);
+      setPicked(null);
+    },
     // head gives the node at the head of a group.
     head: g => byKey().get(g.head),
     // all opens or folds every group; folding chooses the row at the head
@@ -335,7 +416,7 @@ function StepRow(props) {
   const steps = useContext(StepsContext);
   const n = () => props.node;
   const r = () => n().row;
-  return html`<div class=${() => ["step", r().Run.Type, r().Kind, { sel: steps.selected()?.key === n().key }]} style=${() => "--d: " + r().Depth} data-key=${() => n().key} ref=${lit(() => ({ key: "step " + n().key, data: n().key }))} onClick=${e => {
+  return html`<div class=${() => ["step", r().Run.Type, r().Kind, { sel: steps.selected()?.key === n().key }]} style=${() => "--d: " + r().Depth} data-key=${() => n().key} ref=${lit(() => ({ key: "step " + n().key, data: n().key }))} onMouseEnter=${() => steps.setHovered(n().row.Cards ?? null)} onMouseLeave=${() => steps.setHovered(null)} onClick=${e => {
     if (e.target.closest("a, button")) return;
     steps.pick(n());
     steps.setDetails(true);
@@ -347,7 +428,7 @@ function StepRow(props) {
       // Folding the group the selected row is in selects the group's head.
       if (g.open && sel?.groups.some(o => o.key === g.key)) steps.pick(steps.head(g));
     }}></button>` : html`<span class="fold"></span>`)}<Show when=${() => r().Run.Type}><${Icon} type=${() => r().Run.Type} /></Show><span>${() => r().Run.Machine}</span></span>
-    <span class="what" title=${() => said(r())}><${Words} words=${() => r().What} />${() => (r().Group ? html`<span class="sum">${r().Group.Run.Title ? html` · <span class="name">${r().Group.Run.Title}</span>` : ""} · <span class=${["st", r().Group.Status]}>${r().Group.Status}${r().Group.Failure ? ` (${r().Group.Failure})` : ""}</span> · ${plural(r().Group.Steps, "step")}${r().Group.Took ? " · " + r().Group.Took : ""}</span>` : "")}${() => (r().Trace ? html`<span class="sum">${r().Trace.Run.Title && r().Trace.Run.Title !== r().Trace.Run.Machine ? html` · <span class="name">${r().Trace.Run.Title}</span>` : ""}${r().Trace.Status ? html` · <span class=${["st", r().Trace.Status]}>${r().Trace.Status}${r().Trace.Failure ? ` (${r().Trace.Failure})` : ""}</span>` : ""}${r().Trace.Took ? " · " + r().Trace.Took : ""}</span>` : "")}</span>
+    <span class="what" title=${() => said(r())}><${Words} words=${() => r().What} /><Show when=${() => r().Took}><span class="took"> · ${() => r().Took}</span></Show>${() => (r().Group ? html`<span class="sum">${r().Group.Run.Title ? html` · <span class="name">${r().Group.Run.Title}</span>` : ""} · <span class=${["st", r().Group.Status]}>${r().Group.Status}${r().Group.Failure ? ` (${r().Group.Failure})` : ""}</span> · ${plural(r().Group.Steps, "step")}${r().Group.Took ? " · " + r().Group.Took : ""}</span>` : "")}${() => (r().Trace ? html`<span class="sum">${r().Trace.Run.Title && r().Trace.Run.Title !== r().Trace.Run.Machine ? html` · <span class="name">${r().Trace.Run.Title}</span>` : ""}${r().Trace.Status ? html` · <span class=${["st", r().Trace.Status]}>${r().Trace.Status}${r().Trace.Failure ? ` (${r().Trace.Failure})` : ""}</span>` : ""}${r().Trace.Took ? " · " + r().Trace.Took : ""}</span>` : "")}</span>
   </div>`;
 }
 
@@ -372,7 +453,7 @@ function Steps() {
   return html`<div class="steps" id="steps">
     <div class="head"><h2>Steps</h2><span class="facts" ref=${bump(() => s().Count)}>${() => s().Count}</span>
       <span class="legend"><span class="statechart"><i></i>statechart</span><span class="flow"><i></i>flow</span><span class="agent"><i></i>agent</span></span>
-      <span class="acts"><Show when=${() => !s().Ended && steps.picked()}><button class="btn sm" type="button" title="select the newest row, and go on selecting each new row" onClick=${() => steps.follow()}>Follow</button></Show><button class="btn sm" type="button" onClick=${() => steps.all(true)}>Open all</button><button class="btn sm" type="button" onClick=${() => steps.all(false)}>Fold all</button></span>
+      <span class="acts"><button class="btn sm" type="button" data-play title="play through the rows from the one selected; press again to play faster, a third time to stop; Space plays and stops" onClick=${() => steps.play()}>${() => ["Play", "Faster", "Stop"][steps.playing()]}</button><Show when=${() => !s().Ended && steps.picked()}><button class="btn sm" type="button" title="select the newest row, and go on selecting each new row" onClick=${() => steps.follow()}>Follow</button></Show><button class="btn sm" type="button" onClick=${() => steps.all(true)}>Open all</button><button class="btn sm" type="button" onClick=${() => steps.all(false)}>Fold all</button></span>
     </div>
     <ol class=${() => ["steplist", { dated: s().Dated }]} tabindex="0"><${Rows} nodes=${top} /><Show when=${() => !s().Rows.length}><li class="dim none">nothing yet</li></Show></ol>
   </div>`;
@@ -400,6 +481,7 @@ function keys(steps) {
         break;
       case "ArrowRight": if (node.group) steps.fold(node.group, true); break;
       case "Enter": steps.setDetails(true); break;
+      case " ": steps.pause(); break;
       default: return;
     }
     e.preventDefault();
@@ -420,6 +502,12 @@ function Path() {
   return html`<nav class="path" id="path"><For each=${links} keyed=${p => p.at + " " + p.link.ID}>${q => html`${() => (q().at ? (q().sent || q().trace ? html`<span class="sep send" title=${() => (q().sent ? q().sent + " of the run before started it" : "")}>⇢</span>` : html`<span class="sep">›</span>`) : "")}<a href=${() => "/run/" + q().link.ID} title=${() => q().link.Tip} aria-current=${() => (q().link.This ? "page" : undefined)} class=${() => ({ sel: steps.selected()?.row.Run.ID === q().link.ID })}><Show when=${() => q().link.Type}><${Icon} type=${() => q().link.Type} /></Show>${() => q().link.Machine}</a>`}</For></nav>`;
 }
 
+// lineHref gives the address of a line of a file on the Machines page.
+function lineHref(at) {
+  const i = at.lastIndexOf(":");
+  return `/machines?file=${encodeURIComponent(at.slice(0, i))}&view=text#L${at.slice(i + 1)}`;
+}
+
 // View is the drawing of the page's run with the cards down to the
 // selected row's run unfolded, as of the row's step. The drawing moves its
 // own view to what the step marks. While the answer for a row is on its
@@ -429,7 +517,7 @@ function View() {
   const v = () => steps.shown();
   return html`<section class=${() => ["panel", "asof", { pending: isPending(() => steps.shown()) }]} id="view">
     <Show when=${() => v()?.Row}>${row => html`<div class="head"><${Icon} type=${() => v().Type} /><span>${() => row().Run.Machine}</span><span class="dim">${() => v().Type}</span><${Defined} at=${() => v().Defined} /><span class="facts">as of step ${() => row().Step}, ${() => v().Time}</span></div>`}</Show>
-    <div class="drawn"><Show when=${() => v()?.Drawing} fallback=${() => html`<p class="dim">${() => (v()?.Row ? "no drawing" : "a run in another client's tree: only its status can be read")}</p>`}><${Drawing} scene=${() => v().Drawing} /></Show></div>
+    <div class="drawn"><Show when=${() => v()?.Drawing} fallback=${() => html`<p class="dim">${() => (v()?.Row ? "no drawing" : "a run in another client's tree: only its status can be read")}</p>`}><${Drawing} scene=${() => v().Drawing} lit=${() => steps.hovered() ?? []} onCard=${path => steps.touched(path)} lineHref=${() => (parts.summary.Defined ? lineHref : undefined)} /></Show></div>
   </section>`;
 }
 
@@ -445,7 +533,7 @@ function Details() {
     ${detailBar}
     <div class="pane" hidden=${() => detailTab() !== "what"}><dl class="kv"><For each=${() => row().Facts} fallback=${() => html`<dt></dt><dd class="dim">${() => said(row())}</dd>`}>${f => html`<dt>${() => f.Name}</dt><dd><Show when=${() => f.Run} fallback=${() => f.Text}><a href=${() => "/run/" + f.Run.ID} title=${() => f.Run.Tip}><Show when=${() => f.Run.Type}><${Icon} type=${() => f.Run.Type} /></Show>${() => f.Run.Machine}</a>${" "}<span class="dim">${() => f.Text}</span></Show></dd>`}</For></dl></div>
     <div class="pane" hidden=${() => detailTab() !== "input"}><Show when=${() => v().Input} fallback=${() => html`<p class="dim">nothing went in</p>`}><pre class="json">${() => v().Input}</pre></Show></div>
-    <div class="pane" hidden=${() => detailTab() !== "output"}><Show when=${() => v().Output} fallback=${() => html`<p class="dim">nothing came out</p>`}><pre class="json">${() => v().Output}</pre></Show></div>
+    <div class="pane" hidden=${() => detailTab() !== "output"}><Show when=${() => v().Output} fallback=${() => html`<p class="dim">nothing came out</p>`}><pre class="json">${() => v().Output}</pre></Show><Show when=${() => v().Logs?.length}><h3 class="label">logged by ${() => row().Job}</h3><${Logs} logs=${() => v().Logs} /></Show></div>
     <div class="pane" hidden=${() => detailTab() !== "lines"}><ol class="record"><For each=${() => v().Lines}>${l => html`<li><span class="t">${() => l.Time}</span><span class="i" title=${() => l.Machine}>${() => l.Machine}</span><span class="n">${() => l.Step || ""}</span><span class=${() => ["w", { end: !!l.End }, l.End]}>${() => (l.Way === "in" ? html`<b>&lt;-</b>${" "}` : l.Way === "out" ? html`<b>-&gt;</b>${" "}` : "")}${() => l.Text}</span></li>`}</For></ol></div>
   `}</Show></section>`;
 }
@@ -462,7 +550,11 @@ function RunPage() {
   onSettled(() => {
     const press = keys(steps);
     document.addEventListener("keydown", press);
-    return () => document.removeEventListener("keydown", press);
+    const tick = setInterval(() => setNow(Date.now()), 1000);
+    return () => {
+      document.removeEventListener("keydown", press);
+      clearInterval(tick);
+    };
   });
   const names = run().Mine ? ["steps", "waits", "output", "children"] : ["waits", "output", "children"];
   const [tab, bar] = tabs(names, names[0], n => ({ steps: "Steps", waits: "Waiting on", output: "Output", children: "Children" })[n]);
@@ -470,6 +562,7 @@ function RunPage() {
   // row can be selected again to ask again.
   return html`<${StepsContext} value=${steps}>
   <${Summary} />
+  <${Why} />
   <${Path} />
   <div class="split">
     <div class="panel tabbed">

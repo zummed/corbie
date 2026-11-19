@@ -1,0 +1,5 @@
+# A flow whose stage calls the network with no allow: for it, so Corbie refuses the call.
+flow: denied
+stages:
+  fetch:
+    job: ./fetch.js

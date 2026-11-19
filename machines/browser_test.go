@@ -21,6 +21,11 @@ func served(t *testing.T, dir string) http.Handler {
 	if err != nil {
 		t.Fatal(err)
 	}
+	return servedBy(dir, h)
+}
+
+// servedBy gives the UI as serve mounts it for pages already made.
+func servedBy(dir string, h *Pages) http.Handler {
 	mux := http.NewServeMux()
 	mux.Handle("GET /assets/", http.StripPrefix("/assets", page.Assets()))
 	mux.Handle("GET /drawing/", http.StripPrefix("/drawing", drawing.Files()))

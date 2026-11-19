@@ -214,6 +214,28 @@ test("machines_file_shown_after_another_is_drawn_again_when_it_changes", async (
   await until(() => parts.view.Open === "support.yaml", "Back showing support.yaml");
 });
 
+test("machines_card_opens_its_line", async () => {
+  window.samePage = true;
+  click(row(".kit/listen.yaml"));
+  await until(() => parts.view.Open === ".kit/listen.yaml" && $("#drawing a.line"), "listen.yaml drawn with its cards' lines");
+  const hearing = $$("#drawing a.line").find(a => text(a).startsWith("hearing"));
+  assert(hearing, "the card hearing does not link to its line");
+  const at = parts.view.Drawing.Chart.States.find(s => s.Name === "hearing").Card.Line;
+  equal(hearing.getAttribute("href"), "/machines?file=.kit%2Flisten.yaml&view=text#L" + at.slice(at.lastIndexOf(":") + 1), "the address of hearing's line");
+  click(hearing);
+  await until(() => parts.view.View === "text" && $(".code .l.here"), "the text at hearing's line");
+  assert(window.samePage, "the line opened another page");
+  const lit = $$(".code .l.here");
+  equal(lit.length, 1, "the lines lit");
+  equal(lit[0].id, "L" + at.slice(at.lastIndexOf(":") + 1), "the line lit");
+  const box = $(".ide > .view").getBoundingClientRect(), line = lit[0].getBoundingClientRect();
+  assert(line.top >= box.top && line.bottom <= box.bottom, "the line lit is out of view");
+  history.back();
+  await until(() => parts.view.Open === ".kit/listen.yaml" && parts.view.View === "drawing", "Back showing the drawing");
+  history.back();
+  await until(() => parts.view.Open === "support.yaml", "Back showing support.yaml");
+});
+
 test("machines_panels_fit_the_window_and_scroll_inside", () => {
   const ide = $(".ide");
   assert(ide.getBoundingClientRect().bottom <= innerHeight + 1, "the page is longer than the window");

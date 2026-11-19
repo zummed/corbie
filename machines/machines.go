@@ -41,15 +41,31 @@ type Config struct {
 	Store      store.Store
 	// Runs says the UI offers the Runs page, to which a machine's location
 	// links.
-	Runs     bool
+	Runs bool
+	// List is every run whose status the UI may read, as last read, and a
+	// signal of each change: a machine's location counts its runs from it.
+	// None where the UI has no store.
+	List List
+	// Client is the client the UI acts as: its running runs are counted in
+	// the states and stages of a machine's drawing. None where it acts as no
+	// client.
+	Client   *client.Client
 	Interval time.Duration
 	Shell    page.Shell
+}
+
+// A List is every run whose status the UI may read, as last read, and a
+// signal of each change.
+type List interface {
+	Runs() ([]*client.Run, error)
+	Changed() <-chan struct{}
 }
 
 type handler struct {
 	Config
 	dir   *dir
 	index *indexed
+	steps *steps
 }
 
 //go:embed machines.js toolkits.js shared.js
@@ -76,7 +92,7 @@ func New(c Config) (*Pages, error) {
 	if err != nil {
 		return nil, err
 	}
-	h := &handler{Config: c, dir: d, index: &indexed{dir: d}}
+	h := &handler{Config: c, dir: d, index: &indexed{dir: d}, steps: &steps{}}
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /machines", h.show)
 	mux.HandleFunc("GET /machines/stream", h.stream)
@@ -195,9 +211,14 @@ func (h *handler) show(w http.ResponseWriter, r *http.Request) {
 		page.Error(w, status, err.Error())
 		return
 	}
+	counted, err := h.counted(r.Context(), v.index)
+	if err != nil {
+		page.Error(w, http.StatusInternalServerError, err.Error())
+		return
+	}
 	s := h.Shell
 	s.Title, s.Current, s.Stream, s.Script = "Machines", "Machines", "/machines/stream", "/machines/script.js"
-	page.Write(w, s, MachinesParts{Files: h.listPart(v.index), View: &v})
+	page.Write(w, s, MachinesParts{Files: h.listPart(v.index), Runs: counted, View: &v})
 }
 
 // viewPart answers the part "view" of the Machines page at the address its
@@ -213,12 +234,13 @@ func (h *handler) viewPart(w http.ResponseWriter, r *http.Request) {
 	json.MarshalWrite(w, v, json.Deterministic(true))
 }
 
-// MachinesParts are the parts of the Machines page: the list, and the file
-// chosen as its tab shows it, which the page has as it loads and asks for
-// at /machines/view.
+// MachinesParts are the parts of the Machines page: the list, the runs at
+// each location, and the file chosen as its tab shows it, which the page
+// has as it loads and asks for at /machines/view.
 type MachinesParts struct {
-	Files list  `json:"files"`
-	View  *view `json:"view,omitzero"`
+	Files list                  `json:"files"`
+	Runs  map[string]atLocation `json:"runs"`
+	View  *view                 `json:"view,omitzero"`
 }
 
 // listPart is the part that lists the directory.
@@ -463,15 +485,24 @@ func hrefs(file string, open map[string]bool) func(string) string {
 }
 
 // stream sends the page the list as the directory now holds it, whatever
-// file the page shows.
+// file the page shows, and the runs at each location, at once when the list
+// of runs changes.
 func (h *handler) stream(w http.ResponseWriter, r *http.Request) {
 	never := make(chan struct{})
-	page.Stream(w, r, h.Interval, func() <-chan struct{} { return never }, func(ctx context.Context) (any, error) {
+	changed := func() <-chan struct{} { return never }
+	if h.List != nil {
+		changed = h.List.Changed
+	}
+	page.Stream(w, r, h.Interval, changed, func(ctx context.Context) (any, error) {
 		ix, err := h.tree(ctx)
 		if err != nil {
 			return nil, err
 		}
-		return MachinesParts{Files: h.listPart(ix)}, nil
+		counted, err := h.counted(ctx, ix)
+		if err != nil {
+			return nil, err
+		}
+		return MachinesParts{Files: h.listPart(ix), Runs: counted}, nil
 	})
 }
 

@@ -6,6 +6,7 @@ import (
 	"encoding/json/jsontext"
 	"encoding/json/v2"
 	"errors"
+	"fmt"
 	"maps"
 	"net/url"
 	"slices"
@@ -32,14 +33,14 @@ func runParts(v runView) RunParts {
 		Page: PagePart{ID: r.ID, Mine: v.Mine},
 		Summary: SummaryPart{ID: r.ID, Machine: r.Machine, Type: r.Type, Status: r.Status, Failure: r.Failure,
 			Title: r.Title, Location: r.Location, Address: v.Address, At: v.At, Defined: v.Defined,
-			Started: v.Started, Ended: v.Ended, Took: v.Took, Cancel: v.Cancel},
+			Started: v.Started, Ended: v.Ended, Took: v.Took, Cancel: v.Cancel, Why: v.Why, Differs: v.Differs},
 		Path:     v.Path,
-		Waits:    WaitsPart{ID: r.ID, Ended: r.HasEnded(), Waits: v.Waits, Reply: v.Reply, Send: v.Send, Labels: v.Labels},
+		Waits:    WaitsPart{ID: r.ID, Ended: r.HasEnded(), Waits: v.Waits, Reply: v.Reply, Send: v.Send, Labels: v.Labels, Timeout: v.Timeout},
 		Output:   OutputPart{Ended: r.HasEnded(), Refused: r.Refused, Layer: r.Layer, Fix: r.Fix, Error: r.Error, Output: v.Output, Used: v.Used, Files: v.Files},
 		Children: v.Children,
 	}
 	if v.Mine {
-		parts.Steps = &StepsPart{Ended: r.HasEnded(), Rows: v.Rows, Count: v.Count, Dated: v.Dated}
+		parts.Steps = &StepsPart{Ended: r.HasEnded(), Rows: v.Rows, Count: v.Count, Dated: v.Dated, Follows: v.Follows}
 		parts.Shown = v.Shown
 	}
 	return parts
@@ -66,21 +67,38 @@ type PagePart struct {
 	Mine bool
 }
 
-// SummaryPart is the head of a run's page.
+// SummaryPart is the head of a run's page: the run, why it is where it is,
+// and the lines of its file that differ now from the definition it
+// started with.
 type SummaryPart struct {
 	ID, Machine, Type, Status, Failure, Title, Location, Address, At string
 	Defined                                                          *definedAt
 	Started, Ended, Took                                             string
 	Cancel                                                           *page.Call
+	Why                                                              *why
+	Differs                                                          []string
 }
 
-// WaitsPart is what a run waits on, what can be sent to it, and its labels.
+// A why is why a run is where it is, in one line: what it is doing, since
+// when where it waits, and on what, the row it is at, and for a failure
+// what refused it and what would fix it.
+type why struct {
+	Lead  string    // "waiting", or "failed (denied)"
+	Since time.Time `json:",omitzero"` // the page says how long ago
+	Rest  string    // "on job fetch on runner-a in child review"
+	Row   string    // the key of the row it is at
+	Facts []fact
+}
+
+// WaitsPart is what a run waits on, what can be sent to it, its labels,
+// and when it passes its own timeout.
 type WaitsPart struct {
 	ID          string
 	Ended       bool
 	Waits       []wait
 	Reply, Send bool
 	Labels      []label
+	Timeout     string
 }
 
 // OutputPart is how a run ended, its output, what it used and its files.
@@ -91,12 +109,14 @@ type OutputPart struct {
 	Files                      []file
 }
 
-// StepsPart is a run's Steps.
+// StepsPart is a run's Steps, and the key of the row the page selects
+// while it follows the run: the newest, or a failed run's deepest failure.
 type StepsPart struct {
-	Ended bool
-	Rows  []stepRow
-	Count int
-	Dated bool
+	Ended   bool
+	Rows    []stepRow
+	Count   int
+	Dated   bool
+	Follows string
 }
 
 // runView is a run's page as it is drawn.
@@ -122,6 +142,10 @@ type runView struct {
 	Send, Reply          bool
 	Shown                *shown
 	Defined              *definedAt
+	Why                  *why
+	Differs              []string
+	Timeout              string
+	Follows              string
 }
 
 // A link is a run by its machine, as the path, the waits and the steps
@@ -145,14 +169,77 @@ type shown struct {
 	Drawing       *drawing.Scene
 	Lines         []line
 	Input, Output string
+	// Logs are what the row's job logged, all of it, as it grows.
+	Logs []logLine
+}
+
+// A logLine is one value a job emitted while it ran, as its run's record
+// holds it: when, which value, and the value in words.
+type logLine struct {
+	Time, Name, Text string
+}
+
+// logsOf gives what a job of a run emitted, from the run's record.
+func logsOf(entries []client.Entry, id, job string, day time.Time) []logLine {
+	var out []logLine
+	for _, e := range entries {
+		if e.ID != id || e.Step != 0 || jobOf(e.Job) != job {
+			continue
+		}
+		text, _ := e.Data.(string)
+		if text == "" {
+			data, _ := json.Marshal(e.Data, json.Deterministic(true))
+			text = clip(string(data))
+		}
+		if e.Name == instance.EmitProgress {
+			if p, ok := e.Data.(map[string]any); ok {
+				text = fmt.Sprint(p["done"])
+				if total, ok := p["total"]; ok {
+					text += " of " + fmt.Sprint(total)
+				}
+			}
+		}
+		out = append(out, logLine{Time: page.Clock(e.Time, day), Name: e.Name, Text: text})
+	}
+	return out
 }
 
 // A wait is one thing a run waits on, in words: a ticket with its name,
-// and its value where the run is in a tree of the UI's client, or a running child
-// with its run.
+// and its value where the run is in a tree of the UI's client, a running
+// child with its run, or a job with what is known of it.
 type wait struct {
 	Text, Ticket, Value string
 	Run                 *link
+	Job                 *going
+}
+
+// going is what a run's state says of a job going: its name, the runner it
+// was sent to, which attempt it is, when it was sent, when its result is
+// due, when it restarts and how many times it has, and what it has logged.
+type going struct {
+	Name     string
+	Runner   string
+	Attempt  int
+	Began    time.Time `json:",omitzero"` // the page says how long ago
+	Sent     string
+	Due      string
+	Again    string
+	Restarts int
+	Logs     []logLine
+}
+
+// goingOf gives what is known of a job going, its times as the page writes
+// them at at.
+func goingOf(j *instance.Going, at time.Time) *going {
+	g := &going{Name: jobOf(j.Name), Runner: j.Runner, Attempt: j.Attempt, Began: j.Began, Restarts: j.Restarts}
+	when := func(t time.Time) string {
+		if t.IsZero() {
+			return ""
+		}
+		return page.When(t, at)
+	}
+	g.Sent, g.Due, g.Again = when(j.Began), when(j.Due), when(j.Again)
+	return g
 }
 
 // String is a wait as one line of words.
@@ -319,6 +406,9 @@ func (h *handler) definitionOf(ctx context.Context, id string, step *instance.St
 // hold the record of every run drawn.
 func (h *handler) shownAt(ctx context.Context, page string, r *stepRow, entries []client.Entry, byID map[string]*client.Run, day time.Time) (shown, error) {
 	s := shown{Row: r, Page: page, Type: r.Run.Type, Time: r.Time, Input: indentOf(r.In), Output: indentOf(r.Out)}
+	if r.Job != "" {
+		s.Logs = logsOf(entries, r.Run.ID, r.Job, day)
+	}
 	_, own := cutAt(entries, r)
 	for _, e := range own {
 		s.Lines = append(s.Lines, lines(e, r.Run.Machine, day)...)
@@ -559,8 +649,28 @@ func (h *handler) runOf(ctx context.Context, id string, entries []client.Entry, 
 		st = &r.step.State
 	}
 	v.Waits = waitsOf(run, st, running(under[id]), at)
+	for _, w := range v.Waits {
+		if w.Job != nil {
+			w.Job.Logs = last(logsOf(entries, id, w.Job.Name, run.Started), 20)
+		}
+	}
+	if st != nil && !st.TimeoutAt.IsZero() {
+		v.Timeout = page.When(st.TimeoutAt, at)
+	}
 	v.Rows = rowsOf(id, entries, byID, h.mine, at, run.Started)
 	v.Count, v.Dated = countRows(v.Rows), dated(v.Rows, run.Started)
+	if v.Why, err = h.whyOf(ctx, run, st, v.Rows, byID, under, at); err != nil {
+		return v, err
+	}
+	switch {
+	case v.Why != nil && run.Status == instance.Failed && v.Why.Row != "":
+		v.Follows = v.Why.Row
+	case newest(v.Rows) != nil:
+		v.Follows = newest(v.Rows).Key
+	}
+	if v.Differs, err = h.differs(ctx, id); err != nil {
+		return v, err
+	}
 	if run.Output != nil {
 		data, _ := json.Marshal(run.Output, json.Deterministic(true))
 		v.Output = indent(data)
@@ -588,6 +698,154 @@ func (h *handler) runOf(ctx context.Context, id string, entries []client.Entry, 
 		}
 	}
 	return v, nil
+}
+
+// last gives the last n of a list.
+func last[T any](list []T, n int) []T {
+	return list[max(0, len(list)-n):]
+}
+
+// whyOf gives why a run is where it is: for a run that failed, the deepest
+// row that failed, and for a running run, what the deepest run running under
+// it waits on, and since when.
+func (h *handler) whyOf(ctx context.Context, run *client.Run, st *instance.State, rows []stepRow, byID map[string]*client.Run, under map[string][]*client.Run, at time.Time) (*why, error) {
+	switch {
+	case run.Status == instance.Failed:
+		w := &why{Lead: run.Status}
+		if run.Failure != "" {
+			w.Lead += " (" + run.Failure + ")"
+		}
+		row := deepestFailure(rows)
+		if row == nil {
+			if run.Error != "" {
+				w.Facts = []fact{{Name: "error", Text: run.Error}}
+			}
+			return w, nil
+		}
+		w.Row = row.Key
+		if row.Job != "" {
+			w.Rest = "at " + jobWord(row.Run.Type, row.Job)
+		}
+		if row.Run.ID != run.ID {
+			w.Rest = strings.TrimSpace(w.Rest + " in " + row.Run.Type + " " + row.Run.Machine)
+		}
+		for _, f := range row.Facts {
+			switch f.Name {
+			case "error", "refused", "by", "fix":
+				w.Facts = append(w.Facts, f)
+			}
+		}
+		if run.Refused != "" && !slices.ContainsFunc(w.Facts, func(f fact) bool { return f.Name == "refused" }) {
+			w.Facts = append(w.Facts, fact{Name: "refused", Text: run.Refused}, fact{Name: "by", Text: run.Layer}, fact{Name: "fix", Text: run.Fix})
+		}
+		return w, nil
+	case run.HasEnded():
+		return nil, nil
+	}
+	chain := descent(run, under, running)
+	deep, r := chain[len(chain)-1], run
+	if deep.ID != run.ID {
+		r = byID[deep.ID]
+		step, err := h.step(ctx, deep.ID, r.Step)
+		if err != nil {
+			return nil, err
+		}
+		st = nil
+		if step != nil {
+			st = &step.State
+		}
+	}
+	w := &why{Lead: r.Status, Row: newestOf(rows, deep.ID)}
+	waits := waitsOf(r, st, nil, at)
+	pick := -1
+	for _, rank := range []func(wait) bool{
+		func(x wait) bool { return x.Job != nil && x.Job.Runner != "" },
+		func(x wait) bool { return x.Job != nil },
+		func(x wait) bool { return x.Ticket != "" },
+		func(wait) bool { return true },
+	} {
+		if pick = slices.IndexFunc(waits, rank); pick >= 0 {
+			break
+		}
+	}
+	if pick >= 0 {
+		x := waits[pick]
+		w.Lead, w.Rest = "waiting", "on "+x.Text
+		if x.Job != nil {
+			w.Since = x.Job.Began
+			if x.Job.Runner != "" {
+				w.Rest += " on " + x.Job.Runner
+			}
+		}
+	}
+	if deep.ID != run.ID {
+		w.Rest = strings.TrimSpace(w.Rest + " in " + deep.Type + " " + deep.Machine)
+	}
+	return w, nil
+}
+
+// jobWord names a job as its machine's type does: a flow's stage, a
+// statechart's state.
+func jobWord(kind, job string) string {
+	switch {
+	case job == "":
+		return ""
+	case kind == "flow":
+		return "stage " + job
+	case kind == "statechart":
+		return "state " + job
+	}
+	return "job " + job
+}
+
+// deepestFailure gives the row that failed deepest in the runs under a
+// run: at one depth a job's failure before a run's, and the latest of
+// those.
+func deepestFailure(rows []stepRow) *stepRow {
+	var found *stepRow
+	before := func(r *stepRow) bool {
+		switch {
+		case found == nil || r.Depth != found.Depth:
+			return found == nil || r.Depth > found.Depth
+		case (r.Job != "") != (found.Job != ""):
+			return r.Job != ""
+		}
+		return !r.At.Before(found.At)
+	}
+	for i := range rows {
+		r := &rows[i]
+		if strings.Contains(r.Kind, "failed") && before(r) {
+			found = r
+		}
+		if r.Group != nil {
+			if g := deepestFailure(r.Group.Rows); g != nil && before(g) {
+				found = g
+			}
+		}
+	}
+	return found
+}
+
+// newestOf gives the key of a run's newest row among rows, or none.
+func newestOf(rows []stepRow, id string) string {
+	var found *stepRow
+	var walk func([]stepRow)
+	walk = func(rows []stepRow) {
+		for i := range rows {
+			r := &rows[i]
+			if r.Run.ID == id && (found == nil || !r.At.Before(found.At)) {
+				found = r
+			}
+			if r.Group != nil {
+				walk(r.Group.Rows)
+			}
+		}
+	}
+	walk(rows)
+	if found == nil {
+		return ""
+	}
+	return found.Key
 }
 
 // sends says whether a run is offered Send: only a running statechart is.
@@ -654,9 +912,9 @@ func waitsOf(run *client.Run, st *instance.State, kids []*client.Run, at time.Ti
 		for _, name := range slices.Sorted(maps.Keys(st.Jobs)) {
 			switch j := st.Jobs[name]; {
 			case j.Held:
-				waits = append(waits, wait{Text: "held " + jobOf(j.Name)})
-			case j.Runner != "":
-				waits = append(waits, wait{Text: "job " + jobOf(j.Name)})
+				waits = append(waits, wait{Text: "held " + jobOf(j.Name), Job: goingOf(j, at)})
+			case j.Runner != "" || !j.Again.IsZero():
+				waits = append(waits, wait{Text: "job " + jobOf(j.Name), Job: goingOf(j, at)})
 			}
 		}
 		timers := slices.SortedFunc(maps.Keys(st.Timers), func(a, b string) int {

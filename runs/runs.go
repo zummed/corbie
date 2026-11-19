@@ -17,6 +17,7 @@ import (
 
 	"github.com/zummed/corbie-ui/page"
 	"github.com/zummed/corbie/client"
+	"github.com/zummed/corbie/machine"
 	"github.com/zummed/corbie/store"
 )
 
@@ -39,7 +40,12 @@ type Config struct {
 	// Machine gives the address on the Machines page of the machine at a
 	// location of a tree submitted from a directory, with cards unfolded,
 	// and its file; none where the UI offers no Machines page.
-	Machine  func(ctx context.Context, location, dir string, cards []string) (href, file string, err error)
+	Machine func(ctx context.Context, location, dir string, cards []string) (href, file string, err error)
+	// Differs gives the lines of the file now at a location of a tree
+	// submitted from a directory that differ from a definition: none where
+	// they are the same or the Machines page does not show the file. None
+	// where the UI offers no Machines page.
+	Differs  func(ctx context.Context, location, dir string, def *machine.Definition) ([]string, error)
 	Interval time.Duration
 	Shell    page.Shell
 }
@@ -176,7 +182,7 @@ func (h *handler) runPage(w http.ResponseWriter, r *http.Request) {
 // newestShown gives a run in a tree of the UI's client the drawing and the
 // details of its newest row, which a page following the newest row shows.
 func (h *handler) newestShown(ctx context.Context, v *runView, entries []client.Entry) error {
-	last := newest(v.Rows)
+	last := rowAt(v.Rows, v.Follows)
 	if !v.Mine || last == nil {
 		return nil
 	}
@@ -324,6 +330,33 @@ func (h *handler) defined(ctx context.Context, id string) (*definedAt, error) {
 		return nil, err
 	}
 	return &definedAt{Href: href, File: file, Cards: strings.Join(cards, " › ")}, nil
+}
+
+// differs gives the lines of the file a run's root was started from that
+// differ now from the definition the root started with: none where they
+// are the same, or the UI cannot read which.
+func (h *handler) differs(ctx context.Context, id string) ([]string, error) {
+	if h.Differs == nil || !h.mine(id) {
+		return nil, nil
+	}
+	runs, facts, _ := h.titled(ctx)
+	byID := map[string]*client.Run{}
+	for _, r := range runs {
+		byID[r.ID] = r
+	}
+	root, _ := cardsOf(id, byID, facts)
+	if root == nil {
+		return nil, nil
+	}
+	step, err := h.step(ctx, root.ID, 1)
+	if err != nil || step == nil {
+		return nil, err
+	}
+	d, err := h.definitionOf(ctx, root.ID, step)
+	if err != nil {
+		return nil, err
+	}
+	return h.Differs(ctx, root.Location, facts[root.ID].Dir, d.def)
 }
 
 // cardsOf gives the root of a run, and the cards of the jobs that started

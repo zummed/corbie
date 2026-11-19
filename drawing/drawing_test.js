@@ -461,9 +461,9 @@ test("drawing_card_name_links_to_its_line", async () => {
 test("drawing_tooltips_are_drawn_on_cards_and_arrows", async () => {
   const v = await drawWith("limited");
   const tip = card(v, "tell").querySelector(":scope > title").textContent;
-  equal(tip, "timeout: 5s\nrestart: limit 2\ntags: gpu\nallow: network", "the tooltip of tell");
+  equal(tip, "timeout: 5s\nrestart: { after: failure, limit: 2 in 1h, delay: 2s }\ntags: gpu\nallow: network", "the tooltip of tell");
   const why = all(v, "path.edge").map(e => e.querySelector("title")?.textContent).sort();
-  equal(why, ["follows: tell", "reads find.output"], "the tooltips of the arrows");
+  equal(why, ["each: { emitted: find }", "follows: tell", "reads find.output"], "the tooltips of the arrows");
 });
 
 // The page lights cards by their paths, with their arrows, as the pointer

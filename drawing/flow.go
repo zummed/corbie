@@ -52,14 +52,15 @@ func stageMark(name, status string, run *Run) string {
 }
 
 // A wait is a stage another waits for, and why: each part of it the other
-// reads, `follows:`, or `emits:`.
+// reads, `follows:`, or `each: { emitted: … }`.
 type wait struct {
 	stage string
 	why   []string
 }
 
 // waitsFor gives the stages a stage waits for: those its expressions read,
-// those it follows, and the one whose emitted items are its own. It is the
+// those it follows, and the one whose emitted items are its own, which
+// Corbie keeps as Emits from `each: { emitted: … }`. It is the
 // rule the flow package keeps to itself, applied to the same expressions.
 func waitsFor(s *flow.Stage) []wait {
 	var reads []machine.Read
@@ -98,6 +99,6 @@ func waitsFor(s *flow.Stage) []wait {
 	for _, n := range s.Follows {
 		add(n, "follows: "+n)
 	}
-	add(s.Emits, "emits: "+s.Emits)
+	add(s.Emits, "each: { emitted: "+s.Emits+" }")
 	return waits
 }

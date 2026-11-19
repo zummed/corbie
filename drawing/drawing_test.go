@@ -521,8 +521,9 @@ const limited = `flow: limited
 stages:
   find: { job: ./w.js }
   tell:
-    job: { script: ./w.js, input: "${stages.find.output}", timeout: 5s, tags: [gpu], allow: [network], restart: { limit: 2 } }
+    job: { script: ./w.js, input: "${stages.find.output}", timeout: 5s, tags: [gpu], allow: [network], restart: { limit: 2 in 1h, delay: 2s } }
   after: { job: ./w.js, follows: [tell] }
+  sum: { each: { emitted: find }, job: ./w.js }
 `
 
 // A card gives where its file writes it, as file:line: a stage, a state,
@@ -534,8 +535,17 @@ func Test_drawing_card_gives_its_line(t *testing.T) {
 	for _, st := range flow.Flow.Stages {
 		lines[st.Card.Name] = st.Card.Line
 	}
-	if want := map[string]string{"find": "3", "tell": "5", "after": "6"}; !maps.Equal(lines, want) {
+	if want := map[string]string{"find": "3", "tell": "5", "after": "6", "sum": "7"}; !maps.Equal(lines, want) {
 		t.Errorf("the stages are written at %v, not %v", lines, want)
+	}
+	// A card whose values are in two files, as where a value is included,
+	// gives the first line in the file most of them are in.
+	split := map[string]string{"stages.a.when": "base.yaml:1", "stages.a.job.script": "inc.yaml:5", "stages.a.job.timeout": "inc.yaml:6", "stages.b.job": "base.yaml:9"}
+	if got := lineOf(split, "stages.a"); got != "inc.yaml:5" {
+		t.Errorf("a card written across two files gives the line %q, not inc.yaml:5", got)
+	}
+	if got := lineOf(map[string]string{"stages.a.when": "b.yaml:7", "stages.a.job": "a.yaml:9"}, "stages.a"); got != "a.yaml:9" {
+		t.Errorf("a card with as many values in two files gives the line %q, not that of the file named first, a.yaml:9", got)
 	}
 	chart := scene(t, definition(t, held, given), nil)
 	lines = map[string]string{}
@@ -557,22 +567,23 @@ func Test_drawing_card_gives_its_line(t *testing.T) {
 	}
 }
 
-// A card's tooltip gives its job's limits, and a flow gives why each stage
-// waits for another: what it reads, or follows:.
+// A card's tooltip gives its job's limits, with lengths of time as a
+// definition writes them, and a flow gives why each stage waits for
+// another: what it reads, follows: or each: { emitted: … }.
 func Test_drawing_tooltips_give_limits_and_why_a_stage_waits(t *testing.T) {
 	s := scene(t, definition(t, limited, given), nil)
 	stages := map[string]Stage{}
 	for _, st := range s.Flow.Stages {
 		stages[st.Card.Name] = st
 	}
-	if got, want := stages["tell"].Card.Title, "timeout: 5s\nrestart: limit 2\ntags: gpu\nallow: network"; got != want {
+	if got, want := stages["tell"].Card.Title, "timeout: 5s\nrestart: { after: failure, limit: 2 in 1h, delay: 2s }\ntags: gpu\nallow: network"; got != want {
 		t.Errorf("the tooltip of a job with limits is %q, not %q", got, want)
 	}
 	if got := stages["find"].Card.Title; got != "" {
 		t.Errorf("the tooltip of a job with no limits is %q", got)
 	}
-	why := map[string]string{"tell": stages["tell"].Why["find"], "after": stages["after"].Why["tell"]}
-	if want := map[string]string{"tell": "reads find.output", "after": "follows: tell"}; !maps.Equal(why, want) {
+	why := map[string]string{"tell": stages["tell"].Why["find"], "after": stages["after"].Why["tell"], "sum": stages["sum"].Why["find"]}
+	if want := map[string]string{"tell": "reads find.output", "after": "follows: tell", "sum": "each: { emitted: find }"}; !maps.Equal(why, want) {
 		t.Errorf("the stages wait %v, not %v", why, want)
 	}
 }

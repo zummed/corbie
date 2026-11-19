@@ -41,12 +41,12 @@ A card's tooltip gives its `when:`, a tool's `description:`, and the job's limit
 
 ```
 timeout: 5s
-restart: limit 2 within 1h
+restart: { after: failure, limit: 2 in 1h }
 tags: gpu
 allow: network, send:devices/boiler
 ```
 
-Where a page offers the Machines page, a card's name links to the line of its file that writes it, such as `support.yaml:14`; the rest of a card that is a link follows its own link. A card a page can pick, which is no link, is picked by a click or by Enter. A page can give a card a count, such as how many runs are in that state now, which is drawn at the card's top right.
+Where a page offers the Machines page, a card's name links to the line of the first value written under it, such as `support.yaml:14` for a stage whose key is on line 13, in the file most of its values are in; the rest of a card that is a link follows its own link. A card a page can pick, which is no link, is picked by a click or by Enter. A page can give a card a count, such as how many runs are in that state now, which is drawn at the card's top right.
 
 A card whose job names a machine shows the machine's type as its icon and `type: name` as its line. The Machines page knows the machine from its file, and a run's page from the definition the run was started from. A machine known by neither is written as the definition names it, `machine: ./find.yaml`.
 
@@ -64,10 +64,10 @@ An arrow goes straight down. Arrows from one card run along one line, so a branc
 ## A flow
 
 - A stage is a card.
-- An arrow goes to a stage from each stage it waits for: each stage an expression of it reads, whether its output, its error, whether it failed or was skipped, or its emitted items; each stage it names in `follows:`; and the stage it names in `emits:`. No arrow is drawn from a stage it waits for through another.
-- An arrow's tooltip says why the stage waits: `reads find.output`, `follows: find`.
+- An arrow goes to a stage from each stage it waits for: each stage an expression of it reads, whether its output, its error, whether it failed or was skipped, or its emitted items; each stage it names in `follows:`; and the stage it names in `each: { emitted: … }`. No arrow is drawn from a stage it waits for through another.
+- An arrow's tooltip says why the stage waits: `reads find.output`, `follows: find`, `each: { emitted: find }`.
 - Stages are placed top to bottom in the order the arrows give, and stages that run at the same time are placed side by side.
-- A stage with `each:`, `emits:` or `blob:` is drawn as a stack of cards, and a stage with `when:` has a dashed border.
+- A stage with `each:` is drawn as a stack of cards, and a stage with `when:` has a dashed border.
 
 Which stage waits for which is the flow package's rule, which it keeps to itself. The UI applies the same rule to the same expressions, read with Corbie's `machine.Reads`, `machine.ReadsIn` and `machine.ReadsOf`.
 

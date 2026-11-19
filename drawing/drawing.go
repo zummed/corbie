@@ -15,6 +15,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/zummed/corbie/machine"
 	"github.com/zummed/corbie/machine/agent"
@@ -353,8 +354,9 @@ func (w *walker) describe(c *Card, at string, job *machine.JobSpec) {
 	c.Title = strings.Join(slices.DeleteFunc(append([]string{c.Title}, limits(job)...), func(l string) bool { return l == "" }), "\n")
 }
 
-// limits gives what bounds a job, as the definition writes it: its
-// timeout, its restarts, the tags of the runner it needs, and what it is
+// limits gives what bounds a job, as a definition writes it: its timeout,
+// its restart policy, with its limit and its delay where they are not
+// Corbie's defaults, the tags of the runner it needs, and what it is
 // allowed.
 func limits(job *machine.JobSpec) []string {
 	var out []string
@@ -362,20 +364,25 @@ func limits(job *machine.JobSpec) []string {
 		out = append(out, "timeout: "+job.Timeout)
 	}
 	if r := job.Restart; r != nil {
-		words := []string{}
+		after := "failure"
 		if r.Always {
-			words = append(words, "always")
+			after = "always"
 		}
-		if r.Limit > 0 {
-			words = append(words, "limit "+strconv.Itoa(r.Limit))
+		fields := []string{"after: " + after}
+		switch {
+		case r.Limit > 0 && r.Within > 0:
+			fields = append(fields, "limit: "+strconv.Itoa(r.Limit)+" in "+short(time.Duration(r.Within)))
+		case r.Limit > 0:
+			fields = append(fields, "limit: "+strconv.Itoa(r.Limit))
 		}
-		if r.Within > 0 {
-			words = append(words, "within "+r.Within.String())
+		switch {
+		case r.Delay == machine.DefaultDelay && r.Longest == machine.DefaultLongest:
+		case r.Delay == r.Longest:
+			fields = append(fields, "delay: "+short(time.Duration(r.Delay)))
+		default:
+			fields = append(fields, "delay: "+short(time.Duration(r.Delay))+" "+short(time.Duration(r.Longest)))
 		}
-		if len(words) == 0 {
-			words = append(words, "no limit")
-		}
-		out = append(out, "restart: "+strings.Join(words, " "))
+		out = append(out, "restart: { "+strings.Join(fields, ", ")+" }")
 	}
 	if len(job.Tags) > 0 {
 		out = append(out, "tags: "+strings.Join(job.Tags, ", "))
@@ -386,21 +393,65 @@ func limits(job *machine.JobSpec) []string {
 	return out
 }
 
+// short writes a length of time as a definition does: 1h, 1h30m, 5s, with
+// no units of none.
+func short(d time.Duration) string {
+	s := d.String()
+	if strings.HasSuffix(s, "m0s") {
+		s = s[:len(s)-2]
+	}
+	if strings.HasSuffix(s, "h0m") {
+		s = s[:len(s)-2]
+	}
+	return s
+}
+
 // lineOf gives where a definition writes the value at a place, such as
-// stages.find, as file:line: the first line of any value under it, or
-// nothing where it writes none.
+// stages.find, as file:line: the first line of the values under it in the
+// file most of them are in, the file named first where two have as many,
+// or nothing where it writes none. Corbie gives the line of each value
+// that is no map or list, so it is the line of the first such value, not
+// of the place's own key.
 func lineOf(lines map[string]string, place string) string {
-	best, at := "", 0
+	type at struct {
+		values, first int
+	}
+	files := map[string]*at{}
 	for k, v := range lines {
 		if k != place && !strings.HasPrefix(k, place+".") && !strings.HasPrefix(k, place+"[") {
 			continue
 		}
-		n, err := strconv.Atoi(v[strings.LastIndexByte(v, ':')+1:])
-		if err == nil && (best == "" || n < at) {
-			best, at = v, n
+		file, line := "", v
+		if i := strings.LastIndexByte(v, ':'); i >= 0 {
+			file, line = v[:i], v[i+1:]
+		}
+		n, err := strconv.Atoi(line)
+		if err != nil {
+			continue
+		}
+		f := files[file]
+		if f == nil {
+			f = &at{first: n}
+			files[file] = f
+		}
+		f.values++
+		f.first = min(f.first, n)
+	}
+	if len(files) == 0 {
+		return ""
+	}
+	names := slices.Sorted(maps.Keys(files))
+	best := names[0]
+	for _, file := range names[1:] {
+		if files[file].values > files[best].values {
+			best = file
 		}
 	}
-	return best
+	f := files[best]
+	if best == "" {
+		return strconv.Itoa(f.first)
+	}
+	return best + ":" + strconv.Itoa(f.first)
 }
 
 // describeJob writes a card's icon, its line and its link. The machine a

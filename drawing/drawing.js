@@ -14,9 +14,12 @@ import { layout, num } from "./layout.js";
 
 // pad is the room the camera leaves round what it frames.
 const pad = 24;
-// The camera never scales a drawing larger than its size to frame it, nor
-// smaller than least, below which a person cannot read it.
+// The camera frames what it can read at least scale or more; a person can
+// zoom from smallest to largest.
 const least = 0.5, smallest = 0.02, largest = 4;
+// fill is how far the camera scales a machine up to fill the view, when it
+// frames a run's marks or a card a page focuses.
+const fill = 1.6;
 
 // Drawing draws a scene, and draws it again as it changes. focus is the
 // path of a card to frame: the names of the cards from the machine drawn
@@ -149,15 +152,20 @@ const byKey = part => part.key;
 // key, after the keys of the cards it is drawn inside.
 function Parts(props) {
   const k = key => props.prefix + key;
-  return html`<For each=${() => props.of.holders} keyed=${byKey}>${h => html`<${Holder} holder=${() => h()} prefix=${() => props.prefix} hot=${() => props.hot} />`}</For><For each=${() => props.of.edges} keyed=${byKey}>${e => html`<path class=${() => [e().class, { lit: lit(props.hot, k("edge " + e().key), k(e().from), k(e().to)) }]} d=${() => e().d} pathLength=${() => (/\btaken\b/.test(e().class) ? 1 : undefined)} marker-end=${() => `url(#${e().head})`} data-key=${() => k("edge " + e().key)} data-from=${() => k(e().from)} data-to=${() => k(e().to)} />`}</For><For each=${() => props.of.chips} keyed=${byKey}>${c => html`<${Chip} chip=${() => c()} prefix=${() => props.prefix} hot=${() => props.hot} />`}</For><For each=${() => props.of.shapes} keyed=${byKey}>${s => html`<${Shape} shape=${() => s()} prefix=${() => props.prefix} hot=${() => props.hot} />`}</For>`;
+  return html`<For each=${() => props.of.holders} keyed=${byKey}>${h => html`<${Holder} holder=${() => h()} prefix=${() => props.prefix} hot=${() => props.hot} />`}</For><For each=${() => props.of.edges} keyed=${byKey}>${e => html`<path class=${() => [e().class, { lit: lit(props.hot, k("edge " + e().key), k(e().from), k(e().to)) }]} style=${() => `d: path("${e().d}")`} pathLength=${() => (/\btaken\b/.test(e().class) ? 1 : undefined)} marker-end=${() => `url(#${e().head})`} data-key=${() => k("edge " + e().key)} data-from=${() => k(e().from)} data-to=${() => k(e().to)} />`}</For><For each=${() => props.of.chips} keyed=${byKey}>${c => html`<${Chip} chip=${() => c()} prefix=${() => props.prefix} hot=${() => props.hot} />`}</For><For each=${() => props.of.shapes} keyed=${byKey}>${s => html`<${Shape} shape=${() => s()} prefix=${() => props.prefix} hot=${() => props.hot} />`}</For>`;
 }
+
+// at places a part by a transform, which glides when the layout moves it.
+const at = (x, y) => `transform: translate(${num(x)}px, ${num(y)}px)`;
+// sized gives a box's size as CSS, which glides when the layout changes it.
+const sized = (w, h) => (h === undefined ? `width: ${num(w)}px` : `width: ${num(w)}px; height: ${num(h)}px`);
 
 // Holder is a box round cards, with its name, and for a folded toolkit how
 // many tools it has.
 function Holder(props) {
   const h = () => props.holder;
   const key = () => props.prefix + h().key;
-  return html`<g class=${() => [h().class, { lit: lit(props.hot, key()) }]} data-key=${key}><rect x=${() => num(h().x)} y=${() => num(h().y)} width=${() => num(h().w)} height=${() => num(h().h)} rx="14" /><text class="name" x=${() => num(h().name.x)} y=${() => num(h().name.y)}>${() => h().name.text}</text><Show when=${() => h().sub}>${sub => html`<text class="sub" x=${() => num(sub().x)} y=${() => num(sub().y)}>${() => sub().text}</text>`}</Show><title>${() => h().title ?? ""}</title></g>`;
+  return html`<g class=${() => [h().class, "at", { lit: lit(props.hot, key()) }]} style=${() => at(h().x, h().y)} data-key=${key}><rect style=${() => sized(h().w, h().h)} rx="14" /><text class="name" x=${() => num(h().name.x - h().x)} y=${() => num(h().name.y - h().y)}>${() => h().name.text}</text><Show when=${() => h().sub}>${sub => html`<text class="sub" x=${() => num(sub().x - h().x)} y=${() => num(sub().y - h().y)}>${() => sub().text}</text>`}</Show><title>${() => h().title ?? ""}</title></g>`;
 }
 
 // Chip is the label of an arrow, with the whole label as its tooltip where
@@ -165,7 +173,7 @@ function Holder(props) {
 function Chip(props) {
   const c = () => props.chip;
   const k = key => props.prefix + key;
-  return html`<g class=${() => ["arrowchip", { lit: lit(props.hot, k("chip " + c().key), k(c().from), k(c().to)) }]} data-key=${() => k("chip " + c().key)} data-from=${() => k(c().from)} data-to=${() => k(c().to)}><rect class=${() => c().class} x=${() => num(c().x)} y=${() => num(c().y)} width=${() => num(c().w)} height="18" rx="9" /><text class="on" x=${() => num(c().tx)} y=${() => num(c().ty)} text-anchor="middle">${() => c().text}<title>${() => c().title}</title></text></g>`;
+  return html`<g class=${() => ["arrowchip", "at", { lit: lit(props.hot, k("chip " + c().key), k(c().from), k(c().to)) }]} style=${() => at(c().x, c().y)} data-key=${() => k("chip " + c().key)} data-from=${() => k(c().from)} data-to=${() => k(c().to)}><rect class=${() => c().class} style=${() => sized(c().w)} height="18" rx="9" /><text class="on" x=${() => num(c().tx - c().x)} y=${() => num(c().ty - c().y)} text-anchor="middle">${() => c().text}<title>${() => c().title}</title></text></g>`;
 }
 
 // Shape is a card, or what is written beside cards: a holder's notes, the
@@ -178,79 +186,85 @@ function Shape(props) {
       case "card":
         return html`<${Card} card=${() => s()} prefix=${() => props.prefix} hot=${() => props.hot} />`;
       case "start":
-        return html`<g><circle class="start" cx=${() => num(s().x)} cy=${() => num(s().y)} r="4" /><path class="edge" d=${() => s().d} marker-end="url(#ah)" /></g>`;
+        return html`<g class="at" style=${() => at(s().x, s().y)}><circle class="start" r="4" /><path class="edge" d="M0 4V24" marker-end="url(#ah)" /></g>`;
       case "note":
-        return html`<text class="note" x=${() => num(s().x)} y=${() => num(s().y)}>${() => s().text}</text>`;
+        return html`<g class="at" style=${() => at(s().x, s().y)}><text class="note">${() => s().text}</text></g>`;
       case "tag":
-        return html`<text class="tag" x=${() => num(s().x)} y=${() => num(s().y)} text-anchor="start">${() => s().text}</text>`;
+        return html`<g class="at" style=${() => at(s().x, s().y)}><text class="tag" text-anchor="start">${() => s().text}</text></g>`;
     }
   }}`;
 }
 
-// Card is a card: a link where it has one, and the drawing unfolded inside
-// it, whose parts are named after the card.
+// Card is a card, placed where its box is, as a link where it has one, with
+// the drawing unfolded inside it, whose parts are named after the card.
 function Card(props) {
   const c = () => props.card;
   const key = () => props.prefix + c().key;
+  const x = v => num(v - c().box.x), y = v => num(v - c().box.y);
   const body = () => html`<g class=${() => [c().class, { lit: lit(props.hot, key()) }]} data-key=${key}>
-    <For each=${() => c().behind} keyed=${byKey}>${b => html`<rect class=${() => b().class} x=${() => num(b().x)} y=${() => num(b().y)} width=${() => num(b().w)} height=${() => num(b().h)} rx=${() => num(b().rx)} />`}</For>
-    <rect class="box" x=${() => num(c().box.x)} y=${() => num(c().box.y)} width=${() => num(c().box.w)} height=${() => num(c().box.h)} rx=${() => num(c().box.rx)} />
-    <text class="title" x=${() => num(c().title.x)} y=${() => num(c().title.y)} text-anchor=${() => c().title.anchor}>${() => c().title.text}</text>
-    <For each=${() => c().subs} keyed=${byKey}>${t => html`<text class="sub" x=${() => num(t().x)} y=${() => num(t().y)} text-anchor=${() => t().anchor}>${() => t().text}</text>`}</For>
-    <For each=${() => c().notes} keyed=${byKey}>${t => html`<text class=${() => t().class} x=${() => num(t().x)} y=${() => num(t().y)} text-anchor=${() => t().anchor}>${() => t().text}</text>`}</For>
-    <Show when=${() => c().tile}>${t => html`<rect class=${() => ["tile", t().icon]} x=${() => num(t().x)} y=${() => num(t().y)} width="28" height="28" rx="7" /><Show when=${() => t().spark} fallback=${() => html`<use class="icon" href=${() => "#g-" + t().icon} x=${() => num(t().x + 4)} y=${() => num(t().y + 7)} width="20" height="14" />`}>${d => html`<path class="spark" d=${d} />`}</Show>`}</Show>
-    <Show when=${() => c().fold}>${f => html`<text class="fold" x=${() => num(f().x)} y=${() => num(f().y)} text-anchor="middle">${() => f().text}</text>`}</Show>
+    <For each=${() => c().behind} keyed=${byKey}>${b => html`<rect class=${() => b().class} x=${() => x(b().x)} y=${() => y(b().y)} style=${() => sized(b().w, b().h)} rx=${() => num(b().rx)} />`}</For>
+    <rect class="box" style=${() => sized(c().box.w, c().box.h)} rx=${() => num(c().box.rx)} />
+    <text class="title" x=${() => x(c().title.x)} y=${() => y(c().title.y)} text-anchor=${() => c().title.anchor}>${() => c().title.text}</text>
+    <For each=${() => c().subs} keyed=${byKey}>${t => html`<text class="sub" x=${() => x(t().x)} y=${() => y(t().y)} text-anchor=${() => t().anchor}>${() => t().text}</text>`}</For>
+    <For each=${() => c().notes} keyed=${byKey}>${t => html`<text class=${() => t().class} x=${() => x(t().x)} y=${() => y(t().y)} text-anchor=${() => t().anchor}>${() => t().text}</text>`}</For>
+    <Show when=${() => c().tile}>${t => html`<rect class=${() => ["tile", t().icon]} x=${() => x(t().x)} y=${() => y(t().y)} width="28" height="28" rx="7" /><Show when=${() => t().spark} fallback=${() => html`<use class="icon" href=${() => "#g-" + t().icon} x=${() => x(t().x + 4)} y=${() => y(t().y + 7)} width="20" height="14" />`}>${d => html`<path class="spark" d=${d} transform=${() => `translate(${x(0)} ${y(0)})`} />`}</Show>`}</Show>
+    <Show when=${() => c().fold}>${f => html`<text class="fold" x=${() => x(f().x)} y=${() => y(f().y)} text-anchor="middle">${() => f().text}</text>`}</Show>
     <title>${() => c().tooltip}</title>
   </g>`;
-  return html`<Show when=${() => c().href} fallback=${body}>${href => html`<g><a href=${href}>${body()}</a></g>`}</Show><Show when=${() => c().in}>${i => html`<g transform=${() => `translate(${num(i().x)} ${num(i().y)})`}><${Parts} of=${() => i()} prefix=${() => key() + " › "} hot=${() => props.hot} /></g>`}</Show>`;
+  return html`<g class="at" style=${() => at(c().box.x, c().box.y)}><Show when=${() => c().href} fallback=${body}>${href => html`<g><a href=${href}>${body()}</a></g>`}</Show><Show when=${() => c().in}>${i => html`<g class="at in" style=${() => at(i().x - c().box.x, i().y - c().box.y)}><${Parts} of=${() => i()} prefix=${() => key() + " › "} hot=${() => props.hot} /></g>`}</Show></g>`;
 }
 
 // frame gives where the camera is to frame what a drawing is about, in a
-// view of a size: the card a path focuses; or else the cards a run marks as
-// going, held or failed, the deepest unfolded ones first, with the machine
-// they are drawn in where it can be read whole; or else, and with whole,
-// the whole drawing. The camera never scales up to frame.
+// view of a size, and how far it scales it up to fill the view:
+//
+//   the card a path focuses     its machine unfolded inside it, or the card    up to fill
+//   the cards a run marks       the innermost machine they are drawn in         up to fill
+//   otherwise, and with whole   the whole drawing, from its top                 up to 1
+//
+// Where what it frames cannot be read at least scale, it frames the marks
+// at least scale.
 export function frame(l, focus, view, whole = false) {
   const all = { x: l.left, y: 0, w: l.width, h: l.height };
   if (view.w === 0 || view.h === 0) return { x: 0, y: 0, k: 1 };
   const cards = [];
-  collect(l, 0, 0, "", 0, null, cards);
-  let region = all, marks = null;
+  collect(l, 0, 0, "", 0, all, cards);
+  let region = all, marks = null, most = 1;
   if (!whole && focus) {
     const card = cards.find(c => c.path === focus);
-    if (card) region = card.box;
+    if (card) [region, most] = [card.inner ?? card.box, fill];
   } else if (!whole) {
     const marked = cards.filter(c => /\b(now|held|failed)\b/.test(c.class) && !/\bholder\b/.test(c.class));
     const deepest = Math.max(-1, ...marked.map(c => c.depth));
     if (deepest >= 0) {
       const at = marked.filter(c => c.depth === deepest);
-      marks = union(at.map(c => c.box));
-      region = deepest > 0 ? at[0].within : all;
+      [region, marks, most] = [at[0].within, union(at.map(c => c.box)), fill];
     }
   }
   const fits = Math.min((view.w - 2 * pad) / region.w, (view.h - 2 * pad) / region.h);
-  let k = Math.min(1, fits);
+  let k = Math.min(most, fits);
   let around = region;
   if (k < least && marks) {
     k = least;
     around = marks;
   }
   const x = view.w / 2 - k * (around.x + around.w / 2);
-  // What fits whole is drawn from the top, as a page is read.
-  const y = around === region && k * region.h + 2 * pad <= view.h && region === all ? pad - k * region.y : view.h / 2 - k * (around.y + around.h / 2);
+  // The whole of a machine that fits at its size is drawn from the top, as
+  // a page is read.
+  const y = region === all && most === 1 && k * region.h + 2 * pad <= view.h ? pad - k * region.y : view.h / 2 - k * (around.y + around.h / 2);
   return { x, y, k };
 }
 
 // collect gives every card of a drawing, at every depth: its box on the
-// whole drawing, its path, its classes, how deep it is, and the box of the
-// card it is drawn inside.
+// whole drawing, its path, its classes, how deep it is, the machine it is
+// drawn in, and the machine unfolded inside it.
 function collect(parts, ox, oy, path, depth, within, out) {
   for (const s of parts.shapes) {
     if (s.kind !== "card") continue;
     const box = { x: s.box.x + ox, y: s.box.y + oy, w: s.box.w, h: s.box.h };
     const at = path ? path + "/" + s.name : s.name;
-    out.push({ box, path: at, class: s.class, depth, within });
-    if (s.in) collect(s.in, ox + s.in.x, oy + s.in.y, at, depth + 1, box, out);
+    const inner = s.in ? { x: ox + s.in.x + s.in.left, y: oy + s.in.y, w: s.in.w, h: s.in.h } : null;
+    out.push({ box, path: at, class: s.class, depth, within, inner });
+    if (s.in) collect(s.in, ox + s.in.x, oy + s.in.y, at, depth + 1, inner, out);
   }
 }
 

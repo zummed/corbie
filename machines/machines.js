@@ -4,31 +4,45 @@
 // page shows it again when it, or what Corbie found in it, changed on disk.
 // Unfolding a card moves the drawing in to it, and folding it moves back
 // out to the card it was in.
-import { createEffect, createSignal, reconcile } from "solid-js";
-import { html, parts, setParts, mount, Icon, Handle, plural } from "ui";
+import { createEffect, createSignal } from "solid-js";
+import { html, parts, receive, mount, Icon, Handle, plural } from "ui";
 import { Drawing } from "drawing";
 import { Problems, Code, machineHref, base, focusOf, focusAt } from "/machines/shared.js";
 
 // focus is the card the drawing moves in to, "" being the whole machine;
-// shownAt is the address the file chosen is shown as.
+// shownAt is the address the file chosen is shown as; failed is why the
+// file chosen could not be shown at the address asked for.
 const [focus, setFocus] = createSignal(focusAt(location.href));
+const [failed, setFailed] = createSignal("");
 let shownAt = location.href;
 
-// show reads the page at an address, and puts the file chosen in place.
+// asked counts the addresses asked for: only the answer to the latest is
+// shown.
+let asked = 0;
+
+// show asks the UI for the file chosen as an address shows it, and puts it
+// in place as the stream puts a part. A failure is shown in the view, and
+// the file stays as it was.
 async function show(href, push) {
-  const res = await fetch(href);
-  if (!res.ok) {
-    location = href;
-    return;
+  const at = new URL(href, location.href);
+  const mine = ++asked;
+  try {
+    const res = await fetch("/machines/view" + at.search);
+    const answer = res.ok ? await res.json() : (await res.text()).trim() || res.statusText;
+    if (mine !== asked) return;
+    if (!res.ok) {
+      setFailed(answer);
+      return;
+    }
+    const moved = focusOf(shownAt, at.href);
+    shownAt = at.href;
+    setFailed("");
+    receive({ type: "part", id: "view", data: answer });
+    if (moved !== null) setFocus(moved);
+    if (push) history.pushState(null, "", at.href);
+  } catch (err) {
+    if (mine === asked) setFailed(String(err));
   }
-  const page = new DOMParser().parseFromString(await res.text(), "text/html");
-  const next = JSON.parse(page.getElementById("parts").textContent);
-  const moved = focusOf(shownAt, href);
-  shownAt = new URL(href, location.href).href;
-  // Merged in place, so only what changed is drawn again.
-  setParts(s => { reconcile(next.view, null)(s.view); });
-  if (moved !== null) setFocus(moved);
-  if (push) history.pushState(null, "", href);
 }
 
 // here says an address shows the file chosen, so that it can be shown in
@@ -117,6 +131,7 @@ function View() {
   return html`<Show when=${() => v().Open} fallback=${() => html`<div class="panel view"><p class="dim body">no machines in this directory</p></div>`}>
     <div class="panel view" onClick=${inPlace}>
       <div class="head"><${Icon} type=${() => v().Kind || "file"} /><span>${() => v().Open}</span><span class="facts">${() => v().Facts}</span></div>
+      <Show when=${failed}><p class="said bad failed">${failed}</p></Show>
       <Show when=${() => v().Drawable}>
         <nav class="tabs"><For each=${["drawing", "text", "written"]}>${t => html`<a href=${() => tab(v().Open, t)} aria-current=${() => (v().View === t ? "page" : undefined)}>${{ drawing: "Drawing", text: "Text", written: "Written out" }[t]}</a>`}</For></nav>
       </Show>
@@ -132,15 +147,12 @@ function View() {
 }
 
 function Machines() {
-  // The page reads the file chosen again when the mark of the file on disk
-  // differs from the mark of the file it shows, once for each mark.
-  let asked = "";
+  // The page asks for the file chosen again when the stream gives a mark of
+  // the file on disk other than the mark of the file it shows.
   createEffect(
-    () => [parts.disk.Base, parts.view.Base],
-    ([disk, shown]) => {
-      if (disk === shown || disk === asked) return;
-      asked = disk;
-      show(location.href, false);
+    () => parts.disk.Base !== parts.view.Base,
+    changed => {
+      if (changed) show(location.href, false);
     }
   );
   return html`<div class="ide">

@@ -80,6 +80,7 @@ func New(c Config) (*Pages, error) {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /machines", h.show)
 	mux.HandleFunc("GET /machines/stream", h.stream)
+	mux.HandleFunc("GET /machines/view", h.viewPart)
 	mux.HandleFunc("GET /toolkits", h.showToolkits)
 	mux.HandleFunc("GET /toolkits/stream", h.streamToolkits)
 	mux.HandleFunc("GET /machines/script.js", script("machines.js"))
@@ -200,6 +201,19 @@ func (h *handler) show(w http.ResponseWriter, r *http.Request) {
 	s := h.Shell
 	s.Title, s.Current, s.Stream, s.Script = "Machines", "Machines", "/machines/stream?file="+url.QueryEscape(v.Open), "/machines/script.js"
 	page.Write(w, s, MachinesParts{Files: h.listPart(v.index, v.Open), Disk: disk{v.Base}, View: &v})
+}
+
+// viewPart answers the part "view" of the Machines page at the address its
+// query gives, as JSON: the page asks for it when it shows another tab or
+// another card unfolded in place, or when the file changed on disk.
+func (h *handler) viewPart(w http.ResponseWriter, r *http.Request) {
+	v, status, err := h.machinesPage(r.Context(), r.URL.Query())
+	if err != nil {
+		page.Error(w, status, err.Error())
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.MarshalWrite(w, v, json.Deterministic(true))
 }
 
 // MachinesParts are the parts of the Machines page: the list, the mark of

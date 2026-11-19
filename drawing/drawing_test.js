@@ -33,7 +33,7 @@ function card(v, name) {
 
 // classes gives a part's classes as the graph marks it, without what the
 // pointer lights.
-const classes = el => [...el.classList].filter(c => c !== "lit").join(" ");
+const classes = el => [...el.classList].filter(c => c !== "lit" && c !== "at").join(" ");
 
 const all = (v, sel) => [...v.querySelectorAll(sel)];
 const texts = (v, sel) => all(v, sel).map(t => t.textContent);
@@ -237,7 +237,7 @@ test("drawing_cards_do_not_overlap", async () => {
     const boxes = all(v, "g.state:not(.holder) > rect.box").map(r => ({ r, b: r.getBoundingClientRect() }));
     boxes.forEach((a, i) => {
       for (const o of boxes.slice(i + 1)) {
-        if (a.r.closest("g[transform]") !== o.r.closest("g[transform]")) continue;
+        if (a.r.closest(".in") !== o.r.closest(".in")) continue;
         const x = Math.min(a.b.right, o.b.right) - Math.max(a.b.left, o.b.left), y = Math.min(a.b.bottom, o.b.bottom) - Math.max(a.b.top, o.b.top);
         if (x > 1 && y > 1) faults.push(`${name}: two cards overlap`);
       }
@@ -258,35 +258,76 @@ test("drawing_camera_fits_the_whole_machine", async () => {
   assert(camera(big).k < 1, "a machine larger than its view is not scaled down to fit");
 });
 
-// On a run's page the camera frames the cards the run marks, and when the
-// run goes into a child drawn inside its card, the camera moves into that
-// card, which frames the child's machine.
+// inside gives the box of the machine drawn inside a card, as the camera
+// shows it in the viewport.
+function inside(v, g) {
+  const r = g.closest(".at").querySelector(":scope > .in").getBoundingClientRect(), o = v.getBoundingClientRect();
+  return { x: r.left - o.left, y: r.top - o.top, w: r.width, h: r.height };
+}
+
+// fitted gives the scale at which the whole drawing fits the view.
+function fitted(v) {
+  const whole = v.querySelector("g.camera").getBBox();
+  return Math.min((v.clientWidth - 48) / whole.width, (v.clientHeight - 48) / whole.height);
+}
+
+// On a run's page the camera frames the innermost machine the run's marks
+// are in: the whole of the run's machine, or a child's machine inside its
+// card, which it fills, up to 1.6 times its size.
 test("drawing_camera_follows_the_run", async () => {
   const v = await draw("lookup-running", { width: 520, height: 360 });
-  const before = camera(v);
   assert(within(seen(v, card(v, "find")), v), "the card the run marks is not in view");
   await show("lookup-in-child");
-  const after = camera(v);
   const inner = card(v, "b");
   assert(classes(inner) === "state stage now", "the child's running stage is not drawn inside its card");
-  assert(within(seen(v, inner), v), "the stage the child runs is not in view");
-  const check = card(v, "check").querySelector("rect.box").getBBox();
-  const shown = seen(v, card(v, "check"));
-  const whole = v.querySelector("g.camera").getBBox();
-  const fits = Math.min((v.clientWidth - 48) / whole.width, (v.clientHeight - 48) / whole.height);
-  assert(within(shown, v) && after.k > fits, `the camera did not zoom into the child's card: ${JSON.stringify({ before, after, fits })}`);
-  assert(Math.abs(shown.x + shown.w / 2 - v.clientWidth / 2) < 2, `the child's card is not in the middle of the view: ${JSON.stringify(shown)} of ${v.clientWidth}`);
-  assert(check.width > 232, "the child's card does not hold its drawing");
-  // The camera glides: its transform has a transition.
+  const child = inside(v, card(v, "check"));
+  assert(within(child, v), `the child's machine is not in view: ${JSON.stringify(child)}`);
+  // The machine framed holds its margins, which are not drawn.
+  assert(Math.abs(child.x + child.w / 2 - v.clientWidth / 2) < 8 && Math.abs(child.y + child.h / 2 - v.clientHeight / 2) < 8, `the child's machine is not in the middle of the view: ${JSON.stringify(child)}`);
+  assert(camera(v).k > fitted(v), "the camera did not frame the child's machine more closely than the whole");
   assert(parseFloat(getComputedStyle(v.querySelector("g.camera")).transitionDuration) > 0, "the camera does not glide");
+});
+
+// Following a run into a child zooms in to the child's machine, and back
+// to the parent's zooms out to the whole of it.
+test("drawing_camera_zooms_into_a_child_and_out", async () => {
+  const v = await draw("lookup-running", { width: 520, height: 360 });
+  const parent = camera(v);
+  await show("lookup-in-child");
+  const child = camera(v);
+  assert(child.k > parent.k, `the scale did not rise into the child: ${parent.k} to ${child.k}`);
+  assert(child.k <= 1.6, "the camera scaled the child more than 1.6 times");
+  await show("lookup-running");
+  equal(camera(v), parent, "the camera back at the parent");
+});
+
+// A card kept as the layout changes keeps its element, and glides to its
+// new place and size.
+test("drawing_cards_glide_as_the_layout_changes", async () => {
+  const v = await draw("lookup-running", { width: 900, height: 700 });
+  const tell = card(v, "tell"), place = tell.closest(".at"), box = tell.querySelector("rect.box");
+  const from = new DOMMatrix(getComputedStyle(place).transform).f;
+  receive({ type: "part", id: "scene", data: await fixture("lookup-in-child") });
+  await settle(2);
+  await wait(100);
+  assert(card(v, "tell") === tell, "the card lost its element as the layout changed");
+  const to = /translate\([-0-9.]+px, ([-0-9.]+)px\)/.exec(place.getAttribute("style"))[1];
+  const now = new DOMMatrix(getComputedStyle(place).transform).f;
+  assert(+to > from && now > from && now < +to, `the card did not glide down: from ${from} to ${to}, at ${now} part way`);
+  assert(getComputedStyle(place).transitionProperty.includes("transform") && getComputedStyle(box).transitionProperty.includes("height"), "a card's place and size have no transition");
+  const check = card(v, "check").querySelector("rect.box");
+  assert(parseFloat(getComputedStyle(check).height) < check.getBBox().height + 1, "the card opening has no size");
+  await wait(400);
+  equal(new DOMMatrix(getComputedStyle(place).transform).f, +to, "the card's place once it glided");
 });
 
 // A page can focus a card by its path, and the camera frames it.
 test("drawing_camera_frames_the_card_focused", async () => {
   const v = await draw("nested-deep", { width: 600, height: 400 }, "outer/inner");
-  const inner = seen(v, card(v, "inner"));
-  assert(within(inner, v), "the card focused is not in view");
-  assert(Math.abs(inner.x + inner.w / 2 - v.clientWidth / 2) < 2, "the card focused is not in the middle of the view");
+  const machine = inside(v, card(v, "inner"));
+  assert(within(machine, v), "the machine unfolded in the card focused is not in view");
+  assert(Math.abs(machine.x + machine.w / 2 - v.clientWidth / 2) < 8, `the machine unfolded in the card focused is not in the middle of the view: ${JSON.stringify(machine)}`);
+  assert(camera(v).k > fitted(v), "the camera did not move in to the card focused");
 });
 
 // A wheel pans, ctrl-wheel zooms round the pointer, and both stop the camera

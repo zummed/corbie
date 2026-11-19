@@ -350,7 +350,7 @@ questions:
 
 	// A run of a flow whose stage started a child, drawn inside its card,
 	// itself running a stage.
-	child := scene(t, def(two), &Run{Steps: []Step{{Shown: machine.Shown{Stages: map[string]string{"a": "done", "b": "running"}}}}})
+	child := scene(t, def("flow: pair\nstages:\n  a: { job: ./w.js }\n  b: { job: ./w.js, follows: [a] }\n"), &Run{Steps: []Step{{Shown: machine.Shown{Stages: map[string]string{"a": "done", "b": "running"}}}}})
 	parent := def("flow: lookup\nstages:\n  find: { job: ./w.js }\n  check: { job: { machine: ./two.yaml }, follows: [find] }\n  tell: { job: ./w.js, follows: [check] }\n")
 	children := map[string]Child{"check": {ID: "a-client/9", Machine: "two", Type: "flow"}}
 	add("lookup-running", parent, &Run{Steps: []Step{{Shown: machine.Shown{Stages: map[string]string{"find": "running"}}}}, Going: []string{"find"}})

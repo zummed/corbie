@@ -185,7 +185,9 @@ class Drawn {
     if (it.href) card.fold = { x: right(b) - 15, y: b.y + 24, text: it.in ? "⌄" : "›" };
     if (it.in) {
       const dx = (b.w - it.in.w - margin) / 2;
-      card.in = { x: b.x + dx, y: b.y + head(it) - margin + 8, holders: it.in.holders, edges: it.in.edges, chips: it.in.chips, shapes: it.in.shapes };
+      // The machine inside is at x, y in the card's drawing, and reaches
+      // from left to left + w across and to h down.
+      card.in = { x: b.x + dx, y: b.y + head(it) - margin + 8, left: it.in.left, w: it.in.w + margin - it.in.left, h: it.in.h + margin, holders: it.in.holders, edges: it.in.edges, chips: it.in.chips, shapes: it.in.shapes };
     }
     this.shapes.push(card);
     this.reach(b);

@@ -30,8 +30,6 @@ const (
 
 func init() {
 	llm.Register(&llm.Service{Name: Name, Program: Program,
-		Known:   []string{"fable", "opus", "sonnet", "haiku"},
-		Tools:   []string{"WebSearch", "WebFetch", "Read", "Glob", "Grep", "Edit", "Write", "NotebookEdit", "Bash", "Skill"},
 		Efforts: []string{"low", "medium", "high", "xhigh", "max"},
 		Accepts: append(append([]llm.Accept{}, llm.Images...), llm.Documents...),
 		Needs:   needs, Shapes: true, Chat: chat})

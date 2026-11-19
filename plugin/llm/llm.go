@@ -32,14 +32,8 @@ type Service struct {
 	Address string
 	Program string
 	// Models are how the names of the models it is the usual service of
-	// begin. Known are models it is known to offer, by the names it knows
-	// them by: for a person choosing one. It takes any name, and what is
-	// not there is not listed.
+	// begin. It takes any name.
 	Models []string
-	Known  []string
-	// Tools are, for a program, the tools of its own it is known to have:
-	// for a person choosing which it may use. Any may be named.
-	Tools []string
 	// Efforts are the levels of effort it takes, and Accepts the kinds of
 	// content it takes beside text.
 	Efforts []string

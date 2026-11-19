@@ -243,9 +243,6 @@ func Test_mach_alias_growth_is_refused(t *testing.T) {
 			t.Errorf("%d levels of aliases: %s", levels, got)
 		}
 	}
-	if _, err := Written([]byte(bomb(30))); err == nil || !strings.Contains(err.Error(), "document contains excessive aliasing") {
-		t.Errorf("30 levels of aliases shown to a person: %v", err)
-	}
 	if took := time.Since(began); took > time.Second {
 		t.Errorf("refusing them took %s", took)
 	}

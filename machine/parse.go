@@ -997,7 +997,7 @@ func (f *Fields) takes() (what string, names []string) {
 }
 
 // read reports a field the shape names that the reader never asked for.
-// Such a field would be offered to a person and then refused, so it is a
+// Such a field would be named in a problem and then refused, so it is a
 // fault in Corbie, found the first time any definition is read.
 func (f *Fields) read() {
 	for _, field := range f.shape.Fields {

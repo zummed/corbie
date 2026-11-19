@@ -31,12 +31,12 @@ Definitions are meant to be written by people and by models, so each type offers
 What a definition may hold is said once. Each mapping in it has a shape: the definition itself, a job, an agent's model, a state. A shape is the mapping's fields, with the kind of value each takes and what each is for.
 
 ```
- a model      name     a word     the model's name, as its service knows it        any name; these are known: …
-              effort   a word     how much effort the model is to take             one of its service's: low, medium, high
+ a model      name     a word     the model's name, as its service knows it
+              effort   a word     how much effort the model is to take
               reply    a number   the most a reply may hold, in tokens
 ```
 
-A definition is read by its shapes and by nothing else. A field is read only if its shape names it, as the kind of value its shape gives it, and a field its shape names is always read. A client is given the same shapes, to offer a definition's fields to a person, so what it offers is exactly what will be read. Where a field takes one of a few values the shape gives them, and where the values depend on a field beside it, such as the efforts a model's service takes, it gives them for each.
+A definition is read by its shapes and by nothing else. A field is read only if its shape names it, as the kind of value its shape gives it, and a field its shape names is always read.
 
 A mapping may be one of several sorts of thing that hold different fields. Its shape then says which field tells the sorts apart, and which fields each sort holds.
 
@@ -45,7 +45,7 @@ A mapping may be one of several sorts of thing that hold different fields. Its s
                              claude-code           name  secret  service  effort  own
 ```
 
-A field its sort does not hold is not offered to a person, and is refused if it is written.
+A field its sort does not hold is refused if it is written.
 
 A field its shape does not name is refused, and the problem names the fields the mapping takes, those of its sort where it has one:
 

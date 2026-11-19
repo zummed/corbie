@@ -91,17 +91,25 @@ func parse(src []byte, file string, load func(path string) ([]byte, error), loca
 	return draft, nil
 }
 
-// Problem notes one thing wrong, at a place in the file being read.
+// Problem notes one thing wrong, at a place in the file being read, with
+// the file and the line of the value written nearest it.
 func (p *Parser) Problem(place, format string, args ...any) {
-	p.note(Problem{File: p.fileAt(place), Place: place, Text: fmt.Sprintf(format, args...)})
+	p.problemIn(p.written(place), place, format, args...)
 }
 
-// problemIn notes one thing wrong, at a place in a file.
-func (p *Parser) problemIn(file, place, format string, args ...any) {
-	if file == p.top {
-		file = ""
+// problemIn notes one thing wrong, at a place, in the file and at the line
+// of a written value. With no value, it is in the file being read. The
+// definition's own file is not named.
+func (p *Parser) problemIn(n *node, place, format string, args ...any) {
+	problem := Problem{Place: place, Text: fmt.Sprintf(format, args...)}
+	file := p.source
+	if n != nil {
+		file, problem.Line = n.file, n.line
 	}
-	p.note(Problem{File: file, Place: place, Text: fmt.Sprintf(format, args...)})
+	if file != p.top {
+		problem.File = file
+	}
+	p.note(problem)
 }
 
 func (p *Parser) note(problem Problem) {
@@ -1131,6 +1139,9 @@ func fromYAML(n *yaml.Node, file string) (*node, error) {
 			if err != nil {
 				return nil, err
 			}
+			// A field's value is at the line its name is written on, where a
+			// mapping or a list below it begins on the next.
+			v.line = k.Line
 			out.set(k.Value, v)
 		}
 		return out, nil

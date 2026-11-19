@@ -1,6 +1,7 @@
 package client_test
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"slices"
@@ -244,7 +245,8 @@ func TestFlowPassesANamedStagesItemsUpAsTheyArrive(t *testing.T) {
 
 // The controller checks a definition itself, with the same code as the
 // client: one the client's check never saw is refused when it is started,
-// in the words the client's check would have used.
+// in the words the client's check would have used. A stored definition has
+// no file, so the controller gives no line.
 func TestControllerRefusesWhatTheClientLetThroughInTheSameWords(t *testing.T) {
 	const def = `
 		flow: unchecked
@@ -267,7 +269,12 @@ func TestControllerRefusesWhatTheClientLetThroughInTheSameWords(t *testing.T) {
 		t.Fatal(startErr)
 	}
 	r := wait(t, l, id)
-	if r.Status != "failed" || !strings.Contains(r.Error, "the definition did not pass its check") || !strings.Contains(r.Error, err.Error()) {
+	var said machine.Problems
+	if !errors.As(err, &said) || len(said) != 1 {
+		t.Fatalf("the client's check says: %v", err)
+	}
+	words := machine.Problem{Place: said[0].Place, Text: said[0].Text}.String()
+	if r.Status != "failed" || !strings.Contains(r.Error, "the definition did not pass its check") || !strings.Contains(r.Error, words) {
 		t.Fatalf("the run ended %s: %s\nthe client's check says:\n%v", r.Status, r.Error, err)
 	}
 	runs, listErr := l.List(ctx, client.Filter{})
@@ -677,16 +684,16 @@ func Test_mach_file_leading_back_to_itself_is_refused(t *testing.T) {
 			"the definition leads back to itself: s.yaml -> s.yaml"},
 		{"a machine file", "flow: f\nstages:\n  one: { job: { machine: ./f.yaml } }\n",
 			map[string]string{"f.yaml": "flow: g\nstages:\n  one: { job: { machine: { flow: inner, stages: { two: { job: { machine: ./f.yaml } } } } } }\n"},
-			"f.yaml: stages.two.job.machine: the definition leads back to itself: f.yaml -> f.yaml"},
+			"f.yaml:3: stages.two.job.machine: the definition leads back to itself: f.yaml -> f.yaml"},
 		{"two machine files", "flow: f\nstages:\n  one: { job: { machine: ./a.yaml } }\n",
 			map[string]string{"a.yaml": "flow: a\nstages:\n  one: { job: { machine: ./b.yaml } }\n", "b.yaml": "flow: b\nstages:\n  one: { job: { machine: ./a.yaml } }\n"},
-			"b.yaml: stages.one.job.machine: the definition leads back to itself: a.yaml -> b.yaml -> a.yaml"},
+			"b.yaml:3: stages.one.job.machine: the definition leads back to itself: a.yaml -> b.yaml -> a.yaml"},
 		{"a type only files leading back could give", "include: ./a.yaml\n",
 			map[string]string{"a.yaml": "include: ./b.yaml\n", "b.yaml": "include: ./a.yaml\n"},
-			"b.yaml: include: the definition leads back to itself: a.yaml -> b.yaml -> a.yaml"},
+			"b.yaml:1: include: the definition leads back to itself: a.yaml -> b.yaml -> a.yaml"},
 		{"a type from a file that includes itself", "include: ./a.yaml\n",
 			map[string]string{"a.yaml": "flow: a\nstages: { s: { job: ./s.js } }\ninclude: ./a.yaml\n", "s.js": "return 1"},
-			"a.yaml: include: the definition leads back to itself: a.yaml -> a.yaml"},
+			"a.yaml:3: include: the definition leads back to itself: a.yaml -> a.yaml"},
 		{"an included file and a machine file", agent + "toolkits:\n  s: { include: ./s.yaml }\n",
 			map[string]string{"s.yaml": "description: Loop.\ntools:\n  t: { description: x, job: { machine: ./b.yaml } }\n", "b.yaml": agent + "toolkits:\n  s: { include: ./s.yaml }\n"},
 			"the definition leads back to itself: s.yaml -> b.yaml -> s.yaml"},

@@ -242,18 +242,30 @@ func isDefinition(v any) bool {
 	return ok && ref.Type == blob.Definition
 }
 
-// A Problem is one thing wrong with a definition: in which file, where, and
-// what. File is the path of the child definition's file, from the
-// directory of the definition, and empty for the definition itself.
+// A Problem is one thing wrong with a definition: in which file, at which
+// line, where, and what. File is the path of the child definition's file,
+// from the directory of the definition, and empty for the definition
+// itself. Line is 0 where no written value is near the place, as in a
+// stored definition.
 type Problem struct {
 	File  string `json:"file,omitzero"`
+	Line  int    `json:"line,omitzero"`
 	Place string `json:"place"`
 	Text  string `json:"text"`
 }
 
+// String gives a problem as file:line: place: text, with line N for a line
+// of the definition's own file.
 func (p Problem) String() string {
+	at := p.File
+	switch {
+	case p.Line > 0 && p.File != "":
+		at = fmt.Sprintf("%s:%d", p.File, p.Line)
+	case p.Line > 0:
+		at = fmt.Sprintf("line %d", p.Line)
+	}
 	var parts []string
-	for _, part := range []string{p.File, p.Place, p.Text} {
+	for _, part := range []string{at, p.Place, p.Text} {
 		if part != "" {
 			parts = append(parts, part)
 		}

@@ -142,8 +142,8 @@ func TestTypeIsOneFieldAnywhere(t *testing.T) {
 	}
 }
 
-// Everything wrong is reported together, each with its place, and a
-// mistake in a child's file with that file.
+// Everything wrong is reported together, each with its place and its line,
+// and a mistake in a child's file with that file.
 func TestEverythingWrongIsReportedTogether(t *testing.T) {
 	got := problems(t, `probe: p
 colour: blue
@@ -161,8 +161,11 @@ work:
 	if strings.Count(got, "\n") < 3 {
 		t.Errorf("four mistakes were reported as:\n%s", got)
 	}
-	if !strings.Contains(got, "\nkids/kid.yaml: value: in ${input.a +}") {
+	if !strings.Contains(got, "\nkids/kid.yaml:2: value: in ${input.a +}") {
 		t.Errorf("the child's mistake was reported as:\n%s", got)
+	}
+	if !strings.Contains(got, "\nline 2: colour: ") {
+		t.Errorf("a mistake in the definition's own file was reported as:\n%s", got)
 	}
 
 	_, err := Parse([]byte("probe: p\nwork:\n  kid: { machine: ./kids/kid.yaml }\n"), files(map[string]string{"kids/kid.yaml": "probe: kid\nvalue: \"${input.a +}\"\n"}))

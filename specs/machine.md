@@ -50,8 +50,8 @@ A field its sort does not hold is refused if it is written.
 A field its shape does not name is refused, and the problem names the fields the mapping takes, those of its sort where it has one:
 
 ```
-tools.tell.does: "does" is not a field that belongs here: a tool takes description, args, job, list, call, input, approve, when
-model.colour: "colour" is not a field that belongs here: a model with service: anthropic takes name, secret, service, address, effort, reply_tokens
+line 9: tools.tell.does: "does" is not a field that belongs here: a tool takes description, args, job, list, call, input, approve, when
+line 3: model.colour: "colour" is not a field that belongs here: a model with service: anthropic takes name, secret, service, address, effort, reply_tokens
 ```
 
 A definition may take values from other files with `include:`, which names a file or a list of them. A name may end in `#path` to take one part of a file: `base.yaml#allow`, `base.yaml#tools.read_file`.
@@ -107,10 +107,10 @@ allow:
 
 - A file is read as a definition is: a number is a number, and a value YAML would read as a date stays the text written. An empty file is refused.
 - A path in a file reads as any path does, and `./` from that file's own directory. What a shape gives as a value, such as `input:` or `meta:`, stays as it is written, whatever it holds.
-- A problem in an included file names that file: `toolkits/home/toolkit.yaml: toolkits.home.colour: …`.
+- A problem in an included file names that file: `toolkits/home/toolkit.yaml:4: toolkits.home.colour: …`.
 - More than 1,000 includes written out by one definition, and what is below it, are refused. A file reached by two routes counts each time, though its values are merged once.
 
-A definition is checked as a whole, and everything wrong with it is reported together. Each problem names its place, and its file when the problem is in a child's file, as a path from the definition's directory: `kids/kid.yaml: value: …`. The client checks it before sending, so mistakes are found at once, and the controller checks it again with the same code, because it does not take a client's word.
+A definition is checked as a whole, and everything wrong with it is reported together. Each problem names its place and the line of the value written nearest it, and its file when the problem is in another file, as a path from the definition's directory: `line 8: tools.tell.does: …`, `kids/kid.yaml:2: value: …`. A stored definition has no lines, so the controller's check gives none. The client checks it before sending, so mistakes are found at once, and the controller checks it again with the same code, because it does not take a client's word.
 
 An instance never changes its definition. A machine that wants to change how it works changes a child's definition and starts the child again.
 
@@ -309,7 +309,7 @@ The context is the directory a client submits as a tree. For a single file it is
 
 `../` and a path from the top of the disk are refused in a definition. A script that loads another with `require` names it from its own directory, with `./` or `../`, since a bare name there is a plugin.
 
-No file leads back to itself. A machine file or an included file that names a file already being read is refused, with machines written in place between them as well, and the refusal names the chain: `b.yaml: toolkits.s.include: the definition leads back to itself: s.yaml -> b.yaml -> s.yaml`.
+No file leads back to itself. A machine file or an included file that names a file already being read is refused, with machines written in place between them as well, and the refusal names the chain: `b.yaml:3: toolkits.s.include: the definition leads back to itself: s.yaml -> b.yaml -> s.yaml`.
 
 A machine as it is stored is at most 4 MiB, as much as a step may read of one stored definition, with a reference for each of its files and child definitions. One past it is refused at its place, by the client and by a job's `define`, and nothing is stored.
 

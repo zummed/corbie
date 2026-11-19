@@ -69,6 +69,7 @@ type toolkitsView struct {
 	ShowText bool
 	Text     []codeLine
 	Unread   string
+	Stamp    string
 }
 
 // A node is one file of a machine as the toolkits are read: the type and name of
@@ -127,7 +128,7 @@ func toolkitsOf(ix *index) []toolkit {
 // toolkitsView gives the Toolkits page with a toolkit chosen, by default the
 // first.
 func (ix *index) toolkitsView(open string) toolkitsView {
-	v := toolkitsView{Toolkits: ix.toolkits, Problems: ix.Problems, Unread: ix.Unread}
+	v := toolkitsView{Toolkits: ix.toolkits, Problems: ix.Problems, Unread: ix.Unread, Stamp: ix.Stamp}
 	for i := range v.Toolkits {
 		if v.Toolkits[i].ID == open || (open == "" && i == 0) {
 			v.Open = &v.Toolkits[i]
@@ -352,44 +353,90 @@ func (h *handler) toolkitsPage(ctx context.Context, q url.Values) (toolkitsView,
 
 // showToolkits is the Toolkits page.
 func (h *handler) showToolkits(w http.ResponseWriter, r *http.Request) {
-	q := r.URL.Query()
-	v, err := h.toolkitsPage(r.Context(), q)
+	v, status, err := h.chosenToolkit(r.Context(), r.URL.Query())
 	if err != nil {
-		page.Error(w, http.StatusNotFound, err.Error())
+		page.Error(w, status, err.Error())
 		return
-	}
-	id := q.Get("toolkit")
-	if id != "" && v.Open == nil {
-		page.Error(w, http.StatusNotFound, "there is no toolkit "+id)
-		return
-	}
-	stream := url.Values{}
-	if v.Open != nil {
-		stream.Set("toolkit", v.Open.ID)
-	}
-	if v.ShowText {
-		stream.Set("view", "text")
 	}
 	s := h.Shell
-	s.Title, s.Current, s.Stream, s.Script = "Toolkits", "Toolkits", "/toolkits/stream?"+stream.Encode(), "/toolkits/script.js"
-	page.Write(w, s, ToolkitsParts{Toolkits: v})
+	s.Title, s.Current, s.Stream, s.Script = "Toolkits", "Toolkits", "/toolkits/stream", "/toolkits/script.js"
+	page.Write(w, s, ToolkitsParts{List: listOfToolkits(v), Toolkit: chosenOf(v)})
 }
 
-// streamToolkits sends the page the toolkits as the directory now holds them.
+// chosenToolkit reads the Toolkits page at an address: the toolkit it
+// chooses, as its tab shows it. It gives the status of the answer where it
+// cannot.
+func (h *handler) chosenToolkit(ctx context.Context, q url.Values) (toolkitsView, int, error) {
+	v, err := h.toolkitsPage(ctx, q)
+	if err != nil {
+		return v, http.StatusNotFound, err
+	}
+	if id := q.Get("toolkit"); id != "" && v.Open == nil {
+		return v, http.StatusNotFound, fmt.Errorf("there is no toolkit %s", id)
+	}
+	return v, http.StatusOK, nil
+}
+
+// toolkitPart answers the part "toolkit" of the Toolkits page at the
+// address its query gives, as JSON: the page asks for it when it shows
+// another toolkit or tab in place, or when the directory changed.
+func (h *handler) toolkitPart(w http.ResponseWriter, r *http.Request) {
+	v, status, err := h.chosenToolkit(r.Context(), r.URL.Query())
+	if err != nil {
+		page.Error(w, status, err.Error())
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.MarshalWrite(w, chosenOf(v), json.Deterministic(true))
+}
+
+// streamToolkits sends the page the list of toolkits as the directory now
+// holds it, whatever toolkit the page shows.
 func (h *handler) streamToolkits(w http.ResponseWriter, r *http.Request) {
-	q := r.URL.Query()
 	never := make(chan struct{})
 	page.Stream(w, r, h.Interval, func() <-chan struct{} { return never }, func(ctx context.Context) (any, error) {
-		v, err := h.toolkitsPage(ctx, q)
+		v, err := h.toolkitsPage(ctx, url.Values{})
 		if err != nil {
 			return nil, err
 		}
-		return ToolkitsParts{Toolkits: v}, nil
+		return ToolkitsParts{List: listOfToolkits(v)}, nil
 	})
 }
 
-// ToolkitsParts are the parts of the Toolkits page: its one part, the
-// toolkits and the one chosen.
+// ToolkitsParts are the parts of the Toolkits page: the list, and the
+// toolkit chosen as its tab shows it, which the page has as it loads and
+// asks for at /toolkits/view.
 type ToolkitsParts struct {
-	Toolkits toolkitsView `json:"toolkits"`
+	List    toolkitList    `json:"list"`
+	Toolkit *toolkitChosen `json:"toolkit,omitzero"`
+}
+
+// toolkitList is the list of the Toolkits page: the directory, the
+// toolkits and the problems of its machines, and the mark of the directory
+// it was read at.
+type toolkitList struct {
+	Dir, DirFull string
+	Toolkits     []toolkit
+	Problems     []problem
+	Unread       string
+	Stamp        string
+}
+
+// toolkitChosen is the toolkit chosen, the problems found in its file, its
+// file's text where the Text tab is chosen, and the mark of the directory
+// it was read at.
+type toolkitChosen struct {
+	Open     *toolkit
+	Found    []problem
+	ShowText bool
+	Text     []codeLine
+	Stamp    string
+}
+
+func listOfToolkits(v toolkitsView) toolkitList {
+	return toolkitList{Dir: v.Dir, DirFull: v.DirFull, Toolkits: v.Toolkits, Problems: v.Problems, Unread: v.Unread, Stamp: v.Stamp}
+}
+
+func chosenOf(v toolkitsView) *toolkitChosen {
+	return &toolkitChosen{Open: v.Open, Found: v.Found, ShowText: v.ShowText, Text: v.Text, Stamp: v.Stamp}
 }

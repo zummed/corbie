@@ -245,8 +245,8 @@ func Test_machines_list_shows_what_each_item_is(t *testing.T) {
 	if e := p.entryOf("bad.yaml"); e == nil || e.Problems != 2 {
 		t.Errorf("the list gives bad.yaml as %+v", e)
 	}
-	if p.Files.Open != "grouse/b.yaml" || !p.Files.Ignore {
-		t.Errorf("the list has %q chosen, and .corbieignore %t", p.Files.Open, p.Files.Ignore)
+	if p.View.Open != "grouse/b.yaml" || !p.Files.Ignore {
+		t.Errorf("the page has %q chosen, and .corbieignore %t", p.View.Open, p.Files.Ignore)
 	}
 	for _, gone := range []string{"people/scopes.yaml", "toolkits/toolkit.yaml"} {
 		if p.entryOf(gone) != nil {
@@ -268,8 +268,8 @@ func Test_machines_list_shows_what_each_item_is(t *testing.T) {
 	if script := pageOf(t, h, "/machines?file=.kit/hear.js").View; script.Facts != "a file" || script.File != nil {
 		t.Errorf("a script no machine takes a value from is shown as one of the files: %+v", script)
 	}
-	if p := pageOf(t, h, "/machines?file=./grouse/b.yaml"); p.Files.Open != "grouse/b.yaml" || p.View.Open != "grouse/b.yaml" {
-		t.Errorf("a path written with ./ is not the file chosen: %q", p.Files.Open)
+	if p := pageOf(t, h, "/machines?file=./grouse/b.yaml"); p.View.Open != "grouse/b.yaml" {
+		t.Errorf("a path written with ./ is not the file chosen: %q", p.View.Open)
 	}
 }
 
@@ -333,7 +333,7 @@ func Test_machines_every_yaml_is_a_machine_but_the_listed_files(t *testing.T) {
 	if v := pageOf(t, h, "/machines?file=.rook/AGENTS.md").View; v.Facts != "listed in .corbieignore" || v.File == nil || len(v.Included) != 0 {
 		t.Errorf("a file in a listed directory is not headed as listed: %+v", v)
 	}
-	if p := pageOf(t, h, "/machines?file=.corbieignore"); !p.Files.Ignore || p.Files.Open != ".corbieignore" || !slices.ContainsFunc(text(p.View.Text), func(l string) bool { return strings.Contains(l, ".rook/") }) {
+	if p := pageOf(t, h, "/machines?file=.corbieignore"); !p.Files.Ignore || p.View.Open != ".corbieignore" || !slices.ContainsFunc(text(p.View.Text), func(l string) bool { return strings.Contains(l, ".rook/") }) {
 		t.Errorf("the Files heading does not open .corbieignore: %+v", p.View)
 	}
 	for file, head := range map[string]string{"broken.yaml": "a machine", "nul.yaml": "flow"} {

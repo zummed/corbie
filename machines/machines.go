@@ -83,6 +83,7 @@ func New(c Config) (*Pages, error) {
 	mux.HandleFunc("GET /machines/view", h.viewPart)
 	mux.HandleFunc("GET /toolkits", h.showToolkits)
 	mux.HandleFunc("GET /toolkits/stream", h.streamToolkits)
+	mux.HandleFunc("GET /toolkits/view", h.toolkitPart)
 	mux.HandleFunc("GET /machines/script.js", script("machines.js"))
 	mux.HandleFunc("GET /toolkits/script.js", script("toolkits.js"))
 	mux.HandleFunc("GET /machines/shared.js", script("shared.js"))
@@ -119,15 +120,15 @@ func (p *Pages) Href(ctx context.Context, location, dir string, cards []string) 
 // view is the file chosen on the Machines page, as the page draws it: its
 // part "view". View is the tab chosen: drawing, text or written. File is the
 // file chosen where it is no machine and is listed in .corbieignore or
-// included. Base is the mark by which the page knows the file, or what
-// Corbie found in it, changed. Facts is what the file's head says it is.
+// included. Stamp is the mark of the directory it was read at. Facts is
+// what the file's head says it is.
 type view struct {
 	*index     `json:"-"`
 	Open       string
 	Kind       string
 	First      string
 	Facts      string
-	Base       string
+	Stamp      string
 	View       string
 	Drawable   bool
 	Text       []codeLine
@@ -142,17 +143,13 @@ type view struct {
 }
 
 // list is the list of the Machines page, as the page draws it: its part
-// "files". Dir is the directory, cut short, and DirFull the whole of it;
-// Open is the file chosen.
+// "files". Dir is the directory, cut short, and DirFull the whole of it.
+// The page reads the file it shows again when the list's Stamp differs
+// from the view's.
 type list struct {
-	Dir, DirFull, Open string
+	Dir, DirFull string
 	*index
 }
-
-// disk is the mark of the file chosen as the directory now holds it: the
-// page's part "disk". The page reads the file again when it differs from
-// the mark of the file it shows.
-type disk struct{ Base string }
 
 // A place is what a machine is for, where it lives and how its runs start,
 // as its file says: its description, its location, its lifetime, what a
@@ -199,8 +196,8 @@ func (h *handler) show(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s := h.Shell
-	s.Title, s.Current, s.Stream, s.Script = "Machines", "Machines", "/machines/stream?file="+url.QueryEscape(v.Open), "/machines/script.js"
-	page.Write(w, s, MachinesParts{Files: h.listPart(v.index, v.Open), Disk: disk{v.Base}, View: &v})
+	s.Title, s.Current, s.Stream, s.Script = "Machines", "Machines", "/machines/stream", "/machines/script.js"
+	page.Write(w, s, MachinesParts{Files: h.listPart(v.index), View: &v})
 }
 
 // viewPart answers the part "view" of the Machines page at the address its
@@ -216,18 +213,17 @@ func (h *handler) viewPart(w http.ResponseWriter, r *http.Request) {
 	json.MarshalWrite(w, v, json.Deterministic(true))
 }
 
-// MachinesParts are the parts of the Machines page: the list, the mark of
-// the file chosen, and the file as its tab shows it, which only the page as
-// it loads has.
+// MachinesParts are the parts of the Machines page: the list, and the file
+// chosen as its tab shows it, which the page has as it loads and asks for
+// at /machines/view.
 type MachinesParts struct {
 	Files list  `json:"files"`
-	Disk  disk  `json:"disk"`
 	View  *view `json:"view,omitzero"`
 }
 
-// listPart is the part that lists the directory, with a file chosen.
-func (h *handler) listPart(ix *index, open string) list {
-	return list{Dir: short(shortly(h.Dir)), DirFull: shortly(h.Dir), Open: open, index: ix}
+// listPart is the part that lists the directory.
+func (h *handler) listPart(ix *index) list {
+	return list{Dir: short(shortly(h.Dir)), DirFull: shortly(h.Dir), index: ix}
 }
 
 // machinesPage reads the file the address chooses, by default the first
@@ -239,7 +235,7 @@ func (h *handler) machinesPage(ctx context.Context, q url.Values) (view, int, er
 	if err != nil {
 		return view{}, http.StatusInternalServerError, err
 	}
-	v := view{index: ix, Open: q.Get("file"), View: q.Get("view"), Controller: h.Controller != nil, Runs: h.Runs}
+	v := view{index: ix, Open: q.Get("file"), View: q.Get("view"), Stamp: ix.Stamp, Controller: h.Controller != nil, Runs: h.Runs}
 	if v.Open == "" && len(ix.Groups) > 0 {
 		v.Open = ix.Groups[0].Entries[0].Path
 	}
@@ -286,18 +282,15 @@ func (h *handler) machinesPage(ctx context.Context, q url.Values) (view, int, er
 	return v, http.StatusOK, nil
 }
 
-// opened reads the file chosen, its type and name, the problems found in
-// it, and the mark by which the page knows any of them changed.
+// opened reads the file chosen, its type and name, and the problems found
+// in it.
 func (h *handler) opened(v *view) ([]byte, error) {
-	src, base, err := h.dir.read(v.Open)
+	src, _, err := h.dir.read(v.Open)
 	if err != nil {
 		return nil, err
 	}
 	v.Found = v.index.at(v.Open)
 	if m := v.index.machines[v.Open]; m != nil {
-		if m.Draft != nil {
-			base += m.Draft.Hash() + fmt.Sprint(m.Draft.Definition.Lines)
-		}
 		var name string
 		v.Kind, name = typeIn(src)
 		if m.Draft != nil {
@@ -305,7 +298,6 @@ func (h *handler) opened(v *view) ([]byte, error) {
 		}
 		v.First = cmp.Or(typeAndName(v.Kind, name), "a machine")
 	}
-	v.Base = hash(fmt.Appendf([]byte(base), "%v%v", v.Found, v.index.included[v.Open]))
 	return src, nil
 }
 
@@ -470,21 +462,16 @@ func hrefs(file string, open map[string]bool) func(string) string {
 	}
 }
 
-// stream sends the page the list as the directory now holds it, and the mark
-// of the file chosen, by which the page reads it again when it changed.
+// stream sends the page the list as the directory now holds it, whatever
+// file the page shows.
 func (h *handler) stream(w http.ResponseWriter, r *http.Request) {
-	open := r.URL.Query().Get("file")
 	never := make(chan struct{})
 	page.Stream(w, r, h.Interval, func() <-chan struct{} { return never }, func(ctx context.Context) (any, error) {
 		ix, err := h.tree(ctx)
 		if err != nil {
 			return nil, err
 		}
-		v := view{index: ix, Open: open}
-		if open != "" {
-			h.opened(&v)
-		}
-		return MachinesParts{Files: h.listPart(ix, open), Disk: disk{v.Base}}, nil
+		return MachinesParts{Files: h.listPart(ix)}, nil
 	})
 }
 

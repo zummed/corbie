@@ -19,6 +19,9 @@ import (
 // are no machine, whether the directory has a .corbieignore, the files it
 // lists, each problem once, and the toolkits.
 type index struct {
+	// Stamp is the mark of the directory as it was read, and of the prefix
+	// it was read at: a page reads what it shows again when it differs.
+	Stamp    string
 	Prefix   string
 	machines map[string]*client.Machine
 	located  map[string]string // the file of the machine at each location
@@ -66,6 +69,7 @@ func (c *indexed) current(at string) *index {
 	defer c.mu.Unlock()
 	if stamp := c.dir.stamp(); c.ix == nil || stamp != c.stamp || at != c.at {
 		c.ix, c.stamp, c.at = c.dir.index(at), stamp, at
+		c.ix.Stamp = hash([]byte(stamp + "\n" + at))
 	}
 	return c.ix
 }

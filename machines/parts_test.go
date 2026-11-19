@@ -14,7 +14,7 @@ import (
 
 // listedPart is the part "files" as the page is given it.
 type listedPart struct {
-	Dir, DirFull, Open, Prefix, Unread string
+	Dir, DirFull, Prefix, Unread, Stamp string
 	Groups                             []group
 	Files                              []entry
 	Ignore                             bool
@@ -24,10 +24,12 @@ type listedPart struct {
 // shown is a Machines or Toolkits page's parts, as the page is given them
 // to draw, and the JSON they are given as.
 type shown struct {
-	Files    listedPart   `json:"files"`
-	View     view         `json:"view"`
-	Disk     disk         `json:"disk"`
-	Toolkits toolkitsView `json:"toolkits"`
+	Files   listedPart    `json:"files"`
+	View    view          `json:"view"`
+	List    toolkitList   `json:"list"`
+	Toolkit toolkitChosen `json:"toolkit"`
+	// Toolkits is the Toolkits page's two parts as one view.
+	Toolkits toolkitsView `json:"-"`
 	JSON     string       `json:"-"`
 }
 
@@ -49,6 +51,9 @@ func pageOf(t *testing.T, h http.Handler, target string) shown {
 	if err := json.Unmarshal([]byte(m[1]), &s); err != nil {
 		t.Fatalf("%s carries parts that do not read: %v", target, err)
 	}
+	l, k := s.List, s.Toolkit
+	s.Toolkits = toolkitsView{Dir: l.Dir, DirFull: l.DirFull, Toolkits: l.Toolkits, Problems: l.Problems, Unread: l.Unread, Stamp: l.Stamp,
+		Open: k.Open, Found: k.Found, ShowText: k.ShowText, Text: k.Text}
 	var v jsontext.Value = []byte(m[1])
 	v.Indent()
 	s.JSON = string(v)

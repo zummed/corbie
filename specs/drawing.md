@@ -5,9 +5,33 @@ A machine is drawn top to bottom from its definition in full form, and a run's s
 1. The UI reads the machine's graph, with Corbie's own types for a flow, a statechart, an agent and a decision: each card and what it says, the arrows, and the marks of a run.
 2. The page lays the graph out and draws it as SVG, with Solid, at the size it needs.
 
-Each holder, card, arrow and chip is an element of its own, and a card keeps its element while the graph changes.
+Each holder, card, arrow and chip is an element of its own, and a card keeps its element while the graph changes. The same drawing is on a run's page and on the Machines page.
 
-The Machines page makes a drawing narrower to fit its panel, and never larger; a run's page draws it at its size, in a panel that scrolls. The same drawing is on a run's page and on the Machines page.
+## The camera
+
+A drawing fills its panel and is seen through a camera, which frames one part of it:
+
+```
+a card the page focuses   the card unfolded on the Machines page
+the cards a run marks     the cards going, held or failed, the deepest unfolded first, with the machine they are in
+otherwise                 the whole machine, from its top
+```
+
+The camera never scales a drawing larger than its size to frame it. Where the machine a run's marks are in cannot be read whole, at half its size or more, the camera frames the marks at half size.
+
+When the graph or the focus changes, the camera glides to frame it again, in 0.35s. A person moves it by hand:
+
+```
+wheel            pans
+ctrl-wheel       zooms round the pointer, as a pinch does
+drag             pans, and a drag that began on a link does not follow it
++ - 0            zoom in, zoom out, and fit the whole machine
+buttons          zoom out, zoom in, and Fit, in the panel's corner
+```
+
+Once a person moves the camera, it stays where they put it, and the corner offers Follow, which frames what the drawing is about again.
+
+The pointer on a card lights its arrows and their chips, and the pointer on an arrow or a chip lights the two cards it joins.
 
 Every card has one width and one corner radius: an icon for what its job is, its name, and one line for each fact about the job, such as `script: ./find.js` or `flow: people-find`, with `approve: true` where the job has it. A card's tooltip gives its `when:` and a tool's `description:`. A holder is drawn round cards: a statechart's state that holds states, an agent's tools, and each of its toolkits.
 
@@ -68,7 +92,7 @@ A decision is two things, one below the other, joined by one arrow: its model, b
 
 ## A machine inside a machine
 
-On a run's page, a card whose job started or called a run links to that run's page.
+On a run's page, a card whose job started or called a run links to that run's page. The page can give the drawing of that run as of a step, which is drawn inside the card with that run's own marks. A run followed into its children is then a camera moving into the card, and out again.
 
 On the Machines page, a card whose job names a machine is a link. The link unfolds that machine's drawing inside the card, and the card then has the link that folds it again. Any number can be unfolded at once, at any depth, and the address names them, so a person can send the address to another.
 
@@ -91,7 +115,7 @@ A run that ended is marked by how it ended. A stage still running when it ended 
 
 A statechart's run is followed through its steps: from the states it was in before a step, by the events the step took, to the states it is in after. A state it passed through within one step was entered, such as the state it started in and left at its first step. Where an event has rules to several states, the rule taken is the one to a state the run is in after the step.
 
-The transition the step drawn took is drawn in petrol, its chip's words too, heavier than the other arrows and over any arrow it shares a line with, or written in petrol in its card. The states a run that did not fail ended in are outlined in moss, as states it was in.
+The transition the step drawn took is drawn in petrol, its chip's words too, heavier than the other arrows and over any arrow it shares a line with, or written in petrol in its card. Its arrow is drawn along its line from the state it leaves, in 0.7s, so a person sees it taken. A card's mark changes colour over 0.4s. The states a run that did not fail ended in are outlined in moss, as states it was in.
 
 A toolkit of an agent is folded where the run has not asked for its tools by the step drawn. A folded toolkit is a small holder with its name and how many tools it has, `2 tools`, and its tooltip names them. The folded toolkits are one below another, in one column after the others, so the toolkits the run uses are drawn side by side and in view together.
 

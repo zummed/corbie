@@ -400,8 +400,8 @@ table.kids svg.g { margin-right: 6px; }
 .machine .edge { transition: stroke .3s, stroke-width .3s; }
 .machine .state.lit > rect.box, .machine .holder.lit > rect { stroke: var(--accent); }
 .machine .edge.lit { stroke: var(--accent); stroke-width: 2; }
-.machine .label.lit > .chip { stroke: var(--accent); }
-.machine .label.lit > .on { fill: var(--accent); }
+.machine .arrowchip.lit > .chip { stroke: var(--accent); }
+.machine .arrowchip.lit > .on { fill: var(--accent); }
 .machine .arrow { fill: var(--ink2); }
 .machine .arrow.taken { fill: var(--petrol); }
 .machine .chip { fill: var(--paper); stroke: var(--line); stroke-width: 1; }

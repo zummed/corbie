@@ -8,7 +8,7 @@
 // the drawing is about (the card a page focuses, or the cards a run marks,
 // or the whole machine) whenever the scene or the focus changes, until the
 // person pans or zooms; Follow gives it back.
-import { createMemo, createProjection, createSignal, onSettled } from "solid-js";
+import { createMemo, createSignal, deep, onSettled } from "solid-js";
 import { html } from "ui";
 import { layout, num } from "./layout.js";
 
@@ -16,7 +16,7 @@ import { layout, num } from "./layout.js";
 const pad = 24;
 // The camera never scales a drawing larger than its size to frame it, nor
 // smaller than least, below which a person cannot read it.
-const least = 0.5, smallest = 0.1, largest = 4;
+const least = 0.5, smallest = 0.02, largest = 4;
 
 // Drawing draws a scene, and draws it again as it changes. focus is the
 // path of a card to frame: the names of the cards from the machine drawn
@@ -26,8 +26,9 @@ export function Drawing(props) {
 }
 
 function Viewport(props) {
-  const laid = createMemo(() => layout(props.scene));
-  const d = createProjection(() => laid(), null, { key: "key" });
+  // The whole scene is read to lay it out, by record and not by every
+  // field, as a page's parts are reconciled record by record.
+  const laid = createMemo(() => layout(deep(props.scene)));
   const [size, setSize] = createSignal({ w: 0, h: 0 });
   const [following, setFollowing] = createSignal(true);
   const [placed, setPlaced] = createSignal({ x: 0, y: 0, k: 1 });
@@ -121,10 +122,10 @@ function Viewport(props) {
   }
 
   return html`<div class="viewport" tabindex="0" ref=${e => { el = e; }} onWheel=${wheel} onPointerDown=${press} onKeyDown=${key} onPointerOver=${over} onPointerLeave=${() => setHot(null)} onPointerUp=${() => setMoving(false)}>
-    <svg class="machine" role="img" aria-label=${() => d.label}>
+    <svg class="machine" role="img" aria-label=${() => laid().label}>
       <defs><marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path class="arrow" d="M0 0L10 5L0 10z" /></marker><marker id="at" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" markerUnits="userSpaceOnUse" orient="auto-start-reverse"><path class="arrow taken" d="M0 0L10 5L0 10z" /></marker></defs>
       <g class=${() => ["camera", { moving: moving() || !ready() }]} style=${() => `transform: translate(${num(camera().x)}px, ${num(camera().y)}px) scale(${camera().k.toFixed(4)})`}>
-        <${Parts} of=${d} prefix="" hot=${() => hot()} />
+        <${Parts} of=${() => laid()} prefix="" hot=${() => hot()} />
       </g>
     </svg>
     <div class="zoom">
@@ -141,12 +142,14 @@ function Viewport(props) {
 // at a card.
 const lit = (hot, key, from, to) => !!hot && (hot.key === key || (from !== undefined && (hot.key === from || hot.key === to)) || hot.from === key || hot.to === key);
 
+const byKey = part => part.key;
+
 // Parts draws a drawing's parts in the order they are painted: holders,
 // then arrows, then their chips, then the cards. Every part is named by its
 // key, after the keys of the cards it is drawn inside.
 function Parts(props) {
   const k = key => props.prefix + key;
-  return html`<For each=${() => props.of.holders}>${h => html`<${Holder} holder=${h} prefix=${() => props.prefix} hot=${() => props.hot} />`}</For><For each=${() => props.of.edges}>${e => html`<path class=${() => [e.class, { lit: lit(props.hot, k("edge " + e.key), k(e.from), k(e.to)) }]} d=${() => e.d} pathLength=${() => (/\btaken\b/.test(e.class) ? 1 : undefined)} marker-end=${() => `url(#${e.head})`} data-key=${() => k("edge " + e.key)} data-from=${() => k(e.from)} data-to=${() => k(e.to)} />`}</For><For each=${() => props.of.chips}>${c => html`<${Chip} chip=${c} prefix=${() => props.prefix} hot=${() => props.hot} />`}</For><For each=${() => props.of.shapes}>${s => html`<${Shape} shape=${s} prefix=${() => props.prefix} hot=${() => props.hot} />`}</For>`;
+  return html`<For each=${() => props.of.holders} keyed=${byKey}>${h => html`<${Holder} holder=${() => h()} prefix=${() => props.prefix} hot=${() => props.hot} />`}</For><For each=${() => props.of.edges} keyed=${byKey}>${e => html`<path class=${() => [e().class, { lit: lit(props.hot, k("edge " + e().key), k(e().from), k(e().to)) }]} d=${() => e().d} pathLength=${() => (/\btaken\b/.test(e().class) ? 1 : undefined)} marker-end=${() => `url(#${e().head})`} data-key=${() => k("edge " + e().key)} data-from=${() => k(e().from)} data-to=${() => k(e().to)} />`}</For><For each=${() => props.of.chips} keyed=${byKey}>${c => html`<${Chip} chip=${() => c()} prefix=${() => props.prefix} hot=${() => props.hot} />`}</For><For each=${() => props.of.shapes} keyed=${byKey}>${s => html`<${Shape} shape=${() => s()} prefix=${() => props.prefix} hot=${() => props.hot} />`}</For>`;
 }
 
 // Holder is a box round cards, with its name, and for a folded toolkit how
@@ -154,7 +157,7 @@ function Parts(props) {
 function Holder(props) {
   const h = () => props.holder;
   const key = () => props.prefix + h().key;
-  return html`<g class=${() => [h().class, { lit: lit(props.hot, key()) }]} data-key=${key}><rect x=${() => num(h().x)} y=${() => num(h().y)} width=${() => num(h().w)} height=${() => num(h().h)} rx="14" /><text class="name" x=${() => num(h().name.x)} y=${() => num(h().name.y)}>${() => h().name.text}</text><Show when=${() => h().sub}>${sub => html`<text class="sub" x=${() => num(sub().x)} y=${() => num(sub().y)}>${() => sub().text}</text>`}</Show><Show when=${() => h().title}><title>${() => h().title}</title></Show></g>`;
+  return html`<g class=${() => [h().class, { lit: lit(props.hot, key()) }]} data-key=${key}><rect x=${() => num(h().x)} y=${() => num(h().y)} width=${() => num(h().w)} height=${() => num(h().h)} rx="14" /><text class="name" x=${() => num(h().name.x)} y=${() => num(h().name.y)}>${() => h().name.text}</text><Show when=${() => h().sub}>${sub => html`<text class="sub" x=${() => num(sub().x)} y=${() => num(sub().y)}>${() => sub().text}</text>`}</Show><title>${() => h().title ?? ""}</title></g>`;
 }
 
 // Chip is the label of an arrow, with the whole label as its tooltip where
@@ -162,14 +165,14 @@ function Holder(props) {
 function Chip(props) {
   const c = () => props.chip;
   const k = key => props.prefix + key;
-  return html`<g class=${() => ["label", { lit: lit(props.hot, k("chip " + c().key), k(c().from), k(c().to)) }]} data-key=${() => k("chip " + c().key)} data-from=${() => k(c().from)} data-to=${() => k(c().to)}><rect class=${() => c().class} x=${() => num(c().x)} y=${() => num(c().y)} width=${() => num(c().w)} height="18" rx="9" /><text class="on" x=${() => num(c().tx)} y=${() => num(c().ty)} text-anchor="middle">${() => c().text}<Show when=${() => c().title}><title>${() => c().title}</title></Show></text></g>`;
+  return html`<g class=${() => ["arrowchip", { lit: lit(props.hot, k("chip " + c().key), k(c().from), k(c().to)) }]} data-key=${() => k("chip " + c().key)} data-from=${() => k(c().from)} data-to=${() => k(c().to)}><rect class=${() => c().class} x=${() => num(c().x)} y=${() => num(c().y)} width=${() => num(c().w)} height="18" rx="9" /><text class="on" x=${() => num(c().tx)} y=${() => num(c().ty)} text-anchor="middle">${() => c().text}<title>${() => c().title}</title></text></g>`;
 }
 
 // Shape is a card, or what is written beside cards: a holder's notes, the
 // arrow into the state a level starts in, and the turn an agent is on.
 function Shape(props) {
   const s = () => props.shape;
-  const kind = createMemo(() => props.shape.kind);
+  const kind = createMemo(() => s().kind);
   return html`${() => {
     switch (kind()) {
       case "card":
@@ -190,14 +193,14 @@ function Card(props) {
   const c = () => props.card;
   const key = () => props.prefix + c().key;
   const body = () => html`<g class=${() => [c().class, { lit: lit(props.hot, key()) }]} data-key=${key}>
-    <For each=${() => c().behind}>${b => html`<rect class=${() => b.class} x=${() => num(b.x)} y=${() => num(b.y)} width=${() => num(b.w)} height=${() => num(b.h)} rx=${() => num(b.rx)} />`}</For>
+    <For each=${() => c().behind} keyed=${byKey}>${b => html`<rect class=${() => b().class} x=${() => num(b().x)} y=${() => num(b().y)} width=${() => num(b().w)} height=${() => num(b().h)} rx=${() => num(b().rx)} />`}</For>
     <rect class="box" x=${() => num(c().box.x)} y=${() => num(c().box.y)} width=${() => num(c().box.w)} height=${() => num(c().box.h)} rx=${() => num(c().box.rx)} />
     <text class="title" x=${() => num(c().title.x)} y=${() => num(c().title.y)} text-anchor=${() => c().title.anchor}>${() => c().title.text}</text>
-    <For each=${() => c().subs}>${t => html`<text class="sub" x=${() => num(t.x)} y=${() => num(t.y)} text-anchor=${() => t.anchor}>${() => t.text}</text>`}</For>
-    <For each=${() => c().notes}>${t => html`<text class=${() => t.class} x=${() => num(t.x)} y=${() => num(t.y)} text-anchor=${() => t.anchor}>${() => t.text}</text>`}</For>
+    <For each=${() => c().subs} keyed=${byKey}>${t => html`<text class="sub" x=${() => num(t().x)} y=${() => num(t().y)} text-anchor=${() => t().anchor}>${() => t().text}</text>`}</For>
+    <For each=${() => c().notes} keyed=${byKey}>${t => html`<text class=${() => t().class} x=${() => num(t().x)} y=${() => num(t().y)} text-anchor=${() => t().anchor}>${() => t().text}</text>`}</For>
     <Show when=${() => c().tile}>${t => html`<rect class=${() => ["tile", t().icon]} x=${() => num(t().x)} y=${() => num(t().y)} width="28" height="28" rx="7" /><Show when=${() => t().spark} fallback=${() => html`<use class="icon" href=${() => "#g-" + t().icon} x=${() => num(t().x + 4)} y=${() => num(t().y + 7)} width="20" height="14" />`}>${d => html`<path class="spark" d=${d} />`}</Show>`}</Show>
     <Show when=${() => c().fold}>${f => html`<text class="fold" x=${() => num(f().x)} y=${() => num(f().y)} text-anchor="middle">${() => f().text}</text>`}</Show>
-    <Show when=${() => c().tooltip}><title>${() => c().tooltip}</title></Show>
+    <title>${() => c().tooltip}</title>
   </g>`;
   return html`<Show when=${() => c().href} fallback=${body}>${href => html`<g><a href=${href}>${body()}</a></g>`}</Show><Show when=${() => c().in}>${i => html`<g transform=${() => `translate(${num(i().x)} ${num(i().y)})`}><${Parts} of=${() => i()} prefix=${() => key() + " › "} hot=${() => props.hot} /></g>`}</Show>`;
 }
@@ -232,7 +235,6 @@ export function frame(l, focus, view, whole = false) {
     k = least;
     around = marks;
   }
-  k = Math.max(k, smallest);
   const x = view.w / 2 - k * (around.x + around.w / 2);
   // What fits whole is drawn from the top, as a page is read.
   const y = around === region && k * region.h + 2 * pad <= view.h && region === all ? pad - k * region.y : view.h / 2 - k * (around.y + around.h / 2);

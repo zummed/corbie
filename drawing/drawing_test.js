@@ -16,10 +16,12 @@ async function draw(name, size = { width: 900, height: 700 }, focus) {
   return v;
 }
 
-// show puts another graph in place of the one drawn, as a page is sent it.
+// show puts another graph in place of the one drawn, as a page is sent it,
+// and waits for the camera to glide to it.
 async function show(name) {
   receive({ type: "part", id: "scene", data: await fixture(name) });
   await settle(3);
+  await wait(450);
 }
 
 // card gives the group of a card by its name, as its title writes it.
@@ -189,6 +191,17 @@ test("drawing_decision_is_its_model_and_its_questions", async () => {
   for (const want of ["urgent", "team"]) assert(v.textContent.includes(want), `the decision does not name the question ${want}`);
 });
 
+// extent gives where a text's letters run across, by its anchor and the
+// length of its letters in the font it is set in.
+function extent(t) {
+  const len = t.getComputedTextLength(), x = +t.getAttribute("x");
+  switch (t.getAttribute("text-anchor")) {
+    case "middle": return [x - len / 2, x + len / 2];
+    case "end": return [x - len, x];
+  }
+  return [x, x + len];
+}
+
 // Every element of a drawing is SVG, and what a card, a chip and a holder
 // write fits inside it in the real fonts.
 test("drawing_text_fits_its_card", async () => {
@@ -200,17 +213,17 @@ test("drawing_text_fits_its_card", async () => {
     for (const g of svg.querySelectorAll("g.state:not(.holder)")) {
       const box = g.querySelector(":scope > rect.box").getBBox();
       for (const t of g.querySelectorAll(":scope > text")) {
-        const b = t.getBBox();
-        if (b.x < box.x || b.x + b.width > box.x + box.width + 0.5) faults.push(`${name}: "${t.textContent}" overruns its card`);
+        const [a, b] = extent(t);
+        if (a < box.x || b > box.x + box.width + 0.5) faults.push(`${name}: "${t.firstChild?.textContent}" overruns its card`);
       }
     }
-    for (const c of svg.querySelectorAll("g.label")) {
-      const r = c.querySelector("rect").getBBox(), t = c.querySelector("text").getBBox();
-      if (t.x < r.x - 0.5 || t.x + t.width > r.x + r.width + 0.5) faults.push(`${name}: the chip "${c.querySelector("text").firstChild.textContent}" overruns its pill: ${t.width.toFixed(1)} in ${r.width.toFixed(1)}`);
+    for (const c of svg.querySelectorAll("g.arrowchip")) {
+      const r = c.querySelector("rect").getBBox(), [a, b] = extent(c.querySelector("text"));
+      if (a < r.x - 0.5 || b > r.x + r.width + 0.5) faults.push(`${name}: the chip "${c.querySelector("text").firstChild.textContent}" overruns its pill`);
     }
     for (const h of svg.querySelectorAll("g.holder")) {
-      const r = h.querySelector("rect").getBBox(), t = h.querySelector("text.name").getBBox();
-      if (t.x + t.width > r.x + r.width) faults.push(`${name}: the name "${h.querySelector("text.name").textContent}" overruns its holder`);
+      const r = h.querySelector("rect").getBBox(), [, b] = extent(h.querySelector("text.name"));
+      if (b > r.x + r.width) faults.push(`${name}: the name "${h.querySelector("text.name").textContent}" overruns its holder`);
     }
   }
   equal(faults, [], "the faults");
@@ -241,7 +254,7 @@ test("drawing_camera_fits_the_whole_machine", async () => {
   equal(c.k, 1, "the scale of a machine that fits");
   const svg = v.querySelector("svg"), drawnBox = svg.querySelector("g.camera").getBoundingClientRect(), o = v.getBoundingClientRect();
   assert(drawnBox.top - o.top < 60 && within({ x: drawnBox.left - o.left, y: drawnBox.top - o.top, w: drawnBox.width, h: drawnBox.height }, v), "the machine is not drawn whole from its top");
-  const big = await draw("big-chart", { width: 700, height: 500 });
+  const big = await draw("big-flow", { width: 700, height: 500 });
   assert(camera(big).k < 1, "a machine larger than its view is not scaled down to fit");
 });
 
@@ -259,7 +272,9 @@ test("drawing_camera_follows_the_run", async () => {
   assert(within(seen(v, inner), v), "the stage the child runs is not in view");
   const check = card(v, "check").querySelector("rect.box").getBBox();
   const shown = seen(v, card(v, "check"));
-  assert(after.k >= before.k * 0.999 && shown.w <= v.clientWidth, "the camera did not frame the child's card");
+  const whole = v.querySelector("g.camera").getBBox();
+  const fits = Math.min((v.clientWidth - 48) / whole.width, (v.clientHeight - 48) / whole.height);
+  assert(within(shown, v) && after.k > fits, `the camera did not zoom into the child's card: ${JSON.stringify({ before, after, fits })}`);
   assert(Math.abs(shown.x + shown.w / 2 - v.clientWidth / 2) < 2, `the child's card is not in the middle of the view: ${JSON.stringify(shown)} of ${v.clientWidth}`);
   assert(check.width > 232, "the child's card does not hold its drawing");
   // The camera glides: its transform has a transition.
@@ -277,7 +292,7 @@ test("drawing_camera_frames_the_card_focused", async () => {
 // A wheel pans, ctrl-wheel zooms round the pointer, and both stop the camera
 // following, which Follow gives back; + - and 0 zoom and fit.
 test("drawing_camera_is_moved_by_hand", async () => {
-  const v = await draw("big-chart", { width: 700, height: 500 });
+  const v = await draw("big-flow", { width: 700, height: 500 });
   const framed = camera(v);
   assert(!v.querySelector(".zoom").textContent.includes("Follow"), "Follow is offered while the camera follows");
   v.dispatchEvent(new WheelEvent("wheel", { deltaX: 30, deltaY: 50, bubbles: true, cancelable: true }));
@@ -289,7 +304,9 @@ test("drawing_camera_is_moved_by_hand", async () => {
   await settle();
   const z = camera(v);
   assert(z.k > c.k, "ctrl-wheel did not zoom in");
-  assert(Math.abs((100 - z.x) / z.k - (100 - c.x) / c.k) < 0.01, "the zoom is not round the pointer");
+  // The point of the drawing under the pointer stays under it.
+  const p = { x: (100 - c.x) / c.k, y: (80 - c.y) / c.k };
+  assert(Math.abs(z.x + p.x * z.k - 100) < 1 && Math.abs(z.y + p.y * z.k - 80) < 1, "the zoom is not round the pointer");
   const follow = [...v.querySelectorAll(".zoom button")].find(b => b.textContent === "Follow");
   assert(follow, "Follow is not offered once the camera was moved by hand");
   follow.click();
@@ -301,6 +318,7 @@ test("drawing_camera_is_moved_by_hand", async () => {
   assert(camera(v).k > framed.k, "+ did not zoom in");
   v.dispatchEvent(new KeyboardEvent("keydown", { key: "0", bubbles: true }));
   await settle();
+  await wait(450);
   const fit = camera(v);
   const whole = v.querySelector("g.camera").getBBox();
   assert(fit.k * whole.height <= v.clientHeight + 1 && fit.k * whole.width <= v.clientWidth + 1, "0 does not fit the whole machine");
@@ -333,9 +351,9 @@ test("drawing_pointer_lights_what_it_joins", async () => {
   over(card(v, "waiting").querySelector("rect.box"));
   await settle();
   const lit = all(v, ".lit");
-  assert(lit.some(e => e.matches("path.edge")) && lit.some(e => e.matches("g.label")), "a card does not light its arrows and their chips");
+  assert(lit.some(e => e.matches("path.edge")) && lit.some(e => e.matches("g.arrowchip")), "a card does not light its arrows and their chips");
   for (const e of all(v, "path.edge.lit")) assert(e.dataset.from.endsWith("state waiting") || e.dataset.to.endsWith("state waiting"), "an arrow that does not join the card is lit");
-  const chip = all(v, "g.label").find(c => c.querySelector("text").firstChild.textContent === "done");
+  const chip = all(v, "g.arrowchip").find(c => c.querySelector("text").firstChild.textContent === "done");
   over(chip.querySelector("rect"));
   await settle();
   equal(all(v, "g.state.lit").map(g => g.querySelector("text.title").textContent).sort(), ["drafting", "waiting"], "the cards the chip done lights");

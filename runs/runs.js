@@ -1,7 +1,7 @@
 // The Runs page and a run's page, drawn from their parts. A line stays
 // unfolded as the store changes, a line or a row opens its run, the button
 // at a line's start unfolds it, and a panel shows one tab at a time.
-import { createContext, createDeferred, createEffect, createMemo, createSignal, createStore, isPending, onSettled, refresh, useContext, Errored } from "solid-js";
+import { createContext, createDeferred, createEffect, createMemo, createSignal, createStore, isPending, onSettled, useContext, Errored } from "solid-js";
 import { html, parts, mount, lit, bump, Icon, Status, Act, Handle, tabs, plural, word } from "ui";
 import { Drawing } from "drawing";
 
@@ -247,6 +247,9 @@ function followSteps() {
   // the selection follows the newest row.
   const [picked, setPicked] = createSignal(null);
   const [details, setDetails] = createSignal(false);
+  // chosen counts the person's choices of a row, so choosing the row chosen
+  // asks for it again where its answer failed.
+  const [chosen, setChosen] = createSignal(0);
 
   const open = (key, first) => folds[key] ?? first;
   const nodes = createMemo(() => (parts.steps ? nodesOf(parts.steps.Rows, "", [], [], open, traced) : []));
@@ -276,7 +279,10 @@ function followSteps() {
   // shown is the drawing and the details of the selected row. While the
   // answer for a row is on its way, the selection is shown at once and the
   // drawing before it stays.
-  const shown = createDeferred(() => (address() ? answer(address()) : parts.shown));
+  const shown = createDeferred(() => {
+    chosen();
+    return address() ? answer(address()) : parts.shown;
+  });
 
   // The rows of each send's or call's group opened are asked for once; a
   // group folded is asked for again when it is opened.
@@ -308,8 +314,8 @@ function followSteps() {
     pick(node) {
       if (!node) return;
       setFolds(s => { for (const g of node.groups) s[g.key] = true; });
-      if (picked() === node.key) refresh(shown);
       setPicked(node.key);
+      setChosen(n => n + 1);
     },
     // follow selects the newest row, and goes on selecting each new row.
     follow: () => setPicked(null),

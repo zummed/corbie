@@ -55,11 +55,13 @@ type start struct {
 	Name, File, Type string
 }
 
-// toolkitsView is the Toolkits page as it is drawn.
-// It lists the project's problems as the Machines page does, and shows the
-// toolkit chosen with the problems found in its file, or its file's text.
+// toolkitsView is the Toolkits page as it is drawn, its one part
+// "toolkits". It lists the project's problems as the Machines page does,
+// and shows the toolkit chosen with the problems found in its file, or its
+// file's text. Dir is the directory, cut short, and DirFull the whole of it.
 type toolkitsView struct {
 	Dir      string
+	DirFull  string
 	Toolkits []toolkit
 	Open     *toolkit
 	Problems []problem
@@ -337,7 +339,7 @@ func (h *handler) toolkitsPage(ctx context.Context, q url.Values) (toolkitsView,
 		return toolkitsView{}, err
 	}
 	v := ix.toolkitsView(q.Get("toolkit"))
-	v.Dir = shortly(h.Dir)
+	v.Dir, v.DirFull = short(shortly(h.Dir)), shortly(h.Dir)
 	if v.Open != nil && v.Open.File != "" && q.Get("view") == "text" {
 		src, _, err := h.dir.read(v.Open.File)
 		if err != nil {
@@ -368,13 +370,9 @@ func (h *handler) showToolkits(w http.ResponseWriter, r *http.Request) {
 	if v.ShowText {
 		stream.Set("view", "text")
 	}
-	main, err := render("toolkits", v)
-	if err != nil {
-		page.Error(w, http.StatusInternalServerError, err.Error())
-		return
-	}
 	s := h.Shell
-	s.Title, s.Current, s.Stream, s.Main = "Toolkits", "Toolkits", "/toolkits/stream?"+stream.Encode(), main
+	s.Title, s.Current, s.Stream, s.Script = "Toolkits", "Toolkits", "/toolkits/stream?"+stream.Encode(), "/toolkits/script.js"
+	s.Parts = []page.Part{{ID: "toolkits", Data: v}}
 	page.Write(w, s)
 }
 
@@ -387,14 +385,6 @@ func (h *handler) streamToolkits(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			return nil, err
 		}
-		var parts []page.Part
-		for _, name := range []string{"toolkitlist", "toolkitview"} {
-			html, err := render(name, v)
-			if err != nil {
-				return nil, err
-			}
-			parts = append(parts, page.Part{ID: name, HTML: html})
-		}
-		return parts, nil
+		return []page.Part{{ID: "toolkits", Data: v}}, nil
 	})
 }

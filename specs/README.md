@@ -25,13 +25,13 @@ The UI is a client of Corbie and adds nothing to Corbie. Every action on the sto
 
 Pages read the store through Corbie's packages. The UI reads the list of runs at every interval, once for every page and scraper it serves, and each open run's page follows that run's record. It keeps nothing on disk, and what it holds in memory it has read from the store, so any number of copies can run against one store, and any of them can be stopped at any moment.
 
-A page shows what changes as it changes: the UI sends each page the parts that changed, drawn by the templates that drew the page.
+A page is drawn in the browser by Solid, from the data of its parts. It shows what changes as it changes: the UI sends each page the data of the parts that changed.
 
 ## The program
 
 This repository builds the program `corbie-ui`. `corbie ui` runs it from PATH, and `corbie start controller runner ui` starts it beside the roles, with `CORBIE_CONFIG` and `CORBIE_STORE` in its environment as `corbie start` was given `--config` and `--store`.
 
-The program links Corbie's packages, and carries the machine types and the plugins, as Corbie's does.
+The program links Corbie's packages, and carries the machine types and the plugins, as Corbie's does. It carries Solid 2.0 for the browser, with no build step.
 
 Corbie itself is not changed, so the UI repeats what Corbie keeps to itself. Each goes when Corbie gives it out.
 

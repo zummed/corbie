@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/zummed/corbie-ui/controller"
+	"github.com/zummed/corbie-ui/drawing"
 	"github.com/zummed/corbie-ui/machines"
 	"github.com/zummed/corbie-ui/metrics"
 	"github.com/zummed/corbie-ui/page"
@@ -223,6 +224,7 @@ func start(ctx context.Context, e *cli.Env, o options) (*ui, error) {
 
 	mux := http.NewServeMux()
 	mux.Handle("GET /assets/", http.StripPrefix("/assets", page.Assets()))
+	mux.Handle("GET /drawing/", http.StripPrefix("/drawing", drawing.Files()))
 	mux.Handle("GET /manual/", http.StripPrefix("/manual", manual.Site()))
 	home := "/machines"
 	var areaMachines *machines.Pages

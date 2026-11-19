@@ -760,28 +760,11 @@ func fixedOf(ctx context.Context, c *client.Client, run *client.Run) (f fixed, f
 		Called: st.Above.CallJob != "" || st.Above.CallReceipt != nil, Made: st.Above.Made}, true, nil
 }
 
-// middle cuts a long address in its middle, where keys that differ at
-// their end keep it.
-func middle(s string) string {
-	const most = 32
-	if r := []rune(s); len(r) > most {
-		return string(r[:most/2-1]) + "…" + string(r[len(r)-most/2:])
-	}
-	return s
-}
-
 func plural(n int, what string) string {
 	if n == 1 {
 		return "1 " + what
 	}
 	return fmt.Sprintf("%d %ss", n, what)
-}
-
-func pluralWord(n int, one string) string {
-	if n == 1 {
-		return one
-	}
-	return one + "s"
 }
 
 func took(d time.Duration) string {

@@ -5,14 +5,12 @@
 package controller
 
 import (
-	"bytes"
 	"cmp"
 	"context"
 	"embed"
 	"encoding/json/jsontext"
 	"encoding/json/v2"
 	"fmt"
-	"html/template"
 	"io"
 	"maps"
 	"net/http"
@@ -40,12 +38,8 @@ type Config struct {
 
 type handler struct{ Config }
 
-//go:embed controller.html
+//go:embed controller.js
 var files embed.FS
-
-var pages = template.Must(template.New("").Funcs(template.FuncMap{
-	"join": strings.Join,
-}).ParseFS(files, "controller.html"))
 
 // A party is one runner or client the controller trusts, as `corbie
 // controller parties` lists it.
@@ -55,6 +49,10 @@ type party struct {
 	// At holds a runner's prefixes, "/" where it is sent every tree's jobs.
 	At      []string
 	Removed bool
+	// Acts are the actions its line offers: a runner's tags, prefixes and
+	// remove, a client's ceiling and remove, and for a removed party enrol
+	// alone.
+	Acts []string
 }
 
 // A Tree is one the controller recorded at its prefix: its client, the
@@ -97,6 +95,11 @@ func New(c Config) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /controller", h.show)
 	mux.HandleFunc("GET /controller/stream", h.stream)
+	mux.HandleFunc("GET /controller/script.js", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/javascript; charset=utf-8")
+		data, _ := files.ReadFile("controller.js")
+		w.Write(data)
+	})
 	mux.HandleFunc("POST /controller/{act}", h.act)
 	return mux
 }
@@ -110,10 +113,15 @@ func (h *handler) read(ctx context.Context) (view, error) {
 	for _, t := range trusted {
 		p := party{Name: t.Card.Name, Kind: string(t.Card.Kind), Fingerprint: t.Card.Fingerprint(),
 			Tags: t.Tags, Ceiling: t.Ceiling.Allow, Deny: t.Ceiling.Deny, Removed: t.Removed}
+		p.Acts = []string{"ceiling", "remove"}
 		if t.Card.Kind == identity.Runner {
 			if p.At = t.Prefixes; len(p.At) == 0 {
 				p.At = []string{"/"}
 			}
+			p.Acts = []string{"tags", "prefixes", "remove"}
+		}
+		if t.Removed {
+			p.Acts = []string{"enrol"}
 		}
 		v.Parties = append(v.Parties, p)
 	}
@@ -193,35 +201,24 @@ func nameIn(prefix, at string) string {
 	return strings.TrimPrefix(at, strings.TrimSuffix(prefix, "/")+"/")
 }
 
+// parts gives the page's parts: the runners and clients, the trees, and
+// the secrets and values set.
 func (h *handler) parts(ctx context.Context) ([]page.Part, error) {
 	v, err := h.read(ctx)
 	if err != nil {
 		return nil, err
 	}
-	var parts []page.Part
-	for _, id := range []string{"parties", "trees", "settings"} {
-		html, err := render(id, v)
-		if err != nil {
-			return nil, err
-		}
-		parts = append(parts, page.Part{ID: id, HTML: html})
-	}
-	return parts, nil
+	return []page.Part{{ID: "parties", Data: v.Parties}, {ID: "trees", Data: v.Trees}, {ID: "settings", Data: v.Set}}, nil
 }
 
 func (h *handler) show(w http.ResponseWriter, r *http.Request) {
-	v, err := h.read(r.Context())
-	if err != nil {
-		page.Error(w, http.StatusInternalServerError, err.Error())
-		return
-	}
-	main, err := render("controller", v)
+	parts, err := h.parts(r.Context())
 	if err != nil {
 		page.Error(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 	s := h.Shell
-	s.Title, s.Current, s.Stream, s.Main = "Controller", "Controller", "/controller/stream", main
+	s.Title, s.Current, s.Stream, s.Script, s.Parts = "Controller", "Controller", "/controller/stream", "/controller/script.js", parts
 	page.Write(w, s)
 }
 
@@ -312,10 +309,4 @@ func said(a page.Answer) string {
 		return text
 	}
 	return "done"
-}
-
-func render(name string, data any) (template.HTML, error) {
-	var b bytes.Buffer
-	err := pages.ExecuteTemplate(&b, name, data)
-	return template.HTML(b.String()), err
 }

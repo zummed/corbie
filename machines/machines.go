@@ -4,13 +4,11 @@
 package machines
 
 import (
-	"bytes"
 	"cmp"
 	"context"
 	"embed"
 	"encoding/json/v2"
 	"fmt"
-	"html/template"
 	"maps"
 	"net/http"
 	"net/url"
@@ -54,16 +52,17 @@ type handler struct {
 	index *indexed
 }
 
-//go:embed machines.html toolkits.html machines.js
+//go:embed machines.js toolkits.js shared.js
 var files embed.FS
 
-var pages = template.Must(template.New("").Funcs(template.FuncMap{
-	"base":   path.Base,
-	"plural": plural,
-	"short":  short,
-	"join":   func(s []string) string { return strings.Join(s, ", ") },
-	"isDir":  func(p string) bool { return strings.HasSuffix(p, "/") },
-}).ParseFS(files, "machines.html", "toolkits.html"))
+// script serves one of the pages' scripts.
+func script(name string) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/javascript; charset=utf-8")
+		data, _ := files.ReadFile(name)
+		w.Write(data)
+	}
+}
 
 // Pages is the Machines and Toolkits pages.
 type Pages struct {
@@ -83,11 +82,9 @@ func New(c Config) (*Pages, error) {
 	mux.HandleFunc("GET /machines/stream", h.stream)
 	mux.HandleFunc("GET /toolkits", h.showToolkits)
 	mux.HandleFunc("GET /toolkits/stream", h.streamToolkits)
-	mux.HandleFunc("GET /machines/script.js", func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "text/javascript; charset=utf-8")
-		data, _ := files.ReadFile("machines.js")
-		w.Write(data)
-	})
+	mux.HandleFunc("GET /machines/script.js", script("machines.js"))
+	mux.HandleFunc("GET /toolkits/script.js", script("toolkits.js"))
+	mux.HandleFunc("GET /machines/shared.js", script("shared.js"))
 	return &Pages{Handler: mux, h: h}, nil
 }
 
@@ -118,15 +115,17 @@ func (p *Pages) Href(ctx context.Context, location, dir string, cards []string) 
 	return "", "", nil
 }
 
-// view is the Machines page as it is drawn. View is the tab chosen:
-// drawing, text or written. File is the file chosen where it is no machine
-// and is listed in .corbieignore or included.
+// view is the file chosen on the Machines page, as the page draws it: its
+// part "view". View is the tab chosen: drawing, text or written. File is the
+// file chosen where it is no machine and is listed in .corbieignore or
+// included. Base is the mark by which the page knows the file, or what
+// Corbie found in it, changed. Facts is what the file's head says it is.
 type view struct {
-	Dir, DirFull string
-	*index
+	*index     `json:"-"`
 	Open       string
 	Kind       string
 	First      string
+	Facts      string
 	Base       string
 	View       string
 	Drawable   bool
@@ -138,8 +137,21 @@ type view struct {
 	Included   []string
 	Controller bool
 	Runs       bool
-	Drawing    template.HTML
+	Drawing    *drawing.Scene
 }
+
+// list is the list of the Machines page, as the page draws it: its part
+// "files". Dir is the directory, cut short, and DirFull the whole of it;
+// Open is the file chosen.
+type list struct {
+	Dir, DirFull, Open string
+	*index
+}
+
+// disk is the mark of the file chosen as the directory now holds it: the
+// page's part "disk". The page reads the file again when it differs from
+// the mark of the file it shows.
+type disk struct{ Base string }
 
 // A place is what a machine is for, where it lives and how its runs start,
 // as its file says: its description, its location, its lifetime, what a
@@ -180,60 +192,76 @@ func (h *handler) tree(ctx context.Context) (*index, error) {
 }
 
 func (h *handler) show(w http.ResponseWriter, r *http.Request) {
-	q := r.URL.Query()
-	ix, err := h.tree(r.Context())
+	v, status, err := h.machinesPage(r.Context(), r.URL.Query())
 	if err != nil {
-		page.Error(w, http.StatusInternalServerError, err.Error())
-		return
-	}
-	v := view{Dir: short(shortly(h.Dir)), DirFull: shortly(h.Dir), index: ix, Open: q.Get("file"), View: q.Get("view"), Controller: h.Controller != nil, Runs: h.Runs}
-	if v.Open == "" && len(ix.Groups) > 0 {
-		v.Open = ix.Groups[0].Entries[0].Path
-	}
-	if v.Open != "" {
-		v.Open = path.Clean(v.Open)
-		src, err := h.opened(&v)
-		if err != nil {
-			page.Error(w, http.StatusNotFound, err.Error())
-			return
-		}
-		m := ix.machines[v.Open]
-		v.Drawable = m != nil && m.Draft != nil
-		if v.Drawable {
-			v.Place = placeOf(m)
-			if v.Uses, err = h.usesOf(r.Context(), m); err != nil {
-				page.Error(w, http.StatusInternalServerError, err.Error())
-				return
-			}
-		}
-		v.File = ix.file(v.Open)
-		v.Included = ix.included[v.Open]
-		switch {
-		case v.Drawable && v.View == "written":
-			v.Text = writtenOut(m.Draft.WrittenOut())
-		case v.Drawable && v.View != "text":
-			v.View = "drawing"
-			open := map[string]bool{}
-			for _, at := range q["open"] {
-				open[at] = true
-			}
-			u := drawing.Unfold{File: v.Open, Open: open, Href: hrefs(v.Open, open), Called: ix.called}
-			if v.Drawing, err = drawing.Unfolded(m.Draft, u); err != nil {
-				page.Error(w, http.StatusInternalServerError, err.Error())
-				return
-			}
-		default:
-			v.View, v.Text = "text", colour(src, v.Open, v.Found)
-		}
-	}
-	main, err := render("machines", v)
-	if err != nil {
-		page.Error(w, http.StatusInternalServerError, err.Error())
+		page.Error(w, status, err.Error())
 		return
 	}
 	s := h.Shell
-	s.Title, s.Current, s.Stream, s.Script, s.Main = "Machines", "Machines", "/machines/stream?file="+url.QueryEscape(v.Open), "/machines/script.js", main
+	s.Title, s.Current, s.Stream, s.Script = "Machines", "Machines", "/machines/stream?file="+url.QueryEscape(v.Open), "/machines/script.js"
+	s.Parts = []page.Part{h.listPart(v.index, v.Open), {ID: "disk", Data: disk{v.Base}}, {ID: "view", Data: v}}
 	page.Write(w, s)
+}
+
+// listPart is the part that lists the directory, with a file chosen.
+func (h *handler) listPart(ix *index, open string) page.Part {
+	return page.Part{ID: "files", Data: list{Dir: short(shortly(h.Dir)), DirFull: shortly(h.Dir), Open: open, index: ix}}
+}
+
+// machinesPage reads the file the address chooses, by default the first
+// machine, as the tab the address chooses shows it: its drawing, with the
+// cards the address names unfolded, its text, or it written out. It gives
+// the status of the answer where it cannot.
+func (h *handler) machinesPage(ctx context.Context, q url.Values) (view, int, error) {
+	ix, err := h.tree(ctx)
+	if err != nil {
+		return view{}, http.StatusInternalServerError, err
+	}
+	v := view{index: ix, Open: q.Get("file"), View: q.Get("view"), Controller: h.Controller != nil, Runs: h.Runs}
+	if v.Open == "" && len(ix.Groups) > 0 {
+		v.Open = ix.Groups[0].Entries[0].Path
+	}
+	if v.Open == "" {
+		return v, http.StatusOK, nil
+	}
+	v.Open = path.Clean(v.Open)
+	src, err := h.opened(&v)
+	if err != nil {
+		return v, http.StatusNotFound, err
+	}
+	m := ix.machines[v.Open]
+	v.Drawable = m != nil && m.Draft != nil
+	if v.Drawable {
+		v.Place = placeOf(m)
+		if v.Uses, err = h.usesOf(ctx, m); err != nil {
+			return v, http.StatusInternalServerError, err
+		}
+	}
+	v.File = ix.file(v.Open)
+	v.Included = ix.included[v.Open]
+	v.Facts = cmp.Or(v.First, "a file")
+	if v.File != nil && v.File.Listed {
+		v.Facts = "listed in .corbieignore"
+	}
+	switch {
+	case v.Drawable && v.View == "written":
+		v.Text = writtenOut(m.Draft.WrittenOut())
+	case v.Drawable && v.View != "text":
+		v.View = "drawing"
+		open := map[string]bool{}
+		for _, at := range q["open"] {
+			open[at] = true
+		}
+		u := drawing.Unfold{File: v.Open, Open: open, Href: hrefs(v.Open, open), Called: ix.called}
+		scene, err := drawing.Unfolded(m.Draft, u)
+		if err != nil {
+			return v, http.StatusInternalServerError, err
+		}
+		v.Drawing = &scene
+	default:
+		v.View, v.Text = "text", colour(src, v.Open, v.Found)
+	}
+	return v, http.StatusOK, nil
 }
 
 // opened reads the file chosen, its type and name, the problems found in
@@ -421,7 +449,7 @@ func hrefs(file string, open map[string]bool) func(string) string {
 }
 
 // stream sends the page the list as the directory now holds it, and the mark
-// of the file chosen, by which the page shows it again when it changed.
+// of the file chosen, by which the page reads it again when it changed.
 func (h *handler) stream(w http.ResponseWriter, r *http.Request) {
 	open := r.URL.Query().Get("file")
 	never := make(chan struct{})
@@ -434,15 +462,7 @@ func (h *handler) stream(w http.ResponseWriter, r *http.Request) {
 		if open != "" {
 			h.opened(&v)
 		}
-		var parts []page.Part
-		for _, id := range []string{"files", "disk"} {
-			html, err := render(id, v)
-			if err != nil {
-				return nil, err
-			}
-			parts = append(parts, page.Part{ID: id, HTML: html})
-		}
-		return parts, nil
+		return []page.Part{h.listPart(ix, open), {ID: "disk", Data: disk{v.Base}}}, nil
 	})
 }
 
@@ -547,18 +567,4 @@ func short(p string) string {
 		return string(r[:10]) + "…" + string(r[len(r)-23:])
 	}
 	return p
-}
-
-// plural writes a count and a noun.
-func plural(n int, noun string) string {
-	if n == 1 {
-		return "1 " + noun
-	}
-	return fmt.Sprintf("%d %ss", n, noun)
-}
-
-func render(name string, data any) (template.HTML, error) {
-	var b bytes.Buffer
-	err := pages.ExecuteTemplate(&b, name, data)
-	return template.HTML(b.String()), err
 }

@@ -30,7 +30,7 @@ func definition(t *testing.T, src string, files map[string]string) *machine.Defi
 
 func draw(t *testing.T, def *machine.Definition, run *Run) string {
 	t.Helper()
-	svg, err := Draw(def, run)
+	svg, err := drawn(def, run)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -38,7 +38,7 @@ func draw(t *testing.T, def *machine.Definition, run *Run) string {
 }
 
 // centre gives where a name is written on a drawing.
-func centre(t *testing.T, svg template.HTML, name string) (float64, float64) {
+func centre[S ~string](t *testing.T, svg S, name string) (float64, float64) {
 	t.Helper()
 	m := regexp.MustCompile(`<text class="title" x="([0-9.]+)" y="([0-9.]+)" text-anchor="[a-z]+">` + regexp.QuoteMeta(name) + `</text>`).FindStringSubmatch(string(svg))
 	if m == nil {
@@ -100,7 +100,7 @@ stages:
     when: ${!stages.translate.failed}
     job: ./write.js
 `, map[string]string{"write.js": script})
-	svg, _ := Draw(def, nil)
+	svg, _ := drawn(def, nil)
 	_, fetch := centre(t, svg, "fetch")
 	_, sum := centre(t, svg, "sum")
 	_, translate := centre(t, svg, "translate")
@@ -419,12 +419,25 @@ func Test_drawing_of_a_big_machine_is_quick(t *testing.T) {
 			chart.WriteString("      e" + strconv.Itoa(j) + ": s" + strconv.Itoa((i+j*j+1)%200) + "\n")
 		}
 	}
+	// The graph is read in Go, and laid out here by goja, which runs the
+	// layout about 70 times slower than a browser does: the chart takes
+	// about 150ms in Chromium.
 	for _, src := range []string{flow.String(), chart.String()} {
 		def := definition(t, src, map[string]string{"w.js": script})
 		began := time.Now()
-		draw(t, def, nil)
+		s, err := Draw(def, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
 		if took := time.Since(began); took > time.Second {
-			t.Errorf("%s took %v to draw", def.Name, took)
+			t.Errorf("%s took %v to read", def.Name, took)
+		}
+		began = time.Now()
+		if _, err := laid(s); err != nil {
+			t.Fatal(err)
+		}
+		if took := time.Since(began); took > 30*time.Second {
+			t.Errorf("%s took %v to lay out", def.Name, took)
 		}
 	}
 }
@@ -559,7 +572,7 @@ states:
       done: over
   over: { end: done }
 `, map[string]string{"w.js": script})
-	svg, _ := Draw(chart, nil)
+	svg, _ := drawn(chart, nil)
 	_, hearing := centre(t, svg, "hearing")
 	_, box := centre(t, svg, "chat#a")
 	if box <= hearing {
@@ -590,7 +603,7 @@ toolkits:
     tools:
       tell: { description: tells someone, job: { script: ./w.js, approve: true } }
 `, map[string]string{"w.js": script, "approval.yaml": "flow: approval\nstages:\n  a: { job: ./w.js }\n"})
-	svg, _ := Draw(def, nil)
+	svg, _ := drawn(def, nil)
 	_, model := centre(t, svg, "claude-sonnet-5-5")
 	_, tell := centre(t, svg, "tell")
 	_, look := centre(t, svg, "look")
@@ -615,7 +628,7 @@ toolkits:
 	if n := strings.Count(text, `class="edge`); n != 2 {
 		t.Errorf("%d arrows, and an agent has one from its model to its tools and one to its reply:\n%s", n, text)
 	}
-	running, _ := Draw(def, &Run{Steps: []Step{{Shown: machine.Shown{Turn: 1}, Asked: []string{"blob_read"}}}, Going: []string{"blob_read"}})
+	running, _ := drawn(def, &Run{Steps: []Step{{Shown: machine.Shown{Turn: 1}, Asked: []string{"blob_read"}}}, Going: []string{"blob_read"}})
 	for _, svg := range []string{text, string(running)} {
 		if strings.Contains(svg, "blob_read") || strings.Contains(svg, ">open<") {
 			t.Errorf("a tool of Corbie's own is drawn, and no definition wrote it")
@@ -668,7 +681,7 @@ stages:
 		for _, p := range open {
 			u.Open[p] = true
 		}
-		svg, err := Unfolded(draft, u)
+		svg, err := unfolded(draft, u)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -720,7 +733,7 @@ stages:
 
 	// On a run's page, a card links to the run its job started, and says
 	// what that run is, as on the Machines page.
-	run := string(must(Draw(draft.Definition, &Run{Children: map[string]Child{"outer": {ID: "a-client/1", Machine: "b", Type: "flow"}}})))
+	run := string(must(drawn(draft.Definition, &Run{Children: map[string]Child{"outer": {ID: "a-client/1", Machine: "b", Type: "flow"}}})))
 	if !strings.Contains(run, `<a href="/run/a-client/1">`) || !strings.Contains(run, ">flow: b<") {
 		t.Errorf("a card whose job started a run does not link to it:\n%s", run)
 	}
@@ -729,13 +742,13 @@ stages:
 	}
 	// A job that started no run yet says what its machine is, from the
 	// definition the run was started from.
-	run = string(must(Draw(draft.Definition, &Run{Machines: map[string]Machine{"./b.yaml": {Type: "flow", Name: "b"}}})))
+	run = string(must(drawn(draft.Definition, &Run{Machines: map[string]Machine{"./b.yaml": {Type: "flow", Name: "b"}}})))
 	if !strings.Contains(run, ">flow: b<") || strings.Contains(run, "<a href") {
 		t.Errorf("a card whose job started no run does not say its machine's type and name:\n%s", run)
 	}
 }
 
-func must(svg template.HTML, err error) template.HTML {
+func must[S ~string](svg S, err error) S {
 	if err != nil {
 		panic(err)
 	}
@@ -802,7 +815,7 @@ toolkits:
 		t.Errorf("the folded toolkits are not after the others: home %v, net %v, look %v, folded %v", hx, nx, lx, bx)
 	}
 
-	page, _ := Draw(def, nil)
+	page, _ := drawn(def, nil)
 	if strings.Contains(string(page), "folded") || !strings.Contains(string(page), ">disk</text>") {
 		t.Errorf("a drawing of no run folds a toolkit")
 	}
@@ -930,7 +943,7 @@ stages:
 		}
 		return ""
 	}}
-	page := string(must(Unfolded(draft, u)))
+	page := string(must(unfolded(draft, u)))
 	if !strings.Contains(page, `<a href="/machines?file=ci/pipeline.yaml"><g class="state stage">`) || strings.Count(page, "<a href") != 1 {
 		t.Errorf("a call's card does not link to the machine it calls:\n%s", page)
 	}

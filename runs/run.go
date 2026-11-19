@@ -6,8 +6,8 @@ import (
 	"encoding/json/jsontext"
 	"encoding/json/v2"
 	"errors"
-	"html/template"
 	"maps"
+	"net/url"
 	"slices"
 	"strconv"
 	"strings"
@@ -23,9 +23,27 @@ import (
 	"github.com/zummed/corbie/store"
 )
 
-// runParts are the parts of a run's page that follow the run. The drawing
-// and the details follow the row selected, which the page asks for.
-var runParts = []string{"summary", "path", "steps", "waits", "output", "children"}
+// runParts gives the parts of a run's page that follow the run: Steps only
+// for a run in a tree of the UI's client. The drawing and the details
+// follow the row selected, which the page asks for.
+func runParts(v runView) []page.Part {
+	r := v.Run
+	parts := []page.Part{
+		{ID: "page", Data: map[string]any{"ID": r.ID, "Mine": v.Mine}},
+		{ID: "summary", Data: map[string]any{"ID": r.ID, "Machine": r.Machine, "Type": r.Type, "Status": r.Status, "Failure": r.Failure,
+			"Title": r.Title, "Location": r.Location, "Address": v.Address, "At": v.At, "Defined": v.Defined,
+			"Started": v.Started, "Ended": v.Ended, "Took": v.Took, "Cancel": v.Cancel}},
+		{ID: "path", Data: v.Path},
+		{ID: "waits", Data: map[string]any{"ID": r.ID, "Ended": r.HasEnded(), "Waits": v.Waits, "Reply": v.Reply, "Send": v.Send, "Labels": v.Labels}},
+		{ID: "output", Data: map[string]any{"Ended": r.HasEnded(), "Refused": r.Refused, "Layer": r.Layer, "Fix": r.Fix, "Error": r.Error,
+			"Output": v.Output, "Used": v.Used, "Files": v.Files}},
+		{ID: "children", Data: v.Children},
+	}
+	if v.Mine {
+		parts = append(parts, page.Part{ID: "steps", Data: map[string]any{"Ended": r.HasEnded(), "Rows": v.Rows, "Count": v.Count, "Dated": v.Dated}})
+	}
+	return parts
+}
 
 // runView is a run's page as it is drawn.
 type runView struct {
@@ -63,14 +81,14 @@ type link struct {
 
 // shown is a run as of one row of Steps: its drawing as it was at the
 // row's step, and the row's details, with the entry of the record it is
-// from.
+// from. It has no drawing where the row's step cannot be read.
 type shown struct {
 	Row           *stepRow
 	Defined       *definedAt
 	Page          string
 	Type          string
 	Time          string
-	Drawing       template.HTML
+	Drawing       *drawing.Scene
 	Lines         []line
 	Input, Output string
 }
@@ -266,8 +284,12 @@ func (h *handler) shownAt(ctx context.Context, page string, r *stepRow, entries 
 	}
 	marks := marksOf(r.Run.ID, cut, step.State.Status, st, byID)
 	marks.Machines = d.machines
-	s.Drawing, err = drawing.Draw(d.def, marks)
-	return s, err
+	scene, err := drawing.Draw(d.def, marks)
+	if err != nil {
+		return s, err
+	}
+	s.Drawing = &scene
+	return s, nil
 }
 
 // cutAt gives the steps of a row's run up to the row's step, and the
@@ -440,7 +462,7 @@ func (h *handler) runOf(ctx context.Context, id string, entries []client.Entry, 
 		}
 		for _, p := range slices.Sorted(maps.Keys(files)) {
 			f := files[p]
-			v.Files = append(v.Files, file{Path: p, Type: f.Type, Size: size(f.Size), Href: "/run/" + id + "/file?path=" + template.URLQueryEscaper(p)})
+			v.Files = append(v.Files, file{Path: p, Type: f.Type, Size: size(f.Size), Href: "/run/" + id + "/file?path=" + url.QueryEscape(p)})
 		}
 	}
 	return v, nil

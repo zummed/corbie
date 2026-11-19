@@ -167,8 +167,9 @@ type stepRow struct {
 	Trace *trace
 	// What the row's details show: its facts, and what went in and came
 	// out.
+	// In and Out reach the page as the details' Input and Output.
 	Facts   []fact
-	In, Out any
+	In, Out any `json:"-"`
 }
 
 // A word is part of what a row says; a name is bold, and the run a send

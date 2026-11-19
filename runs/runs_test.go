@@ -18,6 +18,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/zummed/corbie-ui/drawing"
 	"github.com/zummed/corbie-ui/page"
 	"github.com/zummed/corbie/client"
 	"github.com/zummed/corbie/client/cli"
@@ -64,6 +65,98 @@ func lineNames(s section) []string {
 		out = append(out, l.Name+l.Key)
 	}
 	return out
+}
+
+// partsOf reads the parts a page carries for its script to draw, by name.
+func partsOf(t *testing.T, body string) map[string]jsontext.Value {
+	t.Helper()
+	m := regexp.MustCompile(`(?s)<script type="application/json" id="parts">(.*?)</script>`).FindStringSubmatch(body)
+	if m == nil {
+		t.Fatalf("the page carries no parts:\n%s", body)
+	}
+	var parts map[string]jsontext.Value
+	if err := json.Unmarshal([]byte(m[1]), &parts); err != nil {
+		t.Fatal(err)
+	}
+	return parts
+}
+
+// decoded reads a value the UI sent as JSON.
+func decoded[T any](t *testing.T, data []byte) T {
+	t.Helper()
+	var v T
+	if err := json.Unmarshal(data, &v); err != nil {
+		t.Fatalf("%v:\n%s", err, data)
+	}
+	return v
+}
+
+// partOf reads one part of a page.
+func partOf[T any](t *testing.T, parts map[string]jsontext.Value, id string) T {
+	t.Helper()
+	data, ok := parts[id]
+	if !ok {
+		t.Fatalf("the page has no part %s", id)
+	}
+	return decoded[T](t, data)
+}
+
+// The parts of a run's page, as the page reads them.
+type (
+	stepsPart struct {
+		Ended bool
+		Rows  []stepRow
+		Count int
+	}
+	waitsPart struct {
+		ID          string
+		Ended       bool
+		Waits       []wait
+		Reply, Send bool
+	}
+	summaryPart struct {
+		ID, Title, Address, At, Location, Cancel string
+		Defined                                  *definedAt
+	}
+)
+
+// allRows gives every row, each group's rows after the row that starts it.
+func allRows(rows []stepRow) []stepRow {
+	var out []stepRow
+	for _, r := range rows {
+		out = append(out, r)
+		if r.Group != nil {
+			out = append(out, allRows(r.Group.Rows)...)
+		}
+	}
+	return out
+}
+
+// saying gives the rows that say text, and whether the name is bold in one
+// of them.
+func saying(rows []stepRow, text, bold string) (found, named bool) {
+	for _, r := range allRows(rows) {
+		if !strings.Contains(r.Said(), text) {
+			continue
+		}
+		found = true
+		named = named || bold == "" || slices.ContainsFunc(r.What, func(w word) bool { return w.Bold && w.Text == bold })
+	}
+	return found, named
+}
+
+// marked gives the names of a statechart's states marked now, and whether
+// a transition is marked taken.
+func marked(s *drawing.Scene) (now []string, taken bool) {
+	if s == nil || s.Chart == nil {
+		return nil, false
+	}
+	for _, st := range s.Chart.States {
+		if st.Mark == "now" {
+			now = append(now, st.Name)
+		}
+	}
+	return now, slices.ContainsFunc(s.Chart.Rules, func(r drawing.Rule) bool { return r.Taken })
 }
 
 func Test_runs_list_roots_by_section(t *testing.T) {
@@ -115,10 +208,10 @@ func Test_runs_list_roots_by_section(t *testing.T) {
 	if digest.When != page.When(at.Add(-15*time.Minute), at) {
 		t.Errorf("an ended line gives the time %q, not when it ended", digest.When)
 	}
-	// An ended line gives how many runs are under it only where there are
-	// any.
-	if html, err := render("ended", v); err != nil || !strings.Contains(string(html), "1 run under it") || strings.Contains(string(html), "0 runs") {
-		t.Errorf("the ended lines are drawn as %v:\n%s", err, html)
+	// An ended line gives how many runs are under it, which the page writes
+	// only where there are any.
+	if under := listParts(v)[3]; under.ID != "ended" || under.Data.(section).Lines[0].Under != 1 {
+		t.Errorf("the ended lines are sent as %+v", under)
 	}
 	long := []*client.Run{run("a-client/1", "conversation", "statechart", "running", time.Hour, 0, nil)}
 	for i, m := range []string{"turn", "support", "approval", "slack-chat-ask", "press"} {
@@ -177,8 +270,9 @@ func Test_runs_locations_are_listed_by_tree(t *testing.T) {
 	// The page draws Locations beside the sections.
 	lc, viewer, _ := local(t)
 	body := get(t, New(Config{List: &listed{from: viewer}, Lister: viewer, Client: lc.Client, Interval: time.Second, Shell: page.Shell{}}), "/runs")
-	if !regexp.MustCompile(`<nav class="panel locs" id="locations"[\s\S]*<a class="tree" href="/runs\?at=%2Freview-[0-9a-f]+"`).MatchString(body) {
-		t.Errorf("the page does not list the review's tree in Locations:\n%s", body)
+	locations := partOf[struct{ Clients []clientPlaces }](t, partsOf(t, body), "locations")
+	if len(locations.Clients) != 1 || len(locations.Clients[0].Trees) != 1 || !regexp.MustCompile(`^/runs\?at=%2Freview-[0-9a-f]+$`).MatchString(locations.Clients[0].Trees[0].Href) {
+		t.Errorf("the page does not list the review's tree in Locations: %+v", locations)
 	}
 }
 
@@ -217,8 +311,8 @@ func Test_runs_line_unfolds_to_the_runs_its_root_started(t *testing.T) {
 	if got := strings.Join(ids, " "); got != "30 29 28 27 26 25 24 23 22 21 20 19 18 17 16 15 14 13 12 11" {
 		t.Errorf("the rows are %s, not the newest twenty", got)
 	}
-	if html, err := render("line", l); err != nil || !strings.Contains(string(html), ">2 runs</span>") || strings.Contains(string(html), "0 runs") || strings.Contains(string(html), "<i>·</i></span>") {
-		t.Errorf("a row gives the runs under it where there are none, or %v:\n%s", err, html)
+	if failed := l.Rows[4]; failed.Under != 0 || l.Rows[0].Under != 0 {
+		t.Errorf("a row gives runs under it where there are none: %+v", failed)
 	}
 	newest, answered, failed := l.Rows[1], l.Rows[3], l.Rows[4]
 	if newest.Name != "turn" || len(newest.Front) != 3 || newest.Front[2].Machine != "slack-chat-ask" || newest.Says != "ticket verdict" || newest.Under != 2 || newest.Took != "" {
@@ -235,23 +329,22 @@ func Test_runs_line_unfolds_to_the_runs_its_root_started(t *testing.T) {
 	// button at its start unfolds it.
 	lc, viewer, _ := local(t)
 	body := get(t, New(Config{List: &listed{from: viewer}, Lister: viewer, Client: lc.Client, Interval: time.Second, Shell: page.Shell{}}), "/runs")
-	m := regexp.MustCompile(`<summary class="line" data-key="([^"]+)"[^>]*data-href="([^"]+)">`).FindStringSubmatch(body)
-	if m == nil || m[2] != "/run/"+m[1] {
-		t.Errorf("a line does not open its root's page:\n%s", body)
+	if busy := partOf[section](t, partsOf(t, body), "busy"); len(busy.Lines) != 1 || busy.Lines[0].ID == "" || len(busy.Lines[0].Rows) == 0 {
+		t.Errorf("the page has no line to open and unfold: %+v", busy)
 	}
-	if !regexp.MustCompile(`<button class="unfold" type="button"[^>]*></button></summary>`).MatchString(body) {
-		t.Errorf("a line has no button that unfolds it:\n%s", body)
+	for _, want := range []string{`onClick=${e => go(href())(e)}`, `<button class="unfold" type="button"`} {
+		if !strings.Contains(string(script), want) {
+			t.Errorf("a line's script does not have %s", want)
+		}
 	}
 }
 
 func Test_runs_own_runs_wait_by_name(t *testing.T) {
 	l, viewer, _ := local(t)
 	h := New(Config{List: &listed{from: viewer}, Lister: viewer, Client: l.Client, Interval: time.Second, Shell: page.Shell{}})
-	body := get(t, h, "/runs")
-	for _, want := range []string{`review</a><span class="dim">[waiting]</span>`, "ticket verdict, timer too_long due "} {
-		if !strings.Contains(body, want) {
-			t.Errorf("the line of the client's own run does not show %s:\n%s", want, body)
-		}
+	busy := partOf[section](t, partsOf(t, get(t, h, "/runs")), "busy")
+	if len(busy.Lines) != 1 || busy.Lines[0].Machine != "review" || busy.Lines[0].Shown != "waiting" || !strings.HasPrefix(busy.Lines[0].Waits, "ticket verdict, timer too_long due ") {
+		t.Errorf("the line of the client's own run is %+v", busy.Lines)
 	}
 }
 
@@ -567,13 +660,29 @@ func Test_runs_own_run_shown_in_full(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{tickets["verdict"], "<span>timer too_long due ", "entered <b>drafting</b>", "left <b>drafting</b>, entered <b>waiting</b>", "<b>&lt;-</b> done from drafting", `<span class="i" title="review">review</span>`, `class="state now"`, `class="edge taken"`, `action="/run/` + id + `/send"`} {
-		if !strings.Contains(body, want) {
-			t.Errorf("the run's own page does not show %s", want)
+	parts := partsOf(t, body)
+	waits := partOf[waitsPart](t, parts, "waits")
+	if !slices.ContainsFunc(waits.Waits, func(w wait) bool { return w.Ticket == "verdict" && w.Value == tickets["verdict"] }) ||
+		!slices.ContainsFunc(waits.Waits, func(w wait) bool { return strings.HasPrefix(w.Text, "timer too_long due ") }) || !waits.Send || waits.ID != id {
+		t.Errorf("the run's own page waits on %+v", waits)
+	}
+	if slices.ContainsFunc(waits.Waits, func(w wait) bool { return strings.Contains(w.Text, "events at") }) {
+		t.Errorf("the run's page lists events at a key as something it waits on")
+	}
+	steps := partOf[stepsPart](t, parts, "steps")
+	for _, want := range [][2]string{{"entered drafting", "drafting"}, {"left drafting, entered waiting", "waiting"}} {
+		if found, named := saying(steps.Rows, want[0], want[1]); !found || !named {
+			t.Errorf("the run's own Steps do not say %s, with %s bold", want[0], want[1])
 		}
 	}
-	if strings.Contains(body, "events at") {
-		t.Errorf("the run's page lists events at a key as something it waits on")
+	s := partOf[shown](t, parts, "shown")
+	if !slices.ContainsFunc(s.Lines, func(l line) bool {
+		return l.Way == "in" && strings.HasPrefix(l.Text, "done from drafting") && l.Machine == "review"
+	}) {
+		t.Errorf("the record of the run's newest row is %+v", s.Lines)
+	}
+	if now, taken := marked(s.Drawing); len(now) == 0 || !taken {
+		t.Errorf("the run's drawing has %v now, and a transition taken: %v", now, taken)
 	}
 }
 
@@ -582,20 +691,13 @@ func Test_runs_a_step_shows_its_run_as_it_was(t *testing.T) {
 	// transition taken.
 	l, viewer, id := local(t)
 	h := New(Config{List: &listed{from: viewer}, Lister: viewer, Client: l.Client, Interval: time.Second, Shell: page.Shell{}})
-	var parts []map[string]string
-	if err := json.Unmarshal([]byte(get(t, h, "/run/"+id+"/at?row="+url.QueryEscape(id+"/1/0"))), &parts); err != nil {
-		t.Fatal(err)
+	answer := get(t, h, "/run/"+id+"/at?row="+url.QueryEscape(id+"/1/0"))
+	s := decoded[shown](t, []byte(answer))
+	if now, taken := marked(s.Drawing); s.Row == nil || s.Row.Step != 1 || len(now) != 1 || now[0] != "drafting" || taken {
+		t.Errorf("the run is not drawn as of its first step: %v, taken %v, at %+v", now, taken, s.Row)
 	}
-	if len(parts) != 2 || parts[0]["id"] != "view" || parts[1]["id"] != "details" {
-		t.Fatalf("the step is answered with %v", parts)
-	}
-	view, details := parts[0]["html"], parts[1]["html"]
-	now := regexp.MustCompile(`<g class="state now">.*?<text class="title"[^>]*>([^<]*)</text>`).FindStringSubmatch(view)
-	if !strings.Contains(view, "as of step 1") || now == nil || now[1] != "drafting" || strings.Contains(view, "edge taken") {
-		t.Errorf("the run is not drawn as of its first step: %v\n%s", now, view)
-	}
-	if !strings.Contains(details, "entered drafting") || !strings.Contains(details, "<b>&lt;-</b> start") || strings.Contains(details, "done from drafting") {
-		t.Errorf("the details are not those of the first step:\n%s", details)
+	if s.Row == nil || s.Row.Said() != "entered drafting" || !slices.ContainsFunc(s.Lines, func(l line) bool { return l.Way == "in" && l.Text == "start" }) || strings.Contains(answer, "done from drafting") {
+		t.Errorf("the details are not those of the first step:\n%s", answer)
 	}
 
 	// A send names its address and links to the run that took it or that
@@ -776,20 +878,25 @@ func Test_runs_other_clients_run_shows_no_record(t *testing.T) {
 	}
 	someone := client.New(other, viewer.Controller, viewer.Store)
 	h := New(Config{List: &listed{from: viewer}, Lister: viewer, Client: someone, Interval: time.Second, Shell: page.Shell{}})
-	body := get(t, h, "/run/"+id)
-	if !strings.Contains(body, "running") || !strings.Contains(body, "a run in another client's tree: only its status can be read") || strings.Contains(body, `id="steps"`) {
-		t.Errorf("another client's run does not show its status alone:\n%s", body)
+	parts := partsOf(t, get(t, h, "/run/"+id))
+	if summary := partOf[map[string]any](t, parts, "summary"); summary["Status"] != "running" || summary["Cancel"] != nil {
+		t.Errorf("another client's run does not show its status alone: %v", summary)
 	}
-	for _, never := range []string{"<b>&lt;-</b> start", "ticket verdict </span><code", `class="state now"`, "/cancel"} {
-		if strings.Contains(body, never) {
-			t.Errorf("another client's run shows %s", never)
-		}
+	if _, ok := parts["steps"]; ok || partOf[map[string]any](t, parts, "page")["Mine"] != false {
+		t.Errorf("another client's run shows its Steps")
 	}
-	if !strings.Contains(body, `action="/run/`+id+`/send"`) {
+	if s := partOf[shown](t, parts, "shown"); s.Row != nil || s.Drawing != nil || len(s.Lines) != 0 {
+		t.Errorf("another client's run shows its record: %+v", s)
+	}
+	waits := partOf[waitsPart](t, parts, "waits")
+	if slices.ContainsFunc(waits.Waits, func(w wait) bool { return w.Value != "" }) {
+		t.Errorf("another client's run shows a ticket's value: %+v", waits.Waits)
+	}
+	if !waits.Send {
 		t.Errorf("another client's running statechart is not offered Send, whose receipt says whether it is taken")
 	}
-	if !strings.Contains(body, `placeholder="a ticket's value"`) {
-		t.Errorf("another client's running run does not take a ticket's value to answer it:\n%s", body[strings.Index(body, `id="waits"`):])
+	if !waits.Reply {
+		t.Errorf("another client's running run does not take a ticket's value to answer it: %+v", waits)
 	}
 }
 
@@ -898,14 +1005,32 @@ func Test_runs_a_run_is_named_by_its_title(t *testing.T) {
 	if once := counted.reads.Load(); get(t, h, "/runs") != list || counted.reads.Load() != once {
 		t.Errorf("the list drawn again read %d more times", counted.reads.Load()-once)
 	}
-	if want := "<span class=\"title named\" title=\"door for zummed\n/house/door#door:7\n" + id + "\" style=\"--key: 7ch\"><span>door for zummed</span><span class=\"key\">#door:7</span></span>"; !strings.Contains(list, want) {
-		t.Errorf("the run's line is not named by its title, %s:\n%s", want, list)
+	lineOf := func(list string) rootLine {
+		t.Helper()
+		parts := partsOf(t, list)
+		for _, name := range []string{"busy", "idle", "singletons", "ended"} {
+			for _, l := range partOf[section](t, parts, name).Lines {
+				if l.ID == id {
+					return l
+				}
+			}
+		}
+		t.Fatalf("no line lists %s:\n%s", id, list)
+		return rootLine{}
+	}
+	if l := lineOf(list); l.Name != "door for zummed" || l.Key != "#door:7" || !l.Titled || l.Tip != "door for zummed\n/house/door#door:7\n"+id {
+		t.Errorf("the run's line is not named by its title: %+v", l)
 	}
 	body := get(t, h, "/run/"+id)
-	for _, want := range []string{`<span class="title" title="door for zummed">door for zummed</span>`, `<a class="key" href="/runs?at=%2Fhouse%2Fdoor" title="the runs at /house/door">/house/door#door:7</a>`, "<title>door for zummed · Corbie</title>", "<span class=\"who\" title=\"door for zummed\n/house/door#door:7\n" + id + "\">"} {
-		if !strings.Contains(body, want) {
-			t.Errorf("the run's page does not show %s", want)
-		}
+	parts := partsOf(t, body)
+	if s := partOf[summaryPart](t, parts, "summary"); s.Title != "door for zummed" || s.Address != "/house/door#door:7" || s.At != "/runs?at=%2Fhouse%2Fdoor" || s.Location != "/house/door" {
+		t.Errorf("the run's page is headed %+v", s)
+	}
+	if !strings.Contains(body, "<title>door for zummed · Corbie</title>") {
+		t.Errorf("the run's page is not titled by its title")
+	}
+	if rows := partOf[stepsPart](t, parts, "steps").Rows; len(rows) == 0 || rows[0].Run.Tip != "door for zummed\n/house/door#door:7\n"+id {
+		t.Errorf("the run's rows name it as %+v", rows)
 	}
 
 	// Where the UI offers Machines, the run's page links to its machine,
@@ -917,16 +1042,16 @@ func Test_runs_a_run_is_named_by_its_title(t *testing.T) {
 		return "/machines?file=door.yaml", "door.yaml", nil
 	}
 	h = New(Config{List: &listed{from: viewer}, Lister: viewer, Client: c, Machine: machine, Interval: time.Second, Shell: page.Shell{}})
-	if body := get(t, h, "/run/"+id); !strings.Contains(body, `<a class="def" href="/machines?file=door.yaml"`) || len(asked) == 0 || asked[0] != "/house/door true []" {
-		t.Errorf("the run's page asked for its machine as %v:\n%s", asked, body)
+	if s := partOf[summaryPart](t, partsOf(t, get(t, h, "/run/"+id)), "summary"); s.Defined == nil || s.Defined.Href != "/machines?file=door.yaml" || len(asked) == 0 || asked[0] != "/house/door true []" {
+		t.Errorf("the run's page asked for its machine as %v, and links to %+v", asked, s.Defined)
 	}
 
 	// A UI that acts as no client reads no title, and names the run by
 	// its key.
 	h = New(Config{List: &listed{from: viewer}, Lister: viewer, Interval: time.Second, Shell: page.Shell{}})
 	list, body = get(t, h, "/runs"), get(t, h, "/run/"+id)
-	if !strings.Contains(list, "title=\"/house/door#door:7\n"+id+"\"><span>/house/door#door:7</span></span>") || strings.Contains(list+body, "door for") {
-		t.Errorf("with no client the run is not named by its address:\n%s", list)
+	if l := lineOf(list); l.Name != "/house/door#door:7" || l.Key != "" || l.Titled || l.Tip != "/house/door#door:7\n"+id || strings.Contains(list+body, "door for") {
+		t.Errorf("with no client the run is not named by its address: %+v", l)
 	}
 
 	// Nor does a UI acting as another client, on the same store.
@@ -936,8 +1061,8 @@ func Test_runs_a_run_is_named_by_its_title(t *testing.T) {
 	}
 	h = New(Config{List: &listed{from: viewer}, Lister: viewer, Client: client.New(other, l.Client.Controller, l.Client.Store), Interval: time.Second, Shell: page.Shell{}})
 	list, body = get(t, h, "/runs"), get(t, h, "/run/"+id)
-	if !strings.Contains(list, "title=\"/house/door#door:7\n"+id+"\"><span>/house/door#door:7</span></span>") || strings.Contains(list+body, "door for") {
-		t.Errorf("another client's run is not named by its address:\n%s", list)
+	if l := lineOf(list); l.Name != "/house/door#door:7" || l.Titled || l.Tip != "/house/door#door:7\n"+id || strings.Contains(list+body, "door for") {
+		t.Errorf("another client's run is not named by its address: %+v", l)
 	}
 
 	// Each title is read once while the run is listed, though its head
@@ -1064,16 +1189,22 @@ func finished(t *testing.T, c *client.Client, id string) *client.Run {
 }
 
 // groupOf gives the address from which a run's page reads the rows of the
-// group of the row that says text.
+// group of the row that says text, as runs.js writes it.
 func groupOf(t *testing.T, body, text string) string {
 	t.Helper()
-	for _, m := range regexp.MustCompile(`(?s)<li class="group trace"[^>]* data-load="([^"]+)"[^>]*>(.*?)</div>`).FindAllStringSubmatch(body, -1) {
-		if strings.Contains(regexp.MustCompile(`<[^>]+>`).ReplaceAllString(m[2], ""), text) {
-			return strings.ReplaceAll(m[1], "&amp;", "&")
+	for _, r := range allRows(partOf[stepsPart](t, partsOf(t, body), "steps").Rows) {
+		if r.Trace != nil && strings.Contains(r.Said(), text) {
+			return fmt.Sprintf("/run/%s/group?row=%s&depth=%d", r.Run.ID, url.QueryEscape(r.Key), r.Depth)
 		}
 	}
 	t.Fatalf("no group says %s:\n%s", text, body)
 	return ""
+}
+
+// rowsAnswered reads the rows the UI answered for a group.
+func rowsAnswered(t *testing.T, h http.Handler, address string) []stepRow {
+	t.Helper()
+	return decoded[[]stepRow](t, []byte(get(t, h, address)))
 }
 
 func Test_runs_a_send_shows_the_rows_it_caused(t *testing.T) {
@@ -1108,24 +1239,34 @@ states:
 
 	h := New(Config{List: &listed{from: viewer}, Lister: viewer, Client: l.Client, Interval: time.Second, Shell: page.Shell{}})
 	body := get(t, h, "/run/"+desk)
-	if !strings.Contains(body, `data-run="`+room+`"`) || strings.Contains(body, "entered <b>closed</b>") {
-		t.Errorf("the desk's page does not fold the room's rows into its sends, read later:\n%s", body)
+	rows := partOf[stepsPart](t, partsOf(t, body), "steps").Rows
+	if !slices.ContainsFunc(allRows(rows), func(r stepRow) bool { return r.Trace != nil && r.Trace.Run.ID == room }) {
+		t.Errorf("the desk's page does not fold the room's rows into its sends: %+v", rows)
 	}
-	started := get(t, h, groupOf(t, body, "knock to /house/room#1 · started room"))
-	for _, want := range []string{"started by", "knock</b> from", "--d: 1"} {
-		if !strings.Contains(started, want) {
-			t.Errorf("the group of the send that started the room does not show %s:\n%s", want, started)
-		}
+	if found, _ := saying(rows, "entered closed", ""); found {
+		t.Errorf("the desk's page holds the room's rows before they are read")
 	}
-	if strings.Contains(started, "leave</b> from") {
-		t.Errorf("the group of the first send holds the second:\n%s", started)
+	depth1 := func(rows []stepRow) bool {
+		return slices.ContainsFunc(rows, func(r stepRow) bool { return r.Depth == 1 })
 	}
-	if text := regexp.MustCompile(`<[^>]+>`).ReplaceAllString(started, ""); !strings.Contains(text, "⇠ knock from /house/desk") {
-		t.Errorf("the room's row of the knock does not say who sent it:\n%s", text)
+	started := rowsAnswered(t, h, groupOf(t, body, "knock to /house/room#1 · started room"))
+	if by, _ := saying(started, "started by", ""); !by || !depth1(started) {
+		t.Errorf("the group of the send that started the room is %+v", started)
 	}
-	left := get(t, h, groupOf(t, body, "leave to /house/room#1 · room"))
-	if !strings.Contains(left, "leave</b> from") || !strings.Contains(left, "entered <b>closed</b>") || strings.Contains(left, "started by") {
-		t.Errorf("the group of the second send is not the room from the step that took it:\n%s", left)
+	if _, named := saying(started, "knock from", "knock"); !named {
+		t.Errorf("the group of the send that started the room does not name the knock")
+	}
+	if found, _ := saying(started, "leave from", ""); found {
+		t.Errorf("the group of the first send holds the second: %+v", started)
+	}
+	if found, _ := saying(started, "⇠ knock from /house/desk", ""); !found {
+		t.Errorf("the room's row of the knock does not say who sent it: %+v", started)
+	}
+	left := rowsAnswered(t, h, groupOf(t, body, "leave to /house/room#1 · room"))
+	_, leave := saying(left, "leave from", "leave")
+	_, closed := saying(left, "entered closed", "closed")
+	if by, _ := saying(left, "started by", ""); !leave || !closed || by {
+		t.Errorf("the group of the second send is not the room from the step that took it: %+v", left)
 	}
 
 	// Another client reads neither run, and its page offers no group.
@@ -1184,27 +1325,31 @@ func Test_runs_a_call_shows_the_run_it_called(t *testing.T) {
 
 	h := New(Config{List: &listed{from: viewer}, Lister: viewer, Client: l.Client, Interval: time.Second, Shell: page.Shell{}})
 	body := get(t, h, "/run/"+trip)
-	group := get(t, h, groupOf(t, body, "called /lab/weather · weather"))
-	for _, want := range []string{"started by", "stage <b>look</b> done", `data-run="` + weather + `"`, "--d: 1"} {
-		if !strings.Contains(group, want) {
-			t.Errorf("the call's group does not show %s:\n%s", want, group)
+	group := rowsAnswered(t, h, groupOf(t, body, "called /lab/weather · weather"))
+	by, _ := saying(group, "started by", "")
+	look, named := saying(group, "stage look done", "look")
+	if !by || !look || !named || !slices.ContainsFunc(group, func(r stepRow) bool { return r.Run.ID == weather && r.Depth == 1 }) {
+		t.Errorf("the call's group does not show the weather's rows: %+v", group)
+	}
+	var call *trace
+	for _, r := range allRows(partOf[stepsPart](t, partsOf(t, body), "steps").Rows) {
+		if r.Trace != nil && r.Trace.Call {
+			call = r.Trace
 		}
 	}
-	if text := regexp.MustCompile(`<[^>]+>`).ReplaceAllString(group, ""); !strings.Contains(text, "stage look done") {
-		t.Errorf("the call's group does not read stage look done:\n%s", text)
-	}
-	if !strings.Contains(body, `<span class="name">weather for 2 days</span> · <span class="st done">done</span>`) {
-		t.Errorf("the call's row does not end with the called run's title and status:\n%s", body)
+	if call == nil || call.Run.Title != "weather for 2 days" || call.Status != "done" {
+		t.Errorf("the call's row does not end with the called run's title and status: %+v", call)
 	}
 	// A group opened inside another is one level below the row that opened
 	// it, however deep that row is.
-	if deep := get(t, h, strings.Replace(groupOf(t, body, "called /lab/weather · weather"), "depth=0", "depth=3", 1)); !strings.Contains(deep, "--d: 4") || strings.Contains(deep, "--d: 1") {
-		t.Errorf("a group opened at depth 3 is not at depth 4:\n%s", deep)
+	deep := rowsAnswered(t, h, strings.Replace(groupOf(t, body, "called /lab/weather · weather"), "depth=0", "depth=3", 1))
+	if !slices.ContainsFunc(deep, func(r stepRow) bool { return r.Depth == 4 }) || slices.ContainsFunc(deep, func(r stepRow) bool { return r.Depth == 1 }) {
+		t.Errorf("a group opened at depth 3 is not at depth 4: %+v", deep)
 	}
 
 	// The weather's page begins with the trip, which called it.
-	if page := get(t, h, "/run/"+weather); !strings.Contains(page, `<span class="sep send" title="a call of the run before started it">⇢</span>`) {
-		t.Errorf("the called run's path does not begin with the call:\n%s", page)
+	if path := partOf[[]link](t, partsOf(t, get(t, h, "/run/"+weather)), "path"); len(path) < 2 || path[0].ID != trip || path[1].Sent != "a call" {
+		t.Errorf("the called run's path does not begin with the call: %+v", path)
 	}
 }
 
@@ -1216,19 +1361,13 @@ func Test_runs_follow_returns_to_the_newest_row(t *testing.T) {
 		status string
 		follow bool
 	}{{"running", true}, {"done", false}} {
-		html, err := render("steps", runView{Run: run("a-client/1", "conversation", "statechart", c.status, time.Hour, 0, nil)})
-		if err != nil {
-			t.Fatal(err)
-		}
-		if got := strings.Contains(string(html), `<button class="btn sm" type="button" data-follow hidden`); got != c.follow || strings.Contains(string(html), "Follow") != c.follow {
-			t.Errorf("a %s run's Steps have Follow %v:\n%s", c.status, got, html)
+		parts := runParts(runView{Run: run("a-client/1", "conversation", "statechart", c.status, time.Hour, 0, nil), Mine: true})
+		i := slices.IndexFunc(parts, func(p page.Part) bool { return p.ID == "steps" })
+		if i < 0 || parts[i].Data.(map[string]any)["Ended"] != !c.follow {
+			t.Errorf("a %s run's Steps are sent as %+v", c.status, parts)
 		}
 	}
-	script, err := files.ReadFile("runs.js")
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, want := range []string{"closest('[data-follow]')", "moved = false;", "follow.hidden = !moved"} {
+	for _, want := range []string{"!s().Ended && picked()", ">Follow</button>", "setPicked(null)"} {
 		if !strings.Contains(string(script), want) {
 			t.Errorf("the script does not have %s", want)
 		}
@@ -1269,19 +1408,21 @@ func Test_runs_a_run_links_to_its_machine(t *testing.T) {
 	// The link is beside the run's address and in the head of its
 	// drawing, with a tooltip that the file is as it is now.
 	d := &definedAt{Href: "/machines?file=schedules%2Faway.yaml&open=pause", File: "schedules/away.yaml", Cards: "pause"}
-	summary, err := render("summary", runView{Run: runs[1], Defined: d})
+	summaryOf := func(v runView) map[string]any { return runParts(v)[1].Data.(map[string]any) }
+	if got := summaryOf(runView{Run: runs[1], Defined: d})["Defined"]; got != d {
+		t.Errorf("the run's head does not link to its machine: %v", got)
+	}
+	view, err := json.Marshal(shown{Row: &stepRow{Run: link{ID: "a-client/2", Machine: "pause"}}, Defined: d})
 	if err != nil {
 		t.Fatal(err)
 	}
-	view, err := render("view", shown{Row: &stepRow{Run: link{ID: "a-client/2", Machine: "pause"}}, Defined: d})
-	if err != nil {
-		t.Fatal(err)
+	if got := decoded[shown](t, view).Defined; got == nil || *got != *d {
+		t.Errorf("the head of the run's drawing does not link to its machine: %s", view)
 	}
-	want := `<a class="def" href="/machines?file=schedules%2Faway.yaml&amp;open=pause" title="the file on the Machines page as it is now; the drawing here is the definition this run started with">schedules/away.yaml › pause</a>`
-	if !strings.Contains(string(summary), want) || !strings.Contains(string(view), want) {
-		t.Errorf("the run does not link to its machine:\n%s\n%s", summary, view)
+	if !strings.Contains(string(script), "the file on the Machines page as it is now; the drawing here is the definition this run started with") {
+		t.Errorf("the link to a run's machine does not say the file is as it is now")
 	}
-	if html, _ := render("summary", runView{Run: runs[0]}); strings.Contains(string(html), `class="def"`) {
-		t.Errorf("a run with no machine to show links to one:\n%s", html)
+	if got := summaryOf(runView{Run: runs[0]})["Defined"]; got != (*definedAt)(nil) {
+		t.Errorf("a run with no machine to show links to one: %v", got)
 	}
 }

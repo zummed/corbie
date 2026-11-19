@@ -5,6 +5,7 @@
 <title>{{.Title}} · Corbie</title>
 <link rel="icon" href="/assets/icon.svg">
 <link rel="stylesheet" href="/assets/ui.css">
+<script type="importmap">{"imports": {"solid-js": "/assets/solid/solid.js", "solid-js/internal": "/assets/solid/internal.js", "@solidjs/signals": "/assets/solid/signals/index.js", "@solidjs/web": "/assets/solid/web.js", "@solidjs/html": "/assets/solid/html.js", "ui": "/assets/ui.js", "drawing": "/drawing/drawing.js"}}</script>
 <svg class="sprite" aria-hidden="true">
   <defs><linearGradient id="sheen" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="20" y2="0"><stop offset="0" style="stop-color:var(--s1)"/><stop offset=".55" style="stop-color:var(--s2)"/><stop offset="1" style="stop-color:var(--s3)"/></linearGradient></defs>
   <symbol id="g-flow" viewBox="0 0 20 14"><rect x="1" y="5" width="5" height="4" rx="1"/><rect x="14" y="1" width="5" height="4" rx="1"/><rect x="14" y="9" width="5" height="4" rx="1"/><path d="M6 7C10 7 10 3 14 3M6 7C10 7 10 11 14 11"/></symbol>
@@ -20,9 +21,7 @@
   <nav>{{range .Offered}}<a href="/{{lower .}}"{{if eq . $.Current}} aria-current="page"{{end}}>{{.}}</a>{{end}}<a href="/manual/" target="_blank" rel="noopener">Manual</a></nav>
   <p class="as">{{if .Parties}}as {{range .Parties}}<code>{{.}}</code>{{end}}{{else if .NoStore}}<span title="{{.NoStore}}">no store</span>{{else}}a viewer{{end}}<span class="live{{if not .Stream}} still{{end}}" id="live" title="following the store"></span></p>
 </header>
-<main{{if .Stream}} data-stream="{{.Stream}}"{{end}}>
-{{.Main}}
-</main>
-<script src="/assets/ui.js"></script>
-{{if .Script}}<script src="{{.Script}}"></script>{{end}}
+<main{{if .Stream}} data-stream="{{.Stream}}"{{end}}></main>
+<script type="application/json" id="parts">{{.Data}}</script>
+{{if .Script}}<script type="module" src="{{.Script}}"></script>{{end}}
 </html>

@@ -52,13 +52,14 @@ Cancel    $ corbie run cancel laptop-client/20261015T091204.118Z-3be1c07a2f
 
 ## Following the store
 
-A page that shows something that changes follows it.
+A page is drawn in the browser by its script, with Solid, from its parts. A part is the data of one thing on the page that changes, such as the busy runs or a run's Steps, sent as JSON.
 
-1. As the page loads, it opens a WebSocket to the UI.
-2. The UI draws each part that changed with the template that drew it in the page, and sends it.
-3. The page puts the part in its place.
+1. The page carries every part as it is when it loads, and its script draws them.
+2. The script opens a WebSocket to the UI.
+3. The UI sends the data of each part that changed.
+4. The script draws the part again, and keeps what a person typed, unfolded and chose.
 
-A part is drawn by one template, on the first load and on every change. When the connection is cut, the page opens it again and is sent every part as it is then. A browser holds no more than six requests open to one address, and a WebSocket is not one of them, so any number of pages can be open.
+A part is drawn by one component, on the first load and on every change. When the connection is cut, the page opens it again and is sent every part as it is then. A browser holds no more than six requests open to one address, and a WebSocket is not one of them, so any number of pages can be open.
 
 ## Motion
 

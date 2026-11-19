@@ -3,13 +3,11 @@
 package runs
 
 import (
-	"bytes"
 	"cmp"
 	"context"
-	"embed"
+	_ "embed"
 	"encoding/json/v2"
 	"errors"
-	"html/template"
 	"io"
 	"mime"
 	"net/http"
@@ -53,20 +51,8 @@ type handler struct {
 	titles *titles
 }
 
-//go:embed list.html run.html runs.js
-var files embed.FS
-
-var pages = template.Must(template.New("").Funcs(template.FuncMap{
-	"cmd":    func(c *page.Call) string { return c.String() },
-	"word":   pluralWord,
-	"middle": middle,
-	"breaks": breaks,
-}).ParseFS(files, "list.html", "run.html"))
-
-// breaks writes a location so that a line may break after each /.
-func breaks(location string) template.HTML {
-	return template.HTML(strings.ReplaceAll(template.HTMLEscapeString(location), "/", "/<wbr>"))
-}
+//go:embed runs.js
+var script []byte
 
 // New gives the Runs pages.
 func New(c Config) http.Handler {
@@ -77,8 +63,7 @@ func New(c Config) http.Handler {
 	mux.HandleFunc("POST /runs/at/{act}", h.atAct)
 	mux.HandleFunc("GET /runs/script.js", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/javascript; charset=utf-8")
-		data, _ := files.ReadFile("runs.js")
-		w.Write(data)
+		w.Write(script)
 	})
 	mux.HandleFunc("GET /run/{who}/{stamp}", h.runPage)
 	mux.HandleFunc("GET /run/{who}/{stamp}/stream", h.runStream)
@@ -110,29 +95,29 @@ func (h *handler) listParts(ctx context.Context, n narrowing) ([]page.Part, erro
 	if err != nil {
 		return nil, err
 	}
-	var parts []page.Part
-	// The ended runs are sent before the running ones, so that a run that
-	// ended is found running on the page as its new line arrives.
-	for _, id := range []string{"locations", "here", "ended", "busy", "idle", "singletons"} {
-		html, err := render(id, v)
-		if err != nil {
-			return nil, err
-		}
-		parts = append(parts, page.Part{ID: id, HTML: html})
+	return listParts(v), nil
+}
+
+// listParts gives the parts of the Runs page. The ended runs are sent
+// before the running ones, so that a run that ended is found running on
+// the page as its new line arrives.
+func listParts(v listView) []page.Part {
+	return []page.Part{
+		{ID: "narrowing", Data: map[string]string{"At": v.Narrowing.At, "Window": v.Narrowing.Window, "Label": v.Narrowing.LabelText()}},
+		{ID: "locations", Data: map[string]any{"Every": v.Every, "Clients": v.Clients}},
+		{ID: "here", Data: v.Here},
+		{ID: "ended", Data: v.Ended},
+		{ID: "busy", Data: v.Busy},
+		{ID: "idle", Data: v.Idle},
+		{ID: "singletons", Data: v.Singletons},
 	}
-	return parts, nil
 }
 
 func (h *handler) listPage(w http.ResponseWriter, r *http.Request) {
 	n := narrowingOf(r.URL.Query())
 	v, _ := h.listOf(r.Context(), n)
-	main, err := render("list", v)
-	if err != nil {
-		page.Error(w, http.StatusInternalServerError, err.Error())
-		return
-	}
 	s := h.Shell
-	s.Title, s.Current, s.Stream, s.Script, s.Main = "Runs", "Runs", "/runs/stream"+n.query(), "/runs/script.js", main
+	s.Title, s.Current, s.Stream, s.Script, s.Parts = "Runs", "Runs", "/runs/stream"+n.query(), "/runs/script.js", listParts(v)
 	page.Write(w, s)
 }
 
@@ -170,13 +155,9 @@ func (h *handler) runPage(w http.ResponseWriter, r *http.Request) {
 		page.Error(w, status, err.Error())
 		return
 	}
-	main, err := render("run", v)
-	if err != nil {
-		page.Error(w, http.StatusInternalServerError, err.Error())
-		return
-	}
 	s := h.Shell
-	s.Title, s.Current, s.Stream, s.Script, s.Main = v.Name, "Runs", "/run/"+id+"/stream", "/runs/script.js", main
+	s.Title, s.Current, s.Stream, s.Script = v.Name, "Runs", "/run/"+id+"/stream", "/runs/script.js"
+	s.Parts = append(runParts(v), page.Part{ID: "shown", Data: v.Shown})
 	page.Write(w, s)
 }
 
@@ -200,23 +181,13 @@ func (h *handler) runStream(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			return nil, err
 		}
-		var parts []page.Part
-		for _, id := range runParts {
-			if id == "steps" && !v.Mine {
-				continue
-			}
-			html, err := render(id, v)
-			if err != nil {
-				return nil, err
-			}
-			parts = append(parts, page.Part{ID: id, HTML: html})
-		}
-		return parts, nil
+		return runParts(v), nil
 	})
 }
 
 // at answers a run's page with its drawing and details as of one row of
-// Steps, the row named by its key, from the record of the row's run.
+// Steps, the row named by its key, from the record of the row's run, as
+// JSON.
 func (h *handler) at(w http.ResponseWriter, r *http.Request) {
 	id, err := idOf(r)
 	if err != nil || !h.mine(id) {
@@ -246,20 +217,11 @@ func (h *handler) at(w http.ResponseWriter, r *http.Request) {
 		page.Error(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	var parts []map[string]string
-	for _, id := range []string{"view", "details"} {
-		html, err := render(id, s)
-		if err != nil {
-			page.Error(w, http.StatusInternalServerError, err.Error())
-			return
-		}
-		parts = append(parts, map[string]string{"id": id, "html": string(html)})
-	}
 	w.Header().Set("Content-Type", "application/json")
-	json.MarshalWrite(w, parts)
+	json.MarshalWrite(w, s, json.Deterministic(true))
 }
 
-// group answers the rows of a send's or a call's group: the row named by
+// group answers the rows of a send's or a call's group, as JSON: the row named by
 // its key, of the run in the address, is the send or the call, and the rows
 // come from the record of the run it reached. Both runs must be in a tree
 // of the UI's client.
@@ -294,13 +256,8 @@ func (h *handler) group(w http.ResponseWriter, r *http.Request) {
 	if d, err := strconv.Atoi(r.URL.Query().Get("depth")); err == nil && d >= 0 {
 		depth = d
 	}
-	html, err := render("steprows", traced(row.Trace, reached, byID, h.mine, at, day, depth+1))
-	if err != nil {
-		page.Error(w, http.StatusInternalServerError, err.Error())
-		return
-	}
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	io.WriteString(w, string(html))
+	w.Header().Set("Content-Type", "application/json")
+	json.MarshalWrite(w, traced(row.Trace, reached, byID, h.mine, at, day, depth+1), json.Deterministic(true))
 }
 
 // titled gives the runs of the list, each run in a tree of the UI's client
@@ -534,10 +491,4 @@ func jsonOf(text string) (string, error) {
 	}
 	out, err := json.Marshal(v, json.Deterministic(true))
 	return string(out), err
-}
-
-func render(name string, data any) (template.HTML, error) {
-	var b bytes.Buffer
-	err := pages.ExecuteTemplate(&b, name, data)
-	return template.HTML(b.String()), err
 }

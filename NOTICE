@@ -3,3 +3,7 @@ Copyright 2026 Paul Young
 
 This product includes the IBM Plex fonts, under the SIL Open Font License 1.1:
 see page/assets/fonts/OFL.txt.
+
+This product includes Solid 2.0.3 (solid-js, @solidjs/signals, @solidjs/web
+and @solidjs/html), Copyright Ryan Carniato, under the MIT License: see
+page/assets/solid/LICENSE.

@@ -1,10 +1,9 @@
 // The Machines page: the machines in one directory, the file chosen drawn
-// or shown as text, and the problems Corbie finds in them. A card's link in
-// the drawing, and a tab, show the file chosen again where it is, and the
-// page shows it again when it, or what Corbie found in it, changed on disk.
-// Unfolding a card moves the drawing in to it, and folding it moves back
-// out to the card it was in.
-import { createEffect, createSignal } from "solid-js";
+// or shown as text, and the problems Corbie finds in them. Choosing a file,
+// a tab or a card's link shows it in place, and the page shows the file
+// again when the directory changed on disk. Unfolding a card moves the
+// drawing in to it, and folding it moves back out to the card it was in.
+import { createEffect, createSignal, flush } from "solid-js";
 import { html, parts, receive, mount, Icon, Handle, plural } from "ui";
 import { Drawing } from "drawing";
 import { Problems, Code, machineHref, base, focusOf, focusAt } from "/machines/shared.js";
@@ -35,24 +34,31 @@ async function show(href, push) {
       return;
     }
     const moved = focusOf(shownAt, at.href);
+    const other = new URL(shownAt).searchParams.get("file") !== at.searchParams.get("file");
     shownAt = at.href;
-    setFailed("");
-    receive({ type: "part", id: "view", data: answer });
-    if (moved !== null) setFocus(moved);
+    const put = () => {
+      setFailed("");
+      receive({ type: "part", id: "view", data: answer });
+      if (moved !== null) setFocus(moved);
+      flush();
+      if (other) document.querySelector(".ide > .view")?.scrollTo(0, 0);
+      if (at.hash) document.getElementById(at.hash.slice(1))?.scrollIntoView({ block: "center" });
+    };
+    // Another file cross-fades in over the one shown, which stays until the
+    // new one is drawn.
+    if (other && document.startViewTransition) document.startViewTransition(put);
+    else put();
     if (push) history.pushState(null, "", at.href);
   } catch (err) {
     if (mine === asked) setFailed(String(err));
   }
 }
 
-// here says an address shows the file chosen, so that it can be shown in
+// here says an address is of the Machines page, so that it can be shown in
 // place.
-const here = href => {
-  const at = new URL(href, location.href);
-  return at.pathname === "/machines" && at.searchParams.get("file") === parts.view.Open;
-};
+const here = href => new URL(href, location.href).pathname === "/machines";
 
-// inPlace shows a link to the file chosen in place, and follows any other.
+// inPlace shows a link to the Machines page in place, and follows any other.
 function inPlace(e) {
   const a = e.target.closest("a");
   if (!a || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey) return;
@@ -63,7 +69,7 @@ function inPlace(e) {
 }
 
 function Entry(props) {
-  return html`<a href=${() => machineHref(props.entry.Path)} aria-current=${() => (props.entry.Path === parts.files.Open ? "page" : undefined)}>
+  return html`<a href=${() => machineHref(props.entry.Path)} aria-current=${() => (props.entry.Path === parts.view.Open ? "page" : undefined)}>
     <${Icon} type=${() => props.entry.Type || "file"} />
     <span class="name" title=${() => props.entry.Location}>${() => base(props.entry.Path)}</span>
     ${() => (props.entry.Problems ? html`<span class="bad" title=${() => plural(props.entry.Problems, "problem")}>${() => props.entry.Problems}</span>` : "")}
@@ -75,7 +81,7 @@ function File(props) {
   const listed = () => (props.file.Listed ? "listed in .corbieignore · " : "");
   const included = () => (props.file.Included ? "included by " + plural(props.file.Included, "machine") : "included by none");
   return html`<Show when=${() => !props.file.Path.endsWith("/")} fallback=${() => html`<div class="row"><span></span><span class="name" title=${() => props.file.Path}>${() => props.file.Path}</span><small>listed in .corbieignore</small></div>`}>
-    <a href=${() => machineHref(props.file.Path)} aria-current=${() => (props.file.Path === parts.files.Open ? "page" : undefined)}><${Icon} type="file" /><span class="name" title=${() => props.file.Path}>${() => props.file.Path}</span><small>${listed}${included}</small></a>
+    <a href=${() => machineHref(props.file.Path)} aria-current=${() => (props.file.Path === parts.view.Open ? "page" : undefined)}><${Icon} type="file" /><span class="name" title=${() => props.file.Path}>${() => props.file.Path}</span><small>${listed}${included}</small></a>
   </Show>`;
 }
 
@@ -90,7 +96,7 @@ function List() {
       ${() => (g().Dir !== "." ? html`<h2 class="group" title=${() => g().Dir}>${() => g().Dir}/</h2>` : "")}
       <For each=${() => g().Entries} keyed=${e => e.Path}>${e => html`<${Entry} entry=${e} />`}</For>`}</For>
     <Show when=${() => f().Files.length}>
-      <h2 class="kind">Files${() => (f().Ignore ? html`<a href=${machineHref(".corbieignore")} aria-current=${() => (f().Open === ".corbieignore" ? "page" : undefined)}>.corbieignore</a>` : "")}</h2>
+      <h2 class="kind">Files${() => (f().Ignore ? html`<a href=${machineHref(".corbieignore")} aria-current=${() => (parts.view.Open === ".corbieignore" ? "page" : undefined)}>.corbieignore</a>` : "")}</h2>
       <For each=${() => f().Files} keyed=${e => e.Path}>${e => html`<${File} file=${e} />`}</For>
     </Show>
   </div>`;
@@ -125,11 +131,13 @@ function Included(props) {
 // tab gives the address of one of the tabs of the file chosen.
 const tab = (file, view) => machineHref(file, view === "drawing" ? undefined : view);
 
-// View is the part "view": the file chosen.
+// View is the part "view": the file chosen. Its drawing is drawn anew for
+// each file, so that the camera frames another machine at once, and moves
+// only within one.
 function View() {
   const v = () => parts.view;
   return html`<Show when=${() => v().Open} fallback=${() => html`<div class="panel view"><p class="dim body">no machines in this directory</p></div>`}>
-    <div class="panel view" onClick=${inPlace}>
+    <div class="panel view">
       <div class="head"><${Icon} type=${() => v().Kind || "file"} /><span>${() => v().Open}</span><span class="facts">${() => v().Facts}</span></div>
       <Show when=${failed}><p class="said bad failed">${failed}</p></Show>
       <Show when=${() => v().Drawable}>
@@ -140,22 +148,22 @@ function View() {
       <Show when=${() => v().Uses.length}><${Uses} view=${v} /></Show>
       <Show when=${() => v().File}><${Included} files=${() => v().Included} /></Show>
       <Show when=${() => v().View === "drawing"} fallback=${() => html`<${Code} lines=${() => v().Text} written=${() => v().View === "written"} label=${() => v().Open} />`}>
-        <section class="drawn" id="drawing"><${Drawing} scene=${() => v().Drawing} focus=${focus} /></section>
+        <section class="drawn" id="drawing"><For each=${() => [v().Open]}>${() => html`<${Drawing} scene=${() => v().Drawing} focus=${focus} />`}</For></section>
       </Show>
     </div>
   </Show>`;
 }
 
 function Machines() {
-  // The page asks for the file chosen again when the stream gives a mark of
-  // the file on disk other than the mark of the file it shows.
+  // The page asks for the file it shows again when the stream gives the
+  // directory as read at another mark than the file shown was.
   createEffect(
-    () => parts.disk.Base !== parts.view.Base,
+    () => parts.files.Stamp !== parts.view.Stamp,
     changed => {
       if (changed) show(location.href, false);
     }
   );
-  return html`<div class="ide">
+  return html`<div class="ide" onClick=${inPlace}>
     <nav class="panel files" aria-label=${() => "The machines in " + parts.files.DirFull}>
       <div class="head"><span class="facts" title=${() => parts.files.DirFull}>${() => parts.files.Dir}</span>${() => (parts.files.Prefix ? html`<span class="facts at" title=${() => "the locations of the directory's machines are under " + parts.files.Prefix}>at ${() => parts.files.Prefix}</span>` : "")}</div>
       <${List} />

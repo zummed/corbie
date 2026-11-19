@@ -15,9 +15,11 @@ export const opened = href => new URL(href, "http://ui").searchParams.getAll("op
 
 // focusOf gives the card a drawing moves in to as the address goes from one
 // to another: the card unfolded, or, where a card was folded, the card it
-// was in, "" being the whole machine. It gives null where no card was
-// unfolded or folded.
+// was in, "" being the whole machine; for another file, as focusAt gives.
+// It gives null where no card was unfolded or folded.
 export function focusOf(from, to) {
+  const file = href => new URL(href, "http://ui").searchParams.get("file");
+  if (file(from) !== file(to)) return focusAt(to);
   const was = opened(from), now = opened(to);
   const deepest = list => list.reduce((a, b) => (b.split("/").length > a.split("/").length ? b : a));
   const unfolded = now.filter(p => !was.includes(p));
@@ -30,7 +32,10 @@ export function focusOf(from, to) {
 
 // focusAt gives the card a drawing moves in to as a page opens at an
 // address: the deepest card it unfolds, or the whole machine.
-export const focusAt = href => focusOf("/machines", href) ?? "";
+export const focusAt = href => {
+  const all = opened(href);
+  return all.length ? all.reduce((a, b) => (b.split("/").length > a.split("/").length ? b : a)) : "";
+};
 
 function Problem(props) {
   const p = () => props.problem;

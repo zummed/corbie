@@ -400,11 +400,6 @@ export interface RunParts {
 export interface List {
   Dir: string;
   DirFull: string;
-  Open: string;
-}
-
-export interface Disk {
-  Base: string;
 }
 
 export interface Span {
@@ -464,7 +459,7 @@ export interface View {
   Kind: string;
   First: string;
   Facts: string;
-  Base: string;
+  Stamp: string;
   View: string;
   Drawable: boolean;
   Text: CodeLine[];
@@ -480,7 +475,6 @@ export interface View {
 
 export interface MachinesParts {
   files: List;
-  disk: Disk;
   view?: View | null;
 }
 
@@ -525,20 +519,26 @@ export interface MachinesToolkit {
   Offered: Offer[];
 }
 
-export interface ToolkitsView {
+export interface ToolkitList {
   Dir: string;
   DirFull: string;
   Toolkits: MachinesToolkit[];
-  Open: MachinesToolkit | null;
   Problems: Problem[];
+  Unread: string;
+  Stamp: string;
+}
+
+export interface ToolkitChosen {
+  Open: MachinesToolkit | null;
   Found: Problem[];
   ShowText: boolean;
   Text: CodeLine[];
-  Unread: string;
+  Stamp: string;
 }
 
 export interface ToolkitsParts {
-  toolkits: ToolkitsView;
+  list: ToolkitList;
+  toolkit?: ToolkitChosen | null;
 }
 
 export interface Party {

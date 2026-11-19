@@ -11,7 +11,7 @@ test("machines_toolkits_show_what_offers_each", async () => {
   const rows = $$(".files .filelist > a");
   equal(rows.length, want.Toolkits.length, "the toolkits listed");
   equal(rows.map(r => text($(".name", r))), want.Toolkits.map(k => k.Name), "the toolkits' names");
-  const open = parts.toolkits.Open;
+  const open = parts.toolkit.Open;
   equal(text($(".files .filelist > a[aria-current] .name")), open.Name, "the toolkit chosen");
   equal(text($(".view .head > span")), open.Name, "the head of the toolkit chosen");
   equal(text($(".view .body .description")), "messages", "its description");
@@ -30,9 +30,9 @@ test("machines_toolkits_show_what_offers_each", async () => {
 });
 
 test("machines_toolkits_show_the_problems_in_their_file", () => {
-  equal($$(".files .problems .problem").length, parts.toolkits.Problems.length, "the problems above the list");
+  equal($$(".files .problems .problem").length, parts.list.Problems.length, "the problems above the list");
   equal($$(".view nav.tabs a").map(text), ["Drawing", "Text"], "the tabs");
-  equal($$(".view nav.tabs a")[1].getAttribute("href"), "/toolkits?" + new URLSearchParams({ toolkit: parts.toolkits.Open.ID, view: "text" }), "the Text tab's address");
+  equal($$(".view nav.tabs a")[1].getAttribute("href"), "/toolkits?" + new URLSearchParams({ toolkit: parts.toolkit.Open.ID, view: "text" }), "the Text tab's address");
 });
 
 test("machines_pages_only_read", () => {

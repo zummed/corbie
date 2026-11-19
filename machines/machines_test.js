@@ -168,6 +168,52 @@ test("machines_file_changed_on_disk_is_drawn_again", async () => {
   assert(!titles().includes("tell"), "the drawing still has the tool as it was");
 });
 
+// row gives the list's row of a file.
+const row = file => $(`.files .filelist > a[href="/machines?${new URLSearchParams({ file })}"]`);
+
+test("machines_choosing_a_file_shows_it_in_place", async () => {
+  // The list is made short, so that it scrolls, and scrolled.
+  const list = $(".ide > .files");
+  list.style.height = "160px";
+  list.scrollTop = 60;
+  const scrolled = list.scrollTop;
+  assert(scrolled > 0, "the list does not scroll");
+  window.samePage = true;
+  // The drawing is on the page in every frame while the file changes.
+  let blank = 0, watching = true;
+  const watch = () => {
+    if (!watching) return;
+    if (!$("#drawing svg.machine")) blank++;
+    requestAnimationFrame(watch);
+  };
+  requestAnimationFrame(watch);
+  click(row("router.yaml"));
+  await until(() => parts.view.Open === "router.yaml" && $$("#drawing svg.machine text.title").map(text).includes("listen"), "router.yaml drawn");
+  watching = false;
+  equal(blank, 0, "the frames with no drawing while the file changed");
+  assert(window.samePage, "choosing a file loaded another page");
+  equal(location.search, "?file=router.yaml", "the address");
+  equal(list.scrollTop, scrolled, "the list's scroll");
+  equal(text($(".files .filelist > a[aria-current] .name")), "router.yaml", "the file highlighted");
+  equal(text($(".view > .head > span")), "router.yaml", "the file shown");
+  history.back();
+  await until(() => parts.view.Open === "support.yaml" && text($(".files .filelist > a[aria-current] .name")) === "support.yaml", "Back showing support.yaml");
+  assert(window.samePage, "Back loaded another page");
+  history.forward();
+  await until(() => parts.view.Open === "router.yaml", "Forward showing router.yaml again");
+  list.style.height = "";
+});
+
+test("machines_file_shown_after_another_is_drawn_again_when_it_changes", async () => {
+  const res = await fetch("/written", { method: "POST", body: new URLSearchParams({ file: "router.yaml", text: "flow: router\nstages:\n  hear: { job: { machine: ./.kit/listen.yaml } }\n" }) });
+  assert(res.ok, "the file was not written");
+  const titles = () => $$("#drawing svg.machine text.title").map(text);
+  await until(() => titles().includes("hear") && !titles().includes("listen"), "router.yaml as it is now", 6000);
+  assert(window.samePage, "the change loaded another page");
+  history.back();
+  await until(() => parts.view.Open === "support.yaml", "Back showing support.yaml");
+});
+
 test("machines_panels_fit_the_window_and_scroll_inside", () => {
   const ide = $(".ide");
   assert(ide.getBoundingClientRect().bottom <= innerHeight + 1, "the page is longer than the window");

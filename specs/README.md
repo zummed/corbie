@@ -21,7 +21,7 @@ Three uses follow from this.
 
 ## How it holds together
 
-The UI is a client of Corbie and adds nothing to Corbie. Every action on the store runs one of Corbie's commands in the UI's process, as `corbie manual mcp` runs one, and the page shows the command and what it answered. The command line, a model through `corbie manual mcp` and the UI can therefore do the same things to the store, and the UI can do nothing more.
+The UI is a client of Corbie and adds nothing to Corbie. Every action on the store runs one of Corbie's commands in the UI's process, as `corbie mcp` runs one, and the page shows the command and what it answered. The command line, a model through `corbie mcp` and the UI can therefore do the same things to the store, and the UI can do nothing more.
 
 Pages read the store through Corbie's packages. The UI reads the list of runs at every interval, once for every page and scraper it serves, and each open run's page follows that run's record. It keeps nothing on disk, and what it holds in memory it has read from the store, so any number of copies can run against one store, and any of them can be stopped at any moment.
 

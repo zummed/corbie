@@ -270,7 +270,7 @@ func start(ctx context.Context, e *cli.Env, o options) (*ui, error) {
 	return u, nil
 }
 
-// commandOf runs a call in this process, as corbie manual mcp runs one:
+// commandOf runs a call in this process, as corbie mcp runs one:
 // with --json, and with the config and the store the UI was given. A value
 // from a page that begins with "-" is refused, since the command line would
 // read it as a flag.

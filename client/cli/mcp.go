@@ -120,9 +120,9 @@ func cmdMCP(e *Env, args []string) error {
 // work for the person who asked it.
 const briefing = `Corbie runs machines. A machine is a YAML definition of type flow, statechart, agent or decision, and each of its jobs is a JavaScript script, a machine, or a send. A person has asked you to write, change, run or set up a machine.
 
-1. Read the manual with the manual tool before you write or change a definition or a script. Read the pages "corbie" and "first-machine" first. Then read "definitions", "scripts", "permissions", the page of the machine type ("flow", "statechart" or "agent") and the page of each plugin the script calls. The manual gives every field and every call, so never guess one.
+1. Read the manual with the manual tool before you write or change a definition or a script. Read the pages "corbie" and "first-machine" first. Then read "definitions", "scripts", "permissions", the page of the machine type ("flow", "statechart", "agent" or "decision"), the page of each plugin the script calls, and "a-directory" when you write more than one machine. The manual gives every field and every call, so never guess one.
 2. Give each job only the permissions it needs, in its allow list, and tell the person what you allowed.
-3. Run what you wrote with the corbie tool and read the result. The command "test" runs a definition or a script with no setup. A refusal names the line that allows what was refused.
+3. Run what you wrote with the corbie tool and read the result. The command "test" runs a definition or a script with no setup. Given a directory, it reads every machine in it, checks each send and call to a location in it, and starts nothing: run it on the directory after each change. A refusal names the line that allows what was refused.
 4. Run Corbie's commands with the corbie tool, not in a shell.
 5. Tell the person what the run printed.`
 

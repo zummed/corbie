@@ -179,11 +179,12 @@ type logLine struct {
 	Time, Name, Text string
 }
 
-// logsOf gives what a job of a run emitted, from the run's record.
-func logsOf(entries []client.Entry, id, job string, day time.Time) []logLine {
+// logsOf gives what a job of a run emitted, from the run's record, by the
+// job's full name: one attempt of one ask.
+func logsOf(entries []client.Entry, id, full string, day time.Time) []logLine {
 	var out []logLine
 	for _, e := range entries {
-		if e.ID != id || e.Step != 0 || jobOf(e.Job) != job {
+		if e.ID != id || e.Step != 0 || e.Job != full {
 			continue
 		}
 		text, _ := e.Data.(string)
@@ -226,12 +227,13 @@ type going struct {
 	Again    string
 	Restarts int
 	Logs     []logLine
+	full     string // the job's name with its ask's and attempt's numbers
 }
 
 // goingOf gives what is known of a job going, its times as the page writes
 // them at at.
 func goingOf(j *instance.Going, at time.Time) *going {
-	g := &going{Name: jobOf(j.Name), Runner: j.Runner, Attempt: j.Attempt, Began: j.Began, Restarts: j.Restarts}
+	g := &going{Name: jobOf(j.Name), Runner: j.Runner, Attempt: j.Attempt, Began: j.Began, Restarts: j.Restarts, full: j.Full()}
 	when := func(t time.Time) string {
 		if t.IsZero() {
 			return ""
@@ -406,8 +408,8 @@ func (h *handler) definitionOf(ctx context.Context, id string, step *instance.St
 // hold the record of every run drawn.
 func (h *handler) shownAt(ctx context.Context, page string, r *stepRow, entries []client.Entry, byID map[string]*client.Run, day time.Time) (shown, error) {
 	s := shown{Row: r, Page: page, Type: r.Run.Type, Time: r.Time, Input: indentOf(r.In), Output: indentOf(r.Out)}
-	if r.Job != "" {
-		s.Logs = logsOf(entries, r.Run.ID, r.Job, day)
+	if r.Full != "" {
+		s.Logs = logsOf(entries, r.Run.ID, r.Full, day)
 	}
 	_, own := cutAt(entries, r)
 	for _, e := range own {
@@ -651,7 +653,7 @@ func (h *handler) runOf(ctx context.Context, id string, entries []client.Entry, 
 	v.Waits = waitsOf(run, st, running(under[id]), at)
 	for _, w := range v.Waits {
 		if w.Job != nil {
-			w.Job.Logs = last(logsOf(entries, id, w.Job.Name, run.Started), 20)
+			w.Job.Logs = last(logsOf(entries, id, w.Job.full, run.Started), 20)
 		}
 	}
 	if st != nil && !st.TimeoutAt.IsZero() {
@@ -768,7 +770,8 @@ func (h *handler) whyOf(ctx context.Context, run *client.Run, st *instance.State
 			break
 		}
 	}
-	if pick >= 0 {
+	switch {
+	case pick >= 0:
 		x := waits[pick]
 		w.Lead, w.Rest = "waiting", "on "+x.Text
 		if x.Job != nil {
@@ -777,6 +780,9 @@ func (h *handler) whyOf(ctx context.Context, run *client.Run, st *instance.State
 				w.Rest += " on " + x.Job.Runner
 			}
 		}
+	case r.Status == instance.Running && st != nil && r.Type == "statechart":
+		// A statechart with nothing going waits for an event in its states.
+		w.Lead, w.Rest = "waiting", "on an event in "+shownOf(&instance.Step{State: *st})
 	}
 	if deep.ID != run.ID {
 		w.Rest = strings.TrimSpace(w.Rest + " in " + deep.Type + " " + deep.Machine)
@@ -799,16 +805,18 @@ func jobWord(kind, job string) string {
 }
 
 // deepestFailure gives the row that failed deepest in the runs under a
-// run: at one depth a job's failure before a run's, and the latest of
-// those.
+// run: a job's failure before a run's end at any depth, as it is what
+// failed the run above it; then the deepest; then the latest.
 func deepestFailure(rows []stepRow) *stepRow {
 	var found *stepRow
 	before := func(r *stepRow) bool {
 		switch {
-		case found == nil || r.Depth != found.Depth:
-			return found == nil || r.Depth > found.Depth
+		case found == nil:
+			return true
 		case (r.Job != "") != (found.Job != ""):
 			return r.Job != ""
+		case r.Depth != found.Depth:
+			return r.Depth > found.Depth
 		}
 		return !r.At.Before(found.At)
 	}
@@ -913,6 +921,12 @@ func waitsOf(run *client.Run, st *instance.State, kids []*client.Run, at time.Ti
 			switch j := st.Jobs[name]; {
 			case j.Held:
 				waits = append(waits, wait{Text: "held " + jobOf(j.Name), Job: goingOf(j, at)})
+			case j.Call != nil:
+				to := j.Call.At
+				if j.Call.Key != nil {
+					to += "#" + *j.Call.Key
+				}
+				waits = append(waits, wait{Text: "call " + to, Job: goingOf(j, at)})
 			case j.Runner != "" || !j.Again.IsZero():
 				waits = append(waits, wait{Text: "job " + jobOf(j.Name), Job: goingOf(j, at)})
 			}

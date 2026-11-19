@@ -166,9 +166,11 @@ type stepRow struct {
 	Group *group
 	Trace *trace
 	// Job is the job the row is about, by the name its definition gives
-	// it, whose logs the row's details show, and Took how long it took,
-	// where the row is its end.
+	// it, and Took how long it took, where the row is its end. Full is the
+	// job's name as its ask gave it, with its ask's and attempt's numbers,
+	// under which its runner files what it logs.
 	Job, Took string
+	Full      string `json:"-"`
 	// Cards are the cards of the page's drawing the row is about, each by
 	// its path: the names of the cards from the page's run down to it.
 	Cards []string
@@ -353,7 +355,7 @@ func (b *rowBuilder) rows(id string, depth int, in string) []stepRow {
 	// ended fills in, for a row about a job that ended at step e, how long
 	// the job took.
 	ended := func(r *stepRow, e client.Entry, job string) {
-		r.Job = jobOf(job)
+		r.Job, r.Full = jobOf(job), job
 		if at, ok := began[named(job)]; ok {
 			r.Took = took(e.Time.Sub(at))
 		}
@@ -466,7 +468,7 @@ func (b *rowBuilder) rows(id string, depth int, in string) []stepRow {
 				}
 				for _, a := range e.Asks {
 					if r.Job == "" && (a.Kind == instance.AskScript || a.Kind == instance.AskChild) && slices.Contains(entered, jobOf(a.Name)) {
-						r.Job = jobOf(a.Name)
+						r.Job, r.Full = jobOf(a.Name), a.Name
 					}
 				}
 				add(r)
@@ -520,7 +522,7 @@ func (b *rowBuilder) rows(id string, depth int, in string) []stepRow {
 				default:
 					w = say(bold(name), " started ", bold(child.Machine))
 				}
-				r := stepRow{What: w, Facts: jobFacts(a, b.byID), Out: b.resultOf(own[i+1:], a.Name), Job: name, Cards: []string{name}}
+				r := stepRow{What: w, Facts: jobFacts(a, b.byID), Out: b.resultOf(own[i+1:], a.Name), Job: name, Full: a.Name, Cards: []string{name}}
 				if a.Job != nil {
 					r.In = a.Job.Input
 				}
@@ -536,7 +538,7 @@ func (b *rowBuilder) rows(id string, depth int, in string) []stepRow {
 			case instance.AskCall:
 				called := linkOf(a.Run, b.byID)
 				r := stepRow{Kind: "send", What: say("⇢ called ", bold(a.Location), " · ", linked(&called)),
-					Facts: append(jobFacts(a, b.byID), fact{Name: "location", Text: a.Location}), Out: b.resultOf(own[i+1:], a.Name), Job: jobOf(a.Name), Cards: []string{jobOf(a.Name)}}
+					Facts: append(jobFacts(a, b.byID), fact{Name: "location", Text: a.Location}), Out: b.resultOf(own[i+1:], a.Name), Job: jobOf(a.Name), Full: a.Name, Cards: []string{jobOf(a.Name)}}
 				if a.Job != nil {
 					r.In = a.Job.Input
 				}
@@ -571,7 +573,7 @@ func (b *rowBuilder) rows(id string, depth int, in string) []stepRow {
 				}
 				add(r)
 			case instance.AskFail:
-				r := stepRow{What: say(bold(jobOf(a.Name)), " failed"), Kind: "failed", Facts: []fact{{Name: "job", Text: a.Name}}, Job: jobOf(a.Name), Cards: []string{jobOf(a.Name)}}
+				r := stepRow{What: say(bold(jobOf(a.Name)), " failed"), Kind: "failed", Facts: []fact{{Name: "job", Text: a.Name}}, Job: jobOf(a.Name), Full: a.Name, Cards: []string{jobOf(a.Name)}}
 				if a.Error != nil {
 					r.Facts = append(r.Facts, fact{Name: "error", Text: a.Error.Error})
 					if a.Error.Refused != "" {
@@ -905,21 +907,20 @@ func compact(v any) string {
 	return string(data)
 }
 
-// failure gives the error a failed event carries.
-// failed gives the facts of a job's failure: its error, and where a
-// permission refused it, what was refused, which layer refused it and the
-// fix.
+// failed gives the facts of a job's failure: where a permission refused
+// it, what was refused, which layer refused it and the fix; otherwise its
+// error.
 func failed(data any) []fact {
-	facts := []fact{{Name: "error", Text: failure(data)}}
 	m, _ := data.(map[string]any)
 	if refused, _ := m["refused"].(string); refused != "" {
 		layer, _ := m["layer"].(string)
 		fix, _ := m["fix"].(string)
-		facts = append(facts, fact{Name: "refused", Text: refused}, fact{Name: "by", Text: layer}, fact{Name: "fix", Text: fix})
+		return []fact{{Name: "refused", Text: refused}, {Name: "by", Text: layer}, {Name: "fix", Text: fix}}
 	}
-	return facts
+	return []fact{{Name: "error", Text: failure(data)}}
 }
 
+// failure gives the error a failed event carries.
 func failure(data any) string {
 	m, _ := data.(map[string]any)
 	if refused, _ := m["refused"].(string); refused != "" {

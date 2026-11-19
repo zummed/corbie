@@ -307,25 +307,43 @@ func (h *handler) titled(ctx context.Context) ([]*client.Run, map[string]fixed, 
 	return titled, facts, errors.Join(err, read)
 }
 
-// defined gives where the Machines page shows a run's machine as its file
-// now is: the file of the run's location, or of its root's for a child,
-// unfolded down the cards of the jobs that started each child. A run in
-// another client's tree, one whose machine was made while running, and one
-// the Machines page does not show, have none.
-func (h *handler) defined(ctx context.Context, id string) (*definedAt, error) {
-	if h.Machine == nil || !h.mine(id) {
-		return nil, nil
+// rootOf gives the root of a run in a tree of the UI's client, what is
+// fixed of it, and the cards of the jobs that started each child down to
+// the run: no root where the run is not the client's, what is fixed of a
+// run on the way is not read, or a machine was made while running.
+func (h *handler) rootOf(ctx context.Context, id string) (*client.Run, fixed, []string, error) {
+	if !h.mine(id) {
+		return nil, fixed{}, nil, nil
 	}
-	runs, facts, _ := h.titled(ctx)
+	runs, facts, err := h.titled(ctx)
+	if err != nil {
+		return nil, fixed{}, nil, err
+	}
 	byID := map[string]*client.Run{}
 	for _, r := range runs {
 		byID[r.ID] = r
 	}
 	root, cards := cardsOf(id, byID, facts)
 	if root == nil {
+		return nil, fixed{}, nil, nil
+	}
+	return root, facts[root.ID], cards, nil
+}
+
+// defined gives where the Machines page shows a run's machine as its file
+// now is: the file of the run's location, or of its root's for a child,
+// unfolded down the cards of the jobs that started each child. A run in
+// another client's tree, one whose machine was made while running, and one
+// the Machines page does not show, have none.
+func (h *handler) defined(ctx context.Context, id string) (*definedAt, error) {
+	if h.Machine == nil {
 		return nil, nil
 	}
-	href, file, err := h.Machine(ctx, root.Location, facts[root.ID].Dir, cards)
+	root, f, cards, err := h.rootOf(ctx, id)
+	if root == nil || err != nil {
+		return nil, err
+	}
+	href, file, err := h.Machine(ctx, root.Location, f.Dir, cards)
 	if href == "" || err != nil {
 		return nil, err
 	}
@@ -336,17 +354,12 @@ func (h *handler) defined(ctx context.Context, id string) (*definedAt, error) {
 // differ now from the definition the root started with: none where they
 // are the same, or the UI cannot read which.
 func (h *handler) differs(ctx context.Context, id string) ([]string, error) {
-	if h.Differs == nil || !h.mine(id) {
+	if h.Differs == nil {
 		return nil, nil
 	}
-	runs, facts, _ := h.titled(ctx)
-	byID := map[string]*client.Run{}
-	for _, r := range runs {
-		byID[r.ID] = r
-	}
-	root, _ := cardsOf(id, byID, facts)
-	if root == nil {
-		return nil, nil
+	root, f, _, err := h.rootOf(ctx, id)
+	if root == nil || err != nil {
+		return nil, err
 	}
 	step, err := h.step(ctx, root.ID, 1)
 	if err != nil || step == nil {
@@ -356,7 +369,7 @@ func (h *handler) differs(ctx context.Context, id string) ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
-	return h.Differs(ctx, root.Location, facts[root.ID].Dir, d.def)
+	return h.Differs(ctx, root.Location, f.Dir, d.def)
 }
 
 // cardsOf gives the root of a run, and the cards of the jobs that started

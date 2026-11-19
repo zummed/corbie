@@ -25,6 +25,7 @@ import (
 	"github.com/zummed/corbie-ui/page"
 	"github.com/zummed/corbie/client"
 	"github.com/zummed/corbie/identity"
+	"github.com/zummed/corbie/instance"
 	"github.com/zummed/corbie/machine"
 	"github.com/zummed/corbie/machine/agent"
 	"github.com/zummed/corbie/secret"
@@ -47,9 +48,11 @@ type Config struct {
 	// None where the UI has no store.
 	List List
 	// Client is the client the UI acts as: its running runs are counted in
-	// the states and stages of a machine's drawing. None where it acts as no
-	// client.
-	Client   *client.Client
+	// the states and stages of a machine's drawing, and it reads the
+	// definition a run started with. None where it acts as no client.
+	Client *client.Client
+	// Latest gives a run's latest step, which the Runs page reads too.
+	Latest   func(ctx context.Context, c *client.Client, run *client.Run) (*instance.Step, error)
 	Interval time.Duration
 	Shell    page.Shell
 }
@@ -65,7 +68,6 @@ type handler struct {
 	Config
 	dir   *dir
 	index *indexed
-	steps *steps
 }
 
 //go:embed machines.js toolkits.js shared.js
@@ -92,7 +94,7 @@ func New(c Config) (*Pages, error) {
 	if err != nil {
 		return nil, err
 	}
-	h := &handler{Config: c, dir: d, index: &indexed{dir: d}, steps: &steps{}}
+	h := &handler{Config: c, dir: d, index: &indexed{dir: d}}
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /machines", h.show)
 	mux.HandleFunc("GET /machines/stream", h.stream)

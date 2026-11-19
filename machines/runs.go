@@ -1,16 +1,15 @@
 package machines
 
 import (
+	"bytes"
 	"context"
 	"encoding/json/v2"
-	"errors"
+	"slices"
 	"strconv"
-	"strings"
-	"sync"
 	"time"
 
+	"github.com/zummed/corbie/blob"
 	"github.com/zummed/corbie/client"
-	"github.com/zummed/corbie/identity"
 	"github.com/zummed/corbie/instance"
 	"github.com/zummed/corbie/machine"
 	"github.com/zummed/corbie/store"
@@ -43,7 +42,6 @@ func (h *handler) counted(ctx context.Context, ix *index) (map[string]atLocation
 			ours[m.Location] = true
 		}
 	}
-	read := h.steps.reader(ctx, h.Client)
 	now := time.Now()
 	for _, r := range runs {
 		if r.Parent != "" || !ours[r.Location] {
@@ -53,7 +51,11 @@ func (h *handler) counted(ctx context.Context, ix *index) (map[string]atLocation
 		switch {
 		case !r.HasEnded():
 			at.Running++
-			for _, name := range read.in(r) {
+			in, err := h.in(ctx, r)
+			if err != nil {
+				return nil, err
+			}
+			for _, name := range in {
 				if at.In == nil {
 					at.In = map[string]int{}
 				}
@@ -64,7 +66,7 @@ func (h *handler) counted(ctx context.Context, ix *index) (map[string]atLocation
 		}
 		out[r.Location] = at
 	}
-	return out, read.done()
+	return out, nil
 }
 
 // sameDay says two times fall on one date, on this computer's clock.
@@ -74,112 +76,104 @@ func sameDay(a, b time.Time) bool {
 	return ay == by && am == bm && ad == bd
 }
 
-// steps keeps the states and stages each of the client's running runs was
-// in at its latest step, by the step of its head it was read at: a step
-// never changes once it is written.
-type steps struct {
-	mu   sync.Mutex
-	read map[string]stepIn
-}
-
-type stepIn struct {
-	at int
-	in []string
-}
-
-// A stepReader reads the steps one count of the page needs. The page is
-// counted by one reader at a time.
-type stepReader struct {
-	ctx  context.Context
-	c    *client.Client
-	s    *steps
-	kept map[string]stepIn
-	errs []error
-}
-
-func (s *steps) reader(ctx context.Context, c *client.Client) *stepReader {
-	s.mu.Lock()
-	return &stepReader{ctx: ctx, c: c, s: s, kept: map[string]stepIn{}}
-}
-
-// in gives the states a run is in and the stages it is running, from its
-// latest step, read again only where its head has moved on; nothing for
-// another client's run.
-func (r *stepReader) in(run *client.Run) []string {
-	if r.c == nil || r.c.ID == nil || store.InstanceClient(run.ID) != r.c.ID.Name {
-		return nil
+// in gives the states a running run of the UI's client is in and the
+// stages it is running, from its latest step; nothing for another client's
+// run, or where the UI acts as no client.
+func (h *handler) in(ctx context.Context, run *client.Run) ([]string, error) {
+	c := h.Client
+	if c == nil || c.ID == nil || h.Latest == nil || store.InstanceClient(run.ID) != c.ID.Name {
+		return nil, nil
 	}
-	got, ok := r.s.read[run.ID]
-	if !ok || got.at != run.Step {
-		step, err := instance.Latest(r.ctx, r.c.Store, r.c.Controller, r.c.ID, run.ID, run.Step)
-		if err != nil && !errors.Is(err, identity.ErrNotForUs) {
-			r.errs = append(r.errs, err)
-			return nil
-		}
-		got = stepIn{at: run.Step, in: inOf(step)}
-	}
-	r.kept[run.ID] = got
-	return got.in
-}
-
-// done keeps the steps of the runs counted, forgets the rest, and gives
-// what could not be read.
-func (r *stepReader) done() error {
-	r.s.read = r.kept
-	r.s.mu.Unlock()
-	return errors.Join(r.errs...)
-}
-
-// inOf gives the states a step left its run in and the stages it left
-// running.
-func inOf(step *instance.Step) []string {
-	if step == nil {
-		return nil
+	step, err := h.Latest(ctx, c, run)
+	if err != nil || step == nil {
+		return nil, err
 	}
 	t, ok := machine.TypeOf(step.State.Type)
 	if !ok {
-		return nil
+		return nil, nil
 	}
 	shown := t.Show(step.State.Inner)
-	names := append([]string{}, shown.States...)
+	names := slices.Clone(shown.States)
 	for _, name := range sortedKeys(shown.Stages) {
 		if shown.Stages[name] == instance.Running {
 			names = append(names, name)
 		}
 	}
-	return names
+	return names, nil
 }
 
-// Differs gives the lines of the machine now in the directory at a location
-// that differ from def, the definition a run there started with: each
-// value removed with "-" before it and each value added with "+", as a
-// plain line diff of the two definitions written one value to a line. It gives none where they
-// are the same, and where the page does not show the location's machine:
-// a tree submitted from another directory, or no machine there. The files
-// a definition's jobs run are named, not compared.
-func (p *Pages) Differs(ctx context.Context, location, dir string, def *machine.Definition) ([]string, error) {
-	if dir != p.h.dir.real || def == nil {
+// Differs gives how the machine now in the directory at a location differs
+// from the definition a run there started with, stored at def in the run's
+// record, which the UI's client reads:
+//
+//   - each value removed, with "-" before it and its path, and each value
+//     added, with "+";
+//   - each file a job runs whose contents differ: `a script changed: ./find.js`;
+//   - each child machine that differs in any of these: `a child changed: ./stuck.yaml`.
+//
+// It gives none where they are the same, and where the page does not show
+// the location's machine: a tree submitted from another directory, or no
+// machine there.
+func (p *Pages) Differs(ctx context.Context, location, dir string, def blob.Ref) ([]string, error) {
+	h := p.h
+	if dir != h.dir.real || h.Client == nil {
 		return nil, nil
 	}
-	ix, err := p.h.tree(ctx)
+	ix, err := h.tree(ctx)
 	if err != nil {
 		return nil, err
 	}
 	for _, m := range ix.machines {
-		if m.Location != location || m.Draft == nil {
-			continue
+		if m.Location == location && m.Draft != nil {
+			return differs(ctx, h.Client.Store, def, m.Draft)
 		}
-		was, err := compared(def)
-		if err != nil {
-			return nil, err
-		}
-		now, err := compared(m.Draft.Definition)
-		if err != nil {
-			return nil, err
-		}
-		return lineDiff(was, now), nil
 	}
 	return nil, nil
+}
+
+// differs gives how a draft differs from the definition stored at ref, as
+// Differs gives it.
+func differs(ctx context.Context, s store.Store, ref blob.Ref, d *machine.Draft) ([]string, error) {
+	was, err := machine.Load(ctx, s, ref)
+	if err != nil {
+		return nil, err
+	}
+	a, err := compared(was)
+	if err != nil {
+		return nil, err
+	}
+	b, err := compared(d.Definition)
+	if err != nil {
+		return nil, err
+	}
+	out := lineDiff(a, b)
+	for _, name := range sortedKeys(was.Scripts) {
+		now, ok := d.Files[name]
+		if !ok {
+			continue // its job is gone, which a value's line says
+		}
+		contents, err := blob.ReadAll(ctx, s, ref.Beside(was.Scripts[name]), blob.StepLimit)
+		if err != nil {
+			return nil, err
+		}
+		if !bytes.Equal(contents, now) {
+			out = append(out, "a script changed: "+name)
+		}
+	}
+	for _, name := range sortedKeys(was.Machines) {
+		child := d.Children[name]
+		if child == nil {
+			continue
+		}
+		changed, err := differs(ctx, s, ref.Beside(was.Machines[name]), child)
+		if err != nil {
+			return nil, err
+		}
+		if len(changed) > 0 {
+			out = append(out, "a child changed: "+name)
+		}
+	}
+	return out, nil
 }
 
 // compared gives a definition as the lines Differs compares: one line for
@@ -229,45 +223,27 @@ func flatten(at string, v any, out *[]string) {
 	}
 }
 
-// mostLines is how long two definitions may be for Differs to give their
-// lines: past it, it gives that they differ.
-const mostLines = 2000
-
-// lineDiff gives the lines of b that are not in a, with "+", and of a that
-// are not in b, with "-", in order, by the longest run of lines they share.
+// lineDiff gives the lines of a that b has not, with "-", then the lines of
+// b that a has not, with "+". Each line holds its value's path, so a line
+// is in both or it differs.
 func lineDiff(a, b []string) []string {
-	if len(a) > mostLines || len(b) > mostLines {
-		if strings.Join(a, "\n") == strings.Join(b, "\n") {
-			return nil
+	in := func(lines []string) map[string]bool {
+		set := map[string]bool{}
+		for _, l := range lines {
+			set[l] = true
 		}
-		return []string{"the definition differs, and is too long to show line by line"}
+		return set
 	}
-	// longest[i][j] is the length of the longest run a[i:] and b[j:] share.
-	longest := make([][]int, len(a)+1)
-	for i := range longest {
-		longest[i] = make([]int, len(b)+1)
-	}
-	for i := len(a) - 1; i >= 0; i-- {
-		for j := len(b) - 1; j >= 0; j-- {
-			if a[i] == b[j] {
-				longest[i][j] = longest[i+1][j+1] + 1
-			} else {
-				longest[i][j] = max(longest[i+1][j], longest[i][j+1])
-			}
-		}
-	}
+	inA, inB := in(a), in(b)
 	var out []string
-	i, j := 0, 0
-	for i < len(a) || j < len(b) {
-		switch {
-		case i < len(a) && j < len(b) && a[i] == b[j]:
-			i, j = i+1, j+1
-		case j < len(b) && (i == len(a) || longest[i][j+1] >= longest[i+1][j]):
-			out = append(out, "+ "+b[j])
-			j++
-		default:
-			out = append(out, "- "+a[i])
-			i++
+	for _, l := range a {
+		if !inB[l] {
+			out = append(out, "- "+l)
+		}
+	}
+	for _, l := range b {
+		if !inA[l] {
+			out = append(out, "+ "+l)
 		}
 	}
 	return out

@@ -165,7 +165,7 @@ A program written in Go reads its command line with the package's `cli.Program`,
 
 ```go
 os.Exit(cli.Program("rook", []cli.Command{
-	{Name: "init", Usage: "<directory> [--bridges <names>]", Summary: "make a directory a project, or bring its ready-made machines up to date", Run: cmdInit},
+	{Name: "init", Usage: "<directory> [--bot <name> --services <names>]", Summary: "make a directory a project, or bring its ready-made machines up to date", Run: cmdInit},
 }, os.Args[1:], os.Stdin, os.Stdout, os.Stderr))
 ```
 
@@ -173,7 +173,7 @@ os.Exit(cli.Program("rook", []cli.Command{
 $ corbie rook init
 corbie rook init: name one directory
 
-usage: corbie rook init <directory> [--bridges <names>]
+usage: corbie rook init <directory> [--bot <name> --services <names>]
 ```
 
 The program is given `manual` and `version` beside its own commands, and no `mcp`. `version` prints the program's version and the version of the Corbie it is built with. Its manual is Corbie's, with a page for each of its commands and any pages it adds to the manual. A model runs its commands through `corbie mcp`, as For a model says:

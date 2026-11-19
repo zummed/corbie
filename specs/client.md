@@ -281,7 +281,7 @@ A submit does this, and exits when each run it cancelled has ended and each star
 - There are no patterns, so a line holding `*`, `?` or `[`, or starting with `!`, fails the submit too.
 - A listed file has no location: nothing runs there, and a send or a call to its path is to no location. A machine still includes it, runs it with `machine:` and reads it with `files:`.
 - A file listed after a submit is gone from the tree, so the next submit removes its location and cancels its runs.
-- A `*.yaml` that is no machine, such as `.github/workflows/test.yaml` or `docker-compose.yaml`, is a file with a problem until it is listed.
+- A `*.yaml` that is no machine, such as `.github/workflows/test.yaml` or `docker-compose.yaml`, is a file with a problem until it is listed. Its problem gives the line to add.
 - A file given alone, to `corbie run submit <file>` or `corbie test <file>`, is a tree of its own, and no list applies.
 
 A tree belongs to the client that first submitted it. Every run keeps the definition it started with, and a submit changes no other tree.

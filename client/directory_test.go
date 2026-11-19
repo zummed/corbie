@@ -319,10 +319,13 @@ func TestLinkedContextReads(t *testing.T) {
 }
 
 // Every *.yaml is a machine, and one that is not is a problem, however little
-// it holds, until .corbieignore lists it.
+// it holds, until .corbieignore lists it. The problem gives the line to add.
+// A file read alone has no .corbieignore, and its problem gives no line.
 func TestEveryYAMLIsAMachine(t *testing.T) {
-	data := map[string]string{"notes.yaml": "# for later\n", "empty.yaml": "", "list.yaml": "- a\n", "people.yaml": "people: {}\n"}
-	tree, err := client.ReadTree(house(t, data), "/x")
+	data := map[string]string{"notes.yaml": "# for later\n", "empty.yaml": "", "list.yaml": "- a\n", "people.yaml": "people: {}\n",
+		"toolkits/orders/toolkit.yaml": "description: The orders app.\n"}
+	dir := house(t, data)
+	tree, err := client.ReadTree(dir, "/x")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -330,21 +333,27 @@ func TestEveryYAMLIsAMachine(t *testing.T) {
 	for _, m := range tree.Machines {
 		got[m.Path] = m.Problem.Error()
 	}
-	listIt := "a file in a tree that is no machine is listed in .corbieignore"
+	listIt := func(file string) string { return "; if it is no machine, add the line " + file + " to .corbieignore" }
+	noType := "it gives no type: a machine writes one of agent:, decision:, flow:, statechart: with its name, or takes it from a file it includes"
 	want := map[string]string{
-		"notes.yaml":  "the definition is empty; " + listIt,
-		"empty.yaml":  "the definition is empty; " + listIt,
-		"list.yaml":   "a definition is a mapping; " + listIt,
-		"people.yaml": "it gives no type: a machine writes one of agent:, decision:, flow:, statechart: with its name, or takes it from a file it includes; " + listIt,
+		"notes.yaml":                   "the definition is empty" + listIt("notes.yaml"),
+		"empty.yaml":                   "the definition is empty" + listIt("empty.yaml"),
+		"list.yaml":                    "a definition is a mapping" + listIt("list.yaml"),
+		"people.yaml":                  noType + listIt("people.yaml"),
+		"toolkits/orders/toolkit.yaml": noType + listIt("toolkits/orders/toolkit.yaml"),
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("read %q", got)
 	}
-	data[".corbieignore"] = "# not machines\n\nnotes.yaml\n./empty.yaml\nlist.yaml\npeople.yaml\n"
+	alone, err := client.ReadFile(dir, "toolkits/orders/toolkit.yaml", "/x", client.ScriptJob{})
+	if err != nil || alone.Machines[0].Problem.Error() != noType {
+		t.Fatalf("read alone %+v, %v", alone, err)
+	}
+	data[".corbieignore"] = "# not machines\n\nnotes.yaml\n./empty.yaml\nlist.yaml\npeople.yaml\ntoolkits/orders/toolkit.yaml\n"
 	if tree, err = client.ReadTree(house(t, data), "/x"); err != nil || len(tree.Machines) != 0 {
 		t.Fatalf("read %+v, %v", tree, err)
 	}
-	if want := []string{"empty.yaml", "list.yaml", "notes.yaml", "people.yaml"}; !slices.Equal(tree.Listed, want) {
+	if want := []string{"empty.yaml", "list.yaml", "notes.yaml", "people.yaml", "toolkits/orders/toolkit.yaml"}; !slices.Equal(tree.Listed, want) {
 		t.Fatalf("listed %v", tree.Listed)
 	}
 }

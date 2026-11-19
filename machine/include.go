@@ -517,7 +517,7 @@ func (p *Parser) untyped(place string, types []typed) {
 		}
 		text := fmt.Sprintf("it gives no type: a machine writes one of %s with its name, or takes it from a file it includes", strings.Join(fields, ", "))
 		if place == "" {
-			text += noMachine(p.source)
+			text += p.noMachine()
 		}
 		p.Problem(place, "%s", text)
 		return

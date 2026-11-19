@@ -294,7 +294,7 @@ func (k Kind) reads(as []Kind) bool {
 // client that shows a person what a definition has written, field by
 // field, as it will be read.
 func Written(src []byte) (map[string]any, error) {
-	n, err := readYAML(src, "")
+	n, err := readYAML(src, "", "")
 	if err != nil {
 		return nil, err
 	}

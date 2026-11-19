@@ -114,7 +114,7 @@ func (p *Parser) note(problem Problem) {
 // parse reads one written definition. needsAsk says whether it, or a child
 // that takes its ask from it, holds a job for approval with no ask to go to.
 func (p *Parser) parse(src []byte, place string) (draft *Draft, needsAsk bool) {
-	n, err := readYAML(src, p.source)
+	n, err := readYAML(src, p.source, p.noMachine())
 	if err != nil {
 		p.Problem(place, "%v", err)
 		return nil, false
@@ -997,27 +997,28 @@ func describe(v any) string {
 }
 
 // readYAML reads a written definition, from a file, into its values: mappings,
-// lists, text, numbers, true and false. It gives the top mapping.
-func readYAML(src []byte, file string) (*node, error) {
+// lists, text, numbers, true and false. It gives the top mapping. The error
+// of a file that is empty or no mapping ends with noMachine.
+func readYAML(src []byte, file, noMachine string) (*node, error) {
 	n, top, err := nodeYAML(src, file)
 	switch {
 	case err != nil:
 		return nil, err
 	case top == nil:
-		return nil, errors.New("the definition is empty" + noMachine(file))
+		return nil, errors.New("the definition is empty" + noMachine)
 	case !n.isMap() || len(n.keys) == 0:
-		return nil, errors.New("a definition is a mapping" + noMachine(file))
+		return nil, errors.New("a definition is a mapping" + noMachine)
 	}
 	return n, nil
 }
 
-// noMachine says, of a file read as a definition, what to do with one in a
-// tree that is no machine.
-func noMachine(file string) string {
-	if file == "" {
+// noMachine gives the line .corbieignore takes for the file being read, where
+// that file is a machine at a location of the tree being read.
+func (p *Parser) noMachine() string {
+	if p.located == nil || !p.located(p.source) {
 		return ""
 	}
-	return "; a file in a tree that is no machine is listed in .corbieignore"
+	return fmt.Sprintf("; if it is no machine, add the line %s to .corbieignore", p.source)
 }
 
 // nodeYAML reads one YAML document of a file into its values, as a

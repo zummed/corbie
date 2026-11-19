@@ -9,15 +9,15 @@ Each holder, card, arrow and chip is an element of its own, and a card keeps its
 
 ## The camera
 
-A drawing fills its panel and is seen through a camera, which frames one part of it:
+A drawing fills its panel and is seen through a camera, which frames one part of it and scales it to fill the panel:
 
 ```
-a card the page focuses   the card unfolded on the Machines page
-the cards a run marks     the cards going, held or failed, the deepest unfolded first, with the machine they are in
-otherwise                 the whole machine, from its top
+a card the page focuses   the machine unfolded inside the card, or the card       up to 1.6 times its size
+the cards a run marks     the innermost machine they are in: a child's in its card  up to 1.6 times its size
+otherwise                 the whole machine, from its top                           up to its size
 ```
 
-The camera never scales a drawing larger than its size to frame it. Where the machine a run's marks are in cannot be read whole, at half its size or more, the camera frames the marks at half size.
+Following a run into a child therefore zooms in to the child's machine, and back to the parent's step zooms out to the whole parent. Where the machine framed cannot be read at half its size or more, the camera frames the cards the run marks at half size.
 
 When the graph or the focus changes, the camera glides to frame it again, in 0.35s. A person moves it by hand:
 
@@ -30,6 +30,8 @@ buttons          zoom out, zoom in, and Fit, in the panel's corner
 ```
 
 Once a person moves the camera, it stays where they put it, and the corner offers Follow, which frames what the drawing is about again.
+
+When the graph changes, every card, holder and chip that stays glides to its new place and size in 0.35s, an arrow glides along with them, and a machine unfolded inside a card fades in. A child drawn inside its card therefore reads as the card opening. With the computer's setting for reduced motion, nothing glides.
 
 The pointer on a card lights its arrows and their chips, and the pointer on an arrow or a chip lights the two cards it joins.
 

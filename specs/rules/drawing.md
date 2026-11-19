@@ -38,7 +38,9 @@ The rules behind [the Drawing overview](../drawing.md). Area code: `drawing`.
 
 ## The camera
 
-**R-drawing-12** A drawing is seen through a camera that frames the card the page focuses, or else the cards a run marks as going, held or failed, the deepest unfolded first, with the machine they are in where it can be read at half size or more, or else the whole machine; it never scales the drawing larger than its size to frame it, and it glides to frame again when the graph or the focus changes, until a person pans or zooms, after which Follow gives it back. *Test:* `drawing_camera_fits_the_whole_machine`, `drawing_camera_follows_the_run`, `drawing_camera_frames_the_card_focused`, `drawing_camera_is_moved_by_hand`
+**R-drawing-12** A drawing is seen through a camera that frames the machine unfolded in the card the page focuses, or else the innermost machine the cards a run marks as going, held or failed are in, scaled to fill the panel up to 1.6 times its size, or else the whole machine, never larger than its size; where what it frames cannot be read at half size, it frames the marks at half size. It glides to frame again when the graph or the focus changes, until a person pans or zooms, after which Follow gives it back. *Test:* `drawing_camera_fits_the_whole_machine`, `drawing_camera_follows_the_run`, `drawing_camera_zooms_into_a_child_and_out`, `drawing_camera_frames_the_card_focused`, `drawing_camera_is_moved_by_hand`
+
+**R-drawing-14** When the graph changes, a card, a holder or a chip that stays keeps its element and glides to its new place and size, and an arrow glides with them. *Test:* `drawing_cards_glide_as_the_layout_changes`, `drawing_keeps_its_elements_as_the_run_moves_on`
 
 **R-drawing-13** On a run's page, the drawing of a run a job started, as the page gives it, is drawn inside that job's card with its own marks. *Test:* `drawing_child_run_is_inside_its_card`, `drawing_camera_follows_the_run`
 

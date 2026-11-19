@@ -88,6 +88,7 @@ function itemOf(card) {
     href: card.Href,
     in: card.In ? drawOf(card.In) : null,
     narrow: card.Narrow,
+    line: card.Line ?? "",
   };
 }
 
@@ -167,6 +168,7 @@ class Drawn {
       tile: null,
       fold: null,
       tooltip: it.title || "",
+      line: it.line || "",
       in: null,
     };
     let y = ty;
@@ -234,7 +236,7 @@ class Drawn {
     }
     to(pts[pts.length - 1]);
     const classes = ("edge " + cls).trim();
-    this.edges.push({ key: this.edges.length, class: classes, d: p, head: cls.split(" ").includes("taken") ? "at" : "ah", from: joins.from, to: joins.to });
+    this.edges.push({ key: this.edges.length, class: classes, d: p, head: cls.split(" ").includes("taken") ? "at" : "ah", from: joins.from, to: joins.to, title: joins.why ?? "" });
     for (const q of pts) {
       this.reach({ x: q.x, y: q.y, w: 0, h: 0 });
       this.left = Math.min(this.left, q.x);
@@ -247,7 +249,7 @@ class Drawn {
   chip(x, y, label, cls, joins) {
     const short = clip(label, longestChip);
     const w = chipWidth(label);
-    this.chips.push({ key: this.chips.length, class: ("chip " + cls).trim(), x: x - w / 2, y: y - 9, w, tx: x, ty: y + 4, text: short, title: short !== label ? label : "", from: joins.from, to: joins.to });
+    this.chips.push({ key: this.chips.length, class: ("chip " + cls).trim(), x: x - w / 2, y: y - 9, w, tx: x, ty: y + 4, text: short, title: [short !== label ? label : "", joins.why ?? ""].filter(Boolean).join("\n"), from: joins.from, to: joins.to });
     this.reach({ x: x + w / 2, y: y + 9, w: 0, h: 0 });
     this.left = Math.min(this.left, x - w / 2);
   }
@@ -363,7 +365,7 @@ function drawFlow(f) {
   const reach = new Map();
   for (const n of names) {
     for (const a of after.get(n)) {
-      if (!through(after, reach, n, a)) d.down(at.get(a), at.get(n), "", "", { from: "stage " + a, to: "stage " + n });
+      if (!through(after, reach, n, a)) d.down(at.get(a), at.get(n), "", "", { from: "stage " + a, to: "stage " + n, why: stage.get(n).Why?.[a] ?? "" });
     }
   }
   for (const n of names) {
@@ -1367,7 +1369,7 @@ function drawAgent(a) {
   const tools = { x: 0, y: 0, w: Math.max(acrossAll + 2 * inner, cardW), h: innerTop + high + inner };
   const total = hasTools ? tools.w : cardW;
   const left = margin;
-  const model = itemOf({ Icon: "model", Name: a.Model });
+  const model = itemOf({ Icon: "model", Name: a.Model, Line: a.ModelLine });
   const top = size(model);
   top.x = left + (total - top.w) / 2;
   top.y = margin + 18;
@@ -1461,7 +1463,7 @@ function titleOf(first, when) {
 // drawDecision draws two things, one below the other: the model, and the
 // answers, with each question's name.
 function drawDecision(dec) {
-  const model = itemOf({ Icon: "model", Name: dec.Model });
+  const model = itemOf({ Icon: "model", Name: dec.Model, Line: dec.ModelLine });
   const answers = itemOf(dec.Answers);
   const top = size(model), below = size(answers);
   const total = Math.max(top.w, below.w);

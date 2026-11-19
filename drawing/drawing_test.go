@@ -2,6 +2,7 @@ package drawing
 
 import (
 	"encoding/json/v2"
+	"maps"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -68,6 +69,22 @@ states:
       too_long: gave_up
   approved: { end: done }
   gave_up: { end: failed }
+`
+
+const held = `statechart: held
+initial: idle
+states:
+  idle:
+    ticket: go
+    on: { go: busy }
+  busy:
+    initial: one
+    on: { failed: idle, cancel: idle, retry: busy }
+    states:
+      one:
+        ticket: more
+        on: { more: two }
+      two: { end: done }
 `
 
 const two = "flow: two\nstages:\n  a: { job: ./w.js }\n  b: { job: ./w.js, follows: [a] }\n  c: { job: ./w.js, follows: [b] }\n"
@@ -244,21 +261,7 @@ states:
     on: { fine: c }
   c: { end: done }
 `), nil)
-	add("held", def(`statechart: held
-initial: idle
-states:
-  idle:
-    ticket: go
-    on: { go: busy }
-  busy:
-    initial: one
-    on: { failed: idle, cancel: idle, retry: busy }
-    states:
-      one:
-        ticket: more
-        on: { more: two }
-      two: { end: done }
-`), nil)
+	add("held", def(held), nil)
 	add("listen", def(`statechart: listen
 initial: hearing
 states:
@@ -316,6 +319,7 @@ states:
   over: { end: done }
 `), &Run{Steps: []Step{{Shown: states("shipping")}}, Going: []string{"shipping"}, Held: []string{"shipping"}})
 	add("trip", def(trip), nil)
+	add("limited", def(limited), nil)
 	add("trip-called", def(trip), &Run{Children: map[string]Child{"weather": {ID: "lab/7", Machine: "weather", Type: "flow"}}})
 	add("triage", def(`decision: triage
 input: { text: string }
@@ -510,5 +514,65 @@ func Test_drawing_files_are_served(t *testing.T) {
 		if w.Code != http.StatusOK || !strings.Contains(w.Body.String(), "export function") || !strings.Contains(w.Header().Get("Content-Type"), "javascript") {
 			t.Errorf("%s is served as %d %q", name, w.Code, w.Header().Get("Content-Type"))
 		}
+	}
+}
+
+const limited = `flow: limited
+stages:
+  find: { job: ./w.js }
+  tell:
+    job: { script: ./w.js, input: "${stages.find.output}", timeout: 5s, tags: [gpu], allow: [network], restart: { limit: 2 } }
+  after: { job: ./w.js, follows: [tell] }
+`
+
+// A card gives where its file writes it, as file:line: a stage, a state,
+// a state inside another, a tool, a tool of a toolkit, the ask and the
+// model.
+func Test_drawing_card_gives_its_line(t *testing.T) {
+	flow := scene(t, definition(t, limited, given), nil)
+	lines := map[string]string{}
+	for _, st := range flow.Flow.Stages {
+		lines[st.Card.Name] = st.Card.Line
+	}
+	if want := map[string]string{"find": "3", "tell": "5", "after": "6"}; !maps.Equal(lines, want) {
+		t.Errorf("the stages are written at %v, not %v", lines, want)
+	}
+	chart := scene(t, definition(t, held, given), nil)
+	lines = map[string]string{}
+	for _, st := range chart.Chart.States {
+		lines[st.Name] = st.Card.Line
+	}
+	if want := map[string]string{"idle": "5", "busy": "8", "one": "12", "two": "14"}; !maps.Equal(lines, want) {
+		t.Errorf("the states are written at %v, not %v", lines, want)
+	}
+	agent := scene(t, definition(t, helper, given), nil)
+	lines = map[string]string{"model": agent.Agent.ModelLine, "ask": agent.Agent.Ask.Line}
+	for _, g := range agent.Agent.Toolkits {
+		for _, tool := range g.Tools {
+			lines[tool.Card.Name] = tool.Card.Line
+		}
+	}
+	if want := map[string]string{"model": "2", "ask": "5", "look": "7", "idle": "8", "tell": "13"}; !maps.Equal(lines, want) {
+		t.Errorf("the agent's cards are written at %v, not %v", lines, want)
+	}
+}
+
+// A card's tooltip gives its job's limits, and a flow gives why each stage
+// waits for another: what it reads, or follows:.
+func Test_drawing_tooltips_give_limits_and_why_a_stage_waits(t *testing.T) {
+	s := scene(t, definition(t, limited, given), nil)
+	stages := map[string]Stage{}
+	for _, st := range s.Flow.Stages {
+		stages[st.Card.Name] = st
+	}
+	if got, want := stages["tell"].Card.Title, "timeout: 5s\nrestart: limit 2\ntags: gpu\nallow: network"; got != want {
+		t.Errorf("the tooltip of a job with limits is %q, not %q", got, want)
+	}
+	if got := stages["find"].Card.Title; got != "" {
+		t.Errorf("the tooltip of a job with no limits is %q", got)
+	}
+	why := map[string]string{"tell": stages["tell"].Why["find"], "after": stages["after"].Why["tell"]}
+	if want := map[string]string{"tell": "reads find.output", "after": "follows: tell"}; !maps.Equal(why, want) {
+		t.Errorf("the stages wait %v, not %v", why, want)
 	}
 }

@@ -32,7 +32,7 @@ type rule struct {
 
 func chartOf(c *statechart.Chart, run *Run, w *walker) *Chart {
 	ch := &chart{states: map[string]*statechart.State{}, parent: map[string]string{}, start: map[string]string{"": c.Initial}, walker: w}
-	ch.index("", c.States)
+	ch.index("", "states.", c.States)
 	ch.all = ch.ruleList()
 	marks := ch.marks(run)
 	out := &Chart{Start: c.Initial, States: ch.list, Rules: []Rule{}}
@@ -46,13 +46,15 @@ func chartOf(c *statechart.Chart, run *Run, w *walker) *Chart {
 }
 
 // index lists the states of a level by name, each before the states it
-// holds, and the sends of each after those.
-func (ch *chart) index(holder string, states map[string]*statechart.State) {
+// holds, and the sends of each after those. place is where the definition
+// writes the level's states, such as states.working.states.
+func (ch *chart) index(holder, place string, states map[string]*statechart.State) {
 	for _, name := range sortedKeys(states) {
 		s := states[name]
 		ch.states[name] = s
 		ch.parent[name] = holder
 		st := State{Card: ch.cardOf(name, s), Name: name, Parent: holder, Final: final(s), Fails: final(s) && s.End == "failed"}
+		st.Card.Line = lineOf(ch.walker.lines, place+name)
 		ch.list = append(ch.list, st)
 		if s == nil {
 			continue
@@ -60,7 +62,7 @@ func (ch *chart) index(holder string, states map[string]*statechart.State) {
 		if len(s.States) > 0 {
 			ch.start[name] = s.Initial
 			ch.list[len(ch.list)-1].Start = s.Initial
-			ch.index(name, s.States)
+			ch.index(name, place+name+".states.", s.States)
 		}
 		ch.sent(holder, name, "entry", s.Entry)
 		ch.sent(holder, name, "exit", s.Exit)

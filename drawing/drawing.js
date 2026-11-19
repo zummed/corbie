@@ -21,11 +21,18 @@ const least = 0.5, smallest = 0.02, largest = 4;
 // frames a run's marks or a card a page focuses.
 const fill = 1.6;
 
-// Drawing draws a scene, and draws it again as it changes. focus is the
-// path of a card to frame: the names of the cards from the machine drawn
-// down to it, joined by "/".
+// Drawing draws a scene, and draws it again as it changes. A card's path is
+// the names of the cards from the machine drawn down to it, joined by "/".
+// Its props, all but scene optional:
+//
+//   scene      the graph to draw
+//   focus      the path of a card for the camera to frame
+//   lineHref   gives the address of a "file:line", which a card's name links to
+//   lit        the paths of cards to light, as the pointer lights them
+//   onCard     called with a card's path when a person picks a card that is no link
+//   counts     a number for each card's path, drawn on the card where above 0
 export function Drawing(props) {
-  return html`<Show when=${() => props.scene}>${() => html`<${Viewport} scene=${() => props.scene} focus=${() => props.focus} />`}</Show>`;
+  return html`<Show when=${() => props.scene}>${() => html`<${Viewport} scene=${() => props.scene} focus=${() => props.focus} lineHref=${() => props.lineHref} lit=${() => props.lit} onCard=${() => props.onCard} counts=${() => props.counts} />`}</Show>`;
 }
 
 function Viewport(props) {
@@ -43,6 +50,23 @@ function Viewport(props) {
   // framed is where the camera would be to frame what the drawing is about.
   const framed = createMemo(() => frame(laid(), props.focus, size()));
   const camera = createMemo(() => (following() ? framed() : placed()));
+  // shown are the keys of the cards the page lights, by their paths.
+  const shown = createMemo(() => {
+    const want = props.lit ?? [];
+    if (want.length === 0) return new Set();
+    const cards = [];
+    collect(laid(), 0, 0, "", 0, null, cards);
+    return new Set(cards.filter(c => want.includes(c.path)).map(c => c.key));
+  });
+  // What every part of the drawing is given: what lights it, and what a
+  // card does with its line, a pick and its count.
+  const ctx = {
+    lights: (key, from, to) => lit(hot(), key, from, to) || shown().has(key) || (from !== undefined && (shown().has(from) || shown().has(to))),
+    lineHref: line => (line && props.lineHref ? props.lineHref(line) : ""),
+    picks: () => !!props.onCard,
+    pick: path => props.onCard?.(path),
+    count: path => props.counts?.[path] ?? 0,
+  };
   let el;
 
   onSettled(() => {
@@ -128,7 +152,7 @@ function Viewport(props) {
     <svg class="machine" role="img" aria-label=${() => laid().label}>
       <defs><marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path class="arrow" d="M0 0L10 5L0 10z" /></marker><marker id="at" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" markerUnits="userSpaceOnUse" orient="auto-start-reverse"><path class="arrow taken" d="M0 0L10 5L0 10z" /></marker></defs>
       <g class=${() => ["camera", { moving: moving() || !ready() }]} style=${() => `transform: translate(${num(camera().x)}px, ${num(camera().y)}px) scale(${camera().k.toFixed(4)})`}>
-        <${Parts} of=${() => laid()} prefix="" hot=${() => hot()} />
+        <${Parts} of=${() => laid()} prefix="" path="" ctx=${ctx} />
       </g>
     </svg>
     <div class="zoom">
@@ -149,10 +173,11 @@ const byKey = part => part.key;
 
 // Parts draws a drawing's parts in the order they are painted: holders,
 // then arrows, then their chips, then the cards. Every part is named by its
-// key, after the keys of the cards it is drawn inside.
+// key, after the keys of the cards it is drawn inside, and every card by its
+// path, after the names of those cards.
 function Parts(props) {
   const k = key => props.prefix + key;
-  return html`<For each=${() => props.of.holders} keyed=${byKey}>${h => html`<${Holder} holder=${() => h()} prefix=${() => props.prefix} hot=${() => props.hot} />`}</For><For each=${() => props.of.edges} keyed=${byKey}>${e => html`<path class=${() => [e().class, { lit: lit(props.hot, k("edge " + e().key), k(e().from), k(e().to)) }]} style=${() => `d: path("${e().d}")`} pathLength=${() => (/\btaken\b/.test(e().class) ? 1 : undefined)} marker-end=${() => `url(#${e().head})`} data-key=${() => k("edge " + e().key)} data-from=${() => k(e().from)} data-to=${() => k(e().to)} />`}</For><For each=${() => props.of.chips} keyed=${byKey}>${c => html`<${Chip} chip=${() => c()} prefix=${() => props.prefix} hot=${() => props.hot} />`}</For><For each=${() => props.of.shapes} keyed=${byKey}>${s => html`<${Shape} shape=${() => s()} prefix=${() => props.prefix} hot=${() => props.hot} />`}</For>`;
+  return html`<For each=${() => props.of.holders} keyed=${byKey}>${h => html`<${Holder} holder=${() => h()} prefix=${() => props.prefix} ctx=${props.ctx} />`}</For><For each=${() => props.of.edges} keyed=${byKey}>${e => html`<path class=${() => [e().class, { lit: props.ctx.lights(k("edge " + e().key), k(e().from), k(e().to)) }]} style=${() => `d: path("${e().d}")`} pathLength=${() => (/\btaken\b/.test(e().class) ? 1 : undefined)} marker-end=${() => `url(#${e().head})`} data-key=${() => k("edge " + e().key)} data-from=${() => k(e().from)} data-to=${() => k(e().to)}><title>${() => e().title ?? ""}</title></path>`}</For><For each=${() => props.of.chips} keyed=${byKey}>${c => html`<${Chip} chip=${() => c()} prefix=${() => props.prefix} ctx=${props.ctx} />`}</For><For each=${() => props.of.shapes} keyed=${byKey}>${s => html`<${Shape} shape=${() => s()} prefix=${() => props.prefix} path=${() => props.path} ctx=${props.ctx} />`}</For>`;
 }
 
 // at places a part by a transform, which glides when the layout moves it.
@@ -165,7 +190,7 @@ const sized = (w, h) => (h === undefined ? `width: ${num(w)}px` : `width: ${num(
 function Holder(props) {
   const h = () => props.holder;
   const key = () => props.prefix + h().key;
-  return html`<g class=${() => [h().class, "at", { lit: lit(props.hot, key()) }]} style=${() => at(h().x, h().y)} data-key=${key}><rect style=${() => sized(h().w, h().h)} rx="14" /><text class="name" x=${() => num(h().name.x - h().x)} y=${() => num(h().name.y - h().y)}>${() => h().name.text}</text><Show when=${() => h().sub}>${sub => html`<text class="sub" x=${() => num(sub().x - h().x)} y=${() => num(sub().y - h().y)}>${() => sub().text}</text>`}</Show><title>${() => h().title ?? ""}</title></g>`;
+  return html`<g class=${() => [h().class, "at", { lit: props.ctx.lights(key()) }]} style=${() => at(h().x, h().y)} data-key=${key}><rect style=${() => sized(h().w, h().h)} rx="14" /><text class="name" x=${() => num(h().name.x - h().x)} y=${() => num(h().name.y - h().y)}>${() => h().name.text}</text><Show when=${() => h().sub}>${sub => html`<text class="sub" x=${() => num(sub().x - h().x)} y=${() => num(sub().y - h().y)}>${() => sub().text}</text>`}</Show><title>${() => h().title ?? ""}</title></g>`;
 }
 
 // Chip is the label of an arrow, with the whole label as its tooltip where
@@ -173,7 +198,7 @@ function Holder(props) {
 function Chip(props) {
   const c = () => props.chip;
   const k = key => props.prefix + key;
-  return html`<g class=${() => ["arrowchip", "at", { lit: lit(props.hot, k("chip " + c().key), k(c().from), k(c().to)) }]} style=${() => at(c().x, c().y)} data-key=${() => k("chip " + c().key)} data-from=${() => k(c().from)} data-to=${() => k(c().to)}><rect class=${() => c().class} style=${() => sized(c().w)} height="18" rx="9" /><text class="on" x=${() => num(c().tx - c().x)} y=${() => num(c().ty - c().y)} text-anchor="middle">${() => c().text}<title>${() => c().title}</title></text></g>`;
+  return html`<g class=${() => ["arrowchip", "at", { lit: props.ctx.lights(k("chip " + c().key), k(c().from), k(c().to)) }]} style=${() => at(c().x, c().y)} data-key=${() => k("chip " + c().key)} data-from=${() => k(c().from)} data-to=${() => k(c().to)}><rect class=${() => c().class} style=${() => sized(c().w)} height="18" rx="9" /><text class="on" x=${() => num(c().tx - c().x)} y=${() => num(c().ty - c().y)} text-anchor="middle">${() => c().text}<title>${() => c().title}</title></text></g>`;
 }
 
 // Shape is a card, or what is written beside cards: a holder's notes, the
@@ -184,7 +209,7 @@ function Shape(props) {
   return html`${() => {
     switch (kind()) {
       case "card":
-        return html`<${Card} card=${() => s()} prefix=${() => props.prefix} hot=${() => props.hot} />`;
+        return html`<${Card} card=${() => s()} prefix=${() => props.prefix} path=${() => props.path} ctx=${props.ctx} />`;
       case "start":
         return html`<g class="at" style=${() => at(s().x, s().y)}><circle class="start" r="4" /><path class="edge" d="M0 4V24" marker-end="url(#ah)" /></g>`;
       case "note":
@@ -195,23 +220,42 @@ function Shape(props) {
   }}`;
 }
 
-// Card is a card, placed where its box is, as a link where it has one, with
-// the drawing unfolded inside it, whose parts are named after the card.
+// Card is a card, placed where its box is, with the drawing unfolded inside
+// it, whose parts are named after the card. Its body is a link where the
+// card has one, and the same element where it has none, so it glides as the
+// link comes and goes; its name links to its line in its file, where the page
+// gives lines an address; a card that is neither can be picked, by a click
+// or by Enter; and a count above 0 is drawn at its top right.
 function Card(props) {
   const c = () => props.card;
   const key = () => props.prefix + c().key;
+  const path = () => (props.path ? props.path + "/" : "") + c().name;
+  const lineHref = () => props.ctx.lineHref(c().line);
+  const picks = () => props.ctx.picks() && !c().href;
+  const count = () => props.ctx.count(path());
   const x = v => num(v - c().box.x), y = v => num(v - c().box.y);
-  const body = () => html`<g class=${() => [c().class, { lit: lit(props.hot, key()) }]} data-key=${key}>
-    <For each=${() => c().behind} keyed=${byKey}>${b => html`<rect class=${() => b().class} x=${() => x(b().x)} y=${() => y(b().y)} style=${() => sized(b().w, b().h)} rx=${() => num(b().rx)} />`}</For>
+  const body = () => html`<For each=${() => c().behind} keyed=${byKey}>${b => html`<rect class=${() => b().class} x=${() => x(b().x)} y=${() => y(b().y)} style=${() => sized(b().w, b().h)} rx=${() => num(b().rx)} />`}</For>
     <rect class="box" style=${() => sized(c().box.w, c().box.h)} rx=${() => num(c().box.rx)} />
-    <text class="title" x=${() => x(c().title.x)} y=${() => y(c().title.y)} text-anchor=${() => c().title.anchor}>${() => c().title.text}</text>
     <For each=${() => c().subs} keyed=${byKey}>${t => html`<text class="sub" x=${() => x(t().x)} y=${() => y(t().y)} text-anchor=${() => t().anchor}>${() => t().text}</text>`}</For>
     <For each=${() => c().notes} keyed=${byKey}>${t => html`<text class=${() => t().class} x=${() => x(t().x)} y=${() => y(t().y)} text-anchor=${() => t().anchor}>${() => t().text}</text>`}</For>
     <Show when=${() => c().tile}>${t => html`<rect class=${() => ["tile", t().icon]} x=${() => x(t().x)} y=${() => y(t().y)} width="28" height="28" rx="7" /><Show when=${() => t().spark} fallback=${() => html`<use class="icon" href=${() => "#g-" + t().icon} x=${() => x(t().x + 4)} y=${() => y(t().y + 7)} width="20" height="14" />`}>${d => html`<path class="spark" d=${d} transform=${() => `translate(${x(0)} ${y(0)})`} />`}</Show>`}</Show>
-    <Show when=${() => c().fold}>${f => html`<text class="fold" x=${() => x(f().x)} y=${() => y(f().y)} text-anchor="middle">${() => f().text}</text>`}</Show>
+    <Show when=${() => c().fold}>${f => html`<text class="fold" x=${() => x(f().x)} y=${() => y(f().y)} text-anchor="middle">${() => f().text}</text>`}</Show>`;
+  const name = () => html`<text class="title" x=${() => x(c().title.x)} y=${() => y(c().title.y)} text-anchor=${() => c().title.anchor}>${() => c().title.text}</text>`;
+  function pick(e) {
+    if (!picks() || e.target.closest("a[href]")) return;
+    props.ctx.pick(path());
+  }
+  function enter(e) {
+    if (e.key !== "Enter" || !picks() || e.target.closest("a[href]")) return;
+    e.preventDefault();
+    props.ctx.pick(path());
+  }
+  return html`<g class="at" style=${() => at(c().box.x, c().box.y)}><g class=${() => [c().class, { lit: props.ctx.lights(key()), pick: picks() }]} data-key=${key} data-path=${path} tabindex=${() => (picks() ? "0" : undefined)} onClick=${pick} onKeyDown=${enter}>
+    <a class="card" href=${() => c().href || undefined}>${body()}</a>
+    <Show when=${lineHref} fallback=${name}>${href => html`<a class="line" href=${href}>${name()}<title>${() => "the line that writes it: " + c().line}</title></a>`}</Show>
+    <Show when=${() => count() > 0}>${() => html`<g class="count" transform=${() => `translate(${num(c().box.w - 12)} 0)`}><rect x=${() => num(-(10 + 7 * String(count()).length) / 2)} y="-9" width=${() => 10 + 7 * String(count()).length} height="18" rx="9" /><text text-anchor="middle" y="4">${count}</text><title>${() => `${count()} running here now`}</title></g>`}</Show>
     <title>${() => c().tooltip}</title>
-  </g>`;
-  return html`<g class="at" style=${() => at(c().box.x, c().box.y)}><Show when=${() => c().href} fallback=${body}>${href => html`<g><a href=${href}>${body()}</a></g>`}</Show><Show when=${() => c().in}>${i => html`<g class="at in" style=${() => at(i().x - c().box.x, i().y - c().box.y)}><${Parts} of=${() => i()} prefix=${() => key() + " › "} hot=${() => props.hot} /></g>`}</Show></g>`;
+  </g><Show when=${() => c().in}>${i => html`<g class="at in" style=${() => at(i().x - c().box.x, i().y - c().box.y)}><${Parts} of=${() => i()} prefix=${() => key() + " › "} path=${path} ctx=${props.ctx} /></g>`}</Show></g>`;
 }
 
 // frame gives where the camera is to frame what a drawing is about, in a
@@ -255,16 +299,17 @@ export function frame(l, focus, view, whole = false) {
 }
 
 // collect gives every card of a drawing, at every depth: its box on the
-// whole drawing, its path, its classes, how deep it is, the machine it is
-// drawn in, and the machine unfolded inside it.
-function collect(parts, ox, oy, path, depth, within, out) {
+// whole drawing, its path, its key, its classes, how deep it is, the
+// machine it is drawn in, and the machine unfolded inside it.
+function collect(parts, ox, oy, path, depth, within, out, prefix = "") {
   for (const s of parts.shapes) {
     if (s.kind !== "card") continue;
     const box = { x: s.box.x + ox, y: s.box.y + oy, w: s.box.w, h: s.box.h };
     const at = path ? path + "/" + s.name : s.name;
+    const key = prefix + s.key;
     const inner = s.in ? { x: ox + s.in.x + s.in.left, y: oy + s.in.y, w: s.in.w, h: s.in.h } : null;
-    out.push({ box, path: at, class: s.class, depth, within, inner });
-    if (s.in) collect(s.in, ox + s.in.x, oy + s.in.y, at, depth + 1, inner, out);
+    out.push({ box, path: at, key, class: s.class, depth, within, inner });
+    if (s.in) collect(s.in, ox + s.in.x, oy + s.in.y, at, depth + 1, inner, out, key + " › ");
   }
 }
 

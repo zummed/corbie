@@ -131,7 +131,7 @@ test("drawing_agent_is_a_loop_of_model_and_tools", async () => {
 
 test("drawing_machine_unfolds_in_its_card", async () => {
   let v = await draw("nested");
-  const hrefs = all(v, "a").map(a => a.getAttribute("href"));
+  const hrefs = all(v, "a[href]").map(a => a.getAttribute("href"));
   equal(hrefs.sort(), ["/go?to=here", "/go?to=outer"], "the links of cards whose job names a machine");
   assert(!texts(v, "text.title").includes("inner"), "a card that is not unfolded shows what is inside it");
   assert(texts(v, "text.sub").includes("flow: written") && texts(v, "text.sub").includes("flow: b"), "a card whose job names a machine does not say its type and name");
@@ -143,10 +143,10 @@ test("drawing_machine_unfolds_in_its_card", async () => {
   v = await draw("nested-inner-alone");
   assert(!texts(v, "text.title").includes("deep"), "a card inside a folded card is drawn");
   v = await draw("nested-run");
-  equal(all(v, "a").map(a => a.getAttribute("href")), ["/run/a-client/1"], "the links on a run's page");
+  equal(all(v, "a[href]").map(a => a.getAttribute("href")), ["/run/a-client/1"], "the links on a run's page");
   assert(texts(v, "text.sub").includes("flow: b"), "a card whose job started a run does not say what that run is");
   v = await draw("nested-machines");
-  assert(texts(v, "text.sub").includes("flow: b") && all(v, "a").length === 0, "a card whose job started no run does not say its machine");
+  assert(texts(v, "text.sub").includes("flow: b") && all(v, "a[href]").length === 0, "a card whose job started no run does not say its machine");
 });
 
 test("drawing_unused_toolkit_is_folded", async () => {
@@ -162,9 +162,9 @@ test("drawing_unused_toolkit_is_folded", async () => {
 test("drawing_call_and_send_jobs_are_cards", async () => {
   let v = await draw("trip");
   for (const want of ["call: services/weather", "send: set", "to: devices/boiler", "to: rooms/hall#${input.k}"]) assert(texts(v, "text.sub").includes(want), `the drawing does not hold ${want}`);
-  equal(all(v, "a").length, 0, "the links of a call that started no run, and a send");
+  equal(all(v, "a[href]").length, 0, "the links of a call that started no run, and a send");
   v = await draw("trip-called");
-  equal(all(v, "a").map(a => a.getAttribute("href")), ["/run/lab/7"], "the links of a call that started a run");
+  equal(all(v, "a[href]").map(a => a.getAttribute("href")), ["/run/lab/7"], "the links of a call that started a run");
   assert(texts(v, "text.sub").includes("flow: weather") && texts(v, "text.sub").includes("call: services/weather"), "a call's card does not say the run it called");
 });
 
@@ -211,8 +211,8 @@ test("drawing_text_fits_its_card", async () => {
     const svg = v.querySelector("svg");
     for (const el of svg.querySelectorAll("*")) if (el.namespaceURI !== "http://www.w3.org/2000/svg") faults.push(`${name}: <${el.localName}> is not SVG`);
     for (const g of svg.querySelectorAll("g.state:not(.holder)")) {
-      const box = g.querySelector(":scope > rect.box").getBBox();
-      for (const t of g.querySelectorAll(":scope > text")) {
+      const box = g.querySelector(":scope > a.card > rect.box").getBBox();
+      for (const t of g.querySelectorAll(":scope > a > text")) {
         const [a, b] = extent(t);
         if (a < box.x || b > box.x + box.width + 0.5) faults.push(`${name}: "${t.firstChild?.textContent}" overruns its card`);
       }
@@ -368,7 +368,7 @@ test("drawing_camera_is_moved_by_hand", async () => {
 // A drag pans, and does not follow the link it began on.
 test("drawing_camera_is_dragged", async () => {
   const v = await draw("nested", { width: 500, height: 400 });
-  const link = v.querySelector("a");
+  const link = v.querySelector("a[href]");
   const was = camera(v);
   let followed = false;
   link.addEventListener("click", e => { if (!e.defaultPrevented) followed = true; e.preventDefault(); });
@@ -429,4 +429,79 @@ test("drawing_camera_frames_a_child_from_its_first_frame", async () => {
   assert(settled.k > fitted(v), `the camera did not frame the child's machine: ${JSON.stringify(settled)}`);
   const painted = first.find(f => f.k !== 1 || !f.moving);
   equal(painted?.k, settled.k, `the scale of the first frame placed: ${JSON.stringify(first)}`);
+});
+
+// drawWith mounts a drawing of a fixture with the props a page gives it:
+// lineHref, the paths of cards lit, what a pick does, and counts. lit and
+// counts are parts, so a test can change them as a page does.
+async function drawWith(name, { lineHref, lit = [], onCard, counts = {} } = {}, size = { width: 900, height: 700 }) {
+  const box = mount(() => html`<div class="drawn" style="flex: 1"><${Drawing} scene=${() => parts.scene} lineHref=${lineHref} lit=${() => parts.lit} onCard=${onCard} counts=${() => parts.counts} /></div>`, { scene: await fixture(name), lit, counts }, size);
+  await settle(3);
+  const v = box.querySelector(".viewport");
+  assert(v, `${name} is not drawn`);
+  return v;
+}
+
+// A card's name links to the line of its file that writes it, where the
+// page gives lines an address; the card's own link is on the rest of it.
+test("drawing_card_name_links_to_its_line", async () => {
+  let v = await drawWith("lookup-in-child", { lineHref: line => "/machines?line=" + line });
+  const check = card(v, "check");
+  const name = check.querySelector("text.title").closest("a");
+  assert(name?.matches("a.line"), "the name of a card is no link to its line");
+  equal(name.getAttribute("href"), "/machines?line=" + "4", "the address of check's line");
+  equal(check.querySelector("a.card").getAttribute("href"), "/run/a-client/9", "the link of the rest of the card");
+  assert(!name.closest("a.card") && !check.querySelector("a.card a"), "a link is inside another");
+  v = await drawWith("lookup-in-child");
+  assert(!v.querySelector("a.line"), "a name links to its line where the page gives lines no address");
+});
+
+// A card's tooltip gives its job's limits, and a flow's arrow why one stage
+// waits for the other.
+test("drawing_tooltips_are_drawn_on_cards_and_arrows", async () => {
+  const v = await drawWith("limited");
+  const tip = card(v, "tell").querySelector(":scope > title").textContent;
+  equal(tip, "timeout: 5s\nrestart: limit 2\ntags: gpu\nallow: network", "the tooltip of tell");
+  const why = all(v, "path.edge").map(e => e.querySelector("title")?.textContent).sort();
+  equal(why, ["follows: tell", "reads find.output"], "the tooltips of the arrows");
+});
+
+// The page lights cards by their paths, with their arrows, as the pointer
+// lights a card, and as the paths change.
+test("drawing_cards_lit_by_the_page", async () => {
+  const v = await drawWith("lookup-in-child", { lit: ["check/b"] });
+  const litNames = () => all(v, "g.state.lit text.title").map(t => t.textContent).sort();
+  equal(litNames(), ["b"], "the cards lit");
+  assert(all(v, "path.edge.lit").length === 1, "the arrow into the card lit is not lit");
+  receive({ type: "part", id: "lit", data: ["find", "tell"] });
+  await settle(2);
+  equal(litNames(), ["find", "tell"], "the cards lit after the page changed them");
+  receive({ type: "part", id: "lit", data: [] });
+  await settle(2);
+  equal(litNames(), [], "the cards lit with none");
+});
+
+// A card that is no link is picked by a click or by Enter, and the page is
+// given its path; a card that is a link is followed, not picked.
+test("drawing_card_is_picked_by_the_page", async () => {
+  const picked = [];
+  const v = await drawWith("lookup-in-child", { onCard: path => picked.push(path) });
+  const b = card(v, "b"), check = card(v, "check");
+  b.querySelector("rect.box").dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+  card(v, "find").dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true }));
+  equal(picked, ["check/b", "find"], "the paths picked");
+  equal(b.getAttribute("tabindex"), "0", "a card that can be picked does not take the keyboard");
+  assert(!check.hasAttribute("tabindex") && !check.classList.contains("pick"), "a card that is a link can be picked");
+});
+
+// A count above 0 is drawn at a card's top right, and goes when it is 0.
+test("drawing_card_counts", async () => {
+  const v = await drawWith("review", { counts: { waiting: 3, drafting: 0 } });
+  equal(all(v, "g.count text").map(t => t.textContent), ["3"], "the counts drawn");
+  const badge = card(v, "waiting").querySelector("g.count").getBoundingClientRect(), box = card(v, "waiting").querySelector("rect.box").getBoundingClientRect();
+  const k = camera(v).k;
+  assert(Math.abs(badge.right - box.right) < 20 * k && Math.abs(badge.top - box.top) < 12 * k, `the count is at ${badge.right - box.right}, ${badge.top - box.top} from the card's top right`);
+  receive({ type: "part", id: "counts", data: { drafting: 12 } });
+  await settle(2);
+  equal(all(v, "g.count text").map(t => t.textContent), ["12"], "the counts after they changed");
 });

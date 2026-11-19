@@ -2,6 +2,7 @@ package drawing
 
 import (
 	"slices"
+	"strings"
 
 	"github.com/zummed/corbie/machine"
 	"github.com/zummed/corbie/machine/flow"
@@ -13,14 +14,14 @@ func flowOf(f *flow.Flow, run *Run, w *walker) *Flow {
 	stages := run.latest().Stages
 	for _, n := range sortedKeys(f.Stages) {
 		s := f.Stages[n]
-		st := Stage{Card: Card{Name: n}, After: []string{}, When: s.When != "", Stack: s.Each != nil || s.Emits != "" || s.Blob != nil}
-		for _, a := range waitsFor(s) {
-			if _, ok := f.Stages[a]; ok && a != n {
-				st.After = append(st.After, a)
+		st := Stage{Card: Card{Name: n, Title: titleOf("", s.When), Line: lineOf(w.lines, "stages."+n)}, After: []string{}, Why: map[string]string{}, When: s.When != "", Stack: s.Each != nil || s.Emits != "" || s.Blob != nil}
+		for _, wait := range waitsFor(s) {
+			if _, ok := f.Stages[wait.stage]; ok && wait.stage != n {
+				st.After = append(st.After, wait.stage)
+				st.Why[wait.stage] = strings.Join(wait.why, "\n")
 			}
 		}
 		w.describe(&st.Card, n, s.Job)
-		st.Card.Title = titleOf("", s.When)
 		if run != nil {
 			st.Mark = stageMark(n, stages[n], run)
 		}
@@ -50,10 +51,17 @@ func stageMark(name, status string, run *Run) string {
 	return "never"
 }
 
+// A wait is a stage another waits for, and why: each part of it the other
+// reads, `follows:`, or `emits:`.
+type wait struct {
+	stage string
+	why   []string
+}
+
 // waitsFor gives the stages a stage waits for: those its expressions read,
 // those it follows, and the one whose emitted items are its own. It is the
 // rule the flow package keeps to itself, applied to the same expressions.
-func waitsFor(s *flow.Stage) []string {
+func waitsFor(s *flow.Stage) []wait {
 	var reads []machine.Read
 	if s.Job != nil {
 		reads = append(reads, machine.ReadsIn(s.Job.Input, "stages")...)
@@ -66,18 +74,30 @@ func waitsFor(s *flow.Stage) []string {
 	if s.When != "" {
 		reads = append(reads, machine.ReadsOf(s.When, "stages")...)
 	}
-	var names []string
-	add := func(n string) {
-		if n != "" && !slices.Contains(names, n) {
-			names = append(names, n)
+	var waits []wait
+	add := func(n, why string) {
+		if n == "" {
+			return
+		}
+		i := slices.IndexFunc(waits, func(w wait) bool { return w.stage == n })
+		if i < 0 {
+			waits = append(waits, wait{stage: n})
+			i = len(waits) - 1
+		}
+		if !slices.Contains(waits[i].why, why) {
+			waits[i].why = append(waits[i].why, why)
 		}
 	}
 	for _, r := range reads {
-		add(r.Name)
+		if r.Part == "" {
+			add(r.Name, "reads "+r.Name)
+		} else {
+			add(r.Name, "reads "+r.Name+"."+r.Part)
+		}
 	}
 	for _, n := range s.Follows {
-		add(n)
+		add(n, "follows: "+n)
 	}
-	add(s.Emits)
-	return names
+	add(s.Emits, "emits: "+s.Emits)
+	return waits
 }

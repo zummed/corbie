@@ -13,6 +13,7 @@ import (
 	"path"
 	"slices"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/zummed/corbie/machine"
@@ -105,7 +106,8 @@ type Scene struct {
 
 // A Card is what a card says: the icon of what its job is, its name, a line
 // for each fact about its job, its tooltip, its link, the machine unfolded
-// inside it, and whether it is narrow, as a final state is.
+// inside it, whether it is narrow, as a final state is, and where its file
+// writes it, as file:line, where the definition says.
 type Card struct {
 	Icon, Name string
 	Lines      []string
@@ -113,6 +115,7 @@ type Card struct {
 	Href       string
 	In         *Scene `json:",omitzero"`
 	Narrow     bool
+	Line       string
 }
 
 // A Flow is its stages, by name.
@@ -120,12 +123,13 @@ type Flow struct {
 	Stages []Stage
 }
 
-// A Stage is a stage's card, the stages it waits for, whether it has
-// `when:`, whether it is drawn as a stack for `each:`, `emits:` or `blob:`,
-// and its mark.
+// A Stage is a stage's card, the stages it waits for and why it waits for
+// each, by the stage's name, whether it has `when:`, whether it is drawn as
+// a stack for `each:`, `emits:` or `blob:`, and its mark.
 type Stage struct {
 	Card  Card
 	After []string
+	Why   map[string]string
 	When  bool
 	Stack bool
 	Mark  string
@@ -163,9 +167,11 @@ type Rule struct {
 }
 
 // An Agent is its model with its mark and the turn it is on, how many turns
-// it has, what it can call, and its ask with the ask's mark.
+// it has, what it can call, its ask with the ask's mark, and where its file
+// writes the model.
 type Agent struct {
 	Model, Mark string
+	ModelLine   string
 	Turn, Turns int
 	Toolkits    []Toolkit
 	Ask         *Card `json:",omitzero"`
@@ -189,9 +195,11 @@ type Tool struct {
 	Mark string
 }
 
-// A Decision is its model with its mark, and its answers.
+// A Decision is its model with its mark, where its file writes the model,
+// and its answers.
 type Decision struct {
 	Model, Mark string
+	ModelLine   string
 	Answers     Card
 }
 
@@ -228,6 +236,7 @@ func Unfolded(draft *machine.Draft, u Unfold) (Scene, error) {
 
 func sceneOf(def *machine.Definition, run *Run, w *walker) (Scene, error) {
 	s := Scene{Type: def.Type, Name: def.Name}
+	w.lines = def.Lines
 	switch def.Type {
 	case "flow":
 		var f flow.Flow
@@ -253,6 +262,8 @@ func sceneOf(def *machine.Definition, run *Run, w *walker) (Scene, error) {
 			return s, err
 		}
 		s.Decision = decisionOf(&dec, run)
+		s.Decision.ModelLine = lineOf(def.Lines, "model")
+		s.Decision.Answers.Line = lineOf(def.Lines, "questions")
 	default:
 		return s, fmt.Errorf("a machine of type %q has no drawing", def.Type)
 	}
@@ -271,6 +282,7 @@ type walker struct {
 	children map[string]Child
 	in       map[string]Scene
 	path     string
+	lines    map[string]string
 }
 
 // open gives the link of a card whose job names a machine in a draft, and
@@ -324,9 +336,9 @@ func fileOf(line string) string {
 }
 
 // describe writes what a card's job is into it: its icon, its lines, a line
-// where it needs approval, and where the job names a machine, the link to
-// it. at is the name a run gives the card's job, and its path on the
-// Machines page.
+// where it needs approval, where the job names a machine, the link to it,
+// and the job's limits in its tooltip. at is the name a run gives the
+// card's job, and its path on the Machines page.
 func (w *walker) describe(c *Card, at string, job *machine.JobSpec) {
 	if job == nil {
 		return
@@ -338,6 +350,57 @@ func (w *walker) describe(c *Card, at string, job *machine.JobSpec) {
 	if job.Approve {
 		c.Lines = append(c.Lines, "approve: true")
 	}
+	c.Title = strings.Join(slices.DeleteFunc(append([]string{c.Title}, limits(job)...), func(l string) bool { return l == "" }), "\n")
+}
+
+// limits gives what bounds a job, as the definition writes it: its
+// timeout, its restarts, the tags of the runner it needs, and what it is
+// allowed.
+func limits(job *machine.JobSpec) []string {
+	var out []string
+	if job.Timeout != "" {
+		out = append(out, "timeout: "+job.Timeout)
+	}
+	if r := job.Restart; r != nil {
+		words := []string{}
+		if r.Always {
+			words = append(words, "always")
+		}
+		if r.Limit > 0 {
+			words = append(words, "limit "+strconv.Itoa(r.Limit))
+		}
+		if r.Within > 0 {
+			words = append(words, "within "+r.Within.String())
+		}
+		if len(words) == 0 {
+			words = append(words, "no limit")
+		}
+		out = append(out, "restart: "+strings.Join(words, " "))
+	}
+	if len(job.Tags) > 0 {
+		out = append(out, "tags: "+strings.Join(job.Tags, ", "))
+	}
+	if len(job.Allow) > 0 {
+		out = append(out, "allow: "+strings.Join(job.Allow, ", "))
+	}
+	return out
+}
+
+// lineOf gives where a definition writes the value at a place, such as
+// stages.find, as file:line: the first line of any value under it, or
+// nothing where it writes none.
+func lineOf(lines map[string]string, place string) string {
+	best, at := "", 0
+	for k, v := range lines {
+		if k != place && !strings.HasPrefix(k, place+".") && !strings.HasPrefix(k, place+"[") {
+			continue
+		}
+		n, err := strconv.Atoi(v[strings.LastIndexByte(v, ':')+1:])
+		if err == nil && (best == "" || n < at) {
+			best, at = v, n
+		}
+	}
+	return best
 }
 
 // describeJob writes a card's icon, its line and its link. The machine a

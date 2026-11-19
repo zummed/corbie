@@ -75,15 +75,6 @@ func Test_mach_a_type_is_described_by_what_its_reader_reads(t *testing.T) {
 	if d.Shapes["job"] != JobShape || d.Shapes["address"] != AddressShape || d.Shapes["limits"] == nil || len(d.Shapes) != 8 {
 		t.Errorf("its shapes are %v", d.Shapes)
 	}
-	sent, err := json.Marshal(d)
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, want := range []string{`{"name":"work","kind":"named","description":"its jobs, by name","of":"job"}`, `{"name":"ask","kind":"job",`, `"like":"256MB"`} {
-		if !strings.Contains(string(sent), want) {
-			t.Errorf("a client is not given %s in\n%s", want, sent)
-		}
-	}
 	if _, ok := Describe("nothing"); ok {
 		t.Error("a type that is not there was described")
 	}

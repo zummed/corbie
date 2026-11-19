@@ -165,7 +165,7 @@ A program written in Go reads its command line with the package's `cli.Program`,
 
 ```go
 os.Exit(cli.Program("rook", []cli.Command{
-	{Name: "init", Usage: "<directory> [--bridges <names>]", Summary: "make a directory a project, or bring its ready-made machines up to date", Run: cmdInit},
+	{Name: "init", Usage: "<directory> [--bot <name> --services <names>]", Summary: "make a directory a project, or bring its ready-made machines up to date", Run: cmdInit},
 }, os.Args[1:], os.Stdin, os.Stdout, os.Stderr))
 ```
 
@@ -173,7 +173,7 @@ os.Exit(cli.Program("rook", []cli.Command{
 $ corbie rook init
 corbie rook init: name one directory
 
-usage: corbie rook init <directory> [--bridges <names>]
+usage: corbie rook init <directory> [--bot <name> --services <names>]
 ```
 
 The program is given `manual` and `version` beside its own commands, and no `mcp`. `version` prints the program's version and the version of the Corbie it is built with. Its manual is Corbie's, with a page for each of its commands and any pages it adds to the manual. A model runs its commands through `corbie mcp`, as For a model says:
@@ -214,7 +214,7 @@ A program's word that is itself a role's or a program's name begins the next nam
 - When `corbie start` is stopped, it interrupts each program and waits for it, for up to ten seconds before killing it.
 - On a serverless host, `corbie start` refuses a program before anything starts.
 
-`corbie test` is an ordinary run: the same roles, in one process, on a store in memory, with ceilings that allow everything. It records the file as a tree of one file and starts it. A singleton is started by that submit, so a flag of a start given with one is a mistake. A keyed file is refused: its runs start when an event is sent to a key. `corbie test <file> --definition` prints the machine as the client writes it out, each value with its file and line, runs nothing, and takes no flag of a start.
+`corbie test` is an ordinary run: the same roles, in one process, on a store in memory, with ceilings that allow everything. It records the file as a tree of one file and starts it. A singleton is started by that submit, so a flag of a start given with one is a mistake. A keyed file is refused: its runs start when an event is sent to a key. `corbie test <file> --in <dir>` records the directory as `corbie run submit <dir>` does, which starts its singletons, and runs the file at its location there, so its `call:` and `send:` reach the tree's machines. `corbie test <file> --definition` prints the machine as the client writes it out, each value with its file and line, runs nothing, and takes no flag of a start.
 
 `corbie test` sets values and secrets at `/` of the controller in its process, read from the sources `controller value set` and `controller secret set` read:
 
@@ -281,7 +281,7 @@ A submit does this, and exits when each run it cancelled has ended and each star
 - There are no patterns, so a line holding `*`, `?` or `[`, or starting with `!`, fails the submit too.
 - A listed file has no location: nothing runs there, and a send or a call to its path is to no location. A machine still includes it, runs it with `machine:` and reads it with `files:`.
 - A file listed after a submit is gone from the tree, so the next submit removes its location and cancels its runs.
-- A `*.yaml` that is no machine, such as `.github/workflows/test.yaml` or `docker-compose.yaml`, is a file with a problem until it is listed.
+- A `*.yaml` that is no machine, such as `.github/workflows/test.yaml` or `docker-compose.yaml`, is a file with a problem until it is listed. Its problem gives the line to add.
 - A file given alone, to `corbie run submit <file>` or `corbie test <file>`, is a tree of its own, and no list applies.
 
 A tree belongs to the client that first submitted it. Every run keeps the definition it started with, and a submit changes no other tree.

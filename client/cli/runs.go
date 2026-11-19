@@ -253,11 +253,13 @@ func cmdTest(e *Env, args []string) error {
 	var s starting
 	var values list
 	var definition bool
+	var in string
 	s.flags(e)
 	e.Flags.Var(&values, "value", "")
 	e.Flags.Var(&s.secrets, "secret", "")
 	e.Flags.Var(&s.secretsFromEnv, "secret-env", "")
 	e.Flags.BoolVar(&definition, "definition", false, "")
+	e.Flags.StringVar(&in, "in", "", "")
 	files, err := e.Parse(args)
 	if err != nil {
 		return err
@@ -266,7 +268,7 @@ func cmdTest(e *Env, args []string) error {
 	if err != nil {
 		return err
 	}
-	ofAStart := append(slices.Clone(startOnly), "value", "secret", "secret-env")
+	ofAStart := append(slices.Clone(startOnly), "value", "secret", "secret-env", "in")
 	if dirs {
 		if given := given(e, append(ofAStart, "definition")); len(given) > 0 {
 			return Mistake("%s applies to one definition; a directory takes no flag of a start", strings.Join(given, ", "))
@@ -296,13 +298,21 @@ func cmdTest(e *Env, args []string) error {
 		set[name] = value
 	}
 	defer s.close()
-	tree, err := s.record(files[0], "", false)
+	var tree *client.Tree
+	var m *client.Machine
+	if in == "" {
+		if tree, err = s.record(files[0], "", false); err == nil {
+			m = tree.Machines[0]
+		}
+	} else {
+		tree, m, err = recordIn(files[0], in)
+	}
 	if err != nil {
 		return err
 	}
 	// A singleton is started by the submit, and a start carries nothing to
 	// it. A keyed file's runs start only at a send.
-	switch tree.Machines[0].Draft.Definition.Lifetime {
+	switch m.Draft.Definition.Lifetime {
 	case machine.LifetimeKeyed:
 		return fmt.Errorf("%s is keyed: a run starts there when an event is sent to a key, so corbie test starts none; submit it in a tree with the machine that sends to it", files[0])
 	case machine.LifetimeSingleton:
@@ -339,11 +349,37 @@ func cmdTest(e *Env, args []string) error {
 			return err
 		}
 	}
-	id, err := local.RunTree(e.ctx, tree, start)
+	id, err := local.RunTree(e.ctx, tree, m.Location, start)
 	if err != nil {
 		return err
 	}
 	return e.await(local.Client, id, s.watch, isScript(files[0]))
+}
+
+// recordIn reads a directory as a tree, as a submit with no --at reads it,
+// and gives the tree and the machine of a file in it.
+func recordIn(file, dir string) (*client.Tree, *client.Machine, error) {
+	if isScript(file) {
+		return nil, nil, Mistake("--in reads a definition with its tree; a script file runs alone")
+	}
+	tree, err := client.ReadTree(dir, "")
+	if err != nil {
+		return nil, nil, Mistake("%v", err)
+	}
+	rel, inside, err := within(tree.Directory, file)
+	if err != nil {
+		return nil, nil, err
+	}
+	i := slices.IndexFunc(tree.Machines, func(m *client.Machine) bool { return m.Path == filepath.ToSlash(rel) })
+	switch {
+	case !inside:
+		return nil, nil, Mistake("%s is not in %s", file, dir)
+	case i < 0:
+		return nil, nil, Mistake("%s is no machine of the tree in %s: .corbieignore lists it", file, dir)
+	case tree.Machines[i].Problem != nil:
+		return nil, nil, tree.Machines[i].Problem
+	}
+	return tree, tree.Machines[i], nil
 }
 
 // printDefinition prints a definition file written out, each value with

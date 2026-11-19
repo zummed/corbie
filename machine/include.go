@@ -219,7 +219,7 @@ func (p *Parser) included(written *node, held func(string) *Field, mapPlace stri
 	for _, name := range listed(written) {
 		text, ok := name.value.(string)
 		if !ok || name.isMap() || name.list {
-			p.problemIn(name.file, place, "include: names a file or a list of them, and this is %s", describe(plain(name)))
+			p.problemIn(name, place, "include: names a file or a list of them, and this is %s", describe(plain(name)))
 			continue
 		}
 		v, inner := p.include(name, text, place, chain)
@@ -227,7 +227,7 @@ func (p *Parser) included(written *node, held func(string) *Field, mapPlace stri
 		case v == nil:
 			continue
 		case !v.isMap():
-			p.problemIn(name.file, place, "%q is %s, and only a mapping is merged into a mapping", text, describe(plain(v)))
+			p.problemIn(name, place, "%q is %s, and only a mapping is merged into a mapping", text, describe(plain(v)))
 			continue
 		}
 		all = merged(all, p.mapping(v, held, mapPlace, inner), true)
@@ -292,7 +292,7 @@ func (p *Parser) text(n *node, place string, chain []string) *node {
 		if name, ok := includes(piece); ok {
 			piece = p.includeText(piece.m[includeField], name, placeOf(at, includeField), chain)
 		} else if _, ok := piece.value.(string); !ok || piece.list || piece.isMap() {
-			p.problemIn(piece.file, at, "a piece of a text is text or { include: <file> }, and this is %s", describe(plain(piece)))
+			p.problemIn(piece, at, "a piece of a text is text or { include: <file> }, and this is %s", describe(plain(piece)))
 			piece = nil
 		}
 		if piece == nil {
@@ -321,7 +321,7 @@ func (p *Parser) includeText(n *node, name, place string, chain []string) *node 
 		if !ok {
 			return nil
 		}
-		src, ok := p.readFile(n.file, place, file, full)
+		src, ok := p.readFile(n, place, file, full)
 		if !ok {
 			return nil
 		}
@@ -332,7 +332,7 @@ func (p *Parser) includeText(n *node, name, place string, chain []string) *node 
 		return nil
 	}
 	if _, ok := v.value.(string); !ok || v.list || v.isMap() {
-		p.problemIn(n.file, place, "%q#%s is %s, and a piece of a text is text", file, at, describe(plain(v)))
+		p.problemIn(n, place, "%q#%s is %s, and a piece of a text is text", file, at, describe(plain(v)))
 		return nil
 	}
 	return asWritten(v, chain)
@@ -346,14 +346,14 @@ func (p *Parser) including(n *node, file, place string, chain []string) (string,
 	full := kept(p.cleanPath(moved))
 	switch {
 	case !inContext(file):
-		p.problemIn(n.file, place, "%q: %s", file, outside)
+		p.problemIn(n, place, "%q: %s", file, outside)
 		return "", false
 	case slices.Contains(chain, full):
-		p.problemIn(n.file, place, "the definition leads back to itself: %s -> %s", strings.Join(chain, " -> "), full)
+		p.problemIn(n, place, "the definition leads back to itself: %s -> %s", strings.Join(chain, " -> "), full)
 		return "", false
 	}
 	if *p.includes++; *p.includes > mostIncludes {
-		p.problemIn(n.file, place, "more than %d includes are written out: a file reached by two routes counts each time", mostIncludes)
+		p.problemIn(n, place, "more than %d includes are written out: a file reached by two routes counts each time", mostIncludes)
 		return "", false
 	}
 	return full, true
@@ -367,12 +367,12 @@ func (p *Parser) include(n *node, name, place string, chain []string) (*node, []
 	if !ok {
 		return nil, nil
 	}
-	v, ok := p.readNode(n.file, place, file, full)
+	v, ok := p.readNode(n, place, file, full)
 	if !ok {
 		return nil, nil
 	}
 	if v = under(v, at); v == nil {
-		p.problemIn(n.file, place, "%q has nothing at %s", file, at)
+		p.problemIn(n, place, "%q has nothing at %s", file, at)
 		return nil, nil
 	}
 	return v, append(slices.Clip(chain), full)
@@ -438,7 +438,7 @@ func (r *read) yaml(full string) (*node, error) {
 
 // readFile reads a file a definition includes, by its path from the
 // context.
-func (p *Parser) readFile(from, place, name, full string) ([]byte, bool) {
+func (p *Parser) readFile(from *node, place, name, full string) ([]byte, bool) {
 	r := p.loaded(full)
 	if r.err != nil {
 		p.problemIn(from, place, "%q cannot be read: %v", name, r.err)
@@ -448,7 +448,7 @@ func (p *Parser) readFile(from, place, name, full string) ([]byte, bool) {
 }
 
 // readNode reads a file a definition includes as YAML.
-func (p *Parser) readNode(from, place, name, full string) (*node, bool) {
+func (p *Parser) readNode(from *node, place, name, full string) (*node, bool) {
 	v, err := p.loaded(full).yaml(full)
 	if err != nil {
 		p.problemIn(from, place, "%q cannot be read: %v", name, err)
@@ -517,7 +517,7 @@ func (p *Parser) untyped(place string, types []typed) {
 		}
 		text := fmt.Sprintf("it gives no type: a machine writes one of %s with its name, or takes it from a file it includes", strings.Join(fields, ", "))
 		if place == "" {
-			text += noMachine(p.source)
+			text += p.noMachine()
 		}
 		p.Problem(place, "%s", text)
 		return
@@ -578,19 +578,6 @@ func (p *Parser) written(place string) *node {
 		}
 		place = up(place)
 	}
-}
-
-// fileAt gives the file a place is written in, as a problem names it: the
-// definition's own file is not named.
-func (p *Parser) fileAt(place string) string {
-	file := p.source
-	if n := p.written(place); n != nil {
-		file = n.file
-	}
-	if file == p.top {
-		return ""
-	}
-	return file
 }
 
 // reading gives every file being read at a place, outermost first.

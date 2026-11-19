@@ -284,7 +284,7 @@ func Test_agent_call_tool_needs_its_tree(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := alone.Machines[0].Problem; err == nil || !strings.Contains(err.Error(), "toolkits/orders.yaml: toolkits.orders.tools.read_file.call: the machine at gitlab/files/read is read from the tree this file is in: give the directory, as in corbie test <dir>") ||
+	if err := alone.Machines[0].Problem; err == nil || !strings.Contains(err.Error(), "toolkits/orders.yaml:3: toolkits.orders.tools.read_file.call: the machine at gitlab/files/read is read from the tree this file is in: give the tree's directory, as in corbie test <file> --in <dir>") ||
 		strings.Contains(err.Error(), "tools.show") || strings.Contains(err.Error(), "tools.here") {
 		t.Errorf("read alone: %v", err)
 	}

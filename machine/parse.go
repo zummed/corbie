@@ -91,17 +91,25 @@ func parse(src []byte, file string, load func(path string) ([]byte, error), loca
 	return draft, nil
 }
 
-// Problem notes one thing wrong, at a place in the file being read.
+// Problem notes one thing wrong, at a place in the file being read, with
+// the file and the line of the value written nearest it.
 func (p *Parser) Problem(place, format string, args ...any) {
-	p.note(Problem{File: p.fileAt(place), Place: place, Text: fmt.Sprintf(format, args...)})
+	p.problemIn(p.written(place), place, format, args...)
 }
 
-// problemIn notes one thing wrong, at a place in a file.
-func (p *Parser) problemIn(file, place, format string, args ...any) {
-	if file == p.top {
-		file = ""
+// problemIn notes one thing wrong, at a place, in the file and at the line
+// of a written value. With no value, it is in the file being read. The
+// definition's own file is not named.
+func (p *Parser) problemIn(n *node, place, format string, args ...any) {
+	problem := Problem{Place: place, Text: fmt.Sprintf(format, args...)}
+	file := p.source
+	if n != nil {
+		file, problem.Line = n.file, n.line
 	}
-	p.note(Problem{File: file, Place: place, Text: fmt.Sprintf(format, args...)})
+	if file != p.top {
+		problem.File = file
+	}
+	p.note(problem)
 }
 
 func (p *Parser) note(problem Problem) {
@@ -114,7 +122,7 @@ func (p *Parser) note(problem Problem) {
 // parse reads one written definition. needsAsk says whether it, or a child
 // that takes its ask from it, holds a job for approval with no ask to go to.
 func (p *Parser) parse(src []byte, place string) (draft *Draft, needsAsk bool) {
-	n, err := readYAML(src, p.source)
+	n, err := readYAML(src, p.source, p.noMachine())
 	if err != nil {
 		p.Problem(place, "%v", err)
 		return nil, false
@@ -187,6 +195,9 @@ func (p *Parser) fill(written map[string]any, t Type, place string) (draft *Draf
 	outerLimits := p.limits
 	p.limits = limits
 	own := p.Fields("", f.Rest(), t.Shape())
+	if own != nil {
+		own.before = f.shape
+	}
 	body := t.Fill(p, own)
 	own.Done()
 	limits.Done()
@@ -463,7 +474,7 @@ func (p *Parser) MachineAt(place, at string) *Definition {
 	case CheckLocation(at) != nil, strings.HasPrefix(at, "/"):
 		return nil // the check says what is wrong with it, or the run reads it
 	case p.located == nil:
-		p.Problem(place, "the machine at %s is read from the tree this file is in: give the directory, as in corbie test <dir>", at)
+		p.Problem(place, "the machine at %s is read from the tree this file is in: give the tree's directory, as in corbie test <file> --in <dir>", at)
 		return nil
 	}
 	file := at + ".yaml"
@@ -697,9 +708,13 @@ type Fields struct {
 	p     *Parser
 	place string
 	shape *Shape
-	m     map[string]any
-	taken map[string]bool
-	asked map[string]bool // the fields the reader has asked for, written or not
+	// before is the shape the mapping was read by first, where two read it:
+	// a definition's type, name and what every type takes, then the type's
+	// own fields.
+	before *Shape
+	m      map[string]any
+	taken  map[string]bool
+	asked  map[string]bool // the fields the reader has asked for, written or not
 }
 
 // Fields starts reading a mapping of a shape. A value that is not a
@@ -954,21 +969,43 @@ func (f *Fields) Rest() map[string]any {
 	return rest
 }
 
-// Done reports every field not taken as one that is not known here.
+// Done reports every field not taken as one that is not known here, with
+// the fields the mapping takes.
 func (f *Fields) Done() {
 	if f == nil {
 		return
 	}
 	for _, k := range sortedKeys(f.m) {
 		if !f.taken[k] {
-			f.p.Problem(f.at(k), "%q is not a field that belongs here", k)
+			what, names := f.takes()
+			f.p.Problem(f.at(k), "%q is not a field that belongs here: %s takes %s", k, what, strings.Join(names, ", "))
 		}
 	}
 	f.read()
 }
 
+// takes gives what the mapping is and the names of the fields it takes, in
+// the order a person writes them. A mapping of one sort takes the fields
+// that sort holds.
+func (f *Fields) takes() (what string, names []string) {
+	for _, shape := range []*Shape{f.before, f.shape} {
+		if shape != nil {
+			for _, field := range shape.Fields {
+				names = append(names, field.Name)
+			}
+		}
+	}
+	if sort := f.shape.Sort(f.m); sort != "" {
+		if held, ok := f.shape.Sorts.Fields[sort]; ok {
+			return fmt.Sprintf("%s with %s: %s", f.shape.What, f.shape.Sorts.By, sort),
+				slices.DeleteFunc(names, func(name string) bool { return !slices.Contains(held, name) })
+		}
+	}
+	return f.shape.What, names
+}
+
 // read reports a field the shape names that the reader never asked for.
-// Such a field would be offered to a person and then refused, so it is a
+// Such a field would be named in a problem and then refused, so it is a
 // fault in Corbie, found the first time any definition is read.
 func (f *Fields) read() {
 	for _, field := range f.shape.Fields {
@@ -997,27 +1034,28 @@ func describe(v any) string {
 }
 
 // readYAML reads a written definition, from a file, into its values: mappings,
-// lists, text, numbers, true and false. It gives the top mapping.
-func readYAML(src []byte, file string) (*node, error) {
+// lists, text, numbers, true and false. It gives the top mapping. The error
+// of a file that is empty or no mapping ends with noMachine.
+func readYAML(src []byte, file, noMachine string) (*node, error) {
 	n, top, err := nodeYAML(src, file)
 	switch {
 	case err != nil:
 		return nil, err
 	case top == nil:
-		return nil, errors.New("the definition is empty" + noMachine(file))
+		return nil, errors.New("the definition is empty" + noMachine)
 	case !n.isMap() || len(n.keys) == 0:
-		return nil, errors.New("a definition is a mapping" + noMachine(file))
+		return nil, errors.New("a definition is a mapping" + noMachine)
 	}
 	return n, nil
 }
 
-// noMachine says, of a file read as a definition, what to do with one in a
-// tree that is no machine.
-func noMachine(file string) string {
-	if file == "" {
+// noMachine gives the line .corbieignore takes for the file being read, where
+// that file is a machine at a location of the tree being read.
+func (p *Parser) noMachine() string {
+	if p.located == nil || !p.located(p.source) {
 		return ""
 	}
-	return "; a file in a tree that is no machine is listed in .corbieignore"
+	return fmt.Sprintf("; if it is no machine, add the line %s to .corbieignore", p.source)
 }
 
 // nodeYAML reads one YAML document of a file into its values, as a
@@ -1101,6 +1139,9 @@ func fromYAML(n *yaml.Node, file string) (*node, error) {
 			if err != nil {
 				return nil, err
 			}
+			// A field's value is at the line its name is written on, where a
+			// mapping or a list below it begins on the next.
+			v.line = k.Line
 			out.set(k.Value, v)
 		}
 		return out, nil

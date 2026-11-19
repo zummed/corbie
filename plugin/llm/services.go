@@ -61,15 +61,13 @@ func init() {
 	efforts := []string{"low", "medium", "high"}
 	takes := append(append([]Accept{}, Images...), Documents...)
 	Register(&Service{Name: "anthropic", Address: "https://api.anthropic.com", Models: []string{"claude"},
-		Known:   []string{"claude-fable-5-1", "claude-opus-5-5", "claude-sonnet-5-5", "claude-haiku-4-5-20251001"},
 		Efforts: efforts, Accepts: takes, Chat: anthropic.chat})
 	Register(&Service{Name: "openai", Address: "https://api.openai.com", Models: []string{"gpt", "o1", "o3", "o4"},
-		Known:   []string{"gpt-5", "gpt-5-mini"},
 		Efforts: efforts, Accepts: takes, Chat: openaiResponses.chat})
 	Register(&Service{Name: "openai-chat", Address: "https://api.openai.com",
 		Efforts: efforts, Accepts: takes, Chat: openaiChat.chat})
 	Register(&Service{Name: "systemone", Address: "https://api.typesafe.ai", Models: []string{"jev"},
-		Known: []string{"jev-latest"}, Decide: systemone.decide})
+		Decide: systemone.decide})
 }
 
 // systemone is the System One format, which TypeSafe's Jev set.

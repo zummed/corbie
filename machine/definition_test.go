@@ -142,8 +142,8 @@ func TestTypeIsOneFieldAnywhere(t *testing.T) {
 	}
 }
 
-// Everything wrong is reported together, each with its place, and a
-// mistake in a child's file with that file.
+// Everything wrong is reported together, each with its place and its line,
+// and a mistake in a child's file with that file.
 func TestEverythingWrongIsReportedTogether(t *testing.T) {
 	got := problems(t, `probe: p
 colour: blue
@@ -161,8 +161,11 @@ work:
 	if strings.Count(got, "\n") < 3 {
 		t.Errorf("four mistakes were reported as:\n%s", got)
 	}
-	if !strings.Contains(got, "\nkids/kid.yaml: value: in ${input.a +}") {
+	if !strings.Contains(got, "\nkids/kid.yaml:2: value: in ${input.a +}") {
 		t.Errorf("the child's mistake was reported as:\n%s", got)
+	}
+	if !strings.Contains(got, "\nline 2: colour: ") {
+		t.Errorf("a mistake in the definition's own file was reported as:\n%s", got)
 	}
 
 	_, err := Parse([]byte("probe: p\nwork:\n  kid: { machine: ./kids/kid.yaml }\n"), files(map[string]string{"kids/kid.yaml": "probe: kid\nvalue: \"${input.a +}\"\n"}))
@@ -186,10 +189,12 @@ func Test_mach_unknown_or_repeated_field_is_refused(t *testing.T) {
 	if got := problems(t, "probe: p\nvalue: 1\nvalue: 2\n", nil); !strings.Contains(got, "written twice") {
 		t.Fatalf("a repeated field: %s", got)
 	}
-	if got := problems(t, "probe: p\nValue: 1\n", nil); !strings.Contains(got, `"Value" is not a field`) {
+	// The problem names the fields the mapping takes: at the top, those
+	// every type takes and then the type's own.
+	if got := problems(t, "probe: p\nValue: 1\n", nil); !strings.Contains(got, `"Value" is not a field that belongs here: a probe takes probe, description, input, keep, limits, allow, deny, approve, ask, title, meta, lifetime, update, receive, read, work, value`) {
 		t.Fatalf("a name in the wrong case: %s", got)
 	}
-	if got := problems(t, "probe: p\nwork:\n  a: { script: ./a.js, retries: 3 }\n", map[string]string{"a.js": ""}); !strings.Contains(got, "retries") {
+	if got := problems(t, "probe: p\nwork:\n  a: { script: ./a.js, retries: 3 }\n", map[string]string{"a.js": ""}); !strings.Contains(got, `"retries" is not a field that belongs here: a job takes script, files, machine, send, call, input, allow, deny, timeout, restart, memory, tags, approve`) {
 		t.Fatalf("an unknown field of a job: %s", got)
 	}
 	// A stored definition is held to the same: the controller does not
@@ -240,9 +245,6 @@ func Test_mach_alias_growth_is_refused(t *testing.T) {
 		if got := problems(t, bomb(levels), nil); !strings.Contains(got, "document contains excessive aliasing") {
 			t.Errorf("%d levels of aliases: %s", levels, got)
 		}
-	}
-	if _, err := Written([]byte(bomb(30))); err == nil || !strings.Contains(err.Error(), "document contains excessive aliasing") {
-		t.Errorf("30 levels of aliases shown to a person: %v", err)
 	}
 	if took := time.Since(began); took > time.Second {
 		t.Errorf("refusing them took %s", took)

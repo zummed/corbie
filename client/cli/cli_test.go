@@ -656,6 +656,37 @@ func TestTestReadsADirectory(t *testing.T) {
 	}
 }
 
+// corbie test <file> --in <dir> records the directory as a submit does and
+// runs the file at its location there, so its call reaches the tree's
+// machine. Alone, the same call finds nothing at its location.
+func TestTestRunsAFileInItsTree(t *testing.T) {
+	m := machine{t, t.TempDir()}
+	dir := files(t, map[string]string{
+		"ask.yaml":      "flow: ask\nstages:\n  a: { job: { call: { at: answer }, input: { n: 2 }, allow: [send:answer] } }\noutput: ${stages.a.output}\n",
+		"answer.yaml":   "flow: answer\ninput: { n: number }\nstages:\n  a: { job: { script: ./double.js, input: { n: \"${input.n}\" } } }\noutput: ${stages.a.output}\n",
+		"double.js":     "return input.n * 2",
+		"notes.yaml":    "- later\n",
+		".corbieignore": "notes.yaml\n",
+	})
+	ask := filepath.Join(dir, "ask.yaml")
+	if out := m.ok("", "test", ask, "--in", dir, "--json"); !strings.Contains(out, `"status":"done","output":4`) || !strings.Contains(out, `"location":"/`+filepath.Base(dir)+`/ask"`) {
+		t.Fatalf("corbie test ask.yaml --in printed %s", out)
+	}
+	if status, out, _ := m.run("", "test", ask); status != 1 || !strings.Contains(out, "nothing is recorded at /ask/answer") {
+		t.Fatalf("corbie test ask.yaml alone ended %d and printed %q", status, out)
+	}
+	for _, c := range []struct{ file, in, said string }{
+		{filepath.Join(dir, "double.js"), dir, "a script file runs alone"},
+		{filepath.Join(dir, "notes.yaml"), dir, ".corbieignore lists it"},
+		{ask, t.TempDir(), "is not in"},
+		{dir, dir, "a directory takes no flag of a start"},
+	} {
+		if status, _, said := m.run("", "test", c.file, "--in", c.in); status != 2 || !strings.Contains(said, c.said) {
+			t.Errorf("corbie test %s --in %s ended %d and said %q", c.file, c.in, status, said)
+		}
+	}
+}
+
 // corbie test given a directory checks each send and call to a location of
 // the tree against the file there and the sender's own lists, and names a
 // location with no machine without failing.

@@ -65,23 +65,18 @@ func (decisionType) Name() string { return "decision" }
 
 // Shape is what a decision's definition holds of its own.
 func (decisionType) Shape() *machine.Shape {
-	var names []string
-	for _, name := range decides() {
-		service, _ := llm.Find(name)
-		names = append(names, service.Known...)
-	}
 	model := &machine.Shape{Name: "model", What: "a model", Fields: []machine.Field{
-		{Name: "name", Kind: machine.KindWord, Like: "jev-latest", Description: "the model's name, as its service knows it", Open: true, Values: names},
-		{Name: "secret", Kind: machine.KindWord, Like: "TYPESAFE_KEY", Description: "the name of the secret that is the service's key"},
-		{Name: "service", Kind: machine.KindWord, Like: "systemone", Values: decides(),
+		{Name: "name", Kind: machine.KindWord, Description: "the model's name, as its service knows it"},
+		{Name: "secret", Kind: machine.KindWord, Description: "the name of the secret that is the service's key"},
+		{Name: "service", Kind: machine.KindWord,
 			Description: "which service's way of talking is spoken; it follows from the name for jev-… models"},
-		{Name: "address", Kind: machine.KindWord, Like: "https://models.example",
+		{Name: "address", Kind: machine.KindWord,
 			Description: "where the service lives, for a model that is not at its service's usual place"},
 	}}
 	return &machine.Shape{Name: "decision", What: "a decision", Fields: []machine.Field{
-		{Name: "model", Kind: machine.KindFields, Of: model, Like: "{ name: jev-latest, secret: TYPESAFE_KEY }", Description: "the model the questions are put to"},
-		{Name: "state", Kind: machine.KindValue, Like: "${input.text}", Description: "the text or data the questions are about; an expression of its input"},
-		{Name: "questions", Kind: machine.KindValue, Like: "{ urgent: { type: noul, instructions: The customer cannot use the product. } }",
+		{Name: "model", Kind: machine.KindFields, Of: model, Description: "the model the questions are put to"},
+		{Name: "state", Kind: machine.KindValue, Description: "the text or data the questions are about; an expression of its input"},
+		{Name: "questions", Kind: machine.KindValue,
 			Description: "the questions, each under its name with its type, its instructions and its criteria"},
 	}}
 }

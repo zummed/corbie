@@ -5,6 +5,16 @@ Each section lists what changed after one release, the newest first.
 compatible before version 1: a file or a command written the old way is
 refused.
 
+After 0.26.1
+------------
+
+These behave differently.
+
+- A problem in a definition is printed with its line: `line 3: model.colour: …`
+  in the definition's own file, and `kids/kid.yaml:2: value: …` in another.
+  `--json` gives it in the same text. Before, a problem gave its file and place
+  alone.
+
 After 0.22.0
 ------------
 

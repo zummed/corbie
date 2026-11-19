@@ -47,7 +47,7 @@ An agent's model is of a service that has `chat`, and a decision's of one that h
 
 ## Services
 
-Each model service is an extension, kept apart from the rest and from each other. It says which kinds of content it accepts beside text, such as images or documents, and which levels of effort it takes. A definition that asks a service for something it does not take is refused when the definition is checked. A service also says which models it is known to offer, and a program which tools of its own it is known to have, for a person choosing. Those lists are for choosing from and hold nobody to them: a model or a tool may be named whether or not it is there.
+Each model service is an extension, kept apart from the rest and from each other. It says which kinds of content it accepts beside text, such as images or documents, and which levels of effort it takes. A definition that asks a service for something it does not take is refused when the definition is checked. A model, and a tool of a program's own, may be named by any name.
 
 A model's part of a definition holds what its service's models hold, and nothing else. One of a service on the web has an address and may be held to a size of reply; one of a program has neither, and has tools of its own. A field its service's models do not hold is refused when the definition is checked.
 

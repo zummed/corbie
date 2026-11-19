@@ -19,6 +19,7 @@ let following = false;
 
 // receive takes a message the UI sent: a part, which it puts in its place,
 // or whether the store can be read, which the header's dot shows.
+/** @param {import("../../types").Message} m */
 export function receive(m) {
   following = true;
   switch (m.type) {

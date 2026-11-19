@@ -1,0 +1,580 @@
+// The types of what the UI sends a page, written by `go test ./serve`
+// from the Go types; do not edit.
+
+export type Message = PartMessage | StoreMessage;
+
+export interface PartMessage {
+  type: "part";
+  id: string;
+  data: unknown;
+}
+
+export interface StoreMessage {
+  type: "store";
+  store: "lost" | "live";
+}
+
+export interface NarrowingPart {
+  At: string;
+  Window: string;
+  Label: string;
+}
+
+export interface Choice {
+  Name: string;
+  Href: string;
+  Current: boolean;
+}
+
+export interface Place {
+  Name: string;
+  Location: string;
+  Href: string;
+  Lifetime: string;
+  Status: string;
+  Says: string;
+  Current: boolean;
+}
+
+export interface TreeView {
+  Prefix: string;
+  Href: string;
+  Current: boolean;
+  Places: Place[];
+}
+
+export interface ClientPlaces {
+  Name: string;
+  Trees: TreeView[];
+}
+
+export interface LocationsPart {
+  Every: Choice;
+  Clients: ClientPlaces[];
+}
+
+export interface PlaceHead {
+  Location: string;
+  Lifetime: string;
+  Tree: string;
+  Client: string;
+  Cancel: string;
+  Send: boolean;
+  Start: boolean;
+}
+
+export interface Link {
+  ID: string;
+  Machine: string;
+  Title: string;
+  Tip: string;
+  Type: string;
+  Sent: string;
+  This: boolean;
+}
+
+export interface Row {
+  ID: string;
+  Status: string;
+  Failure: string;
+  Name: string;
+  Key: string;
+  Tip: string;
+  Machine: string;
+  Type: string;
+  Own: boolean;
+  Front: Link[];
+  Back: Link[];
+  Between: string;
+  Shown: string;
+  Says: string;
+  When: string;
+  Took: string;
+  Under: number;
+}
+
+export interface RootLine {
+  ID: string;
+  Status: string;
+  Failure: string;
+  Name: string;
+  Tip: string;
+  Machine: string;
+  Type: string;
+  When: string;
+  Took: string;
+  Key: string;
+  Titled: boolean;
+  Chain: Link[];
+  Front: Link[];
+  Back: Link[];
+  Between: string;
+  Shown: string;
+  Waits: string;
+  Ended: boolean;
+  Under: number;
+  Rows: Row[];
+  More: number;
+}
+
+export interface Section {
+  ID: string;
+  Name: string;
+  Lines: RootLine[];
+  Windows: Choice[];
+}
+
+export interface RunsListParts {
+  narrowing: NarrowingPart;
+  locations: LocationsPart;
+  here: PlaceHead | null;
+  ended: Section;
+  busy: Section;
+  idle: Section;
+  singletons: Section;
+}
+
+export interface PagePart {
+  ID: string;
+  Mine: boolean;
+}
+
+export interface DefinedAt {
+  Href: string;
+  File: string;
+  Cards: string;
+}
+
+export interface SummaryPart {
+  ID: string;
+  Machine: string;
+  Type: string;
+  Status: string;
+  Failure: string;
+  Title: string;
+  Location: string;
+  Address: string;
+  At: string;
+  Defined: DefinedAt | null;
+  Started: string;
+  Ended: string;
+  Took: string;
+  Cancel: string;
+}
+
+export interface Wait {
+  Text: string;
+  Ticket: string;
+  Value: string;
+  Run: Link | null;
+}
+
+export interface Label {
+  Name: string;
+  Value: string;
+}
+
+export interface WaitsPart {
+  ID: string;
+  Ended: boolean;
+  Waits: Wait[];
+  Reply: boolean;
+  Send: boolean;
+  Labels: Label[];
+}
+
+export interface File {
+  Path: string;
+  Type: string;
+  Size: string;
+  Href: string;
+}
+
+export interface OutputPart {
+  Ended: boolean;
+  Refused: string;
+  Layer: string;
+  Fix: string;
+  Error: string;
+  Output: string;
+  Used: string;
+  Files: File[];
+}
+
+export interface Child {
+  ID: string;
+  Status: string;
+  Failure: string;
+  Name: string;
+  Key: string;
+  Tip: string;
+  Machine: string;
+  Type: string;
+  When: string;
+  Took: string;
+  Ended: boolean;
+}
+
+export interface Word {
+  Text: string;
+  Bold: boolean;
+  Run: Link | null;
+}
+
+export interface Group {
+  Run: Link;
+  Status: string;
+  Failure: string;
+  Ended: boolean;
+  Steps: number;
+  Took: string;
+  Rows: StepRow[];
+}
+
+export interface Cause {
+  run?: string;
+  step?: number;
+  client?: string;
+  message?: string;
+}
+
+export interface Trace {
+  Run: Link;
+  Status: string;
+  Failure: string;
+  Ended: boolean;
+  Took: string;
+  Call: boolean;
+  Sent: Cause;
+}
+
+export interface Fact {
+  Name: string;
+  Text: string;
+  Run: Link | null;
+}
+
+export interface StepRow {
+  Key: string;
+  Run: Link;
+  Step: number;
+  At: string;
+  Time: string;
+  Exact: string;
+  Depth: number;
+  What: Word[];
+  Kind: string;
+  Group: Group | null;
+  Trace: Trace | null;
+  Facts: Fact[];
+}
+
+export interface StepsPart {
+  Ended: boolean;
+  Rows: StepRow[];
+  Count: number;
+  Dated: boolean;
+}
+
+export interface Card {
+  Icon: string;
+  Name: string;
+  Lines: string[];
+  Title: string;
+  Href: string;
+  In?: Scene | null;
+  Narrow: boolean;
+}
+
+export interface Stage {
+  Card: Card;
+  After: string[];
+  When: boolean;
+  Stack: boolean;
+  Mark: string;
+}
+
+export interface Flow {
+  Stages: Stage[];
+}
+
+export interface State {
+  Card: Card;
+  Name: string;
+  Parent: string;
+  Start: string;
+  Final: boolean;
+  Fails: boolean;
+  Send: boolean;
+  Mark: string;
+}
+
+export interface Rule {
+  From: string;
+  Event: string;
+  To: string;
+  When: string;
+  Timer: string;
+  Send: boolean;
+  Taken: boolean;
+}
+
+export interface Chart {
+  Start: string;
+  States: State[];
+  Rules: Rule[];
+}
+
+export interface Tool {
+  Card: Card;
+  When: boolean;
+  Mark: string;
+}
+
+export interface Toolkit {
+  Name: string;
+  File: string;
+  When: string;
+  Toolkit: boolean;
+  Folded: boolean;
+  Tools: Tool[];
+}
+
+export interface Agent {
+  Model: string;
+  Mark: string;
+  Turn: number;
+  Turns: number;
+  Toolkits: Toolkit[];
+  Ask?: Card | null;
+  AskMark: string;
+}
+
+export interface Decision {
+  Model: string;
+  Mark: string;
+  Answers: Card;
+}
+
+export interface Scene {
+  Type: string;
+  Name: string;
+  Flow?: Flow | null;
+  Chart?: Chart | null;
+  Agent?: Agent | null;
+  Decision?: Decision | null;
+}
+
+export interface Line {
+  Time: string;
+  Machine: string;
+  Step: number;
+  Way: string;
+  Text: string;
+  End: string;
+}
+
+export interface Shown {
+  Row: StepRow | null;
+  Defined: DefinedAt | null;
+  Page: string;
+  Type: string;
+  Time: string;
+  Drawing: Scene | null;
+  Lines: Line[];
+  Input: string;
+  Output: string;
+}
+
+export interface RunParts {
+  page: PagePart;
+  summary: SummaryPart;
+  path: Link[];
+  waits: WaitsPart;
+  output: OutputPart;
+  children: Child[];
+  steps?: StepsPart | null;
+  shown?: Shown | null;
+}
+
+export interface List {
+  Dir: string;
+  DirFull: string;
+  Open: string;
+}
+
+export interface Disk {
+  Base: string;
+}
+
+export interface Span {
+  Class: string;
+  Text: string;
+  Href: string;
+}
+
+export interface CodeLine {
+  Spans: Span[];
+  ID: string;
+  Bad: boolean;
+}
+
+export interface Problem {
+  File: string;
+  Place: string;
+  Text: string;
+  Line: number;
+  Breaks: string[];
+  Top: boolean;
+}
+
+export interface MachinesPlace {
+  Description: string;
+  Location: string;
+  Lifetime: string;
+  Started: string;
+  Update: string;
+  Updated: string;
+  Runs: number;
+  Receives: string[];
+  Sends: string[];
+  Approve: string[];
+}
+
+export interface Use {
+  Name: string;
+  Kind: string;
+  State: string;
+}
+
+export interface Entry {
+  Path: string;
+  Type: string;
+  First: string;
+  Location: string;
+  Lifetime: string;
+  Description: string;
+  Problems: number;
+  Included: number;
+  Listed: boolean;
+}
+
+export interface View {
+  Open: string;
+  Kind: string;
+  First: string;
+  Facts: string;
+  Base: string;
+  View: string;
+  Drawable: boolean;
+  Text: CodeLine[];
+  Found: Problem[];
+  Place: MachinesPlace | null;
+  Uses: Use[];
+  File: Entry | null;
+  Included: string[];
+  Controller: boolean;
+  Runs: boolean;
+  Drawing: Scene | null;
+}
+
+export interface MachinesParts {
+  files: List;
+  disk: Disk;
+  view?: View | null;
+}
+
+export interface ToolkitTool {
+  Name: string;
+  Description: string;
+  Job: string;
+  File: string;
+  Call: string;
+  Event: string;
+  To: string;
+  When: string;
+  Fixed: string[];
+  Approve: boolean;
+}
+
+export interface Start {
+  Name: string;
+  File: string;
+  Type: string;
+}
+
+export interface Offer {
+  Name: string;
+  File: string;
+  When: string;
+  Lifetime: string;
+  Started: string;
+  Starts: Start[];
+}
+
+export interface MachinesToolkit {
+  ID: string;
+  Name: string;
+  Description: string;
+  File: string;
+  Instructions: string;
+  InstructionsFile: string;
+  Opening: boolean;
+  Broken: boolean;
+  Tools: ToolkitTool[];
+  Offered: Offer[];
+}
+
+export interface ToolkitsView {
+  Dir: string;
+  DirFull: string;
+  Toolkits: MachinesToolkit[];
+  Open: MachinesToolkit | null;
+  Problems: Problem[];
+  Found: Problem[];
+  ShowText: boolean;
+  Text: CodeLine[];
+  Unread: string;
+}
+
+export interface ToolkitsParts {
+  toolkits: ToolkitsView;
+}
+
+export interface Party {
+  Name: string;
+  Kind: string;
+  Fingerprint: string;
+  Tags: string[];
+  Ceiling: string[];
+  Deny: string[];
+  At: string[];
+  Removed: boolean;
+  Acts: string[];
+}
+
+export interface Location {
+  At: string;
+  Name: string;
+  Lifetime: string;
+}
+
+export interface Tree {
+  Prefix: string;
+  Client: string;
+  Directory: string;
+  Locations: Location[];
+}
+
+export interface Setting {
+  At: string;
+  Name: string;
+  Kind: string;
+  Value: string;
+}
+
+export interface ControllerParts {
+  parties: Party[];
+  trees: Tree[];
+  settings: Setting[];
+}

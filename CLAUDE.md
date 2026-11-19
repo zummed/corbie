@@ -89,7 +89,7 @@ Sentences:
 ## Working on the code
 
 - Run Go through mise, which pins the version: `mise exec -- go …`. `mise run check` vets and tests.
-- Pure Go, no cgo. Tests need no network, no container, no key and no model.
+- Pure Go, no cgo. Tests need no network, no container, no key and no model. The tests of what a page draws run in Chrome or Chromium, which they find by its usual name or at `$CHROME`.
 - What a browser is given is embedded in the binary. No npm, no bundler and no build step.
 - One package per area, named as the area is. An area uses another only as its rules' `Interfaces` section says.
 - Each constraint names its test. Write the test under that name.

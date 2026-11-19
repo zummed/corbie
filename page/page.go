@@ -107,7 +107,7 @@ type Command func(ctx context.Context, call Call) Answer
 // A PartMessage gives a page one of its parts: its name, and the data the
 // page draws it from.
 type PartMessage struct {
-	Type string         `json:"type"` // "part"
+	Type string         `json:"type" ts:"\"part\""`
 	ID   string         `json:"id"`
 	Data jsontext.Value `json:"data"`
 }
@@ -115,8 +115,8 @@ type PartMessage struct {
 // A StoreMessage tells a page the store cannot be read ("lost"), or can be
 // again ("live").
 type StoreMessage struct {
-	Type  string `json:"type"` // "store"
-	Store string `json:"store"`
+	Type  string `json:"type" ts:"\"store\""`
+	Store string `json:"store" ts:"\"lost\" | \"live\""`
 }
 
 // partsOf gives the parts of a page's parts, in the order of their fields.

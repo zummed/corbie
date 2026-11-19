@@ -2,6 +2,8 @@
 
 The Machines page shows the machines in one directory as the tree `corbie run submit` records: a list of its machines and of the files that are no machine, the problems Corbie finds in them, and for the one chosen its description, its location, the secrets and values it uses, its drawing, its text and its definition written out. The Toolkits page shows the same directory from the tools up: each toolkit, what offers it and what starts that. Every UI but `none` offers both, and both only read: the files are what `corbie run submit` reads and a model edits.
 
+On both pages, choosing a file, a toolkit, a tab or a card's link shows it in place, and the address names it. The list keeps its place, and Back shows what was shown before.
+
 ## The directory
 
 The directory is the one `--dir` names, by default the one the UI was started in. It is read with Corbie's `client.ReadTree`, as `corbie run submit` reads it, at a prefix:
@@ -126,7 +128,7 @@ model:
   effort: high                               # family.yaml:3
 ```
 
-A file that changes on disk is shown again, read at the interval.
+When the directory changes on disk, read at the interval, the file shown is shown again.
 
 ## A file that is no machine
 

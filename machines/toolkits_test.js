@@ -1,6 +1,6 @@
 // The tests of the Toolkits page in Chrome, on a project open at the
 // toolkit "messages", which three agents offer.
-import { test, fixture, until, words, assert, equal, text } from "/test/page/testdata/test.js";
+import { test, fixture, until, click, words, assert, equal, text } from "/test/page/testdata/test.js";
 import { parts } from "ui";
 
 const $ = (s, root = document) => root.querySelector(s);
@@ -58,4 +58,23 @@ test("machines_toolkits_panels_fit_the_window_and_scroll_inside", () => {
   for (const card of $$(".view .toolcards section.tool")) {
     assert(card.scrollWidth <= card.clientWidth + 1, `the card of ${text($(".tname", card))} is wider than it is drawn`);
   }
+});
+
+test("machines_toolkits_choosing_a_toolkit_shows_it_in_place", async () => {
+  window.samePage = true;
+  const first = parts.toolkit.Open.ID;
+  const other = $$(".files .filelist > a").find(a => !a.hasAttribute("aria-current"));
+  const name = text($(".name", other));
+  click(other);
+  await until(() => parts.toolkit.Open.Name === name && text($(".files .filelist > a[aria-current] .name")) === name, "the toolkit chosen shown");
+  assert(window.samePage, "choosing a toolkit loaded another page");
+  equal(text($(".view .head > span")), name, "the head of the toolkit shown");
+  history.back();
+  await until(() => parts.toolkit.Open.ID === first, "Back showing the toolkit first chosen");
+  click($$(".view nav.tabs a").find(a => text(a) === "Text"));
+  await until(() => parts.toolkit.ShowText && $(".view pre.code"), "its text");
+  assert(location.search.includes("view=text"), "the address does not name the tab: " + location.search);
+  history.back();
+  await until(() => !parts.toolkit.ShowText && $(".view .toolcards"), "Back showing its tools");
+  assert(window.samePage, "Back loaded another page");
 });

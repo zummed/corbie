@@ -78,7 +78,8 @@ a run that ends               its line is lit in its status's colour, and moves 
 a row of Steps that appears   it slides in from below, in 0.35s
 the state a run is in         its outline pulses, every 2.6s
 a count that changes          it lifts and settles, in 0.5s
-another page                  the pages cross-fade, in 0.18s
+another file on Machines      the views cross-fade in place, in 0.18s
+another page                  the page shown stays until the next is drawn
 ```
 
 With the computer's setting for reduced motion, nothing moves.

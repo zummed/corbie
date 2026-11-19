@@ -507,3 +507,6 @@ form.enrol pre.said { flex: 1 1 100%; margin: 0; white-space: pre-wrap; overflow
 /* Runs: while the drawing of a row asked for is on its way, the drawing before it stays, dimmed after a moment. */
 .asof > .drawn { transition: opacity .2s; }
 .asof.pending > .drawn { opacity: .55; transition-delay: .15s; }
+
+/* Machines: why the file chosen could not be shown at the address asked for. */
+.view > p.failed { margin: 0; padding: 8px 16px; border-bottom: 1px solid var(--line); }

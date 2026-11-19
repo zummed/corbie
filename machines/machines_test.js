@@ -1,26 +1,12 @@
 // The tests of the Machines page in Chrome, on a project open at its agent
 // support.yaml: what the page draws, how it is laid out, and what a person
 // does on it.
-import { test, settle, wait, assert, equal, text } from "/test/page/testdata/test.js";
+import { test, wait, until, click, assert, equal, text } from "/test/page/testdata/test.js";
 import { parts } from "ui";
 import { focusOf, focusAt, base } from "/machines/shared.js";
 
 const $ = (s, root = document) => root.querySelector(s);
 const $$ = (s, root = document) => [...root.querySelectorAll(s)];
-
-// until waits for a condition, and fails with what it says when it does not
-// hold in time.
-async function until(ok, what, ms = 4000) {
-  const end = performance.now() + ms;
-  while (!ok()) {
-    if (performance.now() > end) throw new Error("waited for " + what);
-    await wait(20);
-  }
-  await settle();
-}
-
-// click clicks a link as a person does.
-const click = el => el.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true, button: 0 }));
 
 const tab = name => $$(".view nav.tabs a").find(a => text(a) === name);
 
@@ -120,7 +106,7 @@ test("machines_drawing_unfolds_as_the_address_says", async () => {
   await until(() => camera() === whole, "the camera moving back out to the whole machine", 2000);
 });
 
-test("machines_unfolding_moves_the_drawing_in_to_the_card", () => {
+test("machines_focus_is_the_card_unfolded_or_the_card_it_was_in", () => {
   equal(focusOf("/machines?file=a.yaml", "/machines?file=a.yaml&open=talking"), "talking", "unfolding a card");
   equal(focusOf("/machines?file=a.yaml&open=talking", "/machines?file=a.yaml&open=talking&open=talking%2Fanswering"), "talking/answering", "unfolding a card inside it");
   equal(focusOf("/machines?file=a.yaml&open=talking&open=talking%2Fanswering", "/machines?file=a.yaml&open=talking"), "talking", "folding the card inside");
@@ -128,6 +114,49 @@ test("machines_unfolding_moves_the_drawing_in_to_the_card", () => {
   equal(focusOf("/machines?file=a.yaml&open=talking", "/machines?file=a.yaml&open=talking&view=text"), null, "another tab");
   equal(focusAt("/machines?file=a.yaml&open=talking&open=talking%2Fanswering"), "talking/answering", "a page opened at an address");
   equal(focusAt("/machines?file=a.yaml"), "", "a page opened at a machine");
+});
+
+test("machines_latest_address_asked_for_is_shown", async () => {
+  // Two tabs chosen at once, the answer to the first held back so that it
+  // comes last: the page shows the tab chosen last.
+  const real = window.fetch;
+  window.fetch = (u, o) => (String(u).includes("view=written") ? wait(300).then(() => real(u, o)) : real(u, o));
+  try {
+    click(tab("Written out"));
+    click(tab("Text"));
+    await until(() => parts.view.View === "text" && location.search.includes("view=text"), "the tab chosen last");
+    await wait(600);
+  } finally {
+    window.fetch = real;
+  }
+  equal(parts.view.View, "text", "the tab shown once both answers came");
+  assert(location.search.includes("view=text"), "the address after both answers came: " + location.search);
+  click(tab("Drawing"));
+  await until(() => parts.view.View === "drawing" && $("#drawing svg.machine"), "the drawing again");
+});
+
+test("machines_a_file_that_cannot_be_read_says_why", async () => {
+  // The UI's answer for a file that is gone, given here so that the browser
+  // logs no failed request; then a request that fails outright.
+  const real = window.fetch;
+  const here = location.href;
+  try {
+    for (const [answer, says] of [
+      [() => Promise.resolve(new Response("open gone.yaml: no such file or directory", { status: 404 })), "open gone.yaml: no such file or directory"],
+      [() => Promise.reject(new TypeError("Failed to fetch")), "TypeError: Failed to fetch"],
+    ]) {
+      window.fetch = (u, o) => (String(u).startsWith("/machines/view") ? answer() : real(u, o));
+      history.pushState(null, "", "/machines?file=gone.yaml");
+      dispatchEvent(new PopStateEvent("popstate"));
+      await until(() => text($(".view p.failed")) === says, "the failure: " + says);
+      equal(parts.view.Open, "support.yaml", "the file shown after the failure");
+    }
+  } finally {
+    window.fetch = real;
+  }
+  history.pushState(null, "", here);
+  dispatchEvent(new PopStateEvent("popstate"));
+  await until(() => !$(".view p.failed"), "the failure gone once the file is shown again");
 });
 
 test("machines_file_changed_on_disk_is_drawn_again", async () => {

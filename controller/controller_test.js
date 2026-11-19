@@ -1,20 +1,11 @@
 // The tests of the Controller page in Chrome, on a lab whose actions run
 // Corbie's commands. The page is read again only when an action changes the
 // store, so what appears after an action came at once.
-import { test, settle, wait, assert, equal, text } from "/test/page/testdata/test.js";
+import { test, until, assert, equal, text } from "/test/page/testdata/test.js";
 import { parts } from "ui";
 
 const $ = (s, root = document) => root.querySelector(s);
 const $$ = (s, root = document) => [...root.querySelectorAll(s)];
-
-async function until(ok, what, ms = 4000) {
-  const end = performance.now() + ms;
-  while (!ok()) {
-    if (performance.now() > end) throw new Error("waited for " + what);
-    await wait(20);
-  }
-  await settle();
-}
 
 // panel gives the panel headed by a name.
 const panel = name => $$("main .panel").find(p => text($(".head h2", p)) === name);
@@ -86,7 +77,7 @@ test("controller_changed_party_is_lit", async () => {
   assert(row.classList.contains("moved"), "the changed row is not lit: " + row.className);
 });
 
-test("controller_secret_value_goes_on_standard_input_only", async () => {
+test("controller_secret_value_is_not_on_the_page", async () => {
   const form = $$("main form.enrol").find(f => f.getAttribute("action") === "/controller/secret-set");
   form.elements.name.value = "GITHUB_TOKEN";
   form.elements.value.value = "hunter2";

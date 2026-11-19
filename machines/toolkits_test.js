@@ -1,22 +1,10 @@
 // The tests of the Toolkits page in Chrome, on a project open at the
 // toolkit "messages", which three agents offer.
-import { test, fixture, settle, wait, assert, equal, text } from "/test/page/testdata/test.js";
+import { test, fixture, until, words, assert, equal, text } from "/test/page/testdata/test.js";
 import { parts } from "ui";
 
 const $ = (s, root = document) => root.querySelector(s);
-
-// label gives a link's text without its icon's title.
-const label = el => [...el.childNodes].filter(n => n.nodeType === Node.TEXT_NODE).map(n => n.textContent).join("").replace(/\s+/g, " ").trim();
 const $$ = (s, root = document) => [...root.querySelectorAll(s)];
-
-async function until(ok, what, ms = 4000) {
-  const end = performance.now() + ms;
-  while (!ok()) {
-    if (performance.now() > end) throw new Error("waited for " + what);
-    await wait(20);
-  }
-  await settle();
-}
 
 test("machines_toolkits_show_what_offers_each", async () => {
   const want = await fixture("toolkits");
@@ -31,7 +19,7 @@ test("machines_toolkits_show_what_offers_each", async () => {
   equal(offered.length, open.Offered.length, "the agents that offer it");
   for (const [i, o] of open.Offered.entries()) {
     const first = $("a.start", offered[i]);
-    equal(label(first), o.Name, "an agent that offers it");
+    equal(words(first), o.Name, "an agent that offers it");
     equal(first.getAttribute("href"), "/machines?" + new URLSearchParams({ file: o.File }), `the link to ${o.Name}`);
   }
   const cards = $$(".view .toolcards section.tool");

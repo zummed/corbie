@@ -79,6 +79,14 @@ if (which === "fails") {
   });
 }
 
+test("runs_a_run_says_its_file_changed", async () => {
+  await streamed();
+  const differs = document.getElementById("differs");
+  if (which !== "fails") return assert(!differs, "a run whose file is the same says it changed");
+  assert(differs && text(differs.querySelector("summary")) === "the file changed since this run started", "the run does not say its file changed");
+  assert(text(differs.querySelector("pre")).includes("+ return { found: true }"), "the lines that differ are not given");
+});
+
 if (which === "denied") {
   test("runs_why_gives_what_refused_a_job_and_the_fix", async () => {
     await streamed();

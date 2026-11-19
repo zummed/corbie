@@ -125,6 +125,16 @@ A run's page opens from its line in the list. Its title line holds the run: its 
 turn ⇢ support › approval
 ```
 
+Under the title line, one line says why the run is where it is, and a click on it selects the row it is at:
+
+```
+waiting 12m on job fetch on runner-a                      the job the deepest running run waits on, how long since it was sent, and its runner
+waiting on ticket verdict in statechart review            a ticket or a timer, where no job is going
+failed (denied) at stage read in flow lookup: <refused>, <layer>, <fix>    the deepest row that failed, and what refused it
+```
+
+Where the UI offers Machines and the run's file on disk now differs from the definition the run started with, a line says `the file changed since this run started`, and opens to the lines that differ.
+
 The path goes up from the run, by parent, to its root, and down to the deepest running run, by the newest running child at each level. Where a send or a call started the root, the run that sent or called comes first, with `⇢`; its tooltip says which, where the root is in a tree of the UI's client. The run itself is in bold, and the run of the step selected is lit. Holding the pointer over a run shows its title, its address and its ID, as over a name.
 
 On the left are four tabs: Steps, Waiting on, Output and Children. On the right are the drawing and the details of the step selected.
@@ -145,6 +155,7 @@ Sends and calls between runs read:
 ```
 ⇠ set from /home/rooms/thermostat#kitchen                                        an event a run sent; links to that run
 ⇠ set from client:panel                                                          an event a client sent
+⇠ poke from client:panel · no rule in resting                                    the machine had no rule for it
 ⇢ sent set to /home/devices/boiler · boiler                                      links to the run that took it
 ⇢ sent message to /acme/conversation#slack:C1:U1:support · started conversation  the send started a run at a keyed location
 ⇢ sent set to /home/rooms/thermostat#hall · undelivered                          its details say why
@@ -153,6 +164,8 @@ Sends and calls between runs read:
 ⇢ called /home/services/weather · weather                                        a call job; links to the run it started
 ```
 
+- A row that ends a job says how long the job took, from the step that asked for it: `stage asker done · 3.2s`.
+- An event from a run that the machine had no rule for is not marked, since its run's record does not say so.
 - Holding the pointer over a row's machine shows its run's title, its address and its ID.
 - A child's rows are under the row that started it, one level in, with a faint line at each level. Rows deeper than four levels are drawn at the fourth, and the path gives their depth.
 - A send and an event from a run have a dashed mark.
@@ -193,7 +206,7 @@ On the trip's page, `⇢ called /lab/weather · weather` unfolds to every row of
 
 ### Selecting a row
 
-One row is selected. On a running run it is the newest row, or the first row of the folded group it is in, until the person selects another; on an ended run it is the last. While a running run's selection is not the newest row, the head of Steps offers Follow, which selects the newest row and follows each new row until the person selects another. Folding the group of the selected row selects the group's first row. Rows of a send's or a call's group are never the newest row.
+One row is selected. On a running run it is the newest row, or the first row of the folded group it is in, until the person selects another; on a failed run it is the deepest row that failed, and on any other ended run the last. While a running run's selection is not the newest row, the head of Steps offers Follow, which selects the newest row and follows each new row until the person selects another. Folding the group of the selected row selects the group's first row. Rows of a send's or a call's group are never the newest row.
 
 The keys act when the list has the focus, or nothing else on the page has it:
 
@@ -201,8 +214,17 @@ The keys act when the list has the focus, or nothing else on the page has it:
 ↑ ↓      selects the row above or below, of those shown
 ←        folds the group the row starts, or the group it is in
 →        opens the group the row starts
+Space    plays or stops
 click    selects the row and shows its details
 ```
+
+Play, in the head of Steps, selects each row shown after the selected one in turn, a row a second, and the drawing follows. A second press plays three rows a second, and a third stops it; selecting a row, Follow, or the last row stops it too.
+
+Steps and the drawing point at each other:
+
+- Holding the pointer over a row lights the cards of the drawing it is about: a state entered or left, a stage, the job that ended or failed.
+- A click on a card that is no link selects the newest row about it.
+- Where the run links to its machine's file, a card's name links to the line of the file that writes it, on the Machines page.
 
 The drawing shows the selected row's run as it was at the row's step, from its record up to that step and the state that step left (see Drawing). It is the page's run, with the card of each job that started a run on the way to the selected row's run unfolded, that run drawn inside it:
 
@@ -227,7 +249,7 @@ a run at its own location   the file at that location: devices/boiler.yaml
 a child                     its root's file, unfolded down the cards of the jobs that started each child: schedules/away.yaml › pause
 ```
 
-- The Machines page shows the file as it is on disk now, which may differ from the definition the run started with. The run's drawing is the definition it runs, and the link's tooltip says so.
+- The Machines page shows the file as it is on disk now, which may differ from the definition the run started with. The run's drawing is the definition it runs, and the link's tooltip says so. Where they differ, the line under the title says so.
 - There is no link where the UI offers no Machines page, where the run's tree was submitted from another directory or at another prefix than the page reads, where a machine on the way was made while running, and on a run in another client's tree.
 
 The details of a row have four tabs, and Open opens the row's run's page:
@@ -235,13 +257,15 @@ The details of a row have four tabs, and Open opens the row's run's page:
 ```
 What happened   the row's facts: the job and its machine or script, the toolkit a tool is from (the `toolkit` Corbie shows on the job), a tool's arguments, the run a tool is held for, the turn, the error, the address sent to and the run that took it
 Input           what the row's job, call or event was given
-Output          what it gave back
+Output          what it gave back, and what the row's job logged, each value with its time
 Record          the values the run's jobs emitted since the step before, and the row's step, in the words corbie run show --record prints, each named by its run's machine
 ```
 
 ### Waiting on, Output and Children
 
 - What the run waits on is listed as in the list, with each running child linked and each ticket's value, and its labels below.
+- A job going gives its runner, its attempt after the first, when it was sent and how long ago, when its result is due, when it restarts and how many times it has, and what it has logged so far.
+- A run with a timeout of its own says when it times out.
 - Output shows the output, or the error; a denial shows what was refused, the layer that refused it, and the fix. The files of its result are listed below, each a download, as `corbie run show --save` fetches it, and never shown in a page.
 - Children lists the runs it started, with each one's status, name, machine where that is not its name, and when it started or ended.
 

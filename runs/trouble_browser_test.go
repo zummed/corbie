@@ -56,7 +56,14 @@ func Test_runs_trouble_in_the_browser(t *testing.T) {
 	waitFor(t, l.Client, func(r *client.Run) bool { return r.ID == ids["unruled"] && r.Step >= 2 })
 
 	h := New(Config{List: &listed{from: viewer}, Lister: viewer, Client: l.Client, Interval: time.Second, Shell: page.Shell{Offered: []string{"Runs"}, Parties: []string{l.Client.ID.Name}},
-		Command: func(ctx context.Context, c page.Call) page.Answer { return page.Answer{Out: `{"taken": true}`} }})
+		Command: func(ctx context.Context, c page.Call) page.Answer { return page.Answer{Out: `{"taken": true}`} },
+		// The file of fails differs from the definition its run started with.
+		Differs: func(ctx context.Context, location, dir string, def *machine.Definition) ([]string, error) {
+			if location != "/trouble/fails" || def.Name != "fails" {
+				return nil, nil
+			}
+			return []string{"- throw new Error(\"no such person: ada\")", "+ return { found: true }"}, nil
+		}})
 	mux := http.NewServeMux()
 	mux.Handle("GET /assets/", http.StripPrefix("/assets", page.Assets()))
 	mux.Handle("GET /drawing/", http.StripPrefix("/drawing", drawing.Files()))

@@ -13,6 +13,7 @@ import (
 	"regexp"
 	"slices"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -34,10 +35,43 @@ func corbie(t *testing.T, stdin string, args ...string) string {
 	return out.String()
 }
 
-// lab sets one computer up, enrols a runner with tags and removes it, keeps
-// a secret at / and a value at /home, and records a tree at /home and a
-// one-file tree at /hello; it gives the Controller page on it.
+// lab sets one computer up as labbed does, and gives the Controller page
+// on it, which runs its commands with command.
 func lab(t *testing.T, command page.Command) http.Handler {
+	t.Helper()
+	_, ctl, s := labbed(t)
+	return New(Config{Controller: ctl, Store: s, Command: command, Interval: time.Second, Changed: (&signal{}).next, Shell: page.Shell{}})
+}
+
+// A signal is a channel closed at each poke, and made again.
+type signal struct {
+	mu      sync.Mutex
+	changed chan struct{}
+}
+
+func (g *signal) next() <-chan struct{} {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	if g.changed == nil {
+		g.changed = make(chan struct{})
+	}
+	return g.changed
+}
+
+func (g *signal) poke() {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	if g.changed != nil {
+		close(g.changed)
+	}
+	g.changed = make(chan struct{})
+}
+
+// labbed sets one computer up, enrols a runner with tags and removes it,
+// keeps a secret at / and a value at /home, and records a tree at /home and
+// a one-file tree at /hello; it gives its config directory, its controller
+// and its store.
+func labbed(t *testing.T) (string, *identity.Identity, store.Store) {
 	t.Helper()
 	dir := t.TempDir()
 	config, at := filepath.Join(dir, "config"), filepath.Join(dir, "store")
@@ -76,7 +110,7 @@ func lab(t *testing.T, command page.Command) http.Handler {
 		t.Fatal(err)
 	}
 	submit(t, config, s, ctl, one)
-	return New(Config{Controller: ctl, Store: s, Command: command, Interval: time.Second, Shell: page.Shell{}})
+	return config, ctl, s
 }
 
 // write writes files into a new directory, and gives the directory.

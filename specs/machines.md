@@ -109,10 +109,12 @@ A machine with problems shows only its text, with no location. One whose YAML do
 The tabs Drawing, Text and Written out choose the view, Drawing by default:
 
 ```
-Drawing       the machine drawn, as Drawing says; a card that names a machine unfolds it
+Drawing       the machine drawn, as Drawing says; a card that names a machine unfolds it in place
 Text          the file as it is written
 Written out   the definition Corbie stores: what it includes in place, each value with its file and line
 ```
+
+Unfolding a card moves the drawing in to it, and folding it moves the drawing back out to the card it was in, or to the whole machine. Back folds and unfolds as the address was.
 
 The address of a machine is `/machines?file=<file>`, with `open=<card path>` for each card unfolded, a card's path being the names of the cards down to it joined by `/`: `/machines?file=schedules/away.yaml&open=pause`. A run's page links to its machine's address where the run's tree was submitted from this directory at the prefix the page reads it at (see Runs).
 
@@ -124,7 +126,7 @@ model:
   effort: high                               # family.yaml:3
 ```
 
-A file that changes on disk is shown again.
+A file that changes on disk is shown again, read at the interval.
 
 ## A file that is no machine
 

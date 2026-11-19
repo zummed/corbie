@@ -1,11 +1,8 @@
 package machines
 
 import (
-	"context"
 	"fmt"
-	"github.com/zummed/corbie-ui/drawing"
 	"net/http"
-	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"slices"
@@ -13,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/coder/websocket"
+	"github.com/zummed/corbie-ui/drawing"
 )
 
 // toolkitsProject adds to a project another agent that offers the toolkit, written in
@@ -424,37 +421,6 @@ func Test_machines_toolkits_agent_named_as_yaml_reads_a_value(t *testing.T) {
 	v := toolkitsView_(t, dir, "")
 	if len(v.Toolkits) != 1 || v.Toolkits[0].File != "toolkits/x.yaml" {
 		t.Errorf("the toolkits are %+v", v.Toolkits)
-	}
-}
-
-func Test_machines_toolkits_page_follows_the_directory(t *testing.T) {
-	dir := project(t)
-	h, err := New(Config{Dir: dir, Interval: 10 * time.Millisecond})
-	if err != nil {
-		t.Fatal(err)
-	}
-	server := httptest.NewServer(h)
-	defer server.Close()
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-	conn, _, err := websocket.Dial(ctx, "ws"+strings.TrimPrefix(server.URL, "http")+"/toolkits/stream?toolkit=messages", nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer conn.CloseNow()
-	// The page is sent its one part as it connects.
-	if _, _, err := conn.Read(ctx); err != nil {
-		t.Fatal(err)
-	}
-	os.WriteFile(filepath.Join(dir, "toolkits/toolkit.yaml"), []byte("description: changed on disk\ntools: {}\n"), 0o644)
-	for {
-		_, data, err := conn.Read(ctx)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if strings.Contains(string(data), "changed on disk") {
-			return
-		}
 	}
 }
 

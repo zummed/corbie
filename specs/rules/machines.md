@@ -46,4 +46,4 @@ The rules behind [the Machines overview](../machines.md). Area code: `machines`.
 
 ## Interfaces
 
-Machines uses Pages for the shell, the stream and its errors (`page.Shell`, `page.Write`, `page.Stream`, `page.Part`, `page.Error`), Controller to read the trees the controller recorded (`controller.Trees`), and Drawing to draw a definition and to find a toolkit's file (`drawing.Unfolded`, `drawing.Unfold`, `drawing.ToolkitFile`), and to write an address as a drawing does (`drawing.Address`).
+Machines uses Pages for the shell, the stream and its errors (`page.Shell`, `page.Write`, `page.Stream`, `page.Error`), and its tests use `pagetest.Run`, Controller to read the trees the controller recorded (`controller.Trees`), and Drawing to draw a definition and to find a toolkit's file (`drawing.Unfolded`, `drawing.Unfold`, `drawing.ToolkitFile`), and to write an address as a drawing does (`drawing.Address`).

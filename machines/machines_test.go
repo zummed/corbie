@@ -901,18 +901,8 @@ func Test_machines_pages_only_read(t *testing.T) {
 			t.Errorf("GET %s answered %d", path, w.Code)
 		}
 	}
-	// What the pages show is drawn by their scripts, which draw no form.
-	for _, path := range []string{"/machines?file=review.yaml", "/machines?file=review.yaml&view=text", "/toolkits", "/machines/script.js", "/toolkits/script.js", "/machines/shared.js"} {
-		w := do(h, "GET", path, nil)
-		if w.Code != http.StatusOK {
-			t.Errorf("GET %s answered %d", path, w.Code)
-		}
-		for _, control := range []string{"<form", "<textarea", "<input", "<button", "${Act}"} {
-			if strings.Contains(w.Body.String(), control) {
-				t.Errorf("%s shows %s:\n%s", path, control, w.Body.String())
-			}
-		}
-	}
+	// That the pages show no form is checked in the browser, by
+	// machines_test.js and toolkits_test.js.
 	if d.stamp() != before {
 		t.Errorf("the directory changed")
 	}

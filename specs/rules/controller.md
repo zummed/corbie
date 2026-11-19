@@ -16,4 +16,4 @@ The rules behind [the Controller overview](../controller.md). Area code: `contro
 
 ## Interfaces
 
-Controller uses Pages for the shell, the stream, its errors and the commands it runs (`page.Shell`, `page.Write`, `page.Stream`, `page.Part`, `page.Error`, `page.Call`, `page.Command`, `page.Answer`).
+Controller uses Pages for the shell, the stream, its errors and the commands it runs (`page.Shell`, `page.Write`, `page.Stream`, `page.Error`, `page.Call`, `page.Command`, `page.Answer`), and its tests use `pagetest.Run`. Serve gives it the signal of a change the UI makes (`Config.Changed`).

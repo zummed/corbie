@@ -43,7 +43,7 @@ function Acts(props) {
 // Party is one runner's or client's line.
 function Party(props) {
   return html`<tr class=${() => ({ removed: props.party.Removed })} ref=${lit(() => ({ key: "party " + props.party.Name, data: props.party }))}>
-    <td>${() => props.party.Name}</td><td class="dim">${() => props.party.Fingerprint}</td>
+    <td>${() => props.party.Name}</td><td class="dim cut" title=${() => props.party.Fingerprint}>${() => props.party.Fingerprint}</td>
     <Show when=${() => props.party.Kind === "runner"} fallback=${() => html`<td class="cut" title=${() => join(props.party.Ceiling) + (props.party.Deny?.length ? "; deny " + join(props.party.Deny) : "")}>${() => (props.party.Ceiling?.length ? join(props.party.Ceiling) : html`<span class="dim">nothing</span>`)}${() => (props.party.Deny?.length ? html`${" "}<span class="dim">deny ${() => join(props.party.Deny)}</span>` : "")}</td>`}>
       <td>${() => join(props.party.At)}</td><td>${() => (props.party.Tags?.length ? join(props.party.Tags) : html`<span class="dim">—</span>`)}</td>
     </Show>

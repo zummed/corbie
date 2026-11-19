@@ -2,7 +2,7 @@
 
 The Controller page lists the runners and clients the controller trusts, the trees it has recorded, and the secrets and values set at each location, and changes the parties, secrets and values. It is offered when the UI acts as the controller.
 
-The page reads the store through Corbie's packages: the parties as `corbie controller parties` reads them, the secrets and values as `corbie controller secret list` and `corbie controller value list` read them, and each tree as the controller recorded it at its prefix. Each action runs its `corbie controller` command, with the controller's config, which is why the page needs the controller.
+The page reads the store through Corbie's packages: the parties as `corbie controller parties` reads them, the secrets and values as `corbie controller secret list` and `corbie controller value list` read them, and each tree as the controller recorded it at its prefix. Each action runs its `corbie controller` command, with the controller's config, which is why the page needs the controller. The page shows what an action changed at once, and reads the store again at the interval.
 
 ## Runners and clients
 

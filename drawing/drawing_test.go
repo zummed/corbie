@@ -1,8 +1,11 @@
 package drawing
 
 import (
+	"encoding/json/v2"
 	"html/template"
 	"math"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -965,6 +968,48 @@ questions:
 	for _, want := range []string{"jev-latest", "answers", "urgent", "team"} {
 		if !strings.Contains(svg, ">"+want+"<") {
 			t.Errorf("the drawing of a decision does not say %q:\n%s", want, svg)
+		}
+	}
+}
+
+// The graph a drawing is laid out from holds what each card says and how
+// the run marks it, and no place on the drawing: the browser lays it out.
+func Test_drawing_scene_is_the_graph_and_its_marks(t *testing.T) {
+	s, err := Draw(definition(t, review, map[string]string{"write.js": script}), &Run{Steps: []Step{{Shown: states("drafting")}, {Shown: states("waiting"), Events: []string{"done"}}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	marks := map[string]string{}
+	for _, st := range s.Chart.States {
+		marks[st.Name] = st.Mark
+	}
+	if s.Type != "statechart" || s.Chart.Start != "drafting" || marks["waiting"] != "now" || marks["drafting"] != "done" || marks["approved"] != "never" {
+		t.Errorf("the states are marked %v, starting at %q", marks, s.Chart.Start)
+	}
+	var taken []string
+	for _, r := range s.Chart.Rules {
+		if r.Taken {
+			taken = append(taken, r.From+" "+r.Event+" "+r.To)
+		}
+	}
+	if !slices.Equal(taken, []string{"drafting done waiting"}) {
+		t.Errorf("the rules taken are %v", taken)
+	}
+	data, err := json.Marshal(s)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if regexp.MustCompile(`"(x|y|w|h|X|Y|W|H)":`).Match(data) {
+		t.Errorf("the graph holds a place on the drawing:\n%s", data)
+	}
+}
+
+func Test_drawing_files_are_served(t *testing.T) {
+	for _, name := range []string{"/layout.js", "/drawing.js"} {
+		w := httptest.NewRecorder()
+		Files().ServeHTTP(w, httptest.NewRequest("GET", name, nil))
+		if w.Code != http.StatusOK || !strings.Contains(w.Body.String(), "export function") || !strings.Contains(w.Header().Get("Content-Type"), "javascript") {
+			t.Errorf("%s is served as %d %q", name, w.Code, w.Header().Get("Content-Type"))
 		}
 	}
 }

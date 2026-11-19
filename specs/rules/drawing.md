@@ -38,4 +38,4 @@ The rules behind [the Drawing overview](../drawing.md). Area code: `drawing`.
 
 ## Interfaces
 
-Drawing uses no other area of the UI.
+Drawing uses no other area of the UI. Runs and Machines give a page a machine's graph, from `Draw` and `Unfolded`, and the page draws it with `drawing.js`, which the UI serves at `/drawing/`.

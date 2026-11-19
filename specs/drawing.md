@@ -1,6 +1,13 @@
 # Drawing
 
-A machine is drawn top to bottom from its definition in full form, read with Corbie's own types for a flow, a statechart, an agent and a decision, and a run's state is shown on the drawing. The UI draws it as SVG, at the size it needs. The Machines page makes it narrower to fit its panel, and never larger; a run's page draws it at its size, in a panel that scrolls. The same drawing is on a run's page and on the Machines page.
+A machine is drawn top to bottom from its definition in full form, and a run's state is shown on the drawing.
+
+1. The UI reads the machine's graph, with Corbie's own types for a flow, a statechart, an agent and a decision: each card and what it says, the arrows, and the marks of a run.
+2. The page lays the graph out and draws it as SVG, with Solid, at the size it needs.
+
+Each holder, card, arrow and chip is an element of its own, and a card keeps its element while the graph changes.
+
+The Machines page makes a drawing narrower to fit its panel, and never larger; a run's page draws it at its size, in a panel that scrolls. The same drawing is on a run's page and on the Machines page.
 
 Every card has one width and one corner radius: an icon for what its job is, its name, and one line for each fact about the job, such as `script: ./find.js` or `flow: people-find`, with `approve: true` where the job has it. A card's tooltip gives its `when:` and a tool's `description:`. A holder is drawn round cards: a statechart's state that holds states, an agent's tools, and each of its toolkits.
 

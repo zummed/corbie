@@ -55,9 +55,7 @@ func drawn(def *machine.Definition, run *Run) (template.HTML, error) {
 	if err != nil {
 		return "", err
 	}
-	got, err := svgOf(s)
-	same(got, oldDraw(def, run))
-	return got, err
+	return svgOf(s)
 }
 
 // unfolded gives a draft's drawing as SVG, with its cards unfolded.
@@ -66,9 +64,7 @@ func unfolded(draft *machine.Draft, u Unfold) (template.HTML, error) {
 	if err != nil {
 		return "", err
 	}
-	got, err := svgOf(s)
-	same(got, oldUnfolded(draft, u))
-	return got, err
+	return svgOf(s)
 }
 
 func svgOf(s Scene) (template.HTML, error) {
@@ -109,10 +105,10 @@ type parts struct {
 		Head  string
 	}
 	Chips []struct {
-		Class         string
-		X, Y, W       float64
-		TX, TY        float64
-		Text, Title   string
+		Class       string
+		X, Y, W     float64
+		TX, TY      float64
+		Text, Title string
 	}
 	Shapes []shape
 }

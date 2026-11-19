@@ -32,7 +32,8 @@ const lineApart = 12;
 const foldedH = 52;
 
 // layout gives the drawing of a scene: its parts, how far it reaches, and
-// the box the whole is drawn in.
+// the box the whole is drawn in. Every part listed has a key, unique among
+// its list, that names it from one layout to the next.
 export function layout(scene) {
   const d = drawOf(scene);
   return {
@@ -138,12 +139,13 @@ class Drawn {
 
   // holder draws a box round cards, with its name.
   holder(cls, b, name, sub, title) {
-    this.holders.push({ class: cls, x: b.x, y: b.y, w: b.w, h: b.h, name: { x: b.x + 14, y: b.y + 22, text: name }, sub, title });
+    this.holders.push({ key: (cls.includes("toolkit") ? "toolkit " : "holder ") + name, class: cls, x: b.x, y: b.y, w: b.w, h: b.h, name: { x: b.x + 14, y: b.y + 22, text: name }, sub, title });
   }
 
   // paint draws an item in a box, as a link where it has one, and the
-  // drawing unfolded inside it. behind is what is drawn under the box.
-  paint(it, b, cls, rx, behind) {
+  // drawing unfolded inside it. behind is what is drawn under the box, and
+  // key names the card among the drawing's.
+  paint(it, b, cls, rx, behind, key) {
     if (it.in) cls += " unfolded";
     let tx = b.x + 50, ty = b.y + 22, anchor = "start";
     if (it.lines.length === 0) ty = b.y + 26;
@@ -153,6 +155,7 @@ class Drawn {
     }
     const card = {
       kind: "card",
+      key: key ?? "card " + it.name,
       name: it.name,
       class: cls,
       href: it.href || "",
@@ -169,11 +172,11 @@ class Drawn {
     let y = ty;
     for (const l of it.lines) {
       y += lineH;
-      card.subs.push({ x: tx, y, anchor, text: l });
+      card.subs.push({ key: card.subs.length, x: tx, y, anchor, text: l });
     }
     for (const n of it.notes) {
       y += noteH;
-      card.notes.push({ class: n.taken ? "note taken" : "note", x: tx, y, anchor, text: n.text });
+      card.notes.push({ key: card.notes.length, class: n.taken ? "note taken" : "note", x: tx, y, anchor, text: n.text });
     }
     if (it.icon) {
       const tile = { x: b.x + 12, y: b.y + 11, w: 28, h: 28 };
@@ -228,7 +231,7 @@ class Drawn {
     }
     to(pts[pts.length - 1]);
     const classes = ("edge " + cls).trim();
-    this.edges.push({ class: classes, d: p, head: cls.split(" ").includes("taken") ? "at" : "ah" });
+    this.edges.push({ key: this.edges.length, class: classes, d: p, head: cls.split(" ").includes("taken") ? "at" : "ah" });
     for (const q of pts) {
       this.reach({ x: q.x, y: q.y, w: 0, h: 0 });
       this.left = Math.min(this.left, q.x);
@@ -241,7 +244,7 @@ class Drawn {
   chip(x, y, label, cls) {
     const short = clip(label, longestChip);
     const w = chipWidth(label);
-    this.chips.push({ class: ("chip " + cls).trim(), x: x - w / 2, y: y - 9, w, tx: x, ty: y + 4, text: short, title: short !== label ? label : "" });
+    this.chips.push({ key: this.chips.length, class: ("chip " + cls).trim(), x: x - w / 2, y: y - 9, w, tx: x, ty: y + 4, text: short, title: short !== label ? label : "" });
     this.reach({ x: x + w / 2, y: y + 9, w: 0, h: 0 });
     this.left = Math.min(this.left, x - w / 2);
   }
@@ -366,8 +369,8 @@ function drawFlow(f) {
     if (s.Mark) cls += " " + s.Mark;
     if (s.When) cls += " when";
     const behind = [];
-    if (s.Stack) for (const off of [8, 4]) behind.push({ class: "behind", x: b.x + off, y: b.y - off, w: b.w, h: b.h, rx: cardR });
-    d.paint(items.get(n), b, cls, cardR, behind);
+    if (s.Stack) for (const off of [8, 4]) behind.push({ key: behind.length, class: "behind", x: b.x + off, y: b.y - off, w: b.w, h: b.h, rx: cardR });
+    d.paint(items.get(n), b, cls, cardR, behind, "stage " + n);
     d.reach({ x: b.x, y: b.y, w: b.w + 8, h: b.h });
   }
   return d;
@@ -689,16 +692,16 @@ class Chart {
       if (this.holds(n)) {
         d.holder(cls + " holder", b, n);
         this.items.get(n).notes.forEach((note, i) => {
-          d.shapes.push({ kind: "note", x: b.x + 14, y: b.y + 22 + (i + 1) * noteH, text: note.text });
+          d.shapes.push({ kind: "note", key: "note " + d.shapes.length, x: b.x + 14, y: b.y + 22 + (i + 1) * noteH, text: note.text });
         });
       } else if (s.Final) {
         const inside = { x: b.x + 4, y: b.y + 4, w: b.w - 8, h: b.h - 8 };
-        d.paint(this.items.get(n), inside, cls, cardR - 4, [{ class: "outer", x: b.x, y: b.y, w: b.w, h: b.h, rx: cardR }]);
+        d.paint(this.items.get(n), inside, cls, cardR - 4, [{ key: 0, class: "outer", x: b.x, y: b.y, w: b.w, h: b.h, rx: cardR }], "state " + n);
       } else {
-        d.paint(this.items.get(n), b, cls, cardR, []);
+        d.paint(this.items.get(n), b, cls, cardR, [], "state " + n);
       }
       if (this.start.get(level) === n) {
-        d.shapes.push({ kind: "start", x: cx(b), y: b.y - 24, d: `M${num(cx(b))} ${num(b.y - 20)} V${num(b.y)}` });
+        d.shapes.push({ kind: "start", key: "start " + d.shapes.length, x: cx(b), y: b.y - 24, d: `M${num(cx(b))} ${num(b.y - 20)} V${num(b.y)}` });
       }
       this.paint(d, n);
     }
@@ -1392,16 +1395,16 @@ function drawAgent(a) {
       const b = size(askItem);
       b.x = cx(tools) - b.w / 2;
       b.y = bottom(tools) - inner - b.h;
-      d.paint(askItem, b, ("state ask " + a.AskMark).trim(), cardR, []);
+      d.paint(askItem, b, ("state ask " + a.AskMark).trim(), cardR, [], "ask");
     }
     d.down(top, tools, cls, `${a.Turns} turns`);
     y = bottom(tools);
   }
   reply.y = y + (2 * rowGap) / 1.5;
   d.down(hasTools ? tools : top, reply, "", "");
-  d.paint(model, top, ("state model " + a.Mark).trim(), cardR, []);
-  if (a.Turn > 0) d.shapes.push({ kind: "tag", x: top.x + 4, y: top.y - 8, text: `turn ${a.Turn}` });
-  d.paint(itemOf({ Name: "reply" }), reply, "state reply", cardR, []);
+  d.paint(model, top, ("state model " + a.Mark).trim(), cardR, [], "model");
+  if (a.Turn > 0) d.shapes.push({ kind: "tag", key: "tag", x: top.x + 4, y: top.y - 8, text: `turn ${a.Turn}` });
+  d.paint(itemOf({ Name: "reply" }), reply, "state reply", cardR, [], "reply");
   return d;
 }
 
@@ -1434,7 +1437,7 @@ function paintGroup(d, g) {
     at.y = y;
     let c = ("state tool " + t.Mark).trim();
     if (t.When) c += " when";
-    d.paint(g.items[i], at, c, cardR, []);
+    d.paint(g.items[i], at, c, cardR, [], "tool " + t.Card.Name);
     y += at.h + 12;
   });
   return now;
@@ -1464,7 +1467,7 @@ function drawDecision(dec) {
   below.y = bottom(top) + 2 * rowGap;
   const d = new Drawn();
   d.down(top, below, "", "");
-  d.paint(model, top, ("state model " + dec.Mark).trim(), cardR, []);
-  d.paint(answers, below, "state reply", cardR, []);
+  d.paint(model, top, ("state model " + dec.Mark).trim(), cardR, [], "model");
+  d.paint(answers, below, "state reply", cardR, [], "answers");
   return d;
 }

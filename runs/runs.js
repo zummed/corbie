@@ -2,7 +2,7 @@
 // unfolded as the store changes, a line or a row opens its run, the button
 // at a line's start unfolds it, and a panel shows one tab at a time.
 import { createContext, createDeferred, createEffect, createMemo, createSignal, createStore, isPending, onSettled, useContext, Errored } from "solid-js";
-import { html, parts, mount, lit, bump, Icon, Status, Act, Handle, tabs, plural, word } from "ui";
+import { html, parts, mount, lit, bump, Icon, Status, Act, Handle, tabs, plural, word, lineHref } from "ui";
 import { Drawing } from "drawing";
 
 // middle cuts a long address in its middle, where keys that differ at
@@ -149,7 +149,7 @@ const said = row => row.What.map(w => w.Text).join("");
 function Why() {
   const steps = useContext(StepsContext);
   const w = () => parts.summary.Why;
-  return html`<Show when=${w}>${y => html`<p class="why" id="why"><button type="button" class="link" onClick=${() => steps.select(y().Row)} disabled=${() => !y().Row}>${() => y().Lead}${() => (y().Since ? " " + ago(y().Since) : "")}${() => (y().Rest ? " " + y().Rest : "")}</button><Show when=${() => y().Facts?.length}>: <span class="facts">${() => y().Facts.map(f => f.Text).join(", ")}</span></Show></p>`}</Show>
+  return html`<Show when=${w}>${y => html`<p class="why" id="why"><button type="button" class="link" onClick=${() => steps.select(y().Row)} disabled=${() => !y().Row}>${() => y().Lead}${() => (y().Since ? " " + ago(y().Since) : "")}${() => (y().Rest ? " " + y().Rest : "")}</button></p><Show when=${() => y().Facts?.length}><dl class="refusal why-facts"><For each=${() => y().Facts}>${f => html`<dt>${() => f.Name}</dt><dd>${() => f.Text}</dd>`}</For></dl></Show>`}</Show>
   <Show when=${() => parts.summary.Differs?.length}><details class="differs" id="differs"><summary>the file changed since this run started</summary><pre>${() => parts.summary.Differs.join("\n")}</pre></details></Show>`;
 }
 
@@ -296,11 +296,9 @@ function followSteps() {
   const nodes = createMemo(() => (parts.steps ? nodesOf(parts.steps.Rows, "", [], [], open, traced) : []));
   const byKey = createMemo(() => new Map(nodes().map(n => [n.key, n])));
   const visible = createMemo(() => nodes().filter(n => n.groups.every(g => g.open)));
-  // newest is the newest row of the run and the runs under it; the rows of
-  // a send's or a call's group are of other runs, and are left out.
   // newest is the row the page selects while it follows the run: the
   // newest, or a failed run's deepest failure, as the UI gives it.
-  const newest = createMemo(() => byKey().get(parts.steps?.Follows) ?? nodes().filter(n => !n.groups.some(g => g.trace)).at(-1));
+  const newest = createMemo(() => byKey().get(parts.steps?.Follows));
   // shownOf gives the node that shows a node: itself, or the head of the
   // outermost folded group it is in.
   const shownOf = node => {
@@ -392,7 +390,12 @@ function followSteps() {
     },
     // play plays from the row selected, faster when it plays already, and
     // stops when it plays fast.
-    play: () => setPlaying(p => (p + 1) % 3),
+    play() {
+      // From the last row, it plays from the first.
+      const rows = visible();
+      if (!playing() && rows.length && selected() === rows.at(-1)) choose(rows[0]);
+      setPlaying(p => (p + 1) % 3);
+    },
     // pause plays or stops.
     pause: () => setPlaying(p => (p ? 0 : 1)),
     // follow selects the newest row, and goes on selecting each new row.
@@ -500,12 +503,6 @@ function Path() {
     return down.map((p, at) => ({ ...p, at }));
   });
   return html`<nav class="path" id="path"><For each=${links} keyed=${p => p.at + " " + p.link.ID}>${q => html`${() => (q().at ? (q().sent || q().trace ? html`<span class="sep send" title=${() => (q().sent ? q().sent + " of the run before started it" : "")}>⇢</span>` : html`<span class="sep">›</span>`) : "")}<a href=${() => "/run/" + q().link.ID} title=${() => q().link.Tip} aria-current=${() => (q().link.This ? "page" : undefined)} class=${() => ({ sel: steps.selected()?.row.Run.ID === q().link.ID })}><Show when=${() => q().link.Type}><${Icon} type=${() => q().link.Type} /></Show>${() => q().link.Machine}</a>`}</For></nav>`;
-}
-
-// lineHref gives the address of a line of a file on the Machines page.
-function lineHref(at) {
-  const i = at.lastIndexOf(":");
-  return `/machines?file=${encodeURIComponent(at.slice(0, i))}&view=text#L${at.slice(i + 1)}`;
 }
 
 // View is the drawing of the page's run with the cards down to the

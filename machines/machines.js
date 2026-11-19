@@ -4,7 +4,7 @@
 // again when the directory changed on disk. Unfolding a card moves the
 // drawing in to it, and folding it moves back out to the card it was in.
 import { createEffect, createSignal, flush } from "solid-js";
-import { html, parts, receive, mount, Icon, Handle, plural } from "ui";
+import { html, parts, receive, mount, Icon, Handle, plural, lineHref } from "ui";
 import { Drawing } from "drawing";
 import { Problems, Code, machineHref, base, focusOf, focusAt } from "/machines/shared.js";
 
@@ -114,13 +114,6 @@ function counted(at) {
   if (r?.FailedToday) said.push(`${r.FailedToday} failed today`);
   return said.map(s => " · " + s).join("");
 }
-
-// lineHref gives the address of a line of a file, written "file:line", on
-// the Text tab.
-const lineHref = at => {
-  const i = at.lastIndexOf(":");
-  return machineHref(at.slice(0, i), "text") + "#L" + at.slice(i + 1);
-};
 
 function Place(props) {
   const p = () => props.place;

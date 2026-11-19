@@ -1,9 +1,9 @@
 // The tests of the runs the Machines page counts, in Chrome, on a house
 // whose keyed room has four runs: two open, one closed, and one that ended
 // failed today. The UI acts as the controller and as the client that
-// started them.
-import { test, until, assert, equal, text, copy } from "/test/page/testdata/test.js";
-import { parts, receive } from "ui";
+// started them, and reads the store again only when the list of runs
+// changes.
+import { test, until, assert, equal, text } from "/test/page/testdata/test.js";
 
 const $ = (s, root = document) => root.querySelector(s);
 const $$ = (s, root = document) => [...root.querySelectorAll(s)];
@@ -25,11 +25,11 @@ test("machines_drawing_counts_the_runs_in_each_state", async () => {
 });
 
 test("machines_counts_follow_the_store", async () => {
-  const runs = copy(parts.runs);
-  runs["/house/room"].In.open = 5;
-  runs["/house/room"].Running = 6;
-  receive({ type: "part", id: "runs", data: runs });
-  await until(() => countOn("open") === "5", "the count of open as sent");
+  // A run started at key 5 is open: the list of runs changes, and the page
+  // is sent the room's counts at once, though it reads only hourly.
+  const res = await fetch("/started", { method: "POST", body: new URLSearchParams({ key: "5" }) });
+  assert(res.ok, "the run was not started: " + (await res.text()));
+  await until(() => countOn("open") === "3", "the count of open with the new run");
   const row = $$(".place .named > span").find(s => text(s) === "location").nextElementSibling;
-  assert(text(row).includes("6 running"), "the location's row is " + text(row));
+  equal(text(row), "/house/room · 4 running · 1 failed today", "the location's row");
 });

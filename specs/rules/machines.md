@@ -36,7 +36,7 @@ The rules behind [the Machines overview](../machines.md). Area code: `machines`.
 
 **R-machines-17** A card's name on a drawing links to the line of the file that writes it, which Text shows lit, in place. *Test:* `machines_card_opens_its_line`
 
-**R-machines-18** Machines gives Runs the values of the machine now at a run's location that differ from the definition the run started with, where the run's tree was submitted from the directory the page reads; none where they are the same, and none for any other. *Test:* `machines_a_run_differs_from_its_file`
+**R-machines-18** Machines gives Runs the values of the machine now at a run's location that differ from the definition the run started with, and each script and child machine whose contents differ, where the run's tree was submitted from the directory the page reads; none where they are the same, and none for any other. *Test:* `machines_a_run_differs_from_its_file`
 
 **R-machines-12** Written out shows a machine without problems as Corbie writes it out, each value with its file and line, which links to that line of that file's text. *Test:* `machines_written_out_shows_where_each_value_is_from`
 
@@ -52,4 +52,4 @@ The rules behind [the Machines overview](../machines.md). Area code: `machines`.
 
 ## Interfaces
 
-Machines uses Pages for the shell, the stream and its errors (`page.Shell`, `page.Write`, `page.Stream`, `page.Error`), and its tests use `pagetest.Run`, Controller to read the trees the controller recorded (`controller.Trees`), and Drawing to draw a definition and to find a toolkit's file (`drawing.Unfolded`, `drawing.Unfold`, `drawing.ToolkitFile`), and to write an address as a drawing does (`drawing.Address`). Serve gives it the list of runs the UI reads (`Config.List`) and the client it acts as (`Config.Client`), and Runs asks it how a run's definition differs from its file (`Pages.Differs`).
+Machines uses Pages for the shell, the stream and its errors (`page.Shell`, `page.Write`, `page.Stream`, `page.Error`), and its tests use `pagetest.Run`, Controller to read the trees the controller recorded (`controller.Trees`), and Drawing to draw a definition and to find a toolkit's file (`drawing.Unfolded`, `drawing.Unfold`, `drawing.ToolkitFile`), and to write an address as a drawing does (`drawing.Address`). Serve gives it the list of runs the UI reads (`Config.List`), the client it acts as (`Config.Client`), and the latest step of a run as the Runs page reads it (`Config.Latest`), and Runs asks it how the definition a run started with, by its reference, differs from its file (`Pages.Differs`).

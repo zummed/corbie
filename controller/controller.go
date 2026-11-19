@@ -20,6 +20,7 @@ import (
 	"time"
 
 	"github.com/zummed/corbie-ui/page"
+	"github.com/zummed/corbie/client/cli"
 	"github.com/zummed/corbie/identity"
 	"github.com/zummed/corbie/secret"
 	"github.com/zummed/corbie/store"
@@ -298,15 +299,17 @@ func (h *handler) act(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	answer := h.Command(r.Context(), call)
-	if text, ok := checked(answer); ok {
-		status := http.StatusOK
-		if answer.Status != 0 {
-			status = http.StatusConflict
+	if r.PathValue("act") == "check" {
+		if text, ok := checked(answer); ok {
+			status := http.StatusOK
+			if answer.Status != 0 {
+				status = http.StatusConflict
+			}
+			w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+			w.WriteHeader(status)
+			io.WriteString(w, text)
+			return
 		}
-		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
-		w.WriteHeader(status)
-		io.WriteString(w, text)
-		return
 	}
 	if answer.Status != 0 {
 		page.Error(w, http.StatusConflict, answer.Error())
@@ -316,7 +319,9 @@ func (h *handler) act(w http.ResponseWriter, r *http.Request) {
 	io.WriteString(w, said(answer))
 }
 
-// legSays is what each leg of `corbie check` is, in Corbie's words for it.
+// legSays is what each leg of `corbie check` is, in Corbie's words for it:
+// a copy of legSays in Corbie's client/cli/check.go, which Corbie keeps to
+// itself.
 var legSays = map[string]string{
 	"start":  "the controller took the start",
 	"job":    "a runner took the job",
@@ -326,17 +331,10 @@ var legSays = map[string]string{
 
 // checked gives what `corbie check` printed, one line for each part of the
 // setup it checked: what it is, whether it responded (ok, late or never),
-// how long it took, and why where it did not. It says whether the answer is
-// a check's.
+// how long it took, and why where it did not. It says whether the check
+// printed what it checked; one that could not start printed none.
 func checked(a page.Answer) (string, bool) {
-	var c struct {
-		Legs []struct {
-			Leg     string  `json:"leg"`
-			Status  string  `json:"status"`
-			Seconds float64 `json:"seconds"`
-			Why     string  `json:"why"`
-		} `json:"legs"`
-	}
+	var c cli.Checked
 	if json.Unmarshal([]byte(strings.TrimSpace(a.Out)), &c) != nil || len(c.Legs) == 0 {
 		return "", false
 	}

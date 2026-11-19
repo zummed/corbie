@@ -624,10 +624,10 @@ func (h *handler) atAct(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprint(w, receipt(answer))
 }
 
-// steps keeps the latest step of each run of the UI's client that the
-// Runs page shows, by the step of its head it was read at: a step never
-// changes once it is written.
-type steps struct {
+// Steps keeps the latest step read of each run, by the step of its head it
+// was read at: a step never changes once it is written. The UI makes one,
+// which every page that reads the latest steps of runs shares.
+type Steps struct {
 	mu   sync.Mutex
 	read map[string]stepRead
 }
@@ -637,56 +637,34 @@ type stepRead struct {
 	step *instance.Step
 }
 
-// A stepReader reads the steps one drawing of the Runs page shows. The
-// page is drawn by one reader at a time.
-type stepReader struct {
-	ctx  context.Context
-	c    *client.Client
-	s    *steps
-	runs []*client.Run
-	kept map[string]stepRead
-	errs []error
-}
-
-// reader reads steps of the runs listed, as one drawing of the page needs.
-func (s *steps) reader(ctx context.Context, c *client.Client, runs []*client.Run) *stepReader {
+// Latest gives the latest step of a run in a tree of the client, read
+// again only where the run's head has moved on since it was read; none for
+// another client's run, or one sealed to a key the client no longer has.
+func (s *Steps) Latest(ctx context.Context, c *client.Client, run *client.Run) (*instance.Step, error) {
+	if c == nil || c.ID == nil || store.InstanceClient(run.ID) != c.ID.Name {
+		return nil, nil
+	}
 	s.mu.Lock()
-	return &stepReader{ctx: ctx, c: c, s: s, runs: runs, kept: map[string]stepRead{}}
-}
-
-// of gives the latest step of a run the client started, read again only
-// where its head has moved on, and nothing for another client's run.
-func (r *stepReader) of(run *client.Run) *instance.Step {
-	if r.c == nil || r.c.ID == nil || store.InstanceClient(run.ID) != r.c.ID.Name {
-		return nil
+	got, ok := s.read[run.ID]
+	s.mu.Unlock()
+	if ok && got.at == run.Step {
+		return got.step, nil
 	}
-	got, ok := r.kept[run.ID]
-	if !ok {
-		got, ok = r.s.read[run.ID]
+	step, err := instance.Latest(ctx, c.Store, c.Controller, c.ID, run.ID, run.Step)
+	if errors.Is(err, identity.ErrNotForUs) {
+		step, err = nil, nil
 	}
-	if !ok || got.at != run.Step {
-		step, err := instance.Latest(r.ctx, r.c.Store, r.c.Controller, r.c.ID, run.ID, run.Step)
-		if err != nil && !errors.Is(err, identity.ErrNotForUs) {
-			r.errs = append(r.errs, err)
-			return nil
-		}
-		got = stepRead{at: run.Step, step: step}
+	if err != nil {
+		return nil, err
 	}
-	r.kept[run.ID] = got
-	return got.step
-}
-
-// done keeps the steps of the runs still listed, forgets the rest, and
-// gives what could not be read.
-func (r *stepReader) done() error {
-	for _, run := range r.runs {
-		if got, ok := r.s.read[run.ID]; ok && r.kept[run.ID] == (stepRead{}) {
-			r.kept[run.ID] = got
-		}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	// The steps of runs long gone are forgotten all at once.
+	if s.read == nil || len(s.read) > 5000 {
+		s.read = map[string]stepRead{}
 	}
-	r.s.read = r.kept
-	r.s.mu.Unlock()
-	return errors.Join(r.errs...)
+	s.read[run.ID] = stepRead{at: run.Step, step: step}
+	return step, nil
 }
 
 // titles keeps what is fixed of each run in a tree of the UI's client

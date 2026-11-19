@@ -132,14 +132,14 @@ model:
 
 When the directory changes on disk, read at the interval, the file shown is shown again. The counts of runs follow the store, and change at once when the UI reads a change in the list of runs.
 
-A run's page gives the lines of the file at its location that differ from the definition the run started with, one value to a line with its path, `-` for a value the run has and the file has not, `+` for one the file has and the run has not:
+A run's page gives how the machine now at its location differs from the definition the run started with:
 
 ```
-- description: "a room"
-+ states.open.on.shut.0.go: "closed"
+- description: "a room"                 a value the run has and the file has not, with its path
++ states.open.on.shut.0.go: "closed"    a value the file has and the run has not
+a script changed: ./clean.js           a file a job runs, whose contents differ
+a child changed: ./inner.yaml          a child machine that differs in any of these
 ```
-
-The files a definition's jobs run are named, and not compared.
 
 ## A file that is no machine
 

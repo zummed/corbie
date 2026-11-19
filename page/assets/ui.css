@@ -530,7 +530,8 @@ form.enrol pre.said { flex: 1 1 100%; margin: 0; white-space: pre-wrap; overflow
 .why button.link { all: unset; cursor: pointer; color: var(--ink); }
 .why button.link:hover:not(:disabled) { color: var(--accent); text-decoration: underline 1px; text-underline-offset: 3px; }
 .why button.link:disabled { cursor: default; }
-.why .facts { color: var(--rowan); }
+dl.why-facts { margin: -2px 0 10px; font: 12px var(--mono); }
+dl.why-facts dd { white-space: normal; }
 .differs { margin: 0 0 8px; font: 12px var(--mono); color: var(--ink2); }
 .differs > summary { cursor: pointer; color: var(--amber, var(--ink2)); }
 .differs pre { margin: 6px 0 0; padding: 8px 12px; max-height: 160px; overflow: auto; background: var(--plate); border: 1px solid var(--line); border-radius: 6px; }

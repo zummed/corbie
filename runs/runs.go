@@ -17,6 +17,7 @@ import (
 
 	"github.com/zummed/corbie-ui/page"
 	"github.com/zummed/corbie/client"
+	"github.com/zummed/corbie/instance"
 	"github.com/zummed/corbie/machine"
 	"github.com/zummed/corbie/store"
 )
@@ -45,14 +46,16 @@ type Config struct {
 	// submitted from a directory that differ from a definition: none where
 	// they are the same or the Machines page does not show the file. None
 	// where the UI offers no Machines page.
-	Differs  func(ctx context.Context, location, dir string, def *machine.Definition) ([]string, error)
+	Differs func(ctx context.Context, location, dir string, def *machine.Definition) ([]string, error)
+	// Steps reads the latest step of each run, shared with the other pages
+	// that read them; with none the Runs pages keep their own.
+	Steps    *Steps
 	Interval time.Duration
 	Shell    page.Shell
 }
 
 type handler struct {
 	Config
-	steps  *steps
 	kept   *kept
 	titles *titles
 }
@@ -62,7 +65,18 @@ var script []byte
 
 // New gives the Runs pages.
 func New(c Config) http.Handler {
-	h := &handler{Config: c, steps: &steps{}, kept: &kept{}, titles: &titles{}}
+	return newHandler(c).mux()
+}
+
+func newHandler(c Config) *handler {
+	if c.Steps == nil {
+		c.Steps = &Steps{}
+	}
+	return &handler{Config: c, kept: &kept{}, titles: &titles{}}
+}
+
+// mux gives the addresses of the Runs pages.
+func (h *handler) mux() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /runs", h.listPage)
 	mux.HandleFunc("GET /runs/stream", h.listStream)
@@ -91,9 +105,14 @@ func (h *handler) listOf(ctx context.Context, n narrowing) (listView, error) {
 	if h.Client != nil && h.Client.ID != nil {
 		mine = h.Client.ID.Name
 	}
-	read := h.steps.reader(ctx, h.Client, runs)
-	v := listOf(runs, read.of, facts, n, time.Now(), mine)
-	return v, errors.Join(err, read.done())
+	errs := []error{err}
+	stepOf := func(r *client.Run) *instance.Step {
+		step, err := h.Steps.Latest(ctx, h.Client, r)
+		errs = append(errs, err)
+		return step
+	}
+	v := listOf(runs, stepOf, facts, n, time.Now(), mine)
+	return v, errors.Join(errs...)
 }
 
 func (h *handler) listParts(ctx context.Context, n narrowing) (any, error) {

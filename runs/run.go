@@ -748,7 +748,7 @@ func (h *handler) whyOf(ctx context.Context, run *client.Run, st *instance.State
 	deep, r := chain[len(chain)-1], run
 	if deep.ID != run.ID {
 		r = byID[deep.ID]
-		step, err := h.step(ctx, deep.ID, r.Step)
+		step, err := h.Steps.Latest(ctx, h.Client, r)
 		if err != nil {
 			return nil, err
 		}

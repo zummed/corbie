@@ -15,10 +15,10 @@ import (
 // listedPart is the part "files" as the page is given it.
 type listedPart struct {
 	Dir, DirFull, Prefix, Unread, Stamp string
-	Groups                             []group
-	Files                              []entry
-	Ignore                             bool
-	Problems                           []problem
+	Groups                              []group
+	Files                               []entry
+	Ignore                              bool
+	Problems                            []problem
 }
 
 // shown is a Machines or Toolkits page's parts, as the page is given them

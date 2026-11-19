@@ -365,7 +365,7 @@ func Test_serve_directory_alone_needs_no_store(t *testing.T) {
 	}
 	w := ask(h, "GET", "/machines", cookie...)
 	body := w.Body.String()
-	if w.Code != http.StatusOK || !strings.Contains(body, ">one<") {
+	if w.Code != http.StatusOK || !strings.Contains(body, `"Name":"one"`) {
 		t.Errorf("Machines answered %d:\n%s", w.Code, body)
 	}
 	if !strings.Contains(body, "no store") || strings.Contains(body, `href="/runs"`) || strings.Contains(body, `href="/controller"`) {

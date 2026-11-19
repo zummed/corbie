@@ -165,7 +165,7 @@ export function Act(props) {
   const started = () => (said().kind === "" ? /^started (\S+\/\S+)$/.exec(said().text)?.[1] : undefined);
   const answer = () => html`<Show when=${started} fallback=${() => said().text}>${id => html`started <a href=${() => encodeURI("/run/" + id())}>${id}</a>`}</Show>`;
   const Said = () => (props.block ? html`<pre class=${() => ["said", said().kind]}>${answer}</pre>` : html`<span class=${() => ["said", said().kind]}>${answer}</span>`);
-  return html`<form class=${() => props.class} method="post" action=${() => props.action} onSubmit=${submit}>
+  return html`<form class=${() => props.class} method="post" action=${() => props.action} data-act="" onSubmit=${submit}>
     ${() => props.children}${() => props.saidFirst && Said()}<button class=${() => ["btn", props.button]} data-cmd=${() => props.cmd} disabled=${busy}>${() => props.label}</button>${() => !props.saidFirst && Said()}
   </form>`;
 }

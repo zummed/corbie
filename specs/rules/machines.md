@@ -32,6 +32,12 @@ The rules behind [the Machines overview](../machines.md). Area code: `machines`.
 
 **R-machines-14** Machines gives Runs the address of the machine at a location, `/machines?file=<file>` with `open=<card path>` for each card unfolded down to a child, where the location's tree was submitted from the directory the page reads, at the prefix it reads it at; and none for any other. *Test:* `machines_a_runs_machine_is_found_by_its_location`
 
+**R-machines-16** Where the UI reads runs, a machine's location gives how many root runs there are running and how many failed today, and each state and running stage of its drawing gives how many of the UI's client's running runs at the location are in it, from each run's latest step; another client's runs are counted at the location only. The counts follow the store. *Test:* `machines_a_location_counts_its_runs`, `machines_location_row_says_its_counts`, `machines_drawing_counts_the_runs_in_each_state`, `machines_counts_follow_the_store`
+
+**R-machines-17** A card's name on a drawing links to the line of the file that writes it, which Text shows lit, in place. *Test:* `machines_card_opens_its_line`
+
+**R-machines-18** Machines gives Runs the values of the machine now at a run's location that differ from the definition the run started with, and each script and child machine whose contents differ, where the run's tree was submitted from the directory the page reads; none where they are the same, and none for any other. *Test:* `machines_a_run_differs_from_its_file`
+
 **R-machines-12** Written out shows a machine without problems as Corbie writes it out, each value with its file and line, which links to that line of that file's text. *Test:* `machines_written_out_shows_where_each_value_is_from`
 
 **R-machines-02** A file's text is read-only, with its lines numbered, under the problems found in it, and the lines they are found at are marked: for a machine, those Corbie gives for it; for any other file, those found in it by the machines that read it. A file with none shows no problems. *Test:* `machines_text_shows_the_problems_found_in_it`
@@ -46,4 +52,4 @@ The rules behind [the Machines overview](../machines.md). Area code: `machines`.
 
 ## Interfaces
 
-Machines uses Pages for the shell, the stream and its errors (`page.Shell`, `page.Write`, `page.Stream`, `page.Part`, `page.Error`), Controller to read the trees the controller recorded (`controller.Trees`), and Drawing to draw a definition and to find a toolkit's file (`drawing.Unfolded`, `drawing.Unfold`, `drawing.ToolkitFile`), and to write an address as a drawing does (`drawing.Address`).
+Machines uses Pages for the shell, the stream and its errors (`page.Shell`, `page.Write`, `page.Stream`, `page.Error`), and its tests use `pagetest.Run`, Controller to read the trees the controller recorded (`controller.Trees`), and Drawing to draw a definition and to find a toolkit's file (`drawing.Unfolded`, `drawing.Unfold`, `drawing.ToolkitFile`), and to write an address as a drawing does (`drawing.Address`). Serve gives it the list of runs the UI reads (`Config.List`), the client it acts as (`Config.Client`), and the latest step of a run as the Runs page reads it (`Config.Latest`), and Runs asks it how the definition a run started with, by its reference, differs from its file (`Pages.Differs`).

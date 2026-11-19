@@ -1,8 +1,6 @@
 package drawing
 
 import (
-	"fmt"
-	"math"
 	"slices"
 	"strings"
 
@@ -10,265 +8,84 @@ import (
 	"github.com/zummed/corbie/machine/agent"
 )
 
-// A toolkitBox is one column of what the model can call: a toolkit, or the tools
-// in no toolkit, with where its tools are drawn. file is the file the
-// toolkit is included from, where it is known, when its `when:`, and whens
-// the tools that have one.
-type toolkitBox struct {
-	name, file, when string
-	toolkit          bool
-	folded           bool
-	tools            []string
-	whens            map[string]bool
-	items            map[string]item
-	at               box
-}
-
-// foldedH is how high a folded toolkit is: its name and how many tools it has.
-const foldedH = 52.0
-
-func (g *toolkitBox) size() {
-	g.at.h, g.at.w = 0, cardW
-	if g.folded {
-		g.at.h = foldedH
-		return
+// agentOf gives an agent's model, what it can call, and its ask. On a run's
+// page a toolkit whose tools the run has not asked for is folded.
+func agentOf(def *machine.Definition, a *agent.Agent, run *Run, w *walker) *Agent {
+	out := &Agent{Model: a.Model.Name, Turns: a.Turns, Toolkits: []Toolkit{}, Turn: run.latest().Turn}
+	if out.Model == "" {
+		out.Model = "model"
 	}
-	if g.toolkit {
-		g.at.h, g.at.w = innerTop+inner, cardW+2*inner
+	if out.Turns == 0 {
+		out.Turns = 20
 	}
-	for _, t := range g.tools {
-		b := g.items[t].size()
-		g.at.h += b.h + 12
-		g.at.w = math.Max(g.at.w, b.w)
+	out.Mark = jobMark(run, "turn")
+	out.ModelLine = lineOf(w.lines, "model")
+	if out.Mark != "" && out.Mark != "failed" && out.Mark != "now" {
+		out.Mark = "done"
 	}
-	g.at.h -= 12
-}
-
-// drawAgent draws three things, one below another: the model, what it can
-// call, and its reply.
-func drawAgent(def *machine.Definition, a *agent.Agent, run *Run, w *walker) drawn {
-	name := a.Model.Name
-	if name == "" {
-		name = "model"
-	}
-	columns := columnsOf(groupsOf(def, a, w), run)
-	var askItem *item
-	if ask := def.Ask; ask != nil {
-		it := item{name: "ask"}
-		w.describe(&it, "ask", ask)
-		askItem = &it
-	}
-
-	across, high := float64(max(len(columns)-1, 0))*sideGap, 0.0
-	for _, c := range columns {
-		w, h := c.size()
-		across += w
-		high = math.Max(high, h)
-	}
-	if askItem != nil {
-		across = math.Max(across, askItem.size().w)
-		if high > 0 {
-			high += 12
-		}
-		high += askItem.size().h
-	}
-	has := high > 0
-	tools := box{w: math.Max(across+2*inner, cardW), h: innerTop + high + inner}
-	total := cardW
-	if has {
-		total = tools.w
-	}
-	left := margin
-	model := item{icon: "model", name: name}
-	top := model.size()
-	top.x, top.y = left+(total-top.w)/2, margin+18
-	reply := item{name: "reply", narrow: true}.size()
-	reply.x = left + (total-reply.w)/2
-
-	var d drawn
-	y := top.bottom()
-	class := ""
-	if has {
-		tools.x, tools.y = left, y+2*rowGap
-		fmt.Fprintf(&d.holders, `<g class="state holder"><rect x="%s" y="%s" width="%s" height="%s" rx="14"/><text class="name" x="%s" y="%s">tools</text></g>`,
-			num(tools.x), num(tools.y), num(tools.w), num(tools.h), num(tools.x+14), num(tools.y+22))
-		d.reach(tools)
-		x, ty := tools.x+inner+(tools.w-2*inner-across)/2, tools.y+innerTop
-		for _, c := range columns {
-			y, w := ty, 0.0
-			for _, g := range c {
-				g.at.x, g.at.y = x, y
-				y += g.at.h + 12
-				w = math.Max(w, g.at.w)
-				if d.paintGroup(g, run) {
-					class = "taken"
-				}
-			}
-			x += w + sideGap
-		}
-		if askItem != nil {
-			b := askItem.size()
-			b.x, b.y = tools.cx()-b.w/2, tools.bottom()-inner-b.h
-			d.paint(*askItem, b, strings.TrimSpace("state ask "+jobMark(run, "ask")), cardR, "")
-		}
-		turns := a.Turns
-		if turns == 0 {
-			turns = 20
-		}
-		d.down(top, tools, class, fmt.Sprintf("%d turns", turns))
-		y = tools.bottom()
-	}
-	reply.y = y + 2*rowGap/1.5
-	if has {
-		d.down(tools, reply, "", "")
-	} else {
-		d.down(top, reply, "", "")
-	}
-
-	mark := jobMark(run, "turn")
-	if mark != "" && mark != "failed" && mark != "now" {
-		mark = "done"
-	}
-	d.paint(model, top, strings.TrimSpace("state model "+mark), cardR, "")
-	if turn := run.latest().Turn; turn > 0 {
-		fmt.Fprintf(&d.shapes, `<text class="tag" x="%s" y="%s" text-anchor="start">turn %d</text>`, num(top.x+4), num(top.y-8), turn)
-	}
-	d.paint(item{name: "reply"}, reply, "state reply", cardR, "")
-	return d
-}
-
-// groupsOf gives each toolkit of an agent, then the tools in no toolkit.
-func groupsOf(def *machine.Definition, a *agent.Agent, w *walker) []*toolkitBox {
-	var groups []*toolkitBox
-	byName := map[string]*toolkitBox{}
 	own := w.file
 	if own == "" {
 		own = fileOf(def.Lines[def.Type])
 	}
-	for _, toolkit := range sortedKeys(a.Toolkits) {
-		g := &toolkitBox{name: toolkit, file: ToolkitFile(def, toolkit, own), when: a.Toolkits[toolkit].When, toolkit: true, whens: map[string]bool{}, items: map[string]item{}}
-		byName[toolkit] = g
-		groups = append(groups, g)
+	at := map[string]int{}
+	for _, name := range sortedKeys(a.Toolkits) {
+		at[name] = len(out.Toolkits)
+		out.Toolkits = append(out.Toolkits, Toolkit{Name: name, File: ToolkitFile(def, name, own), When: a.Toolkits[name].When, Toolkit: true, Tools: []Tool{}})
 	}
-	var free *toolkitBox
+	var free *Toolkit
 	for _, t := range sortedKeys(a.Tools) {
 		tool := a.Tools[t]
 		if tool.Job != nil && strings.HasPrefix(tool.Job.Script, "corbie:") {
 			continue // Corbie's own, which no definition writes
 		}
-		g := byName[tool.Toolkit]
-		if g == nil {
-			if free == nil {
-				free = &toolkitBox{name: "", whens: map[string]bool{}, items: map[string]item{}}
-			}
-			g = free
+		place := "tools." + t
+		if tool.Toolkit != "" {
+			place = "toolkits." + tool.Toolkit + ".tools." + t
 		}
-		it := item{name: t, title: titleOf(tool.Description, tool.When)}
-		w.describe(&it, t, tool.Job)
-		g.tools, g.items[t], g.whens[t] = append(g.tools, t), it, tool.When != ""
-	}
-	if free != nil {
-		groups = append(groups, free)
-	}
-	for _, g := range groups {
-		g.size()
-	}
-	return groups
-}
-
-// titleOf gives a tooltip of lines: those given, and `when:` where there is
-// a condition.
-func titleOf(first, when string) string {
-	lines := []string{}
-	if first != "" {
-		lines = append(lines, first)
-	}
-	if when != "" {
-		lines = append(lines, "when: "+when)
-	}
-	return strings.Join(lines, "\n")
-}
-
-// A column is what is drawn one below another in the holder of an agent's
-// tools: one toolkit, the tools in no toolkit, or the toolkits folded.
-type column []*toolkitBox
-
-func (c column) size() (w, h float64) {
-	for _, g := range c {
-		w = math.Max(w, g.at.w)
-		h += g.at.h + 12
-	}
-	return w, h - 12
-}
-
-// columnsOf gives each group a column of its own, but on a run's page a
-// toolkit whose tools the run has not asked for is folded, and the
-// toolkits folded are one column after the others.
-func columnsOf(groups []*toolkitBox, run *Run) []column {
-	var columns []column
-	var folded column
-	for _, g := range groups {
-		if run != nil && g.toolkit && !g.used(run) {
-			g.folded = true
-			g.size()
-			folded = append(folded, g)
+		c := Card{Name: t, Title: titleOf(tool.Description, tool.When), Line: lineOf(w.lines, place)}
+		w.describe(&c, t, tool.Job)
+		it := Tool{Card: c, When: tool.When != "", Mark: jobMark(run, t)}
+		if i, ok := at[tool.Toolkit]; ok {
+			out.Toolkits[i].Tools = append(out.Toolkits[i].Tools, it)
 			continue
 		}
-		columns = append(columns, column{g})
+		if free == nil {
+			free = &Toolkit{Tools: []Tool{}}
+		}
+		free.Tools = append(free.Tools, it)
 	}
-	if folded != nil {
-		columns = append(columns, folded)
+	if free != nil {
+		out.Toolkits = append(out.Toolkits, *free)
 	}
-	return columns
+	for i, g := range out.Toolkits {
+		used := slices.ContainsFunc(g.Tools, func(t Tool) bool { return t.Mark != "never" })
+		out.Toolkits[i].Folded = run != nil && g.Toolkit && !used
+	}
+	if ask := def.Ask; ask != nil {
+		c := Card{Name: "ask", Line: lineOf(w.lines, "ask")}
+		w.describe(&c, "ask", ask)
+		out.Ask, out.AskMark = &c, jobMark(run, "ask")
+	}
+	return out
 }
 
-// used says a run has asked for one of a toolkit's tools.
-func (g *toolkitBox) used(run *Run) bool {
-	return slices.ContainsFunc(g.tools, func(t string) bool { return jobMark(run, t) != "never" })
-}
-
-// paintGroup draws a column of what the model can call, and says whether a
-// tool in it is one the agent waits on. A toolkit's name is cut to its holder,
-// and its tooltip gives the file it is included from and its `when:`. A
-// toolkit or a tool with `when:` has a dashed border.
-func (d *drawn) paintGroup(g *toolkitBox, run *Run) bool {
-	b := g.at
-	y := b.y
-	class := "state holder toolkit"
-	if g.when != "" {
-		class += " when"
+// decisionOf gives a decision's model, and its answers, with each
+// question's name.
+func decisionOf(dec *agent.Decision, run *Run) *Decision {
+	out := &Decision{Model: dec.Model.Name, Answers: Card{Name: "answers"}}
+	if out.Model == "" {
+		out.Model = "model"
 	}
-	if g.folded {
-		fmt.Fprintf(&d.holders, `<g class="%s folded"><rect x="%s" y="%s" width="%s" height="%s" rx="14"/><text class="name" x="%s" y="%s">%s</text><text class="sub" x="%s" y="%s">%d %s</text><title>%s</title></g>`,
-			class, num(b.x), num(b.y), num(b.w), num(b.h), num(b.x+14), num(b.y+22), esc(clip(g.name, int((b.w-28)/nameW))),
-			num(b.x+14), num(b.y+39), len(g.tools), word(len(g.tools), "tool"), esc(titleOf(strings.Join(g.tools, ", "), g.when)))
-		d.reach(b)
-		return false
-	}
-	if g.toolkit {
-		title := ""
-		if t := titleOf(g.file, g.when); t != "" {
-			title = "<title>" + esc(t) + "</title>"
+	if questions, ok := dec.Questions.(map[string]any); ok {
+		for _, question := range sortedKeys(questions) {
+			out.Answers.Lines = append(out.Answers.Lines, fit(question))
 		}
-		fmt.Fprintf(&d.holders, `<g class="%s"><rect x="%s" y="%s" width="%s" height="%s" rx="14"/><text class="name" x="%s" y="%s">%s</text>%s</g>`,
-			class, num(b.x), num(b.y), num(b.w), num(b.h), num(b.x+14), num(b.y+22), esc(clip(g.name, int((b.w-28)/nameW))), title)
-		y += innerTop
 	}
-	d.reach(b)
-	now := false
-	for _, t := range g.tools {
-		mark := jobMark(run, t)
-		now = now || mark == "now" || mark == "held"
-		at := g.items[t].size()
-		at.x, at.y = b.cx()-at.w/2, y
-		class := strings.TrimSpace("state tool " + mark)
-		if g.whens[t] {
-			class += " when"
-		}
-		d.paint(g.items[t], at, class, cardR, "")
-		y += at.h + 12
+	out.Mark = jobMark(run, "decide")
+	if out.Mark != "" && out.Mark != "failed" && out.Mark != "now" {
+		out.Mark = "done"
 	}
-	return now
+	return out
 }
 
 // jobMark is how a tool or an ask of a run is marked: where the run failed,
@@ -288,22 +105,4 @@ func jobMark(run *Run, name string) string {
 		return "done"
 	}
 	return "never"
-}
-
-func word(n int, one string) string {
-	if n == 1 {
-		return one
-	}
-	return one + "s"
-}
-
-// spark is the mark of a model: a star of four points.
-func spark(cx, cy, r float64) string {
-	k := r * 0.22
-	return fmt.Sprintf("M%s %sC%s %s %s %s %s %sC%s %s %s %s %s %sC%s %s %s %s %s %sC%s %s %s %s %s %sZ",
-		num(cx), num(cy-r),
-		num(cx+k), num(cy-k), num(cx+k), num(cy-k), num(cx+r), num(cy),
-		num(cx+k), num(cy+k), num(cx+k), num(cy+k), num(cx), num(cy+r),
-		num(cx-k), num(cy+k), num(cx-k), num(cy+k), num(cx-r), num(cy),
-		num(cx-k), num(cy-k), num(cx-k), num(cy-k), num(cx), num(cy-r))
 }

@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io/fs"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -364,7 +365,7 @@ func Test_serve_directory_alone_needs_no_store(t *testing.T) {
 	}
 	w := ask(h, "GET", "/machines", cookie...)
 	body := w.Body.String()
-	if w.Code != http.StatusOK || !strings.Contains(body, ">one<") {
+	if w.Code != http.StatusOK || !strings.Contains(body, `"Name":"one"`) {
 		t.Errorf("Machines answered %d:\n%s", w.Code, body)
 	}
 	if !strings.Contains(body, "no store") || strings.Contains(body, `href="/runs"`) || strings.Contains(body, `href="/controller"`) {
@@ -424,7 +425,7 @@ func Test_page_loads_nothing_from_another_site(t *testing.T) {
 		t.Fatal(err)
 	}
 	far := regexp.MustCompile(`(?i)(https?:)?//[a-z0-9.-]+\.[a-z]{2,}`)
-	for _, path := range []string{"/runs", "/machines", "/controller", "/assets/ui.css", "/assets/ui.js", "/runs/script.js", "/machines/script.js"} {
+	for _, path := range []string{"/runs", "/machines", "/toolkits", "/controller", "/assets/ui.css", "/assets/ui.js", "/runs/script.js", "/machines/script.js", "/toolkits/script.js", "/controller/script.js", "/drawing/drawing.js", "/drawing/layout.js"} {
 		w := ask(u.handler, "GET", path)
 		if w.Code != http.StatusOK {
 			t.Errorf("%s answered %d", path, w.Code)
@@ -433,4 +434,33 @@ func Test_page_loads_nothing_from_another_site(t *testing.T) {
 			t.Errorf("%s loads %s from another site", path, found)
 		}
 	}
+	// Solid's files name sites in their messages, and load only one another.
+	imports := regexp.MustCompile(`(?:from|import)\s*\(?\s*["']([^"']+)["']`)
+	for _, path := range solidFiles(t) {
+		w := ask(u.handler, "GET", path)
+		if w.Code != http.StatusOK {
+			t.Errorf("%s answered %d", path, w.Code)
+		}
+		for _, m := range imports.FindAllStringSubmatch(w.Body.String(), -1) {
+			if !strings.HasPrefix(m[1], "./") && !strings.HasPrefix(m[1], "../") && m[1] != "solid-js" && m[1] != "solid-js/internal" && !strings.HasPrefix(m[1], "@solidjs/") {
+				t.Errorf("%s loads %s", path, m[1])
+			}
+		}
+	}
+}
+
+// solidFiles gives the address of every file of Solid the UI serves.
+func solidFiles(t *testing.T) []string {
+	t.Helper()
+	var paths []string
+	err := filepath.WalkDir("../page/assets/solid", func(p string, d fs.DirEntry, err error) error {
+		if err == nil && strings.HasSuffix(p, ".js") {
+			paths = append(paths, "/assets/solid/"+filepath.ToSlash(strings.TrimPrefix(p, "../page/assets/solid/")))
+		}
+		return err
+	})
+	if err != nil || len(paths) == 0 {
+		t.Fatalf("Solid's files are not found: %v", err)
+	}
+	return paths
 }

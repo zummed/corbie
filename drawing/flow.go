@@ -1,164 +1,33 @@
 package drawing
 
 import (
-	"fmt"
-	"maps"
-	"math"
 	"slices"
+	"strings"
 
 	"github.com/zummed/corbie/machine"
 	"github.com/zummed/corbie/machine/flow"
 )
 
-func drawFlow(f *flow.Flow, run *Run, w *walker) drawn {
-	names := sortedKeys(f.Stages)
-	after := map[string][]string{}
-	for _, n := range names {
-		for _, a := range waitsFor(f.Stages[n]) {
-			if _, ok := f.Stages[a]; ok && a != n {
-				after[n] = append(after[n], a)
-			}
-		}
-	}
-	// A stage's row is the longest chain of stages it waits for.
-	row := map[string]int{}
-	var depth func(n string, seen map[string]bool) int
-	depth = func(n string, seen map[string]bool) int {
-		if c, ok := row[n]; ok {
-			return c
-		}
-		if seen[n] {
-			return 0 // a stage that waits for itself, which the check refuses
-		}
-		seen[n] = true
-		c := 0
-		for _, a := range after[n] {
-			c = max(c, depth(a, seen)+1)
-		}
-		row[n] = c
-		return c
-	}
-	var rows [][]string
-	for _, n := range names {
-		c := depth(n, map[string]bool{})
-		for len(rows) <= c {
-			rows = append(rows, nil)
-		}
-		rows[c] = append(rows[c], n)
-	}
-	// Within a row, a stage goes by the places of the stages it waits for,
-	// to keep arrows short.
-	place := map[string]float64{}
-	for _, c := range rows {
-		mean := func(n string) float64 {
-			if len(after[n]) == 0 {
-				return math.Inf(1)
-			}
-			sum := 0.0
-			for _, a := range after[n] {
-				sum += place[a]
-			}
-			return sum / float64(len(after[n]))
-		}
-		slices.SortStableFunc(c, func(a, b string) int {
-			ma, mb := mean(a), mean(b)
-			switch {
-			case ma < mb:
-				return -1
-			case ma > mb:
-				return 1
-			}
-			return 0
-		})
-		for i, n := range c {
-			place[n] = float64(i) - float64(len(c)-1)/2
-		}
-	}
-
-	items := map[string]item{}
-	for _, n := range names {
-		s := f.Stages[n]
-		it := item{name: n}
-		w.describe(&it, n, s.Job)
-		it.title = titleOf("", s.When)
-		items[n] = it
-	}
-	at := map[string]box{}
-	across := func(c []string) float64 {
-		used := float64(len(c)-1) * sideGap
-		for _, n := range c {
-			used += items[n].size().w
-		}
-		return used
-	}
-	total := 0.0
-	for _, c := range rows {
-		total = math.Max(total, across(c))
-	}
-	y := margin + 8
-	for _, c := range rows {
-		high := 0.0
-		x := margin + (total-across(c))/2
-		for _, n := range c {
-			b := items[n].size()
-			b.x, b.y = x, y
-			at[n] = b
-			x += b.w + sideGap
-			high = math.Max(high, b.h)
-		}
-		y += high + rowGap
-	}
-
-	var d drawn
-	reach := map[string]map[string]bool{}
-	for _, n := range names {
-		for _, a := range after[n] {
-			if !through(after, reach, n, a) {
-				d.down(at[a], at[n], "", "")
-			}
-		}
-	}
+// flowOf gives a flow's stages, by name, each with the stages it waits for.
+func flowOf(f *flow.Flow, run *Run, w *walker) *Flow {
+	out := &Flow{Stages: []Stage{}}
 	stages := run.latest().Stages
-	for _, n := range names {
-		s, b := f.Stages[n], at[n]
-		class := "state stage"
-		if run != nil {
-			class += " " + stageMark(n, stages[n], run)
-		}
-		if s.When != "" {
-			class += " when"
-		}
-		behind := ""
-		if s.Each != nil || s.Emits != "" || s.Blob != nil {
-			for _, off := range []float64{8, 4} {
-				behind += fmt.Sprintf(`<rect class="behind" x="%s" y="%s" width="%s" height="%s" rx="%s"/>`, num(b.x+off), num(b.y-off), num(b.w), num(b.h), num(cardR))
+	for _, n := range sortedKeys(f.Stages) {
+		s := f.Stages[n]
+		st := Stage{Card: Card{Name: n, Title: titleOf("", s.When), Line: lineOf(w.lines, "stages."+n)}, After: []string{}, Why: map[string]string{}, When: s.When != "", Stack: s.Each != nil || s.Emits != "" || s.Blob != nil}
+		for _, wait := range waitsFor(s) {
+			if _, ok := f.Stages[wait.stage]; ok && wait.stage != n {
+				st.After = append(st.After, wait.stage)
+				st.Why[wait.stage] = strings.Join(wait.why, "\n")
 			}
 		}
-		d.paint(items[n], b, class, cardR, behind)
-		d.reach(box{x: b.x, y: b.y, w: b.w + 8, h: b.h})
+		w.describe(&st.Card, n, s.Job)
+		if run != nil {
+			st.Mark = stageMark(n, stages[n], run)
+		}
+		out.Stages = append(out.Stages, st)
 	}
-	return d
-}
-
-// through says a stage waits for another through a third, so an arrow to it
-// from the other says nothing more.
-func through(after map[string][]string, reach map[string]map[string]bool, n, a string) bool {
-	return slices.ContainsFunc(after[n], func(b string) bool { return b != a && reaches(after, reach, b)[a] })
-}
-
-// reaches gives every stage a stage waits for, near or far, once for each
-// stage. A stage that waits for itself, which the check refuses, ends it.
-func reaches(after map[string][]string, reach map[string]map[string]bool, n string) map[string]bool {
-	if known, ok := reach[n]; ok {
-		return known
-	}
-	all := map[string]bool{}
-	reach[n] = all
-	for _, a := range after[n] {
-		all[a] = true
-		maps.Copy(all, reaches(after, reach, a))
-	}
-	return all
+	return out
 }
 
 // stageMark is how a stage's status is marked. A stage still running when
@@ -182,10 +51,18 @@ func stageMark(name, status string, run *Run) string {
 	return "never"
 }
 
+// A wait is a stage another waits for, and why: each part of it the other
+// reads, `follows:`, or `each: { emitted: … }`.
+type wait struct {
+	stage string
+	why   []string
+}
+
 // waitsFor gives the stages a stage waits for: those its expressions read,
-// those it follows, and the one whose emitted items are its own. It is the
+// those it follows, and the one whose emitted items are its own, which
+// Corbie keeps as Emits from `each: { emitted: … }`. It is the
 // rule the flow package keeps to itself, applied to the same expressions.
-func waitsFor(s *flow.Stage) []string {
+func waitsFor(s *flow.Stage) []wait {
 	var reads []machine.Read
 	if s.Job != nil {
 		reads = append(reads, machine.ReadsIn(s.Job.Input, "stages")...)
@@ -198,18 +75,30 @@ func waitsFor(s *flow.Stage) []string {
 	if s.When != "" {
 		reads = append(reads, machine.ReadsOf(s.When, "stages")...)
 	}
-	var names []string
-	add := func(n string) {
-		if n != "" && !slices.Contains(names, n) {
-			names = append(names, n)
+	var waits []wait
+	add := func(n, why string) {
+		if n == "" {
+			return
+		}
+		i := slices.IndexFunc(waits, func(w wait) bool { return w.stage == n })
+		if i < 0 {
+			waits = append(waits, wait{stage: n})
+			i = len(waits) - 1
+		}
+		if !slices.Contains(waits[i].why, why) {
+			waits[i].why = append(waits[i].why, why)
 		}
 	}
 	for _, r := range reads {
-		add(r.Name)
+		if r.Part == "" {
+			add(r.Name, "reads "+r.Name)
+		} else {
+			add(r.Name, "reads "+r.Name+"."+r.Part)
+		}
 	}
 	for _, n := range s.Follows {
-		add(n)
+		add(n, "follows: "+n)
 	}
-	add(s.Emits)
-	return names
+	add(s.Emits, "each: { emitted: "+s.Emits+" }")
+	return waits
 }

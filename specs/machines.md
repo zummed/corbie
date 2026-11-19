@@ -2,6 +2,8 @@
 
 The Machines page shows the machines in one directory as the tree `corbie run submit` records: a list of its machines and of the files that are no machine, the problems Corbie finds in them, and for the one chosen its description, its location, the secrets and values it uses, its drawing, its text and its definition written out. The Toolkits page shows the same directory from the tools up: each toolkit, what offers it and what starts that. Every UI but `none` offers both, and both only read: the files are what `corbie run submit` reads and a model edits.
 
+On both pages, choosing a file, a toolkit, a tab or a card's link shows it in place, and the address names it. The list keeps its place, and Back shows what was shown before.
+
 ## The directory
 
 The directory is the one `--dir` names, by default the one the UI was started in. It is read with Corbie's `client.ReadTree`, as `corbie run submit` reads it, at a prefix:
@@ -84,7 +86,7 @@ Choosing a machine shows, above its view, its `description:`, where it lives and
 ```
 Keeps one room at its target temperature.
 
-location   /house/rooms/thermostat
+location   /house/rooms/thermostat · 3 running · 1 failed today
 lifetime   keyed: a send to a key starts the run for that key, at most 3 running at once
 update     restart: a changed file cancels its runs
 receives   set from schedules/*, client:panel
@@ -95,7 +97,7 @@ approve    send:devices/boiler
 
 | Row | What it shows |
 |---|---|
-| location | the prefix and the file's path, without `.yaml`; where the UI offers Runs, a link to the runs there |
+| location | the prefix and the file's path, without `.yaml`; where the UI offers Runs, a link to the runs there, with how many of its runs are running and how many failed today |
 | lifetime | `singleton`, `keyed` or `transient`, what starts its runs, and `limits: { runs: }` |
 | update | `restart` or `drain`, and what a changed file does to its runs |
 | receives | who `receive:` lets send to it and call it, by event, `none` for an empty list; with no `receive:`, its own tree and its tree's client |
@@ -109,10 +111,14 @@ A machine with problems shows only its text, with no location. One whose YAML do
 The tabs Drawing, Text and Written out choose the view, Drawing by default:
 
 ```
-Drawing       the machine drawn, as Drawing says; a card that names a machine unfolds it
+Drawing       the machine drawn, as Drawing says; a card that names a machine unfolds it in place
 Text          the file as it is written
 Written out   the definition Corbie stores: what it includes in place, each value with its file and line
 ```
+
+On the drawing, each state and each running stage shows how many of the UI's client's running runs at the machine's location are in it now; another client's runs are counted at the location only. A card's name links to the line of the file that writes it, which Text shows lit.
+
+Unfolding a card moves the drawing in to it, and folding it moves the drawing back out to the card it was in, or to the whole machine. Back folds and unfolds as the address was. Where the file cannot be shown at the address asked for, the view says why and keeps what it shows.
 
 The address of a machine is `/machines?file=<file>`, with `open=<card path>` for each card unfolded, a card's path being the names of the cards down to it joined by `/`: `/machines?file=schedules/away.yaml&open=pause`. A run's page links to its machine's address where the run's tree was submitted from this directory at the prefix the page reads it at (see Runs).
 
@@ -124,7 +130,16 @@ model:
   effort: high                               # family.yaml:3
 ```
 
-A file that changes on disk is shown again.
+When the directory changes on disk, read at the interval, the file shown is shown again. The counts of runs follow the store, and change at once when the UI reads a change in the list of runs.
+
+A run's page gives how the machine now at its location differs from the definition the run started with:
+
+```
+- description: "a room"                 a value the run has and the file has not, with its path
++ states.open.on.shut.0.go: "closed"    a value the file has and the run has not
+a script changed: ./clean.js           a file a job runs, whose contents differ
+a child changed: ./inner.yaml          a child machine that differs in any of these
+```
 
 ## A file that is no machine
 

@@ -1,0 +1,5 @@
+# A flow whose stage starts a child that waits longer than the stage allows.
+flow: slow-child
+stages:
+  wait:
+    job: { machine: ./stuck.yaml, timeout: 1s }

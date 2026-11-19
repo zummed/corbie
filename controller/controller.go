@@ -5,14 +5,12 @@
 package controller
 
 import (
-	"bytes"
 	"cmp"
 	"context"
 	"embed"
 	"encoding/json/jsontext"
 	"encoding/json/v2"
 	"fmt"
-	"html/template"
 	"io"
 	"maps"
 	"net/http"
@@ -22,6 +20,7 @@ import (
 	"time"
 
 	"github.com/zummed/corbie-ui/page"
+	"github.com/zummed/corbie/client/cli"
 	"github.com/zummed/corbie/identity"
 	"github.com/zummed/corbie/secret"
 	"github.com/zummed/corbie/store"
@@ -35,17 +34,16 @@ type Config struct {
 	Store      store.Store
 	Command    page.Command
 	Interval   time.Duration
-	Shell      page.Shell
+	// Changed gives a channel closed at the next change the UI makes or
+	// reads in the store, so the page is sent it at once.
+	Changed func() <-chan struct{}
+	Shell   page.Shell
 }
 
 type handler struct{ Config }
 
-//go:embed controller.html
+//go:embed controller.js
 var files embed.FS
-
-var pages = template.Must(template.New("").Funcs(template.FuncMap{
-	"join": strings.Join,
-}).ParseFS(files, "controller.html"))
 
 // A party is one runner or client the controller trusts, as `corbie
 // controller parties` lists it.
@@ -55,6 +53,10 @@ type party struct {
 	// At holds a runner's prefixes, "/" where it is sent every tree's jobs.
 	At      []string
 	Removed bool
+	// Acts are the actions its line offers: a runner's tags, prefixes and
+	// remove, a client's ceiling and remove, and for a removed party enrol
+	// alone.
+	Acts []string
 }
 
 // A Tree is one the controller recorded at its prefix: its client, the
@@ -97,6 +99,11 @@ func New(c Config) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /controller", h.show)
 	mux.HandleFunc("GET /controller/stream", h.stream)
+	mux.HandleFunc("GET /controller/script.js", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/javascript; charset=utf-8")
+		data, _ := files.ReadFile("controller.js")
+		w.Write(data)
+	})
 	mux.HandleFunc("POST /controller/{act}", h.act)
 	return mux
 }
@@ -110,10 +117,15 @@ func (h *handler) read(ctx context.Context) (view, error) {
 	for _, t := range trusted {
 		p := party{Name: t.Card.Name, Kind: string(t.Card.Kind), Fingerprint: t.Card.Fingerprint(),
 			Tags: t.Tags, Ceiling: t.Ceiling.Allow, Deny: t.Ceiling.Deny, Removed: t.Removed}
+		p.Acts = []string{"ceiling", "remove"}
 		if t.Card.Kind == identity.Runner {
 			if p.At = t.Prefixes; len(p.At) == 0 {
 				p.At = []string{"/"}
 			}
+			p.Acts = []string{"tags", "prefixes", "remove"}
+		}
+		if t.Removed {
+			p.Acts = []string{"enrol"}
 		}
 		v.Parties = append(v.Parties, p)
 	}
@@ -193,41 +205,36 @@ func nameIn(prefix, at string) string {
 	return strings.TrimPrefix(at, strings.TrimSuffix(prefix, "/")+"/")
 }
 
-func (h *handler) parts(ctx context.Context) ([]page.Part, error) {
+// parts gives the page's parts: the runners and clients, the trees, and
+// the secrets and values set.
+func (h *handler) parts(ctx context.Context) (Parts, error) {
 	v, err := h.read(ctx)
 	if err != nil {
-		return nil, err
+		return Parts{}, err
 	}
-	var parts []page.Part
-	for _, id := range []string{"parties", "trees", "settings"} {
-		html, err := render(id, v)
-		if err != nil {
-			return nil, err
-		}
-		parts = append(parts, page.Part{ID: id, HTML: html})
-	}
-	return parts, nil
+	return Parts{Parties: v.Parties, Trees: v.Trees, Settings: v.Set}, nil
+}
+
+// Parts are the parts of the Controller page.
+type Parts struct {
+	Parties  []party   `json:"parties"`
+	Trees    []Tree    `json:"trees"`
+	Settings []setting `json:"settings"`
 }
 
 func (h *handler) show(w http.ResponseWriter, r *http.Request) {
-	v, err := h.read(r.Context())
-	if err != nil {
-		page.Error(w, http.StatusInternalServerError, err.Error())
-		return
-	}
-	main, err := render("controller", v)
+	parts, err := h.parts(r.Context())
 	if err != nil {
 		page.Error(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 	s := h.Shell
-	s.Title, s.Current, s.Stream, s.Main = "Controller", "Controller", "/controller/stream", main
-	page.Write(w, s)
+	s.Title, s.Current, s.Stream, s.Script = "Controller", "Controller", "/controller/stream", "/controller/script.js"
+	page.Write(w, s, parts)
 }
 
 func (h *handler) stream(w http.ResponseWriter, r *http.Request) {
-	never := make(chan struct{})
-	page.Stream(w, r, h.Interval, func() <-chan struct{} { return never }, h.parts)
+	page.Stream(w, r, h.Interval, h.Changed, func(ctx context.Context) (any, error) { return h.parts(ctx) })
 }
 
 // act runs the corbie controller command of an action, and answers with
@@ -282,6 +289,8 @@ func (h *handler) act(w http.ResponseWriter, r *http.Request) {
 		call = page.Call{Words: []string{"controller", "secret", "set"}, Args: []string{r.FormValue("name")}, Flags: []string{"-", at}, Stdin: r.FormValue("value")}
 	case "value-set":
 		call = page.Call{Words: []string{"controller", "value", "set"}, Args: []string{r.FormValue("name"), r.FormValue("value")}, Flags: []string{at}}
+	case "check":
+		call = page.Call{Words: []string{"check"}}
 	case "secret-remove", "value-remove":
 		kind, _, _ := strings.Cut(r.PathValue("act"), "-")
 		call = page.Call{Words: []string{"controller", kind, "remove"}, Args: []string{r.FormValue("name")}, Flags: []string{at}}
@@ -290,12 +299,57 @@ func (h *handler) act(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	answer := h.Command(r.Context(), call)
+	if r.PathValue("act") == "check" {
+		if text, ok := checked(answer); ok {
+			status := http.StatusOK
+			if answer.Status != 0 {
+				status = http.StatusConflict
+			}
+			w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+			w.WriteHeader(status)
+			io.WriteString(w, text)
+			return
+		}
+	}
 	if answer.Status != 0 {
 		page.Error(w, http.StatusConflict, answer.Error())
 		return
 	}
 	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 	io.WriteString(w, said(answer))
+}
+
+// legSays is what each leg of `corbie check` is, in Corbie's words for it:
+// a copy of legSays in Corbie's client/cli/check.go, which Corbie keeps to
+// itself.
+var legSays = map[string]string{
+	"start":  "the controller took the start",
+	"job":    "a runner took the job",
+	"result": "the controller took the result",
+	"timer":  "the timer fired",
+}
+
+// checked gives what `corbie check` printed, one line for each part of the
+// setup it checked: what it is, whether it responded (ok, late or never),
+// how long it took, and why where it did not. It says whether the check
+// printed what it checked; one that could not start printed none.
+func checked(a page.Answer) (string, bool) {
+	var c cli.Checked
+	if json.Unmarshal([]byte(strings.TrimSpace(a.Out)), &c) != nil || len(c.Legs) == 0 {
+		return "", false
+	}
+	var b strings.Builder
+	for _, l := range c.Legs {
+		took := fmt.Sprintf("%.1fs", l.Seconds)
+		if l.Status == "never" {
+			took = ""
+		}
+		fmt.Fprintf(&b, "%-32s %-6s %s\n", cmp.Or(legSays[l.Leg], l.Leg), l.Status, took)
+		if l.Why != "" {
+			fmt.Fprintf(&b, "  %s\n", l.Why)
+		}
+	}
+	return strings.TrimRight(b.String(), "\n"), true
 }
 
 // said is what an action's command printed back: for an enrol, the
@@ -312,10 +366,4 @@ func said(a page.Answer) string {
 		return text
 	}
 	return "done"
-}
-
-func render(name string, data any) (template.HTML, error) {
-	var b bytes.Buffer
-	err := pages.ExecuteTemplate(&b, name, data)
-	return template.HTML(b.String()), err
 }

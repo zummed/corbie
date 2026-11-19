@@ -3,13 +3,17 @@ package controller
 import (
 	"bytes"
 	"context"
+	"encoding/json/v2"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -31,10 +35,43 @@ func corbie(t *testing.T, stdin string, args ...string) string {
 	return out.String()
 }
 
-// lab sets one computer up, enrols a runner with tags and removes it, keeps
-// a secret at / and a value at /home, and records a tree at /home and a
-// one-file tree at /hello; it gives the Controller page on it.
+// lab sets one computer up as labbed does, and gives the Controller page
+// on it, which runs its commands with command.
 func lab(t *testing.T, command page.Command) http.Handler {
+	t.Helper()
+	_, ctl, s := labbed(t)
+	return New(Config{Controller: ctl, Store: s, Command: command, Interval: time.Second, Changed: (&signal{}).next, Shell: page.Shell{}})
+}
+
+// A signal is a channel closed at each poke, and made again.
+type signal struct {
+	mu      sync.Mutex
+	changed chan struct{}
+}
+
+func (g *signal) next() <-chan struct{} {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	if g.changed == nil {
+		g.changed = make(chan struct{})
+	}
+	return g.changed
+}
+
+func (g *signal) poke() {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	if g.changed != nil {
+		close(g.changed)
+	}
+	g.changed = make(chan struct{})
+}
+
+// labbed sets one computer up, enrols a runner with tags and removes it,
+// keeps a secret at / and a value at /home, and records a tree at /home and
+// a one-file tree at /hello; it gives its config directory, its controller
+// and its store.
+func labbed(t *testing.T) (string, *identity.Identity, store.Store) {
 	t.Helper()
 	dir := t.TempDir()
 	config, at := filepath.Join(dir, "config"), filepath.Join(dir, "store")
@@ -73,7 +110,7 @@ func lab(t *testing.T, command page.Command) http.Handler {
 		t.Fatal(err)
 	}
 	submit(t, config, s, ctl, one)
-	return New(Config{Controller: ctl, Store: s, Command: command, Interval: time.Second, Shell: page.Shell{}})
+	return config, ctl, s
 }
 
 // write writes files into a new directory, and gives the directory.
@@ -123,6 +160,36 @@ func get(t *testing.T, h http.Handler) string {
 	return w.Body.String()
 }
 
+// shown is the page's parts, as the page is given them to draw.
+type shown struct {
+	Parties  []party   `json:"parties"`
+	Trees    []Tree    `json:"trees"`
+	Settings []setting `json:"settings"`
+}
+
+// partsOf reads the parts a page carries.
+func partsOf(t *testing.T, body string) shown {
+	t.Helper()
+	m := regexp.MustCompile(`(?s)<script type="application/json" id="parts">(.*?)</script>`).FindStringSubmatch(body)
+	if m == nil {
+		t.Fatalf("the page carries no parts:\n%s", body)
+	}
+	var s shown
+	if err := json.Unmarshal([]byte(m[1]), &s); err != nil {
+		t.Fatal(err)
+	}
+	return s
+}
+
+func partyOf(t *testing.T, s shown, name string) party {
+	t.Helper()
+	i := slices.IndexFunc(s.Parties, func(p party) bool { return p.Name == name })
+	if i < 0 {
+		t.Fatalf("the page lists no party %s: %+v", name, s.Parties)
+	}
+	return s.Parties[i]
+}
+
 func post(h http.Handler, act string, form url.Values) *httptest.ResponseRecorder {
 	w := httptest.NewRecorder()
 	r := httptest.NewRequest("POST", "/controller/"+act, strings.NewReader(form.Encode()))
@@ -132,27 +199,41 @@ func post(h http.Handler, act string, form url.Values) *httptest.ResponseRecorde
 }
 
 func Test_controller_lists_parties_trees_secrets_and_values(t *testing.T) {
-	body := get(t, lab(t, nil))
-	for _, want := range []string{"lab-runner", "lab-client", "network, disk, at:/home", "gpu-box", `<td>/home, /hello</td><td>gpu, big</td>`, `<tr data-key="old-box" class="removed">`,
-		`<a href="/runs?at=%2Fhome">/home</a></td><td class="dim cut" title="the tree of lab-client, last submitted from `, ">tree of lab-client, from ",
-		`<td class="in" title="/home/devices/boiler"><a href="/runs?at=%2Fhome%2Fdevices%2Fboiler">devices/boiler</a></td><td>singleton</td>`,
-		`>rooms/thermostat</a></td><td>keyed</td>`, `>tools/lookup</a></td><td>transient</td>`,
-		`<td class="in" title="/hello"><a href="/runs?at=%2Fhello">hello</a></td>`,
-		`<td>/</td><td>ANTHROPIC_KEY</td><td class="dim">secret</td><td class="cut" title=""></td>`,
-		`<td>/home</td><td>HUB</td><td class="dim">value</td><td class="cut" title="192.0.2.8:8123">192.0.2.8:8123</td>`,
-		`<td class="cut" title="network, disk, at:/home, at:/hello">`} {
-		if !strings.Contains(body, want) {
-			t.Errorf("the page does not show %s", want)
+	s := partsOf(t, get(t, lab(t, nil)))
+	if p := partyOf(t, s, "lab-runner"); p.Kind != "runner" || fmt.Sprint(p.At) != "[/]" {
+		t.Errorf("the page does not list at / a runner enrolled with no --at: %+v", p)
+	}
+	if p := partyOf(t, s, "gpu-box"); fmt.Sprint(p.At, p.Tags) != "[/home /hello] [gpu big]" {
+		t.Errorf("the page lists the runner gpu-box as %+v", p)
+	}
+	if p := partyOf(t, s, "old-box"); !p.Removed {
+		t.Errorf("the page does not list old-box as removed: %+v", p)
+	}
+	if p := partyOf(t, s, "lab-client"); p.Kind != "client" || fmt.Sprint(p.Ceiling) != "[network disk at:/home at:/hello]" {
+		t.Errorf("the page lists the client lab-client as %+v", p)
+	}
+	if !regexp.MustCompile(`^[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}$`).MatchString(partyOf(t, s, "lab-client").Fingerprint) {
+		t.Errorf("the page does not show a card's fingerprint")
+	}
+	trees := map[string]Tree{}
+	for _, tr := range s.Trees {
+		trees[tr.Prefix] = tr
+	}
+	home := trees["/home"]
+	if home.Client != "lab-client" || home.Directory == "" {
+		t.Errorf("the tree at /home is listed as %+v", home)
+	}
+	for _, want := range []Location{{"/home/devices/boiler", "devices/boiler", "singleton"}, {"/home/rooms/thermostat", "rooms/thermostat", "keyed"}, {"/home/tools/lookup", "tools/lookup", "transient"}} {
+		if !slices.Contains(home.Locations, want) {
+			t.Errorf("the tree at /home does not list %+v: %+v", want, home.Locations)
 		}
 	}
-	if !regexp.MustCompile(`<td>lab-runner</td><td class="dim">[^<]*</td><td>/</td>`).MatchString(body) {
-		t.Errorf("the page does not list at / a runner enrolled with no --at")
+	if hello := trees["/hello"]; len(hello.Locations) != 1 || hello.Locations[0].At != "/hello" || hello.Locations[0].Name != "hello" {
+		t.Errorf("the tree at /hello is listed as %+v", hello)
 	}
-	if strings.Index(body, "ANTHROPIC_KEY") > strings.Index(body, ">HUB<") {
-		t.Errorf("the secrets and values are not listed by location")
-	}
-	if !regexp.MustCompile(`<td class="dim">[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}</td>`).MatchString(body) {
-		t.Errorf("the page does not show a card's fingerprint")
+	want := []setting{{At: "/", Name: "ANTHROPIC_KEY", Kind: "secret"}, {At: "/home", Name: "HUB", Kind: "value", Value: "192.0.2.8:8123"}}
+	if !slices.Equal(s.Settings, want) {
+		t.Errorf("the secrets and values are listed as %+v, not by location as %+v", s.Settings, want)
 	}
 }
 
@@ -208,10 +289,15 @@ func Test_controller_actions_run_their_commands(t *testing.T) {
 func Test_controller_removed_party_offers_only_enrol(t *testing.T) {
 	r := &recorder{}
 	h := lab(t, r.run)
-	body := get(t, h)
-	row := regexp.MustCompile(`(?s)<tr data-key="old-box" class="removed">.*?</tr>`).FindString(body)
-	if row == "" || strings.Contains(row, "/controller/tags") || strings.Contains(row, "/controller/prefixes") || strings.Contains(row, "/controller/remove") || !strings.Contains(row, `href="#enrol-runner"`) {
-		t.Errorf("the removed party's line offers more than Enrol:\n%s", row)
+	s := partsOf(t, get(t, h))
+	if p := partyOf(t, s, "old-box"); fmt.Sprint(p.Acts) != "[enrol]" {
+		t.Errorf("the removed party's line offers %v, not Enrol alone", p.Acts)
+	}
+	if p := partyOf(t, s, "gpu-box"); fmt.Sprint(p.Acts) != "[tags prefixes remove]" {
+		t.Errorf("a runner's line offers %v", p.Acts)
+	}
+	if p := partyOf(t, s, "lab-client"); fmt.Sprint(p.Acts) != "[ceiling remove]" {
+		t.Errorf("a client's line offers %v", p.Acts)
 	}
 	if w := post(h, "tags", url.Values{"name": {"old-box"}, "tags": {"gpu"}}); w.Code != http.StatusConflict || len(r.calls) != 0 {
 		t.Errorf("setting a removed party's tags answered %d and ran %v", w.Code, r.calls)
@@ -234,5 +320,54 @@ func Test_controller_secret_value_goes_on_standard_input_only(t *testing.T) {
 	}
 	if strings.Contains(w.Body.String(), "hunter2") || strings.Contains(get(t, h), "swordfish") {
 		t.Errorf("a secret's value was sent back to the page")
+	}
+}
+
+func Test_controller_check_gives_each_part_of_the_setup(t *testing.T) {
+	var ran []string
+	answer := page.Answer{}
+	h := lab(t, func(ctx context.Context, c page.Call) page.Answer { ran = append(ran, c.String()); return answer })
+	printed, err := json.Marshal(cli.Checked{Legs: []cli.Leg{
+		{Leg: "start", Status: "ok", Seconds: 0.42},
+		{Leg: "job", Status: "never", Seconds: 90, Why: "no runner took the job: is a runner running?"},
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	answer = page.Answer{Status: 1, Out: string(printed)}
+	w := post(h, "check", url.Values{})
+	body := w.Body.String()
+	if len(ran) != 1 || ran[0] != "corbie check" {
+		t.Fatalf("Check ran %v", ran)
+	}
+	if w.Code != http.StatusConflict || body != "the controller took the start    ok     0.4s\na runner took the job            never  \n  no runner took the job: is a runner running?" {
+		t.Errorf("a check that failed answered %d:\n%s", w.Code, body)
+	}
+	printed, _ = json.Marshal(cli.Checked{OK: true, Legs: []cli.Leg{{Leg: "start", Status: "ok", Seconds: 0.1}}})
+	answer = page.Answer{Out: string(printed)}
+	if w := post(h, "check", url.Values{}); w.Code != http.StatusOK || !strings.HasPrefix(w.Body.String(), "the controller took the start") {
+		t.Errorf("a check that passed answered %d:\n%s", w.Code, w.Body.String())
+	}
+	// A check that could not start says why, as any action does.
+	answer = page.Answer{Status: 1, Said: "this config knows no client"}
+	if w := post(h, "check", url.Values{}); w.Code != http.StatusConflict || strings.TrimSpace(w.Body.String()) != "this config knows no client" {
+		t.Errorf("a check that could not start answered %d:\n%s", w.Code, w.Body.String())
+	}
+}
+
+// Test_controller_check_runs_corbie_check runs Check on a lab where no
+// controller process runs, as the UI runs it: the start is never taken.
+func Test_controller_check_runs_corbie_check(t *testing.T) {
+	config, ctl, s := labbed(t)
+	command := func(ctx context.Context, c page.Call) page.Answer {
+		args := append(append(append(append([]string{}, c.Words...), c.Args...), c.Flags...), "--json", "--config", config, "--wait", "1s")
+		var out, said bytes.Buffer
+		status := cli.Run(ctx, args, strings.NewReader(c.Stdin), &out, &said)
+		return page.Answer{Status: status, Out: out.String(), Said: said.String()}
+	}
+	h := New(Config{Controller: ctl, Store: s, Command: command, Interval: time.Second, Changed: (&signal{}).next})
+	w := post(h, "check", url.Values{})
+	if w.Code != http.StatusConflict || !regexp.MustCompile(`^the controller took the start\s+never`).MatchString(w.Body.String()) {
+		t.Errorf("Check on a lab with no controller running answered %d:\n%s", w.Code, w.Body.String())
 	}
 }

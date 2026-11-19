@@ -3,13 +3,11 @@
 package runs
 
 import (
-	"bytes"
 	"cmp"
 	"context"
-	"embed"
+	_ "embed"
 	"encoding/json/v2"
 	"errors"
-	"html/template"
 	"io"
 	"mime"
 	"net/http"
@@ -18,7 +16,9 @@ import (
 	"time"
 
 	"github.com/zummed/corbie-ui/page"
+	"github.com/zummed/corbie/blob"
 	"github.com/zummed/corbie/client"
+	"github.com/zummed/corbie/instance"
 	"github.com/zummed/corbie/store"
 )
 
@@ -41,44 +41,49 @@ type Config struct {
 	// Machine gives the address on the Machines page of the machine at a
 	// location of a tree submitted from a directory, with cards unfolded,
 	// and its file; none where the UI offers no Machines page.
-	Machine  func(ctx context.Context, location, dir string, cards []string) (href, file string, err error)
+	Machine func(ctx context.Context, location, dir string, cards []string) (href, file string, err error)
+	// Differs gives the lines of the file now at a location of a tree
+	// submitted from a directory that differ from a definition: none where
+	// they are the same or the Machines page does not show the file. None
+	// where the UI offers no Machines page.
+	Differs func(ctx context.Context, location, dir string, def blob.Ref) ([]string, error)
+	// Steps reads the latest step of each run, shared with the other pages
+	// that read them; with none the Runs pages keep their own.
+	Steps    *Steps
 	Interval time.Duration
 	Shell    page.Shell
 }
 
 type handler struct {
 	Config
-	steps  *steps
 	kept   *kept
 	titles *titles
 }
 
-//go:embed list.html run.html runs.js
-var files embed.FS
-
-var pages = template.Must(template.New("").Funcs(template.FuncMap{
-	"cmd":    func(c *page.Call) string { return c.String() },
-	"word":   pluralWord,
-	"middle": middle,
-	"breaks": breaks,
-}).ParseFS(files, "list.html", "run.html"))
-
-// breaks writes a location so that a line may break after each /.
-func breaks(location string) template.HTML {
-	return template.HTML(strings.ReplaceAll(template.HTMLEscapeString(location), "/", "/<wbr>"))
-}
+//go:embed runs.js
+var script []byte
 
 // New gives the Runs pages.
 func New(c Config) http.Handler {
-	h := &handler{Config: c, steps: &steps{}, kept: &kept{}, titles: &titles{}}
+	return newHandler(c).mux()
+}
+
+func newHandler(c Config) *handler {
+	if c.Steps == nil {
+		c.Steps = &Steps{}
+	}
+	return &handler{Config: c, kept: &kept{}, titles: &titles{}}
+}
+
+// mux gives the addresses of the Runs pages.
+func (h *handler) mux() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /runs", h.listPage)
 	mux.HandleFunc("GET /runs/stream", h.listStream)
 	mux.HandleFunc("POST /runs/at/{act}", h.atAct)
 	mux.HandleFunc("GET /runs/script.js", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/javascript; charset=utf-8")
-		data, _ := files.ReadFile("runs.js")
-		w.Write(data)
+		w.Write(script)
 	})
 	mux.HandleFunc("GET /run/{who}/{stamp}", h.runPage)
 	mux.HandleFunc("GET /run/{who}/{stamp}/stream", h.runStream)
@@ -100,45 +105,65 @@ func (h *handler) listOf(ctx context.Context, n narrowing) (listView, error) {
 	if h.Client != nil && h.Client.ID != nil {
 		mine = h.Client.ID.Name
 	}
-	read := h.steps.reader(ctx, h.Client, runs)
-	v := listOf(runs, read.of, facts, n, time.Now(), mine)
-	return v, errors.Join(err, read.done())
+	errs := []error{err}
+	stepOf := func(r *client.Run) *instance.Step {
+		step, err := h.Steps.Latest(ctx, h.Client, r)
+		errs = append(errs, err)
+		return step
+	}
+	v := listOf(runs, stepOf, facts, n, time.Now(), mine)
+	return v, errors.Join(errs...)
 }
 
-func (h *handler) listParts(ctx context.Context, n narrowing) ([]page.Part, error) {
+func (h *handler) listParts(ctx context.Context, n narrowing) (any, error) {
 	v, err := h.listOf(ctx, n)
 	if err != nil {
 		return nil, err
 	}
-	var parts []page.Part
-	// The ended runs are sent before the running ones, so that a run that
-	// ended is found running on the page as its new line arrives.
-	for _, id := range []string{"locations", "here", "ended", "busy", "idle", "singletons"} {
-		html, err := render(id, v)
-		if err != nil {
-			return nil, err
-		}
-		parts = append(parts, page.Part{ID: id, HTML: html})
+	return listParts(v), nil
+}
+
+// ListParts are the parts of the Runs page.
+type ListParts struct {
+	Narrowing  NarrowingPart `json:"narrowing"`
+	Locations  LocationsPart `json:"locations"`
+	Here       *placeHead    `json:"here"`
+	Ended      section       `json:"ended"`
+	Busy       section       `json:"busy"`
+	Idle       section       `json:"idle"`
+	Singletons section       `json:"singletons"`
+}
+
+// NarrowingPart is what the address of the Runs page narrows it to, as its
+// head shows it: the location, the window and the labels as typed.
+type NarrowingPart struct{ At, Window, Label string }
+
+// LocationsPart is the list of locations: every location, then each
+// client's trees.
+type LocationsPart struct {
+	Every   choice
+	Clients []clientPlaces
+}
+
+func listParts(v listView) ListParts {
+	return ListParts{
+		Narrowing: NarrowingPart{At: v.Narrowing.At, Window: v.Narrowing.Window, Label: v.Narrowing.LabelText()},
+		Locations: LocationsPart{Every: v.Every, Clients: v.Clients},
+		Here:      v.Here, Ended: v.Ended, Busy: v.Busy, Idle: v.Idle, Singletons: v.Singletons,
 	}
-	return parts, nil
 }
 
 func (h *handler) listPage(w http.ResponseWriter, r *http.Request) {
 	n := narrowingOf(r.URL.Query())
 	v, _ := h.listOf(r.Context(), n)
-	main, err := render("list", v)
-	if err != nil {
-		page.Error(w, http.StatusInternalServerError, err.Error())
-		return
-	}
 	s := h.Shell
-	s.Title, s.Current, s.Stream, s.Script, s.Main = "Runs", "Runs", "/runs/stream"+n.query(), "/runs/script.js", main
-	page.Write(w, s)
+	s.Title, s.Current, s.Stream, s.Script = "Runs", "Runs", "/runs/stream"+n.query(), "/runs/script.js"
+	page.Write(w, s, listParts(v))
 }
 
 func (h *handler) listStream(w http.ResponseWriter, r *http.Request) {
 	n := narrowingOf(r.URL.Query())
-	page.Stream(w, r, h.Interval, h.List.Changed, func(ctx context.Context) ([]page.Part, error) { return h.listParts(ctx, n) })
+	page.Stream(w, r, h.Interval, h.List.Changed, func(ctx context.Context) (any, error) { return h.listParts(ctx, n) })
 }
 
 func idOf(r *http.Request) (string, error) {
@@ -157,10 +182,8 @@ func (h *handler) runPage(w http.ResponseWriter, r *http.Request) {
 		h.Client.Record(r.Context(), id, func(e client.Entry) { entries = append(entries, e) })
 	}
 	v, err := h.runOf(r.Context(), id, entries, &reading{})
-	if err == nil && v.Mine {
-		if last := newest(v.Rows); last != nil {
-			v.Shown, err = h.shownAt(r.Context(), id, last, entries, h.byID(r.Context()), v.Run.Started)
-		}
+	if err == nil {
+		err = h.newestShown(r.Context(), &v, entries)
 	}
 	if err != nil {
 		status := http.StatusInternalServerError
@@ -170,14 +193,21 @@ func (h *handler) runPage(w http.ResponseWriter, r *http.Request) {
 		page.Error(w, status, err.Error())
 		return
 	}
-	main, err := render("run", v)
-	if err != nil {
-		page.Error(w, http.StatusInternalServerError, err.Error())
-		return
-	}
 	s := h.Shell
-	s.Title, s.Current, s.Stream, s.Script, s.Main = v.Name, "Runs", "/run/"+id+"/stream", "/runs/script.js", main
-	page.Write(w, s)
+	s.Title, s.Current, s.Stream, s.Script = v.Name, "Runs", "/run/"+id+"/stream", "/runs/script.js"
+	page.Write(w, s, runParts(v))
+}
+
+// newestShown gives a run in a tree of the UI's client the drawing and the
+// details of its newest row, which a page following the newest row shows.
+func (h *handler) newestShown(ctx context.Context, v *runView, entries []client.Entry) error {
+	last := rowAt(v.Rows, v.Follows)
+	if !v.Mine || last == nil {
+		return nil
+	}
+	s, err := h.shownAt(ctx, v.Run.ID, last, entries, h.byID(ctx), v.Run.Started)
+	v.Shown = &s
+	return err
 }
 
 // runStream follows a run: its status from the list, and, for a run in a
@@ -195,28 +225,21 @@ func (h *handler) runStream(w http.ResponseWriter, r *http.Request) {
 	}
 	changed := func() <-chan struct{} { return either(ctx, h.List.Changed(), rec.Changed()) }
 	read := &reading{}
-	page.Stream(w, r, h.Interval, changed, func(ctx context.Context) ([]page.Part, error) {
-		v, err := h.runOf(ctx, id, rec.all(), read)
+	page.Stream(w, r, h.Interval, changed, func(ctx context.Context) (any, error) {
+		entries := rec.all()
+		v, err := h.runOf(ctx, id, entries, read)
+		if err == nil {
+			err = h.newestShown(ctx, &v, entries)
+		}
 		if err != nil {
 			return nil, err
 		}
-		var parts []page.Part
-		for _, id := range runParts {
-			if id == "steps" && !v.Mine {
-				continue
-			}
-			html, err := render(id, v)
-			if err != nil {
-				return nil, err
-			}
-			parts = append(parts, page.Part{ID: id, HTML: html})
-		}
-		return parts, nil
+		return runParts(v), nil
 	})
 }
 
 // at answers a run's page with its drawing and details as of one row of
-// Steps, the row named by its key, from the record of the row's run.
+// Steps, the row named by its key, of the run in the address, as JSON.
 func (h *handler) at(w http.ResponseWriter, r *http.Request) {
 	id, err := idOf(r)
 	if err != nil || !h.mine(id) {
@@ -224,14 +247,20 @@ func (h *handler) at(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	ctx := r.Context()
+	at, byID, of := time.Now(), h.byID(r.Context()), r.URL.Query().Get("page")
+	// The record read is the page's run's where it started the row's run,
+	// for the drawing holds the runs between them.
+	from := id
+	if len(chainDown(of, id, byID)) > 1 && h.mine(of) {
+		from = of
+	}
 	var entries []client.Entry
-	if _, err := h.Client.Record(ctx, id, func(e client.Entry) { entries = append(entries, e) }); err != nil {
+	if _, err := h.Client.Record(ctx, from, func(e client.Entry) { entries = append(entries, e) }); err != nil {
 		page.Error(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 	// A row's time has its date where it is not on the date the page's run
 	// started.
-	at, byID, of := time.Now(), h.byID(r.Context()), r.URL.Query().Get("page")
 	var day time.Time
 	if p := cmp.Or(byID[of], byID[id]); p != nil {
 		day = p.Started
@@ -246,20 +275,11 @@ func (h *handler) at(w http.ResponseWriter, r *http.Request) {
 		page.Error(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	var parts []map[string]string
-	for _, id := range []string{"view", "details"} {
-		html, err := render(id, s)
-		if err != nil {
-			page.Error(w, http.StatusInternalServerError, err.Error())
-			return
-		}
-		parts = append(parts, map[string]string{"id": id, "html": string(html)})
-	}
 	w.Header().Set("Content-Type", "application/json")
-	json.MarshalWrite(w, parts)
+	json.MarshalWrite(w, s, json.Deterministic(true))
 }
 
-// group answers the rows of a send's or a call's group: the row named by
+// group answers the rows of a send's or a call's group, as JSON: the row named by
 // its key, of the run in the address, is the send or the call, and the rows
 // come from the record of the run it reached. Both runs must be in a tree
 // of the UI's client.
@@ -294,13 +314,8 @@ func (h *handler) group(w http.ResponseWriter, r *http.Request) {
 	if d, err := strconv.Atoi(r.URL.Query().Get("depth")); err == nil && d >= 0 {
 		depth = d
 	}
-	html, err := render("steprows", traced(row.Trace, reached, byID, h.mine, at, day, depth+1))
-	if err != nil {
-		page.Error(w, http.StatusInternalServerError, err.Error())
-		return
-	}
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	io.WriteString(w, string(html))
+	w.Header().Set("Content-Type", "application/json")
+	json.MarshalWrite(w, traced(row.Trace, reached, byID, h.mine, at, day, depth+1), json.Deterministic(true))
 }
 
 // titled gives the runs of the list, each run in a tree of the UI's client
@@ -311,29 +326,65 @@ func (h *handler) titled(ctx context.Context) ([]*client.Run, map[string]fixed, 
 	return titled, facts, errors.Join(err, read)
 }
 
-// defined gives where the Machines page shows a run's machine as its file
-// now is: the file of the run's location, or of its root's for a child,
-// unfolded down the cards of the jobs that started each child. A run in
-// another client's tree, one whose machine was made while running, and one
-// the Machines page does not show, have none.
-func (h *handler) defined(ctx context.Context, id string) (*definedAt, error) {
-	if h.Machine == nil || !h.mine(id) {
-		return nil, nil
+// rootOf gives the root of a run in a tree of the UI's client, what is
+// fixed of it, and the cards of the jobs that started each child down to
+// the run: no root where the run is not the client's, what is fixed of a
+// run on the way is not read, or a machine was made while running.
+func (h *handler) rootOf(ctx context.Context, id string) (*client.Run, fixed, []string, error) {
+	if !h.mine(id) {
+		return nil, fixed{}, nil, nil
 	}
-	runs, facts, _ := h.titled(ctx)
+	runs, facts, err := h.titled(ctx)
+	if err != nil {
+		return nil, fixed{}, nil, err
+	}
 	byID := map[string]*client.Run{}
 	for _, r := range runs {
 		byID[r.ID] = r
 	}
 	root, cards := cardsOf(id, byID, facts)
 	if root == nil {
+		return nil, fixed{}, nil, nil
+	}
+	return root, facts[root.ID], cards, nil
+}
+
+// defined gives where the Machines page shows a run's machine as its file
+// now is: the file of the run's location, or of its root's for a child,
+// unfolded down the cards of the jobs that started each child. A run in
+// another client's tree, one whose machine was made while running, and one
+// the Machines page does not show, have none.
+func (h *handler) defined(ctx context.Context, id string) (*definedAt, error) {
+	if h.Machine == nil {
 		return nil, nil
 	}
-	href, file, err := h.Machine(ctx, root.Location, facts[root.ID].Dir, cards)
+	root, f, cards, err := h.rootOf(ctx, id)
+	if root == nil || err != nil {
+		return nil, err
+	}
+	href, file, err := h.Machine(ctx, root.Location, f.Dir, cards)
 	if href == "" || err != nil {
 		return nil, err
 	}
 	return &definedAt{Href: href, File: file, Cards: strings.Join(cards, " › ")}, nil
+}
+
+// differs gives the lines of the file a run's root was started from that
+// differ now from the definition the root started with: none where they
+// are the same, or the UI cannot read which.
+func (h *handler) differs(ctx context.Context, id string) ([]string, error) {
+	if h.Differs == nil {
+		return nil, nil
+	}
+	root, f, _, err := h.rootOf(ctx, id)
+	if root == nil || err != nil {
+		return nil, err
+	}
+	step, err := h.step(ctx, root.ID, 1)
+	if err != nil || step == nil {
+		return nil, err
+	}
+	return h.Differs(ctx, root.Location, f.Dir, step.State.Definition)
 }
 
 // cardsOf gives the root of a run, and the cards of the jobs that started
@@ -534,10 +585,4 @@ func jsonOf(text string) (string, error) {
 	}
 	out, err := json.Marshal(v, json.Deterministic(true))
 	return string(out), err
-}
-
-func render(name string, data any) (template.HTML, error) {
-	var b bytes.Buffer
-	err := pages.ExecuteTemplate(&b, name, data)
-	return template.HTML(b.String()), err
 }

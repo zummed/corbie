@@ -1,0 +1,276 @@
+// The tests of the Machines page in Chrome, on a project open at its agent
+// support.yaml: what the page draws, how it is laid out, and what a person
+// does on it.
+import { test, wait, until, click, assert, equal, text } from "/test/page/testdata/test.js";
+import { parts } from "ui";
+import { focusOf, focusAt, base } from "/machines/shared.js";
+
+const $ = (s, root = document) => root.querySelector(s);
+const $$ = (s, root = document) => [...root.querySelectorAll(s)];
+
+const tab = name => $$(".view nav.tabs a").find(a => text(a) === name);
+
+test("machines_list_shows_what_each_item_is", () => {
+  const rows = $$(".files .filelist > a").filter(a => !a.closest("h2"));
+  const entries = parts.files.Groups.flatMap(g => g.Entries);
+  const files = parts.files.Files.filter(f => !f.Path.endsWith("/"));
+  equal(rows.length, entries.length + files.length, "the rows of the list");
+  for (const e of entries) {
+    const row = rows.find(a => a.getAttribute("href") === "/machines?" + new URLSearchParams({ file: e.Path }));
+    assert(row, `${e.Path} has no row`);
+    equal($("svg.g", row).getAttribute("aria-label"), e.Type || "file", `the icon of ${e.Path}`);
+    equal(text($(".name", row)), base(e.Path), `the name of ${e.Path}`);
+    equal($(".name", row).title, e.Location, `the location in the tooltip of ${e.Path}`);
+    equal(text($("small", row)), e.First + (e.Lifetime ? " · " + e.Lifetime : ""), `what ${e.Path} is`);
+  }
+  equal($$(".files h2.group").map(text), parts.files.Groups.filter(g => g.Dir !== ".").map(g => g.Dir + "/"), "the directories");
+  equal(text($(".files .filelist > a[aria-current]  .name")), "support.yaml", "the machine chosen");
+  assert(text($(".files h2.kind")).startsWith("Files"), "the files that are no machine have no heading");
+  assert($$(".files .filelist small").some(s => text(s).includes("listed in .corbieignore")), "no file is marked as listed in .corbieignore");
+});
+
+test("machines_problems_are_listed_once_at_their_file", () => {
+  const problems = $$(".files .problems .problem");
+  assert(problems.length > 0 && problems.length === parts.files.Problems.length, `the list shows ${problems.length} problems of ${parts.files.Problems.length}`);
+  const broken = problems.find(p => text($("a.at", p)).startsWith("broken.yaml"));
+  assert(broken, "the broken machine's problem is not given at its file");
+  assert($("a.at", broken).getAttribute("href").includes("view=text"), "a problem does not link to its file's text");
+  equal(text($(".problems h2")), `${problems.length} problem${problems.length === 1 ? "" : "s"}`, "the problems' heading");
+  assert($(".files .filelist > a[href*='broken.yaml'] .bad"), "the broken machine's row has no count of its problems");
+});
+
+test("machines_a_machine_shows_its_location", () => {
+  const named = $$(".view section.place .named > span").map(text);
+  equal(named[named.indexOf("location") + 1], parts.view.Place.Location, "the location shown");
+  assert(named.includes("lifetime") && named.includes("receives") && named.includes("sends to"), "the place lacks a fact: " + named.join(" | "));
+});
+
+test("machines_secrets_and_values_used_are_listed", () => {
+  const used = $$(".view section.uses .named > span").map(text);
+  assert(used.includes("KEY"), "the secret KEY is not listed: " + used.join(", "));
+  assert(text($(".view section.uses p")).includes("corbie controller secret set NAME --at " + parts.view.Place.Location), "the page does not say how the secret is set");
+});
+
+test("machines_drawing_is_shown", () => {
+  equal($$(".view nav.tabs a").map(text), ["Drawing", "Text", "Written out"], "the tabs");
+  equal($(".view nav.tabs a[aria-current]") && text($(".view nav.tabs a[aria-current]")), "Drawing", "the tab chosen");
+  const svg = $("#drawing svg.machine");
+  assert(svg, "the machine is not drawn");
+  for (const name of ["tell", "ask"]) assert(text(svg).includes(name), `the drawing has no card ${name}`);
+});
+
+test("machines_pages_only_read", () => {
+  equal($$("main form, main input, main textarea, main select").length, 0, "the fields on the Machines page");
+});
+
+test("machines_text_shows_the_problems_found_in_it", async () => {
+  click(tab("Text"));
+  await until(() => parts.view.View === "text" && $(".view pre.code"), "the text");
+  assert(location.search.includes("view=text"), "the address does not name the tab: " + location.search);
+  equal($$(".view pre.code > .l").length, parts.view.Text.length, "the lines of the text");
+  equal(text($(".view nav.tabs a[aria-current]")), "Text", "the tab chosen");
+  assert(text($(".view pre.code")).includes("agent: support"), "the text is not the file");
+});
+
+test("machines_written_out_shows_where_each_value_is_from", async () => {
+  click(tab("Written out"));
+  await until(() => parts.view.View === "written" && $(".view pre.code.written"), "the machine written out");
+  const links = $$(".view pre.code.written a");
+  assert(links.length > 0, "no value links to where it is from");
+  assert(links.every(a => /^\/machines\?.*view=text.*#L\d+$/.test(a.getAttribute("href"))), "a value links elsewhere than a line of a text: " + links[0].getAttribute("href"));
+  click(tab("Drawing"));
+  await until(() => parts.view.View === "drawing" && $("#drawing svg.machine"), "the drawing again");
+});
+
+test("machines_drawing_unfolds_as_the_address_says", async () => {
+  const link = $$("#drawing svg.machine a").find(a => (a.getAttribute("href") ?? "").includes("open="));
+  assert(link, "no card of the drawing unfolds");
+  const at = new URLSearchParams(link.getAttribute("href").split("?")[1]).getAll("open");
+  const before = $$("#drawing svg.machine text").length;
+  const camera = () => $("#drawing g.camera")?.style.transform ?? "";
+  const whole = camera();
+  click(link);
+  await until(() => new URLSearchParams(location.search).getAll("open").length === at.length, "the address naming the card unfolded");
+  await until(() => $$("#drawing svg.machine text").length > before, "the machine drawn inside the card");
+  assert(JSON.stringify(parts.view.Drawing).includes('"In":'), "the scene holds no machine unfolded inside a card");
+  // The camera moves in to the card unfolded: it is in view, and fills
+  // more of it than the whole machine did.
+  await until(() => camera() !== whole, "the camera moving in to the card", 2000);
+  await wait(500);
+  const view = $("#drawing").getBoundingClientRect(), card = $("#drawing g.unfolded").getBoundingClientRect();
+  const middle = { x: card.left + card.width / 2, y: card.top + card.height / 2 };
+  assert(middle.x > view.left && middle.x < view.right && middle.y > view.top && middle.y < view.bottom, "the card unfolded is out of view");
+  history.back();
+  await until(() => !location.search.includes("open="), "Back folding the card");
+  await until(() => $$("#drawing svg.machine text").length === before, "the card folded again");
+  await until(() => camera() === whole, "the camera moving back out to the whole machine", 2000);
+});
+
+test("machines_focus_is_the_card_unfolded_or_the_card_it_was_in", () => {
+  equal(focusOf("/machines?file=a.yaml", "/machines?file=a.yaml&open=talking"), "talking", "unfolding a card");
+  equal(focusOf("/machines?file=a.yaml&open=talking", "/machines?file=a.yaml&open=talking&open=talking%2Fanswering"), "talking/answering", "unfolding a card inside it");
+  equal(focusOf("/machines?file=a.yaml&open=talking&open=talking%2Fanswering", "/machines?file=a.yaml&open=talking"), "talking", "folding the card inside");
+  equal(focusOf("/machines?file=a.yaml&open=talking&open=talking%2Fanswering", "/machines?file=a.yaml"), "", "folding the outer card");
+  equal(focusOf("/machines?file=a.yaml&open=talking", "/machines?file=a.yaml&open=talking&view=text"), null, "another tab");
+  equal(focusAt("/machines?file=a.yaml&open=talking&open=talking%2Fanswering"), "talking/answering", "a page opened at an address");
+  equal(focusAt("/machines?file=a.yaml"), "", "a page opened at a machine");
+});
+
+test("machines_latest_address_asked_for_is_shown", async () => {
+  // Two tabs chosen at once, the answer to the first held back so that it
+  // comes last: the page shows the tab chosen last.
+  const real = window.fetch;
+  window.fetch = (u, o) => (String(u).includes("view=written") ? wait(300).then(() => real(u, o)) : real(u, o));
+  try {
+    click(tab("Written out"));
+    click(tab("Text"));
+    await until(() => parts.view.View === "text" && location.search.includes("view=text"), "the tab chosen last");
+    await wait(600);
+  } finally {
+    window.fetch = real;
+  }
+  equal(parts.view.View, "text", "the tab shown once both answers came");
+  assert(location.search.includes("view=text"), "the address after both answers came: " + location.search);
+  click(tab("Drawing"));
+  await until(() => parts.view.View === "drawing" && $("#drawing svg.machine"), "the drawing again");
+});
+
+test("machines_a_file_that_cannot_be_read_says_why", async () => {
+  // The UI's answer for a file that is gone, given here so that the browser
+  // logs no failed request; then a request that fails outright.
+  const real = window.fetch;
+  const here = location.href;
+  try {
+    for (const [answer, says] of [
+      [() => Promise.resolve(new Response("open gone.yaml: no such file or directory", { status: 404 })), "open gone.yaml: no such file or directory"],
+      [() => Promise.reject(new TypeError("Failed to fetch")), "TypeError: Failed to fetch"],
+    ]) {
+      window.fetch = (u, o) => (String(u).startsWith("/machines/view") ? answer() : real(u, o));
+      history.pushState(null, "", "/machines?file=gone.yaml");
+      dispatchEvent(new PopStateEvent("popstate"));
+      await until(() => text($(".view p.failed")) === says, "the failure: " + says);
+      equal(parts.view.Open, "support.yaml", "the file shown after the failure");
+    }
+  } finally {
+    window.fetch = real;
+  }
+  history.pushState(null, "", here);
+  dispatchEvent(new PopStateEvent("popstate"));
+  await until(() => !$(".view p.failed"), "the failure gone once the file is shown again");
+});
+
+test("machines_file_changed_on_disk_is_drawn_again", async () => {
+  const toolkit = "description: messages\ntools:\n  notify: { description: tells, job: { machine: .kit/post.yaml, approve: true } }\n";
+  const res = await fetch("/written", { method: "POST", body: new URLSearchParams({ file: "toolkits/toolkit.yaml", text: toolkit }) });
+  assert(res.ok, "the file was not written: " + (await res.text()));
+  const titles = () => $$("#drawing svg.machine text.title").map(text);
+  await until(() => titles().includes("notify"), "the drawing of the file as it is now", 6000);
+  assert(!titles().includes("tell"), "the drawing still has the tool as it was");
+});
+
+// row gives the list's row of a file.
+const row = file => $(`.files .filelist > a[href="/machines?${new URLSearchParams({ file })}"]`);
+
+test("machines_choosing_a_file_shows_it_in_place", async () => {
+  // The list is made short, so that it scrolls, and scrolled.
+  const list = $(".ide > .files");
+  list.style.height = "160px";
+  list.scrollTop = 60;
+  const scrolled = list.scrollTop;
+  assert(scrolled > 0, "the list does not scroll");
+  window.samePage = true;
+  // The drawing is on the page in every frame while the file changes.
+  let blank = 0, watching = true;
+  const watch = () => {
+    if (!watching) return;
+    if (!$("#drawing svg.machine")) blank++;
+    requestAnimationFrame(watch);
+  };
+  requestAnimationFrame(watch);
+  click(row("router.yaml"));
+  await until(() => parts.view.Open === "router.yaml" && $$("#drawing svg.machine text.title").map(text).includes("listen"), "router.yaml drawn");
+  watching = false;
+  equal(blank, 0, "the frames with no drawing while the file changed");
+  assert(window.samePage, "choosing a file loaded another page");
+  equal(location.search, "?file=router.yaml", "the address");
+  equal(list.scrollTop, scrolled, "the list's scroll");
+  equal(text($(".files .filelist > a[aria-current] .name")), "router.yaml", "the file highlighted");
+  equal(text($(".view > .head > span")), "router.yaml", "the file shown");
+  history.back();
+  await until(() => parts.view.Open === "support.yaml" && text($(".files .filelist > a[aria-current] .name")) === "support.yaml", "Back showing support.yaml");
+  assert(window.samePage, "Back loaded another page");
+  history.forward();
+  await until(() => parts.view.Open === "router.yaml", "Forward showing router.yaml again");
+  list.style.height = "";
+});
+
+test("machines_file_shown_after_another_is_drawn_again_when_it_changes", async () => {
+  const res = await fetch("/written", { method: "POST", body: new URLSearchParams({ file: "router.yaml", text: "flow: router\nstages:\n  hear: { job: { machine: ./.kit/listen.yaml } }\n" }) });
+  assert(res.ok, "the file was not written");
+  const titles = () => $$("#drawing svg.machine text.title").map(text);
+  await until(() => titles().includes("hear") && !titles().includes("listen"), "router.yaml as it is now", 6000);
+  assert(window.samePage, "the change loaded another page");
+  history.back();
+  await until(() => parts.view.Open === "support.yaml", "Back showing support.yaml");
+});
+
+test("machines_card_opens_its_line", async () => {
+  window.samePage = true;
+  click(row(".kit/listen.yaml"));
+  await until(() => parts.view.Open === ".kit/listen.yaml" && $("#drawing a.line"), "listen.yaml drawn with its cards' lines");
+  const hearing = $$("#drawing a.line").find(a => text(a).startsWith("hearing"));
+  assert(hearing, "the card hearing does not link to its line");
+  const at = parts.view.Drawing.Chart.States.find(s => s.Name === "hearing").Card.Line;
+  equal(hearing.getAttribute("href"), "/machines?file=.kit%2Flisten.yaml&view=text#L" + at.slice(at.lastIndexOf(":") + 1), "the address of hearing's line");
+  click(hearing);
+  await until(() => parts.view.View === "text" && $(".code .l.here"), "the text at hearing's line");
+  assert(window.samePage, "the line opened another page");
+  const lit = $$(".code .l.here");
+  equal(lit.length, 1, "the lines lit");
+  equal(lit[0].id, "L" + at.slice(at.lastIndexOf(":") + 1), "the line lit");
+  const box = $(".ide > .view").getBoundingClientRect(), line = lit[0].getBoundingClientRect();
+  assert(line.top >= box.top && line.bottom <= box.bottom, "the line lit is out of view");
+  history.back();
+  await until(() => parts.view.Open === ".kit/listen.yaml" && parts.view.View === "drawing", "Back showing the drawing");
+  history.back();
+  await until(() => parts.view.Open === "support.yaml", "Back showing support.yaml");
+});
+
+test("machines_panels_fit_the_window_and_scroll_inside", () => {
+  const ide = $(".ide");
+  assert(ide.getBoundingClientRect().bottom <= innerHeight + 1, "the page is longer than the window");
+  for (const panel of $$(".ide > .panel")) {
+    assert(panel.getBoundingClientRect().bottom <= innerHeight + 1, "a panel is longer than the window");
+    equal(getComputedStyle(panel).overflowY, "auto", "how a panel scrolls");
+  }
+  equal(document.scrollingElement.scrollHeight <= innerHeight + 1, true, "the window scrolls");
+});
+
+test("machines_rows_do_not_overflow", () => {
+  for (const row of $$(".files .filelist > a")) {
+    const box = row.getBoundingClientRect();
+    for (const child of row.children) {
+      const b = child.getBoundingClientRect();
+      assert(b.right <= box.right + 1 && b.left >= box.left - 1, `${text(row)}: ${child.className || child.tagName} reaches out of its row`);
+    }
+  }
+});
+
+test("machines_handle_resizes_the_list_and_is_kept", () => {
+  const handle = $(".ide > .handle");
+  const holder = handle.parentElement;
+  const capture = Element.prototype.setPointerCapture;
+  Element.prototype.setPointerCapture = () => {};
+  try {
+    const left = holder.getBoundingClientRect().left;
+    handle.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, button: 0, pointerId: 1, clientX: left + 300 }));
+    handle.dispatchEvent(new PointerEvent("pointermove", { bubbles: true, pointerId: 1, clientX: left + 420 }));
+    handle.dispatchEvent(new PointerEvent("lostpointercapture", { bubbles: true, pointerId: 1 }));
+  } finally {
+    Element.prototype.setPointerCapture = capture;
+  }
+  equal(holder.style.getPropertyValue("--files"), "420px", "the list's width");
+  equal(Math.round($(".ide > .files").getBoundingClientRect().width), 420, "the list as laid out");
+  equal(localStorage.getItem("size:files"), "420px", "the width the browser keeps");
+  localStorage.removeItem("size:files");
+});

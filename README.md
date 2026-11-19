@@ -20,6 +20,6 @@ corbie ui --dir my-project
 
 ## License
 
-Copyright 2026 Paul Young. Licensed under the Apache License, Version 2.0: see `LICENSE` and `NOTICE`. The IBM Plex fonts are under the SIL Open Font License 1.1.
+Copyright 2026 Paul Young. Licensed under the Apache License, Version 2.0: see `LICENSE` and `NOTICE`. The IBM Plex fonts are under the SIL Open Font License 1.1, and Solid under the MIT License.
 
 Corbie UI was written with Claude Code, designed and directed by Paul Young.

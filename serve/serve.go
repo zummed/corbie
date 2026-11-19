@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/zummed/corbie-ui/controller"
+	"github.com/zummed/corbie-ui/drawing"
 	"github.com/zummed/corbie-ui/machines"
 	"github.com/zummed/corbie-ui/metrics"
 	"github.com/zummed/corbie-ui/page"
@@ -223,12 +224,29 @@ func start(ctx context.Context, e *cli.Env, o options) (*ui, error) {
 
 	mux := http.NewServeMux()
 	mux.Handle("GET /assets/", http.StripPrefix("/assets", page.Assets()))
+	mux.Handle("GET /drawing/", http.StripPrefix("/drawing", drawing.Files()))
 	mux.Handle("GET /manual/", http.StripPrefix("/manual", manual.Site()))
 	home := "/machines"
+	// The list of runs is read first: the Machines page counts its runs.
+	if u.noStore == nil {
+		u.list = newList()
+		found, err := p.lister.List(ctx, listed)
+		if err != nil {
+			return nil, err
+		}
+		u.list.set(found, nil)
+		go u.list.follow(ctx, p.lister, interval)
+	}
+	// One reader of the runs' latest steps serves both pages that read them.
+	steps := &runs.Steps{}
 	var areaMachines *machines.Pages
 	if !o.asNone {
 		var err error
-		areaMachines, err = machines.New(machines.Config{Dir: dir, Controller: p.controller, Store: p.store, Runs: u.noStore == nil, Interval: interval, Shell: shell})
+		mc := machines.Config{Dir: dir, Controller: p.controller, Store: p.store, Client: p.client, Runs: u.noStore == nil, Interval: interval, Shell: shell, Latest: steps.Latest}
+		if u.list != nil {
+			mc.List = u.list
+		}
+		areaMachines, err = machines.New(mc)
 		if err != nil {
 			return nil, err
 		}
@@ -239,18 +257,11 @@ func start(ctx context.Context, e *cli.Env, o options) (*ui, error) {
 	}
 	if u.noStore == nil {
 		home = "/runs"
-		u.list = newList()
-		found, err := p.lister.List(ctx, listed)
-		if err != nil {
-			return nil, err
-		}
-		u.list.set(found, nil)
-		go u.list.follow(ctx, p.lister, interval)
 		mux.Handle("GET /metrics", metrics.Handler(u.list))
-		c := runs.Config{List: u.list, Lister: p.lister, Client: p.client, Controller: p.controller != nil,
+		c := runs.Config{List: u.list, Lister: p.lister, Client: p.client, Controller: p.controller != nil, Steps: steps,
 			Command: command, Interval: interval, Shell: shell}
 		if areaMachines != nil {
-			c.Machine = areaMachines.Href
+			c.Machine, c.Differs = areaMachines.Href, areaMachines.Differs
 		}
 		areaRuns := runs.New(c)
 		mux.Handle("/runs", areaRuns)
@@ -258,7 +269,7 @@ func start(ctx context.Context, e *cli.Env, o options) (*ui, error) {
 		mux.Handle("/run/", areaRuns)
 	}
 	if p.controller != nil {
-		areaController := controller.New(controller.Config{Controller: p.controller, Store: p.store, Command: command, Interval: interval, Shell: shell})
+		areaController := controller.New(controller.Config{Controller: p.controller, Store: p.store, Command: command, Interval: interval, Changed: u.list.Changed, Shell: shell})
 		mux.Handle("/controller", areaController)
 		mux.Handle("/controller/", areaController)
 	}

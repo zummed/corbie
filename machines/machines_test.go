@@ -9,12 +9,12 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
-	"regexp"
 	"slices"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/zummed/corbie-ui/drawing"
 	"github.com/zummed/corbie-ui/page"
 	"github.com/zummed/corbie/client"
 	"github.com/zummed/corbie/client/cli"
@@ -228,42 +228,48 @@ func Test_machines_list_shows_what_each_item_is(t *testing.T) {
 		t.Errorf("the prefix is %q and the locations %+v", ix.Prefix, ix.Groups)
 	}
 	h, _ := New(Config{Dir: dir, Interval: time.Second})
-	body := do(h, "GET", "/machines?file=grouse/b.yaml", nil).Body.String()
-	_, list, _ := strings.Cut(body, `id="files"`)
-	list, _, _ = strings.Cut(list, "</nav>")
-	list, filesList, _ := strings.Cut(list, `<h2 class="kind">Files<a href="/machines?file=.corbieignore">.corbieignore</a></h2>`)
-	for _, want := range []string{`<h2 class="group" title="grouse">grouse/</h2>`, `<h2 class="group" title=".kit">.kit/</h2>`, `<use href="#g-agent"/>`, "<small>agent: support · transient</small>", "<small>flow: b · singleton</small>", `title="` + ix.Prefix + `/grouse/b">b.yaml<`, `<span class="bad" title="2 problems">2</span>`, `href="/machines?file=grouse%2fb.yaml" aria-current="page"`} {
-		if !strings.Contains(list, want) {
-			t.Errorf("the list does not show %s:\n%s", want, list)
+	p := pageOf(t, h, "/machines?file=grouse/b.yaml")
+	var dirs []string
+	for _, g := range p.Files.Groups {
+		dirs = append(dirs, g.Dir)
+	}
+	if !slices.Equal(dirs, []string{".", ".kit", "grouse"}) {
+		t.Errorf("the list is by the directories %v", dirs)
+	}
+	if e := p.entryOf("support.yaml"); e == nil || e.Type != "agent" || e.First != "agent: support" || e.Lifetime != "transient" {
+		t.Errorf("the list gives support.yaml as %+v", e)
+	}
+	if e := p.entryOf("grouse/b.yaml"); e == nil || e.First != "flow: b" || e.Lifetime != "singleton" || e.Location != ix.Prefix+"/grouse/b" {
+		t.Errorf("the list gives grouse/b.yaml as %+v", e)
+	}
+	if e := p.entryOf("bad.yaml"); e == nil || e.Problems != 2 {
+		t.Errorf("the list gives bad.yaml as %+v", e)
+	}
+	if p.View.Open != "grouse/b.yaml" || !p.Files.Ignore {
+		t.Errorf("the page has %q chosen, and .corbieignore %t", p.View.Open, p.Files.Ignore)
+	}
+	for _, gone := range []string{"people/scopes.yaml", "toolkits/toolkit.yaml"} {
+		if p.entryOf(gone) != nil {
+			t.Errorf("the machines hold %s", gone)
 		}
 	}
-	for _, gone := range []string{"people/scopes.yaml", "toolkit.yaml"} {
-		if strings.Contains(list, gone) {
-			t.Errorf("the machines hold %s:\n%s", gone, list)
-		}
+	if !slices.Equal(p.Files.Files, ix.Files) {
+		t.Errorf("the page lists the files %+v, not %+v", p.Files.Files, ix.Files)
 	}
-	for _, want := range []string{">toolkits/toolkit.yaml</span><small>listed in .corbieignore · included by 1 machine</small>", ">people/scopes.yaml</span><small>listed in .corbieignore · included by none</small>", ">prompt.md</span><small>included by 1 machine</small>", `<div class="row"><span></span><span class="name" title="shared/">shared/</span><small>listed in .corbieignore</small></div>`} {
-		if !strings.Contains(filesList, want) {
-			t.Errorf("the files do not show %s:\n%s", want, filesList)
-		}
+	if p.Files.Prefix != ix.Prefix {
+		t.Errorf("the page gives the prefix %q", p.Files.Prefix)
 	}
-	if !strings.Contains(body, ">at "+ix.Prefix+"<") {
-		t.Errorf("the page does not give the prefix:\n%s", body)
+	if shared := pageOf(t, h, "/machines?file=shared/states.yaml").View; shared.File == nil || !slices.Equal(shared.Included, []string{"keyed.yaml"}) || shared.Facts != "listed in .corbieignore" || shared.Drawable {
+		t.Errorf("a listed file does not show the machines that include it: %+v", shared)
 	}
-	shared := do(h, "GET", "/machines?file=shared/states.yaml", nil).Body.String()
-	if !strings.Contains(shared, `<section class="included"><h2>Included by</h2><a href="/machines?file=keyed.yaml">keyed.yaml</a></section>`) || !strings.Contains(shared, `<span class="facts">listed in .corbieignore</span>`) || strings.Contains(shared, ">Drawing<") {
-		t.Errorf("a listed file does not show the machines that include it:\n%s", shared)
+	if prompt := pageOf(t, h, "/machines?file=prompt.md").View; prompt.File == nil || !slices.Equal(prompt.Included, []string{"talker.yaml"}) || prompt.Facts != "a file" {
+		t.Errorf("a file a machine includes does not show the machines that include it: %+v", prompt)
 	}
-	prompt := do(h, "GET", "/machines?file=prompt.md", nil).Body.String()
-	if !strings.Contains(prompt, `<section class="included"><h2>Included by</h2><a href="/machines?file=talker.yaml">talker.yaml</a></section>`) || !strings.Contains(prompt, `<span class="facts">a file</span>`) {
-		t.Errorf("a file a machine includes does not show the machines that include it:\n%s", prompt)
+	if script := pageOf(t, h, "/machines?file=.kit/hear.js").View; script.Facts != "a file" || script.File != nil {
+		t.Errorf("a script no machine takes a value from is shown as one of the files: %+v", script)
 	}
-	script := do(h, "GET", "/machines?file=.kit/hear.js", nil).Body.String()
-	if !strings.Contains(script, `<span class="facts">a file</span>`) || strings.Contains(script, "Included by") {
-		t.Errorf("a script no machine takes a value from is shown as one of the files:\n%s", script)
-	}
-	if body := do(h, "GET", "/machines?file=./grouse/b.yaml", nil).Body.String(); !strings.Contains(body, `aria-current="page"`) {
-		t.Errorf("a path written with ./ is not the file chosen")
+	if p := pageOf(t, h, "/machines?file=./grouse/b.yaml"); p.View.Open != "grouse/b.yaml" {
+		t.Errorf("a path written with ./ is not the file chosen: %q", p.View.Open)
 	}
 }
 
@@ -324,23 +330,23 @@ func Test_machines_every_yaml_is_a_machine_but_the_listed_files(t *testing.T) {
 		t.Errorf("the files under a listed directory are %v, and not %v", files, want)
 	}
 	h, _ := New(Config{Dir: dir, Interval: time.Second})
-	if body := do(h, "GET", "/machines?file=.rook/AGENTS.md", nil).Body.String(); !strings.Contains(body, `<span class="facts">listed in .corbieignore</span>`) || !strings.Contains(body, "no machine takes a value from this file") {
-		t.Errorf("a file in a listed directory is not headed as listed:\n%s", body)
+	if v := pageOf(t, h, "/machines?file=.rook/AGENTS.md").View; v.Facts != "listed in .corbieignore" || v.File == nil || len(v.Included) != 0 {
+		t.Errorf("a file in a listed directory is not headed as listed: %+v", v)
 	}
-	if body := do(h, "GET", "/machines?file=.corbieignore", nil).Body.String(); !strings.Contains(body, `<a href="/machines?file=.corbieignore" aria-current="page">.corbieignore</a></h2>`) || !strings.Contains(body, ".rook/") {
-		t.Errorf("the Files heading does not open .corbieignore:\n%s", body)
+	if p := pageOf(t, h, "/machines?file=.corbieignore"); !p.Files.Ignore || p.View.Open != ".corbieignore" || !slices.ContainsFunc(text(p.View.Text), func(l string) bool { return strings.Contains(l, ".rook/") }) {
+		t.Errorf("the Files heading does not open .corbieignore: %+v", p.View)
 	}
 	for file, head := range map[string]string{"broken.yaml": "a machine", "nul.yaml": "flow"} {
-		if body := do(h, "GET", "/machines?file="+file, nil).Body.String(); !strings.Contains(body, `<span class="facts">`+head+`</span>`) {
-			t.Errorf("%s is not headed %q:\n%s", file, head, body)
+		if v := pageOf(t, h, "/machines?file="+file).View; v.Facts != head {
+			t.Errorf("%s is headed %q, not %q", file, v.Facts, head)
 		}
 	}
-	body := do(h, "GET", "/machines?file=loose.yaml", nil).Body.String()
-	if !strings.Contains(body, `<span class="facts">a machine</span>`) || !strings.Contains(body, `aria-label="file"><title>file</title><use href="#g-file"/></svg><span class="name" title="/`+filepath.Base(dir)+`/loose">loose.yaml</span><span class="bad" title="1 problem">1</span><small></small>`) {
-		t.Errorf("a machine with no type is not shown as a machine with a problem:\n%s", body)
+	p := pageOf(t, h, "/machines?file=loose.yaml")
+	if e := p.entryOf("loose.yaml"); p.View.Facts != "a machine" || e == nil || e.Type != "" || e.Problems != 1 || e.First != "" || e.Location != "/"+filepath.Base(dir)+"/loose" {
+		t.Errorf("a machine with no type is not shown as a machine with a problem: %+v, %+v", p.View, e)
 	}
-	if body := do(h, "GET", "/machines?file=shared/flow.yaml", nil).Body.String(); !strings.Contains(body, `<span class="facts">listed in .corbieignore</span>`) || !strings.Contains(body, `<a href="/machines?file=placed.yaml">placed.yaml</a>`) || strings.Contains(body, ">Drawing<") {
-		t.Errorf("a listed file does not show the machines that include it:\n%s", body)
+	if v := pageOf(t, h, "/machines?file=shared/flow.yaml").View; v.Facts != "listed in .corbieignore" || !slices.Equal(v.Included, []string{"placed.yaml"}) || v.Drawable {
+		t.Errorf("a listed file does not show the machines that include it: %+v", v)
 	}
 }
 
@@ -353,8 +359,8 @@ func Test_machines_list_says_what_it_could_not_read(t *testing.T) {
 	os.Mkdir(locked, 0o000)
 	t.Cleanup(func() { os.Chmod(locked, 0o755) })
 	h, _ := New(Config{Dir: dir, Interval: time.Second})
-	if body := do(h, "GET", "/machines", nil).Body.String(); !strings.Contains(body, `class="unread"`) || !strings.Contains(body, "a-locked") {
-		t.Errorf("a directory that cannot be read is not reported:\n%s", body)
+	if p := pageOf(t, h, "/machines"); !strings.Contains(p.Files.Unread, "a-locked") {
+		t.Errorf("a directory that cannot be read is not reported: %q", p.Files.Unread)
 	}
 }
 
@@ -405,21 +411,14 @@ func Test_machines_problems_are_listed_once_at_their_file(t *testing.T) {
 		t.Errorf("the problems are %+v", ix.Problems)
 	}
 	h, _ := New(Config{Dir: dir, Interval: time.Second})
-	body := do(h, "GET", "/machines?file=z.yaml", nil).Body.String()
-	if n := strings.Count(body, "breaks 3 machines"); n != atToolkit {
-		t.Errorf("the page shows the toolkit's problems %d times, and not %d:\n%s", n, atToolkit, body)
+	z := pageOf(t, h, "/machines?file=z.yaml")
+	if n := strings.Count(problemsSaid(z.Files.Problems), "breaks .kit/c.yaml,a.yaml,b.yaml"); n != atToolkit {
+		t.Errorf("the page shows the toolkit's problems %d times, and not %d:\n%s", n, atToolkit, problemsSaid(z.Files.Problems))
 	}
 	// The Toolkits page lists the same problems, drawn the same way.
-	toolkits := do(h, "GET", "/toolkits", nil).Body.String()
-	box := func(page string) string {
-		start := strings.Index(page, `<div class="problems">`)
-		if start < 0 {
-			return ""
-		}
-		return page[start : start+strings.Index(page[start:], "</div>")]
-	}
-	if box(toolkits) == "" || box(toolkits) != box(do(h, "GET", "/machines", nil).Body.String()) {
-		t.Errorf("the Toolkits page lists the problems %q, and not as the Machines page does", box(toolkits))
+	toolkits := pageOf(t, h, "/toolkits").Toolkits.Problems
+	if len(toolkits) == 0 || problemsSaid(toolkits) != problemsSaid(z.Files.Problems) {
+		t.Errorf("the Toolkits page lists the problems\n%s\nand not as the Machines page does", problemsSaid(toolkits))
 	}
 
 	// A file that three machines include, which cannot be read, is one
@@ -504,11 +503,11 @@ func Test_machines_directory_below_the_top_is_one_problem(t *testing.T) {
 		t.Errorf("a machine read from the wrong directory counts other than the one problem shown at it: %v", got)
 	}
 	h, _ := New(Config{Dir: dir, Interval: time.Second})
-	if body := do(h, "GET", "/machines", nil).Body.String(); !strings.Contains(body, "<code>proj/</code> is the top of a tree") || !strings.Contains(body, "breaks 3 machines") {
-		t.Errorf("the page does not say which directory is the top:\n%s", body)
+	if p := pageOf(t, h, "/machines"); len(p.Files.Problems) == 0 || !p.Files.Problems[0].Top || p.Files.Problems[0].File != "proj" || len(p.Files.Problems[0].Breaks) != 3 {
+		t.Errorf("the page does not say which directory is the top:\n%s", problemsSaid(p.Files.Problems))
 	}
-	if body := do(h, "GET", "/machines?file=proj/a.yaml", nil).Body.String(); strings.Count(body, "is the top of a tree") != 2 || strings.Contains(body, "cannot be read") {
-		t.Errorf("a machine read from the wrong directory does not say so:\n%s", body)
+	if p := pageOf(t, h, "/machines?file=proj/a.yaml"); !slices.ContainsFunc(p.View.Found, func(f problem) bool { return f.Top }) || strings.Contains(problemsSaid(p.View.Found), "cannot be read") {
+		t.Errorf("a machine read from the wrong directory does not say so:\n%s", problemsSaid(p.View.Found))
 	}
 }
 
@@ -521,24 +520,26 @@ func Test_machines_text_shows_the_problems_found_in_it(t *testing.T) {
 		"toolkits/r.js":   "return 1",
 	})
 	h, _ := New(Config{Dir: dir, Interval: time.Second})
-	body := do(h, "GET", "/machines?file=broken.yaml", nil).Body.String()
-	if strings.Contains(body, `id="drawing"`) || !strings.Contains(body, "missing.js") || !strings.Contains(body, `<span class="l err" id="L4"><span class="k">  a</span>`) && !strings.Contains(body, `<span class="l err" id="L4">  <span class="k">a</span>`) {
-		t.Errorf("a machine with problems is not shown as text with its line marked:\n%s", body)
+	broken := pageOf(t, h, "/machines?file=broken.yaml").View
+	lines := text(broken.Text)
+	if broken.View != "text" || broken.Drawing != nil || !strings.Contains(problemsSaid(broken.Found), "missing.js") || len(lines) < 4 || lines[3] != "![k:  a]: { job: ./missing.js }" && lines[3] != "!  [k:a]: { job: ./missing.js }" {
+		t.Errorf("a machine with problems is not shown as text with its line marked: %q\n%s", lines, problemsSaid(broken.Found))
 	}
-	if !strings.Contains(body, `<span class="l" id="L1"><span class="c"># one stage</span></span>`) {
-		t.Errorf("a comment is not set apart:\n%s", body)
+	if broken.Text[3].ID != "L4" || len(lines) == 0 || lines[0] != "[c:# one stage]" {
+		t.Errorf("a comment is not set apart, or a line has no anchor: %q", lines)
 	}
-	toolkit := do(h, "GET", "/machines?file=toolkits/m.yaml&view=text", nil).Body.String()
-	if !strings.Contains(toolkit, "tools.r.colour") || !strings.Contains(toolkit, "breaks 1 machine") || strings.Count(toolkit, `class="l err"`) != 1 {
-		t.Errorf("a toolkit's text does not show the problem found in it:\n%s", toolkit)
+	toolkit := pageOf(t, h, "/machines?file=toolkits/m.yaml&view=text").View
+	marked := slices.DeleteFunc(text(toolkit.Text), func(l string) bool { return !strings.HasPrefix(l, "!") })
+	if !strings.Contains(problemsSaid(toolkit.Found), "tools.r.colour") || !strings.Contains(problemsSaid(toolkit.Found), "breaks a.yaml") || len(marked) != 1 {
+		t.Errorf("a toolkit's text does not show the problem found in it: %q\n%s", marked, problemsSaid(toolkit.Found))
 	}
-	if a := do(h, "GET", "/machines?file=a.yaml", nil).Body.String(); !strings.Contains(a, "tools.r.colour") || !strings.Contains(a, "breaks 1 machine") || strings.Contains(a, `class="l err"`) {
-		t.Errorf("a machine marks its lines for a problem in a file it includes:\n%s", a)
+	a := pageOf(t, h, "/machines?file=a.yaml").View
+	if !strings.Contains(problemsSaid(a.Found), "tools.r.colour") || !strings.Contains(problemsSaid(a.Found), "breaks a.yaml") || slices.ContainsFunc(a.Text, func(l codeLine) bool { return l.Bad }) {
+		t.Errorf("a machine marks its lines for a problem in a file it includes:\n%s", problemsSaid(a.Found))
 	}
 	for _, file := range []string{"people/scopes.yaml", "support.yaml"} {
-		text := do(h, "GET", "/machines?view=text&file="+file, nil).Body.String()
-		if strings.Contains(text, `class="found"`) || strings.Contains(text, "No problems") || strings.Contains(text, "<textarea") || !strings.Contains(text, `<pre class="code"`) {
-			t.Errorf("%s is not shown as read-only text with no problems:\n%s", file, text)
+		if v := pageOf(t, h, "/machines?view=text&file="+file).View; v.View != "text" || len(v.Found) != 0 || len(v.Text) == 0 || slices.ContainsFunc(v.Text, func(l codeLine) bool { return l.Bad }) {
+			t.Errorf("%s is not shown as read-only text with no problems: %+v", file, v)
 		}
 	}
 }
@@ -548,53 +549,53 @@ func Test_machines_drawing_unfolds_as_the_address_says(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	body := do(h, "GET", "/machines?file=.kit/listen.yaml", nil).Body.String()
-	if !strings.Contains(body, ">hearing<") || !strings.Contains(body, ">.kit/conversation#a<") {
-		t.Fatalf("the machine is not drawn:\n%s", body)
+	listen := pageOf(t, h, "/machines?file=.kit/listen.yaml").View
+	if listen.View != "drawing" || card(listen.Drawing, "hearing") == nil || card(listen.Drawing, ".kit/conversation#a") == nil {
+		t.Fatalf("the machine is not drawn: %+v", listen.Drawing)
 	}
-	if regexp.MustCompile(`<a href="(/machines\?[^"]*)"><g class="[^"]*sends`).MatchString(body) {
-		t.Errorf("a send, which starts no child, unfolds:\n%s", body)
+	if c := card(listen.Drawing, ".kit/conversation#a"); c.Href != "" {
+		t.Errorf("a send, which starts no child, unfolds: %+v", c)
 	}
-	link := regexp.MustCompile(`<a href="(/machines\?[^"]*)"><g class="[^"]*"><rect[^>]*/><text[^>]*>talking<`).FindStringSubmatch(body)
-	if link == nil {
-		t.Fatalf("a job that names a machine has no link:\n%s", body)
+	talking := card(listen.Drawing, "talking")
+	if talking == nil || !strings.HasPrefix(talking.Href, "/machines?") {
+		t.Fatalf("a job that names a machine has no link: %+v", talking)
 	}
-	address := strings.ReplaceAll(strings.ReplaceAll(link[1], "&amp;", "&"), "&#43;", "+")
-	unfolded := do(h, "GET", address, nil).Body.String()
-	if !strings.Contains(unfolded, ">answering<") {
-		t.Fatalf("%s does not unfold the machine:\n%s", address, unfolded)
+	unfolded := pageOf(t, h, talking.Href).View
+	answering := card(unfolded.Drawing, "answering")
+	if answering == nil || card(unfolded.Drawing, "talking").In == nil {
+		t.Fatalf("%s does not unfold the machine: %+v", talking.Href, unfolded.Drawing)
 	}
-	second := regexp.MustCompile(`<a href="(/machines\?[^"]*)"><g class="[^"]*"><rect[^>]*/><text[^>]*>answering<`).FindStringSubmatch(unfolded)
-	if second == nil {
-		t.Fatalf("the unfolded machine has no links:\n%s", unfolded)
+	if !strings.HasPrefix(answering.Href, "/machines?") {
+		t.Fatalf("the unfolded machine has no links: %+v", answering)
 	}
-	deeper := do(h, "GET", strings.ReplaceAll(second[1], "&amp;", "&"), nil).Body.String()
-	if !strings.Contains(deeper, ">flow: turn<") || !strings.Contains(deeper, ">answer<") {
-		t.Errorf("a machine written in place does not unfold:\n%s", deeper)
+	deeper := pageOf(t, h, answering.Href).View
+	if c := card(deeper.Drawing, "answer"); c == nil || !slices.Contains(card(deeper.Drawing, "answering").Lines, "flow: turn") {
+		t.Errorf("a machine written in place does not unfold: %+v", deeper.Drawing)
 	}
-	folded := regexp.MustCompile(`<a href="(/machines\?[^"]*)"><g class="[^"]*unfolded[^"]*"><rect[^>]*/><text[^>]*>talking<`).FindStringSubmatch(deeper)
-	if folded == nil {
-		t.Fatalf("the unfolded box has no link:\n%s", deeper)
+	folded := card(deeper.Drawing, "talking")
+	if folded == nil || folded.In == nil || folded.Href == "" {
+		t.Fatalf("the unfolded box has no link: %+v", folded)
 	}
-	if u, _ := url.Parse(strings.ReplaceAll(folded[1], "&amp;", "&")); len(u.Query()["open"]) != 0 {
+	if u, _ := url.Parse(folded.Href); len(u.Query()["open"]) != 0 {
 		t.Errorf("folding a box leaves what is inside it unfolded: %s", u)
 	}
 
-	agent := do(h, "GET", "/machines?file=support.yaml", nil).Body.String()
-	for _, want := range []string{">tell<", "toolkits/toolkit.yaml", ">approve: true<", ">ask<"} {
-		if !strings.Contains(agent, want) {
-			t.Errorf("the agent's drawing does not hold %s", want)
-		}
+	agent := pageOf(t, h, "/machines?file=support.yaml").View
+	if card(agent.Drawing, "tell") == nil || card(agent.Drawing, "ask") == nil || !slices.Contains(card(agent.Drawing, "tell").Lines, "approve: true") {
+		t.Errorf("the agent's drawing does not hold tell, its approval and the ask: %+v", agent.Drawing)
 	}
-	if !strings.Contains(agent, `href="/machines?file=support.yaml&amp;view=text"`) {
+	if agent.Drawing.Agent == nil || !slices.ContainsFunc(agent.Drawing.Agent.Toolkits, func(k drawing.Toolkit) bool { return k.File == "toolkits/toolkit.yaml" }) {
+		t.Errorf("the agent's drawing does not give its toolkit's file: %+v", agent.Drawing.Agent)
+	}
+	if !agent.Drawable {
 		t.Errorf("the drawing does not offer the text")
 	}
-	text := do(h, "GET", "/machines?file=support.yaml&view=text", nil).Body.String()
-	if !strings.Contains(text, `<span class="k">agent</span>: support`) || !strings.Contains(text, `href="/machines?file=support.yaml">Drawing</a>`) {
-		t.Errorf("the text is not shown:\n%s", text)
+	shown := pageOf(t, h, "/machines?file=support.yaml&view=text").View
+	if shown.View != "text" || !shown.Drawable || !slices.Contains(text(shown.Text), "[k:agent]: support") {
+		t.Errorf("the text is not shown: %q", text(shown.Text))
 	}
-	if text := do(h, "GET", "/machines?file=people/scopes.yaml", nil).Body.String(); !strings.Contains(text, `<span class="k">people</span>: []`) || strings.Contains(text, ">Drawing<") {
-		t.Errorf("a file that is not a machine does not show its text alone:\n%s", text)
+	if scopes := pageOf(t, h, "/machines?file=people/scopes.yaml").View; !slices.Contains(text(scopes.Text), "[k:people]: []") || scopes.Drawable {
+		t.Errorf("a file that is not a machine does not show its text alone: %+v", scopes)
 	}
 }
 
@@ -605,13 +606,13 @@ func Test_machines_drawing_labels_a_toolkit_of_an_agent_written_in_place(t *test
 	if err != nil {
 		t.Fatal(err)
 	}
-	body := do(h, "GET", "/machines?file=here.yaml&open=look", nil).Body.String()
-	_, drawn, ok := strings.Cut(body, `id="drawing"`)
-	if !ok {
-		t.Fatalf("the page has no drawing:\n%s", body)
+	v := pageOf(t, h, "/machines?file=here.yaml&open=look").View
+	look := card(v.Drawing, "look")
+	if look == nil || look.In == nil || look.In.Agent == nil {
+		t.Fatalf("the page does not draw the agent unfolded: %+v", v.Drawing)
 	}
-	if !strings.Contains(drawn, ">messages</text><title>toolkits/toolkit.yaml</title>") {
-		t.Errorf("the toolkit's file is not in its tooltip:\n%s", drawn)
+	if !slices.ContainsFunc(look.In.Agent.Toolkits, func(k drawing.Toolkit) bool { return k.Name == "messages" && k.File == "toolkits/toolkit.yaml" }) {
+		t.Errorf("the toolkit's file is not given with it: %+v", look.In.Agent.Toolkits)
 	}
 }
 
@@ -626,17 +627,16 @@ func Test_machines_path_outside_the_directory_is_refused(t *testing.T) {
 			t.Errorf("reading %s answered %d %s", path, w.Code, w.Body.String())
 		}
 	}
-	body := do(h, "GET", "/machines?file=out.yaml", nil).Body.String()
-	if strings.Contains(body, "kept-elsewhere") {
-		t.Errorf("a file a link outside the directory names is shown:\n%s", body)
+	p := pageOf(t, h, "/machines?file=out.yaml")
+	if strings.Contains(p.JSON, "kept-elsewhere") {
+		t.Errorf("a file a link outside the directory names is shown:\n%s", p.JSON)
 	}
-	if !strings.Contains(body, "has no ../") {
-		t.Errorf("a script outside the directory of machines was read:\n%s", body)
+	if !strings.Contains(problemsSaid(p.View.Found), "has no ../") {
+		t.Errorf("a script outside the directory of machines was read:\n%s", problemsSaid(p.View.Found))
 	}
 }
 
 func Test_machines_secrets_and_values_used_are_listed(t *testing.T) {
-	section := regexp.MustCompile(`(?s)<section class="uses">.*?</section>`)
 	ctl, s := lab(t)
 	h, dir := machines(t, Config{Controller: ctl, Store: s})
 	prefix := "/" + filepath.Base(dir)
@@ -653,45 +653,33 @@ func Test_machines_secrets_and_values_used_are_listed(t *testing.T) {
 	if err := secret.Set(ctx, s, ctl, "/elsewhere", "B", "kept"); err != nil {
 		t.Fatal(err)
 	}
-	got := section.FindString(do(h, "GET", "/machines?view=text&file=shipper.yaml", nil).Body.String())
-	for _, want := range []string{
-		`<span>A</span><span class="dim">secret · set at /</span>`,
-		`<span>B</span><span class="dim">secret · not set at ` + prefix + `/shipper or above</span>`,
-		`<span>HUB</span><span class="dim">value · set at ` + prefix + `</span>`,
-	} {
-		if !strings.Contains(got, want) {
-			t.Errorf("as the controller, the secrets and values do not show %s:\n%s", want, got)
-		}
+	shipping := pageOf(t, h, "/machines?view=text&file=shipper.yaml")
+	want := []use{{"A", "secret", "set at /"}, {"B", "secret", "not set at " + prefix + "/shipper or above"}, {"HUB", "value", "set at " + prefix}}
+	if !slices.Equal(shipping.View.Uses, want) || !shipping.View.Controller {
+		t.Errorf("as the controller, the secrets and values are shown as %+v, not %+v", shipping.View.Uses, want)
 	}
-	if strings.Count(got, "<span>") != 3 || strings.Contains(got, "corbie controller") {
-		t.Errorf("as the controller, the secrets and values are shown as\n%s", got)
+	if strings.Contains(shipping.JSON, "hub.lan") {
+		t.Errorf("a value's text is read on the Machines page:\n%s", shipping.JSON)
 	}
-	if strings.Contains(got, "<form") || strings.Contains(got, "<button") || strings.Contains(got, "<input") || strings.Contains(got, "hub.lan") {
-		t.Errorf("the secrets can be set, or a value read, from the Machines page:\n%s", got)
+	if got := pageOf(t, h, "/machines?file=shipper.yaml").View.Uses; len(got) == 0 || got[0].Name != "A" {
+		t.Errorf("the drawing does not list the secrets: %+v", got)
 	}
-	if got := section.FindString(do(h, "GET", "/machines?file=shipper.yaml", nil).Body.String()); !strings.Contains(got, ">A<") {
-		t.Errorf("the drawing does not list the secrets:\n%s", got)
-	}
-	if got := section.FindString(do(h, "GET", "/machines?file=inc.yaml", nil).Body.String()); !strings.Contains(got, `<span>C</span>`) {
-		t.Errorf("a secret an included file names is not listed:\n%s", got)
+	if got := pageOf(t, h, "/machines?file=inc.yaml").View.Uses; !slices.ContainsFunc(got, func(u use) bool { return u.Name == "C" }) {
+		t.Errorf("a secret an included file names is not listed: %+v", got)
 	}
 
 	h, _ = machines(t, Config{})
-	got = section.FindString(do(h, "GET", "/machines?view=text&file=review.yaml", nil).Body.String())
-	if got != "" {
-		t.Errorf("a machine that uses no secret or value shows %s", got)
+	if got := pageOf(t, h, "/machines?view=text&file=review.yaml").View.Uses; len(got) != 0 {
+		t.Errorf("a machine that uses no secret or value shows %+v", got)
 	}
 	h, dir = machines(t, Config{})
 	os.WriteFile(filepath.Join(dir, "shipper.yaml"), []byte(shipper), 0o644)
-	got = section.FindString(do(h, "GET", "/machines?file=shipper.yaml", nil).Body.String())
-	if !strings.Contains(got, `<span>A</span><span class="dim">secret</span>`) || !strings.Contains(got, `<span>HUB</span><span class="dim">value</span>`) || !strings.Contains(got, "corbie controller secret set NAME --at /"+filepath.Base(dir)+"/shipper") {
-		t.Errorf("as a client alone, the secrets and values are shown as\n%s", got)
+	alone := pageOf(t, h, "/machines?file=shipper.yaml").View
+	if want := []use{{"A", "secret", ""}, {"B", "secret", ""}, {"HUB", "value", ""}}; !slices.Equal(alone.Uses, want) || alone.Controller || alone.Place.Location != "/"+filepath.Base(dir)+"/shipper" {
+		t.Errorf("as a client alone, the secrets and values are shown as %+v, at %+v", alone.Uses, alone.Place)
 	}
 }
 
-// The directory a client submitted at a prefix of its own is read at that
-// prefix, where the UI acts as the controller, so its locations and where
-// its secrets and values are set are those of its runs.
 func Test_machines_directory_is_read_at_its_recorded_prefix(t *testing.T) {
 	config, ctl, s := labIn(t)
 	h, dir := machines(t, Config{Controller: ctl, Store: s})
@@ -700,9 +688,9 @@ func Test_machines_directory_is_read_at_its_recorded_prefix(t *testing.T) {
 	if err := secret.SetValue(ctx, s, ctl, "/home", "HUB", "hub.lan"); err != nil {
 		t.Fatal(err)
 	}
-	before := do(h, "GET", "/machines?file=shipper.yaml", nil).Body.String()
-	if !strings.Contains(before, "at /"+filepath.Base(dir)) || !strings.Contains(before, "value · not set at /"+filepath.Base(dir)+"/shipper or above") {
-		t.Errorf("a directory with no tree is not read at the prefix a submit gives it by default:\n%s", before)
+	before := pageOf(t, h, "/machines?file=shipper.yaml")
+	if before.Files.Prefix != "/"+filepath.Base(dir) || !slices.Contains(before.View.Uses, use{"HUB", "value", "not set at /" + filepath.Base(dir) + "/shipper or above"}) {
+		t.Errorf("a directory with no tree is not read at the prefix a submit gives it by default: %q, %+v", before.Files.Prefix, before.View.Uses)
 	}
 	tree, err := client.ReadTree(dir, "/home")
 	if err != nil {
@@ -723,15 +711,13 @@ func Test_machines_directory_is_read_at_its_recorded_prefix(t *testing.T) {
 	if receipt, err := c.WaitReceipt(ctx, message, time.Minute, 10*time.Millisecond); err != nil || !receipt.Taken {
 		t.Fatalf("the submit answered %+v, %v", receipt, err)
 	}
-	after := do(h, "GET", "/machines?file=shipper.yaml", nil).Body.String()
-	for _, want := range []string{"at /home", "/home/shipper", "value · set at /home"} {
-		if !strings.Contains(after, want) {
-			t.Errorf("the directory submitted at /home does not show %s:\n%s", want, after)
-		}
+	after := pageOf(t, h, "/machines?file=shipper.yaml")
+	if after.Files.Prefix != "/home" || after.View.Place.Location != "/home/shipper" || !slices.Contains(after.View.Uses, use{"HUB", "value", "set at /home"}) {
+		t.Errorf("the directory submitted at /home is shown at %q, %+v, %+v", after.Files.Prefix, after.View.Place, after.View.Uses)
 	}
 	h, _ = New(Config{Dir: dir, Interval: time.Second, Shell: page.Shell{}})
-	if alone := do(h, "GET", "/machines?file=shipper.yaml", nil).Body.String(); !strings.Contains(alone, "at /"+filepath.Base(dir)) {
-		t.Errorf("a client alone does not read the directory at the prefix a submit gives it by default:\n%s", alone)
+	if alone := pageOf(t, h, "/machines?file=shipper.yaml"); alone.Files.Prefix != "/"+filepath.Base(dir) {
+		t.Errorf("a client alone does not read the directory at the prefix a submit gives it by default: %q", alone.Files.Prefix)
 	}
 }
 
@@ -751,63 +737,59 @@ func Test_machines_a_machine_shows_its_location(t *testing.T) {
 			"toolkits:\n  rooms: { description: the rooms, tools: { room: { call: services/look } } }\n",
 		"services/both.yaml": "agent: both\n" + agentHead + "allow: [send:services/find, send:devices/boiler]\ntools:\n  who: { call: services/find }\n  again: { call: services/find }\n",
 	})
-	place := regexp.MustCompile(`(?s)<section class="place">.*?</section>`)
-	rows := func(file string) string {
-		got := place.FindString(do(h, "GET", "/machines?file="+file, nil).Body.String())
-		return regexp.MustCompile(`\s*\n\s*`).ReplaceAllString(got, "")
+	placeOf := func(file string) place {
+		t.Helper()
+		v := pageOf(t, h, "/machines?file="+file).View
+		if v.Place == nil {
+			t.Fatalf("%s has no location", file)
+		}
+		return *v.Place
 	}
-	for file, want := range map[string][]string{
-		"devices/boiler.yaml": {
-			`<section class="place"><p class="description">Turns the boiler on and off.</p><div class="named">`,
-			"<span>location</span><span>" + prefix + "/devices/boiler</span>",
-			"<span>lifetime</span><span>singleton: the submit starts its one run</span>",
-			"<span>update</span><span>restart: a changed file cancels its runs</span>",
-			"<span>receives</span><span>set from schedules/*, client:panel<br>stop from client:panel<br>and anything from its tree's client</span>",
-			"<span>sends to</span><span>none</span>",
-		},
-		"rooms/thermostat.yaml": {
-			"<span>lifetime</span><span>keyed: a send to a key starts the run for that key, at most 3 running at once</span>",
-			"<span>receives</span><span>from its own tree and its tree's client</span>",
-			"<span>sends to</span><span>devices/boiler, /work/log</span>",
-			"<span>approve</span><span>send:devices/boiler, net:hub.lan</span>",
-		},
-		"services/weather.yaml": {
-			"<span>lifetime</span><span>transient: a call, a send, or corbie run start " + prefix + "/services/weather, starts each run</span>",
-			"<span>update</span><span>drain: a changed file leaves its runs to finish on the definition they started with</span>",
-			"<span>receives</span><span>every event from rooms/*<br>and anything from its tree's client</span>",
-			"<span>sends to</span><span>none</span>",
-		},
-		"services/hub.yaml":    {"<span>sends to</span><span>** (every location in its tree), /** (every location)</span>"},
-		"services/root.yaml":   {"<span>sends to</span><span>all (every location)</span>"},
-		"services/closed.yaml": {"<span>receives</span><span>every event from none<br>and anything from its tree's client</span>"},
+	transient := "a call, a send, or corbie run start " + prefix + "/services/weather, starts each run"
+	drain := "a changed file leaves its runs to finish on the definition they started with"
+	for file, want := range map[string]place{
+		"devices/boiler.yaml": {Description: "Turns the boiler on and off.", Location: prefix + "/devices/boiler", Lifetime: "singleton", Started: "the submit starts its one run",
+			Update: "restart", Updated: "a changed file cancels its runs", Receives: []string{"set from schedules/*, client:panel", "stop from client:panel"}},
+		"rooms/thermostat.yaml": {Location: prefix + "/rooms/thermostat", Lifetime: "keyed", Started: "a send to a key starts the run for that key", Runs: 3, Update: "restart", Updated: "a changed file cancels its runs",
+			Sends: []string{"devices/boiler", "/work/log"}, Approve: []string{"send:devices/boiler", "net:hub.lan"}},
+		"services/weather.yaml": {Location: prefix + "/services/weather", Lifetime: "transient", Started: transient, Update: "drain", Updated: drain, Receives: []string{"every event from rooms/*"}},
+		"services/hub.yaml":     {Sends: []string{"** (every location in its tree)", "/** (every location)"}},
+		"services/root.yaml":    {Sends: []string{"all (every location)"}},
+		"services/closed.yaml":  {Receives: []string{"every event from none"}},
 		// A tool written call: may send to the location it calls.
-		"services/asker.yaml": {"<span>sends to</span><span>devices/boiler, services/find (by the tools again, who), services/look (by the tool room)</span>"},
+		"services/asker.yaml": {Sends: []string{"devices/boiler", "services/find (by the tools again, who)", "services/look (by the tool room)"}},
 		// A location allow: sends to that a tool also calls is listed once.
-		"services/both.yaml": {"<span>sends to</span><span>services/find (by the tools again, who), devices/boiler</span>"},
+		"services/both.yaml": {Sends: []string{"services/find (by the tools again, who)", "devices/boiler"}},
 	} {
-		got := rows(file)
-		for _, w := range want {
-			if !strings.Contains(got, w) {
-				t.Errorf("%s does not show %s:\n%s", file, w, got)
+		got := placeOf(file)
+		if want.Location == "" {
+			// Only what the case is about is compared.
+			want.Description, want.Location, want.Lifetime, want.Started, want.Update, want.Updated, want.Runs = got.Description, got.Location, got.Lifetime, got.Started, got.Update, got.Updated, got.Runs
+			if want.Receives == nil {
+				want.Receives = got.Receives
 			}
+			if want.Sends == nil {
+				want.Sends = got.Sends
+			}
+			want.Approve = got.Approve
+		}
+		if fmt.Sprintf("%+v", got) != fmt.Sprintf("%+v", want) {
+			t.Errorf("%s shows\n%+v\nand not\n%+v", file, got, want)
 		}
 	}
-	if got := rows("services/weather.yaml"); strings.Contains(got, "description") || strings.Contains(got, "approve") {
-		t.Errorf("a machine with no description: and no approve: shows them:\n%s", got)
+	if e := pageOf(t, h, "/machines?file=services/weather.yaml").entryOf("devices/boiler.yaml"); e == nil || e.Description != "Turns the boiler on and off." || e.First != "statechart: boiler" || e.Lifetime != "singleton" {
+		t.Errorf("the list does not give a machine's description: %+v", e)
 	}
-	if body := do(h, "GET", "/machines?file=services/weather.yaml", nil).Body.String(); !strings.Contains(body, `<small title="Turns the boiler on and off.">statechart: boiler · singleton</small>`) {
-		t.Errorf("the list does not give a machine's description:\n%s", body)
-	}
-	if got := place.FindString(do(h, "GET", "/machines?file=notes.yaml", nil).Body.String()); got != "" {
-		t.Errorf("a listed file has a location:\n%s", got)
+	if got := pageOf(t, h, "/machines?file=notes.yaml").View.Place; got != nil {
+		t.Errorf("a listed file has a location: %+v", got)
 	}
 	// Where the UI offers Runs, a location links to the runs there.
 	h, err := New(Config{Dir: dir, Runs: true, Interval: time.Second, Shell: page.Shell{}})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := rows("devices/boiler.yaml"); !strings.Contains(got, `<span>location</span><span><a href="/runs?at=%2F`+strings.TrimPrefix(prefix, "/")+`%2Fdevices%2Fboiler" title="the runs at `+prefix+`/devices/boiler">`+prefix+`/devices/boiler</a></span>`) {
-		t.Errorf("a location does not link to its runs:\n%s", got)
+	if v := pageOf(t, h, "/machines?file=devices/boiler.yaml").View; !v.Runs || v.Place.Location != prefix+"/devices/boiler" {
+		t.Errorf("a location does not link to its runs: %+v", v)
 	}
 }
 
@@ -817,31 +799,37 @@ func Test_machines_written_out_shows_where_each_value_is_from(t *testing.T) {
 		"family.yaml": "agent: family\ninclude: ./base.yaml\nmodel: { effort: high }\nallow:\n  - { include: ./base.yaml#allow }\n  - send:devices/*\n",
 		"base.yaml":   "model: { name: claude-sonnet-5-5, secret: ANTHROPIC_KEY }\nprompt: ${input.said}\nallow: [\"fs.read:${input.dir}/**\"]\n",
 	})
-	body := do(h, "GET", "/machines?file=family.yaml&view=written", nil).Body.String()
-	if !strings.Contains(body, `href="/machines?file=family.yaml&amp;view=written" aria-current="page">Written out<`) {
-		t.Errorf("the Written out tab is not chosen:\n%s", body)
+	v := pageOf(t, h, "/machines?file=family.yaml&view=written").View
+	if v.View != "written" {
+		t.Errorf("the Written out tab is not chosen: %q", v.View)
 	}
-	_, code, _ := strings.Cut(body, `<pre class="code written"`)
-	for _, want := range []string{
-		`<span class="k">name</span>: claude-sonnet-5-5`,
-		`<a class="c" href="/machines?file=base.yaml&amp;view=text#L1"># base.yaml:1</a>`,
-		`<span class="k">effort</span>: high`,
-		`<a class="c" href="/machines?file=family.yaml&amp;view=text#L3"># family.yaml:3</a>`,
-		`<a class="c" href="/machines?file=base.yaml&amp;view=text#L3"># base.yaml:3</a>`,
-		`<a class="c" href="/machines?file=family.yaml&amp;view=text#L6"># family.yaml:6</a>`,
-	} {
+	code := strings.Join(text(v.Text), "\n")
+	links := map[string]bool{}
+	for _, l := range v.Text {
+		for _, sp := range l.Spans {
+			if sp.Href != "" {
+				links[sp.Text+" "+sp.Href] = true
+			}
+		}
+	}
+	for _, want := range []string{"[k:name]: claude-sonnet-5-5", "[k:effort]: high"} {
 		if !strings.Contains(code, want) {
 			t.Errorf("the definition written out does not hold %s:\n%s", want, code)
+		}
+	}
+	for _, want := range []string{"# base.yaml:1 /machines?file=base.yaml&view=text#L1", "# family.yaml:3 /machines?file=family.yaml&view=text#L3", "# base.yaml:3 /machines?file=base.yaml&view=text#L3", "# family.yaml:6 /machines?file=family.yaml&view=text#L6"} {
+		if !links[want] {
+			t.Errorf("the definition written out does not link %s: %v", want, links)
 		}
 	}
 	if strings.Contains(code, "include") {
 		t.Errorf("the definition written out holds an include:\n%s", code)
 	}
-	if text := do(h, "GET", "/machines?file=base.yaml&view=text", nil).Body.String(); !strings.Contains(text, `<span class="l" id="L3">`) {
-		t.Errorf("a line of a file has no anchor to link to:\n%s", text)
+	if base := pageOf(t, h, "/machines?file=base.yaml&view=text").View; len(base.Text) < 3 || base.Text[2].ID != "L3" {
+		t.Errorf("a line of a file has no anchor to link to: %+v", base.Text)
 	}
-	if body := do(h, "GET", "/machines?file=notes.yaml&view=written", nil).Body.String(); strings.Contains(body, "Written out") || !strings.Contains(body, `<span class="k">a</span>`) {
-		t.Errorf("a listed file is written out:\n%s", body)
+	if notes := pageOf(t, h, "/machines?file=notes.yaml&view=written").View; notes.Drawable || notes.View != "text" || !strings.Contains(strings.Join(text(notes.Text), "\n"), "[k:a]") {
+		t.Errorf("a listed file is written out: %+v", notes)
 	}
 }
 
@@ -913,14 +901,8 @@ func Test_machines_pages_only_read(t *testing.T) {
 			t.Errorf("GET %s answered %d", path, w.Code)
 		}
 	}
-	for _, path := range []string{"/machines?file=review.yaml", "/machines?file=review.yaml&view=text", "/toolkits"} {
-		body := do(h, "GET", path, nil).Body.String()
-		for _, control := range []string{"<form", "<textarea", "<input", "<button"} {
-			if strings.Contains(body, control) {
-				t.Errorf("%s shows %s:\n%s", path, control, body)
-			}
-		}
-	}
+	// That the pages show no form is checked in the browser, by
+	// machines_test.js and toolkits_test.js.
 	if d.stamp() != before {
 		t.Errorf("the directory changed")
 	}

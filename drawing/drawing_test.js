@@ -412,3 +412,21 @@ test("drawing_keeps_its_elements_as_the_run_moves_on", async () => {
   assert(card(v, "waiting") === waiting, "a card lost its element as the run moved on");
   equal(classes(waiting), "state now", "the card as the run moved on");
 });
+
+// A drawing loaded with a run's marks inside a child's card is framed on
+// the child's machine from its first frame, placed at once.
+test("drawing_camera_frames_a_child_from_its_first_frame", async () => {
+  const box = mount(() => html`<div class="drawn" style="flex: 1"><${Drawing} scene=${() => parts.scene} /></div>`, { scene: await fixture("lookup-in-child") }, { width: 729, height: 394 });
+  const v = box.querySelector(".viewport");
+  const first = [];
+  for (let i = 0; i < 4; i++) {
+    await new Promise(r => requestAnimationFrame(r));
+    const g = v.querySelector("g.camera");
+    first.push({ k: camera(v).k, moving: g.classList.contains("moving") });
+  }
+  await wait(450);
+  const settled = camera(v);
+  assert(settled.k > fitted(v), `the camera did not frame the child's machine: ${JSON.stringify(settled)}`);
+  const painted = first.find(f => f.k !== 1 || !f.moving);
+  equal(painted?.k, settled.k, `the scale of the first frame placed: ${JSON.stringify(first)}`);
+});

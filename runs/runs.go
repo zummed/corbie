@@ -90,7 +90,7 @@ func (h *handler) listOf(ctx context.Context, n narrowing) (listView, error) {
 	return v, errors.Join(err, read.done())
 }
 
-func (h *handler) listParts(ctx context.Context, n narrowing) ([]page.Part, error) {
+func (h *handler) listParts(ctx context.Context, n narrowing) (any, error) {
 	v, err := h.listOf(ctx, n)
 	if err != nil {
 		return nil, err
@@ -98,18 +98,35 @@ func (h *handler) listParts(ctx context.Context, n narrowing) ([]page.Part, erro
 	return listParts(v), nil
 }
 
-// listParts gives the parts of the Runs page. The ended runs are sent
+// ListParts are the parts of the Runs page. The ended runs are sent
 // before the running ones, so that a run that ended is found running on
 // the page as its new line arrives.
-func listParts(v listView) []page.Part {
-	return []page.Part{
-		{ID: "narrowing", Data: map[string]string{"At": v.Narrowing.At, "Window": v.Narrowing.Window, "Label": v.Narrowing.LabelText()}},
-		{ID: "locations", Data: map[string]any{"Every": v.Every, "Clients": v.Clients}},
-		{ID: "here", Data: v.Here},
-		{ID: "ended", Data: v.Ended},
-		{ID: "busy", Data: v.Busy},
-		{ID: "idle", Data: v.Idle},
-		{ID: "singletons", Data: v.Singletons},
+type ListParts struct {
+	Narrowing  NarrowingPart `json:"narrowing"`
+	Locations  LocationsPart `json:"locations"`
+	Here       *placeHead    `json:"here"`
+	Ended      section       `json:"ended"`
+	Busy       section       `json:"busy"`
+	Idle       section       `json:"idle"`
+	Singletons section       `json:"singletons"`
+}
+
+// NarrowingPart is what the address of the Runs page narrows it to, as its
+// head shows it: the location, the window and the labels as typed.
+type NarrowingPart struct{ At, Window, Label string }
+
+// LocationsPart is the list of locations: every location, then each
+// client's trees.
+type LocationsPart struct {
+	Every   choice
+	Clients []clientPlaces
+}
+
+func listParts(v listView) ListParts {
+	return ListParts{
+		Narrowing: NarrowingPart{At: v.Narrowing.At, Window: v.Narrowing.Window, Label: v.Narrowing.LabelText()},
+		Locations: LocationsPart{Every: v.Every, Clients: v.Clients},
+		Here:      v.Here, Ended: v.Ended, Busy: v.Busy, Idle: v.Idle, Singletons: v.Singletons,
 	}
 }
 
@@ -117,13 +134,13 @@ func (h *handler) listPage(w http.ResponseWriter, r *http.Request) {
 	n := narrowingOf(r.URL.Query())
 	v, _ := h.listOf(r.Context(), n)
 	s := h.Shell
-	s.Title, s.Current, s.Stream, s.Script, s.Parts = "Runs", "Runs", "/runs/stream"+n.query(), "/runs/script.js", listParts(v)
-	page.Write(w, s)
+	s.Title, s.Current, s.Stream, s.Script = "Runs", "Runs", "/runs/stream"+n.query(), "/runs/script.js"
+	page.Write(w, s, listParts(v))
 }
 
 func (h *handler) listStream(w http.ResponseWriter, r *http.Request) {
 	n := narrowingOf(r.URL.Query())
-	page.Stream(w, r, h.Interval, h.List.Changed, func(ctx context.Context) ([]page.Part, error) { return h.listParts(ctx, n) })
+	page.Stream(w, r, h.Interval, h.List.Changed, func(ctx context.Context) (any, error) { return h.listParts(ctx, n) })
 }
 
 func idOf(r *http.Request) (string, error) {
@@ -157,8 +174,9 @@ func (h *handler) runPage(w http.ResponseWriter, r *http.Request) {
 	}
 	s := h.Shell
 	s.Title, s.Current, s.Stream, s.Script = v.Name, "Runs", "/run/"+id+"/stream", "/runs/script.js"
-	s.Parts = append(runParts(v), page.Part{ID: "shown", Data: v.Shown})
-	page.Write(w, s)
+	parts := runParts(v)
+	parts.Shown = &v.Shown
+	page.Write(w, s, parts)
 }
 
 // runStream follows a run: its status from the list, and, for a run in a
@@ -176,7 +194,7 @@ func (h *handler) runStream(w http.ResponseWriter, r *http.Request) {
 	}
 	changed := func() <-chan struct{} { return either(ctx, h.List.Changed(), rec.Changed()) }
 	read := &reading{}
-	page.Stream(w, r, h.Interval, changed, func(ctx context.Context) ([]page.Part, error) {
+	page.Stream(w, r, h.Interval, changed, func(ctx context.Context) (any, error) {
 		v, err := h.runOf(ctx, id, rec.all(), read)
 		if err != nil {
 			return nil, err

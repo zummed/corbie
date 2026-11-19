@@ -13,21 +13,30 @@ export const html = h.define({ For, Show });
 // parts holds every part of the page by its name, as last sent.
 export const [parts, setParts] = createStore(JSON.parse(document.getElementById("parts").textContent));
 
-// following says the page has been sent its parts over its WebSocket at
-// least once: a line is lit only from then on.
+// following says the page has been sent a message over its WebSocket: a
+// line is lit only from then on.
 let following = false;
+
+// receive takes a message the UI sent: a part, which it puts in its place,
+// or whether the store can be read, which the header's dot shows.
+export function receive(m) {
+  following = true;
+  switch (m.type) {
+    case "part":
+      setParts(s => { merge(s, m.id, m.data); });
+      break;
+    case "store":
+      document.getElementById("live")?.classList.toggle("lost", m.store === "lost");
+      break;
+  }
+}
 
 // follow opens the page's WebSocket, and opens it again when it is cut.
 function follow(stream) {
   const live = document.getElementById("live");
   const ws = new WebSocket(`${location.protocol === "https:" ? "wss" : "ws"}://${location.host}${stream}`);
   ws.onopen = () => live.classList.remove("lost");
-  ws.onmessage = e => {
-    const m = JSON.parse(e.data);
-    following = true;
-    if (m.store) live.classList.toggle("lost", m.store === "lost");
-    if (m.id) setParts(s => { merge(s, m.id, m.data); });
-  };
+  ws.onmessage = e => receive(JSON.parse(e.data));
   ws.onclose = () => {
     live.classList.add("lost");
     setTimeout(() => follow(stream), 2000);

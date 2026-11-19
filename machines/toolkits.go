@@ -372,19 +372,24 @@ func (h *handler) showToolkits(w http.ResponseWriter, r *http.Request) {
 	}
 	s := h.Shell
 	s.Title, s.Current, s.Stream, s.Script = "Toolkits", "Toolkits", "/toolkits/stream?"+stream.Encode(), "/toolkits/script.js"
-	s.Parts = []page.Part{{ID: "toolkits", Data: v}}
-	page.Write(w, s)
+	page.Write(w, s, ToolkitsParts{Toolkits: v})
 }
 
 // streamToolkits sends the page the toolkits as the directory now holds them.
 func (h *handler) streamToolkits(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
 	never := make(chan struct{})
-	page.Stream(w, r, h.Interval, func() <-chan struct{} { return never }, func(ctx context.Context) ([]page.Part, error) {
+	page.Stream(w, r, h.Interval, func() <-chan struct{} { return never }, func(ctx context.Context) (any, error) {
 		v, err := h.toolkitsPage(ctx, q)
 		if err != nil {
 			return nil, err
 		}
-		return []page.Part{{ID: "toolkits", Data: v}}, nil
+		return ToolkitsParts{Toolkits: v}, nil
 	})
+}
+
+// ToolkitsParts are the parts of the Toolkits page: its one part, the
+// toolkits and the one chosen.
+type ToolkitsParts struct {
+	Toolkits toolkitsView `json:"toolkits"`
 }

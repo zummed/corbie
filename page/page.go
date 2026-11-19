@@ -33,8 +33,8 @@ func Assets() http.Handler {
 
 // A Shell is a page around what is its own: its title, the pages the UI
 // offers and the one it belongs to, the parties the UI acts as, why it has
-// no store where it has none, the stream it follows, the script that draws
-// it, and its parts as they are when it is loaded.
+// no store where it has none, the stream it follows, and the script that
+// draws it.
 type Shell struct {
 	Title   string
 	Current string
@@ -43,15 +43,12 @@ type Shell struct {
 	NoStore string
 	Stream  string
 	Script  string
-	Parts   []Part
 }
 
 // Write writes a page, with its parts as JSON for its script to draw.
-func Write(w http.ResponseWriter, s Shell) error {
-	parts := map[string]any{}
-	for _, p := range s.Parts {
-		parts[p.ID] = p.Data
-	}
+// parts is a struct whose fields are the page's parts, each named by its
+// field's JSON name; a field left out of the JSON is no part.
+func Write(w http.ResponseWriter, s Shell, parts any) error {
 	// Escaped for HTML, so no value ends the script element it is in.
 	data, err := json.Marshal(parts, json.Deterministic(true), jsontext.EscapeForHTML(true))
 	if err != nil {
@@ -107,11 +104,46 @@ func (a Answer) Error() string {
 // A Command runs a call in the UI's process.
 type Command func(ctx context.Context, call Call) Answer
 
-// A Part is one part of a page that changes: its name, and what the page
-// draws it from, which is sent as JSON.
-type Part struct {
-	ID   string
-	Data any
+// A PartMessage gives a page one of its parts: its name, and the data the
+// page draws it from.
+type PartMessage struct {
+	Type string         `json:"type"` // "part"
+	ID   string         `json:"id"`
+	Data jsontext.Value `json:"data"`
+}
+
+// A StoreMessage tells a page the store cannot be read ("lost"), or can be
+// again ("live").
+type StoreMessage struct {
+	Type  string `json:"type"` // "store"
+	Store string `json:"store"`
+}
+
+// partsOf gives the parts of a page's parts, in the order of their fields.
+func partsOf(parts any) ([]PartMessage, error) {
+	data, err := json.Marshal(parts, json.Deterministic(true))
+	if err != nil {
+		return nil, err
+	}
+	d := jsontext.NewDecoder(bytes.NewReader(data))
+	if _, err := d.ReadToken(); err != nil {
+		return nil, err
+	}
+	var out []PartMessage
+	for d.PeekKind() != '}' {
+		name, err := d.ReadToken()
+		if err != nil {
+			return nil, err
+		}
+		// A token is read before the next read voids it.
+		id := name.String()
+		value, err := d.ReadValue()
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, PartMessage{Type: "part", ID: id, Data: value.Clone()})
+	}
+	return out, nil
 }
 
 // Stream sends a page its parts over a WebSocket: every part as it is
@@ -119,7 +151,8 @@ type Part struct {
 // interval, until the page goes. When the parts cannot be read, the page
 // is told the store is lost, and keeps what it shows. A page of another
 // origin is refused the WebSocket.
-func Stream(w http.ResponseWriter, r *http.Request, every time.Duration, changed func() <-chan struct{}, parts func(ctx context.Context) ([]Part, error)) {
+// parts gives a struct whose fields are the parts, as Write takes it.
+func Stream(w http.ResponseWriter, r *http.Request, every time.Duration, changed func() <-chan struct{}, parts func(ctx context.Context) (any, error)) {
 	conn, err := websocket.Accept(w, r, nil)
 	if err != nil {
 		return
@@ -138,30 +171,30 @@ func Stream(w http.ResponseWriter, r *http.Request, every time.Duration, changed
 	for {
 		// Taken before the read, so a change made after the read is not missed.
 		changes := changed()
-		found, err := parts(ctx)
+		read, err := parts(ctx)
+		var found []PartMessage
+		if err == nil {
+			found, err = partsOf(read)
+		}
 		switch {
 		case err != nil && ctx.Err() == nil:
-			if !lost && send(map[string]string{"store": "lost"}) != nil {
+			if !lost && send(StoreMessage{Type: "store", Store: "lost"}) != nil {
 				return
 			}
 			lost = true
 		case err == nil:
-			if lost && send(map[string]string{"store": "live"}) != nil {
+			if lost && send(StoreMessage{Type: "store", Store: "live"}) != nil {
 				return
 			}
 			lost = false
 			for _, p := range found {
-				data, err := json.Marshal(p.Data, json.Deterministic(true))
-				if err != nil {
-					return
-				}
-				if bytes.Equal(sent[p.ID], data) {
+				if bytes.Equal(sent[p.ID], p.Data) {
 					continue
 				}
-				if send(map[string]any{"id": p.ID, "data": jsontext.Value(data)}) != nil {
+				if send(p) != nil {
 					return
 				}
-				sent[p.ID] = data
+				sent[p.ID] = p.Data
 			}
 		}
 		timer := time.NewTimer(every)

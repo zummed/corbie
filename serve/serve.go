@@ -260,7 +260,7 @@ func start(ctx context.Context, e *cli.Env, o options) (*ui, error) {
 		mux.Handle("/run/", areaRuns)
 	}
 	if p.controller != nil {
-		areaController := controller.New(controller.Config{Controller: p.controller, Store: p.store, Command: command, Interval: interval, Shell: shell})
+		areaController := controller.New(controller.Config{Controller: p.controller, Store: p.store, Command: command, Interval: interval, Changed: u.list.Changed, Shell: shell})
 		mux.Handle("/controller", areaController)
 		mux.Handle("/controller/", areaController)
 	}

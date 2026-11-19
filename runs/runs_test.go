@@ -210,7 +210,7 @@ func Test_runs_list_roots_by_section(t *testing.T) {
 	}
 	// An ended line gives how many runs are under it, which the page writes
 	// only where there are any.
-	if under := listParts(v)[3]; under.ID != "ended" || under.Data.(section).Lines[0].Under != 1 {
+	if under := listParts(v).Ended; under.Lines[0].Under != 1 {
 		t.Errorf("the ended lines are sent as %+v", under)
 	}
 	long := []*client.Run{run("a-client/1", "conversation", "statechart", "running", time.Hour, 0, nil)}
@@ -1362,8 +1362,7 @@ func Test_runs_follow_returns_to_the_newest_row(t *testing.T) {
 		follow bool
 	}{{"running", true}, {"done", false}} {
 		parts := runParts(runView{Run: run("a-client/1", "conversation", "statechart", c.status, time.Hour, 0, nil), Mine: true})
-		i := slices.IndexFunc(parts, func(p page.Part) bool { return p.ID == "steps" })
-		if i < 0 || parts[i].Data.(map[string]any)["Ended"] != !c.follow {
+		if parts.Steps == nil || parts.Steps.Ended != !c.follow {
 			t.Errorf("a %s run's Steps are sent as %+v", c.status, parts)
 		}
 	}
@@ -1408,8 +1407,8 @@ func Test_runs_a_run_links_to_its_machine(t *testing.T) {
 	// The link is beside the run's address and in the head of its
 	// drawing, with a tooltip that the file is as it is now.
 	d := &definedAt{Href: "/machines?file=schedules%2Faway.yaml&open=pause", File: "schedules/away.yaml", Cards: "pause"}
-	summaryOf := func(v runView) map[string]any { return runParts(v)[1].Data.(map[string]any) }
-	if got := summaryOf(runView{Run: runs[1], Defined: d})["Defined"]; got != d {
+	summaryOf := func(v runView) SummaryPart { return runParts(v).Summary }
+	if got := summaryOf(runView{Run: runs[1], Defined: d}).Defined; got != d {
 		t.Errorf("the run's head does not link to its machine: %v", got)
 	}
 	view, err := json.Marshal(shown{Row: &stepRow{Run: link{ID: "a-client/2", Machine: "pause"}}, Defined: d})
@@ -1422,7 +1421,7 @@ func Test_runs_a_run_links_to_its_machine(t *testing.T) {
 	if !strings.Contains(string(script), "the file on the Machines page as it is now; the drawing here is the definition this run started with") {
 		t.Errorf("the link to a run's machine does not say the file is as it is now")
 	}
-	if got := summaryOf(runView{Run: runs[0]})["Defined"]; got != (*definedAt)(nil) {
+	if got := summaryOf(runView{Run: runs[0]}).Defined; got != nil {
 		t.Errorf("a run with no machine to show links to one: %v", got)
 	}
 }

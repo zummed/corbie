@@ -26,23 +26,75 @@ import (
 // runParts gives the parts of a run's page that follow the run: Steps only
 // for a run in a tree of the UI's client. The drawing and the details
 // follow the row selected, which the page asks for.
-func runParts(v runView) []page.Part {
+func runParts(v runView) RunParts {
 	r := v.Run
-	parts := []page.Part{
-		{ID: "page", Data: map[string]any{"ID": r.ID, "Mine": v.Mine}},
-		{ID: "summary", Data: map[string]any{"ID": r.ID, "Machine": r.Machine, "Type": r.Type, "Status": r.Status, "Failure": r.Failure,
-			"Title": r.Title, "Location": r.Location, "Address": v.Address, "At": v.At, "Defined": v.Defined,
-			"Started": v.Started, "Ended": v.Ended, "Took": v.Took, "Cancel": v.Cancel}},
-		{ID: "path", Data: v.Path},
-		{ID: "waits", Data: map[string]any{"ID": r.ID, "Ended": r.HasEnded(), "Waits": v.Waits, "Reply": v.Reply, "Send": v.Send, "Labels": v.Labels}},
-		{ID: "output", Data: map[string]any{"Ended": r.HasEnded(), "Refused": r.Refused, "Layer": r.Layer, "Fix": r.Fix, "Error": r.Error,
-			"Output": v.Output, "Used": v.Used, "Files": v.Files}},
-		{ID: "children", Data: v.Children},
+	parts := RunParts{
+		Page: PagePart{ID: r.ID, Mine: v.Mine},
+		Summary: SummaryPart{ID: r.ID, Machine: r.Machine, Type: r.Type, Status: r.Status, Failure: r.Failure,
+			Title: r.Title, Location: r.Location, Address: v.Address, At: v.At, Defined: v.Defined,
+			Started: v.Started, Ended: v.Ended, Took: v.Took, Cancel: v.Cancel},
+		Path:     v.Path,
+		Waits:    WaitsPart{ID: r.ID, Ended: r.HasEnded(), Waits: v.Waits, Reply: v.Reply, Send: v.Send, Labels: v.Labels},
+		Output:   OutputPart{Ended: r.HasEnded(), Refused: r.Refused, Layer: r.Layer, Fix: r.Fix, Error: r.Error, Output: v.Output, Used: v.Used, Files: v.Files},
+		Children: v.Children,
 	}
 	if v.Mine {
-		parts = append(parts, page.Part{ID: "steps", Data: map[string]any{"Ended": r.HasEnded(), "Rows": v.Rows, "Count": v.Count, "Dated": v.Dated}})
+		parts.Steps = &StepsPart{Ended: r.HasEnded(), Rows: v.Rows, Count: v.Count, Dated: v.Dated}
 	}
 	return parts
+}
+
+// RunParts are the parts of a run's page. Steps and Shown are a run's in
+// a tree of the UI's client alone.
+type RunParts struct {
+	Page     PagePart    `json:"page"`
+	Summary  SummaryPart `json:"summary"`
+	Path     []link      `json:"path"`
+	Waits    WaitsPart   `json:"waits"`
+	Output   OutputPart  `json:"output"`
+	Children []child     `json:"children"`
+	Steps    *StepsPart  `json:"steps,omitzero"`
+	Shown    *shown      `json:"shown,omitzero"`
+}
+
+// PagePart is the run a page is of, and whether it is in a tree of the
+// UI's client.
+type PagePart struct {
+	ID   string
+	Mine bool
+}
+
+// SummaryPart is the head of a run's page.
+type SummaryPart struct {
+	ID, Machine, Type, Status, Failure, Title, Location, Address, At string
+	Defined                                                          *definedAt
+	Started, Ended, Took                                             string
+	Cancel                                                           *page.Call
+}
+
+// WaitsPart is what a run waits on, what can be sent to it, and its labels.
+type WaitsPart struct {
+	ID          string
+	Ended       bool
+	Waits       []wait
+	Reply, Send bool
+	Labels      []label
+}
+
+// OutputPart is how a run ended, its output, what it used and its files.
+type OutputPart struct {
+	Ended                      bool
+	Refused, Layer, Fix, Error string
+	Output, Used               string
+	Files                      []file
+}
+
+// StepsPart is a run's Steps.
+type StepsPart struct {
+	Ended bool
+	Rows  []stepRow
+	Count int
+	Dated bool
 }
 
 // runView is a run's page as it is drawn.

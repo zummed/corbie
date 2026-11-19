@@ -199,13 +199,21 @@ func (h *handler) show(w http.ResponseWriter, r *http.Request) {
 	}
 	s := h.Shell
 	s.Title, s.Current, s.Stream, s.Script = "Machines", "Machines", "/machines/stream?file="+url.QueryEscape(v.Open), "/machines/script.js"
-	s.Parts = []page.Part{h.listPart(v.index, v.Open), {ID: "disk", Data: disk{v.Base}}, {ID: "view", Data: v}}
-	page.Write(w, s)
+	page.Write(w, s, MachinesParts{Files: h.listPart(v.index, v.Open), Disk: disk{v.Base}, View: &v})
+}
+
+// MachinesParts are the parts of the Machines page: the list, the mark of
+// the file chosen, and the file as its tab shows it, which only the page as
+// it loads has.
+type MachinesParts struct {
+	Files list  `json:"files"`
+	Disk  disk  `json:"disk"`
+	View  *view `json:"view,omitzero"`
 }
 
 // listPart is the part that lists the directory, with a file chosen.
-func (h *handler) listPart(ix *index, open string) page.Part {
-	return page.Part{ID: "files", Data: list{Dir: short(shortly(h.Dir)), DirFull: shortly(h.Dir), Open: open, index: ix}}
+func (h *handler) listPart(ix *index, open string) list {
+	return list{Dir: short(shortly(h.Dir)), DirFull: shortly(h.Dir), Open: open, index: ix}
 }
 
 // machinesPage reads the file the address chooses, by default the first
@@ -453,7 +461,7 @@ func hrefs(file string, open map[string]bool) func(string) string {
 func (h *handler) stream(w http.ResponseWriter, r *http.Request) {
 	open := r.URL.Query().Get("file")
 	never := make(chan struct{})
-	page.Stream(w, r, h.Interval, func() <-chan struct{} { return never }, func(ctx context.Context) ([]page.Part, error) {
+	page.Stream(w, r, h.Interval, func() <-chan struct{} { return never }, func(ctx context.Context) (any, error) {
 		ix, err := h.tree(ctx)
 		if err != nil {
 			return nil, err
@@ -462,7 +470,7 @@ func (h *handler) stream(w http.ResponseWriter, r *http.Request) {
 		if open != "" {
 			h.opened(&v)
 		}
-		return []page.Part{h.listPart(ix, open), {ID: "disk", Data: disk{v.Base}}}, nil
+		return MachinesParts{Files: h.listPart(ix, open), Disk: disk{v.Base}}, nil
 	})
 }
 

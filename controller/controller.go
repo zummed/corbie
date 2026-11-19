@@ -33,7 +33,10 @@ type Config struct {
 	Store      store.Store
 	Command    page.Command
 	Interval   time.Duration
-	Shell      page.Shell
+	// Changed gives a channel closed at the next change the UI makes or
+	// reads in the store, so the page is sent it at once.
+	Changed func() <-chan struct{}
+	Shell   page.Shell
 }
 
 type handler struct{ Config }
@@ -203,12 +206,19 @@ func nameIn(prefix, at string) string {
 
 // parts gives the page's parts: the runners and clients, the trees, and
 // the secrets and values set.
-func (h *handler) parts(ctx context.Context) ([]page.Part, error) {
+func (h *handler) parts(ctx context.Context) (Parts, error) {
 	v, err := h.read(ctx)
 	if err != nil {
-		return nil, err
+		return Parts{}, err
 	}
-	return []page.Part{{ID: "parties", Data: v.Parties}, {ID: "trees", Data: v.Trees}, {ID: "settings", Data: v.Set}}, nil
+	return Parts{Parties: v.Parties, Trees: v.Trees, Settings: v.Set}, nil
+}
+
+// Parts are the parts of the Controller page.
+type Parts struct {
+	Parties  []party   `json:"parties"`
+	Trees    []Tree    `json:"trees"`
+	Settings []setting `json:"settings"`
 }
 
 func (h *handler) show(w http.ResponseWriter, r *http.Request) {
@@ -218,13 +228,12 @@ func (h *handler) show(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s := h.Shell
-	s.Title, s.Current, s.Stream, s.Script, s.Parts = "Controller", "Controller", "/controller/stream", "/controller/script.js", parts
-	page.Write(w, s)
+	s.Title, s.Current, s.Stream, s.Script = "Controller", "Controller", "/controller/stream", "/controller/script.js"
+	page.Write(w, s, parts)
 }
 
 func (h *handler) stream(w http.ResponseWriter, r *http.Request) {
-	never := make(chan struct{})
-	page.Stream(w, r, h.Interval, func() <-chan struct{} { return never }, h.parts)
+	page.Stream(w, r, h.Interval, h.Changed, func(ctx context.Context) (any, error) { return h.parts(ctx) })
 }
 
 // act runs the corbie controller command of an action, and answers with

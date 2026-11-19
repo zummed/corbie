@@ -36,7 +36,6 @@ export function receive(m) {
 function follow(stream) {
   const live = document.getElementById("live");
   const ws = new WebSocket(`${location.protocol === "https:" ? "wss" : "ws"}://${location.host}${stream}`);
-  ws.onopen = () => live.classList.remove("lost");
   ws.onmessage = e => receive(JSON.parse(e.data));
   ws.onclose = () => {
     live.classList.add("lost");
@@ -98,7 +97,10 @@ export function lit(of) {
     },
     v => {
       const was = drawn.get(v.key);
+      // The newest are kept: a line drawn long ago is forgotten.
+      drawn.delete(v.key);
       drawn.set(v.key, v);
+      if (drawn.size > 5000) drawn.delete(drawn.keys().next().value);
       if (!el || !following) return;
       const light = !was ? "new" : was.status !== v.status && v.ended ? "ended" : was.data !== v.data ? "moved" : "";
       if (light) relight(el, light);

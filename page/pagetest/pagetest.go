@@ -34,6 +34,9 @@ type Config struct {
 	Module string
 	// Fixtures are given to the tests as JSON at /fixture/<name>.
 	Fixtures map[string]any
+	// Shipped runs the tests on the builds of Solid the binary serves, in
+	// place of the development builds, which report Solid's diagnostics.
+	Shipped bool
 }
 
 // Run opens a page of the UI in Chrome, runs a test module on it, and
@@ -43,7 +46,9 @@ func Run(t *testing.T, c Config) {
 	t.Helper()
 	root := repoRoot(t)
 	mux := http.NewServeMux()
-	mux.Handle("GET /assets/solid/", http.StripPrefix("/assets/solid", http.FileServerFS(os.DirFS(filepath.Join(root, "page", "testdata", "solid-dev")))))
+	if !c.Shipped {
+		mux.Handle("GET /assets/solid/", http.StripPrefix("/assets/solid", http.FileServerFS(os.DirFS(filepath.Join(root, "page", "testdata", "solid-dev")))))
+	}
 	mux.Handle("GET /test/", http.StripPrefix("/test", http.FileServerFS(os.DirFS(root))))
 	mux.HandleFunc("GET /fixture/{name}", func(w http.ResponseWriter, r *http.Request) {
 		v, ok := c.Fixtures[r.PathValue("name")]

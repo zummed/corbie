@@ -64,7 +64,7 @@ A page is drawn in the browser by its script, with Solid, from its parts. A part
 {"type": "store", "store": "lost"}               the store cannot be read; "live" when it can again
 ```
 
-`types.d.ts` gives the type of every message and part, written from the Go types by the tests, so an editor checks each page's script against them. A part is drawn by one component, on the first load and on every change. When the connection is cut, the page opens it again and is sent every part as it is then. A browser holds no more than six requests open to one address, and a WebSocket is not one of them, so any number of pages can be open.
+`types.d.ts` gives the type of every message and part, written from the Go types by the tests. The tests of each page draw it from the parts Go sends, so a part whose shape changes fails them. A part is drawn by one component, on the first load and on every change. When the connection is cut, the page opens it again and is sent every part as it is then. A browser holds no more than six requests open to one address, and a WebSocket is not one of them, so any number of pages can be open.
 
 ## Motion
 

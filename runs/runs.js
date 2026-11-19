@@ -1,7 +1,7 @@
 // The Runs page and a run's page, drawn from their parts. A line stays
 // unfolded as the store changes, a line or a row opens its run, the button
 // at a line's start unfolds it, and a panel shows one tab at a time.
-import { createEffect, createMemo, createSignal, createStore, isPending, onFlush, Errored } from "solid-js";
+import { createContext, createDeferred, createEffect, createMemo, createSignal, createStore, isPending, onSettled, refresh, useContext, Errored } from "solid-js";
 import { html, parts, mount, lit, bump, Icon, Status, Act, Handle, tabs, plural, word } from "ui";
 import { Drawing } from "drawing";
 
@@ -190,18 +190,11 @@ function Children() {
 // in, until the person moves it; on a running run, Follow then selects the
 // newest row and follows again.
 
-// folds holds the groups a person folded or opened, by the group's key.
-const [folds, setFolds] = createStore({});
-// traced holds the rows of each send's or call's group read so far, by the
-// group's key, or why they could not be read.
-const [traced, setTraced] = createStore({});
-// asked holds the groups whose rows have been asked for.
-const asked = new Set();
-
 // A node is a row as the page lists it: its key on the page, which is the
 // keys of the send and call groups it is in then its own, and the groups
-// it is in, outermost first.
-function nodesOf(rows, prefix, groups, out) {
+// it is in, outermost first. A group is open as the person left it, or by
+// its first state; a send's or a call's group holds its rows once read.
+function nodesOf(rows, prefix, groups, out, open, traced) {
   for (const row of rows) {
     const key = prefix ? prefix + " " + row.Key : row.Key;
     const node = { row, key, groups };
@@ -209,58 +202,22 @@ function nodesOf(rows, prefix, groups, out) {
     if (row.Group) {
       const g = { key: row.Group.Run.ID, head: key, open: open(row.Group.Run.ID, !row.Group.Ended), run: row.Group.Run, trace: false };
       node.group = g;
-      nodesOf(row.Group.Rows, prefix, [...groups, g], out);
+      nodesOf(row.Group.Rows, prefix, [...groups, g], out, open, traced);
     } else if (row.Trace) {
       const g = { key, head: key, open: open(key, false), run: row.Trace.Run, trace: true };
       node.group = g;
       const got = traced[key];
-      if (got?.rows) nodesOf(got.rows, key, [...groups, g], out);
+      if (got?.rows) nodesOf(got.rows, key, [...groups, g], out, open, traced);
     }
   }
   return out;
 }
 
-const open = (key, first) => folds[key] ?? first;
-
-// The state of Steps, made by the run's page.
-let nodes, byKey, visible, newest, selected, shown;
-// picked is the row the person chose, by its key on the page; none while
-// the selection follows the newest row.
-const [picked, setPicked] = createSignal(null);
-// asking is the address of the drawing and details of the row the person
-// chose, which the page asks the UI for; none while it follows the newest
-// row, whose drawing and details the UI sends.
-const [asking, setAsking] = createSignal(null);
-const [details, setDetails] = createSignal(false);
 // answers holds what the UI answered for each row asked for: a row's
-// drawing and details as of its step never change.
+// drawing and details as of its step never change. A row whose answer
+// failed is asked for again.
 const answers = new Map();
 
-// shownOf gives the node that shows a node: itself, or the head of the
-// outermost folded group it is in.
-function shownOf(node) {
-  const folded = node?.groups.find(g => !g.open);
-  return folded ? byKey().get(folded.head) : node;
-}
-// pick selects a row the person chose, opening the groups it is in, and
-// asks for its drawing. The selection lands at once, apart from the
-// drawing, which lands when the UI answers.
-function pick(node) {
-  if (!node) return;
-  onFlush(() => {
-    setFolds(s => { for (const g of node.groups) s[g.key] = true; });
-    setPicked(node.key);
-  });
-  setAsking(`/run/${node.row.Run.ID}/at?row=${encodeURIComponent(node.row.Key)}&page=${encodeURIComponent(run().ID)}`);
-}
-
-// follow selects the newest row, and goes on selecting each new row.
-function follow() {
-  setPicked(null);
-  setAsking(null);
-}
-
-// answer asks the UI for a row's drawing and details, once each.
 function answer(href) {
   if (answers.has(href)) return answers.get(href);
   return fetch(href)
@@ -273,77 +230,116 @@ function answer(href) {
       return v;
     });
 }
-function fold(g, to) {
-  setFolds(s => { s[g.key] = to; });
-}
+
+// The state of Steps, which the run's page makes and gives its parts.
+const StepsContext = createContext();
 
 // followSteps makes the state of Steps: the rows as the page lists them,
-// which are shown, the newest, the selected one, and what the drawing and
-// the details show of it.
+// which are shown, the newest, the selected one, and the drawing and the
+// details of the selected row, and what changes them.
 function followSteps() {
-  nodes = createMemo(() => (parts.steps ? nodesOf(parts.steps.Rows, "", [], []) : []));
-  byKey = createMemo(() => new Map(nodes().map(n => [n.key, n])));
-  visible = createMemo(() => nodes().filter(n => n.groups.every(g => g.open)));
+  // folds holds the groups a person folded or opened, by the group's key.
+  const [folds, setFolds] = createStore({});
+  // traced holds what was read of each send's or call's group opened, by
+  // the group's key: its rows, or why they could not be read.
+  const [traced, setTraced] = createStore({});
+  // picked is the row the person chose, by its key on the page; none while
+  // the selection follows the newest row.
+  const [picked, setPicked] = createSignal(null);
+  const [details, setDetails] = createSignal(false);
 
-
-  // newest gives the newest row of the run and the runs under it; the rows
-  // of a send's or a call's group are of other runs, and are left out.
-  newest = createMemo(() => {
+  const open = (key, first) => folds[key] ?? first;
+  const nodes = createMemo(() => (parts.steps ? nodesOf(parts.steps.Rows, "", [], [], open, traced) : []));
+  const byKey = createMemo(() => new Map(nodes().map(n => [n.key, n])));
+  const visible = createMemo(() => nodes().filter(n => n.groups.every(g => g.open)));
+  // newest is the newest row of the run and the runs under it; the rows of
+  // a send's or a call's group are of other runs, and are left out.
+  const newest = createMemo(() => {
     let last;
     for (const n of nodes()) if (!n.groups.some(g => g.trace) && (!last || Date.parse(n.row.At) >= Date.parse(last.row.At))) last = n;
     return last;
   });
+  // shownOf gives the node that shows a node: itself, or the head of the
+  // outermost folded group it is in.
+  const shownOf = node => {
+    const folded = node?.groups.find(g => !g.open);
+    return folded ? byKey().get(folded.head) : node;
+  };
+  const selected = createMemo(() => shownOf(byKey().get(picked()) ?? newest()));
+  // address is where the page asks for the selected row's drawing and
+  // details; none while it follows the newest row, whose drawing and
+  // details the UI sends.
+  const address = createMemo(() => {
+    const node = selected();
+    return picked() && node ? `/run/${node.row.Run.ID}/at?row=${encodeURIComponent(node.row.Key)}&page=${encodeURIComponent(run().ID)}` : "";
+  });
+  // shown is the drawing and the details of the selected row. While the
+  // answer for a row is on its way, the selection is shown at once and the
+  // drawing before it stays.
+  const shown = createDeferred(() => (address() ? answer(address()) : parts.shown));
 
-  selected = createMemo(() => shownOf(byKey().get(picked()) ?? newest()));
-
-
-
-  // The rows of each send's or call's group opened are asked for once each
-  // time the group is drawn. A group the UI could not read says why, and is
-  // asked for again when it is next opened.
+  // The rows of each send's or call's group opened are asked for once; a
+  // group folded is asked for again when it is opened.
   createEffect(
     () => nodes()
-      .filter(n => n.group?.trace && n.group.open && !traced[n.key]?.rows)
+      .filter(n => n.group?.trace && n.group.open && !traced[n.key])
       .map(n => ({ key: n.key, href: `/run/${n.row.Run.ID}/group?row=${encodeURIComponent(n.row.Key)}&depth=${n.row.Depth}&page=${encodeURIComponent(run().ID)}` })),
     wanted => {
       for (const n of wanted) {
-        if (asked.has(n.key)) continue;
-        asked.add(n.key);
+        setTraced(s => { s[n.key] = { asked: true }; });
         fetch(n.href)
           .then(async res => {
             if (!res.ok) throw new Error((await res.text()).trim() || res.statusText);
-            const rows = await res.json();
-            setTraced(s => { s[n.key] = { rows }; });
+            return res.json();
           })
-          .catch(err => {
-            asked.delete(n.key);
-            setTraced(s => { s[n.key] = { error: err.message }; });
-          });
+          .then(rows => setTraced(s => { s[n.key] = { rows }; }), err => setTraced(s => { s[n.key] = { error: err.message }; }));
       }
     }
   );
 
-  // shown is the drawing and the details of the row the person chose, as
-  // the UI answers for it, or of the newest row, as the UI sends it. While
-  // an answer is on its way, the drawing before it stays.
-  shown = createMemo(() => (asking() ? answer(asking()) : parts.shown));
+  const fold = (g, to) => {
+    setFolds(s => { s[g.key] = to; });
+    if (!to && g.trace) setTraced(s => { delete s[g.key]; });
+  };
+  return {
+    nodes, visible, selected, shown, picked, details, setDetails, traced, fold,
+    // pick selects a row the person chose, opening the groups it is in.
+    // Choosing the row chosen asks for its drawing again where it failed.
+    pick(node) {
+      if (!node) return;
+      setFolds(s => { for (const g of node.groups) s[g.key] = true; });
+      if (picked() === node.key) refresh(shown);
+      setPicked(node.key);
+    },
+    // follow selects the newest row, and goes on selecting each new row.
+    follow: () => setPicked(null),
+    // head gives the node at the head of a group.
+    head: g => byKey().get(g.head),
+    // all opens or folds every group; folding chooses the row at the head
+    // of the outermost group the selection is in.
+    all(to) {
+      const sel = selected();
+      for (const n of nodes()) if (n.group) fold(n.group, to);
+      if (!to && sel?.groups.length) this.pick(byKey().get(sel.groups[0].head));
+    },
+  };
 }
 
-
 function StepRow(props) {
+  const steps = useContext(StepsContext);
   const n = () => props.node;
   const r = () => n().row;
-  return html`<div class=${() => ["step", r().Run.Type, r().Kind, { sel: selected()?.key === n().key }]} style=${() => "--d: " + r().Depth} data-key=${() => n().key} ref=${lit(() => ({ key: "step " + n().key, data: n().key }))} onClick=${e => {
+  return html`<div class=${() => ["step", r().Run.Type, r().Kind, { sel: steps.selected()?.key === n().key }]} style=${() => "--d: " + r().Depth} data-key=${() => n().key} ref=${lit(() => ({ key: "step " + n().key, data: n().key }))} onClick=${e => {
     if (e.target.closest("a, button")) return;
-    pick(n());
-    setDetails(true);
+    steps.pick(n());
+    steps.setDetails(true);
   }}>
     <span class="t" title=${() => r().Exact}>${() => r().Time}</span><span class="link"></span>
     <span class="who" title=${() => r().Run.Tip}>${() => (n().group ? html`<button class="fold" type="button" aria-label=${() => "fold or open " + n().group.run.Machine} onClick=${() => {
-      const g = n().group, sel = byKey().get(picked());
-      fold(g, !g.open);
-      // Folding the group the chosen row is in chooses the group's head.
-      if (g.open && sel?.groups.some(o => o.key === g.key)) pick(byKey().get(g.head));
+      const g = n().group, sel = steps.selected();
+      steps.fold(g, !g.open);
+      // Folding the group the selected row is in selects the group's head.
+      if (g.open && sel?.groups.some(o => o.key === g.key)) steps.pick(steps.head(g));
     }}></button>` : html`<span class="fold"></span>`)}<Show when=${() => r().Run.Type}><${Icon} type=${() => r().Run.Type} /></Show><span>${() => r().Run.Machine}</span></span>
     <span class="what" title=${() => said(r())}><${Words} words=${() => r().What} />${() => (r().Group ? html`<span class="sum">${r().Group.Run.Title ? html` · <span class="name">${r().Group.Run.Title}</span>` : ""} · <span class=${["st", r().Group.Status]}>${r().Group.Status}${r().Group.Failure ? ` (${r().Group.Failure})` : ""}</span> · ${plural(r().Group.Steps, "step")}${r().Group.Took ? " · " + r().Group.Took : ""}</span>` : "")}${() => (r().Trace ? html`<span class="sum">${r().Trace.Run.Title && r().Trace.Run.Title !== r().Trace.Run.Machine ? html` · <span class="name">${r().Trace.Run.Title}</span>` : ""}${r().Trace.Status ? html` · <span class=${["st", r().Trace.Status]}>${r().Trace.Status}${r().Trace.Failure ? ` (${r().Trace.Failure})` : ""}</span>` : ""}${r().Trace.Took ? " · " + r().Trace.Took : ""}</span>` : "")}</span>
   </div>`;
@@ -355,92 +351,88 @@ function Rows(props) {
 }
 
 // Inside is the rows of a group: a child's, or those of the run a send or
-// a call reached, once they are read.
+// a call reached, once they are read, or why they could not be.
 function Inside(props) {
-  const inside = createMemo(() => nodes().filter(m => m.groups.at(-1)?.head === props.node.key));
-  const got = () => (props.node.group.trace ? traced[props.node.key] : undefined);
+  const steps = useContext(StepsContext);
+  const inside = createMemo(() => steps.nodes().filter(m => m.groups.at(-1)?.head === props.node.key));
+  const got = () => (props.node.group.trace ? steps.traced[props.node.key] : undefined);
   return html`<Show when=${() => !got()?.error} fallback=${() => html`<li class="dim none">${() => got().error}</li>`}><${Rows} nodes=${inside} /><Show when=${() => got()?.rows && !inside().length}><li class="dim none">nothing yet</li></Show></Show>`;
 }
 
 function Steps() {
+  const steps = useContext(StepsContext);
   const s = () => parts.steps;
-  const top = () => nodes().filter(n => !n.groups.length);
+  const top = () => steps.nodes().filter(n => !n.groups.length);
   return html`<div class="steps" id="steps">
     <div class="head"><h2>Steps</h2><span class="facts" ref=${bump(() => s().Count)}>${() => s().Count}</span>
       <span class="legend"><span class="statechart"><i></i>statechart</span><span class="flow"><i></i>flow</span><span class="agent"><i></i>agent</span></span>
-      <span class="acts"><Show when=${() => !s().Ended && picked()}><button class="btn sm" type="button" title="select the newest row, and go on selecting each new row" onClick=${follow}>Follow</button></Show><button class="btn sm" type="button" onClick=${() => all(true)}>Open all</button><button class="btn sm" type="button" onClick=${() => all(false)}>Fold all</button></span>
+      <span class="acts"><Show when=${() => !s().Ended && steps.picked()}><button class="btn sm" type="button" title="select the newest row, and go on selecting each new row" onClick=${() => steps.follow()}>Follow</button></Show><button class="btn sm" type="button" onClick=${() => steps.all(true)}>Open all</button><button class="btn sm" type="button" onClick=${() => steps.all(false)}>Fold all</button></span>
     </div>
     <ol class=${() => ["steplist", { dated: s().Dated }]} tabindex="0"><${Rows} nodes=${top} /><Show when=${() => !s().Rows.length}><li class="dim none">nothing yet</li></Show></ol>
   </div>`;
 }
 
-function all(to) {
-  const sel = selected();
-  setFolds(s => { for (const n of nodes()) if (n.group) s[n.group.key] = to; });
-  if (!to && sel?.groups.length) pick(byKey().get(sel.groups[0].head));
+// keys moves the selection through the rows shown as a person presses the
+// arrows, folds and opens groups, and shows the details, while the list
+// has the focus or nothing else on the page has it.
+function keys(steps) {
+  return e => {
+    if ((e.target !== document.body && !e.target.closest("#steps .steplist")) || e.altKey || e.ctrlKey || e.metaKey) return;
+    if (e.key === "Enter" && e.target.closest("a, button")) return;
+    const node = steps.selected();
+    const list = document.querySelector("#steps .steplist");
+    if (!node || !list || list.offsetParent === null) return;
+    const rows = steps.visible();
+    const at = rows.indexOf(node);
+    const inside = node.groups.at(-1);
+    switch (e.key) {
+      case "ArrowDown": steps.pick(rows[at + 1]); break;
+      case "ArrowUp": steps.pick(rows[at - 1]); break;
+      case "ArrowLeft":
+        if (node.group?.open) steps.fold(node.group, false);
+        else if (inside) { steps.fold(inside, false); steps.pick(steps.head(inside)); }
+        break;
+      case "ArrowRight": if (node.group) steps.fold(node.group, true); break;
+      case "Enter": steps.setDetails(true); break;
+      default: return;
+    }
+    e.preventDefault();
+  };
 }
-
-// The keyboard moves the selection through the rows shown, folds and opens
-// groups, and shows the details.
-document.addEventListener("keydown", e => {
-  if (!parts.steps || (e.target !== document.body && !e.target.closest("#steps .steplist")) || e.altKey || e.ctrlKey || e.metaKey) return;
-  if (e.key === "Enter" && e.target.closest("a, button")) return;
-  const node = selected();
-  const list = document.querySelector("#steps .steplist");
-  if (!node || !list || list.offsetParent === null) return;
-  const rows = visible();
-  const at = rows.indexOf(node);
-  const inside = node.groups.at(-1);
-  switch (e.key) {
-    case "ArrowDown": pick(rows[at + 1]); break;
-    case "ArrowUp": pick(rows[at - 1]); break;
-    case "ArrowLeft":
-      if (node.group?.open) fold(node.group, false);
-      else if (inside) { fold(inside, false); pick(byKey().get(inside.head)); }
-      break;
-    case "ArrowRight": if (node.group) fold(node.group, true); break;
-    case "Enter": setDetails(true); break;
-    default: return;
-  }
-  e.preventDefault();
-});
-
 
 // The path from the run's root to the deepest running run lights the
 // selected row's run. A run off the path, below this page's run, is shown
 // by the groups down to it.
 function Path() {
+  const steps = useContext(StepsContext);
   const links = createMemo(() => {
     const path = parts.path.map(l => ({ link: l, sent: l.Sent, trace: false }));
-    const node = selected();
-    if (!node || path.some(p => p.link.ID === node.row.Run.ID)) return path;
-    const here = path.findIndex(p => p.link.This);
-    return [...path.slice(0, here + 1), ...node.groups.map(g => ({ link: g.run, trace: g.trace }))];
+    const node = steps.selected();
+    const down = !node || path.some(p => p.link.ID === node.row.Run.ID) ? path : [...path.slice(0, path.findIndex(p => p.link.This) + 1), ...node.groups.map(g => ({ link: g.run, trace: g.trace }))];
+    return down.map((p, at) => ({ ...p, at }));
   });
-  return html`<nav class="path" id="path"><For each=${links} keyed=${p => p.link.ID}>${(q, i) => html`${() => (i() ? (q().sent || q().trace ? html`<span class="sep send" title=${() => (q().sent ? q().sent + " of the run before started it" : "")}>⇢</span>` : html`<span class="sep">›</span>`) : "")}<a href=${() => "/run/" + q().link.ID} title=${() => q().link.Tip} aria-current=${() => (q().link.This ? "page" : undefined)} class=${() => ({ sel: selected()?.row.Run.ID === q().link.ID })}><Show when=${() => q().link.Type}><${Icon} type=${() => q().link.Type} /></Show>${() => q().link.Machine}</a>`}</For></nav>`;
+  return html`<nav class="path" id="path"><For each=${links} keyed=${p => p.at + " " + p.link.ID}>${q => html`${() => (q().at ? (q().sent || q().trace ? html`<span class="sep send" title=${() => (q().sent ? q().sent + " of the run before started it" : "")}>⇢</span>` : html`<span class="sep">›</span>`) : "")}<a href=${() => "/run/" + q().link.ID} title=${() => q().link.Tip} aria-current=${() => (q().link.This ? "page" : undefined)} class=${() => ({ sel: steps.selected()?.row.Run.ID === q().link.ID })}><Show when=${() => q().link.Type}><${Icon} type=${() => q().link.Type} /></Show>${() => q().link.Machine}</a>`}</For></nav>`;
 }
 
-// View is the drawing of the selected row's run as of its step. It scrolls
-// to the first card marked as going, held or failed.
 // View is the drawing of the page's run with the cards down to the
 // selected row's run unfolded, as of the row's step. The drawing moves its
-// own view to what the step marks. While the UI's answer for a row is on its
+// own view to what the step marks. While the answer for a row is on its
 // way, the drawing before it stays, dimmed.
 function View() {
-  const v = () => shown();
-  return html`<section class=${() => ["panel", "asof", { pending: isPending(() => shown()) }]} id="view">
-    <${Errored} fallback=${err => html`<p class="dim">${() => String(err())}</p>`}>
-      <Show when=${() => v()?.Row}>${row => html`<div class="head"><${Icon} type=${() => v().Type} /><span>${() => row().Run.Machine}</span><span class="dim">${() => v().Type}</span><${Defined} at=${() => v().Defined} /><span class="facts">as of step ${() => row().Step}, ${() => v().Time}</span></div>`}</Show>
-      <div class="drawn"><Show when=${() => v()?.Drawing} fallback=${() => html`<p class="dim">${() => (v()?.Row ? "no drawing" : "a run in another client's tree: only its status can be read")}</p>`}><${Drawing} scene=${() => v().Drawing} /></Show></div>
-    <//>
+  const steps = useContext(StepsContext);
+  const v = () => steps.shown();
+  return html`<section class=${() => ["panel", "asof", { pending: isPending(() => steps.shown()) }]} id="view">
+    <Show when=${() => v()?.Row}>${row => html`<div class="head"><${Icon} type=${() => v().Type} /><span>${() => row().Run.Machine}</span><span class="dim">${() => v().Type}</span><${Defined} at=${() => v().Defined} /><span class="facts">as of step ${() => row().Step}, ${() => v().Time}</span></div>`}</Show>
+    <div class="drawn"><Show when=${() => v()?.Drawing} fallback=${() => html`<p class="dim">${() => (v()?.Row ? "no drawing" : "a run in another client's tree: only its status can be read")}</p>`}><${Drawing} scene=${() => v().Drawing} /></Show></div>
   </section>`;
 }
 
 const [detailTab, detailBar] = tabs(["what", "input", "output", "lines"], "what", n => ({ what: "What happened", input: "Input", output: "Output", lines: "Record" })[n]);
 
 function Details() {
-  const v = () => shown();
-  return html`<section class="panel tabbed details" id="details" hidden=${() => !details()}><Show when=${() => v()?.Row}>${row => html`
+  const steps = useContext(StepsContext);
+  const v = () => steps.shown();
+  return html`<section class="panel tabbed details" id="details" hidden=${() => !steps.details()}><Show when=${() => v()?.Row}>${row => html`
     <div class="head"><Show when=${() => row().Run.Type}><${Icon} type=${() => row().Run.Type} /></Show><span>${() => row().Run.Machine}</span><span class="dim">step ${() => row().Step} · ${() => row().Time}</span>
       <span class="facts">${() => said(row())}</span>
       <span class="acts"><Show when=${() => row().Run.ID !== v().Page}><a class="btn sm" href=${() => "/run/" + row().Run.ID}>Open ${() => row().Run.Machine} ›</a></Show></span></div>
@@ -453,17 +445,25 @@ function Details() {
 }
 
 function RunPage() {
-  followSteps();
+  const steps = followSteps();
   // The selected row is kept in view.
   createEffect(
-    () => selected()?.key,
+    () => steps.selected()?.key,
     key => {
       if (key) document.querySelector(`.step[data-key="${CSS.escape(key)}"]`)?.scrollIntoView({ block: "nearest" });
     }
   );
+  onSettled(() => {
+    const press = keys(steps);
+    document.addEventListener("keydown", press);
+    return () => document.removeEventListener("keydown", press);
+  });
   const names = run().Mine ? ["steps", "waits", "output", "children"] : ["waits", "output", "children"];
   const [tab, bar] = tabs(names, names[0], n => ({ steps: "Steps", waits: "Waiting on", output: "Output", children: "Children" })[n]);
-  return html`<${Summary} />
+  // The drawing and the details of a row whose answer failed say why; the
+  // row can be selected again to ask again.
+  return html`<${StepsContext} value=${steps}>
+  <${Summary} />
   <${Path} />
   <div class="split">
     <div class="panel tabbed">
@@ -475,11 +475,14 @@ function RunPage() {
     </div>
     <${Handle} size="steps" />
     <div class="side">
-      <${View} />
-      <${Handle} size="details" row=${true} />
-      <${Details} />
+      <${Errored} fallback=${err => html`<section class="panel asof" id="view"><p class="dim failed">${() => String(err()?.message ?? err())}</p></section>`}>
+        <${View} />
+        <${Handle} size="details" row=${true} />
+        <${Details} />
+      <//>
     </div>
-  </div>`;
+  </div>
+  <//>`;
 }
 
 mount(parts.page ? RunPage : List);

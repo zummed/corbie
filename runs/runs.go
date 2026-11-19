@@ -98,9 +98,7 @@ func (h *handler) listParts(ctx context.Context, n narrowing) (any, error) {
 	return listParts(v), nil
 }
 
-// ListParts are the parts of the Runs page. The ended runs are sent
-// before the running ones, so that a run that ended is found running on
-// the page as its new line arrives.
+// ListParts are the parts of the Runs page.
 type ListParts struct {
 	Narrowing  NarrowingPart `json:"narrowing"`
 	Locations  LocationsPart `json:"locations"`

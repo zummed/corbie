@@ -6,6 +6,7 @@ test("camera", async () => {
   const pick = async pred => { const r = rows.find(pred); r.click(); await settle(3); await wait(900); return cam(); };
   const out = { loaded: cam() };
   out.child = await pick(r => r.textContent.includes("review") && r.textContent.includes("entered"));
+  { const v = document.querySelector("#view .viewport"), b = v.querySelector("g.camera").getBBox(); out.childWholeFits = Math.min((v.clientWidth - 48) / b.width, (v.clientHeight - 48) / b.height); out.childBox = [b.width, b.height]; }
   out.parent = await pick(r => r === rows[0]);
   out.childAgain = await pick(r => r.textContent.includes("review") && r.textContent.includes("entered"));
   const v = document.querySelector("#view .viewport");

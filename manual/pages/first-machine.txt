@@ -84,7 +84,7 @@ Then ask. Say "using Corbie", or the assistant writes a program of its own.
   me the title of the page.
 
 The assistant reads this manual through the connection, writes the two files
-and runs them with `corbie test`. Read the `allow:` lists it wrote before you
-run the machine yourself.
+and runs them with `corbie test`. Each script runs as your user, limited only
+by the `allow:` lists the assistant wrote. Read them.
 
 Next: `corbie manual a-list` runs one job for each item of a list.

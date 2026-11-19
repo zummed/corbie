@@ -8,6 +8,8 @@ The rules behind [the Controller overview](../controller.md). Area code: `contro
 
 **R-controller-02** Enrol, Tags, Prefixes, Ceiling, Remove, a value's Set and a secret's or a value's Remove run their `corbie controller` commands, a runner's prefixes as `--at` once for each, a secret's and a value's at the location given, `/` by default, and Enrol shows the controller's card and the store's address that the command printed back. *Test:* `controller_actions_run_their_commands`
 
+**R-controller-03** Check runs `corbie check`, and shows each part of the setup it checked, whether it responded, how long it took, and why where it did not. *Test:* `controller_check_gives_each_part_of_the_setup`, `controller_check_runs_corbie_check`, `controller_check_shows_each_part_of_the_setup`
+
 **C-controller-01** A removed party's line offers only Enrol. `corbie controller enrol <name>` writes a new trust for the name, which trusts a removed party again. *Test:* `controller_removed_party_offers_only_enrol`
 
 ## Secrets and values

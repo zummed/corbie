@@ -11,7 +11,7 @@ const $$ = (s, root = document) => [...root.querySelectorAll(s)];
 // countOn gives the count drawn on a card, by its path, or "" for none.
 const countOn = path => text($(`#drawing [data-path="${CSS.escape(path)}"] .count text`));
 
-test("machines_a_location_counts_its_runs", () => {
+test("machines_location_row_says_its_counts", () => {
   const row = $$(".place .named > span").find(s => text(s) === "location").nextElementSibling;
   equal(text(row), "/house/room · 3 running · 1 failed today", "the location's row");
   equal($("a", row).getAttribute("href"), "/runs?at=%2Fhouse%2Froom", "the link to the runs there");

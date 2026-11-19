@@ -86,7 +86,7 @@ Choosing a machine shows, above its view, its `description:`, where it lives and
 ```
 Keeps one room at its target temperature.
 
-location   /house/rooms/thermostat
+location   /house/rooms/thermostat · 3 running · 1 failed today
 lifetime   keyed: a send to a key starts the run for that key, at most 3 running at once
 update     restart: a changed file cancels its runs
 receives   set from schedules/*, client:panel
@@ -97,7 +97,7 @@ approve    send:devices/boiler
 
 | Row | What it shows |
 |---|---|
-| location | the prefix and the file's path, without `.yaml`; where the UI offers Runs, a link to the runs there |
+| location | the prefix and the file's path, without `.yaml`; where the UI offers Runs, a link to the runs there, with how many of its runs are running and how many failed today |
 | lifetime | `singleton`, `keyed` or `transient`, what starts its runs, and `limits: { runs: }` |
 | update | `restart` or `drain`, and what a changed file does to its runs |
 | receives | who `receive:` lets send to it and call it, by event, `none` for an empty list; with no `receive:`, its own tree and its tree's client |
@@ -116,6 +116,8 @@ Text          the file as it is written
 Written out   the definition Corbie stores: what it includes in place, each value with its file and line
 ```
 
+On the drawing, each state and each running stage shows how many of the UI's client's running runs at the machine's location are in it now; another client's runs are counted at the location only. A card's name links to the line of the file that writes it, which Text shows lit.
+
 Unfolding a card moves the drawing in to it, and folding it moves the drawing back out to the card it was in, or to the whole machine. Back folds and unfolds as the address was. Where the file cannot be shown at the address asked for, the view says why and keeps what it shows.
 
 The address of a machine is `/machines?file=<file>`, with `open=<card path>` for each card unfolded, a card's path being the names of the cards down to it joined by `/`: `/machines?file=schedules/away.yaml&open=pause`. A run's page links to its machine's address where the run's tree was submitted from this directory at the prefix the page reads it at (see Runs).
@@ -128,7 +130,16 @@ model:
   effort: high                               # family.yaml:3
 ```
 
-When the directory changes on disk, read at the interval, the file shown is shown again.
+When the directory changes on disk, read at the interval, the file shown is shown again. The counts of runs follow the store, and change at once when the UI reads a change in the list of runs.
+
+A run's page gives the lines of the file at its location that differ from the definition the run started with, one value to a line with its path, `-` for a value the run has and the file has not, `+` for one the file has and the run has not:
+
+```
+- description: "a room"
++ states.open.on.shut.0.go: "closed"
+```
+
+The files a definition's jobs run are named, and not compared.
 
 ## A file that is no machine
 

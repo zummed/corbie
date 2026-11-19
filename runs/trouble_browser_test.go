@@ -5,12 +5,14 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/zummed/corbie-ui/drawing"
 	"github.com/zummed/corbie-ui/page"
 	"github.com/zummed/corbie-ui/page/pagetest"
+	"github.com/zummed/corbie/blob"
 	"github.com/zummed/corbie/client"
 	"github.com/zummed/corbie/machine"
 	// The denied machine's job calls the fs plugin, which the corbie
@@ -28,12 +30,13 @@ type troubled struct {
 	ids     map[string]string
 }
 
-// The file of fails differs from the definition its run started with.
-func differs(ctx context.Context, location, dir string, def *machine.Definition) ([]string, error) {
-	if location != "/trouble/fails" || def.Name != "fails" {
+// The file of fails differs from the definition its run started with, as
+// the Machines page gives it: a value by its path, and a script.
+func differs(ctx context.Context, location, dir string, def blob.Ref) ([]string, error) {
+	if location != "/trouble/fails" || def == (blob.Ref{}) {
 		return nil, nil
 	}
-	return []string{"stages.check.job.script: ./check.js"}, nil
+	return []string{"stages.find.job: ./find.js", "a script changed: ./check.js"}, nil
 }
 
 func newTrouble(t *testing.T) *troubled {
@@ -90,8 +93,8 @@ func newTrouble(t *testing.T) *troubled {
 	return &troubled{l: l, h: h, handler: mux, ids: ids}
 }
 
-// whyOf gives what a trouble run's page says of why it is where it is.
-func (b *troubled) whyOf(t *testing.T, name string) *why {
+// viewOf gives a trouble run's page as it is drawn.
+func (b *troubled) viewOf(t *testing.T, name string) runView {
 	t.Helper()
 	ctx := context.Background()
 	var entries []client.Entry
@@ -102,15 +105,46 @@ func (b *troubled) whyOf(t *testing.T, name string) *why {
 	if err != nil {
 		t.Fatal(err)
 	}
-	return v.Why
+	return v
 }
 
 func Test_runs_trouble_in_the_browser(t *testing.T) {
 	b := newTrouble(t)
-	t.Run("why", func(t *testing.T) {
-		for _, name := range []string{"fails", "denied", "stuck", "slow-child", "unruled", "slow"} {
-			w := b.whyOf(t, name)
-			t.Logf("%s: %+v", name, *w)
+	t.Run("runs_why_follows_the_record", func(t *testing.T) {
+		names := func(facts []fact) string {
+			var out []string
+			for _, f := range facts {
+				out = append(out, f.Name)
+			}
+			return strings.Join(out, " ")
+		}
+		for _, c := range []struct {
+			run, lead, rest, facts, row string
+		}{
+			{"fails", "failed (error)", "at stage check", "error", "stage check failed"},
+			{"denied", "failed (denied)", "at stage read", "refused by fix", "stage read failed"},
+			{"slow-child", "failed (error)", "at stage wait", "error timeout child", "stage wait failed"},
+			{"stuck", "waiting", "on ticket verdict", "", ""},
+			{"unruled", "waiting", "on an event in resting", "", ""},
+			{"slow", "waiting", "on job work on runner", "", ""},
+		} {
+			v := b.viewOf(t, c.run)
+			w := v.Why
+			if w == nil || w.Lead != c.lead || w.Rest != c.rest || names(w.Facts) != c.facts {
+				t.Errorf("%s: why is %+v", c.run, w)
+				continue
+			}
+			if c.row != "" {
+				if r := rowAt(v.Rows, w.Row); r == nil || r.Said() != c.row || v.Follows != w.Row {
+					t.Errorf("%s: why is at %+v, and the page follows %s", c.run, r, v.Follows)
+				}
+			}
+		}
+		if w := b.viewOf(t, "slow").Why; w.Since.IsZero() {
+			t.Errorf("a job's wait does not say since when: %+v", w)
+		}
+		if w := b.viewOf(t, "slow-child").Why; w.Facts[1].Text != "1s" || w.Facts[2].Text != "statechart stuck failed (timeout)" {
+			t.Errorf("a stage whose child passed its timeout gives %+v", w.Facts)
 		}
 	})
 	for _, name := range []string{"fails", "denied", "stuck", "slow-child", "unruled", "logs", "slow"} {

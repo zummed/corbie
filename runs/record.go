@@ -814,6 +814,9 @@ func jobFacts(a *instance.Ask, byID map[string]*client.Run) []fact {
 		case j.Script != "":
 			facts = append(facts, fact{Name: "script", Text: j.Script})
 		}
+		if j.Timeout > 0 {
+			facts = append(facts, fact{Name: "timeout", Text: j.Timeout.String()})
+		}
 		if j.Approve {
 			facts = append(facts, fact{Name: "approve", Text: "true"})
 		}

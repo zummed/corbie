@@ -125,12 +125,30 @@ A run's page opens from its line in the list. Its title line holds the run: its 
 turn ⇢ support › approval
 ```
 
-Under the title line, one line says why the run is where it is, and a click on it selects the row it is at:
+Under the title line, one line says why the run is where it is, and a click on it selects the row it is at. A running run's line is what the deepest run running under it waits on:
 
 ```
-waiting 12m on job fetch on runner-a                      the job the deepest running run waits on, how long since it was sent, and its runner
-waiting on ticket verdict in statechart review            a ticket or a timer, where no job is going
-failed (denied) at stage read in flow lookup: <refused>, <layer>, <fix>    the deepest row that failed, and what refused it
+waiting 12m on job fetch on runner-a              a job going: how long since it was sent, and its runner
+waiting 3m on call /lab/weather                   a call job
+waiting on ticket verdict in statechart review    a ticket or a timer, where no job is going, in a run under the page's
+waiting on an event in resting                    a statechart with nothing going
+```
+
+A failed run's line is the row that failed it: a job's failure before a run's own end, the deepest of those. The facts under it are what the record gives:
+
+```
+failed (error) at stage check
+  error     no such person: ada at line 1, column 7
+
+failed (denied) at stage read
+  refused   fs.read:/etc/hostname
+  by        the job "read" in the definition of "denied"
+  fix       add the line fs.read:/etc/hostname to the allow list of the job "read" in the definition of "denied"
+
+failed (error) at stage wait
+  error     the timeout passed
+  timeout   1s
+  child     statechart stuck failed (timeout)
 ```
 
 Where the UI offers Machines and the run's file on disk now differs from the definition the run started with, a line says `the file changed since this run started`, and opens to the lines that differ.
@@ -218,7 +236,7 @@ Space    plays or stops
 click    selects the row and shows its details
 ```
 
-Play, in the head of Steps, selects each row shown after the selected one in turn, a row a second, and the drawing follows. A second press plays three rows a second, and a third stops it; selecting a row, Follow, or the last row stops it too.
+Play, in the head of Steps, selects each row shown after the selected one in turn, a row a second, and the drawing follows; from the last row it starts at the first. A second press plays three rows a second, and a third stops it; selecting a row, Follow, or the last row stops it too.
 
 Steps and the drawing point at each other:
 
@@ -257,14 +275,14 @@ The details of a row have four tabs, and Open opens the row's run's page:
 ```
 What happened   the row's facts: the job and its machine or script, the toolkit a tool is from (the `toolkit` Corbie shows on the job), a tool's arguments, the run a tool is held for, the turn, the error, the address sent to and the run that took it
 Input           what the row's job, call or event was given
-Output          what it gave back, and what the row's job logged, each value with its time
+Output          what it gave back, and what the row's job logged in that attempt, each value with its time
 Record          the values the run's jobs emitted since the step before, and the row's step, in the words corbie run show --record prints, each named by its run's machine
 ```
 
 ### Waiting on, Output and Children
 
 - What the run waits on is listed as in the list, with each running child linked and each ticket's value, and its labels below.
-- A job going gives its runner, its attempt after the first, when it was sent and how long ago, when its result is due, when it restarts and how many times it has, and what it has logged so far.
+- A job going gives its runner, its attempt after the first, when it was sent and how long ago, when its result is due, when it restarts and how many times it has, and what this attempt has logged so far. A call job gives the location it called.
 - A run with a timeout of its own says when it times out.
 - Output shows the output, or the error; a denial shows what was refused, the layer that refused it, and the fix. The files of its result are listed below, each a download, as `corbie run show --save` fetches it, and never shown in a page.
 - Children lists the runs it started, with each one's status, name, machine where that is not its name, and when it started or ended.

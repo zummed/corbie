@@ -237,10 +237,12 @@ func start(ctx context.Context, e *cli.Env, o options) (*ui, error) {
 		u.list.set(found, nil)
 		go u.list.follow(ctx, p.lister, interval)
 	}
+	// One reader of the runs' latest steps serves both pages that read them.
+	steps := &runs.Steps{}
 	var areaMachines *machines.Pages
 	if !o.asNone {
 		var err error
-		mc := machines.Config{Dir: dir, Controller: p.controller, Store: p.store, Client: p.client, Runs: u.noStore == nil, Interval: interval, Shell: shell}
+		mc := machines.Config{Dir: dir, Controller: p.controller, Store: p.store, Client: p.client, Runs: u.noStore == nil, Interval: interval, Shell: shell, Latest: steps.Latest}
 		if u.list != nil {
 			mc.List = u.list
 		}
@@ -256,7 +258,7 @@ func start(ctx context.Context, e *cli.Env, o options) (*ui, error) {
 	if u.noStore == nil {
 		home = "/runs"
 		mux.Handle("GET /metrics", metrics.Handler(u.list))
-		c := runs.Config{List: u.list, Lister: p.lister, Client: p.client, Controller: p.controller != nil,
+		c := runs.Config{List: u.list, Lister: p.lister, Client: p.client, Controller: p.controller != nil, Steps: steps,
 			Command: command, Interval: interval, Shell: shell}
 		if areaMachines != nil {
 			c.Machine, c.Differs = areaMachines.Href, areaMachines.Differs

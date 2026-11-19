@@ -3,7 +3,7 @@
 // logged and how long it took, an event with no rule, and how Steps, the
 // drawing and replay point at one another.
 import { test, fixture, settle, until, click, copy, words, assert, equal, text } from "/test/page/testdata/test.js";
-import { parts, receive } from "ui";
+import { parts } from "ui";
 import { streamed } from "/test/runs/streamed.js";
 
 const which = await fixture("which");
@@ -11,6 +11,8 @@ const steps = () => [...document.querySelectorAll("#steps .step")];
 const selected = () => document.querySelector("#steps .step.sel");
 const rowOf = said => steps().find(r => text(r.querySelector(".what")).startsWith(said));
 const why = () => words(document.getElementById("why"));
+// facts gives the facts under the line, by their names.
+const facts = () => Object.fromEntries([...document.querySelectorAll("dl.why-facts dt")].map(dt => [text(dt), dt.nextElementSibling]));
 const card = path => document.querySelector(`#view .machine [data-path="${CSS.escape(path)}"]`);
 const tab = (bar, name) => [...document.querySelectorAll(bar + " .tabs a")].find(a => text(a) === name);
 const play = () => document.querySelector("#steps [data-play]");
@@ -19,8 +21,9 @@ const key = name => document.body.dispatchEvent(new KeyboardEvent("keydown", { k
 if (which === "fails") {
   test("runs_why_says_where_a_run_failed", async () => {
     await streamed();
-    assert(why().startsWith("failed (error) at stage check"), `the line says ${why()}`);
-    assert(why().includes("no such person: ada"), `the line does not give the error: ${why()}`);
+    equal(why(), "failed (error) at stage check", "the line");
+    equal(Object.keys(facts()), ["error"], "the facts under it");
+    assert(text(facts().error).startsWith("no such person: ada"), `the error is ${text(facts().error)}`);
   });
 
   test("runs_a_failed_run_opens_on_its_deepest_failure", async () => {
@@ -77,6 +80,16 @@ if (which === "fails") {
     equal(text(play()), "Stop", "the button while it plays fast");
     await until(() => selected() === rows.at(-1) && text(play()) === "Play", "replay to stop at the last row", 4000);
   });
+
+  test("runs_replay_from_the_last_row_starts_at_the_first", async () => {
+    click(steps().at(-1));
+    await until(() => selected() === steps().at(-1), "the last row to be selected");
+    click(play());
+    await until(() => selected() === steps()[0] || steps().indexOf(selected()) === 1, "replay to start at the first row", 2500);
+    equal(text(play()), "Faster", "the button while it plays");
+    key(" ");
+    await settle();
+  });
 }
 
 test("runs_a_run_says_its_file_changed", async () => {
@@ -84,24 +97,29 @@ test("runs_a_run_says_its_file_changed", async () => {
   const differs = document.getElementById("differs");
   if (which !== "fails") return assert(!differs, "a run whose file is the same says it changed");
   assert(differs && text(differs.querySelector("summary")) === "the file changed since this run started", "the run does not say its file changed");
-  assert(text(differs.querySelector("pre")).includes("+ return { found: true }"), "the lines that differ are not given");
+  equal(text(differs.querySelector("pre")), "stages.find.job: ./find.js a script changed: ./check.js", "the lines that differ");
 });
 
 if (which === "denied") {
   test("runs_why_gives_what_refused_a_job_and_the_fix", async () => {
     await streamed();
-    assert(why().startsWith(`failed (${parts.summary.Failure}) at stage read`), `the line says ${why()}`);
-    const facts = parts.summary.Why.Facts.map(f => f.Name);
-    assert(facts.includes("refused") && facts.includes("fix"), `the line gives ${facts}`);
+    equal(why(), "failed (denied) at stage read", "the line");
+    equal(Object.keys(facts()), ["refused", "by", "fix"], "the facts under it, each once");
+    const fix = facts().fix;
+    assert(text(fix).startsWith("add the line fs.read:/etc/hostname to the allow list"), `the fix is ${text(fix)}`);
+    assert(fix.scrollWidth <= fix.clientWidth + 1 && fix.getClientRects().length > 0, "the fix is cut off");
   });
 }
 
 if (which === "slow-child") {
   test("runs_why_names_the_child_that_failed", async () => {
     await streamed();
-    assert(why().startsWith("failed") && why().includes("in statechart stuck"), `the line says ${why()}`);
+    equal(why(), "failed (error) at stage wait", "the line");
+    equal(Object.keys(facts()), ["error", "timeout", "child"], "the facts under it");
+    equal(text(facts().timeout), "1s", "the stage's timeout");
+    equal(text(facts().child), "statechart stuck failed (timeout)", "the child");
     await until(() => selected(), "a row to be selected");
-    equal(selected().closest("li.group")?.querySelector(".step .what") && text(selected()).includes("stuck"), true, "the child's row selected");
+    equal(text(selected().querySelector(".what")).split(" · ")[0], "stage wait failed", "the row selected");
   });
 }
 
@@ -115,20 +133,28 @@ if (which === "stuck") {
     click(tab(".split > .panel", "Waiting on"));
     assert(words(document.getElementById("waits")).includes("the run times out"), "Waiting on gives no timeout");
   });
+}
 
+if (which === "slow") {
   test("runs_waiting_on_gives_a_jobs_facts_and_logs", async () => {
-    const began = new Date(Date.now() - 4 * 60 * 1000 - 5000).toISOString();
-    const waits = copy(parts.waits);
-    waits.Waits = [{ Text: "job fetch", Ticket: "", Value: "", Run: null, Job: { Name: "fetch", Runner: "runner-a", Attempt: 2, Began: began, Sent: "20:29", Due: "20:34", Again: "", Restarts: 0, Logs: [{ Time: "20:30:01", Name: "log", Text: "fetching the page" }] } }];
-    receive({ type: "part", id: "waits", data: waits });
-    await settle();
-    const wait = words(document.querySelector("#waits .wait"));
-    assert(wait.includes("job fetch on runner-a · attempt 2 · sent 20:29, 4m ago · due 20:34"), `the wait says ${wait}`);
-    assert(wait.includes("20:30:01 fetching the page"), `the wait gives no log: ${wait}`);
+    await streamed();
+    assert(/^waiting \d+s on job work on runner$/.test(why()), `the line says ${why()}`);
+    click(tab(".split > .panel", "Waiting on"));
+    const wait = () => words(document.querySelector("#waits .wait"));
+    assert(/^job work on runner · attempt 2 · sent \S+, \d+s ago · due \S+ · restart 1/.test(wait()), `the wait says ${wait()}`);
+    assert(wait().includes("working 0"), `the wait gives no log: ${wait()}`);
+    const logged = () => document.querySelectorAll("#waits .wait .logs li").length;
+    const was = logged();
+    await until(() => logged() > was, "the job's logs to grow", 4000);
   });
 }
 
 if (which === "unruled") {
+  test("runs_why_says_a_statechart_waits_on_an_event", async () => {
+    await streamed();
+    equal(why(), "waiting on an event in resting", "the line");
+  });
+
   test("runs_an_event_with_no_rule_says_so", async () => {
     await streamed();
     const row = steps().find(r => text(r).includes("poke from client:"));

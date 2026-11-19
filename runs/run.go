@@ -737,6 +737,21 @@ func (h *handler) whyOf(ctx context.Context, run *client.Run, st *instance.State
 				w.Facts = append(w.Facts, f)
 			}
 		}
+		// A job that started a child gives its timeout, and how the child
+		// ended.
+		if started := startedBy(rows, row); started != nil {
+			for _, f := range started.Facts {
+				if f.Name == "timeout" {
+					w.Facts = append(w.Facts, f)
+				}
+			}
+			g := started.Group
+			child := g.Run.Type + " " + g.Run.Machine + " " + g.Status
+			if g.Failure != "" {
+				child += " (" + g.Failure + ")"
+			}
+			w.Facts = append(w.Facts, fact{Name: "child", Text: child, Run: &g.Run})
+		}
 		if run.Refused != "" && !slices.ContainsFunc(w.Facts, func(f fact) bool { return f.Name == "refused" }) {
 			w.Facts = append(w.Facts, fact{Name: "refused", Text: run.Refused}, fact{Name: "by", Text: run.Layer}, fact{Name: "fix", Text: run.Fix})
 		}
@@ -831,6 +846,26 @@ func deepestFailure(rows []stepRow) *stepRow {
 			}
 		}
 	}
+	return found
+}
+
+// startedBy gives the row at which a row's job started a child, where it
+// did: the row of the same job and run before it that holds a group.
+func startedBy(rows []stepRow, row *stepRow) *stepRow {
+	var found *stepRow
+	var walk func([]stepRow)
+	walk = func(rows []stepRow) {
+		for i := range rows {
+			r := &rows[i]
+			if r.Group != nil && r.Run.ID == row.Run.ID && r.Job == row.Job && !r.At.After(row.At) {
+				found = r
+			}
+			if r.Group != nil {
+				walk(r.Group.Rows)
+			}
+		}
+	}
+	walk(rows)
 	return found
 }
 

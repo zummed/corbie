@@ -16,9 +16,9 @@ import (
 	"time"
 
 	"github.com/zummed/corbie-ui/page"
+	"github.com/zummed/corbie/blob"
 	"github.com/zummed/corbie/client"
 	"github.com/zummed/corbie/instance"
-	"github.com/zummed/corbie/machine"
 	"github.com/zummed/corbie/store"
 )
 
@@ -46,7 +46,7 @@ type Config struct {
 	// submitted from a directory that differ from a definition: none where
 	// they are the same or the Machines page does not show the file. None
 	// where the UI offers no Machines page.
-	Differs func(ctx context.Context, location, dir string, def *machine.Definition) ([]string, error)
+	Differs func(ctx context.Context, location, dir string, def blob.Ref) ([]string, error)
 	// Steps reads the latest step of each run, shared with the other pages
 	// that read them; with none the Runs pages keep their own.
 	Steps    *Steps
@@ -384,11 +384,7 @@ func (h *handler) differs(ctx context.Context, id string) ([]string, error) {
 	if err != nil || step == nil {
 		return nil, err
 	}
-	d, err := h.definitionOf(ctx, root.ID, step)
-	if err != nil {
-		return nil, err
-	}
-	return h.Differs(ctx, root.Location, f.Dir, d.def)
+	return h.Differs(ctx, root.Location, f.Dir, step.State.Definition)
 }
 
 // cardsOf gives the root of a run, and the cards of the jobs that started

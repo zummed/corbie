@@ -126,11 +126,12 @@ test("a_step_that_arrives_is_followed", async () => {
   const last = next.Rows.at(-1);
   next.Rows.push({ ...copy(last), Key: last.Key + "+", At: new Date(Date.parse(last.At) + 1000).toISOString(), What: [{ Text: "a step that arrived" }], Group: null, Trace: null });
   next.Count++;
+  next.Follows = last.Key + "+";
   receive({ type: "part", id: "steps", data: copy(next) });
   await until(() => text(selected()?.querySelector(".what")) === "a step that arrived", "the selection to follow the new row");
   assert(selected().classList.contains("new"), "the row does not slide in");
   equal(text(document.querySelector("#steps .facts")), String(next.Count), "the count");
-  receive({ type: "part", id: "steps", data: copy({ ...next, Rows: next.Rows.slice(0, -1), Count: next.Count - 1 }) });
+  receive({ type: "part", id: "steps", data: copy({ ...next, Rows: next.Rows.slice(0, -1), Count: next.Count - 1, Follows: last.Key }) });
   await until(() => !rowOf("a step that arrived"), "the row sent to go");
 });
 

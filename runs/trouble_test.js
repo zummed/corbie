@@ -82,7 +82,7 @@ if (which === "fails") {
 if (which === "denied") {
   test("runs_why_gives_what_refused_a_job_and_the_fix", async () => {
     await streamed();
-    assert(why().startsWith(`failed (${parts.summary.Failure}) at stage fetch`), `the line says ${why()}`);
+    assert(why().startsWith(`failed (${parts.summary.Failure}) at stage read`), `the line says ${why()}`);
     const facts = parts.summary.Why.Facts.map(f => f.Name);
     assert(facts.includes("refused") && facts.includes("fix"), `the line gives ${facts}`);
   });

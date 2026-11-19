@@ -16,7 +16,7 @@ Submit the directory, start each machine, and open the runs in `corbie ui`.
 | File | What goes wrong |
 |---|---|
 | `fails.yaml` | the stage `check` throws an error, and the run fails |
-| `denied.yaml` | the stage `fetch` calls the network with no `allow:`, and is denied |
+| `denied.yaml` | the stage `read` reads a file with no `allow:` for it, and is denied |
 | `stuck.yaml` | the run waits on its ticket `verdict` until its timeout of 1h |
 | `slow-child.yaml` | the stage `wait` starts `stuck.yaml` as a child, which passes the stage's timeout of 1s |
 | `unruled.yaml` | the event `poke` arrives in the state `resting`, which has no rule for it |

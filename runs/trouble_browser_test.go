@@ -13,6 +13,9 @@ import (
 	"github.com/zummed/corbie-ui/page/pagetest"
 	"github.com/zummed/corbie/client"
 	"github.com/zummed/corbie/machine"
+	// The denied machine's job calls the fs plugin, which the corbie
+	// program carries among its bundled plugins.
+	_ "github.com/zummed/corbie/plugin/fs"
 )
 
 // The machines in testdata/trouble go wrong on purpose. Each run's page is
@@ -44,9 +47,6 @@ func Test_runs_trouble_in_the_browser(t *testing.T) {
 	}
 	for _, name := range []string{"fails", "denied", "slow-child", "logs"} {
 		finished(t, l.Client, ids[name])
-	}
-	if r, err := l.Client.Show(ctx, ids["denied"]); err == nil {
-		t.Logf("DENIED status=%s failure=%s error=%q refused=%q layer=%q fix=%q", r.Status, r.Failure, r.Error, r.Refused, r.Layer, r.Fix)
 	}
 	waitFor(t, l.Client, func(r *client.Run) bool { return r.ID == ids["stuck"] && len(r.Tickets) == 1 })
 	waitFor(t, l.Client, func(r *client.Run) bool { return r.ID == ids["unruled"] && r.Step >= 1 })

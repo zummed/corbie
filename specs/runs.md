@@ -204,7 +204,19 @@ The keys act when the list has the focus, or nothing else on the page has it:
 click    selects the row and shows its details
 ```
 
-The drawing shows the selected row's run as it was at the row's step, from its record up to that step and the state that step left (see Drawing). The drawing is at its own size, and its panel scrolls to the first card that is going, held or failed. Its head names the run's machine's file, as the title line does.
+The drawing shows the selected row's run as it was at the row's step, from its record up to that step and the state that step left (see Drawing). It is the page's run, with the card of each job that started a run on the way to the selected row's run unfolded, that run drawn inside it:
+
+```
+the page's run      as of its latest step at or before the row
+each run below it   as of its latest step at or before the row, inside the card of the job that started it
+the row's run       as of the row's step
+```
+
+A row of a send's or a call's group is of a run the page's run did not start, and its run is drawn alone. The drawing's view moves to the cards the step marks, the deepest first, so following rows into a child moves the view into its card, and back out (see Drawing). Its head names the selected row's run and its machine's file, as the title line does.
+
+- The UI sends the drawing and the details of the newest row as the run's page follows the run, so the page asks for nothing while it follows.
+- The page asks the UI for a row the person selects, and keeps each answer while the page is open: a row's drawing and details as of its step do not change.
+- A selection is shown at once. While its answer is on its way, the drawing before it stays, dimmed after a moment.
 
 ### The machine's file
 

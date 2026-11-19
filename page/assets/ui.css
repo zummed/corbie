@@ -499,3 +499,7 @@ form.enrol textarea { flex: 1 1 100%; resize: vertical; }
 form.enrol input:not([type=checkbox]) { flex: 1 1 160px; }
 form.enrol label { font-size: 12.5px; color: var(--ink2); display: flex; align-items: center; gap: 5px; }
 form.enrol pre.said { flex: 1 1 100%; margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+
+/* Runs: while the drawing of a row asked for is on its way, the drawing before it stays, dimmed after a moment. */
+.asof > .drawn { transition: opacity .2s; }
+.asof.pending > .drawn { opacity: .55; transition-delay: .15s; }

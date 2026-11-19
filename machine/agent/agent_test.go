@@ -35,6 +35,21 @@ func Test_model_agent_model_has_chat(t *testing.T) {
 	}
 }
 
+// An unknown field of a model names the fields its service's models hold,
+// and of a tool the fields a tool takes.
+func TestUnknownFieldNamesTheFieldsTaken(t *testing.T) {
+	src := "agent: a\nmodel: { name: its-model, service: a-program, colour: blue }\nprompt: hi\ntools:\n  tell: { does: tells, job: ./t.js }\n"
+	_, err := machine.Parse([]byte(src), func(string) ([]byte, error) { return []byte("return 1"), nil })
+	for _, want := range []string{
+		`model.colour: "colour" is not a field that belongs here: a model with service: a-program takes name, secret, service, effort, own`,
+		`tools.tell.does: "does" is not a field that belongs here: a tool takes description, args, job, list, call, input, approve, when`,
+	} {
+		if err == nil || !strings.Contains(err.Error(), want) {
+			t.Errorf("read: %v\nwant: %s", err, want)
+		}
+	}
+}
+
 // What a person is offered for a model is what the model is checked
 // against: every service, and for each the efforts it takes. A level a
 // service is not said to take is refused.

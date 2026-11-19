@@ -47,6 +47,13 @@ A mapping may be one of several sorts of thing that hold different fields. Its s
 
 A field its sort does not hold is not offered to a person, and is refused if it is written.
 
+A field its shape does not name is refused, and the problem names the fields the mapping takes, those of its sort where it has one:
+
+```
+tools.tell.does: "does" is not a field that belongs here: a tool takes description, args, job, list, call, input, approve, when
+model.colour: "colour" is not a field that belongs here: a model with service: anthropic takes name, secret, service, address, effort, reply_tokens
+```
+
 A definition may take values from other files with `include:`, which names a file or a list of them. A name may end in `#path` to take one part of a file: `base.yaml#allow`, `base.yaml#tools.read_file`.
 
 ```yaml

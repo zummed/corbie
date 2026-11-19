@@ -187,6 +187,9 @@ func (p *Parser) fill(written map[string]any, t Type, place string) (draft *Draf
 	outerLimits := p.limits
 	p.limits = limits
 	own := p.Fields("", f.Rest(), t.Shape())
+	if own != nil {
+		own.before = f.shape
+	}
 	body := t.Fill(p, own)
 	own.Done()
 	limits.Done()
@@ -697,9 +700,13 @@ type Fields struct {
 	p     *Parser
 	place string
 	shape *Shape
-	m     map[string]any
-	taken map[string]bool
-	asked map[string]bool // the fields the reader has asked for, written or not
+	// before is the shape the mapping was read by first, where two read it:
+	// a definition's type, name and what every type takes, then the type's
+	// own fields.
+	before *Shape
+	m      map[string]any
+	taken  map[string]bool
+	asked  map[string]bool // the fields the reader has asked for, written or not
 }
 
 // Fields starts reading a mapping of a shape. A value that is not a
@@ -954,17 +961,39 @@ func (f *Fields) Rest() map[string]any {
 	return rest
 }
 
-// Done reports every field not taken as one that is not known here.
+// Done reports every field not taken as one that is not known here, with
+// the fields the mapping takes.
 func (f *Fields) Done() {
 	if f == nil {
 		return
 	}
 	for _, k := range sortedKeys(f.m) {
 		if !f.taken[k] {
-			f.p.Problem(f.at(k), "%q is not a field that belongs here", k)
+			what, names := f.takes()
+			f.p.Problem(f.at(k), "%q is not a field that belongs here: %s takes %s", k, what, strings.Join(names, ", "))
 		}
 	}
 	f.read()
+}
+
+// takes gives what the mapping is and the names of the fields it takes, in
+// the order a person writes them. A mapping of one sort takes the fields
+// that sort holds.
+func (f *Fields) takes() (what string, names []string) {
+	for _, shape := range []*Shape{f.before, f.shape} {
+		if shape != nil {
+			for _, field := range shape.Fields {
+				names = append(names, field.Name)
+			}
+		}
+	}
+	if sort := f.shape.Sort(f.m); sort != "" {
+		if held, ok := f.shape.Sorts.Fields[sort]; ok {
+			return fmt.Sprintf("%s with %s: %s", f.shape.What, f.shape.Sorts.By, sort),
+				slices.DeleteFunc(names, func(name string) bool { return !slices.Contains(held, name) })
+		}
+	}
+	return f.shape.What, names
 }
 
 // read reports a field the shape names that the reader never asked for.

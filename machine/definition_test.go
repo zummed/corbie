@@ -186,10 +186,12 @@ func Test_mach_unknown_or_repeated_field_is_refused(t *testing.T) {
 	if got := problems(t, "probe: p\nvalue: 1\nvalue: 2\n", nil); !strings.Contains(got, "written twice") {
 		t.Fatalf("a repeated field: %s", got)
 	}
-	if got := problems(t, "probe: p\nValue: 1\n", nil); !strings.Contains(got, `"Value" is not a field`) {
+	// The problem names the fields the mapping takes: at the top, those
+	// every type takes and then the type's own.
+	if got := problems(t, "probe: p\nValue: 1\n", nil); !strings.Contains(got, `"Value" is not a field that belongs here: a probe takes probe, description, input, keep, limits, allow, deny, approve, ask, title, meta, lifetime, update, receive, read, work, value`) {
 		t.Fatalf("a name in the wrong case: %s", got)
 	}
-	if got := problems(t, "probe: p\nwork:\n  a: { script: ./a.js, retries: 3 }\n", map[string]string{"a.js": ""}); !strings.Contains(got, "retries") {
+	if got := problems(t, "probe: p\nwork:\n  a: { script: ./a.js, retries: 3 }\n", map[string]string{"a.js": ""}); !strings.Contains(got, `"retries" is not a field that belongs here: a job takes script, files, machine, send, call, input, allow, deny, timeout, restart, memory, tags, approve`) {
 		t.Fatalf("an unknown field of a job: %s", got)
 	}
 	// A stored definition is held to the same: the controller does not

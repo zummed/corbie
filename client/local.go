@@ -100,14 +100,14 @@ func (l *Local) Run(ctx context.Context, draft *machine.Draft, start Start) (str
 	random := make([]byte, 3)
 	rand.Read(random)
 	at := "/" + draft.Definition.Name + "-" + hex.EncodeToString(random)
-	return l.RunTree(ctx, &Tree{Prefix: at, Machines: []*Machine{{Path: draft.Definition.Name + ".yaml", Location: at, Draft: draft}}}, start)
+	return l.RunTree(ctx, &Tree{Prefix: at, Machines: []*Machine{{Path: draft.Definition.Name + ".yaml", Location: at, Draft: draft}}}, at, start)
 }
 
-// RunTree submits a tree of one file and gives the run at its location: the
-// one the submit starts for a singleton, and otherwise one started there
-// with what start carries. A start that carries anything but its life to a
+// RunTree submits a tree and gives the run at one of its locations: the one
+// the submit starts for a singleton, and otherwise one started there with
+// what start carries. A start that carries anything but its life to a
 // singleton is an error.
-func (l *Local) RunTree(ctx context.Context, tree *Tree, start Start) (string, error) {
+func (l *Local) RunTree(ctx context.Context, tree *Tree, at string, start Start) (string, error) {
 	message, err := l.Submit(ctx, tree, start.Life)
 	if err != nil {
 		return "", err
@@ -120,7 +120,7 @@ func (l *Local) RunTree(ctx context.Context, tree *Tree, start Start) (string, e
 		return "", fmt.Errorf("%w: the submit was refused: %s", ErrStart, receipt.Refused)
 	}
 	for _, done := range receipt.Tree.Locations {
-		if done.Run == "" {
+		if done.Location != at || done.Run == "" {
 			continue
 		}
 		carried := start
@@ -131,7 +131,7 @@ func (l *Local) RunTree(ctx context.Context, tree *Tree, start Start) (string, e
 		// The singleton has nothing to read until its start is taken.
 		return done.Run, l.Started(ctx, done.Run, LocalInterval)
 	}
-	start.At = tree.Machines[0].Location
+	start.At = at
 	return l.Start(ctx, start)
 }
 

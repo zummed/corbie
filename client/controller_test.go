@@ -157,7 +157,7 @@ func Test_ctl_child_and_made_machine_count_at_their_parents_location(t *testing.
 	at := func(prefix string) *client.Run {
 		d := draft(t, src, files)
 		id, err := l.RunTree(ctx, &client.Tree{Prefix: prefix, Machines: []*client.Machine{{Path: "maker.yaml", Location: prefix + "/maker", Draft: d}}},
-			client.Start{Input: input})
+			prefix+"/maker", client.Start{Input: input})
 		if err != nil {
 			t.Fatal(err)
 		}

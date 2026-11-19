@@ -30,6 +30,7 @@ Reference
 
   corbie run submit <directory> --at <prefix>   records the directory as a tree at the prefix
   corbie test <directory>...                    reads every machine, and starts nothing
+  corbie test <file> --in <directory>           runs one machine with the tree it is in
 
 It reads every *.yaml in the directory and below it as a machine, but for .git and what .corbieignore lists. A machine's location is its path under the prefix, without .yaml.
 

@@ -474,7 +474,7 @@ func (p *Parser) MachineAt(place, at string) *Definition {
 	case CheckLocation(at) != nil, strings.HasPrefix(at, "/"):
 		return nil // the check says what is wrong with it, or the run reads it
 	case p.located == nil:
-		p.Problem(place, "the machine at %s is read from the tree this file is in: give the directory, as in corbie test <dir>", at)
+		p.Problem(place, "the machine at %s is read from the tree this file is in: give the tree's directory, as in corbie test <file> --in <dir>", at)
 		return nil
 	}
 	file := at + ".yaml"

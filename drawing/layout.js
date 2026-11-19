@@ -195,20 +195,21 @@ class Drawn {
   // goes to, along it, and down into the box, so arrows from one box or to
   // one row run together. A label is a chip on the arrow: on the rail, where
   // it is apart from the chips of other arrows into the same row or box.
-  down(from, to, cls, label) {
+  // joins names the two cards the arrow joins, by their keys.
+  down(from, to, cls, label, joins) {
     const x1 = cx(from), y1 = bottom(from), x2 = cx(to), y2 = to.y;
     let rail = y2 - rowGap / 2;
     if (label) rail = y2 - rowGap;
     const mx = (x1 + x2) / 2;
     let my = rail;
     if (Math.abs(x1 - x2) < 1) my = y2 - 14;
-    this.line([{ x: x1, y: y1 }, { x: x1, y: rail }, { x: x2, y: rail }, { x: x2, y: y2 }], cls);
-    if (label) this.chip(mx, my, label, cls);
+    this.line([{ x: x1, y: y1 }, { x: x1, y: rail }, { x: x2, y: rail }, { x: x2, y: y2 }], cls, joins);
+    if (label) this.chip(mx, my, label, cls, joins);
   }
 
   // line draws an arrow through points, one after another across or down,
-  // with its turns rounded.
-  line(points, cls) {
+  // with its turns rounded, from one card to another.
+  line(points, cls, joins) {
     const r = 8;
     const pts = simplify(points);
     let at = pts[0];
@@ -231,7 +232,7 @@ class Drawn {
     }
     to(pts[pts.length - 1]);
     const classes = ("edge " + cls).trim();
-    this.edges.push({ key: this.edges.length, class: classes, d: p, head: cls.split(" ").includes("taken") ? "at" : "ah" });
+    this.edges.push({ key: this.edges.length, class: classes, d: p, head: cls.split(" ").includes("taken") ? "at" : "ah", from: joins.from, to: joins.to });
     for (const q of pts) {
       this.reach({ x: q.x, y: q.y, w: 0, h: 0 });
       this.left = Math.min(this.left, q.x);
@@ -240,11 +241,11 @@ class Drawn {
 
   // chip draws a label in a pill, short enough to stay apart from the chips
   // of the arrows beside it, with the whole label as its tooltip. It has the
-  // classes of its arrow.
-  chip(x, y, label, cls) {
+  // classes of its arrow, and joins the cards its arrow joins.
+  chip(x, y, label, cls, joins) {
     const short = clip(label, longestChip);
     const w = chipWidth(label);
-    this.chips.push({ key: this.chips.length, class: ("chip " + cls).trim(), x: x - w / 2, y: y - 9, w, tx: x, ty: y + 4, text: short, title: short !== label ? label : "" });
+    this.chips.push({ key: this.chips.length, class: ("chip " + cls).trim(), x: x - w / 2, y: y - 9, w, tx: x, ty: y + 4, text: short, title: short !== label ? label : "", from: joins.from, to: joins.to });
     this.reach({ x: x + w / 2, y: y + 9, w: 0, h: 0 });
     this.left = Math.min(this.left, x - w / 2);
   }
@@ -360,7 +361,7 @@ function drawFlow(f) {
   const reach = new Map();
   for (const n of names) {
     for (const a of after.get(n)) {
-      if (!through(after, reach, n, a)) d.down(at.get(a), at.get(n), "", "");
+      if (!through(after, reach, n, a)) d.down(at.get(a), at.get(n), "", "", { from: "stage " + a, to: "stage " + n });
     }
   }
   for (const n of names) {
@@ -734,8 +735,9 @@ function drawChart(c) {
     if (!routes[i]) continue;
     const a = ch.list[i];
     const cls = arrowClass(a);
-    d.line(routes[i], cls);
-    d.chip(chips[i].x, chips[i].y, arrowLabel(a), cls);
+    const joins = { from: "state " + a.from, to: "state " + a.to };
+    d.line(routes[i], cls, joins);
+    d.chip(chips[i].x, chips[i].y, arrowLabel(a), cls, joins);
   }
   ch.paint(d, "");
   return d;
@@ -1397,11 +1399,11 @@ function drawAgent(a) {
       b.y = bottom(tools) - inner - b.h;
       d.paint(askItem, b, ("state ask " + a.AskMark).trim(), cardR, [], "ask");
     }
-    d.down(top, tools, cls, `${a.Turns} turns`);
+    d.down(top, tools, cls, `${a.Turns} turns`, { from: "model", to: "holder tools" });
     y = bottom(tools);
   }
   reply.y = y + (2 * rowGap) / 1.5;
-  d.down(hasTools ? tools : top, reply, "", "");
+  d.down(hasTools ? tools : top, reply, "", "", { from: hasTools ? "holder tools" : "model", to: "reply" });
   d.paint(model, top, ("state model " + a.Mark).trim(), cardR, [], "model");
   if (a.Turn > 0) d.shapes.push({ kind: "tag", key: "tag", x: top.x + 4, y: top.y - 8, text: `turn ${a.Turn}` });
   d.paint(itemOf({ Name: "reply" }), reply, "state reply", cardR, [], "reply");
@@ -1466,7 +1468,7 @@ function drawDecision(dec) {
   below.x = margin + (total - below.w) / 2;
   below.y = bottom(top) + 2 * rowGap;
   const d = new Drawn();
-  d.down(top, below, "", "");
+  d.down(top, below, "", "", { from: "model", to: "answers" });
   d.paint(model, top, ("state model " + dec.Mark).trim(), cardR, [], "model");
   d.paint(answers, below, "state reply", cardR, [], "answers");
   return d;

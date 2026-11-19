@@ -40,12 +40,14 @@ func runParts(v runView) RunParts {
 	}
 	if v.Mine {
 		parts.Steps = &StepsPart{Ended: r.HasEnded(), Rows: v.Rows, Count: v.Count, Dated: v.Dated}
+		parts.Shown = v.Shown
 	}
 	return parts
 }
 
-// RunParts are the parts of a run's page. Steps and Shown are a run's in
-// a tree of the UI's client alone.
+// RunParts are the parts of a run's page. Steps and Shown, the drawing and
+// details of the newest row, are a run's in a tree of the UI's client
+// alone.
 type RunParts struct {
 	Page     PagePart    `json:"page"`
 	Summary  SummaryPart `json:"summary"`
@@ -118,7 +120,7 @@ type runView struct {
 	Children             []child
 	Cancel               *page.Call
 	Send, Reply          bool
-	Shown                shown
+	Shown                *shown
 	Defined              *definedAt
 }
 
@@ -308,40 +310,108 @@ func (h *handler) definitionOf(ctx context.Context, id string, step *instance.St
 	return d, nil
 }
 
-// shownAt gives a run as of one of its rows: its drawing, from its record
-// cut at the row's step and the state that step left, and the row's
+// shownAt gives a run as of one of its rows: its drawing, and the row's
 // details, whose record holds the row's step and the values its run's jobs
-// emitted since the step before.
+// emitted since the step before. The drawing is of the page's run with the
+// cards down to the row's run unfolded, each run on the way as of its latest
+// step at or before the row's, the row's run as of the row's step. A row of
+// a run the page's run did not start is its run's drawing alone. entries
+// hold the record of every run drawn.
 func (h *handler) shownAt(ctx context.Context, page string, r *stepRow, entries []client.Entry, byID map[string]*client.Run, day time.Time) (shown, error) {
 	s := shown{Row: r, Page: page, Type: r.Run.Type, Time: r.Time, Input: indentOf(r.In), Output: indentOf(r.Out)}
-	cut, own := cutAt(entries, r)
+	_, own := cutAt(entries, r)
 	for _, e := range own {
 		s.Lines = append(s.Lines, lines(e, r.Run.Machine, day)...)
 	}
-	step, err := h.step(ctx, r.Run.ID, r.Step)
-	if err != nil || step == nil {
-		return s, err
-	}
-	d, err := h.definitionOf(ctx, r.Run.ID, step)
-	if err != nil {
-		return s, err
-	}
-	s.Type = d.def.Type
+	var err error
 	if s.Defined, err = h.defined(ctx, r.Run.ID); err != nil {
 		return s, err
+	}
+	chain := chainDown(page, r.Run.ID, byID)
+	var inner *drawing.Scene
+	for i := len(chain) - 1; i >= 0; i-- {
+		id, number := chain[i], r.Step
+		if id != r.Run.ID {
+			number = stepAt(entries, id, r.At)
+		}
+		scene, kind, err := h.sceneAt(ctx, id, number, entries, byID, chainNext(chain, i), inner)
+		if err != nil || scene == nil {
+			return s, err
+		}
+		if id == r.Run.ID {
+			s.Type = kind
+		}
+		inner = scene
+	}
+	s.Drawing = inner
+	return s, nil
+}
+
+// chainDown gives the runs from the page's run down to a run it started,
+// by parent, or the run alone where the page's run did not start it.
+func chainDown(page, id string, byID map[string]*client.Run) []string {
+	chain := []string{id}
+	for r := byID[id]; r != nil && r.ID != page; r = byID[r.Parent] {
+		if r.Parent == "" {
+			return []string{id}
+		}
+		chain = append([]string{r.Parent}, chain...)
+	}
+	return chain
+}
+
+// chainNext gives the run after the i'th in a chain, or none at its end.
+func chainNext(chain []string, i int) string {
+	if i+1 < len(chain) {
+		return chain[i+1]
+	}
+	return ""
+}
+
+// stepAt gives a run's latest step at or before a time, or its first.
+func stepAt(entries []client.Entry, id string, at time.Time) int {
+	n := 1
+	for _, e := range entries {
+		if e.ID == id && e.Step > 0 && !e.Time.After(at) {
+			n = max(n, e.Step)
+		}
+	}
+	return n
+}
+
+// sceneAt gives a run's drawing as of one of its steps, marked from its
+// record up to that step and the state the step left, with a child's
+// drawing inside the card of the job that started it, and the type of the
+// run's machine. A step sealed to a key the client no longer has gives no
+// drawing.
+func (h *handler) sceneAt(ctx context.Context, id string, number int, entries []client.Entry, byID map[string]*client.Run, child string, inner *drawing.Scene) (*drawing.Scene, string, error) {
+	step, err := h.step(ctx, id, number)
+	if err != nil || step == nil {
+		return nil, "", err
+	}
+	d, err := h.definitionOf(ctx, id, step)
+	if err != nil {
+		return nil, "", err
+	}
+	var upTo []client.Entry
+	for _, e := range entries {
+		if e.ID == id && e.Step > 0 && e.Step <= number {
+			upTo = append(upTo, e)
+		}
 	}
 	var st *instance.State
 	if step.State.Status == instance.Running {
 		st = &step.State
 	}
-	marks := marksOf(r.Run.ID, cut, step.State.Status, st, byID)
+	marks := marksOf(id, upTo, step.State.Status, st, byID)
 	marks.Machines = d.machines
-	scene, err := drawing.Draw(d.def, marks)
-	if err != nil {
-		return s, err
+	for name, c := range marks.Children {
+		if c.ID == child && inner != nil {
+			marks.In = map[string]drawing.Scene{name: *inner}
+		}
 	}
-	s.Drawing = &scene
-	return s, nil
+	scene, err := drawing.Draw(d.def, marks)
+	return &scene, d.def.Type, err
 }
 
 // cutAt gives the steps of a row's run up to the row's step, and the

@@ -43,6 +43,9 @@ type Run struct {
 	Going, Held []string
 	// Children are the runs its jobs started, by the job's name.
 	Children map[string]Child
+	// In are the graphs of runs its jobs started, by the job's name, each
+	// drawn inside that job's card with its own marks.
+	In map[string]Scene
 	// Machines are the machines its definition names, by the name its jobs
 	// give them.
 	Machines map[string]Machine
@@ -197,7 +200,7 @@ type Decision struct {
 func Draw(def *machine.Definition, run *Run) (Scene, error) {
 	w := &walker{}
 	if run != nil {
-		w.children, w.machines = run.Children, run.Machines
+		w.children, w.machines, w.in = run.Children, run.Machines, run.In
 	}
 	return sceneOf(def, run, w)
 }
@@ -258,14 +261,15 @@ func sceneOf(def *machine.Definition, run *Run, w *walker) (Scene, error) {
 
 // A walker is what a drawing knows of the machines its jobs name. On the
 // Machines page it is a machine's draft, its file and the path of the card
-// it is drawn in. On a run's page it is the machines its definition names
-// and the runs its jobs started.
+// it is drawn in. On a run's page it is the machines its definition names,
+// the runs its jobs started, and the graphs of those drawn inside its cards.
 type walker struct {
 	unfold   Unfold
 	draft    *machine.Draft
 	file     string
 	machines map[string]Machine
 	children map[string]Child
+	in       map[string]Scene
 	path     string
 }
 
@@ -328,6 +332,9 @@ func (w *walker) describe(c *Card, at string, job *machine.JobSpec) {
 		return
 	}
 	w.describeJob(c, at, job)
+	if s, ok := w.in[at]; ok {
+		c.In = &s
+	}
 	if job.Approve {
 		c.Lines = append(c.Lines, "approve: true")
 	}

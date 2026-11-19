@@ -325,18 +325,7 @@ func Test_runs_line_unfolds_to_the_runs_its_root_started(t *testing.T) {
 		t.Errorf("a failed turn ended with %q", failed.Says)
 	}
 
-	// On the page, a click on the line opens its root's page, and the
-	// button at its start unfolds it.
-	lc, viewer, _ := local(t)
-	body := get(t, New(Config{List: &listed{from: viewer}, Lister: viewer, Client: lc.Client, Interval: time.Second, Shell: page.Shell{}}), "/runs")
-	if busy := partOf[section](t, partsOf(t, body), "busy"); len(busy.Lines) != 1 || busy.Lines[0].ID == "" || len(busy.Lines[0].Rows) == 0 {
-		t.Errorf("the page has no line to open and unfold: %+v", busy)
-	}
-	for _, want := range []string{`onClick=${e => go(href())(e)}`, `<button class="unfold" type="button"`} {
-		if !strings.Contains(string(script), want) {
-			t.Errorf("a line's script does not have %s", want)
-		}
-	}
+	// On the page, the line's button unfolds it: see list_test.js.
 }
 
 func Test_runs_own_runs_wait_by_name(t *testing.T) {
@@ -885,8 +874,8 @@ func Test_runs_other_clients_run_shows_no_record(t *testing.T) {
 	if _, ok := parts["steps"]; ok || partOf[map[string]any](t, parts, "page")["Mine"] != false {
 		t.Errorf("another client's run shows its Steps")
 	}
-	if s := partOf[shown](t, parts, "shown"); s.Row != nil || s.Drawing != nil || len(s.Lines) != 0 {
-		t.Errorf("another client's run shows its record: %+v", s)
+	if s, ok := parts["shown"]; ok {
+		t.Errorf("another client's run shows its record: %s", s)
 	}
 	waits := partOf[waitsPart](t, parts, "waits")
 	if slices.ContainsFunc(waits.Waits, func(w wait) bool { return w.Value != "" }) {
@@ -1366,11 +1355,7 @@ func Test_runs_follow_returns_to_the_newest_row(t *testing.T) {
 			t.Errorf("a %s run's Steps are sent as %+v", c.status, parts)
 		}
 	}
-	for _, want := range []string{"!s().Ended && picked()", ">Follow</button>", "setPicked(null)"} {
-		if !strings.Contains(string(script), want) {
-			t.Errorf("the script does not have %s", want)
-		}
-	}
+	// On the page, Follow selects the newest row: see run_test.js.
 }
 
 func Test_runs_a_run_links_to_its_machine(t *testing.T) {

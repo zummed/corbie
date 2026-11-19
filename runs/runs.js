@@ -1,7 +1,7 @@
 // The Runs page and a run's page, drawn from their parts. A line stays
 // unfolded as the store changes, a line or a row opens its run, the button
 // at a line's start unfolds it, and a panel shows one tab at a time.
-import { createEffect, createMemo, createSignal, createStore, onSettled } from "solid-js";
+import { createEffect, createMemo, createSignal, createStore, isPending, onFlush, Errored } from "solid-js";
 import { html, parts, mount, lit, bump, Icon, Status, Act, Handle, tabs, plural, word } from "ui";
 import { Drawing } from "drawing";
 
@@ -224,8 +224,17 @@ const open = (key, first) => folds[key] ?? first;
 
 // The state of Steps, made by the run's page.
 let nodes, byKey, visible, newest, selected, shown;
+// picked is the row the person chose, by its key on the page; none while
+// the selection follows the newest row.
 const [picked, setPicked] = createSignal(null);
+// asking is the address of the drawing and details of the row the person
+// chose, which the page asks the UI for; none while it follows the newest
+// row, whose drawing and details the UI sends.
+const [asking, setAsking] = createSignal(null);
 const [details, setDetails] = createSignal(false);
+// answers holds what the UI answered for each row asked for: a row's
+// drawing and details as of its step never change.
+const answers = new Map();
 
 // shownOf gives the node that shows a node: itself, or the head of the
 // outermost folded group it is in.
@@ -233,11 +242,36 @@ function shownOf(node) {
   const folded = node?.groups.find(g => !g.open);
   return folded ? byKey().get(folded.head) : node;
 }
-// pick selects a row the person chose, opening the groups it is in.
+// pick selects a row the person chose, opening the groups it is in, and
+// asks for its drawing. The selection lands at once, apart from the
+// drawing, which lands when the UI answers.
 function pick(node) {
   if (!node) return;
-  setFolds(s => { for (const g of node.groups) s[g.key] = true; });
-  setPicked(node.key);
+  onFlush(() => {
+    setFolds(s => { for (const g of node.groups) s[g.key] = true; });
+    setPicked(node.key);
+  });
+  setAsking(`/run/${node.row.Run.ID}/at?row=${encodeURIComponent(node.row.Key)}&page=${encodeURIComponent(run().ID)}`);
+}
+
+// follow selects the newest row, and goes on selecting each new row.
+function follow() {
+  setPicked(null);
+  setAsking(null);
+}
+
+// answer asks the UI for a row's drawing and details, once each.
+function answer(href) {
+  if (answers.has(href)) return answers.get(href);
+  return fetch(href)
+    .then(async res => {
+      if (!res.ok) throw new Error((await res.text()).trim() || res.statusText);
+      return res.json();
+    })
+    .then(v => {
+      answers.set(href, v);
+      return v;
+    });
 }
 function fold(g, to) {
   setFolds(s => { s[g.key] = to; });
@@ -289,27 +323,10 @@ function followSteps() {
     }
   );
 
-  // shown is the drawing and the details of the selected row's run as of the
-  // row's step, which the page asks the UI for when the selection moves.
-  const [current, setShown] = createSignal(() => parts.shown);
-  shown = current;
-  // The page asks for the selected row where it is not the row shown.
-  createEffect(
-    () => {
-      const node = selected(), row = shown()?.Row;
-      if (!node || (row && row.Key === node.row.Key && row.Run.ID === node.row.Run.ID)) return "";
-      return `/run/${node.row.Run.ID}/at?row=${encodeURIComponent(node.row.Key)}&page=${encodeURIComponent(run().ID)}`;
-    },
-    href => {
-      if (!href) return;
-      const ask = new AbortController();
-      fetch(href, { signal: ask.signal })
-        .then(res => (res.ok ? res.json() : null))
-        .then(s => s && setShown(s))
-        .catch(err => { if (err.name !== "AbortError") console.error(err); });
-      return () => ask.abort();
-    }
-  );
+  // shown is the drawing and the details of the row the person chose, as
+  // the UI answers for it, or of the newest row, as the UI sends it. While
+  // an answer is on its way, the drawing before it stays.
+  shown = createMemo(() => (asking() ? answer(asking()) : parts.shown));
 }
 
 
@@ -323,9 +340,10 @@ function StepRow(props) {
   }}>
     <span class="t" title=${() => r().Exact}>${() => r().Time}</span><span class="link"></span>
     <span class="who" title=${() => r().Run.Tip}>${() => (n().group ? html`<button class="fold" type="button" aria-label=${() => "fold or open " + n().group.run.Machine} onClick=${() => {
-      fold(n().group, !n().group.open);
-      const s = byKey().get(picked());
-      if (s && shownOf(s) !== s) setPicked(shownOf(s).key);
+      const g = n().group, sel = byKey().get(picked());
+      fold(g, !g.open);
+      // Folding the group the chosen row is in chooses the group's head.
+      if (g.open && sel?.groups.some(o => o.key === g.key)) pick(byKey().get(g.head));
     }}></button>` : html`<span class="fold"></span>`)}<Show when=${() => r().Run.Type}><${Icon} type=${() => r().Run.Type} /></Show><span>${() => r().Run.Machine}</span></span>
     <span class="what" title=${() => said(r())}><${Words} words=${() => r().What} />${() => (r().Group ? html`<span class="sum">${r().Group.Run.Title ? html` · <span class="name">${r().Group.Run.Title}</span>` : ""} · <span class=${["st", r().Group.Status]}>${r().Group.Status}${r().Group.Failure ? ` (${r().Group.Failure})` : ""}</span> · ${plural(r().Group.Steps, "step")}${r().Group.Took ? " · " + r().Group.Took : ""}</span>` : "")}${() => (r().Trace ? html`<span class="sum">${r().Trace.Run.Title && r().Trace.Run.Title !== r().Trace.Run.Machine ? html` · <span class="name">${r().Trace.Run.Title}</span>` : ""}${r().Trace.Status ? html` · <span class=${["st", r().Trace.Status]}>${r().Trace.Status}${r().Trace.Failure ? ` (${r().Trace.Failure})` : ""}</span>` : ""}${r().Trace.Took ? " · " + r().Trace.Took : ""}</span>` : "")}</span>
   </div>`;
@@ -350,7 +368,7 @@ function Steps() {
   return html`<div class="steps" id="steps">
     <div class="head"><h2>Steps</h2><span class="facts" ref=${bump(() => s().Count)}>${() => s().Count}</span>
       <span class="legend"><span class="statechart"><i></i>statechart</span><span class="flow"><i></i>flow</span><span class="agent"><i></i>agent</span></span>
-      <span class="acts"><Show when=${() => !s().Ended && picked()}><button class="btn sm" type="button" title="select the newest row, and go on selecting each new row" onClick=${() => setPicked(null)}>Follow</button></Show><button class="btn sm" type="button" onClick=${() => all(true)}>Open all</button><button class="btn sm" type="button" onClick=${() => all(false)}>Fold all</button></span>
+      <span class="acts"><Show when=${() => !s().Ended && picked()}><button class="btn sm" type="button" title="select the newest row, and go on selecting each new row" onClick=${follow}>Follow</button></Show><button class="btn sm" type="button" onClick=${() => all(true)}>Open all</button><button class="btn sm" type="button" onClick=${() => all(false)}>Fold all</button></span>
     </div>
     <ol class=${() => ["steplist", { dated: s().Dated }]} tabindex="0"><${Rows} nodes=${top} /><Show when=${() => !s().Rows.length}><li class="dim none">nothing yet</li></Show></ol>
   </div>`;
@@ -359,7 +377,7 @@ function Steps() {
 function all(to) {
   const sel = selected();
   setFolds(s => { for (const n of nodes()) if (n.group) s[n.group.key] = to; });
-  if (!to && sel?.groups.length) setPicked(sel.groups[0].head);
+  if (!to && sel?.groups.length) pick(byKey().get(sel.groups[0].head));
 }
 
 // The keyboard moves the selection through the rows shown, folds and opens
@@ -378,7 +396,7 @@ document.addEventListener("keydown", e => {
     case "ArrowUp": pick(rows[at - 1]); break;
     case "ArrowLeft":
       if (node.group?.open) fold(node.group, false);
-      else if (inside) { fold(inside, false); setPicked(inside.head); }
+      else if (inside) { fold(inside, false); pick(byKey().get(inside.head)); }
       break;
     case "ArrowRight": if (node.group) fold(node.group, true); break;
     case "Enter": setDetails(true); break;
@@ -404,22 +422,17 @@ function Path() {
 
 // View is the drawing of the selected row's run as of its step. It scrolls
 // to the first card marked as going, held or failed.
+// View is the drawing of the page's run with the cards down to the
+// selected row's run unfolded, as of the row's step. The drawing moves its
+// own view to what the step marks. While the UI's answer for a row is on its
+// way, the drawing before it stays, dimmed.
 function View() {
-  let drawn;
-  createEffect(
-    () => shown()?.Drawing,
-    () => {
-      const card = drawn?.querySelector("g.now:not(.holder), g.held, g.failed:not(.holder)");
-      if (!card) return;
-      const a = drawn.getBoundingClientRect(), b = card.getBoundingClientRect();
-      drawn.scrollTop += b.top - a.top - 24;
-      drawn.scrollLeft += b.left - a.left - 24;
-    }
-  );
   const v = () => shown();
-  return html`<section class="panel asof" id="view">
-    <Show when=${() => v()?.Row}>${row => html`<div class="head"><${Icon} type=${() => v().Type} /><span>${() => row().Run.Machine}</span><span class="dim">${() => v().Type}</span><${Defined} at=${() => v().Defined} /><span class="facts">as of step ${() => row().Step}, ${() => v().Time}</span></div>`}</Show>
-    <div class="drawn" ref=${el => { drawn = el; }}><Show when=${() => v()?.Drawing} fallback=${() => html`<p class="dim">${() => (v()?.Row ? "no drawing" : "a run in another client's tree: only its status can be read")}</p>`}><${Drawing} scene=${() => v().Drawing} /></Show></div>
+  return html`<section class=${() => ["panel", "asof", { pending: isPending(() => shown()) }]} id="view">
+    <${Errored} fallback=${err => html`<p class="dim">${() => String(err())}</p>`}>
+      <Show when=${() => v()?.Row}>${row => html`<div class="head"><${Icon} type=${() => v().Type} /><span>${() => row().Run.Machine}</span><span class="dim">${() => v().Type}</span><${Defined} at=${() => v().Defined} /><span class="facts">as of step ${() => row().Step}, ${() => v().Time}</span></div>`}</Show>
+      <div class="drawn"><Show when=${() => v()?.Drawing} fallback=${() => html`<p class="dim">${() => (v()?.Row ? "no drawing" : "a run in another client's tree: only its status can be read")}</p>`}><${Drawing} scene=${() => v().Drawing} /></Show></div>
+    <//>
   </section>`;
 }
 
@@ -435,7 +448,7 @@ function Details() {
     <div class="pane" hidden=${() => detailTab() !== "what"}><dl class="kv"><For each=${() => row().Facts} fallback=${() => html`<dt></dt><dd class="dim">${() => said(row())}</dd>`}>${f => html`<dt>${() => f.Name}</dt><dd><Show when=${() => f.Run} fallback=${() => f.Text}><a href=${() => "/run/" + f.Run.ID} title=${() => f.Run.Tip}><Show when=${() => f.Run.Type}><${Icon} type=${() => f.Run.Type} /></Show>${() => f.Run.Machine}</a>${" "}<span class="dim">${() => f.Text}</span></Show></dd>`}</For></dl></div>
     <div class="pane" hidden=${() => detailTab() !== "input"}><Show when=${() => v().Input} fallback=${() => html`<p class="dim">nothing went in</p>`}><pre class="json">${() => v().Input}</pre></Show></div>
     <div class="pane" hidden=${() => detailTab() !== "output"}><Show when=${() => v().Output} fallback=${() => html`<p class="dim">nothing came out</p>`}><pre class="json">${() => v().Output}</pre></Show></div>
-    <div class="pane" hidden=${() => detailTab() !== "lines"}><ol class="record"><For each=${() => v().Lines}>${l => html`<li><span class="t">${() => l.Time}</span><span class="i" title=${() => l.Machine}>${() => l.Machine}</span><span class="n">${() => l.Step || ""}</span><span class=${() => ["w", { end: !!l.End }, l.End]}>${() => (l.Way === "in" ? html`<b>&lt;-</b> ` : l.Way === "out" ? html`<b>-&gt;</b> ` : "")}${() => l.Text}</span></li>`}</For></ol></div>
+    <div class="pane" hidden=${() => detailTab() !== "lines"}><ol class="record"><For each=${() => v().Lines}>${l => html`<li><span class="t">${() => l.Time}</span><span class="i" title=${() => l.Machine}>${() => l.Machine}</span><span class="n">${() => l.Step || ""}</span><span class=${() => ["w", { end: !!l.End }, l.End]}>${() => (l.Way === "in" ? html`<b>&lt;-</b>${" "}` : l.Way === "out" ? html`<b>-&gt;</b>${" "}` : "")}${() => l.Text}</span></li>`}</For></ol></div>
   `}</Show></section>`;
 }
 

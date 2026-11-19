@@ -159,10 +159,8 @@ func (h *handler) runPage(w http.ResponseWriter, r *http.Request) {
 		h.Client.Record(r.Context(), id, func(e client.Entry) { entries = append(entries, e) })
 	}
 	v, err := h.runOf(r.Context(), id, entries, &reading{})
-	if err == nil && v.Mine {
-		if last := newest(v.Rows); last != nil {
-			v.Shown, err = h.shownAt(r.Context(), id, last, entries, h.byID(r.Context()), v.Run.Started)
-		}
+	if err == nil {
+		err = h.newestShown(r.Context(), &v, entries)
 	}
 	if err != nil {
 		status := http.StatusInternalServerError
@@ -174,9 +172,19 @@ func (h *handler) runPage(w http.ResponseWriter, r *http.Request) {
 	}
 	s := h.Shell
 	s.Title, s.Current, s.Stream, s.Script = v.Name, "Runs", "/run/"+id+"/stream", "/runs/script.js"
-	parts := runParts(v)
-	parts.Shown = &v.Shown
-	page.Write(w, s, parts)
+	page.Write(w, s, runParts(v))
+}
+
+// newestShown gives a run in a tree of the UI's client the drawing and the
+// details of its newest row, which a page following the newest row shows.
+func (h *handler) newestShown(ctx context.Context, v *runView, entries []client.Entry) error {
+	last := newest(v.Rows)
+	if !v.Mine || last == nil {
+		return nil
+	}
+	s, err := h.shownAt(ctx, v.Run.ID, last, entries, h.byID(ctx), v.Run.Started)
+	v.Shown = &s
+	return err
 }
 
 // runStream follows a run: its status from the list, and, for a run in a
@@ -195,7 +203,11 @@ func (h *handler) runStream(w http.ResponseWriter, r *http.Request) {
 	changed := func() <-chan struct{} { return either(ctx, h.List.Changed(), rec.Changed()) }
 	read := &reading{}
 	page.Stream(w, r, h.Interval, changed, func(ctx context.Context) (any, error) {
-		v, err := h.runOf(ctx, id, rec.all(), read)
+		entries := rec.all()
+		v, err := h.runOf(ctx, id, entries, read)
+		if err == nil {
+			err = h.newestShown(ctx, &v, entries)
+		}
 		if err != nil {
 			return nil, err
 		}
@@ -204,8 +216,7 @@ func (h *handler) runStream(w http.ResponseWriter, r *http.Request) {
 }
 
 // at answers a run's page with its drawing and details as of one row of
-// Steps, the row named by its key, from the record of the row's run, as
-// JSON.
+// Steps, the row named by its key, of the run in the address, as JSON.
 func (h *handler) at(w http.ResponseWriter, r *http.Request) {
 	id, err := idOf(r)
 	if err != nil || !h.mine(id) {
@@ -213,14 +224,20 @@ func (h *handler) at(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	ctx := r.Context()
+	at, byID, of := time.Now(), h.byID(r.Context()), r.URL.Query().Get("page")
+	// The record read is the page's run's where it started the row's run,
+	// for the drawing holds the runs between them.
+	from := id
+	if len(chainDown(of, id, byID)) > 1 && h.mine(of) {
+		from = of
+	}
 	var entries []client.Entry
-	if _, err := h.Client.Record(ctx, id, func(e client.Entry) { entries = append(entries, e) }); err != nil {
+	if _, err := h.Client.Record(ctx, from, func(e client.Entry) { entries = append(entries, e) }); err != nil {
 		page.Error(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 	// A row's time has its date where it is not on the date the page's run
 	// started.
-	at, byID, of := time.Now(), h.byID(r.Context()), r.URL.Query().Get("page")
 	var day time.Time
 	if p := cmp.Or(byID[of], byID[id]); p != nil {
 		day = p.Started

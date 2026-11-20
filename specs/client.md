@@ -47,6 +47,7 @@ corbie controller …                     enrol and remove runners and clients, 
 corbie runner …                         print a card, trust a controller
 corbie client …                         print a card, trust a controller, manage secrets and values in this client's trees
 
+corbie add <pack>                       write a pack of ready-made machines into a project
 corbie ui                               serve the UI to a browser, until stopped
 
 corbie manual [page]                    print a page of the manual, or list the pages
@@ -70,6 +71,7 @@ The commands form a tree. A word at the top is a command, or begins several comm
   client       card, trust, remove, secret, value
   manual       print a page of the manual, or list the pages; web
   mcp          serve the manual and the commands to a model, as an MCP server
+  add          write a pack of ready-made machines into a project
   version      print the version, the machine types and the plugins
   ui           serve the UI to a browser until stopped
 

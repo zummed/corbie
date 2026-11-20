@@ -199,6 +199,7 @@ agent or decision, and each of its jobs is a script, a machine, or a send.
   client       card, trust, remove, secret, value
   manual       print a page of the manual, or list the pages; web
   mcp          serve the manual and the commands to a model, as an MCP server
+  add          write a pack of ready-made machines into a project
   version      print the version, the machine types and the plugins
 `
 

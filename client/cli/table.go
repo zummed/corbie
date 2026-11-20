@@ -508,6 +508,37 @@ told the program's page named after it.
   corbie mcp --allow test --allow "run submit" --allow "run show"
 
   corbie manual first-machine   adding the server to an assistant`},
+		{Name: "add", Usage: "[<pack>[@<ref>]]… [--set WORD=<name>]… [--in <directory>]", Summary: "write a pack of ready-made machines into a project", Run: cmdAdd, Help: `
+A pack is a directory of ready-made machines, in a git repository or on this
+computer.
+
+  github.com/owner/repository/slack          the directory slack of a repository
+  github.com/owner/repository/slack@v0.4.0   at a tag, a branch or a commit
+  host/a/b/c.git/slack                       a repository whose address has
+                                             more than three parts
+  ./packs/slack                              a directory on this computer
+
+1. It fetches the repository with git, at the ref, or at its default branch.
+2. It rewrites .packs/<pack>/ in the project with the pack's files, and the
+   same for each pack beside it that those files name as .packs/<name>/.
+3. It writes each file of the pack's starter/ directory at the same path in
+   the project, where no file is there.
+4. It adds .packs/ to the project's .corbieignore when it lacks it.
+
+It changes no other file, and no file of yours. It names each starting file
+that is there and is not as the pack starts it.
+
+  --set WORD=<name>   writes <name> in place of WORD in each starting file's
+                      path and text, as --set BOT=grouse
+  --in <directory>    the project; default the directory it was started in
+
+With no pack named it adds each pack the project holds again, from where it
+came and with the words it was added with. A pack added from a branch is
+read at the branch's newest commit.
+
+It reads no config and no store. A pack's scripts run with the permissions
+its machines give them and the secrets set at their locations: read a pack
+before a run of it.`},
 		{Name: "version", Usage: "", Summary: "print the version, the machine types and the plugins", Run: cmdVersion},
 	}
 }

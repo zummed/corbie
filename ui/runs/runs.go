@@ -15,11 +15,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/zummed/corbie-ui/page"
 	"github.com/zummed/corbie/blob"
 	"github.com/zummed/corbie/client"
 	"github.com/zummed/corbie/instance"
 	"github.com/zummed/corbie/store"
+	"github.com/zummed/corbie/ui/page"
 )
 
 // A List is every run whose status the UI may read, as last read, and a

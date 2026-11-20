@@ -94,13 +94,25 @@ func boolean(f *flag.Flag) bool {
 }
 
 // name says whether a word on corbie start's line is a name: a role's, or a
-// program's on PATH.
+// program's.
 func name(word string) bool {
 	if slices.Contains(roles, word) {
 		return true
 	}
-	_, err := exec.LookPath("corbie-" + word)
+	_, _, err := programOf(word)
 	return err == nil
+}
+
+// programOf finds the program corbie start runs under a name: this binary
+// with the name as its first word, for a command that runs beside the
+// roles, or else corbie-<name> on PATH.
+func programOf(word string) (path string, args []string, err error) {
+	if cmd, rest := own().find([]string{word}); cmd != nil && len(rest) == 0 && cmd.Beside {
+		path, err = os.Executable()
+		return path, []string{word}, err
+	}
+	path, err = exec.LookPath("corbie-" + word)
+	return path, nil, err
 }
 
 // A setting is what a role is given by the flags written after it.
@@ -202,7 +214,7 @@ func cmdStart(e *Env, args []string) error {
 	}
 	// Every mistake on the line, and a program on a serverless host, is
 	// found before anything starts.
-	sets, paths := make([]setting, len(named)), make([]string, len(named))
+	sets, found := make([]setting, len(named)), make([]program, len(named))
 	for i, it := range named {
 		if slices.ContainsFunc(named[:i], func(o item) bool { return o.name == it.name }) {
 			return Mistake("%q is named twice", it.name)
@@ -213,12 +225,14 @@ func cmdStart(e *Env, args []string) error {
 			}
 			continue
 		}
-		if paths[i], err = exec.LookPath("corbie-" + it.name); err != nil {
+		path, first, err := programOf(it.name)
+		if err != nil {
 			return Mistake("%q is not a role, and no program corbie-%s is on PATH: the roles are controller, runner, gateway and store", it.name, it.name)
 		}
 		if role.Serverless() {
 			return fmt.Errorf("a program needs a process that stays up, and this is a serverless host")
 		}
+		found[i] = program{name: it.name, path: path, args: append(first, it.words...)}
 	}
 	// On a serverless host the roles use a copy of the config that is
 	// theirs alone.
@@ -310,7 +324,7 @@ func cmdStart(e *Env, args []string) error {
 			}
 			defer stop()
 		default:
-			programs = append(programs, program{name: name, path: paths[i], args: it.words})
+			programs = append(programs, found[i])
 		}
 	}
 	report := func(name string, err error) { e.Say("%s: %s", name, e.clean(err.Error())) }

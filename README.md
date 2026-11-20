@@ -86,6 +86,12 @@ Corbie needs no server and no database. The same machine runs on one computer, o
 
 <br>
 
+## Watch it in a browser
+
+`corbie ui` shows every run, draws each machine, and lists the toolkits. It is in the same file.
+
+<br>
+
 ## Getting Corbie
 
 Corbie is one file.

@@ -47,13 +47,15 @@ corbie controller …                     enrol and remove runners and clients, 
 corbie runner …                         print a card, trust a controller
 corbie client …                         print a card, trust a controller, manage secrets and values in this client's trees
 
+corbie ui                               serve the UI to a browser, until stopped
+
 corbie manual [page]                    print a page of the manual, or list the pages
 corbie manual web                       serve the pages to a browser on this computer, until stopped
 corbie mcp                              serve the manual and the commands to a model, as an MCP server
 corbie version                          print the version, the machine types and the plugins
 ```
 
-The commands form a tree. A word at the top is a command, or begins several commands, as `run` begins the seven that act on runs. `corbie help` prints the top, each word with its summary or the words that follow it, then the names of the programs on PATH. With `corbie-ui` and `corbie-rook` on PATH it prints:
+The commands form a tree. A word at the top is a command, or begins several commands, as `run` begins the seven that act on runs. `corbie help` prints the top, each word with its summary or the words that follow it, then the names of the programs on PATH. With `corbie-console` on PATH it prints:
 
 ```
   init         create a controller, a runner and a client on this computer
@@ -69,8 +71,9 @@ The commands form a tree. A word at the top is a command, or begins several comm
   manual       print a page of the manual, or list the pages; web
   mcp          serve the manual and the commands to a model, as an MCP server
   version      print the version, the machine types and the plugins
+  ui           serve the UI to a browser until stopped
 
-Programs on PATH, which corbie <name> runs: rook, ui.
+Programs on PATH, which corbie <name> runs: console.
 ```
 
 - `corbie run` and `corbie run --help` list the commands of `corbie run` in the same rows, and the same holds for `controller`, `controller secret`, `controller value`, `runner`, `client`, `client secret` and `client value`.
@@ -206,12 +209,14 @@ corbie start controller --interval 1s runner --jobs 8 ui --listen 127.0.0.1:8383
 
 A program's word that is itself a role's or a program's name begins the next name. `corbie start runner ui controller` runs the runner, the UI and the controller, and never the UI acting as the controller; that UI is run on its own, as `corbie ui controller`.
 
-`corbie start controller runner ui` starts `corbie-ui` beside the roles, once they are set up.
+`corbie start controller runner console` starts `corbie-console` beside the roles, once they are set up.
 
 - `corbie start` starts the program with the words written after its name and an empty standard input, and what it prints is `corbie start`'s own output, with no prefix.
 - Its environment is this process's, with `CORBIE_CONFIG` and `CORBIE_STORE` set as `--config` and `--store` were given.
 - When the program stops, `corbie start` stops the roles and the other programs, waits for them, and fails naming the program.
 - When `corbie start` is stopped, it interrupts each program and waits for it, for up to ten seconds before killing it.
+
+`ui` is a command of the binary, and `corbie start` takes it as it takes a program's name. It starts `corbie ui` as a process of its own, from this binary, with the words written after `ui`. A binary built with the tag `noui` has no `ui` command.
 - On a serverless host, `corbie start` refuses a program before anything starts.
 
 `corbie test` is an ordinary run: the same roles, in one process, on a store in memory, with ceilings that allow everything. It records the file as a tree of one file and starts it. A singleton is started by that submit, so a flag of a start given with one is a mistake. A keyed file is refused: its runs start when an event is sent to a key. `corbie test <file> --in <dir>` records the directory as `corbie run submit <dir>` does, which starts its singletons, and runs the file at its location there, so its `call:` and `send:` reach the tree's machines. `corbie test <file> --definition` prints the machine as the client writes it out, each value with its file and line, runs nothing, and takes no flag of a start.

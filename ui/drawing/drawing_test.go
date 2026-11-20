@@ -14,9 +14,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/zummed/corbie-ui/page"
-	"github.com/zummed/corbie-ui/page/pagetest"
 	"github.com/zummed/corbie/machine"
+	"github.com/zummed/corbie/ui/page"
+	"github.com/zummed/corbie/ui/page/pagetest"
 
 	_ "github.com/zummed/corbie/machine/agent"
 	_ "github.com/zummed/corbie/machine/flow"

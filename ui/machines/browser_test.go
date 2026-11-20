@@ -7,9 +7,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/zummed/corbie-ui/drawing"
-	"github.com/zummed/corbie-ui/page"
-	"github.com/zummed/corbie-ui/page/pagetest"
+	"github.com/zummed/corbie/ui/drawing"
+	"github.com/zummed/corbie/ui/page"
+	"github.com/zummed/corbie/ui/page/pagetest"
 )
 
 // served gives the UI as serve mounts it for the pages of a directory: the

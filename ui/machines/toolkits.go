@@ -11,10 +11,10 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/zummed/corbie-ui/drawing"
-	"github.com/zummed/corbie-ui/page"
 	"github.com/zummed/corbie/machine"
 	"github.com/zummed/corbie/machine/agent"
+	"github.com/zummed/corbie/ui/drawing"
+	"github.com/zummed/corbie/ui/page"
 )
 
 // A toolkit is a group of tools under an agent's `toolkits:`, as the

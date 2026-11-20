@@ -2,13 +2,14 @@
 
 Corbie runs machines (flows, statecharts, and the two that call an AI model: agents and decisions) whose work is done by JavaScript jobs on runners. Every party reads and writes one store directly, and nothing important is held in memory.
 
-It is one Go module, one package per area of the design, and the binary in `cmd/corbie`.
+It is one Go module, one package per area of the design, and the binary in `cmd/corbie`. The UI, `corbie ui`, is the packages under `ui/`.
 
 ## Where to start
 
 - `specs/README.md`: the whole system in a page, with one drawing, and the map of areas.
 - `specs/<area>.md`: the overview of an area, in prose. These are the authority, and what the author reads.
 - `specs/rules/<area>.md`: the requirements (`R-…`) and constraints (`C-…`) behind an overview. Code is built and tested against these.
+- `specs/ui/`: the UI's overviews and rules, laid out the same way. Its code is `ui/<area>`.
 - `parity/machines/`: machines alone and inside one another, as cases, each with how its run should end. A rule names the case that is its check.
 
 ## What the code is for
@@ -98,7 +99,9 @@ A page of the manual:
 ## Working on the code
 
 - Run Go through mise, which pins the version: `mise exec -- go …`. `mise run check` vets and tests.
-- Pure Go, no cgo. Tests need no network, no container, no key and no model.
+- Pure Go, no cgo. Tests need no network, no container, no key and no model. The tests of what a page of the UI draws run in Chrome or Chromium, which they find by its usual name or at `$CHROME`.
+- What a browser is given is embedded in the binary, Solid included. No npm, no bundler and no build step. `mise run solid` replaces Solid's files with a release's, and is the one task that needs npm.
+- `mise run build-noui` builds the binary without the UI.
 - One package per area, named as the area is. An area uses another only as its rules' `Interfaces` section says.
 - Each constraint names its test. Write the test under that name.
 - No references to the specs in code comments. The link between a rule and the code is the commit message.

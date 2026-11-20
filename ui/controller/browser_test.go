@@ -8,9 +8,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/zummed/corbie-ui/page"
-	"github.com/zummed/corbie-ui/page/pagetest"
 	"github.com/zummed/corbie/client/cli"
+	"github.com/zummed/corbie/ui/page"
+	"github.com/zummed/corbie/ui/page/pagetest"
 )
 
 // Test_controller_in_the_browser runs controller_test.js on the Controller

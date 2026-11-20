@@ -16,9 +16,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/zummed/corbie-ui/page"
 	"github.com/zummed/corbie/client"
 	"github.com/zummed/corbie/client/cli"
+	"github.com/zummed/corbie/ui/page"
 
 	_ "github.com/zummed/corbie/machine/agent"
 	_ "github.com/zummed/corbie/machine/flow"
@@ -74,11 +74,13 @@ func started(ctx context.Context, config, dir string, args ...string) (*ui, erro
 	return u, nil
 }
 
-// ui0 runs a table of commands as corbie ui, and gives its exit status,
+// ui0 runs a table of one command as corbie ui, and gives its exit status,
 // what it printed and what it said.
 func ui0(commands []cli.Command, args ...string) (int, string, string) {
 	var out, said bytes.Buffer
-	status := cli.Program("ui", commands, args, strings.NewReader(""), &out, &said)
+	only := commands[0]
+	only.Name = ""
+	status := cli.Program("ui", []cli.Command{only}, args, strings.NewReader(""), &out, &said)
 	return status, out.String(), said.String()
 }
 

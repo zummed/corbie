@@ -4,8 +4,8 @@ import (
 	"net/http"
 	"testing"
 
-	"github.com/zummed/corbie-ui/page"
-	"github.com/zummed/corbie-ui/page/pagetest"
+	"github.com/zummed/corbie/ui/page"
+	"github.com/zummed/corbie/ui/page/pagetest"
 )
 
 func Test_page_in_the_browser(t *testing.T) {

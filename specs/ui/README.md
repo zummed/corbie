@@ -1,6 +1,6 @@
-# Corbie UI
+# UI
 
-The UI shows machines and their runs in a browser, and does to runs what Corbie's commands do. It is the program `corbie-ui`, which `corbie ui` runs. It reads a directory of machines and the store through Corbie's packages, acts with Corbie's commands as the parties it is started as, and keeps nothing of its own.
+The UI shows machines and their runs in a browser, and does to runs what Corbie's commands do. It is the command `corbie ui`. It reads a directory of machines and the store through Corbie's packages, acts with Corbie's commands as the parties it is started as, and keeps nothing of its own.
 
 ## What it acts as
 
@@ -27,13 +27,13 @@ Pages read the store through Corbie's packages. The UI reads the list of runs at
 
 A page is drawn in the browser by Solid, from the data of its parts. It shows what changes as it changes: the UI sends each page the data of the parts that changed.
 
-## The program
+## The command
 
-This repository builds the program `corbie-ui`. `corbie ui` runs it from PATH, and `corbie start controller runner ui` starts it beside the roles, with `CORBIE_CONFIG` and `CORBIE_STORE` in its environment as `corbie start` was given `--config` and `--store`.
+`corbie ui` is a command of the binary. `corbie start controller runner ui` starts it beside the roles, as a process of its own, with `CORBIE_CONFIG` and `CORBIE_STORE` in its environment as `corbie start` was given `--config` and `--store`.
 
-The program links Corbie's packages, and carries the machine types and the plugins, as Corbie's does. It carries Solid 2.0 for the browser, with no build step.
+The binary carries what a browser is given: the pages' scripts, the style, the fonts and Solid 2.0. There is no build step, and `go build` needs nothing but Go. A binary built with the tag `noui` leaves the UI out.
 
-Corbie itself is not changed, so the UI repeats what Corbie keeps to itself. Each goes when Corbie gives it out.
+The UI repeats what Corbie's packages keep to themselves. Each goes when the package gives it out.
 
 - Corbie's command line opens a config's parties to read the store.
 - An `include:` names a file from the file that writes it when it begins `./`, and from the top of the tree otherwise.
@@ -45,7 +45,7 @@ Corbie itself is not changed, so the UI repeats what Corbie keeps to itself. Eac
 
 ## Reading these specs
 
-Each area below has an overview here, and the overviews are the authority. Its rules are in `rules/`, under the same headings, and say nothing the overview does not. Each area is one package of the code, and Corbie's own specs are at `../corbie/specs/`.
+Each area below has an overview here, and the overviews are the authority. Its rules are in `rules/`, under the same headings, and say nothing the overview does not. Each area is one package of the code, under `ui/`.
 
 ## Areas
 

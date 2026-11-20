@@ -14,14 +14,14 @@ import (
 	"testing"
 	"time"
 
-	"github.com/zummed/corbie-ui/drawing"
-	"github.com/zummed/corbie-ui/page"
 	"github.com/zummed/corbie/client"
 	"github.com/zummed/corbie/client/cli"
 	corbiectl "github.com/zummed/corbie/controller"
 	"github.com/zummed/corbie/identity"
 	"github.com/zummed/corbie/secret"
 	"github.com/zummed/corbie/store"
+	"github.com/zummed/corbie/ui/drawing"
+	"github.com/zummed/corbie/ui/page"
 
 	_ "github.com/zummed/corbie/machine/agent"
 	_ "github.com/zummed/corbie/machine/flow"

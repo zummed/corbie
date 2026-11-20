@@ -10,13 +10,13 @@ import (
 	"testing"
 	"time"
 
-	"github.com/zummed/corbie-ui/page"
-	"github.com/zummed/corbie-ui/page/pagetest"
 	"github.com/zummed/corbie/client"
 	"github.com/zummed/corbie/identity"
 	"github.com/zummed/corbie/instance"
 	"github.com/zummed/corbie/machine"
 	"github.com/zummed/corbie/permission"
+	"github.com/zummed/corbie/ui/page"
+	"github.com/zummed/corbie/ui/page/pagetest"
 )
 
 // room is a keyed room whose runs the tests send events to. Its job and

@@ -1,4 +1,4 @@
-// Package serve is the program corbie-ui, which corbie ui runs: the parties
+// Package serve is the command corbie ui: the parties
 // it acts as, where it listens, the token every request shows, and the
 // pages each party opens.
 package serve
@@ -14,22 +14,24 @@ import (
 	"strings"
 	"time"
 
-	"github.com/zummed/corbie-ui/controller"
-	"github.com/zummed/corbie-ui/drawing"
-	"github.com/zummed/corbie-ui/machines"
-	"github.com/zummed/corbie-ui/metrics"
-	"github.com/zummed/corbie-ui/page"
-	"github.com/zummed/corbie-ui/runs"
 	"github.com/zummed/corbie/client/cli"
 	"github.com/zummed/corbie/identity"
 	"github.com/zummed/corbie/manual"
 	"github.com/zummed/corbie/role"
+	"github.com/zummed/corbie/ui/controller"
+	"github.com/zummed/corbie/ui/drawing"
+	"github.com/zummed/corbie/ui/machines"
+	"github.com/zummed/corbie/ui/metrics"
+	"github.com/zummed/corbie/ui/page"
+	"github.com/zummed/corbie/ui/runs"
 )
 
-// Commands is corbie ui, in a table of one command, which corbie-ui reads
-// as corbie reads its own.
+// Commands is corbie ui, in a table of one command, which the binary adds
+// to its own. corbie start runs it beside the roles.
 var Commands = []cli.Command{{
-	Name:    "",
+	Name:    "ui",
+	Stays:   true,
+	Beside:  true,
 	Usage:   "[client] [controller] [none] [--listen host:port] [--token-file <file>] [--dir <directory>] [--interval 1s]",
 	Summary: "serve the UI to a browser until stopped",
 	Run:     cmdUI,
@@ -48,9 +50,7 @@ config holds: it shows only the status of every run the store lets it read.
   --interval <time>     how often it reads the store again; default 1s, or
                         10s for a bucket
 
-A UI listens on this computer only, unless none is named.
-
-It takes --config and --store, as every corbie command does: see corbie --help.`,
+A UI listens on this computer only, unless none is named. It prints no JSON.`,
 }}
 
 // options are what the command line gives.

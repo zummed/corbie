@@ -9,12 +9,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/zummed/corbie-ui/drawing"
-	"github.com/zummed/corbie-ui/page"
-	"github.com/zummed/corbie-ui/page/pagetest"
 	"github.com/zummed/corbie/blob"
 	"github.com/zummed/corbie/client"
 	"github.com/zummed/corbie/machine"
+	"github.com/zummed/corbie/ui/drawing"
+	"github.com/zummed/corbie/ui/page"
+	"github.com/zummed/corbie/ui/page/pagetest"
 	// The denied machine's job calls the fs plugin, which the corbie
 	// program carries among its bundled plugins.
 	_ "github.com/zummed/corbie/plugin/fs"

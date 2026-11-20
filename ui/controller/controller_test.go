@@ -17,13 +17,13 @@ import (
 	"testing"
 	"time"
 
-	"github.com/zummed/corbie-ui/page"
 	"github.com/zummed/corbie/client"
 	"github.com/zummed/corbie/client/cli"
 	corbiectl "github.com/zummed/corbie/controller"
 	"github.com/zummed/corbie/identity"
 	_ "github.com/zummed/corbie/machine/statechart"
 	"github.com/zummed/corbie/store"
+	"github.com/zummed/corbie/ui/page"
 )
 
 func corbie(t *testing.T, stdin string, args ...string) string {

@@ -18,8 +18,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/zummed/corbie-ui/drawing"
-	"github.com/zummed/corbie-ui/page"
 	"github.com/zummed/corbie/client"
 	"github.com/zummed/corbie/client/cli"
 	"github.com/zummed/corbie/identity"
@@ -28,6 +26,8 @@ import (
 	"github.com/zummed/corbie/permission"
 	"github.com/zummed/corbie/runner"
 	"github.com/zummed/corbie/store"
+	"github.com/zummed/corbie/ui/drawing"
+	"github.com/zummed/corbie/ui/page"
 
 	_ "github.com/zummed/corbie/machine/agent"
 	_ "github.com/zummed/corbie/machine/flow"

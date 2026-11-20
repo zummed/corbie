@@ -20,9 +20,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/zummed/corbie-ui/controller"
-	"github.com/zummed/corbie-ui/drawing"
-	"github.com/zummed/corbie-ui/page"
 	"github.com/zummed/corbie/client"
 	"github.com/zummed/corbie/identity"
 	"github.com/zummed/corbie/instance"
@@ -30,6 +27,9 @@ import (
 	"github.com/zummed/corbie/machine/agent"
 	"github.com/zummed/corbie/secret"
 	"github.com/zummed/corbie/store"
+	"github.com/zummed/corbie/ui/controller"
+	"github.com/zummed/corbie/ui/drawing"
+	"github.com/zummed/corbie/ui/page"
 )
 
 // Config is what the Machines page is given: the directory of machines, the

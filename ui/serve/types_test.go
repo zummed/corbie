@@ -12,10 +12,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/zummed/corbie-ui/controller"
-	"github.com/zummed/corbie-ui/machines"
-	"github.com/zummed/corbie-ui/page"
-	"github.com/zummed/corbie-ui/runs"
+	"github.com/zummed/corbie/ui/controller"
+	"github.com/zummed/corbie/ui/machines"
+	"github.com/zummed/corbie/ui/page"
+	"github.com/zummed/corbie/ui/runs"
 )
 
 // The types of what a page is sent are written for editors as TypeScript

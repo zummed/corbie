@@ -15,12 +15,12 @@ import (
 	"sync"
 	"time"
 
-	"github.com/zummed/corbie-ui/page"
 	"github.com/zummed/corbie/client"
 	"github.com/zummed/corbie/identity"
 	"github.com/zummed/corbie/instance"
 	"github.com/zummed/corbie/machine"
 	"github.com/zummed/corbie/store"
+	"github.com/zummed/corbie/ui/page"
 )
 
 // A narrowing is what the address of the Runs page holds: the location

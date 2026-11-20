@@ -8,11 +8,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/zummed/corbie-ui/drawing"
-	"github.com/zummed/corbie-ui/page"
-	"github.com/zummed/corbie-ui/page/pagetest"
 	"github.com/zummed/corbie/client"
 	"github.com/zummed/corbie/machine"
+	"github.com/zummed/corbie/ui/drawing"
+	"github.com/zummed/corbie/ui/page"
+	"github.com/zummed/corbie/ui/page/pagetest"
 )
 
 // The tests of what the Runs pages draw run in Chrome, on the pages the

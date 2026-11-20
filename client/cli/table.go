@@ -91,6 +91,7 @@ what corbie init set up.
                client
   store        a server that gives other computers this computer's store
                directory, set up by corbie init store
+  ui           the UI, started as corbie ui, as a program is
   <name>       the program corbie-<name> on PATH, started with CORBIE_CONFIG
                and CORBIE_STORE in its environment as this command was given
                them; when it stops, everything stops

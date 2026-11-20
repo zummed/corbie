@@ -8,6 +8,36 @@ CGO_ENABLED = "0"
 description = "Build the corbie binary"
 run = "go build -o build/corbie ./cmd/corbie"
 
+[tasks.build-noui]
+description = "Build the corbie binary without the UI"
+run = "go build -tags noui -o build/corbie ./cmd/corbie"
+
+[tasks.solid]
+description = "Replace Solid's files under ui/page with a release's, copied unchanged from npm; SOLID and SOLID_HTML are the versions"
+run = """
+set -e
+solid=${SOLID:-2.0.3} html=${SOLID_HTML:-2.0.1}
+tmp=$(mktemp -d)
+trap 'rm -r "$tmp"' EXIT
+for p in solid-js@$solid @solidjs/signals@$solid @solidjs/web@$solid @solidjs/html@$html; do
+  mkdir -p "$tmp/${p%@*}"
+  npm pack "$p" --silent --pack-destination "$tmp/${p%@*}" >/dev/null
+  tar -xzf "$tmp/${p%@*}"/*.tgz -C "$tmp/${p%@*}"
+done
+js=$tmp/solid-js/package/dist signals=$tmp/@solidjs/signals/package/dist
+web=$tmp/@solidjs/web/package/dist tagged=$tmp/@solidjs/html/package/dist
+out=ui/page/assets/solid dev=ui/page/testdata/solid-dev
+rm -r $out/signals $dev/signals
+cp $js/solid.js $js/internal.js $web/web.js $tagged/html.js $out/
+cp -r $signals/prod $out/signals
+cp $js/internal.js $tagged/html.js $dev/
+cp $js/solid.dev.js $dev/solid.js
+cp $web/web.dev.js $dev/web.js
+mkdir $dev/signals
+cp $signals/dev.js $dev/signals/index.js
+cp $signals/dev-shared.js $dev/signals/dev-shared.js
+"""
+
 [tasks.dist]
 description = "Build the corbie binary for every platform a release carries, into build/dist/; VERSION is the version the binaries print"
 run = """

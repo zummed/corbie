@@ -19,11 +19,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/zummed/corbie-ui/page"
 	"github.com/zummed/corbie/client/cli"
 	"github.com/zummed/corbie/identity"
 	"github.com/zummed/corbie/secret"
 	"github.com/zummed/corbie/store"
+	"github.com/zummed/corbie/ui/page"
 )
 
 // Config is what the Controller page is given: the controller, its store,

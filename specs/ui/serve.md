@@ -28,7 +28,7 @@ Acting as no party, it is a viewer, which needs no identity: only the controller
 --interval <time>     how often it reads the store again; default 1s, or 10s for a bucket
 ```
 
-It reads its command line with Corbie's `cli.Program`, so its help, mistakes and exit statuses are Corbie's: `--help` and `-h` print its help, a mistake prints its usage line and ends with status 2, and `--json` is a mistake. It takes `--config` and `--store` as every command does, and prints where it is, with the token when it made one:
+It is a command in Corbie's table, so its help, mistakes and exit statuses are Corbie's: `--help` and `-h` print its help, a mistake prints its usage line and ends with status 2, and `--json` is a mistake. It takes `--config` and `--store` as every command does, and prints where it is, with the token when it made one:
 
 ```
 $ corbie ui

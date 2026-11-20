@@ -10,10 +10,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/zummed/corbie-ui/page"
 	"github.com/zummed/corbie/client"
 	"github.com/zummed/corbie/instance"
 	"github.com/zummed/corbie/machine"
+	"github.com/zummed/corbie/ui/page"
 )
 
 // A line is one line of a run's record, in the words `corbie run show

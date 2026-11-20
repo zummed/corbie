@@ -5,6 +5,14 @@ Each section lists what changed after one release, the newest first.
 compatible before version 1: a file or a command written the old way is
 refused.
 
+After 0.27.0
+------------
+
+These behave differently.
+
+- The UI is part of `corbie`. `corbie ui` and `corbie start controller runner
+  ui` need no program `corbie-ui` on PATH: remove it.
+
 After 0.26.1
 ------------
 

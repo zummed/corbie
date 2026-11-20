@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/zummed/corbie-ui/drawing"
+	"github.com/zummed/corbie/ui/drawing"
 )
 
 // toolkitsProject adds to a project another agent that offers the toolkit, written in

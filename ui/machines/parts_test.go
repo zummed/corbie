@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/zummed/corbie-ui/drawing"
+	"github.com/zummed/corbie/ui/drawing"
 )
 
 // listedPart is the part "files" as the page is given it.

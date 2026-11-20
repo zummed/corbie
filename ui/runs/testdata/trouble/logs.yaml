@@ -1,0 +1,5 @@
+# A flow whose stage logs and reports its progress as it runs.
+flow: logs
+stages:
+  count:
+    job: ./count.js

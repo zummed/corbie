@@ -1,0 +1,19 @@
+# Six states in a row: a chain both ways, jumps along it, and a transition
+# back to the start.
+statechart: wide
+initial: hub
+states:
+  hub:
+    on: { one: s1, two: s2, three: s3, four: s4, five: s5, six: s6 }
+  s1:
+    on: { right: s2, far_right: s4, end: s6 }
+  s2:
+    on: { right: s3, left: s1 }
+  s3:
+    on: { right: s4, left: s2, wrap: s1 }
+  s4:
+    on: { right: s5, left: s3 }
+  s5:
+    on: { right: s6, left: s4, home: hub }
+  s6:
+    on: { left: s5, first: s1 }

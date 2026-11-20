@@ -1,0 +1,13 @@
+{
+  "compilerOptions": {
+    "module": "esnext",
+    "target": "es2022",
+    "moduleResolution": "bundler",
+    "baseUrl": ".",
+    "paths": {
+      "ui": ["page/assets/ui.js"],
+      "drawing": ["drawing/drawing.js"]
+    }
+  },
+  "include": ["page/assets/ui.js", "page/testdata/test.js", "runs/*.js", "machines/*.js", "controller/*.js", "drawing/*.js", "page/*.js", "types.d.ts"]
+}

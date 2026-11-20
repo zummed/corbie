@@ -1,0 +1,5 @@
+# A flow whose stage reads a file with no allow: for it, so Corbie refuses the call.
+flow: denied
+stages:
+  read:
+    job: ./read.js

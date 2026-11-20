@@ -1,0 +1,8 @@
+# A flow whose second stage throws an error.
+flow: fails
+stages:
+  find:
+    job: ./find.js
+  check:
+    job: ./check.js
+    follows: [find]

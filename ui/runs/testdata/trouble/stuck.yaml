@@ -1,0 +1,9 @@
+# A statechart that waits on a ticket nobody answers, with a timeout of its own.
+statechart: stuck
+limits: { timeout: 1h }
+initial: waiting
+states:
+  waiting:
+    ticket: verdict
+    on: { verdict: done }
+  done: { end: done }

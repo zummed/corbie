@@ -1,0 +1,41 @@
+# A holder with four states in a row, reached from one state: transitions
+# to the state beside and further along, both ways, a state to itself, and
+# back to the start.
+statechart: row4
+initial: idle
+states:
+  idle:
+    on: { go: working }
+  working:
+    initial: pick
+    on: { stop: stopped }
+    states:
+      pick:
+        job: { script: ./w.js }
+        on: { to_a: a, to_b: b, to_c: c, to_d: d }
+      a:
+        job: { script: ./w.js }
+        on:
+          next: b
+          skip: c
+          jump: d
+          retry: a
+      b:
+        job: { script: ./w.js }
+        on:
+          next: c
+          back: a
+          far: d
+          again: pick
+      c:
+        on:
+          next: d
+          prev: b
+          tick: c
+          first: a
+      d:
+        on:
+          prev: c
+          home: b
+          reset: pick
+  stopped: { end: done }

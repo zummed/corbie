@@ -1,0 +1,7 @@
+# A statechart that rests until it is sent wake; any other event has no rule.
+statechart: unruled
+initial: resting
+states:
+  resting:
+    on: { wake: awake }
+  awake: { end: done }

@@ -1,0 +1,17 @@
+# Four states as a chain, with transitions back, written in the cards, and
+# two states in one row joined both ways.
+statechart: chain
+initial: a
+states:
+  a:
+    job: { script: ./w.js }
+    on: { done: b, skip: c }
+  b:
+    job: { script: ./w.js }
+    on: { done: c, failed: a, jump: d }
+  c:
+    job: { script: ./w.js }
+    on: { done: d, failed: b }
+  d:
+    on: { done: over, again: a }
+  over: { end: done }

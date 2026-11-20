@@ -1,0 +1,20 @@
+# Two states side by side with several events each way, a condition, and a
+# timer.
+statechart: pair
+initial: start
+states:
+  start:
+    on: { begin: left, other: right }
+  left:
+    timers: { slow: 5m }
+    on:
+      push: right
+      shove: right
+      slow: right
+      maybe:
+        - { go: right, when: "${event.data.ok}" }
+  right:
+    on:
+      pull: left
+      yank: left
+      tug: left

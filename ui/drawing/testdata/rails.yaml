@@ -1,0 +1,16 @@
+# Two states each going to both states of the row below, so two arrows
+# cross.
+statechart: rails
+initial: start
+states:
+  start:
+    on: { x: a, y: b }
+  a:
+    on: { left: c, right: d }
+  b:
+    on: { cross: c, straight: d }
+  c:
+    on: { finish: done }
+  d:
+    on: { finish: done }
+  done: { end: done }

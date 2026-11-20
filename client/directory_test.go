@@ -254,11 +254,11 @@ func TestTreeLocationsAreLeaves(t *testing.T) {
 	if want := []string{"/leaf/boiler problem", "/leaf/boiler/x problem", "/leaf/good started"}; !slices.Equal(what, want) {
 		t.Fatalf("the submit did %v", what)
 	}
-	tree, err := client.ReadTree(house(t, map[string]string{".rook/review.yaml": keptMachine}), "/project")
-	if err != nil || tree.Machines[0].Location != "/project/.rook/review" {
+	tree, err := client.ReadTree(house(t, map[string]string{".work/review.yaml": keptMachine}), "/project")
+	if err != nil || tree.Machines[0].Location != "/project/.work/review" {
 		t.Fatalf("a file under a dot directory: %+v, %v", tree, err)
 	}
-	tree, err = client.ReadTree(house(t, map[string]string{".rook/review.yaml": keptMachine, ".corbieignore": ".rook/\n", "good.yaml": keptMachine}), "/project")
+	tree, err = client.ReadTree(house(t, map[string]string{".work/review.yaml": keptMachine, ".corbieignore": ".work/\n", "good.yaml": keptMachine}), "/project")
 	if err != nil || len(tree.Machines) != 1 || tree.Machines[0].Location != "/project/good" {
 		t.Fatalf("a listed dot directory: %+v, %v", tree, err)
 	}
@@ -446,17 +446,17 @@ func TestBadIgnoreLineFailsTheRead(t *testing.T) {
 // tree, a placed file runs.
 func TestOneLinePlacement(t *testing.T) {
 	dir := house(t, map[string]string{
-		".corbieignore":              ".rook/\n",
-		".rook/slack/chat/post.yaml": "flow: post\nreceive: [bot]\nstages:\n  s: { job: { script: ./post.js, input: \"${input}\" } }\noutput: ${stages.s.output}\n",
-		".rook/slack/chat/post.js":   "return 'posted ' + input.text",
-		"bot/chat/post.yaml":         "include: .rook/slack/chat/post.yaml\n",
-		"ops/chat/post.yaml":         "include: .rook/slack/chat/post.yaml\nreceive: [ops]\n",
+		".corbieignore":               ".packs/\n",
+		".packs/slack/chat/post.yaml": "flow: post\nreceive: [bot]\nstages:\n  s: { job: { script: ./post.js, input: \"${input}\" } }\noutput: ${stages.s.output}\n",
+		".packs/slack/chat/post.js":   "return 'posted ' + input.text",
+		"bot/chat/post.yaml":          "include: .packs/slack/chat/post.yaml\n",
+		"ops/chat/post.yaml":          "include: .packs/slack/chat/post.yaml\nreceive: [ops]\n",
 	})
 	tree, err := client.ReadTree(dir, "/x")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !slices.Equal(tree.Listed, []string{".rook/"}) || len(tree.Machines) != 2 {
+	if !slices.Equal(tree.Listed, []string{".packs/"}) || len(tree.Machines) != 2 {
 		t.Fatalf("read %+v", tree)
 	}
 	for i, want := range []struct{ at, receive string }{{"/x/bot/chat/post", "bot"}, {"/x/ops/chat/post", "ops"}} {
@@ -468,7 +468,7 @@ func TestOneLinePlacement(t *testing.T) {
 		if m.Location != want.at || def.Type != "flow" || def.Name != "post" || !reflect.DeepEqual(def.Receive, map[string][]string{"": {want.receive}}) {
 			t.Fatalf("%s is a %s named %q at %s, receiving %v", m.Path, def.Type, def.Name, m.Location, def.Receive)
 		}
-		if _, ok := def.Scripts["./.rook/slack/chat/post.js"]; !ok {
+		if _, ok := def.Scripts["./.packs/slack/chat/post.js"]; !ok {
 			t.Fatalf("%s names %v", m.Path, def.Scripts)
 		}
 		if got := string(m.Draft.WrittenOut()); !strings.HasPrefix(got, "flow: post") {

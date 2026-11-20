@@ -1137,7 +1137,7 @@ func (e *Env) sendSetting(c *client.Client, send func() (string, error)) (*insta
 	if err != nil {
 		return nil, err
 	}
-	receipt, err := c.WaitReceipt(e.ctx, message, 0, interval)
+	receipt, err := e.receipt(c, message, 0)
 	if err != nil {
 		return nil, err
 	}

@@ -47,13 +47,16 @@ corbie controller …                     enrol and remove runners and clients, 
 corbie runner …                         print a card, trust a controller
 corbie client …                         print a card, trust a controller, manage secrets and values in this client's trees
 
+corbie add <pack>                       write a pack of ready-made machines into a project
+corbie ui                               serve the UI to a browser, until stopped
+
 corbie manual [page]                    print a page of the manual, or list the pages
 corbie manual web                       serve the pages to a browser on this computer, until stopped
 corbie mcp                              serve the manual and the commands to a model, as an MCP server
 corbie version                          print the version, the machine types and the plugins
 ```
 
-The commands form a tree. A word at the top is a command, or begins several commands, as `run` begins the seven that act on runs. `corbie help` prints the top, each word with its summary or the words that follow it, then the names of the programs on PATH. With `corbie-ui` and `corbie-rook` on PATH it prints:
+The commands form a tree. A word at the top is a command, or begins several commands, as `run` begins the seven that act on runs. `corbie help` prints the top, each word with its summary or the words that follow it, then the names of the programs on PATH. With `corbie-console` on PATH it prints:
 
 ```
   init         create a controller, a runner and a client on this computer
@@ -68,9 +71,11 @@ The commands form a tree. A word at the top is a command, or begins several comm
   client       card, trust, remove, secret, value
   manual       print a page of the manual, or list the pages; web
   mcp          serve the manual and the commands to a model, as an MCP server
+  add          write a pack of ready-made machines into a project
   version      print the version, the machine types and the plugins
+  ui           serve the UI to a browser until stopped
 
-Programs on PATH, which corbie <name> runs: rook, ui.
+Programs on PATH, which corbie <name> runs: console.
 ```
 
 - `corbie run` and `corbie run --help` list the commands of `corbie run` in the same rows, and the same holds for `controller`, `controller secret`, `controller value`, `runner`, `client`, `client secret` and `client value`.
@@ -111,6 +116,8 @@ Following from a terminal is one flag, `--watch`. It prints what the command pri
 `run show` prints a run's title, and `run ls` does not, since a listing reads only the heads. For a run another run started, `run show` prints `cause: <id> step <n>`. In `--json`, a listing's row and `run show` give `cause`, and each step of a record gives the cause of each event and the run's `state` (see instance.md). `run show` can also print one step, one job's input and output, or the definition, can save a result's files to a directory, and with `--wait` stays until the run ends and prints its result.
 
 `run start <location>` sends a start; `run start --wait` waits for the run it started and `run start --watch` follows it. The tree's client starts a transient location with no `send:` entry. Another client's start is a call: its ceiling needs `send:` for the location, the file's `receive:` must list `client:<its name>`, and the start takes no labels or `--allow`. Under the ID it printed, it is shown only the call's result: the run's status and its output or error, and the result's files. A cancel of that ID is refused, naming the run the call started and its tree's client, which alone cancels it.
+
+A command that sends a message waits for its receipt, and `run start --wait` and `--watch` for the run to be taken, while a controller may still take the message: for the message's life, five minutes by default or the time given with `--life`, and twice the clock allowance. When neither has come after two seconds the command prints one line to standard error, `waiting up to 15m for a controller to take it`, and when neither comes at all it fails, saying the message was not taken up.
 
 A secret's value is never on the command line. It is read only from the source the command names, and a value not found there is a mistake that sends nothing:
 
@@ -161,32 +168,32 @@ When no program `corbie-<word>` is on PATH, `corbie` names the program it looked
 
 `corbie help` lists the programs `corbie <word>` runs by their names, and starts none of them. A command, the words that begin commands, and a program each print their help with `--help`.
 
-A program written in Go reads its command line with the package's `cli.Program`, from a table of commands as Corbie's own is made. It then reads as one of Corbie's commands: the same `--help`, `--json`, `--config` and `--store`, flags anywhere among its arguments, and the same mistakes, failures and exit statuses. Its help says which of the three flags it takes. The command named `""` is the one run when no other is named. Rook has one command:
+A program written in Go reads its command line with the package's `cli.Program`, from a table of commands as Corbie's own is made. It then reads as one of Corbie's commands: the same `--help`, `--json`, `--config` and `--store`, flags anywhere among its arguments, and the same mistakes, failures and exit statuses. Its help says which of the three flags it takes. The command named `""` is the one run when no other is named. A program `corbie-board` with one command is written:
 
 ```go
-os.Exit(cli.Program("rook", []cli.Command{
-	{Name: "init", Usage: "<directory> [--bot <name> --services <names>]", Summary: "make a directory a project, or bring its ready-made machines up to date", Run: cmdInit},
+os.Exit(cli.Program("board", []cli.Command{
+	{Name: "new", Usage: "<board>", Summary: "make a board", Run: cmdNew},
 }, os.Args[1:], os.Stdin, os.Stdout, os.Stderr))
 ```
 
 ```
-$ corbie rook init
-corbie rook init: name one directory
+$ corbie board new
+corbie board new: name one board
 
-usage: corbie rook init <directory> [--bot <name> --services <names>]
+usage: corbie board new <board>
 ```
 
 The program is given `manual` and `version` beside its own commands, and no `mcp`. `version` prints the program's version and the version of the Corbie it is built with. Its manual is Corbie's, with a page for each of its commands and any pages it adds to the manual. A model runs its commands through `corbie mcp`, as For a model says:
 
 ```
-corbie rook manual                       Corbie's pages, the program's pages and its commands
-corbie rook manual rook-project          a page the program added
-corbie mcp --allow "rook init"           a model may run corbie rook init, and no other
+corbie board manual                       Corbie's pages, the program's pages and its commands
+corbie board manual board-cards           a page the program added
+corbie mcp --allow "board new"            a model may run corbie board new, and no other
 ```
 
 ```
-$ corbie rook version
-corbie-rook 0.7.0
+$ corbie board version
+corbie-board 0.7.0
 corbie 0.15.0
 ```
 
@@ -206,12 +213,14 @@ corbie start controller --interval 1s runner --jobs 8 ui --listen 127.0.0.1:8383
 
 A program's word that is itself a role's or a program's name begins the next name. `corbie start runner ui controller` runs the runner, the UI and the controller, and never the UI acting as the controller; that UI is run on its own, as `corbie ui controller`.
 
-`corbie start controller runner ui` starts `corbie-ui` beside the roles, once they are set up.
+`corbie start controller runner console` starts `corbie-console` beside the roles, once they are set up.
 
 - `corbie start` starts the program with the words written after its name and an empty standard input, and what it prints is `corbie start`'s own output, with no prefix.
 - Its environment is this process's, with `CORBIE_CONFIG` and `CORBIE_STORE` set as `--config` and `--store` were given.
 - When the program stops, `corbie start` stops the roles and the other programs, waits for them, and fails naming the program.
 - When `corbie start` is stopped, it interrupts each program and waits for it, for up to ten seconds before killing it.
+
+`ui` is a command of the binary, and `corbie start` takes it as it takes a program's name. It starts `corbie ui` as a process of its own, from this binary, with the words written after `ui`. A binary built with the tag `noui` has no `ui` command.
 - On a serverless host, `corbie start` refuses a program before anything starts.
 
 `corbie test` is an ordinary run: the same roles, in one process, on a store in memory, with ceilings that allow everything. It records the file as a tree of one file and starts it. A singleton is started by that submit, so a flag of a start given with one is a mistake. A keyed file is refused: its runs start when an event is sent to a key. `corbie test <file> --in <dir>` records the directory as `corbie run submit <dir>` does, which starts its singletons, and runs the file at its location there, so its `call:` and `send:` reach the tree's machines. `corbie test <file> --definition` prints the machine as the client writes it out, each value with its file and line, runs nothing, and takes no flag of a start.
@@ -289,7 +298,7 @@ A tree belongs to the client that first submitted it. Every run keeps the defini
 - A submit at a prefix inside or above another tree is refused, naming that tree. `/` is never a tree.
 - A submit at a tree another client owns is refused, naming the owner.
 - A submit at a prefix that no `at:` entry of the client's ceiling matches is refused.
-- A file under a directory whose name starts with a dot is read as any other: `.rook/review.yaml` submitted at `/project` is at `/project/.rook/review`.
+- A file under a directory whose name starts with a dot is read as any other: `.work/review.yaml` submitted at `/project` is at `/project/.work/review`.
 - A file beside a directory of the same name, as `boiler.yaml` beside `boiler/x.yaml`, is refused with the files below it, because a location has nothing below it. They are reported among the files with problems.
 - A file with a problem is reported, and its location keeps what was recorded before. A problem with one file leaves the rest done. In JSON, `problems` gives each problem's text by location.
 - A file whose approvals have no ask is recorded, since it may run as another machine's child under that machine's ask. A run started at its location is refused.
@@ -314,11 +323,11 @@ It keeps nothing itself. It runs wherever a process can stay up, and is not offe
 
 `corbie mcp` serves two tools to a model: the manual, and the command line. The model may run only the commands it was started with permission for, each named by its whole name, as in `--allow "run submit"`, with the config the server was started on. It needs nothing running and keeps nothing.
 
-A permission may name a program's command, as in `--allow "rook init"`. When the server starts, it runs `corbie rook manual --json` once:
+A permission may name a program's command, as in `--allow "board new"`. When the server starts, it runs `corbie board manual --json` once:
 
 1. The program's pages join the manual, and its commands' pages name its commands.
-2. The model is told the program's page named after it, `rook`, after Corbie's briefing.
-3. The model runs `rook init` with the command tool, as `corbie rook init` runs it, with the server's config and store, and gets back what the program printed.
+2. The model is told the program's page named after it, `board`, after Corbie's briefing.
+3. The model runs `board new` with the command tool, as `corbie board new` runs it, with the server's config and store, and gets back what the program printed.
 
 A model never runs a program the server's line does not name, and `corbie start` never starts a program for a model.
 

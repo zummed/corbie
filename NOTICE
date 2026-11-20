@@ -1,2 +1,12 @@
 Corbie
 Copyright 2026 Paul Young
+
+This product includes the IBM Plex fonts, under the SIL Open Font License 1.1:
+see ui/page/assets/fonts/OFL.txt.
+
+This product includes Solid (solid-js, @solidjs/signals and @solidjs/web
+2.0.3, and @solidjs/html 2.0.1), Copyright Ryan Carniato, under the MIT
+License: see ui/page/assets/solid/LICENSE. Its production builds are in
+ui/page/assets/solid, and the development builds the tests run in
+ui/page/testdata/solid-dev, each copied unchanged from the packages' dist
+directories. mise run solid copies them.

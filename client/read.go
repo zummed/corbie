@@ -233,7 +233,7 @@ func (c *Client) unstarted(ctx context.Context, id string) (*Run, error) {
 	// dated further ahead than clocks may differ is no start of this
 	// client's.
 	named, _ := store.InstanceTime(id)
-	if age := c.Now().Sub(named); age > taking(0) || age < -identity.ClockAllowance {
+	if age := c.Now().Sub(named); age > Taking(0) || age < -identity.ClockAllowance {
 		return nil, ErrNeverTaken
 	}
 	return &Run{ID: id, Status: instance.Waiting}, nil
@@ -267,7 +267,7 @@ func (c *Client) Wait(ctx context.Context, id string, interval time.Duration) (*
 // its start: for the life it was sent with, a few minutes if none, and the
 // allowance for clocks.
 func (c *Client) Taken(ctx context.Context, id string, life, interval time.Duration) error {
-	return c.taken(ctx, id, c.Now().Add(taking(life)), interval)
+	return c.taken(ctx, id, c.Now().Add(Taking(life)), interval)
 }
 
 // Started stays until a run a submit started has been taken up. The

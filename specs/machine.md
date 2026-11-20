@@ -147,9 +147,9 @@ A file of one line places a machine that a listed file holds at its own location
 
 ```yaml
 # project/.corbieignore
-.rook/
+.packs/
 
-# project/.rook/slack/chat/post.yaml        listed: no location
+# project/.packs/slack/chat/post.yaml        listed: no location
 flow: post
 input: { in: string, text: string }
 receive: [bot/bot]
@@ -157,10 +157,10 @@ stages:
   post: { job: { script: ./post.js, input: "${input}", allow: [net:slack.com] } }
 
 # project/bot/chat/post.yaml
-include: .rook/slack/chat/post.yaml
+include: .packs/slack/chat/post.yaml
 
 # project/ops/chat/post.yaml
-include: .rook/slack/chat/post.yaml
+include: .packs/slack/chat/post.yaml
 receive: [ops/ops]
 ```
 
@@ -173,7 +173,7 @@ $ corbie run submit project --at /x
 - A placed file takes its type, its name and every field from the file it includes, `lifetime:` and `receive:` among them. Placing a singleton gives a singleton.
 - A field the placed file writes wins: `/x/ops/chat/post` receives only from `ops/ops`.
 - Two placements of one file are two locations, and the runs of both are named `post`.
-- A `./` path in the included file is read from that file's directory, so both run `.rook/slack/chat/post.js`.
+- A `./` path in the included file is read from that file's directory, so both run `.packs/slack/chat/post.js`.
 - A change to the included file changes every placement, and the next submit acts on each as on any changed file.
 
 A run keeps the definition it started with, and a submit changes what new runs get. `update:` says what a changed file does to the runs already running at its location:

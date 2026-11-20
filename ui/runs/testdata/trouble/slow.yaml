@@ -1,0 +1,6 @@
+# A flow whose stage fails at its first attempt, then works for a minute,
+# logging as it goes.
+flow: slow
+stages:
+  work:
+    job: { script: ./work.js, restart: { limit: 2, delay: 1s } }

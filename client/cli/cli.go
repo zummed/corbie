@@ -41,6 +41,9 @@ type Command struct {
 	Help    string // the rest of its page
 	// Stays says the command stays until a run ends, or until stopped.
 	Stays bool
+	// Beside says corbie start takes the command's name beside the roles,
+	// and runs it as a process of this binary, as it runs a program.
+	Beside bool
 	// Run carries the command out with what followed its name.
 	Run func(e *Env, args []string) error
 }

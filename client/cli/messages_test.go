@@ -2,6 +2,7 @@ package cli_test
 
 import (
 	"context"
+	"os"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -62,5 +63,25 @@ func TestCancelSendAndReplyTakeALife(t *testing.T) {
 		if again, _ := store.Names(s.List(ctx, inbox)); len(again) != len(before)+1 {
 			t.Errorf("corbie %s --life soon sent a message", strings.Join(command[:2], " "))
 		}
+	}
+}
+
+// With no controller running, a command that waits for a receipt, or for a
+// run it started to be taken, says once what it waits for and for how long.
+func TestAWaitForAControllerIsSaid(t *testing.T) {
+	m := machine{t, filepath.Join(t.TempDir(), "config")}
+	m.ok("", "init", "--store", filepath.Join(t.TempDir(), "store"), "--name", "box")
+	const line = "waiting up to 15m for a controller to take it\n"
+	_, out, said := m.runFor(3*time.Second, "", "client", "value", "set", "ZONE", "eu", "--at", "/box")
+	if out != "" || strings.Count(said, line) != 1 {
+		t.Errorf("corbie client value set with no controller printed %q and said %q", out, said)
+	}
+	file := filepath.Join(t.TempDir(), "one.yaml")
+	if err := os.WriteFile(file, []byte("flow: one\nstages:\n  a: { job: { script: \"return 1\" } }\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	_, out, said = m.runFor(3*time.Second, "", "run", "start", file, "--wait")
+	if out != "" || strings.Count(said, line) != 1 {
+		t.Errorf("corbie run start --wait with no controller printed %q and said %q", out, said)
 	}
 }

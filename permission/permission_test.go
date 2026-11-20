@@ -112,7 +112,7 @@ func TestLocationScopes(t *testing.T) {
 
 func TestWhereLocationsAreWritten(t *testing.T) {
 	// In a definition: send relative or in full, and never at.
-	for _, entry := range []string{"send:thermostats/*", "send:/work/**", "send:${input.to}", "send:.rook/*"} {
+	for _, entry := range []string{"send:thermostats/*", "send:/work/**", "send:${input.to}", "send:.work/*"} {
 		if err := CheckWritten(entry); err != nil {
 			t.Errorf("%s in a definition: %v", entry, err)
 		}
@@ -179,14 +179,14 @@ func Test_perm_location_climbs_nowhere(t *testing.T) {
 			t.Errorf("%q: %v", entry, err)
 		}
 	}
-	for _, written := range []string{"../x", "a/../b", "/work/../shop", "+", ".rook/../x", "a#b"} {
+	for _, written := range []string{"../x", "a/../b", "/work/../shop", "+", ".work/../x", "a#b"} {
 		if got, err := ReadLocation("/home", written); err == nil {
 			t.Errorf("%q read as %q", written, got)
 		}
 	}
 	// A dot that leads a part is part of its name.
-	if got, err := ReadLocation("/home", ".rook/agents/x"); err != nil || got != "/home/.rook/agents/x" {
-		t.Errorf(".rook/agents/x read as %q (%v)", got, err)
+	if got, err := ReadLocation("/home", ".work/agents/x"); err != nil || got != "/home/.work/agents/x" {
+		t.Errorf(".work/agents/x read as %q (%v)", got, err)
 	}
 	// A tree's prefix is a location in full with no *, so that what is read
 	// from it is never wider than it is written.
@@ -206,7 +206,7 @@ func Test_perm_location_climbs_nowhere(t *testing.T) {
 			t.Errorf("%s matched %q", c[0], c[1])
 		}
 	}
-	if !MatchLocation("/**", "/") || !MatchLocation("/home/*", "/home/.rook") {
+	if !MatchLocation("/**", "/") || !MatchLocation("/home/*", "/home/.work") {
 		t.Error("a location in full was not matched")
 	}
 	s := &Set{Prefix: "/home", Layers: []Layer{allow("send:thermostats/**")}}

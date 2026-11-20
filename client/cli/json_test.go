@@ -144,6 +144,14 @@ states:
 	asked(m, "", true, "manual")
 	asked(m, "", true, "manual", "runs")
 	asked(m, "", true, "version")
+	packDir := filepath.Join(t.TempDir(), "notes")
+	if err := os.MkdirAll(packDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(packDir, "note.yaml"), []byte("flow: note\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	asked(m, "", true, "add", packDir, "--in", t.TempDir())
 	asked(m, `{"jsonrpc": "2.0", "id": 1, "method": "ping"}`+"\n", true, "mcp")
 
 	// A controller on one machine, and a runner and a client on another.

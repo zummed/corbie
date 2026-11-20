@@ -1,0 +1,15 @@
+# A thermostat: from off, each mode can be chosen, and from each mode every
+# other. Every mode is one transition from off, so they share a row.
+statechart: thermostat
+initial: off
+states:
+  off:
+    on: { heat: heating, cool: cooling, auto: auto, fan: fan }
+  heating:
+    on: { cool: cooling, auto: auto, fan: fan, off: off }
+  cooling:
+    on: { heat: heating, auto: auto, fan: fan, off: off }
+  auto:
+    on: { heat: heating, cool: cooling, fan: fan, off: off }
+  fan:
+    on: { heat: heating, cool: cooling, auto: auto, off: off }

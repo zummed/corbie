@@ -56,14 +56,14 @@ A gateway is kept running the same way (`corbie manual gateway`).
 Programs
 --------
 
-`corbie start controller runner ui` starts the program `corbie-ui` beside the
-controller and the runner, and the same for any `corbie-<name>` on PATH. The
-words after a name are its own, up to the next name:
-`corbie start controller runner ui --listen 127.0.0.1:8383`. When a program
-stops, everything stops. The systemd unit's `ExecStart` may name programs
+`corbie start controller runner ui` starts the UI beside the controller and
+the runner, and the same for any program `corbie-<name>` on PATH. The words
+after a name are its own, up to the next name:
+`corbie start controller runner ui --listen 127.0.0.1:8383`. When the UI or a
+program stops, everything stops. The systemd unit's `ExecStart` may name them
 too.
 
-`corbie ui --help` prints a program's help. A program keeps Corbie's command
+`corbie <name> --help` prints a program's help. A program keeps Corbie's command
 line: it takes `--config` and `--store`, a mistake in how it was written ends
 with status 2, and a failure with 1.
 

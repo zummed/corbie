@@ -1,0 +1,26 @@
+# Transitions out of a holder from states inside it, and into a state inside
+# another holder.
+statechart: levels
+initial: idle
+states:
+  idle:
+    on: { go: work, quick: deep }
+  work:
+    initial: w1
+    states:
+      w1:
+        on: { next: w2, out: report }
+      w2:
+        on: { next: w3, bad: check }
+      w3:
+        on: { done: report }
+  check:
+    initial: first
+    states:
+      first:
+        on: { ok: deep }
+      deep:
+        on: { ok: report, again: first }
+  report:
+    on: { done: over }
+  over: { end: done }

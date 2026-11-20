@@ -12,7 +12,7 @@ import (
 )
 
 // orders is a tree whose agent has a toolkit of tools that call machines of
-// the tree, each fixing the project, as a project of Rook's writes one.
+// the tree, each fixing the project.
 func orders(address string) map[string]string {
 	return map[string]string{
 		".corbieignore": "toolkits/\n",

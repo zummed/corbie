@@ -25,8 +25,10 @@ const starts = `
   --timeout <time>         the longest the run may take, such as 1h; it
                            cannot extend the definition's timeout
   --life <time>            how long the start message is valid while no
-                           controller takes it, and how long --wait and
-                           --watch wait for it to be taken; default 5m`
+                           controller takes it; default 5m. --wait and
+                           --watch wait that long and 10m more for it to
+                           be taken, for clocks that differ, and say so
+                           while they wait`
 
 // scripts is the help for a script file given where a definition is.
 const scripts = `
@@ -91,6 +93,7 @@ what corbie init set up.
                client
   store        a server that gives other computers this computer's store
                directory, set up by corbie init store
+  ui           the UI, started as corbie ui, as a program is
   <name>       the program corbie-<name> on PATH, started with CORBIE_CONFIG
                and CORBIE_STORE in its environment as this command was given
                them; when it stops, everything stops
@@ -272,8 +275,10 @@ starts there meanwhile is not cancelled. A keyed location and a key, as
 /location#key, cancels the running run of that key, and fails when none is
 running.
 
-  --life <time>   how long the cancel is valid while no controller takes it,
-                  and how long the command waits for the answer; default 5m`},
+  --life <time>   how long the cancel is valid while no controller takes it;
+                  default 5m. The command waits that long and 10m more for
+                  the answer, for clocks that differ, and says so while it
+                  waits`},
 		{Name: "run send", Usage: "<id> | <location>[#key] <event> [data] [--life 5m]", Summary: "send an event to a run by its address", Run: cmdSend, Help: `
 The address is the run's ID, a singleton's location, or a keyed location and
 a key as /location#key, which starts a run when none has the key. The data is
@@ -285,8 +290,10 @@ delivered.
 A run in another client's tree needs send:<location> in this client's
 ceiling and client:<name> in the file's receive:.
 
-  --life <time>   how long the event is valid while no controller takes it,
-                  and how long the command waits for the answer; default 5m`},
+  --life <time>   how long the event is valid while no controller takes it;
+                  default 5m. The command waits that long and 10m more for
+                  the answer, for clocks that differ, and says so while it
+                  waits`},
 		{Name: "run reply", Usage: "<id> <ticket> [value] [--life 5m]", Summary: "answer a ticket that a run waits on", Run: cmdReply, Help: `
 The ticket is the value that corbie run show <id> --tickets prints, and <id>
 is the run that waits on it. Any client that has the value may answer, and a
@@ -296,8 +303,10 @@ parse as JSON.
 The command prints taken, or refused with the reason. It fails if the answer
 is refused.
 
-  --life <time>   how long the answer is valid while no controller takes it,
-                  and how long the command waits for the answer; default 5m`},
+  --life <time>   how long the answer is valid while no controller takes it;
+                  default 5m. The command waits that long and 10m more for
+                  the answer, for clocks that differ, and says so while it
+                  waits`},
 
 		{Name: "controller card", Usage: "--store <address> [--name <name>] [--identity <address>]", Summary: "create this computer's controller and print its card", Run: cmdCard(identity.Controller), Help: `
 It creates the controller's identity if the config has none, sets up the
@@ -498,7 +507,7 @@ server's config and store, and the model can name no other. The server needs
 no controller or runner running, and keeps no state.
 
   --allow <command>   a command the model may run, by its whole name, such as
-                      test, "run submit" or a program's "rook init";
+                      test, "run submit" or a program's "board new";
                       repeatable; default none
 
 A program's command adds the program's pages to the manual, and the model is
@@ -507,6 +516,38 @@ told the program's page named after it.
   corbie mcp --allow test --allow "run submit" --allow "run show"
 
   corbie manual first-machine   adding the server to an assistant`},
+		{Name: "add", Usage: "[<pack>[@<ref>]]… [--set WORD=<name>]… [--in <directory>]", Summary: "write a pack of ready-made machines into a project", Run: cmdAdd, Help: `
+A pack is a directory of ready-made machines, in a git repository or on this
+computer.
+
+  github.com/owner/repository/notes          the directory notes of a repository
+  github.com/owner/repository/notes@v0.4.0   at a tag, a branch or a commit
+  host/a/b/c.git/notes                       a repository whose address has
+                                             more than three parts
+  ./packs/notes                              a directory on this computer
+
+1. It fetches the repository with git, at the ref, or at its default branch.
+2. It rewrites .packs/<pack>/ in the project with the pack's files, and the
+   same for each pack beside it that its .yaml and .js files name as
+   .packs/<name>/.
+3. It writes each file of the pack's starter/ directory at the same path in
+   the project, where no file is there and it has written none before.
+4. It adds .packs/ to the project's .corbieignore when it lacks it.
+
+It changes no other file, and no file of yours. It names each starting file
+that is there and is not as the pack starts it.
+
+  --set WORD=<name>   writes <name> in place of WORD in each starting file's
+                      path and text, as --set TEAM=ops
+  --in <directory>    the project; default the directory it was started in
+
+With no pack named it adds each pack the project holds again, from where it
+came and with the words it was added with. A pack added from a branch is
+read at the branch's newest commit.
+
+It reads no config and no store. A pack's scripts run with the permissions
+its machines give them and the secrets set at their locations: read a pack
+before a run of it.`},
 		{Name: "version", Usage: "", Summary: "print the version, the machine types and the plugins", Run: cmdVersion},
 	}
 }

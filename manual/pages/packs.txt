@@ -1,0 +1,68 @@
+Packs: `corbie add` writes a directory of ready-made machines from a git repository into your project.
+
+How it works
+------------
+
+1. A pack is a directory of machines in a git repository, or on this computer.
+2. `corbie add <pack>` writes its files to `.packs/<pack>/` in your project, and
+   lists `.packs/` in `.corbieignore`, so none of them has a location.
+3. It writes the pack's starting files, those under its `starter/`, into your
+   project. A starting file places a machine of the pack with `include:`.
+4. Run it again to take the pack's newer files. It changes no file of yours.
+
+Example
+-------
+
+The pack `notes` holds one machine and one starting file, which places the
+machine at `<TEAM>/note`.
+
+    # packs/notes/add.yaml
+    flow: add
+    description: Adds a line to the team's notes.
+    input: { text: string }
+    stages:
+      add: { job: { script: ./add.js, input: "${input}" } }
+    output: ${stages.add.output}
+
+    // packs/notes/add.js
+    return "noted: " + input.text
+
+    # packs/notes/starter/TEAM/note.yaml
+    include: .packs/notes/add.yaml
+
+    corbie add ./packs/notes --set TEAM=ops
+      .packs/notes  ./packs/notes
+      Wrote these starting files:
+      ops/note.yaml
+
+    corbie test ops/note.yaml --input '{"text": "buy milk"}'
+      output: "noted: buy milk"
+
+`ops/note.yaml` is your file. `.packs/notes/` is the pack's: change nothing
+there, since `corbie add` rewrites it.
+
+Naming a pack
+-------------
+
+  github.com/owner/repository/notes            the directory notes of a repository
+  github.com/owner/repository/notes@v0.4.0     at a tag, a branch or a commit
+  host/a/b/c.git/notes                         a repository whose address has more than three parts
+  ./packs/notes                                a directory on this computer
+
+`corbie add` fetches a repository with `git`, at its default branch when no
+ref is given.
+
+Reference
+---------
+
+  corbie add <pack> --set WORD=<name>   writes <name> for WORD in each starting file's path and text
+  corbie add <pack> --in <directory>    the project; by default the directory it was started in
+  corbie add                            adds each pack of the project again, from where it came
+
+- A pack that names `.packs/<other>/` in a `.yaml` or `.js` file needs the pack `<other>` beside it, and `corbie add` writes that one too.
+- A starting file you changed is left as it is, and `corbie add` names it.
+- A starting file you removed stays removed.
+- `.packs/<pack>/.pack` records where the pack came from, its commit and its words.
+
+  corbie manual a-directory    what `.corbieignore` lists, and a machine's location
+  corbie manual definitions    `include:`

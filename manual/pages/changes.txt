@@ -13,6 +13,11 @@ These behave differently.
 - The UI is part of `corbie`. `corbie ui` and `corbie start controller runner
   ui` need no program `corbie-ui` on PATH: remove it.
 
+These are new.
+
+- `corbie add` writes a pack of ready-made machines into a project: `corbie
+  manual packs`.
+
 After 0.26.1
 ------------
 

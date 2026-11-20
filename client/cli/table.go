@@ -25,8 +25,9 @@ const starts = `
   --timeout <time>         the longest the run may take, such as 1h; it
                            cannot extend the definition's timeout
   --life <time>            how long the start message is valid while no
-                           controller takes it, and how long --wait and
-                           --watch wait for it to be taken; default 5m`
+                           controller takes it; default 5m. --wait and
+                           --watch wait that long and 10m more for it to
+                           be taken, for clocks that differ`
 
 // scripts is the help for a script file given where a definition is.
 const scripts = `
@@ -273,8 +274,10 @@ starts there meanwhile is not cancelled. A keyed location and a key, as
 /location#key, cancels the running run of that key, and fails when none is
 running.
 
-  --life <time>   how long the cancel is valid while no controller takes it,
-                  and how long the command waits for the answer; default 5m`},
+  --life <time>   how long the cancel is valid while no controller takes it;
+                  default 5m. The command waits that long and 10m more for
+                  the answer, for clocks that differ, and says so while it
+                  waits`},
 		{Name: "run send", Usage: "<id> | <location>[#key] <event> [data] [--life 5m]", Summary: "send an event to a run by its address", Run: cmdSend, Help: `
 The address is the run's ID, a singleton's location, or a keyed location and
 a key as /location#key, which starts a run when none has the key. The data is
@@ -286,8 +289,10 @@ delivered.
 A run in another client's tree needs send:<location> in this client's
 ceiling and client:<name> in the file's receive:.
 
-  --life <time>   how long the event is valid while no controller takes it,
-                  and how long the command waits for the answer; default 5m`},
+  --life <time>   how long the event is valid while no controller takes it;
+                  default 5m. The command waits that long and 10m more for
+                  the answer, for clocks that differ, and says so while it
+                  waits`},
 		{Name: "run reply", Usage: "<id> <ticket> [value] [--life 5m]", Summary: "answer a ticket that a run waits on", Run: cmdReply, Help: `
 The ticket is the value that corbie run show <id> --tickets prints, and <id>
 is the run that waits on it. Any client that has the value may answer, and a
@@ -297,8 +302,10 @@ parse as JSON.
 The command prints taken, or refused with the reason. It fails if the answer
 is refused.
 
-  --life <time>   how long the answer is valid while no controller takes it,
-                  and how long the command waits for the answer; default 5m`},
+  --life <time>   how long the answer is valid while no controller takes it;
+                  default 5m. The command waits that long and 10m more for
+                  the answer, for clocks that differ, and says so while it
+                  waits`},
 
 		{Name: "controller card", Usage: "--store <address> [--name <name>] [--identity <address>]", Summary: "create this computer's controller and print its card", Run: cmdCard(identity.Controller), Help: `
 It creates the controller's identity if the config has none, sets up the
@@ -499,7 +506,7 @@ server's config and store, and the model can name no other. The server needs
 no controller or runner running, and keeps no state.
 
   --allow <command>   a command the model may run, by its whole name, such as
-                      test, "run submit" or a program's "rook init";
+                      test, "run submit" or a program's "dash new";
                       repeatable; default none
 
 A program's command adds the program's pages to the manual, and the model is

@@ -57,7 +57,7 @@ version                                  the layout's version
 
 The version is written once, when the store is first set up, and a Corbie that does not know it refuses to use the store. A store whose version is older is refused the same way: nothing is carried over from it, and `corbie init` sets up a new one. An instance's name begins with the client that owns its root's tree and carries the time it was named, so anything that names an instance says where its head and record are and how old it is.
 
-A location's entries are under `+` after its path. No part of a location is empty, `.`, `..` or `+`, and none holds `#`. A part that starts with a dot, as `.rook` does, is kept after a `#`, as `locations/#.rook/`, so that a directory does not hide it. A tree's entry is at its prefix. Secrets and values may be set at a path above a location as well, and those set at `/` are under `locations/+/`. For example, these commands:
+A location's entries are under `+` after its path. No part of a location is empty, `.`, `..` or `+`, and none holds `#`. A part that starts with a dot, as `.work` does, is kept after a `#`, as `locations/#.work/`, so that a directory does not hide it. A tree's entry is at its prefix. Secrets and values may be set at a path above a location as well, and those set at `/` are under `locations/+/`. For example, these commands:
 
 ```
 corbie run submit house --at /home

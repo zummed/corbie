@@ -110,7 +110,7 @@ func LocationDir(ctl, location string) string {
 }
 
 // stored is a part of a location as it is kept in the store: one that
-// starts with a dot, as .rook does, after a "#", so that a directory does
+// starts with a dot, as .work does, after a "#", so that a directory does
 // not hide it. No part of a location holds "#", so no other part is kept
 // starting with one.
 func stored(part string) string {

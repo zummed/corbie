@@ -64,3 +64,15 @@ func TestCancelSendAndReplyTakeALife(t *testing.T) {
 		}
 	}
 }
+
+// With no controller running, a command that waits for a receipt says once
+// what it waits for and for how long, and prints nothing else.
+func TestAWaitForAControllerIsSaid(t *testing.T) {
+	m := machine{t, filepath.Join(t.TempDir(), "config")}
+	m.ok("", "init", "--store", filepath.Join(t.TempDir(), "store"), "--name", "box")
+	const line = "waiting up to 15m for a controller to take it\n"
+	_, out, said := m.runFor(3*time.Second, "", "client", "value", "set", "ZONE", "eu", "--at", "/box")
+	if out != "" || strings.Count(said, line) != 1 {
+		t.Errorf("corbie client value set with no controller printed %q and said %q", out, said)
+	}
+}

@@ -288,11 +288,11 @@ func Test_machines_every_yaml_is_a_machine_but_the_listed_files(t *testing.T) {
 		"shared/notes.yaml": "flow: noted\n",
 		"broken.yaml":       "flow: broken\nstages: [ { a:\n",
 		"nul.yaml":          "flow:\nstages:\n  a: { job: .kit/hear.js }\n",
-		".corbieignore":     "toolkits/\npeople/scopes.yaml\nshared/\n.rook/\n",
-		".rook/AGENTS.md":   "Read this.\n",
-		".rook/x.js":        "return 1",
-		".rook/post.yaml":   "flow: post\nstages:\n  a: { job: ./x.js }\n",
-		"post.yaml":         "include: .rook/post.yaml\n",
+		".corbieignore":     "toolkits/\npeople/scopes.yaml\nshared/\n.packs/\n",
+		".packs/AGENTS.md":  "Read this.\n",
+		".packs/x.js":       "return 1",
+		".packs/post.yaml":  "flow: post\nstages:\n  a: { job: ./x.js }\n",
+		"post.yaml":         "include: .packs/post.yaml\n",
 	})
 	d, _ := newDir(dir)
 	ix := d.index("")
@@ -326,14 +326,14 @@ func Test_machines_every_yaml_is_a_machine_but_the_listed_files(t *testing.T) {
 	for _, f := range ix.Files {
 		files = append(files, fmt.Sprintf("%s %t %d", f.Path, f.Listed, f.Included))
 	}
-	if want := []string{".rook/ true 0", ".rook/post.yaml true 1"}; !slices.Equal(slices.DeleteFunc(files, func(f string) bool { return !strings.HasPrefix(f, ".rook/") }), want) {
+	if want := []string{".packs/ true 0", ".packs/post.yaml true 1"}; !slices.Equal(slices.DeleteFunc(files, func(f string) bool { return !strings.HasPrefix(f, ".packs/") }), want) {
 		t.Errorf("the files under a listed directory are %v, and not %v", files, want)
 	}
 	h, _ := New(Config{Dir: dir, Interval: time.Second})
-	if v := pageOf(t, h, "/machines?file=.rook/AGENTS.md").View; v.Facts != "listed in .corbieignore" || v.File == nil || len(v.Included) != 0 {
+	if v := pageOf(t, h, "/machines?file=.packs/AGENTS.md").View; v.Facts != "listed in .corbieignore" || v.File == nil || len(v.Included) != 0 {
 		t.Errorf("a file in a listed directory is not headed as listed: %+v", v)
 	}
-	if p := pageOf(t, h, "/machines?file=.corbieignore"); !p.Files.Ignore || p.View.Open != ".corbieignore" || !slices.ContainsFunc(text(p.View.Text), func(l string) bool { return strings.Contains(l, ".rook/") }) {
+	if p := pageOf(t, h, "/machines?file=.corbieignore"); !p.Files.Ignore || p.View.Open != ".corbieignore" || !slices.ContainsFunc(text(p.View.Text), func(l string) bool { return strings.Contains(l, ".packs/") }) {
 		t.Errorf("the Files heading does not open .corbieignore: %+v", p.View)
 	}
 	for file, head := range map[string]string{"broken.yaml": "a machine", "nul.yaml": "flow"} {

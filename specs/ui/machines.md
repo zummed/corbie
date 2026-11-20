@@ -43,7 +43,7 @@ boiler.yaml        statechart: boiler · singleton
 rooms/
 thermostat.yaml    statechart: thermostat · keyed
 FILES                                         .corbieignore
-.rook/                    listed in .corbieignore
+.packs/                   listed in .corbieignore
 people/scopes.yaml        listed in .corbieignore · included by none
 shared/                   listed in .corbieignore
 shared/boiler-job.yaml    listed in .corbieignore · included by 1 machine
@@ -53,7 +53,7 @@ style.md                  included by 1 machine
 - A machine has its type's icon, its file's name, its type and name, its lifetime, and the count of the problems shown at its text. Its name's tooltip gives its location, and the tooltip of its type and name its `description:`.
 - A machine with problems has the type and name its file writes at its top level, where its YAML reads and writes exactly one type, and the type alone where the name is empty. Otherwise it has the file icon and no type.
 - Files lists each file and directory `.corbieignore` lists, and each other file a machine takes a value from, such as `style.md`. A file has its path and how many machines include it: those whose definition written out takes a value from it.
-- A listed directory is one row. A file below it is a row of its own only where a machine includes it, such as `shared/boiler-job.yaml`: Rook's files under `.rook/` show as the one row `.rook/`.
+- A listed directory is one row. A file below it is a row of its own only where a machine includes it, such as `shared/boiler-job.yaml`: a pack's files under `.packs/` show as the one row `.packs/`.
 - The heading's `.corbieignore` opens that file.
 - A file beside a directory of the same name, and the files below it, have no location. Each is listed with Corbie's problem: `it is beside a directory of the same name, which holds the machine at /house/boiler/x: a location has nothing below it`.
 - When a directory cannot be read, Corbie gives no tree. The page then lists no machine, file or toolkit, only Corbie's error.

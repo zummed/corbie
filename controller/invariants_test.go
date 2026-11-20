@@ -38,7 +38,7 @@ func TestWhatEveryRunKeepsTo(t *testing.T) {
 		if err := secret.Set(ctx, w.ctrl.Store, w.ctl, "/", "K", value); err != nil {
 			t.Fatal(err)
 		}
-		if err := secret.SetValue(ctx, w.ctrl.Store, w.ctl, "/home/.rook", "V", value); err != nil {
+		if err := secret.SetValue(ctx, w.ctrl.Store, w.ctl, "/home/.work", "V", value); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -109,7 +109,7 @@ func TestWhatEveryRunKeepsTo(t *testing.T) {
 			t.Errorf("%s shows a value of the run's to whoever reads the store", op.Name)
 		}
 	}
-	for _, name := range []string{store.Secret("ctl", "/", "K"), store.Value("ctl", "/home/.rook", "V")} {
+	for _, name := range []string{store.Secret("ctl", "/", "K"), store.Value("ctl", "/home/.work", "V")} {
 		if !slices.ContainsFunc(ops, func(op store.Op) bool { return op.Name == name && op.Act == store.ActRewrite }) {
 			t.Errorf("%s was not set again", name)
 		}

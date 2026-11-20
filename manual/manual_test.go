@@ -718,9 +718,8 @@ func TestCommandsPageIsItsHelp(t *testing.T) {
 
 // Every command line a page shows is one corbie reads: a command, with a
 // flag after its name that the command takes, and corbie manual with a page
-// that is there; the words of a group of commands alone; help; or one of
-// the programs ui and rook. A command's help is a page too, since one
-// command's help names another.
+// that is there; the words of a group of commands alone; help; or ui. A
+// command's help is a page too, since one command's help names another.
 //
 // A command line ends at the end of a clause, at a gap of two spaces, at
 // the end of its line, or at a word in angle brackets. Only in a line that
@@ -765,7 +764,7 @@ func TestPagesShowOnlyRealCommandLines(t *testing.T) {
 					break
 				}
 			}
-			if len(words) == 0 || words[0] == "help" || words[0] == "--help" || words[0] == "ui" || words[0] == "rook" || group(words) {
+			if len(words) == 0 || words[0] == "help" || words[0] == "--help" || words[0] == "ui" || group(words) {
 				continue
 			}
 			cmd, rest := cli.Find(words)

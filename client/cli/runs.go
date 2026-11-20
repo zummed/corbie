@@ -509,6 +509,44 @@ func directories(names []string) (bool, error) {
 	return dirs > 0, nil
 }
 
+// quiet is how long a command waits for a receipt before it says what it
+// waits for: longer than a running controller takes.
+const quiet = 2 * time.Second
+
+// receipt waits for the receipt of a message sent with a life. A wait that
+// goes on says once what it waits for and for how long, so that a setup
+// with no controller running does not look like a command that has hung.
+func (e *Env) receipt(c *client.Client, message string, life time.Duration) (*instance.Receipt, error) {
+	got, said := make(chan struct{}), make(chan struct{})
+	go func() {
+		defer close(said)
+		timer := time.NewTimer(quiet)
+		defer timer.Stop()
+		select {
+		case <-got:
+		case <-timer.C:
+			e.Say("waiting up to %s for a controller to take it", short(client.Taking(life)))
+		}
+	}()
+	receipt, err := c.WaitReceipt(e.ctx, message, life, interval)
+	close(got)
+	<-said
+	return receipt, err
+}
+
+// short writes a length of time without the units that are zero at its
+// end: 15m, and not 15m0s.
+func short(d time.Duration) string {
+	text := d.String()
+	if strings.HasSuffix(text, "m0s") {
+		text = strings.TrimSuffix(text, "0s")
+	}
+	if strings.HasSuffix(text, "h0m") {
+		text = strings.TrimSuffix(text, "0m")
+	}
+	return text
+}
+
 // submit records a tree, and stays until each run it cancelled has ended and
 // each run it started has been taken up.
 func (e *Env) submit(tree *client.Tree) error {
@@ -520,7 +558,7 @@ func (e *Env) submit(tree *client.Tree) error {
 	if err != nil {
 		return err
 	}
-	receipt, err := c.WaitReceipt(e.ctx, message, 0, interval)
+	receipt, err := e.receipt(c, message, 0)
 	if err != nil {
 		return err
 	}
@@ -1225,7 +1263,7 @@ func (e *Env) answered(args []string, usage string, takes func(n int) bool, send
 	if err != nil {
 		return err
 	}
-	receipt, err := c.WaitReceipt(e.ctx, message, life, interval)
+	receipt, err := e.receipt(c, message, life)
 	if err != nil {
 		return err
 	}
@@ -1302,7 +1340,7 @@ func (e *Env) cancelAt(location, lifeText string) error {
 		if err != nil {
 			return err
 		}
-		receipt, err := c.WaitReceipt(e.ctx, message, life, interval)
+		receipt, err := e.receipt(c, message, life)
 		if err != nil {
 			return err
 		}

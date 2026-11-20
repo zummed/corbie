@@ -20,7 +20,7 @@ import (
 // manual, and corbie's command line. The model may run only the commands
 // the server was started with permission for, with the config the server
 // was started on. A command allowed may be a program's, as in --allow
-// "rook init": the program's pages join the manual, and its commands are
+// "dash new": the program's pages join the manual, and its commands are
 // run as corbie <name> runs them. The server needs nothing running and
 // keeps nothing.
 func cmdMCP(e *Env, args []string) error {
@@ -352,7 +352,7 @@ func (e *Env) readGuest(name, path string) (guest, error) {
 }
 
 // commands are the pages of the program's commands, each named as it is
-// typed: corbie rook init.
+// typed: corbie dash new.
 func (g guest) commands() []manual.Page {
 	var out []manual.Page
 	for _, page := range g.pages {
@@ -364,7 +364,7 @@ func (g guest) commands() []manual.Page {
 }
 
 // find gives the whole name of the program's command a command line
-// begins with, as rook init, or "" if it begins none: the longest name
+// begins with, as dash new, or "" if it begins none: the longest name
 // that matches.
 func (g guest) find(args []string) string {
 	found := ""

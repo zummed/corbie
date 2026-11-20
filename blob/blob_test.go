@@ -297,7 +297,7 @@ func TestBlobsAreCopiedBetweenAreas(t *testing.T) {
 	run := "c1/20261010T120000.000Z-run"
 	var copies []Ref
 	for _, dir := range []string{
-		store.LocationBlobs("ctl", "/home/.rook/boiler"),
+		store.LocationBlobs("ctl", "/home/.work/boiler"),
 		store.Blobs("ctl", run),
 		store.ReceiptBlobs("ctl", "c2", "m2"),
 		store.Uploaded("ctl", "c2", "m3"),
@@ -322,10 +322,10 @@ func TestBlobsAreCopiedBetweenAreas(t *testing.T) {
 	}
 	// Done twice, it is done once.
 	before, _ := store.Names(s.List(ctx, "ctl"))
-	if again, err := CopyWhole(ctx, s, copies[0], "ctl", store.LocationBlobs("ctl", "/home/.rook/boiler")); err != nil || again != copies[0] {
+	if again, err := CopyWhole(ctx, s, copies[0], "ctl", store.LocationBlobs("ctl", "/home/.work/boiler")); err != nil || again != copies[0] {
 		t.Fatalf("a copy into where it is: %v", err)
 	}
-	if again, err := CopyWhole(ctx, s, uploaded, "ctl", store.LocationBlobs("ctl", "/home/.rook/boiler")); err != nil || again != copies[0] {
+	if again, err := CopyWhole(ctx, s, uploaded, "ctl", store.LocationBlobs("ctl", "/home/.work/boiler")); err != nil || again != copies[0] {
 		t.Fatalf("a copy into another area, done again: %v, %v", again, err)
 	}
 	if after, _ := store.Names(s.List(ctx, "ctl")); len(after) != len(before) {

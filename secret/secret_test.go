@@ -198,7 +198,7 @@ func TestLocationsOfOtherCaseShareAFile(t *testing.T) {
 	}
 }
 
-// A location whose part starts with a dot, as .rook does, is kept where a
+// A location whose part starts with a dot, as .work does, is kept where a
 // directory lists it.
 func TestDotLocationInADirectory(t *testing.T) {
 	ctl, _ := newController(t)
@@ -206,21 +206,21 @@ func TestDotLocationInADirectory(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := secret.Set(ctx, s, ctl, "/project/.rook", "K", "k"); err != nil {
+	if err := secret.Set(ctx, s, ctl, "/project/.work", "K", "k"); err != nil {
 		t.Fatal(err)
 	}
-	if err := secret.SetValue(ctx, s, ctl, "/project/.rook/review", "V", "v"); err != nil {
+	if err := secret.SetValue(ctx, s, ctl, "/project/.work/review", "V", "v"); err != nil {
 		t.Fatal(err)
 	}
 	listed, err := secret.List(ctx, s, ctl.Name)
-	if want := []secret.Entry{{Name: "K", At: "/project/.rook"}}; err != nil || !slices.Equal(listed, want) {
+	if want := []secret.Entry{{Name: "K", At: "/project/.work"}}; err != nil || !slices.Equal(listed, want) {
 		t.Errorf("the secrets are listed as %v (%v)", listed, err)
 	}
 	values, err := secret.ListValues(ctx, s, ctl)
-	if want := []secret.Entry{{"V", "/project/.rook/review", "v"}}; err != nil || !slices.Equal(values, want) {
+	if want := []secret.Entry{{"V", "/project/.work/review", "v"}}; err != nil || !slices.Equal(values, want) {
 		t.Errorf("the values are listed as %v (%v)", values, err)
 	}
-	if value, _, err := secret.Get(ctx, s, ctl, "/project/.rook/review", "K"); err != nil || value != "k" {
-		t.Errorf("a run at /project/.rook/review reads %q (%v)", value, err)
+	if value, _, err := secret.Get(ctx, s, ctl, "/project/.work/review", "K"); err != nil || value != "k" {
+		t.Errorf("a run at /project/.work/review reads %q (%v)", value, err)
 	}
 }

@@ -117,6 +117,8 @@ Following from a terminal is one flag, `--watch`. It prints what the command pri
 
 `run start <location>` sends a start; `run start --wait` waits for the run it started and `run start --watch` follows it. The tree's client starts a transient location with no `send:` entry. Another client's start is a call: its ceiling needs `send:` for the location, the file's `receive:` must list `client:<its name>`, and the start takes no labels or `--allow`. Under the ID it printed, it is shown only the call's result: the run's status and its output or error, and the result's files. A cancel of that ID is refused, naming the run the call started and its tree's client, which alone cancels it.
 
+A command that sends a message waits for its receipt while a controller may still take the message: for the message's life, five minutes by default or the time given with `--life`, and twice the clock allowance. When no receipt has come after two seconds it prints one line to standard error, `waiting up to 15m for a controller to take it`, and when none comes at all it fails, saying the message was not taken up.
+
 A secret's value is never on the command line. It is read only from the source the command names, and a value not found there is a mistake that sends nothing:
 
 ```
@@ -166,32 +168,32 @@ When no program `corbie-<word>` is on PATH, `corbie` names the program it looked
 
 `corbie help` lists the programs `corbie <word>` runs by their names, and starts none of them. A command, the words that begin commands, and a program each print their help with `--help`.
 
-A program written in Go reads its command line with the package's `cli.Program`, from a table of commands as Corbie's own is made. It then reads as one of Corbie's commands: the same `--help`, `--json`, `--config` and `--store`, flags anywhere among its arguments, and the same mistakes, failures and exit statuses. Its help says which of the three flags it takes. The command named `""` is the one run when no other is named. Rook has one command:
+A program written in Go reads its command line with the package's `cli.Program`, from a table of commands as Corbie's own is made. It then reads as one of Corbie's commands: the same `--help`, `--json`, `--config` and `--store`, flags anywhere among its arguments, and the same mistakes, failures and exit statuses. Its help says which of the three flags it takes. The command named `""` is the one run when no other is named. A program `corbie-dash` with one command is written:
 
 ```go
-os.Exit(cli.Program("rook", []cli.Command{
-	{Name: "init", Usage: "<directory> [--bot <name> --services <names>]", Summary: "make a directory a project, or bring its ready-made machines up to date", Run: cmdInit},
+os.Exit(cli.Program("dash", []cli.Command{
+	{Name: "new", Usage: "<board>", Summary: "make a board", Run: cmdNew},
 }, os.Args[1:], os.Stdin, os.Stdout, os.Stderr))
 ```
 
 ```
-$ corbie rook init
-corbie rook init: name one directory
+$ corbie dash new
+corbie dash new: name one board
 
-usage: corbie rook init <directory> [--bot <name> --services <names>]
+usage: corbie dash new <board>
 ```
 
 The program is given `manual` and `version` beside its own commands, and no `mcp`. `version` prints the program's version and the version of the Corbie it is built with. Its manual is Corbie's, with a page for each of its commands and any pages it adds to the manual. A model runs its commands through `corbie mcp`, as For a model says:
 
 ```
-corbie rook manual                       Corbie's pages, the program's pages and its commands
-corbie rook manual rook-project          a page the program added
-corbie mcp --allow "rook init"           a model may run corbie rook init, and no other
+corbie dash manual                       Corbie's pages, the program's pages and its commands
+corbie dash manual dash-boards           a page the program added
+corbie mcp --allow "dash new"            a model may run corbie dash new, and no other
 ```
 
 ```
-$ corbie rook version
-corbie-rook 0.7.0
+$ corbie dash version
+corbie-dash 0.7.0
 corbie 0.15.0
 ```
 
@@ -296,7 +298,7 @@ A tree belongs to the client that first submitted it. Every run keeps the defini
 - A submit at a prefix inside or above another tree is refused, naming that tree. `/` is never a tree.
 - A submit at a tree another client owns is refused, naming the owner.
 - A submit at a prefix that no `at:` entry of the client's ceiling matches is refused.
-- A file under a directory whose name starts with a dot is read as any other: `.rook/review.yaml` submitted at `/project` is at `/project/.rook/review`.
+- A file under a directory whose name starts with a dot is read as any other: `.work/review.yaml` submitted at `/project` is at `/project/.work/review`.
 - A file beside a directory of the same name, as `boiler.yaml` beside `boiler/x.yaml`, is refused with the files below it, because a location has nothing below it. They are reported among the files with problems.
 - A file with a problem is reported, and its location keeps what was recorded before. A problem with one file leaves the rest done. In JSON, `problems` gives each problem's text by location.
 - A file whose approvals have no ask is recorded, since it may run as another machine's child under that machine's ask. A run started at its location is refused.
@@ -321,11 +323,11 @@ It keeps nothing itself. It runs wherever a process can stay up, and is not offe
 
 `corbie mcp` serves two tools to a model: the manual, and the command line. The model may run only the commands it was started with permission for, each named by its whole name, as in `--allow "run submit"`, with the config the server was started on. It needs nothing running and keeps nothing.
 
-A permission may name a program's command, as in `--allow "rook init"`. When the server starts, it runs `corbie rook manual --json` once:
+A permission may name a program's command, as in `--allow "dash new"`. When the server starts, it runs `corbie dash manual --json` once:
 
 1. The program's pages join the manual, and its commands' pages name its commands.
-2. The model is told the program's page named after it, `rook`, after Corbie's briefing.
-3. The model runs `rook init` with the command tool, as `corbie rook init` runs it, with the server's config and store, and gets back what the program printed.
+2. The model is told the program's page named after it, `dash`, after Corbie's briefing.
+3. The model runs `dash new` with the command tool, as `corbie dash new` runs it, with the server's config and store, and gets back what the program printed.
 
 A model never runs a program the server's line does not name, and `corbie start` never starts a program for a model.
 

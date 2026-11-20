@@ -484,10 +484,10 @@ func good(life time.Duration) time.Duration {
 	return life
 }
 
-// taking is how long after it is sent a controller may still take a
+// Taking is how long after it is sent a controller may still take a
 // message: its life and the allowance for clocks, by a controller's clock
 // that may be the allowance behind this client's.
-func taking(life time.Duration) time.Duration {
+func Taking(life time.Duration) time.Duration {
 	return good(life) + 2*identity.ClockAllowance
 }
 
@@ -534,7 +534,7 @@ var ErrNotTaken = errors.New("the message was not taken up: it is no longer good
 func (c *Client) WaitReceipt(ctx context.Context, message string, life, interval time.Duration) (*instance.Receipt, error) {
 	notice, stop := c.Store.Notice(c.ctl())
 	defer stop()
-	until := c.Now().Add(taking(life))
+	until := c.Now().Add(Taking(life))
 	for {
 		receipt, err := c.Receipt(ctx, message)
 		if err != nil || receipt != nil {

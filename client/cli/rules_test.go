@@ -539,9 +539,9 @@ func Test_client_value_set_at_a_location(t *testing.T) {
 	}
 	// A value that starts with - follows --, a part of a location may start
 	// with a dot, and a value with a newline is listed on one line.
-	m.ok("", "controller", "value", "set", "OFFSET", "--", "-5", "--at", "/project/.rook")
-	m.ok("", "controller", "value", "set", "LINES", "a\nb", "--at", "/project/.rook")
-	want = "HUB     /               hub.lan\nZONE    /               eu\nLINES   /project/.rook  \"a\\nb\"\nOFFSET  /project/.rook  -5\n"
+	m.ok("", "controller", "value", "set", "OFFSET", "--", "-5", "--at", "/project/.work")
+	m.ok("", "controller", "value", "set", "LINES", "a\nb", "--at", "/project/.work")
+	want = "HUB     /               hub.lan\nZONE    /               eu\nLINES   /project/.work  \"a\\nb\"\nOFFSET  /project/.work  -5\n"
 	if listed := m.ok("", "controller", "value", "list"); listed != want {
 		t.Errorf("the values are listed as %q, want %q", listed, want)
 	}

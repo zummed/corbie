@@ -27,7 +27,8 @@ const starts = `
   --life <time>            how long the start message is valid while no
                            controller takes it; default 5m. --wait and
                            --watch wait that long and 10m more for it to
-                           be taken, for clocks that differ`
+                           be taken, for clocks that differ, and say so
+                           while they wait`
 
 // scripts is the help for a script file given where a definition is.
 const scripts = `
@@ -506,7 +507,7 @@ server's config and store, and the model can name no other. The server needs
 no controller or runner running, and keeps no state.
 
   --allow <command>   a command the model may run, by its whole name, such as
-                      test, "run submit" or a program's "dash new";
+                      test, "run submit" or a program's "board new";
                       repeatable; default none
 
 A program's command adds the program's pages to the manual, and the model is
@@ -519,11 +520,11 @@ told the program's page named after it.
 A pack is a directory of ready-made machines, in a git repository or on this
 computer.
 
-  github.com/owner/repository/slack          the directory slack of a repository
-  github.com/owner/repository/slack@v0.4.0   at a tag, a branch or a commit
-  host/a/b/c.git/slack                       a repository whose address has
+  github.com/owner/repository/notes          the directory notes of a repository
+  github.com/owner/repository/notes@v0.4.0   at a tag, a branch or a commit
+  host/a/b/c.git/notes                       a repository whose address has
                                              more than three parts
-  ./packs/slack                              a directory on this computer
+  ./packs/notes                              a directory on this computer
 
 1. It fetches the repository with git, at the ref, or at its default branch.
 2. It rewrites .packs/<pack>/ in the project with the pack's files, and the
@@ -537,7 +538,7 @@ It changes no other file, and no file of yours. It names each starting file
 that is there and is not as the pack starts it.
 
   --set WORD=<name>   writes <name> in place of WORD in each starting file's
-                      path and text, as --set BOT=grouse
+                      path and text, as --set TEAM=ops
   --in <directory>    the project; default the directory it was started in
 
 With no pack named it adds each pack the project holds again, from where it

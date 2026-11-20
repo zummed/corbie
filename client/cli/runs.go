@@ -488,7 +488,7 @@ func (e *Env) started(c *client.Client, id string, s *starting, life time.Durati
 		return e.Print(map[string]string{"id": id}, func() string { return id + "\n" })
 	}
 	e.Say("%s", id)
-	if err := c.Taken(e.ctx, id, life, interval); err != nil {
+	if err := e.waiting(life, func() error { return c.Taken(e.ctx, id, life, interval) }); err != nil {
 		return err
 	}
 	return e.await(c, id, s.watch, false)
@@ -509,14 +509,25 @@ func directories(names []string) (bool, error) {
 	return dirs > 0, nil
 }
 
-// quiet is how long a command waits for a receipt before it says what it
+// quiet is how long a command waits for a controller before it says what it
 // waits for: longer than a running controller takes.
 const quiet = 2 * time.Second
 
-// receipt waits for the receipt of a message sent with a life. A wait that
-// goes on says once what it waits for and for how long, so that a setup
-// with no controller running does not look like a command that has hung.
+// receipt waits for the receipt of a message sent with a life.
 func (e *Env) receipt(c *client.Client, message string, life time.Duration) (*instance.Receipt, error) {
+	var receipt *instance.Receipt
+	err := e.waiting(life, func() (err error) {
+		receipt, err = c.WaitReceipt(e.ctx, message, life, interval)
+		return err
+	})
+	return receipt, err
+}
+
+// waiting runs a wait for a controller to take a message sent with a life.
+// A wait that goes on says once what it waits for and for how long, so that
+// a setup with no controller running does not look like a command that has
+// hung.
+func (e *Env) waiting(life time.Duration, wait func() error) error {
 	got, said := make(chan struct{}), make(chan struct{})
 	go func() {
 		defer close(said)
@@ -528,10 +539,10 @@ func (e *Env) receipt(c *client.Client, message string, life time.Duration) (*in
 			e.Say("waiting up to %s for a controller to take it", short(client.Taking(life)))
 		}
 	}()
-	receipt, err := c.WaitReceipt(e.ctx, message, life, interval)
+	err := wait()
 	close(got)
 	<-said
-	return receipt, err
+	return err
 }
 
 // short writes a length of time without the units that are zero at its

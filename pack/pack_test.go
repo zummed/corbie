@@ -32,17 +32,17 @@ func read(t *testing.T, path string) string {
 	return string(text)
 }
 
-// packs is a directory of two packs: slack, whose files name shared, and
+// packs is a directory of two packs: notes, whose files name shared, and
 // shared.
 func packs(t *testing.T) string {
 	dir := t.TempDir()
 	write(t, dir, map[string]string{
-		"slack/chat/post.yaml":                   "flow: post\nstages: { say: { job: { script: .packs/shared/format.js } } }\n",
-		"slack/AGENTS.md":                        "Place a call with include: .packs/slack/chat/post.yaml, or .packs/jira/chat/post.yaml\n",
-		"slack/starter/BOT/slack/BOT.yaml":       "statechart: BOT\n",
-		"slack/starter/BOT/slack/chat/post.yaml": "include: .packs/slack/chat/post.yaml\n",
-		"shared/format.js":                       "return input\n",
-		"shared/starter/never.yaml":              "flow: never\n",
+		"notes/chat/post.yaml":                    "flow: post\nstages: { say: { job: { script: .packs/shared/format.js } } }\n",
+		"notes/AGENTS.md":                         "Place a call with include: .packs/notes/chat/post.yaml, or .packs/jira/chat/post.yaml\n",
+		"notes/starter/TEAM/notes/TEAM.yaml":      "statechart: TEAM\n",
+		"notes/starter/TEAM/notes/chat/post.yaml": "include: .packs/notes/chat/post.yaml\n",
+		"shared/format.js":                        "return input\n",
+		"shared/starter/never.yaml":               "flow: never\n",
 	})
 	return dir
 }
@@ -62,51 +62,51 @@ func add(t *testing.T, project, source string, words map[string]string) Report {
 
 func Test_pack_add_writes_the_pack_and_its_starting_files(t *testing.T) {
 	from, project := packs(t), t.TempDir()
-	rep := add(t, project, filepath.Join(from, "slack"), map[string]string{"BOT": "grouse"})
-	if read(t, filepath.Join(project, ".packs/slack/chat/post.yaml")) == "" || read(t, filepath.Join(project, ".packs/shared/format.js")) != "return input\n" {
+	rep := add(t, project, filepath.Join(from, "notes"), map[string]string{"TEAM": "ops"})
+	if read(t, filepath.Join(project, ".packs/notes/chat/post.yaml")) == "" || read(t, filepath.Join(project, ".packs/shared/format.js")) != "return input\n" {
 		t.Fatal("the pack, or the pack its files name, is not written")
 	}
-	if _, err := os.Stat(filepath.Join(project, ".packs/slack/starter")); err == nil {
+	if _, err := os.Stat(filepath.Join(project, ".packs/notes/starter")); err == nil {
 		t.Fatal("the starting files are written under .packs")
 	}
 	if _, err := os.Stat(filepath.Join(project, "never.yaml")); err == nil {
 		t.Fatal("a needed pack's starting file is written")
 	}
-	if got := read(t, filepath.Join(project, "grouse/slack/grouse.yaml")); got != "statechart: grouse\n" {
+	if got := read(t, filepath.Join(project, "ops/notes/ops.yaml")); got != "statechart: ops\n" {
 		t.Fatalf("the router is %q", got)
 	}
-	if want := []string{"grouse/slack/chat/post.yaml", "grouse/slack/grouse.yaml"}; !slices.Equal(rep.Started, want) || len(rep.Differ) != 0 {
+	if want := []string{"ops/notes/chat/post.yaml", "ops/notes/ops.yaml"}; !slices.Equal(rep.Started, want) || len(rep.Differ) != 0 {
 		t.Fatalf("started %v, differ %v", rep.Started, rep.Differ)
 	}
 	if got := read(t, filepath.Join(project, ".corbieignore")); got != ".packs/\n" {
 		t.Fatalf(".corbieignore is %q", got)
 	}
-	if len(rep.Packs) != 2 || rep.Packs[1].Needed != "slack" {
+	if len(rep.Packs) != 2 || rep.Packs[1].Needed != "notes" {
 		t.Fatalf("the packs written are %+v", rep.Packs)
 	}
 }
 
 func Test_pack_add_again_rewrites_the_pack_and_no_file_of_the_project(t *testing.T) {
 	from, project := packs(t), t.TempDir()
-	words := map[string]string{"BOT": "grouse"}
-	add(t, project, filepath.Join(from, "slack"), words)
+	words := map[string]string{"TEAM": "ops"}
+	add(t, project, filepath.Join(from, "notes"), words)
 	write(t, project, map[string]string{
-		"grouse/slack/grouse.yaml":    "statechart: mine\n",
-		".packs/slack/chat/post.yaml": "changed\n",
-		".packs/slack/stale.yaml":     "stale\n",
+		"ops/notes/ops.yaml":          "statechart: mine\n",
+		".packs/notes/chat/post.yaml": "changed\n",
+		".packs/notes/stale.yaml":     "stale\n",
 		".corbieignore":               "people.yaml\n.packs/\n",
 	})
-	rep := add(t, project, filepath.Join(from, "slack"), words)
-	if read(t, filepath.Join(project, "grouse/slack/grouse.yaml")) != "statechart: mine\n" {
+	rep := add(t, project, filepath.Join(from, "notes"), words)
+	if read(t, filepath.Join(project, "ops/notes/ops.yaml")) != "statechart: mine\n" {
 		t.Fatal("a file of the project was changed")
 	}
-	if !slices.Equal(rep.Differ, []string{"grouse/slack/grouse.yaml"}) || len(rep.Started) != 0 {
+	if !slices.Equal(rep.Differ, []string{"ops/notes/ops.yaml"}) || len(rep.Started) != 0 {
 		t.Fatalf("started %v, differ %v", rep.Started, rep.Differ)
 	}
-	if strings.Contains(read(t, filepath.Join(project, ".packs/slack/chat/post.yaml")), "changed") {
+	if strings.Contains(read(t, filepath.Join(project, ".packs/notes/chat/post.yaml")), "changed") {
 		t.Fatal("the pack was not rewritten")
 	}
-	if _, err := os.Stat(filepath.Join(project, ".packs/slack/stale.yaml")); err == nil {
+	if _, err := os.Stat(filepath.Join(project, ".packs/notes/stale.yaml")); err == nil {
 		t.Fatal("a file the pack no longer holds is left")
 	}
 	if got := read(t, filepath.Join(project, ".corbieignore")); got != "people.yaml\n.packs/\n" {
@@ -114,30 +114,30 @@ func Test_pack_add_again_rewrites_the_pack_and_no_file_of_the_project(t *testing
 	}
 	// A starting file a person removed is not written again, and one the
 	// pack gained is.
-	os.Remove(filepath.Join(project, "grouse/slack/chat/post.yaml"))
-	write(t, from, map[string]string{"slack/starter/BOT/slack/files/get.yaml": "include: .packs/slack/chat/post.yaml\n"})
-	rep = add(t, project, filepath.Join(from, "slack"), words)
-	if _, err := os.Stat(filepath.Join(project, "grouse/slack/chat/post.yaml")); err == nil || !slices.Equal(rep.Started, []string{"grouse/slack/files/get.yaml"}) {
+	os.Remove(filepath.Join(project, "ops/notes/chat/post.yaml"))
+	write(t, from, map[string]string{"notes/starter/TEAM/notes/files/get.yaml": "include: .packs/notes/chat/post.yaml\n"})
+	rep = add(t, project, filepath.Join(from, "notes"), words)
+	if _, err := os.Stat(filepath.Join(project, "ops/notes/chat/post.yaml")); err == nil || !slices.Equal(rep.Started, []string{"ops/notes/files/get.yaml"}) {
 		t.Fatalf("after a starting file was removed and another added, it started %v", rep.Started)
 	}
 	sources, kept, err := Added(project)
-	if err != nil || len(sources) != 1 || sources["slack"].Name != "slack" || kept["slack"]["BOT"] != "grouse" {
+	if err != nil || len(sources) != 1 || sources["notes"].Name != "notes" || kept["notes"]["TEAM"] != "ops" {
 		t.Fatalf("the project's packs are %v with %v: %v", sources, kept, err)
 	}
 }
 
 func Test_pack_add_refuses_a_word_not_set_or_not_held(t *testing.T) {
 	from := packs(t)
-	src, _ := Parse(filepath.Join(from, "slack"))
-	if _, err := Add(t.TempDir(), src, nil); err == nil || !strings.Contains(err.Error(), "takes BOT: add --set BOT=<name>") {
+	src, _ := Parse(filepath.Join(from, "notes"))
+	if _, err := Add(t.TempDir(), src, nil); err == nil || !strings.Contains(err.Error(), "takes TEAM: add --set TEAM=<name>") {
 		t.Fatalf("with no word set: %v", err)
 	}
-	if _, err := Add(t.TempDir(), src, map[string]string{"BOT": "grouse", "TEAM": "x"}); err == nil || !strings.Contains(err.Error(), "hold no TEAM") {
+	if _, err := Add(t.TempDir(), src, map[string]string{"TEAM": "ops", "OTHER": "x"}); err == nil || !strings.Contains(err.Error(), "hold no OTHER") {
 		t.Fatalf("with a word the pack does not hold: %v", err)
 	}
 	for _, name := range []string{"../up", "my bot", "a/b"} {
 		project := t.TempDir()
-		if _, err := Add(project, src, map[string]string{"BOT": name}); err == nil || !strings.Contains(err.Error(), "is not a name") {
+		if _, err := Add(project, src, map[string]string{"TEAM": name}); err == nil || !strings.Contains(err.Error(), "is not a name") {
 			t.Fatalf("with the word set to %q: %v", name, err)
 		}
 		if entries, _ := os.ReadDir(project); len(entries) != 0 {
@@ -157,11 +157,11 @@ func Test_pack_add_refuses_a_word_not_set_or_not_held(t *testing.T) {
 
 func Test_pack_parse_reads_a_repository_a_path_and_a_ref(t *testing.T) {
 	for text, want := range map[string]Source{
-		"github.com/zummed/packs/slack":                  {Repo: "https://github.com/zummed/packs", Path: "slack", Name: "slack"},
-		"github.com/zummed/packs/chat/slack@v0.4.0":      {Repo: "https://github.com/zummed/packs", Path: "chat/slack", Ref: "v0.4.0", Name: "slack"},
-		"github.com/zummed/packs/slack@claude/try-packs": {Repo: "https://github.com/zummed/packs", Path: "slack", Ref: "claude/try-packs", Name: "slack"},
-		"gitlab.com/a/b/c.git/slack":                     {Repo: "https://gitlab.com/a/b/c.git", Path: "slack", Name: "slack"},
-		"github.com/zummed/slack":                        {Repo: "https://github.com/zummed/slack", Path: "", Name: "slack"},
+		"github.com/owner/packs/notes":                  {Repo: "https://github.com/owner/packs", Path: "notes", Name: "notes"},
+		"github.com/owner/packs/chat/notes@v0.4.0":      {Repo: "https://github.com/owner/packs", Path: "chat/notes", Ref: "v0.4.0", Name: "notes"},
+		"github.com/owner/packs/notes@claude/try-packs": {Repo: "https://github.com/owner/packs", Path: "notes", Ref: "claude/try-packs", Name: "notes"},
+		"gitlab.com/a/b/c.git/notes":                    {Repo: "https://gitlab.com/a/b/c.git", Path: "notes", Name: "notes"},
+		"github.com/owner/notes":                        {Repo: "https://github.com/owner/notes", Path: "", Name: "notes"},
 	} {
 		got, err := Parse(text)
 		want.Text = text
@@ -169,7 +169,7 @@ func Test_pack_parse_reads_a_repository_a_path_and_a_ref(t *testing.T) {
 			t.Errorf("%s is read as %+v: %v", text, got, err)
 		}
 	}
-	for _, text := range []string{"slack", "github.com/zummed", "github.com/zummed/packs/slack@", "github.com/zummed/packs/sl ack"} {
+	for _, text := range []string{"notes", "github.com/owner", "github.com/owner/packs/notes@", "github.com/owner/packs/no tes"} {
 		if _, err := Parse(text); err == nil {
 			t.Errorf("%q is read as a pack", text)
 		}
@@ -202,15 +202,15 @@ func Test_pack_add_reads_a_branch_of_a_repository(t *testing.T) {
 	run("checkout", "-q", "main")
 
 	project := t.TempDir()
-	rep := add(t, project, filepath.Join(from, "slack")+"@try/branch", map[string]string{"BOT": "grouse"})
+	rep := add(t, project, filepath.Join(from, "notes")+"@try/branch", map[string]string{"TEAM": "ops"})
 	if got := read(t, filepath.Join(project, ".packs/shared/format.js")); got != "return 'branch'\n" {
 		t.Fatalf("the needed pack is read as %q", got)
 	}
-	if rep.Packs[0].Commit != commit || !strings.Contains(read(t, filepath.Join(project, ".packs/slack/.pack")), "commit "+commit+"\n") {
+	if rep.Packs[0].Commit != commit || !strings.Contains(read(t, filepath.Join(project, ".packs/notes/.pack")), "commit "+commit+"\n") {
 		t.Fatalf("the commit recorded is %q, of %q", rep.Packs[0].Commit, commit)
 	}
-	src, _ := Parse(filepath.Join(from, "slack") + "@no-such-ref")
-	if _, err := Add(t.TempDir(), src, map[string]string{"BOT": "grouse"}); err == nil || !strings.Contains(err.Error(), "git: ") {
+	src, _ := Parse(filepath.Join(from, "notes") + "@no-such-ref")
+	if _, err := Add(t.TempDir(), src, map[string]string{"TEAM": "ops"}); err == nil || !strings.Contains(err.Error(), "git: ") {
 		t.Fatalf("a ref that is not there: %v", err)
 	}
 }

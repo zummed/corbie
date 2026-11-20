@@ -376,7 +376,7 @@ func check(dir string, src Source, words map[string]string) error {
 	}
 	for _, word := range sorted(words) {
 		if !capitals.MatchString(word) {
-			return fmt.Errorf("--set %s: a word is written in capitals, as BOT", word)
+			return fmt.Errorf("--set %s: a word is written in capitals, as TEAM", word)
 		}
 		if !wordName.MatchString(words[word]) {
 			return fmt.Errorf("--set %s=%s: %q is not a name: use letters, digits, '_' and '-', starting with a letter", word, words[word], words[word])

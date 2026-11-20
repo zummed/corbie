@@ -75,6 +75,10 @@ func cmdAdd(e *Env, args []string) error {
 	}
 	return e.Print(rep, func() string {
 		var b strings.Builder
+		wide := 0
+		for _, p := range rep.Packs {
+			wide = max(wide, len(p.Name))
+		}
 		for _, p := range rep.Packs {
 			from := p.Source
 			if p.Needed != "" {
@@ -83,7 +87,7 @@ func cmdAdd(e *Env, args []string) error {
 			if p.Commit != "" {
 				from += "  " + p.Commit[:min(len(p.Commit), 10)]
 			}
-			fmt.Fprintf(&b, "%s/%s  %s\n", pack.Dir, p.Name, from)
+			fmt.Fprintf(&b, "%s/%-*s  %s\n", pack.Dir, wide, p.Name, from)
 		}
 		if len(rep.Started) > 0 {
 			fmt.Fprintf(&b, "\nWrote these starting files:\n\n  %s\n", strings.Join(rep.Started, "\n  "))

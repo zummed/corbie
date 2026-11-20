@@ -38,7 +38,7 @@ func packs(t *testing.T) string {
 	dir := t.TempDir()
 	write(t, dir, map[string]string{
 		"slack/chat/post.yaml":                   "flow: post\nstages: { say: { job: { script: .packs/shared/format.js } } }\n",
-		"slack/AGENTS.md":                        "Place a call with include: .packs/slack/chat/post.yaml\n",
+		"slack/AGENTS.md":                        "Place a call with include: .packs/slack/chat/post.yaml, or .packs/jira/chat/post.yaml\n",
 		"slack/starter/BOT/slack/BOT.yaml":       "statechart: BOT\n",
 		"slack/starter/BOT/slack/chat/post.yaml": "include: .packs/slack/chat/post.yaml\n",
 		"shared/format.js":                       "return input\n",
@@ -112,6 +112,14 @@ func Test_pack_add_again_rewrites_the_pack_and_no_file_of_the_project(t *testing
 	if got := read(t, filepath.Join(project, ".corbieignore")); got != "people.yaml\n.packs/\n" {
 		t.Fatalf(".corbieignore is %q", got)
 	}
+	// A starting file a person removed is not written again, and one the
+	// pack gained is.
+	os.Remove(filepath.Join(project, "grouse/slack/chat/post.yaml"))
+	write(t, from, map[string]string{"slack/starter/BOT/slack/files/get.yaml": "include: .packs/slack/chat/post.yaml\n"})
+	rep = add(t, project, filepath.Join(from, "slack"), words)
+	if _, err := os.Stat(filepath.Join(project, "grouse/slack/chat/post.yaml")); err == nil || !slices.Equal(rep.Started, []string{"grouse/slack/files/get.yaml"}) {
+		t.Fatalf("after a starting file was removed and another added, it started %v", rep.Started)
+	}
 	sources, kept, err := Added(project)
 	if err != nil || len(sources) != 1 || sources["slack"].Name != "slack" || kept["slack"]["BOT"] != "grouse" {
 		t.Fatalf("the project's packs are %v with %v: %v", sources, kept, err)
@@ -126,6 +134,15 @@ func Test_pack_add_refuses_a_word_not_set_or_not_held(t *testing.T) {
 	}
 	if _, err := Add(t.TempDir(), src, map[string]string{"BOT": "grouse", "TEAM": "x"}); err == nil || !strings.Contains(err.Error(), "hold no TEAM") {
 		t.Fatalf("with a word the pack does not hold: %v", err)
+	}
+	for _, name := range []string{"../up", "my bot", "a/b"} {
+		project := t.TempDir()
+		if _, err := Add(project, src, map[string]string{"BOT": name}); err == nil || !strings.Contains(err.Error(), "is not a name") {
+			t.Fatalf("with the word set to %q: %v", name, err)
+		}
+		if entries, _ := os.ReadDir(project); len(entries) != 0 {
+			t.Fatalf("with the word set to %q, files were written", name)
+		}
 	}
 	src, _ = Parse(filepath.Join(from, "absent"))
 	if _, err := Add(t.TempDir(), src, nil); err == nil || !strings.Contains(err.Error(), "holds no pack absent") {

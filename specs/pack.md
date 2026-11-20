@@ -38,20 +38,21 @@ corbie add github.com/zummed/corbie-rook/slack@v0.4.0 --set BOT=grouse
 
 1. It fetches the repository at the ref, with `git`, over HTTPS.
 2. It removes `.packs/slack/` and writes the pack's files there.
-3. It does the same for each pack beside `slack` in the repository that the files of `slack` name, as `.packs/shared/`.
-4. It writes each starting file at its path in the project, where no file is there.
+3. It does the same for each pack beside `slack` in the repository that a `.yaml` or `.js` file of `slack` names, as `.packs/shared/`.
+4. It writes each starting file at its path in the project, where no file is there and it has written none before.
 5. It adds `.packs/` to the project's `.corbieignore` when it lacks it.
 
 `corbie add` changes no other file. It prints each pack with its commit, each starting file it wrote, and each starting file that is there and is not as the pack starts it.
 
-- `--set BOT=grouse` writes `grouse` in place of `BOT` in each starting file's path and text. A word is written in capitals.
+- `--set BOT=grouse` writes `grouse` in place of `BOT` in each starting file's path and text. A word is written in capitals, and its name in letters, digits, `_` and `-`.
+- A starting file a person removed stays removed: removing a file that places a machine removes its location.
 - A starting directory named in capitals is a word the pack takes, and `corbie add` refuses without it.
 - A pack that another needs gets no starting files, and does not replace a pack a person added.
 - `--in <directory>` names the project. By default it is the directory `corbie add` was started in.
 
 ## Updating
 
-Each pack's directory holds a file `.pack`: where the pack came from, its commit, and the words it was added with.
+Each pack's directory holds a file `.pack`: where the pack came from, its commit, the words it was added with, and the starting files written.
 
 ```
 corbie add                    adds each pack the project holds again, as its .pack records

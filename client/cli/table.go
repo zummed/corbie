@@ -520,9 +520,10 @@ computer.
 
 1. It fetches the repository with git, at the ref, or at its default branch.
 2. It rewrites .packs/<pack>/ in the project with the pack's files, and the
-   same for each pack beside it that those files name as .packs/<name>/.
+   same for each pack beside it that its .yaml and .js files name as
+   .packs/<name>/.
 3. It writes each file of the pack's starter/ directory at the same path in
-   the project, where no file is there.
+   the project, where no file is there and it has written none before.
 4. It adds .packs/ to the project's .corbieignore when it lacks it.
 
 It changes no other file, and no file of yours. It names each starting file

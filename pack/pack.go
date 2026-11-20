@@ -111,8 +111,9 @@ type Report struct {
 
 // Add writes a pack into a project. It rewrites the pack's directory under
 // .packs, and that of each pack of the same source that the pack's files
-// name. It writes each starting file that is not there, with each word set
-// written in place of itself in the file's path and text. It adds .packs/
+// name. It writes each starting file that is not there and that it has not
+// written before, with each word set written in place of itself in the
+// file's path and text. It adds .packs/
 // to the project's .corbieignore when it lacks it. It changes no other
 // file.
 func Add(project string, src Source, words map[string]string) (Report, error) {
@@ -150,6 +151,36 @@ func Add(project string, src Source, words map[string]string) (Report, error) {
 	if err := os.MkdirAll(project, 0o755); err != nil {
 		return rep, err
 	}
+	// A starting file written before is not written again: a person who
+	// removed it meant to.
+	before := started(filepath.Join(project, Dir, src.Name))
+	starting, err := startingFiles(dir, words)
+	if err != nil {
+		return rep, err
+	}
+	for _, rel := range sorted(starting) {
+		to := filepath.Join(project, rel)
+		have, err := os.ReadFile(to)
+		switch {
+		case os.IsNotExist(err) && slices.Contains(before, rel):
+		case os.IsNotExist(err):
+			if err := os.MkdirAll(filepath.Dir(to), 0o755); err != nil {
+				return rep, err
+			}
+			if err := os.WriteFile(to, []byte(starting[rel]), 0o644); err != nil {
+				return rep, err
+			}
+			rep.Started = append(rep.Started, rel)
+		case err != nil:
+			return rep, err
+		case string(have) != starting[rel]:
+			rep.Differ = append(rep.Differ, rel)
+		}
+	}
+	for _, rel := range rep.Started {
+		before = append(before, rel)
+	}
+	slices.Sort(before)
 	for _, p := range packs {
 		to := filepath.Join(project, Dir, p.name)
 		// A pack a person added is not replaced by one another pack needs.
@@ -166,37 +197,18 @@ func Add(project string, src Source, words map[string]string) (Report, error) {
 		if p.needed == "" {
 			w.Source = src.Text
 		}
-		if err := os.WriteFile(filepath.Join(to, record), []byte(w.record(words)), 0o644); err != nil {
+		text := w.record(words)
+		if p.needed == "" {
+			for _, rel := range before {
+				text += "started " + filepath.ToSlash(rel) + "\n"
+			}
+		}
+		if err := os.WriteFile(filepath.Join(to, record), []byte(text), 0o644); err != nil {
 			return rep, err
 		}
 		rep.Packs = append(rep.Packs, w)
 	}
-	if err := list(filepath.Join(project, ".corbieignore")); err != nil {
-		return rep, err
-	}
-	starting, err := startingFiles(dir, words)
-	if err != nil {
-		return rep, err
-	}
-	for _, rel := range sorted(starting) {
-		to := filepath.Join(project, rel)
-		have, err := os.ReadFile(to)
-		switch {
-		case os.IsNotExist(err):
-			if err := os.MkdirAll(filepath.Dir(to), 0o755); err != nil {
-				return rep, err
-			}
-			if err := os.WriteFile(to, []byte(starting[rel]), 0o644); err != nil {
-				return rep, err
-			}
-			rep.Started = append(rep.Started, rel)
-		case err != nil:
-			return rep, err
-		case string(have) != starting[rel]:
-			rep.Differ = append(rep.Differ, rel)
-		}
-	}
-	return rep, nil
+	return rep, list(filepath.Join(project, ".corbieignore"))
 }
 
 // Added gives the source and the words of each pack in a project that a
@@ -235,6 +247,18 @@ func Added(project string) (map[string]Source, map[string]map[string]string, err
 		}
 	}
 	return sources, words, nil
+}
+
+// started gives the starting files a pack's record says were written.
+func started(dir string) []string {
+	text, _ := os.ReadFile(filepath.Join(dir, record))
+	var out []string
+	for _, line := range strings.Split(string(text), "\n") {
+		if rel, ok := strings.CutPrefix(line, "started "); ok {
+			out = append(out, filepath.FromSlash(rel))
+		}
+	}
+	return out
 }
 
 // added says whether a pack's directory holds the record of a pack a person
@@ -315,12 +339,13 @@ func git(args ...string) (string, error) {
 
 var names = regexp.MustCompile(`\.packs/([A-Za-z0-9][A-Za-z0-9_-]*)/`)
 
-// named gives the packs a pack's files name, as .packs/<name>/, other than
-// itself, sorted.
+// named gives the packs a pack's definitions and scripts name, as
+// .packs/<name>/, other than itself, sorted. A page that names a pack
+// needs none.
 func named(dir string) ([]string, error) {
 	var out []string
 	err := filepath.WalkDir(dir, func(path string, d fs.DirEntry, err error) error {
-		if err != nil || d.IsDir() {
+		if err != nil || d.IsDir() || !slices.Contains([]string{".yaml", ".js"}, filepath.Ext(path)) {
 			return err
 		}
 		text, err := os.ReadFile(path)
@@ -338,6 +363,8 @@ func named(dir string) ([]string, error) {
 	return out, err
 }
 
+var wordName = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9_-]*$`)
+
 var capitals = regexp.MustCompile(`^[A-Z][A-Z0-9_]*$`)
 
 // check refuses a word the pack's starting files do not hold, and a
@@ -350,6 +377,9 @@ func check(dir string, src Source, words map[string]string) error {
 	for _, word := range sorted(words) {
 		if !capitals.MatchString(word) {
 			return fmt.Errorf("--set %s: a word is written in capitals, as BOT", word)
+		}
+		if !wordName.MatchString(words[word]) {
+			return fmt.Errorf("--set %s=%s: %q is not a name: use letters, digits, '_' and '-', starting with a letter", word, words[word], words[word])
 		}
 		held := false
 		for rel, text := range starting {

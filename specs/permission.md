@@ -232,7 +232,7 @@ A script cannot reach outside itself except through the kinds above, and those a
 ```
 
 - Two clients whose ceilings match one prefix each set secrets and values there while it holds no tree. What one set stays when the other submits a tree there, and that tree's runs use it. The controller's owner gives each client its own prefix.
-- Whoever holds a gateway's token calls every location that accepts the gateway's client, with any input. A token in a page's code is held by everyone who loads the page.
+- Whoever holds a gateway's token calls every location that accepts the gateway's client, with any input. A token, an identity or a bucket's access key in a page's code is held by everyone who loads the page.
 - In a page a script that computes without end is not stopped at its time limit, and nothing limits a job's memory (see Roles). The page's code ends it with `Corbie.stop`.
 - A client browsing the store sees that runs exist, their heads, and how many entries each record has, with their sizes and times. It opens only what is sealed to it.
 - A client a file's `read:` lists reads the tickets of the runs there, and so can answer them, as any client that holds a ticket can.

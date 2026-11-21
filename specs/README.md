@@ -152,7 +152,7 @@ Each area below has an overview in this directory, written to be read. The detai
 
 **[Models](model.md).** The services an agent's turns are sent to.
 
-**[Client](client.md).** Submitting trees, starting, stopping and answering runs, and reading them, as a library; the command line, the gateway and the model server built on it.
+**[Client](client.md).** Submitting trees, starting, stopping and answering runs, and reading them, as a library; the command line, the gateway, the page build and the model server built on it.
 
 **[Manual](manual.md).** The documentation carried in the binary, for people and for models.
 

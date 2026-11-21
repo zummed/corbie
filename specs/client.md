@@ -1,6 +1,6 @@
 # Client
 
-A client starts runs and reads what happened to them. This area is the client as a Go package, and the three things built on it and on nothing else: the command line, the gateway and the server for models.
+A client starts runs and reads what happened to them. This area is the client as a Go package, and the four things built on it and on nothing else: the command line, the gateway, the page build and the server for models.
 
 ## The package
 
@@ -318,6 +318,31 @@ A start is the gateway's client starting a transient location, as `corbie run st
 A gateway is started with `corbie start gateway`, alone or beside a controller and a runner. It is one client with one ceiling. Callers show it a token it was given when it was started, and all of them act as that client. Different ceilings need different gateways. A request with a field the gateway does not know is refused.
 
 It keeps nothing itself. It runs wherever a process can stay up, and is not offered on serverless hosts.
+
+## In a page
+
+The page build is Corbie compiled to WebAssembly, for the page of an application in a browser. It is two files, `corbie.wasm` and `corbie.js`, and `mise run build-page` writes them into `build/page/`.
+
+1. The page's code calls `Corbie.start`. A controller, a runner and a client start in a worker of the page with the store in memory, as under `corbie test`.
+2. The page's code submits a tree with `submit`: a prefix, and each file's text by its path.
+3. The page's code makes the gateway's requests with `fetch`, and is answered as the gateway answers. No request leaves the page, and none carries a token.
+
+```js
+const corbie = await Corbie.start("corbie.wasm")
+await corbie.submit("/dash", { "top.yaml": "…", "top.js": "…" })
+const started = await corbie.fetch("/runs", { method: "POST", body: JSON.stringify({ at: "/dash/top", input: { rows, measure: "units" } }) })
+const { id } = await started.json()
+const run = await (await corbie.fetch(`/runs/${id}?wait`)).json()
+```
+
+The page's code reaches a Corbie on a server through that server's gateway, with the same requests.
+
+- A script in a page has the plugins that ask for no way out: `crypto`, `compress`, `html`, `xml`, `yaml`, `time`, `blobs` and `machines`. It has no network, no files and no programs.
+- A job in a page has no scratch directory.
+- An agent or a decision fails in a page at its first turn, which calls a model over a connection.
+- A page loaded again starts with an empty store.
+- The page's code owns the controller, the runner and the client. Corbie keeps nothing in a page from the page's code.
+- A job runs in the worker and not in a process of its own (see Roles). `Corbie.stop` ends the worker and everything in it.
 
 ## For a model
 

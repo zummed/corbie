@@ -24,8 +24,9 @@ These are new.
 
 - `corbie add` writes a pack of ready-made machines into a project: `corbie
   manual packs`.
-- `corbie up` runs a controller, a runner and a gateway on a directory of
-  machines, with the store in memory and nothing kept: `corbie up --help`.
+- `corbie up` sets up and runs a controller, a runner and a gateway on a
+  directory of machines, in `.corbie` of the directory: `corbie up --help`.
+- `corbie test --value-env NAME` sets a value from the environment variable.
 - A program started beside a gateway has its address in `CORBIE_GATEWAY` and
   its token in `CORBIE_GATEWAY_TOKEN`.
 

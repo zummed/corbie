@@ -31,7 +31,7 @@ A blob in any value is shown as its type, its size and the path to ask for it by
 ```
 corbie init                             create a controller, a runner and a client on this computer; by default the store is in the config, and corbie init store sets up the store's server alone
 corbie start [<name> [<its flags>]]…    run the controller, a runner, the gateway, the store's server or a program, until stopped
-corbie up [<name> [<its flags>]]…       run a controller, a runner and a gateway on a directory of machines, with nothing kept
+corbie up [<name> [<its flags>]]…       run a controller, a runner and a gateway on a directory of machines, set up in the directory
 corbie check                            start one small run, and report which part of a setup did not respond
 corbie test flow.yaml                   run a definition or a script in this process, with no setup; given directories, read every machine in them
 
@@ -234,29 +234,27 @@ A program's word that is itself a role's or a program's name begins the next nam
 `ui` is a command of the binary, and `corbie start` takes it as it takes a program's name. It starts `corbie ui` as a process of its own, from this binary, with the words written after `ui`. A binary built with the tag `noui` has no `ui` command.
 - On a serverless host, `corbie start` refuses a program before anything starts.
 
-`corbie up` does what `corbie init`, `corbie start` and `corbie run submit` do, in one process, and by default keeps nothing:
+`corbie up` does what `corbie init`, `corbie start` and `corbie run submit` do, in one process:
 
-1. It sets up a controller, a runner and a client in the config `.corbie` of the current directory, as `corbie init --ceiling all` does, with the store in its memory.
-2. It runs the controller, the runner and a gateway, and serves the store on this computer, at a free port, as a directory is served.
+1. It sets up a controller, a runner and a client in the config `.corbie` of the current directory, as `corbie init --ceiling all` does, with the store in `.corbie/store`, unless they are set up.
+2. It runs the controller, the runner and a gateway.
 3. It submits the directory, as `corbie run submit` does, at `/` and the directory's name.
 4. It starts each program named, as `corbie start` does.
-5. When it stops, it removes `.corbie`.
 
 ```
 corbie up                          the machines of the current directory
 corbie up ui dash                  and the UI, and the program corbie-dash
 corbie up --in boards --at /b      another directory, at another prefix
-corbie up --store .corbie/store    a store that is kept, and its keys
+corbie up --store s3://…           a bucket as the store, when .corbie is set up
 ```
 
-- A command run in the same directory, or below it, finds `.corbie` and is the client of that `corbie up`: `corbie run start`, `corbie run ls`, `corbie ui`.
-- `.corbie` holds the client's keys, the runner's keys and the address the store is served at. The controller's keys are in the process alone, so no other process is the controller, and `corbie controller secret set` there is refused.
-- `--value`, `--secret` and `--secret-env` set values and secrets at `/` as it starts, as `corbie test` takes them. While it runs, `corbie client secret set` and `corbie client value set` set them at the directory's prefix, as on any Corbie.
+- Every command run in the same directory, or below it, finds `.corbie` and uses it, as it uses any config.
+- `.corbie` stays when `corbie up` stops, and `corbie up` run again continues with its runs, secrets and values. Removing `.corbie` removes all of it.
+- `.corbie` holds a `.gitignore` that lists everything in it.
 - A file with a problem is reported before anything starts, and nothing is started.
 - The gateway listens at a free port, and `gateway --listen` names another. A program is given `CORBIE_CONFIG`, `CORBIE_GATEWAY` and `CORBIE_GATEWAY_TOKEN`.
-- A second `corbie up` on a config whose `corbie up` is running is refused. A config that a killed `corbie up` left is replaced.
-- `--store <address>` names a directory or a bucket. The keys then stay in `.corbie`, nothing is removed, and `corbie up` run again uses the store the config records. `--ceiling` applies only when the config is set up.
-- `--config` names another config than `.corbie`.
+- `--value`, `--value-env`, `--secret` and `--secret-env` set values and secrets at `/` as it starts, as `corbie test` takes them.
+- `--store` and `--ceiling` apply when the config is set up. `--config` names another config than `.corbie`.
 
 `corbie test` is an ordinary run: the same roles, in one process, on a store in memory, with ceilings that allow everything. It records the file as a tree of one file and starts it. A singleton is started by that submit, so a flag of a start given with one is a mistake. A keyed file is refused: its runs start when an event is sent to a key. `corbie test <file> --in <dir>` records the directory as `corbie run submit <dir>` does, which starts its singletons, and runs the file at its location there, so its `call:` and `send:` reach the tree's machines. `corbie test <file> --definition` prints the machine as the client writes it out, each value with its file and line, runs nothing, and takes no flag of a start.
 
@@ -264,6 +262,7 @@ corbie up --store .corbie/store    a store that is kept, and its keys
 
 ```
 --value NAME=VALUE    a value
+--value-env NAME      a value, read from the environment variable of its name
 --secret NAME         a secret, typed at the terminal, not shown
 --secret-env NAME     a secret, from the environment variable NAME
 ```

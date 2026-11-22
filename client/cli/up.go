@@ -2,12 +2,10 @@ package cli
 
 import (
 	"fmt"
-	"net"
 	"os"
 	"path/filepath"
 	"slices"
 	"strings"
-	"time"
 
 	"github.com/zummed/corbie/client"
 	"github.com/zummed/corbie/identity"
@@ -19,17 +17,17 @@ import (
 
 // cmdUp is corbie up: a controller, a runner, a client and a gateway in one
 // process, set up as corbie init sets them up, in the config .corbie of the
-// current directory, and a directory submitted. By default the store is in
-// this process's memory, served to the programs it starts and to commands
-// run in the current directory, and the config is removed when it stops.
+// current directory with the store in it, and a directory submitted. A
+// command run in the current directory uses that config.
 func cmdUp(e *Env, args []string) error {
 	var s starting
 	var in, at, ceilingText string
-	var values list
+	var values, valuesFromEnv list
 	e.Flags.StringVar(&in, "in", ".", "")
 	e.Flags.StringVar(&at, "at", "", "")
 	e.Flags.StringVar(&ceilingText, "ceiling", "all", "")
 	e.Flags.Var(&values, "value", "")
+	e.Flags.Var(&valuesFromEnv, "value-env", "")
 	e.Flags.Var(&s.secrets, "secret", "")
 	e.Flags.Var(&s.secretsFromEnv, "secret-env", "")
 	mine, named, err := items(e, args)
@@ -67,7 +65,7 @@ func cmdUp(e *Env, args []string) error {
 	if problems > 0 {
 		return fmt.Errorf("%d of %d files have problems, and nothing is started", problems, len(tree.Machines))
 	}
-	set, err := valuesGiven(values)
+	set, err := valuesGiven(values, valuesFromEnv)
 	if err != nil {
 		return err
 	}
@@ -81,39 +79,7 @@ func cmdUp(e *Env, args []string) error {
 		}
 	}
 	cfg := identity.Config{Dir: e.config}
-	recorded, err := cfg.ControllerStore()
-	if err != nil {
-		return err
-	}
-	// A config that records a store in memory was made by a corbie up: one
-	// that still runs, or one that was killed and left it.
-	if recorded == inMemory {
-		listen, err := cfg.StoreListen()
-		if err != nil {
-			return err
-		}
-		if conn, err := net.DialTimeout("tcp", listen, time.Second); err == nil {
-			conn.Close()
-			return fmt.Errorf("a corbie up is running on the config %s already", cfg.Dir)
-		}
-		if err := os.RemoveAll(cfg.Dir); err != nil {
-			return err
-		}
-		recorded = ""
-	}
-	if recorded == "" {
-		recorded = e.store
-		if recorded == "" {
-			recorded = inMemory
-		}
-		if err := ownStore(recorded); err != nil {
-			return err
-		}
-		if store.IsDirectory(recorded) {
-			if recorded, err = filepath.Abs(strings.TrimPrefix(recorded, "file://")); err != nil {
-				return err
-			}
-		}
+	if !cfg.Has(identity.Controller) {
 		// Nothing in the config is for a repository.
 		if err := os.MkdirAll(cfg.Dir, 0o700); err != nil {
 			return err
@@ -121,21 +87,19 @@ func cmdUp(e *Env, args []string) error {
 		if err := os.WriteFile(filepath.Join(cfg.Dir, ".gitignore"), []byte("*\n"), 0o600); err != nil {
 			return err
 		}
-		// A store in memory is served to every other process, at a port
-		// that is free, and the client records that address.
-		reached := recorded
-		if recorded == inMemory {
-			defer os.RemoveAll(cfg.Dir)
-			e.memory = store.NewMemory()
-			if e.serving, err = net.Listen("tcp", "127.0.0.1:0"); err != nil {
-				return err
-			}
-			if err := cfg.SetStoreListen(e.serving.Addr().String()); err != nil {
-				return err
-			}
-			reached = store.ServedScheme + e.serving.Addr().String()
+		address := e.store
+		if address == "" {
+			address = filepath.Join(cfg.Dir, "store")
 		}
-		if _, _, _, err := e.setUp(cfg, recorded, reached, hostName(), "", limit); err != nil {
+		if err := ownStore(address); err != nil {
+			return err
+		}
+		if store.IsDirectory(address) {
+			if address, err = filepath.Abs(strings.TrimPrefix(address, "file://")); err != nil {
+				return err
+			}
+		}
+		if _, _, _, err := e.setUp(cfg, address, hostName(), "", limit); err != nil {
 			return err
 		}
 	} else if e.Given("ceiling") {
@@ -163,26 +127,14 @@ func cmdUp(e *Env, args []string) error {
 		}
 	}
 	// The controller, the runner and the gateway run whether or not they
-	// are named, and the store's server when the store is in memory. The
-	// gateway listens at a free port by default.
+	// are named. The gateway listens at a free port by default.
 	roles := []item{{name: "controller"}, {name: "runner"}, {name: "gateway", words: []string{"--listen", "127.0.0.1:0"}}}
-	if recorded == inMemory {
-		// The gateway is a client, and is served the store.
-		roles = slices.Insert(roles, 2, item{name: "store"})
-	}
 	for i := len(roles) - 1; i >= 0; i-- {
 		if !slices.ContainsFunc(named, func(it item) bool { return it.name == roles[i].name }) {
 			named = slices.Insert(named, 0, roles[i])
 		}
 	}
 	return e.start(cfg, named, func() error {
-		// The controller's key stays in this process alone: no other
-		// process is the controller of a store in memory.
-		if recorded == inMemory {
-			if err := os.Remove(filepath.Join(cfg.Dir, string(identity.Controller), "identity")); err != nil {
-				return err
-			}
-		}
 		if len(tree.Machines) == 0 {
 			e.Say("%s holds no machine: nothing is submitted", dir)
 			return nil

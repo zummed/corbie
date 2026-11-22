@@ -12,7 +12,7 @@ Set up
   ~/.config/corbie    the config that init writes: the private keys and, by default, the store
   --store <address>   another directory, or an S3 bucket, as the store
   --config <dir>      names another config directory, as CORBIE_CONFIG does, for every command
-  .corbie             a config `corbie up` makes in a directory, used by a command run there
+  .corbie             the config `corbie up` sets up in a directory, used by a command run there
 
 The config directory is `~/.config/corbie` on Linux,
 `~/Library/Application Support/corbie` on macOS and `%AppData%\corbie` on

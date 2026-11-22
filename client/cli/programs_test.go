@@ -191,7 +191,7 @@ agent or decision, and each of its jobs is a script, a machine, or a send.
   start        run the controller, a runner, the gateway, the store's server or
                a program, until stopped
   up           run a controller, a runner and a gateway on a directory of
-               machines, with nothing kept
+               machines, set up in the directory
   check        start one small run, and report which part of a setup did not
                respond
   test         run a definition or a script in this process, with no setup

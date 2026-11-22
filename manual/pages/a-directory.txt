@@ -28,18 +28,17 @@ Submit again after a change: nothing else watches the files.
 Try a directory
 ---------------
 
-`corbie up` does those three commands in one process, with the store in its
-memory, and keeps nothing when it stops.
+`corbie up` does those three commands in one process, on a config and a store
+it sets up in `.corbie` of the current directory.
 
     corbie up --in schedules &
     corbie run ls
       <id>  running    statechart evening  step 1  waiting on 1 timer  at /schedules/evening
 
-  .corbie             the config it makes in the current directory, and removes; a command run there uses it
-  corbie up ui        starts the UI as well, or any program corbie-<name> on PATH
-  --store <address>   keeps the store, a directory or an S3 bucket, and the keys in .corbie
-  --secret-env NAME   sets a secret from the environment variable as it starts
-  a secret, later     corbie client secret set NAME --at /schedules, run in the same directory
+  .corbie              every command run in this directory uses it, and `corbie up` run again continues with it
+  rm -r .corbie        starts again with nothing
+  corbie up ui         starts the UI as well, or any program corbie-<name> on PATH
+  --secret-env NAME    sets a secret from the environment variable, and --value-env NAME a value
 
 Reference
 ---------

@@ -135,48 +135,44 @@ program env, which the wrapper must be able to start.
   corbie manual functions          the controller and runners as AWS Lambda
                                    functions
   corbie manual limits             what a started program can do`},
-		{Name: "up", Usage: "[--in <directory>] [--at <prefix>] [--store <address>] [<name> [<its flags or words>]…]…", Summary: "run a controller, a runner and a gateway on a directory of machines, with nothing kept", Stays: true, Run: cmdUp, Help: `
+		{Name: "up", Usage: "[--in <directory>] [--at <prefix>] [--store <address>] [<name> [<its flags or words>]…]…", Summary: "run a controller, a runner and a gateway on a directory of machines, set up in the directory", Stays: true, Run: cmdUp, Help: `
 It does what corbie init, corbie start and corbie run submit do, in one
 process, until stopped.
 
   1. It sets up a controller, a runner and a client in the config .corbie of
-     the current directory, with the store in this process's memory.
-  2. It runs the controller, the runner and a gateway, and serves the store
-     to other processes on this computer.
+     the current directory, with the store in it, unless they are set up.
+  2. It runs the controller, the runner and a gateway.
   3. It submits the directory, as corbie run submit does.
   4. It starts each program named, as corbie start does.
-  5. When it stops, it removes .corbie, and nothing is kept.
 
-A command run in the same directory, or below it, uses .corbie while
-corbie up runs: corbie run start, corbie run ls, corbie ui.
+Every command run in the same directory, or below it, uses .corbie: corbie
+run start, corbie controller secret set, corbie ui. Run again, corbie up
+continues with the runs, the secrets and the values in it. Remove .corbie to
+start with nothing.
 
   --in <directory>     the directory of machines; default the current one
   --at <prefix>        the prefix it is submitted at; default / and the
                        directory's name
-  --store <address>    keeps the store: a directory, or an S3 bucket as
-                       s3://…. .corbie then keeps the keys, and corbie up
-                       run again continues with both
-  --ceiling <list>     the most any job may be allowed, as corbie init takes
-                       it; default all
+  --store <address>    the store, when .corbie is set up: a directory, or an
+                       S3 bucket as s3://…; default .corbie/store
+  --ceiling <list>     the most any job may be allowed, when .corbie is set
+                       up, as corbie init takes it; default all
   --value NAME=VALUE   a value set at / of the controller; repeatable
+  --value-env NAME     a value set at / of the controller, read from the
+                       environment variable of its name; repeatable
   --secret NAME        a secret set at / of the controller, its value typed
                        at the terminal and not shown; repeatable
   --secret-env NAME    a secret set at / of the controller, its value read
                        from the environment variable of its name; repeatable
   --config <directory> another config than .corbie of the current directory
 
-While it runs, corbie client secret set and corbie client value set, run in
-the same directory, set a secret or a value at the directory's prefix. With
-the store in memory they last until it stops.
-
 The names and the words after them are corbie start's. The gateway listens
 at a free port, which gateway --listen host:port changes. A program is
 started with CORBIE_CONFIG, CORBIE_GATEWAY and CORBIE_GATEWAY_TOKEN in its
 environment.
 
-  corbie up                    the machines of this directory
-  corbie up ui                 and the UI
-  corbie up --store .corbie/store   and a store that is kept
+  corbie up        the machines of this directory
+  corbie up ui     and the UI
 
   corbie manual a-directory   a directory of machines
   corbie manual gateway       the gateway's requests and its token`},
@@ -224,6 +220,9 @@ The ceilings allow everything. Each job's own allow: list still applies.
 ` + starts + `
   --value NAME=VALUE       a value, set at / of the controller in this
                            process; repeatable
+  --value-env NAME         a value set at / of the controller in this
+                           process, read from the environment variable of
+                           its name; repeatable
   --secret NAME            a secret set at / of the controller in this
                            process, its value typed at the terminal and not
                            shown; repeatable

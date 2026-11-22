@@ -260,7 +260,7 @@ func cmdInit(e *Env, args []string) error {
 			return err
 		}
 	}
-	ctl, run, cli, err := e.setUp(cfg, address, address, name, keys, limit)
+	ctl, run, cli, err := e.setUp(cfg, address, name, keys, limit)
 	if err != nil {
 		return err
 	}
@@ -315,10 +315,8 @@ func cmdInit(e *Env, args []string) error {
 
 // setUp makes a controller, a runner and a client in a config, each
 // trusting the others, on the store at an address, and sets the store up.
-// reached is the address the client records for the store: the same, but
-// for a store in memory, which the client is served.
-func (e *Env) setUp(cfg identity.Config, address, reached, name, keys string, limit permission.Layer) (ctl, run, cli *identity.Identity, err error) {
-	s, err := e.open(address)
+func (e *Env) setUp(cfg identity.Config, address, name, keys string, limit permission.Layer) (ctl, run, cli *identity.Identity, err error) {
+	s, err := store.Open(address)
 	if err != nil {
 		return nil, nil, nil, err
 	}
@@ -384,7 +382,7 @@ func (e *Env) setUp(cfg identity.Config, address, reached, name, keys string, li
 	if err := cfg.SetTrust(identity.Runner, identity.Trust{Card: ctl.Card, Store: address, Ceiling: limit}); err != nil {
 		return nil, nil, nil, err
 	}
-	if err := cfg.SetTrust(identity.Client, identity.Trust{Card: ctl.Card, Store: reached}); err != nil {
+	if err := cfg.SetTrust(identity.Client, identity.Trust{Card: ctl.Card, Store: address}); err != nil {
 		return nil, nil, nil, err
 	}
 	return ctl, run, cli, nil

@@ -86,7 +86,7 @@ func (e *Env) serve(listen string, timeout time.Duration) (func(), error) {
 	if err != nil {
 		return nil, err
 	}
-	if !store.IsDirectory(address) && address != inMemory {
+	if !store.IsDirectory(address) {
 		return nil, fmt.Errorf("only a directory on this computer is served, and this controller's store is not one")
 	}
 	saved, err := cfg.StoreListen()
@@ -110,11 +110,9 @@ func (e *Env) serve(listen string, timeout time.Duration) (func(), error) {
 	if err != nil {
 		return nil, err
 	}
-	listener := e.serving
-	if listener == nil {
-		if listener, err = net.Listen("tcp", listen); err != nil {
-			return nil, err
-		}
+	listener, err := net.Listen("tcp", listen)
+	if err != nil {
+		return nil, err
 	}
 	who := func(ctx context.Context, name string) (store.Party, ed25519.PublicKey, error) {
 		trust, err := identity.ReadTrust(ctx, directory, ctl.Card, name)

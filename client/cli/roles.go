@@ -388,16 +388,15 @@ func (e *Env) start(cfg identity.Config, named []item, before func() error) erro
 }
 
 // programEnv is the environment a program corbie starts is given: this
-// process's, with the config and the store the command line named, and the
-// address and the token of the gateway this process runs. Under corbie up
-// the config is the one it uses, and a store in its memory is not named:
-// the config says where the program is served it.
+// process's, with the config and the store the command line named, the
+// config of corbie up, and the address and the token of the gateway this
+// process runs.
 func (e *Env) programEnv() []string {
 	env := os.Environ()
 	if e.Given("config") || e.cmd.Name == "up" {
 		env = append(env, "CORBIE_CONFIG="+e.config)
 	}
-	if e.Given("store") && e.store != inMemory {
+	if e.Given("store") {
 		env = append(env, "CORBIE_STORE="+e.store)
 	}
 	if e.gatewayAt != "" {

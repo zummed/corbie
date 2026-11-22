@@ -12,7 +12,7 @@ Nothing is carried in memory from one pass to the next. Whatever a pass needs it
 
 How passes are started depends on the host, and on nothing else.
 
-On a **serverless host** the host calls for a pass when something is written to the role's inbox, and calls the controller once a minute so that wakes are noticed. Both are services the host and the bucket already offer. Corbie has no signalling of its own. A pass knows how long the host will let it run and finishes before that. Whatever it has not reached waits for the next pass, and a runner does not take a job it could not finish in the time left.
+On a **serverless host** the host calls for a pass when something is written to the role's inbox, and calls the controller once a minute so that wakes are noticed. Both are services the host and the bucket already offer. Corbie has no signalling of its own. A pass knows how long the host will let it run and finishes before that. Whatever it has not reached waits for the next pass, and a runner does not take a job it could not finish in the time left. A gateway does no passes: the host calls it once for each HTTP request, and it answers the request before the host's limit (see client.md).
 
 On a **computer** `corbie start` runs passes in a loop, sleeping until the next thing is due or for a short interval, whichever is sooner. When one role in the process writes something that another role in the same process reads, the second is woken at once. A served directory does the same for a role on another computer: it tells the role when its inbox is written. That shortcut is the only thing a computer adds. It changes when a pass happens and never what a pass does.
 

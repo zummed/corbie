@@ -245,6 +245,9 @@ func (e *Env) start(cfg identity.Config, named []item, before func() error) erro
 			if sets[i], err = settings(it); err != nil {
 				return err
 			}
+			if it.name == "gateway" && role.Serverless() && len(named) > 1 {
+				return fmt.Errorf("on a serverless host a gateway is a function of its own: the host calls it for each request, and a controller or a runner for each pass")
+			}
 			continue
 		}
 		path, first, err := programOf(it.name)
@@ -351,6 +354,10 @@ func (e *Env) start(cfg identity.Config, named []item, before func() error) erro
 		}
 	}
 	report := func(name string, err error) { e.Say("%s: %s", name, e.clean(err.Error())) }
+	if role.Serverless() && e.answers != nil {
+		// The host calls for each request: nothing listens.
+		return role.Answer(e.ctx, func(err error) { report("gateway", err) }, e.answers)
+	}
 	if role.Serverless() {
 		// The host calls for each pass: there is no loop.
 		return role.Serve(e.ctx, report, running...)

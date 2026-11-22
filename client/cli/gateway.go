@@ -26,9 +26,6 @@ import (
 // --client names, or with none named as the client of this config, and each
 // of its tokens names one of them.
 func (e *Env) gateway() (func(), error) {
-	if role.Serverless() {
-		return nil, fmt.Errorf("a gateway needs a process that stays up, and this is a serverless host")
-	}
 	var clients []*client.Client
 	if len(e.clients) == 0 {
 		c, err := e.Client()
@@ -41,7 +38,13 @@ func (e *Env) gateway() (func(), error) {
 		clients = append(clients, c)
 	}
 	for _, dir := range e.clients {
-		c, err := e.clientOf(identity.Config{Dir: dir})
+		// On a serverless host a client's config is copied to a place that
+		// is this copy's alone, as a role's is.
+		own, err := role.OwnConfig(dir)
+		if err != nil {
+			return nil, fmt.Errorf("--client %s: %w", dir, err)
+		}
+		c, err := e.clientOf(identity.Config{Dir: own})
 		switch {
 		case err != nil:
 			return nil, fmt.Errorf("--client %s: %w", dir, err)
@@ -101,6 +104,9 @@ func (e *Env) gateway() (func(), error) {
 			return nil, err
 		}
 	}
+	if len(callers) == 0 && issuer == nil && role.Serverless() {
+		return nil, fmt.Errorf("a gateway on a serverless host takes the tokens of --token-file or of an OIDC issuer: with neither, each copy of the function would make a token of its own")
+	}
 	if len(callers) == 0 && issuer == nil {
 		// With no token given, a new one for each client.
 		callers = map[string]*client.Client{}
@@ -119,27 +125,37 @@ func (e *Env) gateway() (func(), error) {
 			}
 		}
 	}
-	listener, err := net.Listen("tcp", e.listen)
-	if err != nil {
-		return nil, err
+	handler := &gateway.Gateway{Callers: callers, Issuer: issuer}
+	// On a serverless host the host calls the function once for each
+	// request, and nothing listens. Elsewhere the gateway listens.
+	where, stop := "answering the requests to this function's URL", func() {}
+	if role.Serverless() {
+		e.answers = handler
+	} else {
+		listener, err := net.Listen("tcp", e.listen)
+		if err != nil {
+			return nil, err
+		}
+		server := &http.Server{Handler: handler, ReadHeaderTimeout: 10 * time.Second}
+		go server.Serve(listener)
+		e.gatewayAt, e.gatewayToken = "http://"+listener.Addr().String(), first
+		where = "listening on http://" + listener.Addr().String()
+		stop = func() {
+			ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+			defer cancel()
+			server.Shutdown(ctx)
+		}
 	}
-	server := &http.Server{Handler: &gateway.Gateway{Callers: callers, Issuer: issuer}, ReadHeaderTimeout: 10 * time.Second}
-	go server.Serve(listener)
-	e.gatewayAt, e.gatewayToken = "http://"+listener.Addr().String(), first
 	if issuer != nil {
 		e.Say("gateway takes the tokens of the OIDC issuer %s for the audience %s", issuer.Address, issuer.Audience)
 		e.Say("gateway takes a token as the first of the clients %s that its claim %s names, for the person in its claim %s", strings.Join(names, ", "), issuer.ClientClaim, issuer.PersonClaim)
 	}
 	if len(names) == 1 {
-		e.Say("gateway for the client %s, listening on http://%s", names[0], listener.Addr())
+		e.Say("gateway for the client %s, %s", names[0], where)
 	} else {
-		e.Say("gateway for the clients %s, listening on http://%s", strings.Join(names, ", "), listener.Addr())
+		e.Say("gateway for the clients %s, %s", strings.Join(names, ", "), where)
 	}
-	return func() {
-		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-		defer cancel()
-		server.Shutdown(ctx)
-	}, nil
+	return stop, nil
 }
 
 // callersOf reads a gateway's token file: a line for each token, which

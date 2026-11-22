@@ -82,7 +82,8 @@ A page of any website calls the gateway with `fetch`, and sends the token as
 - A page reads a `?watch` stream with `fetch`. A browser's `EventSource`
   sends no token, and gets 401.
 - A page served over `https` needs the gateway at `https`. The gateway
-  listens on `http`, so a server in front of it provides `https`.
+  listens on `http`, so a server in front of it provides `https`. As a
+  serverless function its URL is `https`.
 
 The command line through a gateway
 ----------------------------------
@@ -124,8 +125,8 @@ Other requests
   POST /runs/<id>/tickets        answers a ticket the run waits on
   POST /runs/<id>/cancel         cancels the run
 
-The gateway keeps no state: each request reads or writes the store. Its
-process must keep running, so it cannot run as a serverless function.
+The gateway keeps no state: each request reads or writes the store. It runs
+as a process, or as a serverless function (`corbie manual functions`).
 
 Reference
 ---------

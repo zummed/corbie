@@ -717,6 +717,10 @@ func reply(w http.ResponseWriter, v any, err error) {
 			status = http.StatusBadRequest
 		case errors.Is(err, client.ErrNotTaken):
 			status = http.StatusGatewayTimeout
+		case errors.Is(err, context.DeadlineExceeded):
+			// The request's own time ended, as a serverless host's call
+			// does, while the controller had yet to answer.
+			status, err = http.StatusGatewayTimeout, errors.New("the request's time ended before the controller answered: what it sent is still good, and the controller answers it when it takes it")
 		case errors.Is(err, context.Canceled):
 			return
 		}

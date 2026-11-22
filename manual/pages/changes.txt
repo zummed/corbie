@@ -26,6 +26,8 @@ These are new.
   its first token in `CORBIE_GATEWAY_TOKEN`.
 - A page in a browser calls a gateway from any origin, with the token in
   `Authorization`: `corbie manual gateway`.
+- A gateway runs as an AWS Lambda function, called through the function's
+  URL: `corbie manual functions`.
 - A gateway acts as several clients: `gateway --client <config>`, once for
   each. A line of `--token-file` is a token, the client it names and the person
   it was given to: `corbie manual gateway-clients`.

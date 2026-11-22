@@ -1,4 +1,4 @@
-Functions: the controller and the runners run as AWS Lambda functions on an S3 bucket, so nothing runs while there is no work.
+Functions: the controller, the runners and the gateway run as AWS Lambda functions on an S3 bucket, so nothing runs while there is no work.
 
 What calls a function
 ---------------------
@@ -141,6 +141,49 @@ when many messages arrive together.
 A throttled call is not lost: the next call handles everything in the inbox.
 A limit on a runner's function caps the jobs running at once at its copies
 times `--jobs`. A job that waits past its timeout fails as a timeout.
+
+The gateway as a function
+-------------------------
+
+A gateway is a function of its own, which Lambda calls once for each HTTP
+request to the function's URL (`corbie manual gateway`).
+
+  package/bootstrap          the same start script
+  package/corbie             the binary
+  package/config/client/…    the client's config
+  package/tokens             the token file: a line for each token
+
+  CORBIE_SERVE  gateway --token-file tokens
+  timeout       the longest a request may wait, plus ten seconds
+  role          the policy `corbie controller policy cloud-client` prints
+
+Give the function a URL that sends each answer on as it is written, and
+permit calls to it. The gateway's token is what a caller must show.
+
+  aws lambda create-function-url-config --function-name corbie-gateway \
+      --auth-type NONE --invoke-mode RESPONSE_STREAM
+  aws lambda add-permission --function-name corbie-gateway --statement-id url \
+      --action lambda:InvokeFunctionUrl --principal '*' \
+      --function-url-auth-type NONE
+  aws lambda add-permission --function-name corbie-gateway \
+      --statement-id url-invoke --action lambda:InvokeFunction \
+      --principal '*' --invoked-via-function-url
+
+The first command prints the URL, which is `https`. Check it with the token.
+
+  curl -H "Authorization: Bearer $TOKEN" https://<id>.lambda-url.eu-west-2.on.aws/client
+    {"client":"cloud-client"}
+
+- A request's time ends ten seconds before the function's timeout. `?wait`
+  then answers with the run as it stands, and a `?watch` stream closes.
+- A stream runs until then, also after its caller has left, and Lambda bills
+  that time.
+- Lambda refuses a request over 6 MB. A submit of 4 MB of files was taken, and
+  one of 5 MB was answered 413.
+- An answer may be larger, up to Lambda's 200 MB. A file of 30 MB of a run's
+  result was sent in 25 seconds. It must be sent within the request's time.
+- With no token file and no OIDC issuer the function does not start. Its log
+  says why.
 
 Computers beside functions
 --------------------------

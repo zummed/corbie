@@ -11,6 +11,8 @@ import (
 
 	"github.com/zummed/corbie/client"
 	"github.com/zummed/corbie/client/gateway"
+	"github.com/zummed/corbie/identity"
+	"github.com/zummed/corbie/store"
 )
 
 // A page in a browser calls the gateway from any origin: the browser's
@@ -83,5 +85,33 @@ func Test_client_gateway_answers_a_page_of_any_origin(t *testing.T) {
 	// The answer permits no cookie to be sent.
 	if got := refused.Header.Get("Access-Control-Allow-Credentials"); got != "" {
 		t.Errorf("the gateway answered Access-Control-Allow-Credentials %q", got)
+	}
+}
+
+// A request whose own time ends while the controller has yet to answer, as
+// a serverless host's call does, is told so.
+func Test_client_gateway_says_when_a_requests_time_ended(t *testing.T) {
+	s := newSeveral(t)
+	// A client of a controller that takes nothing.
+	id, err := identity.New("lonely", identity.Client)
+	if err != nil {
+		t.Fatal(err)
+	}
+	absent, err := identity.New("absent", identity.Controller)
+	if err != nil {
+		t.Fatal(err)
+	}
+	lonely := client.New(id, absent.Card, s.local.Memory.As(store.Party{Kind: store.Client, Name: "lonely", Controller: "absent"}))
+	g := &gateway.Gateway{Callers: map[string]*client.Client{"lonelys": lonely}, Interval: 10 * time.Millisecond}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
+	defer cancel()
+	req := httptest.NewRequestWithContext(ctx, http.MethodPost, "/values", strings.NewReader(`{"act": "set", "at": "/shop", "name": "REGION", "value": "here"}`))
+	req.Header.Set("Authorization", "Bearer lonelys")
+	req.Header.Set("Content-Type", "application/json")
+	answer := httptest.NewRecorder()
+	g.ServeHTTP(answer, req)
+	if answer.Code != http.StatusGatewayTimeout || !strings.Contains(answer.Body.String(), "the request's time ended before the controller answered") {
+		t.Fatalf("a request whose time ended was answered %d %s", answer.Code, answer.Body.String())
 	}
 }

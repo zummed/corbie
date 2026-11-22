@@ -11,6 +11,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"net/http"
 	"os"
 	"os/exec"
 	"os/signal"
@@ -114,6 +115,9 @@ type Env struct {
 	// gatewayAt and gatewayToken are the address and the first token of
 	// the gateway this process runs, for the programs started beside it.
 	gatewayAt, gatewayToken string
+	// answers is the gateway, on a serverless host, where the host calls
+	// it for each request and nothing listens.
+	answers http.Handler
 }
 
 // usage is a mistake in how a command was written.

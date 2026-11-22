@@ -430,7 +430,17 @@ A page in a browser calls the gateway from any origin:
 
 Whoever has a token is the client it names. Nothing in a request raises that client's ceiling, names another client or names a person. The gateway's computer holds the key of every client it acts as.
 
-It keeps nothing itself. It runs wherever a process can stay up, and is not offered on serverless hosts.
+It keeps nothing itself, so it runs as a process that listens, or on a serverless host as a function of its own:
+
+1. The host calls the function once for each request that comes to the function's URL.
+2. The gateway answers the request as it answers any, as the client its token names.
+3. The host sends the answer on as the gateway writes it, so a stream is a stream there too.
+
+- A request's time ends ten seconds before the host's limit for a call. `?wait` then answers with the run as it stands, a stream closes, and a request that waits for the controller is answered 504, saying its time ended.
+- On a serverless host a stream goes on until its run ends or the request's time does, also after its caller has left.
+- The gateway takes its tokens from `--token-file` or from an issuer. With neither it does not start there: each copy of the function would make a token of its own.
+- It is started beside no controller and no runner there: the host calls those for a pass, and the gateway for a request.
+- The host limits the size of a request, and so of the tree a submit uploads.
 
 ## Through a gateway
 

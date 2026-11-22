@@ -25,20 +25,8 @@ A tree of machines: one command records a directory of machines, each at its loc
 
 Submit again after a change: nothing else watches the files.
 
-Try a directory
----------------
-
-`corbie up` does those three commands in one process, on a config and a store
-it sets up in `.corbie` of the current directory.
-
-    corbie up --in schedules &
-    corbie run ls
-      <id>  running    statechart evening  step 1  waiting on 1 timer  at /schedules/evening
-
-  .corbie              every command run in this directory uses it, and `corbie up` run again continues with it
-  rm -r .corbie        starts again with nothing
-  corbie up ui         starts the UI as well, or any program corbie-<name> on PATH
-  --secret-env NAME    sets a secret from the environment variable, and --value-env NAME a value
+`corbie up` does these three commands as one, in the directory itself:
+`corbie manual a-project`.
 
 Reference
 ---------

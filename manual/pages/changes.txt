@@ -26,7 +26,7 @@ These are new.
   its first token in `CORBIE_GATEWAY_TOKEN`.
 - A gateway acts as several clients: `gateway --client <config>`, once for
   each. A line of `--token-file` is a token, the client it names and the person
-  it was given to: `corbie manual gateway`.
+  it was given to: `corbie manual gateway-clients`.
 - A run's record names the person a client sent each message for, as `person`
   in a `cause`.
 - The gateway does everything a client does. New routes submit a tree, set,
@@ -34,6 +34,8 @@ These are new.
   give a run's tickets, one step and the files of its result: `corbie manual routes`.
 - A gateway takes the tokens of an OIDC issuer: `gateway --oidc-issuer` and
   `--oidc-audience`. A claim names the client and another the person.
+- `corbie client show` prints which client a command is sent as, and through a
+  gateway the person its token names.
 - `corbie run …`, `corbie client secret …` and `corbie client value …` take
   `--gateway <address>`, and send the token in `CORBIE_GATEWAY_TOKEN`. A Go
   program makes such a client with `client.Remote`.

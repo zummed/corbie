@@ -517,6 +517,14 @@ controller: remove the other first with corbie client remove.
 The config keeps the controller's name with its key, so a card with another
 key under that name is refused without --replace.`},
 
+		{Name: "client show", Summary: "print which client a command is sent as, and for which person", Run: cmdClientShow, Help: `
+It prints the name of this config's client. With --gateway it prints the
+client and the person the gateway's token names: what a command with that
+token is sent as.
+
+  corbie client show --gateway http://127.0.0.1:8371
+
+  corbie manual gateway-clients   several clients at one gateway`},
 		{Name: "client secret set", Usage: "<NAME> [- | --env] --at <location>", Summary: "set a secret for the runs at a location and below, in this client's trees", Run: cmdClientSecretSet, Help: `
 The controller takes it at a location where this client could submit a tree,
 or in one of its trees. The value is typed at the terminal and not shown. It

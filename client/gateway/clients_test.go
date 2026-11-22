@@ -196,6 +196,12 @@ states:
 	if status, _, listed := bob.do("GET", "/runs?all", ""); status != 200 || !strings.Contains(listed, id) || strings.Contains(listed, "example.com") {
 		t.Errorf("the listing is %d %s", status, listed)
 	}
+	// A caller asks which client and person its token names.
+	for token, want := range map[caller]string{alice: `{"client":"editor","person":"alice@example.com"}`, nobody: `{"client":"editor"}`} {
+		if status, _, text := token.do("GET", "/client", ""); status != 200 || strings.TrimSpace(text) != want {
+			t.Errorf("GET /client was answered %d %s", status, text)
+		}
+	}
 	// A request names no person.
 	for route, body := range map[string]string{"/runs": `{"at": "` + at + `", "person": "mallory@example.com"}`,
 		"/runs/" + id + "/events": `{"event": "knock", "person": "mallory@example.com"}`} {

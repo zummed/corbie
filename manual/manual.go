@@ -50,6 +50,7 @@ var order = []struct{ name, group string }{
 	{"approval", "Tasks"},
 	{"packs", "Tasks"},
 	{"gateway", "Tasks"},
+	{"gateway-clients", "Tasks"},
 
 	{"how-a-run-works", "How it works"},
 	{"the-store", "How it works"},

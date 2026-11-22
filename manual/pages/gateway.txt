@@ -17,12 +17,8 @@ How it works
 Every request carries the gateway's token. Every request acts as the gateway's
 client, limited by that client's ceiling, which no request can raise.
 
-That is all a gateway needs. Each of these is added to it when it is needed.
-
-  Several clients                      people who may do different things, and who did what
-  Tokens of an OIDC issuer             your organisation's sign-in says who is which client
-  The command line through a gateway   a client's commands on a computer with no config
-  When a request is refused            what the caller is told, and why
+That is all a gateway needs. `corbie manual gateway-clients` adds several
+clients, the person behind each request and sign-in through an OIDC issuer.
 
 Start the gateway
 -----------------
@@ -66,66 +62,6 @@ ends.
      "type":"flow","status":"done","input":{"url":"https://example.com"},
      "output":{"title":"Example Domain","url":"https://example.com"}, …}
 
-Several clients
----------------
-
-A gateway acts as one client for each `--client <config>`. Each config holds
-one client, enrolled with its own ceiling (`corbie manual parties`):
-
-  corbie client card --name editor --config /etc/corbie/editor | corbie controller enrol - --ceiling "at:/boards" | corbie client trust - --config /etc/corbie/editor
-
-1. A caller shows a token.
-2. The token names a client, and the person the token was given to.
-3. The gateway sends the request as that client.
-4. The run's record names the person.
-
-A line of the token file is a token, the client's name and the person.
-
-  179bd50585d0   editor   alice@example.com
-  93ab77c0e1f2   editor   bob@example.com
-  5c11d2a09b3e   viewer
-
-  corbie start gateway --client /etc/corbie/viewer --client /etc/corbie/editor --token-file tokens
-    gateway tokens for the client viewer: 1
-    gateway tokens for the client editor: 2, for alice@example.com, bob@example.com
-    gateway for the clients viewer, editor, listening on http://127.0.0.1:8371
-
-  corbie run show $ID
-    editor/20261013T185126.250Z-571d935912  running  statechart door  step 1
-      at: /door
-      person: "alice@example.com"
-
-- With no `--token-file`, the gateway prints a token for each client, and no
-  request has a person.
-- A list of runs names no person. `corbie run show <id> --record` names the
-  person after each event a client sent.
-- Whoever has a token is its client. The gateway's computer holds each
-  client's key.
-
-Tokens of an OIDC issuer
-------------------------
-
-A gateway takes the tokens of an OIDC issuer, such as Microsoft Entra ID, so
-that the issuer says who may be which client.
-
-1. A caller gets a token from the issuer and shows it to the gateway.
-2. The gateway checks the issuer's signature, the audience and the token's time.
-3. The token's `roles` name the client: the first `--client` whose name is among them.
-4. The token's `sub` is the person.
-
-  corbie start gateway --client /etc/corbie/viewer --client /etc/corbie/editor --oidc-issuer https://login.example.com/tenant/v2.0 --oidc-audience api://corbie
-    gateway takes the tokens of the OIDC issuer https://login.example.com/tenant/v2.0 for the audience api://corbie: the client is named by roles, and the person by sub
-    gateway for the clients viewer, editor, listening on http://127.0.0.1:8371
-
-  --oidc-issuer <address>   the issuer, as its tokens name it
-  --oidc-audience <text>    who a token must be for
-  --oidc-client-claim <claim>     the claim that names the client; default roles
-  --oidc-person-claim <claim>     the claim that is the person; default sub
-
-- For a person's sign-in name in Entra ID, give `--oidc-person-claim preferred_username`.
-- The gateway has no page to sign in at. A caller gets its token from the
-  issuer, and sends it as any token.
-
 The command line through a gateway
 ----------------------------------
 
@@ -140,19 +76,6 @@ and needs no config and no key on its computer.
 
 A command prints the same through a gateway as with the client's own config.
 A Go program does the same with `client.Remote(address, token)`.
-
-When a request is refused
--------------------------
-
-  401   the request does not show a token of the gateway's   no token, or one the gateway does not have
-  401   the request's token is not taken: <why>               an issuer's token: its signature, issuer, audience, time, client or person
-  200   { "taken": false, "refused": "<why>" }                the controller refused the message, as the client's ceiling or the tree's client
-  a run that ends `denied`, with its `layer` and `fix`        the run did what a permission layer does not allow
-
-- A refusal of an issuer's token says what the token has and what the gateway
-  takes: `its claim roles is admin, which names none of the gateway's clients: viewer, editor`.
-- The gateway says what it is set up as when it starts: its clients, how many
-  tokens each has and for which persons, and its issuer.
 
 A run in another client's tree
 ------------------------------
@@ -185,6 +108,7 @@ process must keep running, so it cannot run as a serverless function.
 Reference
 ---------
 
+  corbie manual gateway-clients   several clients, people and an OIDC issuer
   corbie manual routes         every request in full, with files and streams
   corbie manual runs           the fields of a run in JSON
   corbie manual start          the gateway's flags

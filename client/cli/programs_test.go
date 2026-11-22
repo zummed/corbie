@@ -198,7 +198,7 @@ agent or decision, and each of its jobs is a script, a machine, or a send.
   run          submit, start, ls, show, cancel, send, reply
   controller   card, enrol, remove, parties, secret, value, policy, cancel
   runner       card, trust, remove
-  client       card, trust, remove, secret, value
+  client       card, trust, remove, show, secret, value
   manual       print a page of the manual, or list the pages; web
   mcp          serve the manual and the commands to a model, as an MCP server
   add          write a pack of ready-made machines into a project
@@ -216,8 +216,8 @@ Every command takes these flags.
                          on Linux
   --store <address>      default $CORBIE_STORE, or the store the config records
 
-A command a client sends, which is corbie run …, corbie client secret … and
-corbie client value …, takes this flag too.
+A command a client sends, which is corbie run …, corbie client show,
+corbie client secret … and corbie client value …, takes this flag too.
 
   --gateway <address>    send the command to a gateway, with the token in
                          $CORBIE_GATEWAY_TOKEN, as the client the token names;

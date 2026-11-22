@@ -56,7 +56,7 @@ A field with no value is left out. A run in a list has no `title`, `output`,
 `error`, `refused`, `layer`, `fix` or `used`, and its `cause` has no `person`.
 
 `person` is who the client sent the message for. A gateway writes the person
-its caller's token names (`corbie manual gateway`). It is the client's claim:
+its caller's token names (`corbie manual gateway-clients`). It is the client's claim:
 a client with its own key writes any person, or none.
 
 Files

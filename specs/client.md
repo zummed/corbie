@@ -46,7 +46,7 @@ corbie run reply <id> <ticket> [value]  answer a ticket that a run waits on
 
 corbie controller …                     enrol and remove runners and clients, set ceilings, tags and prefixes, manage secrets and values, cancel any run
 corbie runner …                         print a card, trust a controller
-corbie client …                         print a card, trust a controller, manage secrets and values in this client's trees
+corbie client …                         print a card, trust a controller, show which client a command is sent as, manage secrets and values in this client's trees
 
 corbie add <pack>                       write a pack of ready-made machines into a project
 corbie ui                               serve the UI to a browser, until stopped
@@ -69,7 +69,7 @@ The commands form a tree. A word at the top is a command, or begins several comm
   run          submit, start, ls, show, cancel, send, reply
   controller   card, enrol, remove, parties, secret, value, policy, cancel
   runner       card, trust, remove
-  client       card, trust, remove, secret, value
+  client       card, trust, remove, show, secret, value
   manual       print a page of the manual, or list the pages; web
   mcp          serve the manual and the commands to a model, as an MCP server
   add          write a pack of ready-made machines into a project
@@ -345,7 +345,7 @@ A tree belongs to the client that first submitted it. Every run keeps the defini
 
 ## The gateway
 
-The gateway offers the package over HTTP for applications not written in Go. Its routes do everything a client does: submit a tree, start a run of a location with an input, list, show and cancel runs, read a run's record, one step of it, its definition, its tickets and its files, send events and answers to a run, send an event to a location or to a key at one, and set, remove and list secrets and values. A listing and a record are each given as they stand, and with `?watch` as a stream that follows them. A stream the gateway closes ends with a message: `end` with the run when the run has ended, or `error` with the failure when the gateway could not read the store. A start is JSON, or an upload form when its input has files, which come out by their path in a result.
+The gateway offers the package over HTTP for applications not written in Go. Its routes do everything a client does: submit a tree, start a run of a location with an input, list, show and cancel runs, read a run's record, one step of it, its definition, its tickets and its files, send events and answers to a run, send an event to a location or to a key at one, and set, remove and list secrets and values. One route says which client and person the caller's token names. A listing and a record are each given as they stand, and with `?watch` as a stream that follows them. A stream the gateway closes ends with a message: `end` with the run when the run has ended, or `error` with the failure when the gateway could not read the store. A start is JSON, or an upload form when its input has files, which come out by their path in a result.
 
 A submit is an upload form: the prefix, and each file of the directory by its path from the directory.
 
@@ -390,12 +390,12 @@ corbie start gateway --client viewer --client editor --token-file tokens   the s
 A gateway also takes the tokens of an OIDC issuer, such as Microsoft Entra ID:
 
 ```
-corbie start gateway --client viewer --client editor --oidc-issuer https://login.example.com/tenant/v2.0 --oidc-audience api://corbie
+corbie start gateway --client editor --client viewer --oidc-issuer https://login.example.com/tenant/v2.0 --oidc-audience api://corbie
 ```
 
 1. A caller shows a token the issuer signed.
 2. The gateway checks the signature with the keys the issuer publishes, and that the token names the issuer and the audience, and that its time has come and has not passed.
-3. The token's `roles` name the client: the first of the gateway's clients, in the order of `--client`, whose name is among them.
+3. The token's `roles` name the client: the first of the gateway's clients, in the order of `--client`, whose name is among them. The client that may do most is written first.
 4. The token's `sub` is the person.
 
 | Flag | Default | |
@@ -408,9 +408,17 @@ corbie start gateway --client viewer --client editor --oidc-issuer https://login
 - The gateway reads the issuer's keys when it starts, from the address the issuer's `/.well-known/openid-configuration` gives. An issuer it cannot read, or that names itself otherwise, stops it from starting.
 - A token signed with a key the gateway does not have makes it read the keys again, once a minute at most.
 - A token is signed with RS256 by an RSA key of 2048 bits or more, or with ES256 by a key on the curve P-256. The key sets the algorithm, and a token that names another is refused.
-- A token that is not taken is answered 401, saying why, with what the token has and what the gateway takes.
+- A token that is not taken is answered 401, saying why, with what the token has and what the gateway takes. The gateway prints nothing for a refused request: the caller is told.
+- The gateway says when it starts which issuer and audience it takes, the order of its clients and the two claims.
 - With an issuer and no token file, the gateway makes no token of its own.
 - The gateway has no page to sign in at. A caller gets its token from the issuer.
+
+A caller asks which client and person its token names, and `corbie client show --gateway <address>` prints them:
+
+```
+client  editor
+person  "alice@example.com"
+```
 
 Whoever has a token is the client it names. Nothing in a request raises that client's ceiling, names another client or names a person. The gateway's computer holds the key of every client it acts as.
 
@@ -432,7 +440,7 @@ export CORBIE_GATEWAY_TOKEN=179bd50585d0
 corbie run submit house --gateway https://corbie.example.com
 ```
 
-- `corbie run …`, `corbie client secret …` and `corbie client value …` take `--gateway`. Any other command refuses it.
+- `corbie run …`, `corbie client show`, `corbie client secret …` and `corbie client value …` take `--gateway`. Any other command refuses it.
 - The command uses no config and no store, and holds no key.
 - A command prints the same through a gateway as with the client's own config.
 - A submit sends each file the directory's machines read: the machines, their scripts, the files they include and `.corbieignore`.

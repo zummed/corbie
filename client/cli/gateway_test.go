@@ -210,6 +210,16 @@ func Test_client_commands_through_a_gateway(t *testing.T) {
 	id := strings.TrimSpace(sent("run", "start", "/house/greet", "--input", `{"name": "y"}`))
 	editor.ok("", "run", "show", id, "--wait")
 
+	// Which client a command is sent as, and for which person.
+	if out := sent("client", "show"); out != "client  editor\nperson  \"alice@example.com\"\n" {
+		t.Errorf("client show through the gateway printed %q", out)
+	}
+	if out := sent("client", "show", "--json"); out != `{"client":"editor","person":"alice@example.com"}`+"\n" {
+		t.Errorf("client show --json through the gateway printed %q", out)
+	}
+	if out := editor.ok("", "client", "show"); out != "client  editor\n" {
+		t.Errorf("client show with the client's config printed %q", out)
+	}
 	// What a command prints is the same both ways.
 	for _, command := range [][]string{
 		{"run", "show", id}, {"run", "show", id, "--json"}, {"run", "show", id, "--record"}, {"run", "show", id, "--record", "--json"},
@@ -314,7 +324,8 @@ func Test_client_gateway_oidc_flags(t *testing.T) {
 	until(t, "the gateway", func() bool { return listening.MatchString(saying.String()) })
 	url := listening.FindStringSubmatch(saying.String())[1]
 	if said := saying.String(); strings.Contains(said, "gateway token ") ||
-		!strings.Contains(said, "gateway takes the tokens of the OIDC issuer "+idp.URL+" for the audience api://corbie: the client is named by roles, and the person by preferred_username") {
+		!strings.Contains(said, "gateway takes the tokens of the OIDC issuer "+idp.URL+" for the audience api://corbie\n") ||
+		!strings.Contains(said, "gateway takes a token as the first of the clients editor that its claim roles names, for the person in its claim preferred_username\n") {
 		t.Fatalf("the gateway said %s", said)
 	}
 	// The issuer's token, sent by a command.
@@ -336,7 +347,7 @@ func Test_client_gateway_oidc_flags(t *testing.T) {
 	// By default the person is the token's sub.
 	_, saying = m.staying(append(gateway, "--oidc-issuer", idp.URL, "--oidc-audience", "api://corbie")...)
 	until(t, "the gateway", func() bool { return listening.MatchString(saying.String()) })
-	if !strings.Contains(saying.String(), "the client is named by roles, and the person by sub") {
+	if !strings.Contains(saying.String(), "that its claim roles names, for the person in its claim sub") {
 		t.Errorf("the gateway said %s", saying.String())
 	}
 

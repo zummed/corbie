@@ -47,6 +47,26 @@ func New(id *identity.Identity, controller identity.Card, s store.Store) *Client
 	return &Client{ID: id, Controller: controller, Store: s, Now: time.Now}
 }
 
+// Who is which client a Client is, and the person it sends its messages
+// for.
+type Who struct {
+	Client string `json:"client"`
+	Person string `json:"person,omitzero"`
+}
+
+// Who says which client this is. Through a gateway it is the client and the
+// person the token names.
+func (c *Client) Who(ctx context.Context) (Who, error) {
+	if c.remote != nil {
+		var who Who
+		return who, c.remote.get(ctx, "/client", &who)
+	}
+	if err := c.identity(); err != nil {
+		return Who{}, err
+	}
+	return Who{Client: c.ID.Name, Person: c.Person}, nil
+}
+
 // As gives the same client sending its messages for a person.
 func (c *Client) As(person string) *Client {
 	return &Client{ID: c.ID, Controller: c.Controller, Store: c.Store, Now: c.Now, Person: person}

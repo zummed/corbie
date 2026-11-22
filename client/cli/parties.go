@@ -1122,6 +1122,33 @@ func cmdClientValueRemove(e *Env, args []string) error {
 	return e.setting(c, func() (string, error) { return c.RemoveValue(e.ctx, *at, rest[0], 0) })
 }
 
+// cmdClientShow prints which client the command is sent as: this config's,
+// or through a gateway the one the token names, with its person.
+func cmdClientShow(e *Env, args []string) error {
+	rest, err := e.Parse(args)
+	if err != nil {
+		return err
+	}
+	if len(rest) > 0 {
+		return Mistake("client show takes no argument")
+	}
+	c, err := e.Client()
+	if err != nil {
+		return err
+	}
+	who, err := c.Who(e.ctx)
+	if err != nil {
+		return err
+	}
+	return e.Print(who, func() string {
+		text := "client  " + who.Client + "\n"
+		if who.Person != "" {
+			text += fmt.Sprintf("person  %q\n", who.Person)
+		}
+		return text
+	})
+}
+
 func cmdClientSecretList(e *Env, args []string) error {
 	return e.clientList(args, false)
 }

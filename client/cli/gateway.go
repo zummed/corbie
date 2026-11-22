@@ -127,7 +127,8 @@ func (e *Env) gateway() (func(), error) {
 	go server.Serve(listener)
 	e.gatewayAt, e.gatewayToken = "http://"+listener.Addr().String(), first
 	if issuer != nil {
-		e.Say("gateway takes the tokens of the OIDC issuer %s for the audience %s: the client is named by %s, and the person by %s", issuer.Address, issuer.Audience, issuer.ClientClaim, issuer.PersonClaim)
+		e.Say("gateway takes the tokens of the OIDC issuer %s for the audience %s", issuer.Address, issuer.Audience)
+		e.Say("gateway takes a token as the first of the clients %s that its claim %s names, for the person in its claim %s", strings.Join(names, ", "), issuer.ClientClaim, issuer.PersonClaim)
 	}
 	if len(names) == 1 {
 		e.Say("gateway for the client %s, listening on http://%s", names[0], listener.Addr())

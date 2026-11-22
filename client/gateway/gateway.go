@@ -98,8 +98,14 @@ func (g *Gateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	query := r.URL.Query()
 	if parts[0] != "runs" {
-		// What a client sends that names no run of its own.
+		// Which client the token names, and what a client sends that names
+		// no run of its own.
 		switch route := strings.Join(parts, "/"); {
+		case route == "client" && r.Method == http.MethodGet:
+			if takes(w, query) {
+				who, err := c.Who(ctx)
+				reply(w, who, err)
+			}
 		case r.Method != http.MethodPost:
 			fail(w, http.StatusNotFound, fmt.Errorf("there is no such route"))
 		case !slices.Contains([]string{"trees", "secrets", "values", "events"}, route):

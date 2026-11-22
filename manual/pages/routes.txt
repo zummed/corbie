@@ -7,6 +7,7 @@ JSON, except a file and a stream, and a refusal is `{ "error": "<text>" }`.
 Routes
 ------
 
+  GET /client                   which client and person the token names: { "client", "person" }
   POST /trees                   submits a tree from a form; answers its receipt
   POST /runs                    starts a run of a location from a form; answers { "id": "<id>" }
   GET /runs                     lists the client's runs in progress, as a JSON list

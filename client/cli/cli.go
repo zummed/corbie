@@ -435,8 +435,8 @@ func (e *Env) Parse(args []string) ([]string, error) {
 	}
 	// A gateway does what a client does, and nothing else of corbie's.
 	if name := e.cmd.Name; e.via != "" && e.table.name == "corbie" &&
-		!strings.HasPrefix(name, "run ") && !strings.HasPrefix(name, "client secret ") && !strings.HasPrefix(name, "client value ") {
-		return nil, Mistake("--gateway is for the commands a client sends: corbie run …, corbie client secret … and corbie client value …")
+		!strings.HasPrefix(name, "run ") && !strings.HasPrefix(name, "client secret ") && !strings.HasPrefix(name, "client value ") && name != "client show" {
+		return nil, Mistake("--gateway is for the commands a client sends: corbie run …, corbie client show, corbie client secret … and corbie client value …")
 	}
 	return plain, nil
 }
@@ -732,8 +732,8 @@ Every command takes these flags.
                          on Linux
   --store <address>      default $CORBIE_STORE, or the store the config records
 
-A command a client sends, which is corbie run …, corbie client secret … and
-corbie client value …, takes this flag too.
+A command a client sends, which is corbie run …, corbie client show,
+corbie client secret … and corbie client value …, takes this flag too.
 
   --gateway <address>    send the command to a gateway, with the token in
                          $CORBIE_GATEWAY_TOKEN, as the client the token names;

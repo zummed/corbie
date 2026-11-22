@@ -270,4 +270,13 @@ func Test_client_gateway_issuer_is_checked_when_it_opens(t *testing.T) {
 	if err := (&gateway.Issuer{Address: server.URL, Audience: "a"}).Open(context.Background()); err == nil || !strings.Contains(err.Error(), "publishes no key the gateway takes") {
 		t.Errorf("an issuer with a 1024-bit key alone gave %v", err)
 	}
+	// Keys published where another computer could change them on their way.
+	var elsewhere *httptest.Server
+	elsewhere = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprintf(w, `{"issuer": %q, "jwks_uri": "http://keys.example.com/keys"}`, elsewhere.URL)
+	}))
+	defer elsewhere.Close()
+	if err := (&gateway.Issuer{Address: elsewhere.URL, Audience: "a"}).Open(context.Background()); err == nil || !strings.Contains(err.Error(), "neither https nor http on this computer") {
+		t.Errorf("an issuer whose keys are at http on another computer gave %v", err)
+	}
 }

@@ -382,6 +382,7 @@ corbie start gateway --client viewer --client editor --token-file tokens   the s
 ```
 
 - A line with no person gives its requests none.
+- An empty line and a line that starts with `#` are passed over.
 - A line with a token alone names the client of a gateway that has one client.
 - With no token file, the gateway makes a token for each client and prints it, and no request has a person.
 - A token on two lines stops the gateway from starting, and so does a line whose client the gateway does not have. Each names the line.

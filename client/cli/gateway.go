@@ -155,7 +155,7 @@ func callersOf(text string, clients []*client.Client) (callers map[string]*clien
 	callers, lines := map[string]*client.Client{}, map[string]int{}
 	for i, line := range strings.Split(text, "\n") {
 		fields := strings.Fields(line)
-		if len(fields) == 0 {
+		if len(fields) == 0 || strings.HasPrefix(fields[0], "#") {
 			continue
 		}
 		token, name, person := fields[0], "", ""

@@ -43,7 +43,7 @@ states:
   closed:
     on: { knock: closed, open: opened }
   opened: { end: done }
-`, "tokens": "views viewer\nalices editor alice@example.com\n\nbobs\teditor   Bob  Smith\n"})
+`, "tokens": "# the viewer\nviews viewer\n#old editor\nalices editor alice@example.com\n\nbobs\teditor   Bob  Smith\n"})
 	clients := []string{"--client", viewer.config, "--client", editor.config}
 	listening := regexp.MustCompile(`listening on (http://\S+)`)
 	gateway := func(flags ...string) (url, said string) {
@@ -83,7 +83,7 @@ states:
 	if status, called := ask(url, "views", "POST", "/runs", `{"at": "`+at+`"}`); status != 200 || !strings.Contains(called, `"id":"viewer/`) {
 		t.Fatalf("the viewer's start was answered %d %s", status, called)
 	}
-	for _, wrong := range []string{"", "alice", "viewer", "editor"} {
+	for _, wrong := range []string{"", "alice", "viewer", "editor", "#", "#old"} {
 		if status, text := ask(url, wrong, "GET", "/runs", ""); status != 401 {
 			t.Errorf("the token %q was answered %d %s", wrong, status, text)
 		}

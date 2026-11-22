@@ -38,6 +38,7 @@ A line of the token file is a token, the client's name and the person.
 
 - With no `--token-file`, the gateway prints a token for each client, and no
   request has a person.
+- The gateway reads no token from an empty line or a line that starts with `#`.
 - A list of runs names no person. `corbie run show <id> --record` names the
   person after each event a client sent.
 - Whoever has a token is its client. The gateway's computer holds each

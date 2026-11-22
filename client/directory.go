@@ -146,7 +146,11 @@ func ReadFile(dir, rel, at string, job ScriptJob) (*Tree, error) {
 	m := &Machine{Path: rel, Location: at}
 	t := &Tree{Prefix: at, Directory: dir, Machines: []*Machine{m}, Files: map[string][]byte{}, File: rel}
 	if strings.HasSuffix(rel, ".js") {
-		src, err := os.ReadFile(filepath.Join(dir, filepath.FromSlash(rel)))
+		full := filepath.Join(dir, filepath.FromSlash(rel))
+		if err := inside(dir, full); err != nil {
+			return nil, err
+		}
+		src, err := os.ReadFile(full)
 		if err != nil {
 			return nil, err
 		}

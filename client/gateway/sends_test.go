@@ -3,6 +3,7 @@ package gateway_test
 import (
 	"encoding/json"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -95,6 +96,11 @@ func Test_client_gateway_submits_a_tree(t *testing.T) {
 		t.Fatalf("the viewer's submit was answered %d %s", status, text)
 	}
 	// What is no submit is refused, naming what is wrong, and sends nothing.
+	// A file of the gateway's computer is none of the directory's.
+	outside := filepath.Join(t.TempDir(), "out.js")
+	if err := os.WriteFile(outside, []byte("return 1\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
 	for want, send := range map[string]func() (int, map[string]any, string){
 		"names the prefix": func() (int, map[string]any, string) { return edits.tree(`{"directory": "/srv/house"}`, house) },
 		"definition": func() (int, map[string]any, string) {
@@ -102,6 +108,15 @@ func Test_client_gateway_submits_a_tree(t *testing.T) {
 		},
 		"not a path inside the directory": func() (int, map[string]any, string) {
 			return edits.tree(`{"at": "/other"}`, map[string]string{"../out.yaml": "flow: x\n"})
+		},
+		`../out.js\" is not a path inside the directory`: func() (int, map[string]any, string) {
+			return edits.tree(`{"at": "/other", "file": "../out.js"}`, house)
+		},
+		outside + `\" is not a path inside the directory`: func() (int, map[string]any, string) {
+			return edits.tree(`{"at": "/other", "file": "`+outside+`"}`, house)
+		},
+		`../absent.yaml\" is not a path inside the directory`: func() (int, map[string]any, string) {
+			return edits.tree(`{"at": "/other", "file": "../absent.yaml"}`, house)
 		},
 		"no part named submit": func() (int, map[string]any, string) {
 			return edits.uploadTo("/trees", part{name: "file:a.yaml", filename: "a.yaml", contents: "flow: a\n"})

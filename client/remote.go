@@ -404,7 +404,7 @@ func (r *remote) record(ctx context.Context, id string, tell func(Entry)) (*Run,
 }
 
 func (r *remote) fetch(ctx context.Context, id, path string) (io.Reader, File, error) {
-	resp, err := r.do(ctx, http.MethodGet, "/runs/"+id+"/files/"+path, "", nil)
+	resp, err := r.do(ctx, http.MethodGet, "/runs/"+id+"/files/"+(&url.URL{Path: path}).EscapedPath(), "", nil)
 	if err != nil {
 		return nil, File{}, err
 	}

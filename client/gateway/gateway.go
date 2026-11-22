@@ -393,12 +393,21 @@ func (g *Gateway) submit(w http.ResponseWriter, r *http.Request, c *client.Clien
 		fail(w, http.StatusBadRequest, fmt.Errorf("a submit names the prefix the tree is recorded at, as at: / and the names of one or more directories, as /home"))
 		return
 	}
+	if s.File != "" && !local(s.File) {
+		fail(w, http.StatusBadRequest, fmt.Errorf("the file %q is not a path inside the directory", s.File))
+		return
+	}
 	dir, err := os.MkdirTemp("", "corbie-tree-")
 	if err != nil {
 		fail(w, http.StatusInternalServerError, err)
 		return
 	}
 	defer os.RemoveAll(dir)
+	// What reading the files says names them from the directory, and not
+	// where the gateway keeps them.
+	plain := func(err error) string {
+		return strings.ReplaceAll(strings.ReplaceAll(err.Error(), dir+string(filepath.Separator), ""), " "+dir, "")
+	}
 	// A file is written inside the directory and nowhere else.
 	root, err := os.OpenRoot(dir)
 	if err != nil {
@@ -414,7 +423,7 @@ func (g *Gateway) submit(w http.ResponseWriter, r *http.Request, c *client.Clien
 		case kind != "file" || file == "":
 			fail(w, http.StatusBadRequest, fmt.Errorf("the form has a part named %q; %s", name, shape))
 			return
-		case !filepath.IsLocal(filepath.FromSlash(file)) || strings.Contains(file, `\`):
+		case !local(file):
 			fail(w, http.StatusBadRequest, fmt.Errorf("the file %q is not a path inside the directory", file))
 			return
 		}
@@ -430,7 +439,7 @@ func (g *Gateway) submit(w http.ResponseWriter, r *http.Request, c *client.Clien
 		tree, err = client.ReadTree(dir, s.At)
 	}
 	if err != nil {
-		fail(w, http.StatusBadRequest, errors.New(strings.ReplaceAll(err.Error(), dir+string(filepath.Separator), "")))
+		fail(w, http.StatusBadRequest, errors.New(plain(err)))
 		return
 	}
 	tree.Directory = s.Directory
@@ -450,10 +459,16 @@ func (g *Gateway) submit(w http.ResponseWriter, r *http.Request, c *client.Clien
 			if answer.Problems == nil {
 				answer.Problems = map[string]string{}
 			}
-			answer.Problems[m.Location] = strings.ReplaceAll(m.Problem.Error(), dir+string(filepath.Separator), "")
+			answer.Problems[m.Location] = plain(m.Problem)
 		}
 	}
 	reply(w, answer, nil)
+}
+
+// local says whether a file's path, as a form gives it, is inside the
+// directory the form's files are of.
+func local(file string) bool {
+	return filepath.IsLocal(filepath.FromSlash(file)) && !strings.Contains(file, `\`)
 }
 
 // place writes a part of an upload form as a file of a directory.

@@ -63,7 +63,7 @@ var fetch = &http.Client{Timeout: 10 * time.Second, CheckRedirect: func(*http.Re
 // that cannot be read, or that names itself otherwise, is an error.
 func (i *Issuer) Open(ctx context.Context) error {
 	at, err := url.Parse(i.Address)
-	if err != nil || at.Host == "" || at.Scheme != "https" && !(at.Scheme == "http" && loopback(at.Hostname())) {
+	if err != nil || !private(at) {
 		return fmt.Errorf("an OIDC issuer's address is https, or http on this computer: %q is neither", i.Address)
 	}
 	if i.Audience == "" {
@@ -79,9 +79,8 @@ func (i *Issuer) Open(ctx context.Context) error {
 	if found.Issuer != i.Address {
 		return fmt.Errorf("the OIDC issuer at %s names itself %q: give that as the issuer, as its tokens do", i.Address, found.Issuer)
 	}
-	keys, err := url.Parse(found.Keys)
-	if err != nil || keys.Scheme != at.Scheme {
-		return fmt.Errorf("the OIDC issuer %s publishes its keys at %q, which is not %s", i.Address, found.Keys, at.Scheme)
+	if keys, err := url.Parse(found.Keys); err != nil || !private(keys) {
+		return fmt.Errorf("the OIDC issuer %s publishes its keys at %q, which is neither https nor http on this computer", i.Address, found.Keys)
 	}
 	i.mu.Lock()
 	defer i.mu.Unlock()
@@ -89,9 +88,12 @@ func (i *Issuer) Open(ctx context.Context) error {
 	return i.readKeys(ctx)
 }
 
-func loopback(host string) bool {
+// private says whether what is read from an address cannot be read or
+// changed on its way: https, or http on this computer.
+func private(at *url.URL) bool {
+	host := at.Hostname()
 	ip := net.ParseIP(host)
-	return host == "localhost" || ip != nil && ip.IsLoopback()
+	return at.Host != "" && (at.Scheme == "https" || at.Scheme == "http" && (host == "localhost" || ip != nil && ip.IsLoopback()))
 }
 
 // published reads JSON from an address of the issuer's.

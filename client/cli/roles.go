@@ -212,6 +212,14 @@ func cmdStart(e *Env, args []string) error {
 			named = append(named, item{name: name})
 		}
 	}
+	return e.start(cfg, named, nil)
+}
+
+// start runs the roles and programs named, on a config, until it is
+// stopped. before, when given, is done once every role is running and before
+// any program is started, and its failure stops everything.
+func (e *Env) start(cfg identity.Config, named []item, before func() error) error {
+	var err error
 	// Every mistake on the line, and a program on a serverless host, is
 	// found before anything starts.
 	sets, found := make([]setting, len(named)), make([]program, len(named))
@@ -332,13 +340,20 @@ func cmdStart(e *Env, args []string) error {
 		// The host calls for each pass: there is no loop.
 		return role.Serve(e.ctx, report, running...)
 	}
-	// A program is started once every role named is set up, and is waited
-	// for before this returns. When one stops, everything stops; when this
-	// is stopped, each program is interrupted.
+	// The roles run until this is stopped. A program is started once every
+	// role named is set up, and is waited for before this returns. When one
+	// stops, everything stops; when this is stopped, each program is
+	// interrupted.
 	var started sync.WaitGroup
 	defer started.Wait()
 	ctx, stop := context.WithCancel(e.ctx)
 	defer stop()
+	started.Go(func() { role.Run(ctx, time.Now, report, running...) })
+	if before != nil {
+		if err := before(); err != nil {
+			return err
+		}
+	}
 	stopped := make(chan error, len(programs))
 	for _, p := range programs {
 		cmd := exec.CommandContext(ctx, p.path, p.args...)
@@ -361,7 +376,6 @@ func cmdStart(e *Env, args []string) error {
 			stop()
 		})
 	}
-	role.Run(ctx, time.Now, report, running...)
 	// A gateway or a served directory alone has no passes to make, and stays
 	// up all the same.
 	<-ctx.Done()
@@ -374,14 +388,20 @@ func cmdStart(e *Env, args []string) error {
 }
 
 // programEnv is the environment a program corbie starts is given: this
-// process's, with the config and the store the command line named.
+// process's, with the config and the store the command line named, and the
+// address and the token of the gateway this process runs. Under corbie up
+// the config is the one it uses, and a store in its memory is not named:
+// the config says where the program is served it.
 func (e *Env) programEnv() []string {
 	env := os.Environ()
-	if e.Given("config") {
+	if e.Given("config") || e.cmd.Name == "up" {
 		env = append(env, "CORBIE_CONFIG="+e.config)
 	}
-	if e.Given("store") {
+	if e.Given("store") && e.store != inMemory {
 		env = append(env, "CORBIE_STORE="+e.store)
+	}
+	if e.gatewayAt != "" {
+		env = append(env, "CORBIE_GATEWAY="+e.gatewayAt, "CORBIE_GATEWAY_TOKEN="+e.gatewayToken)
 	}
 	return env
 }

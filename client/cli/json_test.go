@@ -182,6 +182,15 @@ states:
 			t.Errorf("corbie %s --json printed:\n%s", name, out)
 		}
 	}
+	// corbie up prints the submit of its directory, as corbie run submit
+	// prints it.
+	tried["up"] = true
+	upDir := files(t, map[string]string{"make.js": `return 1`, "make.yaml": "flow: make\nstages:\n  make: { job: { script: ./make.js } }\n"})
+	submitted, _ := machine{t, filepath.Join(t.TempDir(), ".corbie")}.staying("up", "--in", upDir, "--json")
+	until(t, "the directory submitted", func() bool { return strings.Contains(submitted.String(), "\n") })
+	if !onlyJSON(submitted.String()) {
+		t.Errorf("corbie up --json printed:\n%s", submitted)
+	}
 	for _, c := range cli.Commands {
 		if !tried[c.Name] {
 			t.Errorf("corbie %s was not tried with --json", c.Name)

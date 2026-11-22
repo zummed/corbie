@@ -160,3 +160,7 @@ func (s memoryAs) First(ctx context.Context, under string, n int) ([]Listed, err
 func (s memoryAs) Notice(under string) (<-chan struct{}, func()) {
 	return s.m.notice(under)
 }
+
+func (s memoryAs) noticeIf(picks func(name string) bool) (<-chan struct{}, func()) {
+	return s.m.noticeIf(picks)
+}

@@ -11,6 +11,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"net"
 	"os"
 	"os/exec"
 	"os/signal"
@@ -104,6 +105,14 @@ type Env struct {
 	// For the gateway, and for the manual in a browser.
 	listen    string
 	tokenFile string
+
+	// memory is the store corbie up keeps in this process, or nil.
+	memory *store.Memory
+	// serving is where corbie up has the store's server listen.
+	serving net.Listener
+	// gatewayAt and gatewayToken are the address and the token of the
+	// gateway this process runs, for the programs started beside it.
+	gatewayAt, gatewayToken string
 }
 
 // usage is a mistake in how a command was written.
@@ -453,12 +462,41 @@ func (e *Env) Print(v any, text func() string) error {
 }
 
 // Config is the config the command uses: the one --config or
-// CORBIE_CONFIG names, or by default the one in the user's config directory.
+// CORBIE_CONFIG names, or else the .corbie of the current directory or the
+// nearest directory above it, which corbie up makes, or else the one in the
+// user's config directory.
 func (e *Env) Config() (identity.Config, error) {
 	if e.config != "" {
 		return identity.Config{Dir: e.config}, nil
 	}
+	dir, err := os.Getwd()
+	for err == nil {
+		at := filepath.Join(dir, client.ConfigName)
+		if info, err := os.Stat(at); err == nil && info.IsDir() {
+			return identity.Config{Dir: at}, nil
+		}
+		if filepath.Dir(dir) == dir {
+			break
+		}
+		dir = filepath.Dir(dir)
+	}
 	return identity.DefaultConfig()
+}
+
+// inMemory is the address of a store in the memory of the process of
+// corbie up.
+const inMemory = "memory:"
+
+// open opens a store that is not served: the one in this process's memory
+// for corbie up, and any other by its address.
+func (e *Env) open(address string) (store.Store, error) {
+	switch {
+	case address != inMemory:
+		return store.Open(address)
+	case e.memory == nil:
+		return nil, fmt.Errorf("the store of this config is in the memory of the corbie up that made it: only that process is its controller, and it sets a secret with --secret and a value with --value")
+	}
+	return e.memory.As(store.Party{Kind: store.Owner}), nil
 }
 
 // address is the store to use: the one named on the command line, in place
@@ -499,7 +537,7 @@ func (e *Env) Open(recorded string, as *identity.Identity, ctl identity.Card) (s
 	var s store.Store
 	switch {
 	case !store.IsServed(address):
-		s, err = store.Open(address)
+		s, err = e.open(address)
 	case as == nil:
 		return nil, fmt.Errorf("a directory another computer serves is read only by a party with an identity: corbie client card makes one, to be enrolled")
 	case as.Kind == identity.Controller:
@@ -555,11 +593,15 @@ func (e *Env) Controller() (*identity.Identity, store.Store, error) {
 	if err != nil {
 		return nil, nil, err
 	}
-	id, err := cfg.Load(e.ctx, identity.Controller)
+	recorded, err := cfg.ControllerStore()
 	if err != nil {
 		return nil, nil, err
 	}
-	recorded, err := cfg.ControllerStore()
+	if recorded == inMemory && e.memory == nil {
+		_, err := e.open(recorded)
+		return nil, nil, err
+	}
+	id, err := cfg.Load(e.ctx, identity.Controller)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -684,8 +726,10 @@ func overview() string {
 Every command takes these flags.
 
   --json                 print the result as JSON
-  --config <directory>   default $CORBIE_CONFIG, or corbie in the user's config
-                         directory: ~/.config/corbie on Linux
+  --config <directory>   default $CORBIE_CONFIG, or .corbie in this directory or
+                         the nearest above it, which corbie up makes, or
+                         corbie in the user's config directory: ~/.config/corbie
+                         on Linux
   --store <address>      default $CORBIE_STORE, or the store the config records
 
 corbie <name> --help prints the help of a command or a program, and

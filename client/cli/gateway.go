@@ -53,6 +53,7 @@ func (e *Env) gateway() (func(), error) {
 	}
 	server := &http.Server{Handler: &gateway.Gateway{Client: c, Token: token}, ReadHeaderTimeout: 10 * time.Second}
 	go server.Serve(listener)
+	e.gatewayAt, e.gatewayToken = "http://"+listener.Addr().String(), token
 	e.Say("gateway for the client %s, listening on http://%s", c.ID.Name, listener.Addr())
 	return func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
@@ -85,7 +86,7 @@ func (e *Env) serve(listen string, timeout time.Duration) (func(), error) {
 	if err != nil {
 		return nil, err
 	}
-	if !store.IsDirectory(address) {
+	if !store.IsDirectory(address) && address != inMemory {
 		return nil, fmt.Errorf("only a directory on this computer is served, and this controller's store is not one")
 	}
 	saved, err := cfg.StoreListen()
@@ -109,9 +110,11 @@ func (e *Env) serve(listen string, timeout time.Duration) (func(), error) {
 	if err != nil {
 		return nil, err
 	}
-	listener, err := net.Listen("tcp", listen)
-	if err != nil {
-		return nil, err
+	listener := e.serving
+	if listener == nil {
+		if listener, err = net.Listen("tcp", listen); err != nil {
+			return nil, err
+		}
 	}
 	who := func(ctx context.Context, name string) (store.Party, ed25519.PublicKey, error) {
 		trust, err := identity.ReadTrust(ctx, directory, ctl.Card, name)

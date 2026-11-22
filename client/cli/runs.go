@@ -249,6 +249,27 @@ func (s *starting) testSecrets(e *Env) (map[string]string, error) {
 // cannot tell it when something was written.
 const interval = time.Second
 
+// valuesGiven reads the values corbie test and corbie up are given, each
+// NAME=VALUE, which are set with the secrets at / of the controller in the
+// process.
+func valuesGiven(values []string) (map[string]string, error) {
+	set := map[string]string{}
+	for _, given := range values {
+		name, value, ok := strings.Cut(given, "=")
+		if !ok {
+			return nil, Mistake("--value takes NAME=VALUE")
+		}
+		if err := permission.CheckSecretName(name); err != nil {
+			return nil, Mistake("--value: %v", err)
+		}
+		if _, twice := set[name]; twice {
+			return nil, Mistake("the value %q is given twice: give it once", name)
+		}
+		set[name] = value
+	}
+	return set, nil
+}
+
 func cmdTest(e *Env, args []string) error {
 	var s starting
 	var values list
@@ -281,21 +302,9 @@ func cmdTest(e *Env, args []string) error {
 	if definition {
 		return e.printDefinition(files[0], given(e, ofAStart))
 	}
-	// Each value is NAME=VALUE, and is set with the secrets at / of the
-	// controller in this process.
-	set := map[string]string{}
-	for _, given := range values {
-		name, value, ok := strings.Cut(given, "=")
-		if !ok {
-			return Mistake("--value takes NAME=VALUE")
-		}
-		if err := permission.CheckSecretName(name); err != nil {
-			return Mistake("--value: %v", err)
-		}
-		if _, twice := set[name]; twice {
-			return Mistake("the value %q is given twice: give it once", name)
-		}
-		set[name] = value
+	set, err := valuesGiven(values)
+	if err != nil {
+		return err
 	}
 	defer s.close()
 	var tree *client.Tree

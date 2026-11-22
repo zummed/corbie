@@ -25,6 +25,20 @@ A tree of machines: one command records a directory of machines, each at its loc
 
 Submit again after a change: nothing else watches the files.
 
+Try a directory
+---------------
+
+`corbie up` does those three commands in one process, with the store in its
+memory, and keeps nothing when it stops.
+
+    corbie up --in schedules &
+    corbie run ls
+      <id>  running    statechart evening  step 1  waiting on 1 timer  at /schedules/evening
+
+  .corbie             the config it makes in the current directory, and removes; a command run there uses it
+  corbie up ui        starts the UI as well, or any program corbie-<name> on PATH
+  --store <address>   keeps the store, a directory or an S3 bucket, and the keys in .corbie
+
 Reference
 ---------
 
@@ -32,7 +46,7 @@ Reference
   corbie test <directory>...                    reads every machine, and starts nothing
   corbie test <file> --in <directory>           runs one machine with the tree it is in
 
-It reads every *.yaml in the directory and below it as a machine, but for .git and what .corbieignore lists. A machine's location is its path under the prefix, without .yaml.
+It reads every *.yaml in the directory and below it as a machine, but for .git, .corbie and what .corbieignore lists. A machine's location is its path under the prefix, without .yaml.
 
   schedules/evening.yaml at /schedules   /schedules/evening
   house/devices/boiler.yaml at /home     /home/devices/boiler

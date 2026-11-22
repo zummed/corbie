@@ -87,9 +87,10 @@ func ServedListener(l net.Listener, keeper tls.Certificate) net.Listener {
 	})
 }
 
-// A Server serves a directory to the parties of one controller.
+// A Server serves a store this process has, a directory or a store in
+// memory, to the parties of one controller.
 type Server struct {
-	// Directory is the directory served.
+	// Directory is the store served.
 	Directory Store
 	// Who says which party a name is and which key is its own. A name that
 	// is no party of the controller's has no key.
@@ -305,9 +306,15 @@ func (s *Server) wait(ctx context.Context, p Party, under string) (bool, error) 
 	if err := checkUnder(under); err != nil {
 		return false, err
 	}
-	f, ok := s.Directory.(*directory)
+	served := s.Directory
+	if h, ok := served.(held); ok {
+		served = h.s
+	}
+	f, ok := served.(interface {
+		noticeIf(func(name string) bool) (<-chan struct{}, func())
+	})
 	if !ok {
-		return false, fmt.Errorf("store: only a directory is served")
+		return false, fmt.Errorf("store: only a directory or a store in memory is served")
 	}
 	written, stop := f.noticeIf(func(name string) bool { return within(name, under) && p.Allows(ActRead, name) })
 	defer stop()

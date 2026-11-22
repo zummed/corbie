@@ -22,7 +22,7 @@ Acting as no party, it is a viewer, which needs no identity: only the controller
 - On a bucket, the key in the environment, not the config, says what the UI can read.
 
 ```
---listen host:port    where it listens; default 127.0.0.1:8373
+--listen host:port    where it listens; default 127.0.0.1:8373, or a free port when that one is in use
 --token-file <file>   a file holding the token every request must show; by default it makes one and prints it
 --dir <directory>     the directory of machines, read as a tree; default the directory it was started in
 --interval <time>     how often it reads the store again; default 1s, or 10s for a bucket

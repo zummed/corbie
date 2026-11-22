@@ -79,7 +79,7 @@ func ReadTree(dir, at string) (*Tree, error) {
 		}
 		rel = filepath.ToSlash(rel)
 		switch {
-		case d.IsDir() && d.Name() == ".git":
+		case d.IsDir() && (d.Name() == ".git" || d.Name() == ConfigName):
 			return filepath.SkipDir
 		case listed[rel] && d.IsDir():
 			t.Listed = append(t.Listed, rel+"/")
@@ -153,6 +153,10 @@ func ReadFile(dir, rel, at string, job ScriptJob) (*Tree, error) {
 // in it is no machine.
 const ignoreFile = ".corbieignore"
 
+// ConfigName is the name of the config directory corbie up makes in the
+// directory it submits. Nothing in it is a machine.
+const ConfigName = ".corbie"
+
 // readIgnore reads the paths the .corbieignore at the top of a directory
 // lists, each from the directory: one a line, and a directory for everything
 // below it. A line starting with # and an empty line are passed over. A
@@ -188,7 +192,7 @@ func located(listed map[string]bool, file string) bool {
 		return false
 	}
 	for at := path.Clean(file); at != "."; at = path.Dir(at) {
-		if listed[at] || path.Base(at) == ".git" {
+		if listed[at] || path.Base(at) == ".git" || path.Base(at) == ConfigName {
 			return false
 		}
 	}

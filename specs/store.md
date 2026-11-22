@@ -107,7 +107,7 @@ A **directory** is for one computer. Every value is a plain file, so a person ca
 
 On a file system that ignores case, as macOS's and Windows's do by default, `/Work` and `/work` are one directory. A secret or a value set at one of them is refused while the other has that name set, and so is a remove. A tree submitted at one of them is refused while the other is a tree. Listing the secrets or the values reads every file under `locations/`.
 
-A **served directory** is for a few computers of one's own, with nothing rented and nothing else installed. The computer that holds the directory and the controller serves it, and a party on another computer reaches it at `corbie://host:port`. Roles on the serving computer use the directory as it is.
+A **served directory** is for a few computers of one's own, with nothing rented and nothing else installed. The computer that holds the directory and the controller serves it, and a party on another computer reaches it at `corbie://host:port`. Roles on the serving computer use the directory as it is. `corbie up` serves the store in its memory the same way, on this computer only, to the programs it starts and to commands run beside it.
 
 For example, the computer `desk` holds the directory and runs `corbie start controller runner store`, and a computer with a graphics card runs `corbie start runner` with the store `corbie://desk:8372`. One private connection joins them. On it `desk` proves the controller's key, and the other computer proves its runner's key.
 

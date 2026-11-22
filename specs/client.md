@@ -114,7 +114,7 @@ Following from a terminal is one flag, `--watch`. It prints what the command pri
 
 `run send` to a key with no running run starts one, as the file's `lifetime: keyed` says, and `run send` to a transient location starts a new run of it. A client sends to the runs of its own trees with no `send:` entry, and only it cancels them. A send to another tree needs `send:` in the client's ceiling and `client:<its name>` in the receiver's `receive:` (see permission.md).
 
-`run show` prints a run's title, and `run ls` does not, since a listing reads only the heads. For a run another run started, `run show` prints `cause: <id> step <n>`. In `--json`, a listing's row and `run show` give `cause`, and each step of a record gives the cause of each event and the run's `state` (see instance.md). `run show` can also print one step, one job's input and output, or the definition, can save a result's files to a directory, and with `--wait` stays until the run ends and prints its result.
+`run show` prints a run's title, and `run ls` does not, since a listing reads only the heads. For a run another run started, `run show` prints `cause: <id> step <n>`. For a run a client's message started for a person, it prints `person:`, and `--record` writes the person after each event a client sent for one. In `--json`, a listing's row and `run show` give `cause`, and each step of a record gives the cause of each event and the run's `state` (see instance.md). `run show` can also print one step, one job's input and output, or the definition, can save a result's files to a directory, and with `--wait` stays until the run ends and prints its result.
 
 `run start <location>` sends a start; `run start --wait` waits for the run it started and `run start --watch` follows it. The tree's client starts a transient location with no `send:` entry. Another client's start is a call: its ceiling needs `send:` for the location, the file's `receive:` must list `client:<its name>`, and the start takes no labels or `--allow`. Under the ID it printed, it is shown only the call's result: the run's status and its output or error, and the result's files. A cancel of that ID is refused, naming the run the call started and its tree's client, which alone cancels it.
 
@@ -385,7 +385,7 @@ corbie start gateway --client viewer --client editor --token-file tokens   the s
 - A line with a token alone names the client of a gateway that has one client.
 - With no token file, the gateway makes a token for each client and prints it, and no request has a person.
 - A token on two lines stops the gateway from starting, and so does a line whose client the gateway does not have. Each names the line.
-- The gateway reads the file when it starts.
+- The gateway reads the file when it starts, and says how many tokens it gave each client, and for which persons.
 
 A gateway also takes the tokens of an OIDC issuer, such as Microsoft Entra ID:
 
@@ -402,13 +402,13 @@ corbie start gateway --client viewer --client editor --oidc-issuer https://login
 |---|---|---|
 | `--oidc-issuer <address>` | none | the issuer, as its tokens name it: `https`, or `http` on this computer |
 | `--oidc-audience <text>` | none | who a token must be for; given with the issuer |
-| `--oidc-client <claim>` | `roles` | the claim that names the client: a text, or a list of texts |
-| `--oidc-person <claim>` | `sub` | the claim that is the person |
+| `--oidc-client-claim <claim>` | `roles` | the claim that names the client: a text, or a list of texts |
+| `--oidc-person-claim <claim>` | `sub` | the claim that is the person |
 
 - The gateway reads the issuer's keys when it starts, from the address the issuer's `/.well-known/openid-configuration` gives. An issuer it cannot read, or that names itself otherwise, stops it from starting.
 - A token signed with a key the gateway does not have makes it read the keys again, once a minute at most.
 - A token is signed with RS256 by an RSA key of 2048 bits or more, or with ES256 by a key on the curve P-256. The key sets the algorithm, and a token that names another is refused.
-- A token that is not taken is answered 401, saying why.
+- A token that is not taken is answered 401, saying why, with what the token has and what the gateway takes.
 - With an issuer and no token file, the gateway makes no token of its own.
 - The gateway has no page to sign in at. A caller gets its token from the issuer.
 

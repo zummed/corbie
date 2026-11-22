@@ -152,8 +152,8 @@ func roleFlags(role string, set *setting, every *string) *flag.FlagSet {
 		})
 		flags.StringVar(&set.oidc.issuer, "oidc-issuer", "", "")
 		flags.StringVar(&set.oidc.audience, "oidc-audience", "", "")
-		flags.StringVar(&set.oidc.client, "oidc-client", "roles", "")
-		flags.StringVar(&set.oidc.person, "oidc-person", "sub", "")
+		flags.StringVar(&set.oidc.client, "oidc-client-claim", "roles", "")
+		flags.StringVar(&set.oidc.person, "oidc-person-claim", "sub", "")
 	case "store":
 		flags.StringVar(&set.listen, "listen", "", "")
 		flags.DurationVar(&set.timeout, "timeout", time.Minute, "")

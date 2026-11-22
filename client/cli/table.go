@@ -122,9 +122,9 @@ corbie <name> ….
                                    takes too
   gateway --oidc-audience <text>   who the issuer's tokens must be for; given
                                    with the issuer
-  gateway --oidc-client <claim>    the claim that names the client; default
+  gateway --oidc-client-claim <c>  the claim that names the client; default
                                    roles
-  gateway --oidc-person <claim>    the claim that is the person; default sub
+  gateway --oidc-person-claim <c>  the claim that is the person; default sub
   store --listen host:port         where it listens this time; default where
                                    corbie init store --listen said
   store --timeout <time>           closes a connection that sends nothing for

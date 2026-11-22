@@ -231,7 +231,7 @@ func (i *Issuer) Caller(ctx context.Context, token string) (*client.Client, erro
 	begins, _ := claims["nbf"].(float64)
 	switch {
 	case claims["iss"] != i.Address:
-		return nil, fmt.Errorf("it is from the issuer %v", claims["iss"])
+		return nil, fmt.Errorf("it is from the issuer %v, and the gateway's is %s", claims["iss"], i.Address)
 	case !slices.Contains(texts(claims["aud"]), i.Audience):
 		return nil, fmt.Errorf("it is for the audience %v, and the gateway's is %s", claims["aud"], i.Audience)
 	case !timed || now.After(time.Unix(int64(expires), 0).Add(leeway)):
@@ -244,12 +244,14 @@ func (i *Issuer) Caller(ctx context.Context, token string) (*client.Client, erro
 		return nil, fmt.Errorf("it has no claim %s, which names the person", i.PersonClaim)
 	}
 	named := texts(claims[i.ClientClaim])
+	var clients []string
 	for _, c := range i.Clients {
 		if slices.Contains(named, c.ID.Name) {
 			return c.As(person), nil
 		}
+		clients = append(clients, c.ID.Name)
 	}
-	return nil, fmt.Errorf("its claim %s names none of the gateway's clients", i.ClientClaim)
+	return nil, fmt.Errorf("its claim %s is %s, which names none of the gateway's clients: %s", i.ClientClaim, listed(named), strings.Join(clients, ", "))
 }
 
 // segment reads one part of a token: JSON, in base64.
@@ -259,6 +261,14 @@ func segment(text string, into any) error {
 		return err
 	}
 	return stdjson.Unmarshal(data, into)
+}
+
+// listed writes a claim's values for a refusal, or that it has none.
+func listed(values []string) string {
+	if len(values) == 0 {
+		return "not there"
+	}
+	return strings.Join(values, ", ")
 }
 
 // texts gives a claim's values: a text, or each text of a list.

@@ -68,7 +68,9 @@ states:
 	id := regexp.MustCompile(`"id":"([^"]+)"`)
 
 	url, said := gateway("--token-file", filepath.Join(dir, "tokens"))
-	if !strings.Contains(said, "gateway for the clients viewer, editor, listening on") || strings.Contains(said, "gateway token") {
+	// It says what the file gave each client, and prints no token.
+	if !strings.Contains(said, "gateway for the clients viewer, editor, listening on") || strings.Contains(said, "views") || strings.Contains(said, "alices") ||
+		!strings.Contains(said, "gateway tokens for the client viewer: 1\n") || !strings.Contains(said, "gateway tokens for the client editor: 2, for Bob Smith, alice@example.com\n") {
 		t.Fatalf("the gateway said %s", said)
 	}
 	at := editor.recorded(filepath.Join(dir, "door.yaml"))
@@ -244,6 +246,9 @@ func Test_client_commands_through_a_gateway(t *testing.T) {
 	if record := editor.ok("", "run", "show", boiler, "--record", "--json"); strings.Count(record, `"person":"alice@example.com"`) < 4 || !strings.Contains(record, "who is there") {
 		t.Errorf("the boiler's record is %s", record)
 	}
+	if record := editor.ok("", "run", "show", boiler, "--record"); !strings.Contains(record, `<- start for "alice@example.com"`) || !strings.Contains(record, `<- poke from client:editor for "alice@example.com"`) {
+		t.Errorf("the boiler's record is printed as %s", record)
+	}
 	sent("run", "cancel", boiler)
 	if shown := editor.ok("", "run", "show", boiler); !strings.Contains(shown, "  cancelled  ") {
 		t.Errorf("after the cancel the boiler is %s", shown)
@@ -304,11 +309,11 @@ func Test_client_gateway_oidc_flags(t *testing.T) {
 	alice := token(fmt.Sprintf(`{"iss": %q, "aud": "api://corbie", "exp": %d, "roles": ["editor"], "sub": "s-1", "preferred_username": "alice@example.com"}`, idp.URL, time.Now().Add(time.Hour).Unix()))
 
 	gateway := []string{"start", "gateway", "--listen", "127.0.0.1:0", "--client", editor.config}
-	_, saying := m.staying(append(gateway, "--oidc-issuer", idp.URL, "--oidc-audience", "api://corbie", "--oidc-person", "preferred_username")...)
+	_, saying := m.staying(append(gateway, "--oidc-issuer", idp.URL, "--oidc-audience", "api://corbie", "--oidc-person-claim", "preferred_username")...)
 	listening := regexp.MustCompile(`listening on (http://\S+)`)
 	until(t, "the gateway", func() bool { return listening.MatchString(saying.String()) })
 	url := listening.FindStringSubmatch(saying.String())[1]
-	if said := saying.String(); strings.Contains(said, "gateway token") ||
+	if said := saying.String(); strings.Contains(said, "gateway token ") ||
 		!strings.Contains(said, "gateway takes the tokens of the OIDC issuer "+idp.URL+" for the audience api://corbie: the client is named by roles, and the person by preferred_username") {
 		t.Fatalf("the gateway said %s", said)
 	}

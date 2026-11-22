@@ -960,6 +960,9 @@ func (e *Env) entry(entry client.Entry) {
 		case event.From != "":
 			line += " from " + event.From
 		}
+		if person := event.Cause.Person; person != "" {
+			line += fmt.Sprintf(" for %q", person)
+		}
 		if failed, _ := event.Data.(map[string]any); failed["refused"] != nil {
 			// A refusal that reaches the run is printed in full with the
 			// run, once: each job it came from says only what was refused.

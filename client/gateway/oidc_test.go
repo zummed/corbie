@@ -181,22 +181,22 @@ func Test_client_gateway_takes_an_issuers_tokens(t *testing.T) {
 	}
 	stranger := &issuer{t: t, rsa: other}
 	for want, token := range map[string]string{
-		"its signature is not the issuer's#changed":       forged[:len(forged)-4] + "AAAA",
-		"its signature is not the issuer's#another's key": stranger.token("RS256", "rsa-1", claims(nil)),
-		"its signature is not the issuer's#none":          b64(header) + "." + b64(body) + ".",
-		"its signature is not the issuer's#other alg":     idp.token("RS256", "ec-1", claims(nil)),
-		`the key \"shared\", which the issuer does not`:   b64(hmac) + "." + b64(body) + "." + b64([]byte("x")),
-		`the key \"unknown\", which the issuer does not`:  idp.token("RS256", "unknown", claims(nil)),
-		"it is from the issuer https://elsewhere":         idp.token("RS256", "rsa-1", claims(map[string]any{"iss": "https://elsewhere"})),
-		"it is for the audience api://other":              idp.token("RS256", "rsa-1", claims(map[string]any{"aud": "api://other"})),
-		"its time has passed#exp":                         idp.token("RS256", "rsa-1", claims(map[string]any{"exp": time.Now().Add(-2 * time.Minute).Unix()})),
-		"its time has passed#none":                        idp.token("RS256", "rsa-1", claims(map[string]any{"exp": nil})),
-		"its time has not come":                           idp.token("RS256", "rsa-1", claims(map[string]any{"nbf": time.Now().Add(10 * time.Minute).Unix()})),
-		"its claim roles names none of the gateway's":     idp.token("RS256", "rsa-1", claims(map[string]any{"roles": []string{"admin"}})),
-		"its claim roles names none of the gateway's#no":  idp.token("RS256", "rsa-1", claims(map[string]any{"roles": nil})),
-		"it has no claim preferred_username":              idp.token("RS256", "rsa-1", claims(map[string]any{"preferred_username": nil})),
-		"it is no token of the issuer's":                  "a.b.c",
-		"it is no token of the issuer's#two parts":        "static.x",
+		"its signature is not the issuer's#changed":                                           forged[:len(forged)-4] + "AAAA",
+		"its signature is not the issuer's#another's key":                                     stranger.token("RS256", "rsa-1", claims(nil)),
+		"its signature is not the issuer's#none":                                              b64(header) + "." + b64(body) + ".",
+		"its signature is not the issuer's#other alg":                                         idp.token("RS256", "ec-1", claims(nil)),
+		`the key \"shared\", which the issuer does not`:                                       b64(hmac) + "." + b64(body) + "." + b64([]byte("x")),
+		`the key \"unknown\", which the issuer does not`:                                      idp.token("RS256", "unknown", claims(nil)),
+		"it is from the issuer https://elsewhere, and the gateway's is http://127.0.0.1":      idp.token("RS256", "rsa-1", claims(map[string]any{"iss": "https://elsewhere"})),
+		"it is for the audience api://other":                                                  idp.token("RS256", "rsa-1", claims(map[string]any{"aud": "api://other"})),
+		"its time has passed#exp":                                                             idp.token("RS256", "rsa-1", claims(map[string]any{"exp": time.Now().Add(-2 * time.Minute).Unix()})),
+		"its time has passed#none":                                                            idp.token("RS256", "rsa-1", claims(map[string]any{"exp": nil})),
+		"its time has not come":                                                               idp.token("RS256", "rsa-1", claims(map[string]any{"nbf": time.Now().Add(10 * time.Minute).Unix()})),
+		"its claim roles is admin, which names none of the gateway's clients: viewer, editor": idp.token("RS256", "rsa-1", claims(map[string]any{"roles": []string{"admin"}})),
+		"its claim roles is not there, which names none of the gateway's clients":             idp.token("RS256", "rsa-1", claims(map[string]any{"roles": nil})),
+		"it has no claim preferred_username":                                                  idp.token("RS256", "rsa-1", claims(map[string]any{"preferred_username": nil})),
+		"it is no token of the issuer's":                                                      "a.b.c",
+		"it is no token of the issuer's#two parts":                                            "static.x",
 	} {
 		want, _, _ = strings.Cut(want, "#")
 		status, _, text := as(token).do("POST", "/runs/"+id+"/cancel", "{}")

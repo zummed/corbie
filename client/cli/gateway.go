@@ -66,6 +66,29 @@ func (e *Env) gateway() (func(), error) {
 		if callers, first, err = callersOf(string(data), clients); err != nil {
 			return nil, fmt.Errorf("%s: %w", e.tokenFile, err)
 		}
+		// What the file gave, by client, so that a line read otherwise than
+		// it was meant shows when the gateway starts.
+		for _, c := range clients {
+			var persons []string
+			tokens := 0
+			for _, named := range callers {
+				if named.ID.Name != c.ID.Name {
+					continue
+				}
+				tokens++
+				if named.Person != "" {
+					persons = append(persons, named.Person)
+				}
+			}
+			slices.Sort(persons)
+			line := fmt.Sprintf("gateway tokens for the client %s: %d", c.ID.Name, tokens)
+			if len(persons) > 0 {
+				line += ", for " + strings.Join(persons, ", ")
+			}
+			if len(callers) > 0 {
+				e.Say("%s", line)
+			}
+		}
 	}
 	// The tokens of an OIDC issuer are taken where one is given.
 	var issuer *gateway.Issuer

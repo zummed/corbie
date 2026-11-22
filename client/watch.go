@@ -70,6 +70,10 @@ func (f Filter) keeps(r *Run) bool {
 // every instance, not only roots. A client sees its own and those whose
 // file's read: lists it; a viewer with access to heads sees everyone's.
 func (c *Client) List(ctx context.Context, filter Filter) ([]*Run, error) {
+	if c.remote != nil {
+		var runs []*Run
+		return runs, c.remote.get(ctx, "/runs?"+filter.query().Encode(), &runs)
+	}
 	heads, _, _, err := c.heads(ctx, filter.finished(), nil)
 	var runs []*Run
 	for _, run := range heads {
@@ -194,6 +198,9 @@ type Update struct {
 // reach the store is made again at the next interval, and nothing is given
 // on its account.
 func (c *Client) Watch(ctx context.Context, filter Filter, interval time.Duration, tell func(Update)) error {
+	if c.remote != nil {
+		return c.remote.watch(ctx, filter, tell)
+	}
 	notice, stop := c.Store.Notice(c.ctl())
 	defer stop()
 	w := &watched{seen: map[string]store.Mark{}}
@@ -342,6 +349,9 @@ type sent struct {
 // that cannot reach the store is made again at the next interval. A follow
 // that is cut short gives the run as it stands.
 func (c *Client) Follow(ctx context.Context, id string, interval time.Duration, tell func(Entry)) (*Run, error) {
+	if c.remote != nil {
+		return c.remote.follow(ctx, id, tell)
+	}
 	if err := c.identity(); err != nil {
 		return nil, err
 	}
@@ -383,6 +393,9 @@ func (c *Client) Follow(ctx context.Context, id string, interval time.Duration, 
 // instance below it, and then the run as it stands: what a follow gives,
 // without staying.
 func (c *Client) Record(ctx context.Context, id string, tell func(Entry)) (*Run, error) {
+	if c.remote != nil {
+		return c.remote.record(ctx, id, tell)
+	}
 	if err := c.identity(); err != nil {
 		return nil, err
 	}
@@ -740,6 +753,9 @@ var ErrNoFile = errors.New("the run shows no file at the path")
 // entry of the run's record, input or definition) and after the next slash
 // says where the blob is in that.
 func (c *Client) Fetch(ctx context.Context, id, path string) (io.Reader, File, error) {
+	if c.remote != nil {
+		return c.remote.fetch(ctx, id, path)
+	}
 	ref, err := c.find(ctx, id, path)
 	if err != nil {
 		return nil, File{}, err
@@ -818,6 +834,10 @@ func (c *Client) find(ctx context.Context, id, path string) (blob.Ref, error) {
 // name it has in the value that holds it. It lists every blob a path of the
 // result fetches: one written out inside a text is among them.
 func (c *Client) Files(ctx context.Context, id string) (map[string]File, error) {
+	if c.remote != nil {
+		files := map[string]File{}
+		return files, c.remote.get(ctx, "/runs/"+id+"/files", &files)
+	}
 	var given any
 	latest, err := c.current(ctx, id)
 	switch {
@@ -900,6 +920,10 @@ func named(v any, at, name string, files map[string]File) {
 // form, as it is shown: each script and each machine it names as a blob's
 // type, its size and the path to ask for it by.
 func (c *Client) Definition(ctx context.Context, id string) (*machine.Definition, error) {
+	if c.remote != nil {
+		var def machine.Definition
+		return &def, c.remote.get(ctx, "/runs/"+id+"/definition", &def)
+	}
 	latest, err := c.current(ctx, id)
 	if err != nil {
 		return nil, err
@@ -921,6 +945,10 @@ var ErrNoStep = errors.New("the run has no step")
 
 // Step gives one step entry of a run's record, as it is shown.
 func (c *Client) Step(ctx context.Context, id string, number int) (*Entry, error) {
+	if c.remote != nil {
+		var entry Entry
+		return &entry, c.remote.get(ctx, "/runs/"+id+"/steps/"+strconv.Itoa(number), &entry)
+	}
 	if _, err := c.current(ctx, id); err != nil {
 		return nil, err
 	}

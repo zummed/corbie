@@ -121,6 +121,10 @@ func (c *Client) readable(ctx context.Context, id string) error {
 // Show gives one run: where it stands and, once it has ended, how. It is
 // shown from its record: the head may be a moment behind, or not there yet.
 func (c *Client) Show(ctx context.Context, id string) (*Run, error) {
+	if c.remote != nil {
+		var run Run
+		return &run, c.remote.get(ctx, "/runs/"+id, &run)
+	}
 	if err := store.CheckInstance(id); err != nil {
 		return nil, err
 	}
@@ -244,7 +248,7 @@ func (c *Client) unstarted(ctx context.Context, id string) (*Run, error) {
 // cannot reach the store is made again. A wait that is cut short, by the
 // context's limit or by its caller going away, gives the run as it stands.
 func (c *Client) Wait(ctx context.Context, id string, interval time.Duration) (*Run, error) {
-	notice, stop := c.Store.Notice(c.ctl())
+	notice, stop := c.notice(c.ctl())
 	defer stop()
 	for {
 		run, err := c.Show(ctx, id)
@@ -281,7 +285,7 @@ func (c *Client) Started(ctx context.Context, id string, interval time.Duration)
 // its start is past a time, where it is given one. A run the controller
 // starts has nothing in its record until then.
 func (c *Client) taken(ctx context.Context, id string, until time.Time, interval time.Duration) error {
-	notice, stop := c.Store.Notice(c.ctl())
+	notice, stop := c.notice(c.ctl())
 	defer stop()
 	for {
 		run, err := c.Show(ctx, id)
@@ -344,6 +348,10 @@ func (c *Client) current(ctx context.Context, id string) (*instance.Step, error)
 // the client of the run's tree and the clients its file's read: lists can
 // read.
 func (c *Client) Tickets(ctx context.Context, id string) (map[string]string, error) {
+	if c.remote != nil {
+		tickets := map[string]string{}
+		return tickets, c.remote.get(ctx, "/runs/"+id+"/tickets", &tickets)
+	}
 	latest, err := c.current(ctx, id)
 	if err != nil {
 		return nil, err

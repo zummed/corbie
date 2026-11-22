@@ -91,6 +91,21 @@ A line of the token file is a token, the client's name and the person.
 - Whoever has a token is its client. The gateway's computer holds each
   client's key.
 
+The command line through a gateway
+----------------------------------
+
+`corbie run …`, `corbie client secret …` and `corbie client value …` take
+`--gateway <address>`. The command sends the token in `CORBIE_GATEWAY_TOKEN`,
+and needs no config and no key on its computer.
+
+  export CORBIE_GATEWAY_TOKEN=179bd50585d0
+  corbie run submit house --gateway http://127.0.0.1:8371
+    /house/devices/boiler   singleton   started editor/20261013T185126.250Z-571d935912
+    /house/greet            transient   recorded
+
+A command prints the same through a gateway as with the client's own config.
+A Go program does the same with `client.Remote(address, token)`.
+
 A run in another client's tree
 ------------------------------
 

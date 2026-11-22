@@ -98,6 +98,8 @@ type Env struct {
 	config string
 	store  string
 	json   bool
+	// via is the address of the gateway a client's command is sent to.
+	via string
 	// asked holds every store's address the command went to.
 	asked []string
 
@@ -350,6 +352,7 @@ func (cmd *Command) env(ctx context.Context, in io.Reader, out, errOut io.Writer
 	e.Flags.SetOutput(io.Discard)
 	e.Flags.StringVar(&e.config, "config", os.Getenv("CORBIE_CONFIG"), "")
 	e.Flags.StringVar(&e.store, "store", "", "")
+	e.Flags.StringVar(&e.via, "gateway", "", "")
 	e.Flags.BoolVar(&e.json, "json", false, "")
 	return e
 }
@@ -383,9 +386,9 @@ func (t table) find(args []string) (*Command, []string) {
 	return found, rest
 }
 
-// hoist moves the flags every command takes, --json, --config and --store,
-// from before a command's words to after them, where its flags are read. A
-// line that names no command is left as it is written.
+// hoist moves the flags every command takes, --json, --config, --store and
+// --gateway, from before a command's words to after them, where its flags
+// are read. A line that names no command is left as it is written.
 func (t table) hoist(args []string) []string {
 	var words, flags []string
 	for i := 0; i < len(args); i++ {
@@ -396,9 +399,9 @@ func (t table) hoist(args []string) []string {
 			if cmd, _ := t.find(words); cmd != nil {
 				return slices.Concat(words, flags, args[i+1:])
 			}
-		case args[i] == "--json", valued && (name == "config" || name == "store"):
+		case args[i] == "--json", valued && (name == "config" || name == "store" || name == "gateway"):
 			flags = append(flags, args[i])
-		case (name == "config" || name == "store") && i+1 < len(args):
+		case (name == "config" || name == "store" || name == "gateway") && i+1 < len(args):
 			flags = append(flags, args[i], args[i+1])
 			i++
 		default:
@@ -427,6 +430,11 @@ func (e *Env) Parse(args []string) ([]string, error) {
 			plain = append(plain, args[0])
 			args = args[1:]
 		}
+	}
+	// A gateway does what a client does, and nothing else of corbie's.
+	if name := e.cmd.Name; e.via != "" && e.table.name == "corbie" &&
+		!strings.HasPrefix(name, "run ") && !strings.HasPrefix(name, "client secret ") && !strings.HasPrefix(name, "client value ") {
+		return nil, Mistake("--gateway is for the commands a client sends: corbie run …, corbie client secret … and corbie client value …")
 	}
 	return plain, nil
 }
@@ -536,8 +544,16 @@ func (e *Env) Open(recorded string, as *identity.Identity, ctl identity.Card) (s
 }
 
 // Client gives the client of this config: its identity, the controller it
-// trusts and that controller's store. With no identity it is a viewer.
+// trusts and that controller's store. With no identity it is a viewer. With
+// --gateway it is a client that sends to that gateway, and uses no config.
 func (e *Env) Client() (*client.Client, error) {
+	if e.via != "" {
+		token := os.Getenv("CORBIE_GATEWAY_TOKEN")
+		if token == "" {
+			return nil, fmt.Errorf("--gateway sends the token in CORBIE_GATEWAY_TOKEN, which is not set")
+		}
+		return client.Remote(e.via, token), nil
+	}
 	cfg, err := e.Config()
 	if err != nil {
 		return nil, err
@@ -713,6 +729,13 @@ Every command takes these flags.
                          corbie in the user's config directory: ~/.config/corbie
                          on Linux
   --store <address>      default $CORBIE_STORE, or the store the config records
+
+A command a client sends, which is corbie run …, corbie client secret … and
+corbie client value …, takes this flag too.
+
+  --gateway <address>    send the command to a gateway, with the token in
+                         $CORBIE_GATEWAY_TOKEN, as the client the token names;
+                         it uses no config and no store
 
 corbie <name> --help prints the help of a command or a program, and
 corbie run --help lists the commands of corbie run. corbie manual lists the

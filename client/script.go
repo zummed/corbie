@@ -24,6 +24,16 @@ type ScriptJob struct {
 // the run's input and whose output is the flow's. name is the script's
 // file name, and the flow is named after it. Nothing is sent.
 func Script(name string, script []byte, job ScriptJob) (*machine.Draft, error) {
+	src, err := scriptFlow(name, job)
+	if err != nil {
+		return nil, err
+	}
+	return machine.Parse(src, machine.Given(map[string]string{"./" + name: string(script)}))
+}
+
+// scriptFlow writes the flow a script is wrapped in. It is JSON, which is
+// YAML too, and its first name is the type.
+func scriptFlow(name string, job ScriptJob) ([]byte, error) {
 	written := map[string]any{"script": "./" + name, "input": "${input}"}
 	if len(job.Allow) > 0 {
 		written["allow"] = job.Allow
@@ -40,16 +50,11 @@ func Script(name string, script []byte, job ScriptJob) (*machine.Draft, error) {
 	if len(job.Tags) > 0 {
 		written["tags"] = job.Tags
 	}
-	// Written as JSON, which is YAML too; its first name is the type.
-	src, err := json.Marshal(map[string]any{
+	return json.Marshal(map[string]any{
 		"flow":   sanitize(strings.TrimSuffix(name, ".js")),
 		"stages": map[string]any{ScriptStage: map[string]any{"job": written}},
 		"output": "${stages." + ScriptStage + ".output}",
 	}, json.Deterministic(true))
-	if err != nil {
-		return nil, err
-	}
-	return machine.Parse(src, machine.Given(map[string]string{"./" + name: string(script)}))
 }
 
 // sanitize makes a file's name into a machine's name.

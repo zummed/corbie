@@ -391,6 +391,29 @@ Whoever has a token is the client it names. Nothing in a request raises that cli
 
 It keeps nothing itself. It runs wherever a process can stay up, and is not offered on serverless hosts.
 
+## Through a gateway
+
+The package sends to a store or to a gateway:
+
+| A client made with | Does each thing |
+|---|---|
+| `client.New`, from an identity, a controller's card and a store | on the store, signed and sealed with the client's own key |
+| `client.Remote`, from a gateway's address and a token | as one request to the gateway, which does it as the token's client |
+
+A command a client sends takes `--gateway <address>`, and sends the token in `CORBIE_GATEWAY_TOKEN`:
+
+```
+export CORBIE_GATEWAY_TOKEN=179bd50585d0
+corbie run submit house --gateway https://corbie.example.com
+```
+
+- `corbie run …`, `corbie client secret …` and `corbie client value …` take `--gateway`. Any other command refuses it.
+- The command uses no config and no store, and holds no key.
+- A command prints the same through a gateway as with the client's own config.
+- A submit sends each file the directory's machines read: the machines, their scripts, the files they include and `.corbieignore`.
+- A file given to a start is a value of the input's top level.
+- The gateway names the run a start starts.
+
 ## For a model
 
 `corbie mcp` serves two tools to a model: the manual, and the command line. The model may run only the commands it was started with permission for, each named by its whole name, as in `--allow "run submit"`, with the config the server was started on. It needs nothing running and keeps nothing.

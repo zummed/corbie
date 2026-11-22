@@ -128,3 +128,135 @@ states:
 		t.Errorf("a token alone was answered %d %s by %s", status, text, saying.String())
 	}
 }
+
+// A command a client sends gives one answer, in one set of words, with the
+// client's own config and through a gateway with a token of that client's:
+// what it prints is the same. Through the gateway it uses no config. A
+// command that is not a client's refuses --gateway.
+func Test_client_commands_through_a_gateway(t *testing.T) {
+	m, _ := working(t, "all")
+	editor := m.second("editor", "all,at:/**")
+	dir := files(t, map[string]string{
+		"tokens":                    "the-token editor alice@example.com\n",
+		"house/devices/boiler.yaml": "statechart: boiler\nlifetime: singleton\ninitial: idle\nstates:\n  idle:\n    ticket: knock\n    on: { poke: idle, knock: idle, stop: off }\n  off: { end: done }\n",
+		"house/greet.yaml":          "include: shared/base.yaml\nflow: greet\nstages:\n  say: { job: { script: ./greet.js, input: { name: \"${input.name}\" } } }\noutput: { text: \"${stages.say.output.text}\", report: \"${stages.say.output.report}\", colour: \"${values.COLOUR}\" }\n",
+		"house/greet.js":            `log("greeting"); return { text: "hello " + input.name, report: blobs.make("the report") }`,
+		"house/.corbieignore":       "shared\n",
+		"house/shared/base.yaml":    "input: { name: any }\n",
+		"house/bad.yaml":            "flow: bad\nstages: 3\n",
+		"double.js":                 `return input.n * 2`,
+	})
+	_, saying := m.staying("start", "gateway", "--listen", "127.0.0.1:0", "--client", editor.config, "--token-file", filepath.Join(dir, "tokens"))
+	listening := regexp.MustCompile(`listening on (http://\S+)`)
+	until(t, "the gateway", func() bool { return listening.MatchString(saying.String()) })
+	url := listening.FindStringSubmatch(saying.String())[1]
+	t.Setenv("CORBIE_GATEWAY_TOKEN", "the-token")
+	// A computer with nothing set up.
+	bare := machine{t, filepath.Join(t.TempDir(), "none")}
+	via := func(args ...string) (int, string, string) {
+		t.Helper()
+		return bare.run("", append(args, "--gateway", url)...)
+	}
+	sent := func(args ...string) string {
+		t.Helper()
+		status, out, said := via(args...)
+		if status != 0 {
+			t.Fatalf("corbie %s through the gateway ended %d:\n%s%s", strings.Join(args, " "), status, out, said)
+		}
+		return out
+	}
+
+	// A submit: the directory's files are sent, and the answer is the one a
+	// submit prints.
+	status, out, said := via("run", "submit", filepath.Join(dir, "house"))
+	started := regexp.MustCompile(`/house/devices/boiler   singleton   started (editor/\S+)`).FindStringSubmatch(out)
+	if status != 1 || started == nil || !strings.Contains(out, "/house/greet            transient   recorded") ||
+		!strings.Contains(out, "bad.yaml\n    line 2: stages:") || !strings.Contains(out, "not set at its location or above: value COLOUR") || !strings.Contains(said, "1 of 3 files have problems") {
+		t.Fatalf("the submit ended %d, printed:\n%sand said:\n%s", status, out, said)
+	}
+	boiler := started[1]
+	// A script file, with what its job may do.
+	if out := sent("run", "submit", filepath.Join(dir, "double.js"), "--timeout", "30s"); !strings.Contains(out, "/double   transient   recorded") {
+		t.Fatalf("the submit of a script printed %s", out)
+	}
+	if out := sent("run", "start", "/double", "--input", `{"n": 21}`, "--wait"); !strings.Contains(out, "output: 42") {
+		t.Fatalf("the script's run printed %s", out)
+	}
+	// Values and secrets.
+	if out := sent("client", "value", "set", "COLOUR", "blue", "--at", "/house"); out != "taken\n" {
+		t.Fatalf("the value's set printed %q", out)
+	}
+	if status, out, said := bare.run("the secret\n", "client", "secret", "set", "KEY", "-", "--at", "/house", "--gateway", url); status != 0 || out != "taken\n" {
+		t.Fatalf("the secret's set ended %d: %s%s", status, out, said)
+	}
+	// A run, waited for and watched.
+	out = sent("run", "start", "/house/greet", "--input", `{"name": "x"}`, "--wait")
+	if !strings.Contains(out, "  done  flow greet  step 2") || !strings.Contains(out, `person: "alice@example.com"`) || !strings.Contains(out, `"colour":"blue"`) {
+		t.Fatalf("the run waited for printed %s", out)
+	}
+	if out := sent("run", "start", "/house/greet", "--input", `{"name": "w"}`, "--watch"); !strings.Contains(out, "say log: greeting") || !strings.Contains(out, "  done  flow greet  step 2") {
+		t.Fatalf("the run watched printed %s", out)
+	}
+	id := strings.TrimSpace(sent("run", "start", "/house/greet", "--input", `{"name": "y"}`))
+	editor.ok("", "run", "show", id, "--wait")
+
+	// What a command prints is the same both ways.
+	for _, command := range [][]string{
+		{"run", "show", id}, {"run", "show", id, "--json"}, {"run", "show", id, "--record"}, {"run", "show", id, "--record", "--json"},
+		{"run", "show", id, "--step", "1"}, {"run", "show", id, "--definition"}, {"run", "show", id, "--wait"},
+		{"run", "show", boiler, "--tickets"}, {"run", "show", boiler, "--tickets", "--json"}, {"run", "show", "/house/devices/boiler"},
+		{"run", "ls", "--all"}, {"run", "ls", "--all", "--json"}, {"run", "ls", "--at", "/house/greet", "--status", "done"},
+		{"client", "value", "list"}, {"client", "value", "list", "--json"}, {"client", "secret", "list"},
+		{"run", "show", "editor/20261122T000000.000Z-0000000000"}, {"run", "show", id, "--step", "9"},
+	} {
+		wantStatus, want, wantSaid := editor.run("", command...)
+		status, got, said := via(command...)
+		if status != wantStatus || got != want || said != wantSaid {
+			t.Errorf("corbie %s\nthrough the gateway ended %d, printed:\n%sand said:\n%s\nwith the client's config it ended %d, printed:\n%sand said:\n%s",
+				strings.Join(command, " "), status, got, said, wantStatus, want, wantSaid)
+		}
+	}
+	// The files of a result.
+	saved := filepath.Join(t.TempDir(), "saved")
+	sent("run", "show", id, "--save", saved)
+	if data, err := os.ReadFile(filepath.Join(saved, "report")); err != nil || string(data) != "the report" {
+		t.Errorf("the saved file is %q (%v)", data, err)
+	}
+	// An event to a location and to a run, an answer to a ticket, and a
+	// cancel.
+	for _, command := range [][]string{{"run", "send", "/house/devices/boiler", "poke"}, {"run", "send", boiler, "poke", `{"n": 1}`}} {
+		if out := sent(command...); !strings.Contains(out, "taken") {
+			t.Errorf("corbie %s printed %s", strings.Join(command, " "), out)
+		}
+	}
+	ticket := strings.Fields(sent("run", "show", boiler, "--tickets"))[1]
+	if out := sent("run", "reply", boiler, ticket, `"who is there"`); !strings.Contains(out, "taken") {
+		t.Errorf("the reply printed %s", out)
+	}
+	if record := editor.ok("", "run", "show", boiler, "--record", "--json"); strings.Count(record, `"person":"alice@example.com"`) < 4 || !strings.Contains(record, "who is there") {
+		t.Errorf("the boiler's record is %s", record)
+	}
+	sent("run", "cancel", boiler)
+	if shown := editor.ok("", "run", "show", boiler); !strings.Contains(shown, "  cancelled  ") {
+		t.Errorf("after the cancel the boiler is %s", shown)
+	}
+
+	// What is refused.
+	if status, _, said := via("controller", "parties"); status != 2 || !strings.Contains(said, "--gateway is for the commands a client sends") {
+		t.Errorf("corbie controller parties --gateway ended %d and said %s", status, said)
+	}
+	if status, _, said := via("check"); status != 2 || !strings.Contains(said, "--gateway is for the commands a client sends") {
+		t.Errorf("corbie check --gateway ended %d and said %s", status, said)
+	}
+	t.Setenv("CORBIE_GATEWAY_TOKEN", "another")
+	if status, _, said := via("run", "ls"); status != 1 || !strings.Contains(said, "does not show a token of the gateway's") {
+		t.Errorf("a wrong token ended %d and said %s", status, said)
+	}
+	t.Setenv("CORBIE_GATEWAY_TOKEN", "")
+	if status, _, said := via("run", "ls"); status != 1 || !strings.Contains(said, "CORBIE_GATEWAY_TOKEN") {
+		t.Errorf("no token ended %d and said %s", status, said)
+	}
+	if _, err := os.Stat(bare.config); err == nil {
+		t.Errorf("a command sent through a gateway made the config %s", bare.config)
+	}
+}

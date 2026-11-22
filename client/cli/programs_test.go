@@ -216,6 +216,13 @@ Every command takes these flags.
                          on Linux
   --store <address>      default $CORBIE_STORE, or the store the config records
 
+A command a client sends, which is corbie run …, corbie client secret … and
+corbie client value …, takes this flag too.
+
+  --gateway <address>    send the command to a gateway, with the token in
+                         $CORBIE_GATEWAY_TOKEN, as the client the token names;
+                         it uses no config and no store
+
 corbie <name> --help prints the help of a command or a program, and
 corbie run --help lists the commands of corbie run. corbie manual lists the
 manual's pages.

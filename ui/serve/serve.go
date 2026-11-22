@@ -42,7 +42,8 @@ or both. By default it acts as every party the config holds, and a store it
 cannot open leaves the directory alone. As none it is a viewer, whatever the
 config holds: it shows only the status of every run the store lets it read.
 
-  --listen host:port    where it listens; default 127.0.0.1:8373
+  --listen host:port    where it listens; default 127.0.0.1:8373, or a free
+                        port when that one is in use
   --token-file <file>   a file holding the token every request must show;
                         by default it makes one and prints it
   --dir <directory>     the directory of machines, read as a tree; default
@@ -129,6 +130,10 @@ func cmdUI(e *cli.Env, args []string) error {
 		return err
 	}
 	listener, err := net.Listen("tcp", o.listen)
+	if err != nil && !e.Given("listen") {
+		// The default port is in use, by another UI: a free one.
+		listener, err = net.Listen("tcp", "127.0.0.1:0")
+	}
 	if err != nil {
 		return err
 	}

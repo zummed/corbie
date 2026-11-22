@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json/v2"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -550,10 +551,16 @@ func (s *session) run(ex example) outcome {
 			l := &left{command: c.text, printed: &output{}}
 			ctx, cancel := context.WithCancel(context.Background())
 			var done sync.WaitGroup
-			done.Go(func() { cli.Run(ctx, args[1:], strings.NewReader(""), l.printed, l.printed) })
+			result := &output{}
+			done.Go(func() { cli.Run(ctx, args[1:], strings.NewReader(""), io.MultiWriter(l.printed, result), l.printed) })
 			l.stop = func() { cancel(); done.Wait() }
 			s.running = append(s.running, l)
 			took = append(took, c.text+"  (left running)")
+			// corbie up has submitted its directory once it prints the
+			// submit, and the commands after it are its client's.
+			for until := time.Now().Add(limit); args[1] == "up" && result.String() == "" && time.Now().Before(until); {
+				time.Sleep(10 * time.Millisecond)
+			}
 			continue
 		}
 		status, printed, err := piped(pipe)

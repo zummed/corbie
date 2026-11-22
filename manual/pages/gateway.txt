@@ -21,7 +21,8 @@ Start the gateway
 -----------------
 
 `gateway` is an argument of `corbie start`, alone or with `controller` and
-`runner`. Set the computer up as in `corbie manual a-real-run`.
+`runner`. Set the computer up as in `corbie manual a-real-run`. `corbie up`
+runs a gateway at a free port (`corbie manual a-project`).
 
   corbie start controller runner gateway --listen 127.0.0.1:8371
     gateway token (callers send it as Authorization: Bearer …): 179bd50585d04e741e0d5a254d7f6287cf5432cab12d7f31

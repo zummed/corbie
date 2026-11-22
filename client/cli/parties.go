@@ -260,73 +260,8 @@ func cmdInit(e *Env, args []string) error {
 			return err
 		}
 	}
-	s, err := store.Open(address)
+	ctl, run, cli, err := e.setUp(cfg, address, name, keys, limit)
 	if err != nil {
-		return err
-	}
-	if err := store.SetUp(e.ctx, s); err != nil {
-		return err
-	}
-	// A controller this config has yet to make has signed nothing: trust
-	// held in the store under its name is another controller's, and nothing
-	// is made here under a name that is taken there.
-	if !cfg.Has(identity.Controller) {
-		held, err := store.Names(s.First(e.ctx, store.TrustList(name+"-controller"), 1))
-		if err != nil {
-			return err
-		}
-		if len(held) > 0 {
-			return fmt.Errorf("the name %q is taken on that store: another controller holds trust there under it. Give this computer's parties another name with --name", name+"-controller")
-		}
-	}
-	if keys != "" {
-		for _, kind := range []identity.Kind{identity.Controller, identity.Runner, identity.Client} {
-			if err := cfg.SetIdentityAddress(kind, keys); err != nil {
-				return err
-			}
-		}
-	}
-	ctl, err := cfg.Make(e.ctx, identity.Controller, name+"-controller")
-	if err != nil {
-		return err
-	}
-	run, err := cfg.Make(e.ctx, identity.Runner, name+"-runner")
-	if err != nil {
-		return err
-	}
-	cli, err := cfg.Make(e.ctx, identity.Client, name+"-client")
-	if err != nil {
-		return err
-	}
-	// The controller trusts the runner and the client; they trust it. A
-	// name stays tied to the key it was first trusted with, here as when a
-	// party is enrolled, and both are looked at before either is written.
-	// The client's ceiling holds at:/** beside the ceiling, so it may
-	// submit a tree at any prefix.
-	clientCeiling := limit
-	clientCeiling.Allow = append(slices.Clone(limit.Allow), permission.At+":/**")
-	trusted := []identity.Trust{{Card: run.Card}, {Card: cli.Card, Ceiling: clientCeiling}}
-	for _, t := range trusted {
-		old, err := identity.ReadTrust(e.ctx, s, ctl.Card, t.Card.Name)
-		if err != nil {
-			return err
-		}
-		if _, err := identity.Take(old, t.Card, "", false); err != nil {
-			return err
-		}
-	}
-	if err := cfg.SetControllerStore(address); err != nil {
-		return err
-	}
-	for _, t := range trusted {
-		if err := identity.WriteTrust(e.ctx, s, ctl, t); err != nil {
-			return err
-		}
-	}
-	if err := cfg.SetTrust(identity.Runner, identity.Trust{Card: ctl.Card, Store: address, Ceiling: limit}); err != nil {
-		return err
-	}
-	if err := cfg.SetTrust(identity.Client, identity.Trust{Card: ctl.Card, Store: address}); err != nil {
 		return err
 	}
 	type party struct {
@@ -376,6 +311,81 @@ func cmdInit(e *Env, args []string) error {
 		b.WriteString("Next: corbie start\n")
 		return b.String()
 	})
+}
+
+// setUp makes a controller, a runner and a client in a config, each
+// trusting the others, on the store at an address, and sets the store up.
+func (e *Env) setUp(cfg identity.Config, address, name, keys string, limit permission.Layer) (ctl, run, cli *identity.Identity, err error) {
+	s, err := store.Open(address)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	if err := store.SetUp(e.ctx, s); err != nil {
+		return nil, nil, nil, err
+	}
+	// A controller this config has yet to make has signed nothing: trust
+	// held in the store under its name is another controller's, and nothing
+	// is made here under a name that is taken there.
+	if !cfg.Has(identity.Controller) {
+		held, err := store.Names(s.First(e.ctx, store.TrustList(name+"-controller"), 1))
+		if err != nil {
+			return nil, nil, nil, err
+		}
+		if len(held) > 0 {
+			return nil, nil, nil, fmt.Errorf("the name %q is taken on that store: another controller holds trust there under it. Give this computer's parties another name with --name", name+"-controller")
+		}
+	}
+	if keys != "" {
+		for _, kind := range []identity.Kind{identity.Controller, identity.Runner, identity.Client} {
+			if err := cfg.SetIdentityAddress(kind, keys); err != nil {
+				return nil, nil, nil, err
+			}
+		}
+	}
+	ctl, err = cfg.Make(e.ctx, identity.Controller, name+"-controller")
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	run, err = cfg.Make(e.ctx, identity.Runner, name+"-runner")
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	cli, err = cfg.Make(e.ctx, identity.Client, name+"-client")
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	// The controller trusts the runner and the client; they trust it. A
+	// name stays tied to the key it was first trusted with, here as when a
+	// party is enrolled, and both are looked at before either is written.
+	// The client's ceiling holds at:/** beside the ceiling, so it may
+	// submit a tree at any prefix.
+	clientCeiling := limit
+	clientCeiling.Allow = append(slices.Clone(limit.Allow), permission.At+":/**")
+	trusted := []identity.Trust{{Card: run.Card}, {Card: cli.Card, Ceiling: clientCeiling}}
+	for _, t := range trusted {
+		old, err := identity.ReadTrust(e.ctx, s, ctl.Card, t.Card.Name)
+		if err != nil {
+			return nil, nil, nil, err
+		}
+		if _, err := identity.Take(old, t.Card, "", false); err != nil {
+			return nil, nil, nil, err
+		}
+	}
+	if err := cfg.SetControllerStore(address); err != nil {
+		return nil, nil, nil, err
+	}
+	for _, t := range trusted {
+		if err := identity.WriteTrust(e.ctx, s, ctl, t); err != nil {
+			return nil, nil, nil, err
+		}
+	}
+	if err := cfg.SetTrust(identity.Runner, identity.Trust{Card: ctl.Card, Store: address, Ceiling: limit}); err != nil {
+		return nil, nil, nil, err
+	}
+	if err := cfg.SetTrust(identity.Client, identity.Trust{Card: ctl.Card, Store: address}); err != nil {
+		return nil, nil, nil, err
+	}
+	return ctl, run, cli, nil
 }
 
 // card is `corbie runner card`, `corbie client card` and `corbie

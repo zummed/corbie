@@ -1,0 +1,80 @@
+A project: `corbie up` sets Corbie up in a directory of machines and runs it, apart from any other Corbie on the computer.
+
+How it works
+------------
+
+1. `corbie up` makes `.corbie` in the current directory: a controller, a
+   runner, a client and the store.
+2. It runs the controller, the runner and a gateway, and submits the directory
+   as `corbie run submit` does.
+3. Every command run in the directory, or below it, uses `.corbie`.
+4. Stopped and run again, it continues with the same runs, secrets and values.
+
+Example
+-------
+
+Put these two files in a directory `try` and run the commands beside it.
+
+    # try/hello.yaml
+    flow: hello
+    input: { name: string }
+    stages:
+      greet:
+        job:
+          script: ./greet.js
+          input: { name: "${input.name}" }
+    output: ${stages.greet.output}
+
+    // try/greet.js
+    return "hello, " + input.name
+
+    corbie up --in try &
+    corbie run start /try/hello --input '{"name": "Ada"}' --wait
+      output: "hello, Ada"
+
+`corbie up` keeps running, in its own terminal or in the background as here.
+Run inside `try`, `corbie up` alone does the same, and `.corbie` is made there.
+The tree's prefix is `/` and the directory's name, and `--at` names another.
+Submit again after a change, with `corbie run submit try`.
+
+Programs
+--------
+
+  corbie up ui       starts the UI as well, and prints its address
+  corbie up <name>   starts the program corbie-<name> on PATH as well
+
+A program is started after the submit, with these environment variables. When
+it stops, everything stops.
+
+  CORBIE_CONFIG          the project's .corbie
+  CORBIE_GATEWAY         the gateway's address, at a free port
+  CORBIE_GATEWAY_TOKEN   the gateway's token
+
+Secrets and values
+------------------
+
+  corbie controller secret set NAME    run in the directory, sets a secret for every run of the project
+  corbie up --secret-env NAME          sets a secret from the environment variable as it starts
+  corbie up --value-env NAME           sets a value from the environment variable as it starts
+  corbie up --value NAME=VALUE         sets a value as it starts
+
+The .corbie directory
+---------------------
+
+  .corbie/store       the store, a directory
+  .corbie/.gitignore  lists everything in .corbie, which holds private keys
+  rm -r .corbie       starts again with nothing
+  --store s3://…      on the first run, an S3 bucket as the store
+  --ceiling network   on the first run, the most a job may be allowed; default all
+
+No file in `.corbie` is read as a machine. Where no directory above the
+current one has a `.corbie`, a command uses the config in the user's config
+directory.
+
+Reference
+---------
+
+  corbie up --help              every flag
+  corbie manual a-directory     a directory as a tree, and .corbieignore
+  corbie manual packs           ready-made machines for a project
+  corbie manual one-computer    a Corbie for the whole computer, kept running as a service

@@ -84,6 +84,12 @@ client/20261012T210153.624Z-d2729e69f1  failed (denied)  flow fetch-title  step 
 
 Corbie needs no server and no database. The same machine runs on one computer, on several, or as AWS Lambda functions.
 
+In a directory of machines, one command sets Corbie up there and runs it:
+
+```sh
+corbie up
+```
+
 <br>
 
 ## Watch it in a browser

@@ -249,13 +249,48 @@ func (s *starting) testSecrets(e *Env) (map[string]string, error) {
 // cannot tell it when something was written.
 const interval = time.Second
 
+// valuesGiven reads the values corbie test and corbie up are given, each
+// NAME=VALUE, or a name whose value is the environment variable of that
+// name, which are set with the secrets at / of the controller.
+func valuesGiven(values, fromEnv []string) (map[string]string, error) {
+	set := map[string]string{}
+	for _, name := range fromEnv {
+		if err := permission.CheckSecretName(name); err != nil {
+			return nil, Mistake("--value-env: %v", err)
+		}
+		if _, twice := set[name]; twice {
+			return nil, Mistake("the value %q is given twice: give it once", name)
+		}
+		value, err := secretFromEnv(name)
+		if err != nil {
+			return nil, err
+		}
+		set[name] = value
+	}
+	for _, given := range values {
+		name, value, ok := strings.Cut(given, "=")
+		if !ok {
+			return nil, Mistake("--value takes NAME=VALUE")
+		}
+		if err := permission.CheckSecretName(name); err != nil {
+			return nil, Mistake("--value: %v", err)
+		}
+		if _, twice := set[name]; twice {
+			return nil, Mistake("the value %q is given twice: give it once", name)
+		}
+		set[name] = value
+	}
+	return set, nil
+}
+
 func cmdTest(e *Env, args []string) error {
 	var s starting
-	var values list
+	var values, valuesFromEnv list
 	var definition bool
 	var in string
 	s.flags(e)
 	e.Flags.Var(&values, "value", "")
+	e.Flags.Var(&valuesFromEnv, "value-env", "")
 	e.Flags.Var(&s.secrets, "secret", "")
 	e.Flags.Var(&s.secretsFromEnv, "secret-env", "")
 	e.Flags.BoolVar(&definition, "definition", false, "")
@@ -268,7 +303,7 @@ func cmdTest(e *Env, args []string) error {
 	if err != nil {
 		return err
 	}
-	ofAStart := append(slices.Clone(startOnly), "value", "secret", "secret-env", "in")
+	ofAStart := append(slices.Clone(startOnly), "value", "value-env", "secret", "secret-env", "in")
 	if dirs {
 		if given := given(e, append(ofAStart, "definition")); len(given) > 0 {
 			return Mistake("%s applies to one definition; a directory takes no flag of a start", strings.Join(given, ", "))
@@ -281,21 +316,9 @@ func cmdTest(e *Env, args []string) error {
 	if definition {
 		return e.printDefinition(files[0], given(e, ofAStart))
 	}
-	// Each value is NAME=VALUE, and is set with the secrets at / of the
-	// controller in this process.
-	set := map[string]string{}
-	for _, given := range values {
-		name, value, ok := strings.Cut(given, "=")
-		if !ok {
-			return Mistake("--value takes NAME=VALUE")
-		}
-		if err := permission.CheckSecretName(name); err != nil {
-			return Mistake("--value: %v", err)
-		}
-		if _, twice := set[name]; twice {
-			return Mistake("the value %q is given twice: give it once", name)
-		}
-		set[name] = value
+	set, err := valuesGiven(values, valuesFromEnv)
+	if err != nil {
+		return err
 	}
 	defer s.close()
 	var tree *client.Tree

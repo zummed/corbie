@@ -30,6 +30,10 @@ Windows too. Some things differ elsewhere.
 Choose where it runs
 --------------------
 
+- One directory of machines has a Corbie of its own. See `corbie manual a-project`.
+  ✓ One command sets it up and runs it.
+  ✓ It is apart from any other Corbie on the computer.
+  ✗ Its runs advance only while that command runs.
 - One computer runs everything. See `corbie manual one-computer`.
   ✓ Two commands set it up.
   ✗ No run advances while it is off.

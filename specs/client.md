@@ -31,6 +31,7 @@ A blob in any value is shown as its type, its size and the path to ask for it by
 ```
 corbie init                             create a controller, a runner and a client on this computer; by default the store is in the config, and corbie init store sets up the store's server alone
 corbie start [<name> [<its flags>]]…    run the controller, a runner, the gateway, the store's server or a program, until stopped
+corbie up [<name> [<its flags>]]…       run a controller, a runner and a gateway on a directory of machines, set up in the directory
 corbie check                            start one small run, and report which part of a setup did not respond
 corbie test flow.yaml                   run a definition or a script in this process, with no setup; given directories, read every machine in them
 
@@ -160,6 +161,15 @@ Every command can print its result as JSON, in the one shape above. A command en
 
 `--json`, `--config` and `--store` may be written before the command as well as after it. The config and the store may be named by environment variables. No other flag is read from the environment.
 
+A command finds its config in this order:
+
+```
+--config <directory>         the directory named
+CORBIE_CONFIG                the directory named
+.corbie                      in the current directory, or the nearest directory above it; corbie up makes it
+the user's config directory  ~/.config/corbie on Linux
+```
+
 The commands, their help, the manual's pages about them and the names by which a model is allowed to run them all come from one table.
 
 `corbie <word>`, where the word begins no command, runs the program `corbie-<word>` from PATH with the rest of the line, this process's standard input, output, error and environment, and ends with the program's exit status. A command in the table always wins. A model through `corbie mcp` runs a program only for a command the server was started with permission for.
@@ -217,11 +227,34 @@ A program's word that is itself a role's or a program's name begins the next nam
 
 - `corbie start` starts the program with the words written after its name and an empty standard input, and what it prints is `corbie start`'s own output, with no prefix.
 - Its environment is this process's, with `CORBIE_CONFIG` and `CORBIE_STORE` set as `--config` and `--store` were given.
+- Beside a gateway in the same process, its environment has the gateway's address in `CORBIE_GATEWAY` and its token in `CORBIE_GATEWAY_TOKEN`.
 - When the program stops, `corbie start` stops the roles and the other programs, waits for them, and fails naming the program.
 - When `corbie start` is stopped, it interrupts each program and waits for it, for up to ten seconds before killing it.
 
 `ui` is a command of the binary, and `corbie start` takes it as it takes a program's name. It starts `corbie ui` as a process of its own, from this binary, with the words written after `ui`. A binary built with the tag `noui` has no `ui` command.
 - On a serverless host, `corbie start` refuses a program before anything starts.
+
+`corbie up` does what `corbie init`, `corbie start` and `corbie run submit` do, in one process:
+
+1. It sets up a controller, a runner and a client in the config `.corbie` of the current directory, as `corbie init --ceiling all` does, with the store in `.corbie/store`, unless they are set up.
+2. It runs the controller, the runner and a gateway.
+3. It submits the directory, as `corbie run submit` does, at `/` and the directory's name.
+4. It starts each program named, as `corbie start` does.
+
+```
+corbie up                          the machines of the current directory
+corbie up ui console               and the UI, and the program corbie-console
+corbie up --in boards --at /b      another directory, at another prefix
+corbie up --store s3://…           a bucket as the store, when .corbie is set up
+```
+
+- Every command run in the same directory, or below it, finds `.corbie` and uses it, as it uses any config.
+- `.corbie` stays when `corbie up` stops, and `corbie up` run again continues with its runs, secrets and values. Removing `.corbie` removes all of it.
+- `.corbie` holds a `.gitignore` that lists everything in it.
+- A file with a problem is reported before anything starts, and nothing is started.
+- The gateway listens at a free port, and `gateway --listen` names another. A program is given `CORBIE_CONFIG`, `CORBIE_GATEWAY` and `CORBIE_GATEWAY_TOKEN`.
+- `--value`, `--value-env`, `--secret` and `--secret-env` set values and secrets at `/` as it starts, as `corbie test` takes them.
+- `--store` and `--ceiling` apply when the config is set up. `--config` names another config than `.corbie`.
 
 `corbie test` is an ordinary run: the same roles, in one process, on a store in memory, with ceilings that allow everything. It records the file as a tree of one file and starts it. A singleton is started by that submit, so a flag of a start given with one is a mistake. A keyed file is refused: its runs start when an event is sent to a key. `corbie test <file> --in <dir>` records the directory as `corbie run submit <dir>` does, which starts its singletons, and runs the file at its location there, so its `call:` and `send:` reach the tree's machines. `corbie test <file> --definition` prints the machine as the client writes it out, each value with its file and line, runs nothing, and takes no flag of a start.
 
@@ -229,6 +262,7 @@ A program's word that is itself a role's or a program's name begins the next nam
 
 ```
 --value NAME=VALUE    a value
+--value-env NAME      a value, read from the environment variable of its name
 --secret NAME         a secret, typed at the terminal, not shown
 --secret-env NAME     a secret, from the environment variable NAME
 ```
@@ -276,7 +310,7 @@ $ corbie run start /home/schedules/away --wait
 
 A submit does this, and exits when each run it cancelled has ended and each start has been taken. The controller's start of a singleton is good until it is taken, so the submit waits for it with no limit:
 
-1. It reads every `*.yaml` in the directory and below it, but for `.git` and what `.corbieignore` lists, and writes out and checks each machine.
+1. It reads every `*.yaml` in the directory and below it, but for `.git`, `.corbie` and what `.corbieignore` lists, and writes out and checks each machine.
 2. It records every file at its location in the store, and removes the locations whose files have gone, cancelling every run there.
 3. For a changed file, the runs already running at its location do as its `update:` says.
 4. It starts each singleton with no running run, and nothing else.

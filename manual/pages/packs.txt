@@ -64,5 +64,6 @@ Reference
 - A starting file you removed stays removed.
 - `.packs/<pack>/.pack` records where the pack came from, its commit and its words.
 
+  corbie manual a-project      `corbie up` runs the project
   corbie manual a-directory    what `.corbieignore` lists, and a machine's location
   corbie manual definitions    `include:`

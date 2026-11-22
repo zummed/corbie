@@ -53,6 +53,7 @@ func (e *Env) gateway() (func(), error) {
 	}
 	server := &http.Server{Handler: &gateway.Gateway{Client: c, Token: token}, ReadHeaderTimeout: 10 * time.Second}
 	go server.Serve(listener)
+	e.gatewayAt, e.gatewayToken = "http://"+listener.Addr().String(), token
 	e.Say("gateway for the client %s, listening on http://%s", c.ID.Name, listener.Addr())
 	return func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)

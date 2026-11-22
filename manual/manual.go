@@ -35,6 +35,7 @@ var order = []struct{ name, group string }{
 	{"a-list", "Start"},
 	{"a-real-run", "Start"},
 	{"a-directory", "Start"},
+	{"a-project", "Start"},
 	{"machines-together", "Start"},
 
 	{"install", "Setting up"},

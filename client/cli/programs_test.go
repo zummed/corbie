@@ -190,6 +190,8 @@ agent or decision, and each of its jobs is a script, a machine, or a send.
   init         create a controller, a runner and a client on this computer
   start        run the controller, a runner, the gateway, the store's server or
                a program, until stopped
+  up           run a controller, a runner and a gateway on a directory of
+               machines, set up in the directory
   check        start one small run, and report which part of a setup did not
                respond
   test         run a definition or a script in this process, with no setup
@@ -208,8 +210,10 @@ const flags = `
 Every command takes these flags.
 
   --json                 print the result as JSON
-  --config <directory>   default $CORBIE_CONFIG, or corbie in the user's config
-                         directory: ~/.config/corbie on Linux
+  --config <directory>   default $CORBIE_CONFIG, or .corbie in this directory or
+                         the nearest above it, which corbie up makes, or
+                         corbie in the user's config directory: ~/.config/corbie
+                         on Linux
   --store <address>      default $CORBIE_STORE, or the store the config records
 
 corbie <name> --help prints the help of a command or a program, and

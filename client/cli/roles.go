@@ -115,6 +115,10 @@ func programOf(word string) (path string, args []string, err error) {
 	return path, nil, err
 }
 
+// oidc is the OIDC issuer whose tokens a gateway takes: its address, who its
+// tokens must be for, and the claims that name the client and the person.
+type oidc struct{ issuer, audience, client, person string }
+
 // A setting is what a role is given by the flags written after it.
 type setting struct {
 	interval          time.Duration
@@ -122,7 +126,8 @@ type setting struct {
 	wrapper           string
 	listen, tokenFile string
 	clients           []string // each --client, in the order written
-	listened          bool     // --listen was written, if empty
+	oidc              oidc
+	listened          bool // --listen was written, if empty
 	timeout           time.Duration
 }
 
@@ -145,6 +150,10 @@ func roleFlags(role string, set *setting, every *string) *flag.FlagSet {
 			set.clients = append(set.clients, dir)
 			return nil
 		})
+		flags.StringVar(&set.oidc.issuer, "oidc-issuer", "", "")
+		flags.StringVar(&set.oidc.audience, "oidc-audience", "", "")
+		flags.StringVar(&set.oidc.client, "oidc-client", "roles", "")
+		flags.StringVar(&set.oidc.person, "oidc-person", "sub", "")
 	case "store":
 		flags.StringVar(&set.listen, "listen", "", "")
 		flags.DurationVar(&set.timeout, "timeout", time.Minute, "")
@@ -325,6 +334,7 @@ func (e *Env) start(cfg identity.Config, named []item, before func() error) erro
 			e.Say("runner %s  (%s), serving %d controller(s), %d jobs at once", id.Name, id.Fingerprint(), len(serves), set.jobs)
 		case "gateway":
 			e.listen, e.tokenFile, e.clients = set.listen, set.tokenFile, set.clients
+			e.oidc = set.oidc
 			gateway, err := e.gateway()
 			if err != nil {
 				return err

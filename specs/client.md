@@ -387,6 +387,31 @@ corbie start gateway --client viewer --client editor --token-file tokens   the s
 - A token on two lines stops the gateway from starting, and so does a line whose client the gateway does not have. Each names the line.
 - The gateway reads the file when it starts.
 
+A gateway also takes the tokens of an OIDC issuer, such as Microsoft Entra ID:
+
+```
+corbie start gateway --client viewer --client editor --oidc-issuer https://login.example.com/tenant/v2.0 --oidc-audience api://corbie
+```
+
+1. A caller shows a token the issuer signed.
+2. The gateway checks the signature with the keys the issuer publishes, and that the token names the issuer and the audience, and that its time has come and has not passed.
+3. The token's `roles` name the client: the first of the gateway's clients, in the order of `--client`, whose name is among them.
+4. The token's `sub` is the person.
+
+| Flag | Default | |
+|---|---|---|
+| `--oidc-issuer <address>` | none | the issuer, as its tokens name it: `https`, or `http` on this computer |
+| `--oidc-audience <text>` | none | who a token must be for; given with the issuer |
+| `--oidc-client <claim>` | `roles` | the claim that names the client: a text, or a list of texts |
+| `--oidc-person <claim>` | `sub` | the claim that is the person |
+
+- The gateway reads the issuer's keys when it starts, from the address the issuer's `/.well-known/openid-configuration` gives. An issuer it cannot read, or that names itself otherwise, stops it from starting.
+- A token signed with a key the gateway does not have makes it read the keys again, once a minute at most.
+- A token is signed with RS256 by an RSA key of 2048 bits or more, or with ES256 by a key on the curve P-256. The key sets the algorithm, and a token that names another is refused.
+- A token that is not taken is answered 401, saying why.
+- With an issuer and no token file, the gateway makes no token of its own.
+- The gateway has no page to sign in at. A caller gets its token from the issuer.
+
 Whoever has a token is the client it names. Nothing in a request raises that client's ceiling, names another client or names a person. The gateway's computer holds the key of every client it acts as.
 
 It keeps nothing itself. It runs wherever a process can stay up, and is not offered on serverless hosts.

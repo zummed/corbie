@@ -67,7 +67,18 @@ func (e *Env) gateway() (func(), error) {
 			return nil, fmt.Errorf("%s: %w", e.tokenFile, err)
 		}
 	}
-	if len(callers) == 0 {
+	// The tokens of an OIDC issuer are taken where one is given.
+	var issuer *gateway.Issuer
+	if o := e.oidc; o.issuer != "" || o.audience != "" {
+		if o.issuer == "" || o.audience == "" {
+			return nil, fmt.Errorf("--oidc-issuer and --oidc-audience are given together: the issuer, and who its tokens must be for")
+		}
+		issuer = &gateway.Issuer{Address: o.issuer, Audience: o.audience, ClientClaim: o.client, PersonClaim: o.person, Clients: clients}
+		if err := issuer.Open(e.ctx); err != nil {
+			return nil, err
+		}
+	}
+	if len(callers) == 0 && issuer == nil {
 		// With no token given, a new one for each client.
 		callers = map[string]*client.Client{}
 		for _, c := range clients {
@@ -89,9 +100,12 @@ func (e *Env) gateway() (func(), error) {
 	if err != nil {
 		return nil, err
 	}
-	server := &http.Server{Handler: &gateway.Gateway{Callers: callers}, ReadHeaderTimeout: 10 * time.Second}
+	server := &http.Server{Handler: &gateway.Gateway{Callers: callers, Issuer: issuer}, ReadHeaderTimeout: 10 * time.Second}
 	go server.Serve(listener)
 	e.gatewayAt, e.gatewayToken = "http://"+listener.Addr().String(), first
+	if issuer != nil {
+		e.Say("gateway takes the tokens of the OIDC issuer %s for the audience %s: the client is named by %s, and the person by %s", issuer.Address, issuer.Audience, issuer.ClientClaim, issuer.PersonClaim)
+	}
 	if len(names) == 1 {
 		e.Say("gateway for the client %s, listening on http://%s", names[0], listener.Addr())
 	} else {

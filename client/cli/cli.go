@@ -106,8 +106,10 @@ type Env struct {
 	// For the gateway, and for the manual in a browser.
 	listen    string
 	tokenFile string
-	// clients are the configs whose clients the gateway acts as.
+	// clients are the configs whose clients the gateway acts as, and oidc
+	// the OIDC issuer whose tokens it takes, if its address is given.
 	clients []string
+	oidc    oidc
 
 	// gatewayAt and gatewayToken are the address and the first token of
 	// the gateway this process runs, for the programs started beside it.

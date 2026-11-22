@@ -37,6 +37,9 @@ type Gateway struct {
 	// acts as. The client's Person is the person the token was given to. A
 	// request without one of the tokens is refused and does nothing.
 	Callers map[string]*client.Client
+	// Issuer is the OIDC issuer whose tokens the gateway takes too, if it
+	// has one.
+	Issuer *Issuer
 	// Interval is how often a stream looks again at a store that cannot
 	// tell it when something was written.
 	Interval time.Duration
@@ -86,9 +89,9 @@ func (g *Gateway) interval() time.Duration {
 
 // ServeHTTP answers one request.
 func (g *Gateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	c := g.caller(r)
-	if c == nil {
-		fail(w, http.StatusUnauthorized, errors.New("the request does not show a token of the gateway's (Authorization: Bearer …)"))
+	c, err := g.caller(r)
+	if err != nil {
+		fail(w, http.StatusUnauthorized, err)
 		return
 	}
 	parts := strings.Split(strings.Trim(r.URL.Path, "/"), "/")
@@ -155,11 +158,13 @@ func (g *Gateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// caller gives the client the token of a request names, or nil. Every
-// token is compared, each in a way that takes the same time whether the
-// one shown is nearly right or wholly wrong, and whatever its length: what
-// is compared is a digest of each, and two digests are of one length.
-func (g *Gateway) caller(r *http.Request) *client.Client {
+// caller gives the client the token of a request names, or why the request
+// is refused. Every token of the gateway's is compared, each in a way that
+// takes the same time whether the one shown is nearly right or wholly wrong,
+// and whatever its length: what is compared is a digest of each, and two
+// digests are of one length. A token that is none of them is the issuer's
+// to name a client by, where the gateway has an issuer.
+func (g *Gateway) caller(r *http.Request) (*client.Client, error) {
 	token, bearer := strings.CutPrefix(r.Header.Get("Authorization"), "Bearer ")
 	shown := sha256.Sum256([]byte(token))
 	var named *client.Client
@@ -169,7 +174,17 @@ func (g *Gateway) caller(r *http.Request) *client.Client {
 			named = c
 		}
 	}
-	return named
+	switch {
+	case named != nil:
+		return named, nil
+	case g.Issuer == nil || !bearer || token == "":
+		return nil, errors.New("the request does not show a token of the gateway's (Authorization: Bearer …)")
+	}
+	c, err := g.Issuer.Caller(r.Context(), token)
+	if err != nil {
+		return nil, fmt.Errorf("the request's token is not taken: %w", err)
+	}
+	return c, nil
 }
 
 // takes says whether a request's query holds only parameters its route

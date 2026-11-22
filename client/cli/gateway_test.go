@@ -1,8 +1,16 @@
 package cli_test
 
 import (
+	"crypto"
+	"crypto/rand"
+	"crypto/rsa"
+	"crypto/sha256"
+	"encoding/base64"
+	"fmt"
 	"io"
+	"math/big"
 	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -258,5 +266,89 @@ func Test_client_commands_through_a_gateway(t *testing.T) {
 	}
 	if _, err := os.Stat(bare.config); err == nil {
 		t.Errorf("a command sent through a gateway made the config %s", bare.config)
+	}
+}
+
+// A gateway given an OIDC issuer and an audience takes the issuer's tokens:
+// a claim names the client and another the person. It makes no token of its
+// own, and an issuer it cannot read stops it from starting.
+func Test_client_gateway_oidc_flags(t *testing.T) {
+	m, _ := working(t, "all")
+	editor := m.second("editor", "all,at:/**")
+	dir := files(t, map[string]string{"door.yaml": "statechart: door\ninitial: closed\nstates:\n  closed:\n    on: { open: opened }\n  opened: { end: done }\n"})
+
+	// A stand-in for the issuer: it publishes one key, and signs with it.
+	key, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatal(err)
+	}
+	b64 := base64.RawURLEncoding.EncodeToString
+	mux := http.NewServeMux()
+	idp := httptest.NewServer(mux)
+	defer idp.Close()
+	mux.HandleFunc("/.well-known/openid-configuration", func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprintf(w, `{"issuer": %q, "jwks_uri": %q}`, idp.URL, idp.URL+"/keys")
+	})
+	mux.HandleFunc("/keys", func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprintf(w, `{"keys": [{"kty": "RSA", "kid": "k1", "use": "sig", "n": %q, "e": %q}]}`, b64(key.N.Bytes()), b64(big.NewInt(int64(key.E)).Bytes()))
+	})
+	token := func(claims string) string {
+		signed := b64([]byte(`{"alg":"RS256","kid":"k1"}`)) + "." + b64([]byte(claims))
+		digest := sha256.Sum256([]byte(signed))
+		signature, err := rsa.SignPKCS1v15(rand.Reader, key, crypto.SHA256, digest[:])
+		if err != nil {
+			t.Fatal(err)
+		}
+		return signed + "." + b64(signature)
+	}
+	alice := token(fmt.Sprintf(`{"iss": %q, "aud": "api://corbie", "exp": %d, "roles": ["editor"], "sub": "s-1", "preferred_username": "alice@example.com"}`, idp.URL, time.Now().Add(time.Hour).Unix()))
+
+	gateway := []string{"start", "gateway", "--listen", "127.0.0.1:0", "--client", editor.config}
+	_, saying := m.staying(append(gateway, "--oidc-issuer", idp.URL, "--oidc-audience", "api://corbie", "--oidc-person", "preferred_username")...)
+	listening := regexp.MustCompile(`listening on (http://\S+)`)
+	until(t, "the gateway", func() bool { return listening.MatchString(saying.String()) })
+	url := listening.FindStringSubmatch(saying.String())[1]
+	if said := saying.String(); strings.Contains(said, "gateway token") ||
+		!strings.Contains(said, "gateway takes the tokens of the OIDC issuer "+idp.URL+" for the audience api://corbie: the client is named by roles, and the person by preferred_username") {
+		t.Fatalf("the gateway said %s", said)
+	}
+	// The issuer's token, sent by a command.
+	bare := machine{t, filepath.Join(t.TempDir(), "none")}
+	t.Setenv("CORBIE_GATEWAY_TOKEN", alice)
+	if status, out, said := bare.run("", "run", "submit", filepath.Join(dir, "door.yaml"), "--gateway", url); status != 0 || !strings.Contains(out, "/door   transient   recorded") {
+		t.Fatalf("the submit ended %d: %s%s", status, out, said)
+	}
+	_, id, _ := bare.run("", "run", "start", "/door", "--gateway", url)
+	id = strings.TrimSpace(id)
+	until(t, "the run", func() bool { return strings.Contains(editor.ok("", "run", "show", id), "running") })
+	if shown := editor.ok("", "run", "show", id); !strings.HasPrefix(id, "editor/") || !strings.Contains(shown, `person: "alice@example.com"`) {
+		t.Errorf("the run started with the issuer's token is %s", shown)
+	}
+	t.Setenv("CORBIE_GATEWAY_TOKEN", alice[:len(alice)-3]+"AAA")
+	if status, _, said := bare.run("", "run", "ls", "--gateway", url); status != 1 || !strings.Contains(said, "the request's token is not taken: its signature is not the issuer's") {
+		t.Errorf("a changed token ended %d and said %s", status, said)
+	}
+	// By default the person is the token's sub.
+	_, saying = m.staying(append(gateway, "--oidc-issuer", idp.URL, "--oidc-audience", "api://corbie")...)
+	until(t, "the gateway", func() bool { return listening.MatchString(saying.String()) })
+	if !strings.Contains(saying.String(), "the client is named by roles, and the person by sub") {
+		t.Errorf("the gateway said %s", saying.String())
+	}
+
+	// What stops the gateway from starting.
+	for want, flags := range map[string][]string{
+		"--oidc-issuer and --oidc-audience are given together":        {"--oidc-issuer", idp.URL},
+		"--oidc-issuer and --oidc-audience are given together#":       {"--oidc-audience", "api://corbie"},
+		"an OIDC issuer's address is https, or http on this computer": {"--oidc-issuer", "http://issuer.example.com", "--oidc-audience", "a"},
+		"names itself": {"--oidc-issuer", idp.URL + "/", "--oidc-audience", "a"},
+		"the OIDC issuer " + idp.URL + "/other: " + idp.URL + "/other/.well": {"--oidc-issuer", idp.URL + "/other", "--oidc-audience", "a"},
+	} {
+		want, _, _ = strings.Cut(want, "#")
+		if status, _, said := m.runFor(20*time.Second, "", append(gateway, flags...)...); status != 1 || !strings.Contains(said, want) || strings.Contains(said, "listening") {
+			t.Errorf("corbie start gateway %s ended %d and said %s", strings.Join(flags, " "), status, said)
+		}
+	}
+	if status, _, said := m.run("", "start", "runner", "--oidc-issuer", idp.URL); status != 2 || !strings.Contains(said, "--oidc-issuer is for the gateway, not the runner") {
+		t.Errorf("--oidc-issuer after the runner ended %d and said %s", status, said)
 	}
 }

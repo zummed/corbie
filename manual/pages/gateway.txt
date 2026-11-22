@@ -91,6 +91,31 @@ A line of the token file is a token, the client's name and the person.
 - Whoever has a token is its client. The gateway's computer holds each
   client's key.
 
+Tokens of an OIDC issuer
+------------------------
+
+A gateway takes the tokens of an OIDC issuer, such as Microsoft Entra ID, so
+that the issuer says who may be which client.
+
+1. A caller gets a token from the issuer and shows it to the gateway.
+2. The gateway checks the issuer's signature, the audience and the token's time.
+3. The token's `roles` name the client: the first `--client` whose name is among them.
+4. The token's `sub` is the person.
+
+  corbie start gateway --client /etc/corbie/viewer --client /etc/corbie/editor --oidc-issuer https://login.example.com/tenant/v2.0 --oidc-audience api://corbie
+    gateway takes the tokens of the OIDC issuer https://login.example.com/tenant/v2.0 for the audience api://corbie: the client is named by roles, and the person by sub
+    gateway for the clients viewer, editor, listening on http://127.0.0.1:8371
+
+  --oidc-issuer <address>   the issuer, as its tokens name it
+  --oidc-audience <text>    who a token must be for
+  --oidc-client <claim>     the claim that names the client; default roles
+  --oidc-person <claim>     the claim that is the person; default sub
+
+- For a person's sign-in name in Entra ID, give `--oidc-person preferred_username`.
+- A token that is not taken gets 401, with the reason.
+- The gateway has no page to sign in at. A caller gets its token from the
+  issuer, and sends it as any token.
+
 The command line through a gateway
 ----------------------------------
 

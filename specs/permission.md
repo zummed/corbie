@@ -235,6 +235,7 @@ A script cannot reach outside itself except through the kinds above, and those a
 - Whoever holds a token of a gateway is the client the token names, for everything a client does. With a token of a client whose ceiling has `at:`, they submit a tree and run any script within that ceiling.
 - A secret or a value set through a gateway is read by the gateway's process on its way to the controller.
 - Whoever controls a gateway's computer is every client the gateway acts as: it holds their keys.
+- A gateway trusts its OIDC issuer. Whoever the issuer signs a token for, with the gateway's audience and a client's name in the claim, is that client, and the person is what the issuer wrote.
 - A person in a cause is the client's claim. A client writes any person, or none.
 - A client browsing the store sees that runs exist, their heads, and how many entries each record has, with their sizes and times. It opens only what is sealed to it.
 - A client a file's `read:` lists reads the tickets of the runs there, and so can answer them, as any client that holds a ticket can.

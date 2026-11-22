@@ -32,6 +32,8 @@ These are new.
 - The gateway does everything a client does. New routes submit a tree, set,
   remove and list secrets and values, send an event to a location or a key, and
   give a run's tickets, one step and the files of its result: `corbie manual routes`.
+- A gateway takes the tokens of an OIDC issuer: `gateway --oidc-issuer` and
+  `--oidc-audience`. A claim names the client and another the person.
 - `corbie run …`, `corbie client secret …` and `corbie client value …` take
   `--gateway <address>`, and send the token in `CORBIE_GATEWAY_TOKEN`. A Go
   program makes such a client with `client.Remote`.

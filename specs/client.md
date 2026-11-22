@@ -243,7 +243,7 @@ A program's word that is itself a role's or a program's name begins the next nam
 
 ```
 corbie up                          the machines of the current directory
-corbie up ui dash                  and the UI, and the program corbie-dash
+corbie up ui console               and the UI, and the program corbie-console
 corbie up --in boards --at /b      another directory, at another prefix
 corbie up --store s3://…           a bucket as the store, when .corbie is set up
 ```

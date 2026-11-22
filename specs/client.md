@@ -421,6 +421,13 @@ client  editor
 person  "alice@example.com"
 ```
 
+A page in a browser calls the gateway from any origin:
+
+- The gateway answers the `OPTIONS` request a browser sends before a page's call, with no token.
+- Every answer permits a page of any origin to read it.
+- A page shows its token in `Authorization`, as every caller does. The gateway reads no cookie, so a page without a token is refused.
+- A page reads a stream with `fetch`. A browser's `EventSource` sends no `Authorization`, and is refused.
+
 Whoever has a token is the client it names. Nothing in a request raises that client's ceiling, names another client or names a person. The gateway's computer holds the key of every client it acts as.
 
 It keeps nothing itself. It runs wherever a process can stay up, and is not offered on serverless hosts.

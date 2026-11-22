@@ -89,6 +89,18 @@ func (g *Gateway) interval() time.Duration {
 
 // ServeHTTP answers one request.
 func (g *Gateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	// A page in a browser calls from any origin. Its token is in a header
+	// the page sets and no cookie is read, so a page that has no token is
+	// refused whatever its origin, and the origin is not asked.
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	if r.Method == http.MethodOptions {
+		// A browser asks this before a page's call, and shows no token.
+		w.Header().Set("Access-Control-Allow-Methods", "GET, POST")
+		w.Header().Set("Access-Control-Allow-Headers", "Authorization, Content-Type")
+		w.Header().Set("Access-Control-Max-Age", "86400")
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
 	c, err := g.caller(r)
 	if err != nil {
 		fail(w, http.StatusUnauthorized, err)

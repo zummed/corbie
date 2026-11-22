@@ -4,6 +4,9 @@ The gateway is an HTTP server that does what a Corbie client does, as the client
 its caller's token names. Every request has the header `Authorization: Bearer <token>`. Every answer is
 JSON, except a file and a stream, and a refusal is `{ "error": "<text>" }`.
 
+A page in a browser sends the same requests from any origin. The gateway
+answers a browser's `OPTIONS` request with no token, and reads no cookie.
+
 Routes
 ------
 

@@ -34,7 +34,7 @@ Build each function's package
   runtime       provided.al2023
   handler       bootstrap
   CORBIE_SERVE  controller on one function, "runner --jobs 4" on the other
-  timeout       for a runner, its longest job's timeout plus ten seconds;
+  timeout       for a runner, its longest job's timeout plus 30 seconds;
                 for a controller, at least 30 seconds
 
 Each step of a machine made while running, and each step after the first of
@@ -87,6 +87,8 @@ include any that it already has.
      "LambdaFunctionArn": "arn:aws:lambda:eu-west-2:<account>:function:corbie-runner",
      "Filter": {"Key": {"FilterRules": [{"Name": "prefix", "Value": "main/cloud-runner/inbox/"}]}}}]}'
 
+The bucket can take five minutes to begin calling after this command.
+
 Call the controller once a minute
 ---------------------------------
 
@@ -106,7 +108,8 @@ Run these where you ran `init`.
   corbie run submit hello.js
   corbie run start /hello --wait
 
-If a call is missing, the check's `late` or `never` line names it.
+If a call is missing, the check's `late` or `never` line names it. In the
+first five minutes after the bucket was told to call, wait and check again.
 
   the bucket does not call the controller   every step is up to a minute late
   the bucket does not call a runner         no job is taken
@@ -118,9 +121,9 @@ the function's log.
 A job must fit in one call
 --------------------------
 
-A runner takes a job only if the job's timeout plus ten seconds fits in the
-function's timeout. A job that can never fit fails at once. The default job
-timeout is five minutes.
+A runner takes a job only if the job's timeout plus 20 seconds fits in the
+time the call has left. A job that can never fit fails at once. The default
+job timeout is five minutes, which needs a function timeout of 330 seconds.
 
 Copies of a function
 --------------------

@@ -416,7 +416,11 @@ func (g *Gateway) submit(w http.ResponseWriter, r *http.Request, c *client.Clien
 	}
 	defer os.RemoveAll(dir)
 	// What reading the files says names them from the directory, and not
-	// where the gateway keeps them.
+	// where the gateway keeps them, which is named as links lead to it.
+	if dir, err = filepath.EvalSymlinks(dir); err != nil {
+		fail(w, http.StatusInternalServerError, err)
+		return
+	}
 	plain := func(err error) string {
 		return strings.ReplaceAll(strings.ReplaceAll(err.Error(), dir+string(filepath.Separator), ""), " "+dir, "")
 	}

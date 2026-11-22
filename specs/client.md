@@ -408,6 +408,7 @@ corbie start gateway --client editor --client viewer --oidc-issuer https://login
 
 - The gateway reads the issuer's keys when it starts, from the address the issuer's `/.well-known/openid-configuration` gives. An issuer it cannot read, or that names itself otherwise, stops it from starting.
 - A token signed with a key the gateway does not have makes it read the keys again, once a minute at most.
+- A token signed with a key the gateway has makes it read the keys again when it last read them an hour ago or more. A key the issuer no longer publishes is then refused.
 - A token is signed with RS256 by an RSA key of 2048 bits or more, or with ES256 by a key on the curve P-256. The key sets the algorithm, and a token that names another is refused.
 - A token that is not taken is answered 401, saying why, with what the token has and what the gateway takes. The gateway prints nothing for a refused request: the caller is told.
 - The gateway says when it starts which issuer and audience it takes, the order of its clients and the two claims.

@@ -44,7 +44,11 @@ var house = map[string]string{
 // with no location, and a file with a problem named with what is wrong. The
 // directory the gateway read them from is gone when it answers.
 func Test_client_gateway_submits_a_tree(t *testing.T) {
-	temp := t.TempDir()
+	// The directory for temporary files is a link, as it is on some systems.
+	temp := filepath.Join(t.TempDir(), "tmp")
+	if err := os.Symlink(t.TempDir(), temp); err != nil {
+		t.Fatal(err)
+	}
 	t.Setenv("TMPDIR", temp)
 	s := newSeveral(t)
 	editor, viewer := s.enrol("editor", "all", "at:/**"), s.enrol("viewer")
@@ -67,7 +71,7 @@ func Test_client_gateway_submits_a_tree(t *testing.T) {
 	if len(what) != 3 || what["/house/devices/boiler"] != "started" || what["/house/greet"] != "recorded" || what["/house/bad"] != "problem" || !strings.HasPrefix(single, "editor/") {
 		t.Fatalf("the submit recorded %v and started %q: %s", what, single, text)
 	}
-	if problems, _ := answer["problems"].(map[string]any); len(problems) != 1 || !strings.Contains(problems["/house/bad"].(string), "stages") || strings.Contains(text, temp) {
+	if problems, _ := answer["problems"].(map[string]any); len(problems) != 1 || !strings.Contains(problems["/house/bad"].(string), "stages") || strings.Contains(text, "corbie-tree-") {
 		t.Fatalf("the submit's problems are %v", answer["problems"])
 	}
 	// The singleton's start names the principal the token was given to.
@@ -90,6 +94,10 @@ func Test_client_gateway_submits_a_tree(t *testing.T) {
 	// A tree of one file.
 	if status, answer, text := edits.tree(`{"at": "/one", "file": "greet.yaml"}`, house); status != 200 || answer["taken"] != true || !strings.Contains(text, `"location":"/one"`) {
 		t.Fatalf("the submit of one file was answered %d %s", status, text)
+	}
+	// A file the directory lacks is named from the directory.
+	if _, _, text := edits.tree(`{"at": "/lost"}`, map[string]string{"lost.yaml": "flow: lost\nstages:\n  say: { job: { script: ./absent.js } }\n"}); !strings.Contains(text, "absent.js") || strings.Contains(text, "corbie-tree-") {
+		t.Errorf("the submit of a machine whose script is absent was answered %s", text)
 	}
 	// A client whose ceiling has no at: is refused by the controller.
 	if status, answer, text := views.tree(`{"at": "/theirs"}`, house); status != 200 || answer["taken"] != false || !strings.Contains(text, "at:/theirs") {

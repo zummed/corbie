@@ -35,6 +35,8 @@ type issuer struct {
 	// later says the issuer has changed its RSA key for another.
 	later atomic.Bool
 	next  *rsa.PrivateKey
+	// withdrawn says the issuer no longer publishes its key ec-1.
+	withdrawn atomic.Bool
 }
 
 func b64(data []byte) string { return base64.RawURLEncoding.EncodeToString(data) }
@@ -64,11 +66,14 @@ func newIssuer(t *testing.T) *issuer {
 		if i.later.Load() {
 			key, id = &i.next.PublicKey, "rsa-2"
 		}
-		json.NewEncoder(w).Encode(map[string]any{"keys": []map[string]string{
+		keys := []map[string]string{
 			{"kty": "RSA", "kid": id, "use": "sig", "n": b64(key.N.Bytes()), "e": b64(big.NewInt(int64(key.E)).Bytes())},
-			{"kty": "EC", "kid": "ec-1", "crv": "P-256", "x": b64(i.ec.X.Bytes()), "y": b64(i.ec.Y.Bytes())},
 			{"kty": "oct", "kid": "shared", "k": b64([]byte("a secret both ends know"))},
-		}})
+		}
+		if !i.withdrawn.Load() {
+			keys = append(keys, map[string]string{"kty": "EC", "kid": "ec-1", "crv": "P-256", "x": b64(i.ec.X.Bytes()), "y": b64(i.ec.Y.Bytes())})
+		}
+		json.NewEncoder(w).Encode(map[string]any{"keys": keys})
 	})
 	return i
 }
@@ -233,6 +238,19 @@ func Test_client_gateway_takes_an_issuers_tokens(t *testing.T) {
 	}
 	if status, _, text := alice.do("GET", "/runs", ""); status != 401 || !strings.Contains(text, `the key \"rsa-1\"`) {
 		t.Errorf("a token signed with the key the issuer dropped was answered %d %s", status, text)
+	}
+
+	// The issuer withdraws a key and publishes no new one: a token signed
+	// with it is taken until the keys are an hour old, and then refused.
+	read = idp.keys.Load()
+	idp.withdrawn.Store(true)
+	withdrawn := as(idp.token("ES256", "ec-1", claims(map[string]any{"exp": time.Now().Add(3 * time.Hour).Unix()})))
+	if status, _, text := withdrawn.do("GET", "/runs", ""); status != 200 || idp.keys.Load() != read {
+		t.Fatalf("before the keys are an hour old, a token signed with a withdrawn key was answered %d %s, and the keys were read %d times more", status, text, idp.keys.Load()-read)
+	}
+	ahead.Add(int64(time.Hour))
+	if status, _, text := withdrawn.do("GET", "/runs", ""); status != 401 || !strings.Contains(text, `the key \"ec-1\"`) || idp.keys.Load() != read+1 {
+		t.Errorf("an hour on, a token signed with a withdrawn key was answered %d %s, and the keys were read %d times more", status, text, idp.keys.Load()-read)
 	}
 }
 

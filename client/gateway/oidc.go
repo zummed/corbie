@@ -55,6 +55,10 @@ const leeway = time.Minute
 // token signed with a key the gateway does not have.
 const refetch = time.Minute
 
+// reread is the age at which the issuer's keys are read again for a token
+// signed with a key the gateway has.
+const reread = time.Hour
+
 // fetch limits what the gateway reads of the issuer: an answer in ten
 // seconds, of a megabyte at most, and no redirect.
 var fetch = &http.Client{Timeout: 10 * time.Second, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
@@ -171,20 +175,20 @@ func (i *Issuer) now() time.Time {
 	return time.Now()
 }
 
-// key gives the issuer's key of an ID. For one the gateway does not have,
-// the keys are read again, once a minute at most: an issuer changes its
-// keys from time to time.
+// key gives the issuer's key of an ID. The keys are read again for a key
+// the gateway does not have, once a minute at most, since an issuer changes
+// its keys from time to time, and for any key once they are an hour old,
+// since an issuer withdraws a key by no longer publishing it. A read that
+// fails leaves the keys as they were.
 func (i *Issuer) key(ctx context.Context, id string) crypto.PublicKey {
 	i.mu.Lock()
 	defer i.mu.Unlock()
-	if key, has := i.keys[id]; has {
-		return key
+	age := refetch
+	if _, has := i.keys[id]; has {
+		age = reread
 	}
-	if i.now().Sub(i.fetched) < refetch {
-		return nil
-	}
-	if err := i.readKeys(ctx); err != nil {
-		return nil
+	if i.now().Sub(i.fetched) >= age {
+		i.readKeys(ctx)
 	}
 	return i.keys[id]
 }

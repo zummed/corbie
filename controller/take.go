@@ -273,15 +273,15 @@ func (b *build) record(event machine.Event, a *arrival, own bool) {
 	b.step.Events = append(b.step.Events, instance.Arrived{Event: event, Source: a.name, Cause: b.cause(a), Own: own})
 }
 
-// cause gives what sent a message: a client's message, or the step of a
-// run that asked the controller for it. A wake and a runner's message have
-// none.
+// cause gives what sent a message: a client's message, with the person the
+// client sent it for, or the step of a run that asked the controller for it.
+// A wake and a runner's message have none.
 func (b *build) cause(a *arrival) instance.Cause {
 	switch {
 	case a.wake:
 		return instance.Cause{}
 	case a.kind == identity.Client:
-		return instance.Cause{Client: a.sender, Message: a.name[strings.LastIndexByte(a.name, '/')+1:]}
+		return instance.Cause{Client: a.sender, Message: a.name[strings.LastIndexByte(a.name, '/')+1:], Person: a.msg.Person}
 	case a.kind == identity.Controller && a.msg.Cause != nil:
 		return *a.msg.Cause
 	}

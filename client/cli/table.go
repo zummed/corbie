@@ -90,7 +90,7 @@ what corbie init set up.
   controller   this config's controller
   runner       this config's runner, for every controller it trusts
   gateway      an HTTP server that starts and reads runs as this config's
-               client
+               client, or as the clients of the configs --client names
   store        a server that gives other computers this computer's store
                directory, set up by corbie init store
   ui           the UI, started as corbie ui, as a program is
@@ -111,9 +111,13 @@ corbie <name> ….
   runner --exec-wrapper <command>  a command put before every program a job
                                    starts, such as a sandbox or a container
   gateway --listen host:port       where it listens; default 127.0.0.1:8371
-  gateway --token-file <file>      a file with the token every request must
-                                   carry; by default it makes one and prints
-                                   it
+  gateway --client <config>        a config whose client the gateway acts as;
+                                   written once for each client
+  gateway --token-file <file>      a file with a line for each token a request
+                                   may carry: the token, then the client it
+                                   names and the person it was given to; by
+                                   default it makes a token for each client
+                                   and prints it
   store --listen host:port         where it listens this time; default where
                                    corbie init store --listen said
   store --timeout <time>           closes a connection that sends nothing for

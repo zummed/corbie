@@ -587,7 +587,7 @@ func (p *pass) answer(sender, message string, until time.Time, r *instance.Recei
 func (p *pass) head(inst string, step *instance.Step) error {
 	st := &step.State
 	head := &instance.Head{Name: inst, Machine: st.Machine, Type: st.Type, Status: st.Status, Step: step.Number,
-		Started: st.Started, Ended: st.Ended, Parent: st.Above.Parent, Location: st.Location, Key: st.Key, Cause: st.Above.Cause,
+		Started: st.Started, Ended: st.Ended, Parent: st.Above.Parent, Location: st.Location, Key: st.Key, Cause: st.Above.Cause.Public(),
 		Timers: len(st.Timers), Labels: st.Labels, Readers: st.Above.Readers, Keep: st.Keep}
 	if st.Error != nil && st.Status == instance.Failed {
 		head.Failure = st.Error.Status

@@ -47,7 +47,7 @@ func served(t *testing.T) (*client.Local, caller) {
 // serve puts a gateway in front of a client.
 func serve(t *testing.T, c *client.Client) caller {
 	t.Helper()
-	server := httptest.NewServer(&gateway.Gateway{Client: c, Token: "the-token", Interval: 10 * time.Millisecond})
+	server := httptest.NewServer(&gateway.Gateway{Callers: map[string]*client.Client{"the-token": c}, Interval: 10 * time.Millisecond})
 	t.Cleanup(server.Close)
 	return caller{t: t, url: server.URL, token: "the-token", client: c}
 }

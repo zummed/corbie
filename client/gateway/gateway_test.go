@@ -145,7 +145,7 @@ func TestGateway(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer local.Close()
-	server := httptest.NewServer(&gateway.Gateway{Client: local.Client, Token: "the-token"})
+	server := httptest.NewServer(&gateway.Gateway{Callers: map[string]*client.Client{"the-token": local.Client}})
 	defer server.Close()
 	c := caller{t: t, url: server.URL, token: "the-token", client: local.Client}
 
@@ -253,7 +253,7 @@ func TestOnlyTheWholeTokenIsTaken(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer local.Close()
-	server := httptest.NewServer(&gateway.Gateway{Client: local.Client, Token: "the-token"})
+	server := httptest.NewServer(&gateway.Gateway{Callers: map[string]*client.Client{"the-token": local.Client}})
 	defer server.Close()
 	for _, wrong := range []string{"", "t", "the-toke", "the-tokens", "the-tokem", "The-token", "the-token the-token"} {
 		if status, _, text := (caller{t: t, url: server.URL, token: wrong}).do("GET", "/runs", ""); status != http.StatusUnauthorized {
@@ -277,7 +277,7 @@ func TestOnlyTheWholeTokenIsTaken(t *testing.T) {
 			t.Errorf("Authorization: %s was answered %d", shown, resp.StatusCode)
 		}
 	}
-	none := httptest.NewServer(&gateway.Gateway{Client: local.Client})
+	none := httptest.NewServer(&gateway.Gateway{Callers: map[string]*client.Client{"": local.Client}})
 	defer none.Close()
 	for _, shown := range []string{"", "the-token"} {
 		if status, _, text := (caller{t: t, url: none.URL, token: shown}).do("GET", "/runs", ""); status != http.StatusUnauthorized {

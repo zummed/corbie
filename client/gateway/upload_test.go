@@ -209,7 +209,7 @@ func TestStartLeavesNothingOfItsUploadsBehind(t *testing.T) {
 	// the store, and at the moment it has answered.
 	var during, after atomic.Int64
 	local.Client.Store = looking{local.Client.Store, func() { during.Store(max(during.Load(), kept())) }}
-	g := &gateway.Gateway{Client: local.Client, Token: "the-token", Interval: 10 * time.Millisecond}
+	g := &gateway.Gateway{Callers: map[string]*client.Client{"the-token": local.Client}, Interval: 10 * time.Millisecond}
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		g.ServeHTTP(w, r)
 		after.Store(kept())

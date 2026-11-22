@@ -227,7 +227,7 @@ A program's word that is itself a role's or a program's name begins the next nam
 
 - `corbie start` starts the program with the words written after its name and an empty standard input, and what it prints is `corbie start`'s own output, with no prefix.
 - Its environment is this process's, with `CORBIE_CONFIG` and `CORBIE_STORE` set as `--config` and `--store` were given.
-- Beside a gateway in the same process, its environment has the gateway's address in `CORBIE_GATEWAY` and its token in `CORBIE_GATEWAY_TOKEN`.
+- Beside a gateway in the same process, its environment has the gateway's address in `CORBIE_GATEWAY` and its first token in `CORBIE_GATEWAY_TOKEN`.
 - When the program stops, `corbie start` stops the roles and the other programs, waits for them, and fails naming the program.
 - When `corbie start` is stopped, it interrupts each program and waits for it, for up to ten seconds before killing it.
 
@@ -347,9 +347,40 @@ A tree belongs to the client that first submitted it. Every run keeps the defini
 
 The gateway offers the package over HTTP for applications not written in Go. Its routes start a run of a location with an input, list, show and cancel runs, read a run's record, definition and files, and send events and answers to a run. A listing and a record are each given as they stand, and with `?watch` as a stream that follows them. A stream the gateway closes ends with a message: `end` with the run when the run has ended, or `error` with the failure when the gateway could not read the store. A start is JSON, or an upload form when its input has files, which come out by their path in a result.
 
-A start is the gateway's client starting a transient location, as `corbie run start <location>` does. The location's file lists `client:<the gateway's client>` in `receive:`, or the gateway's client owns the tree. A start in a tree another client owns is a call, and the run is shown from the call's result. A route names a run by its ID. A listing narrowed with `?at=<location>`, and `&key=<key>` at a keyed location, gives the IDs of the runs there.
+A start is the caller's client starting a transient location, as `corbie run start <location>` does. The location's file lists `client:<that client>` in `receive:`, or that client owns the tree. A start in a tree another client owns is a call, and the run is shown from the call's result. A route names a run by its ID. A listing narrowed with `?at=<location>`, and `&key=<key>` at a keyed location, gives the IDs of the runs there.
 
-A gateway is started with `corbie start gateway`, alone or beside a controller and a runner. It is one client with one ceiling. Callers show it a token it was given when it was started, and all of them act as that client. Different ceilings need different gateways. A request with a field the gateway does not know is refused.
+A gateway is started with `corbie start gateway`, alone or beside a controller and a runner. A request with a field the gateway does not know is refused.
+
+A gateway acts as one or more clients, and each of its tokens names one of them:
+
+1. A caller shows a token.
+2. The token names a client and the person the token was given to.
+3. The gateway sends the request as that client, and writes the person into each message it sends.
+4. The controller checks the message as it checks any client's, and writes the person into the cause (see instance.md).
+
+```
+corbie start gateway                                                       this config's client, and a new token
+corbie start gateway --client viewer --client editor                       the clients of two configs, and a new token for each
+corbie start gateway --client viewer --client editor --token-file tokens   the same clients, and the file's tokens
+```
+
+`--client <config>` names a config whose client the gateway acts as, and is written once for each client. With none, the gateway acts as the client of its own config.
+
+`--token-file <file>` names a file with a line for each token: the token, the client's name, and the person the token was given to.
+
+```
+179bd50585d0   editor   alice@example.com
+93ab77c0e1f2   editor   bob@example.com
+5c11d2a09b3e   viewer
+```
+
+- A line with no person gives its requests none.
+- A line with a token alone names the client of a gateway that has one client.
+- With no token file, the gateway makes a token for each client and prints it, and no request has a person.
+- A token on two lines stops the gateway from starting, and so does a line whose client the gateway does not have. Each names the line.
+- The gateway reads the file when it starts.
+
+Whoever has a token is the client it names. Nothing in a request raises that client's ceiling, names another client or names a person. The gateway's computer holds the key of every client it acts as.
 
 It keeps nothing itself. It runs wherever a process can stay up, and is not offered on serverless hosts.
 

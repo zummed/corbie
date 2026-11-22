@@ -1,7 +1,7 @@
 // Package gateway is the client package over HTTP: a route for each thing
 // the package sends and each thing it reads, and streams for what can be
-// followed. A gateway is one client with one ceiling; it keeps nothing
-// itself.
+// followed. A gateway acts as the client a caller's token names; it keeps
+// nothing itself.
 package gateway
 
 import (
@@ -27,12 +27,12 @@ import (
 	"github.com/zummed/corbie/store"
 )
 
-// A Gateway serves one client's runs to callers that show its token.
+// A Gateway serves its clients' runs to callers that show a token.
 type Gateway struct {
-	Client *client.Client
-	// Token is what callers show; a request without the right one is
-	// refused and does nothing.
-	Token string
+	// Callers gives, by the token a caller shows, the client the request
+	// acts as. The client's Person is the person the token was given to. A
+	// request without one of the tokens is refused and does nothing.
+	Callers map[string]*client.Client
 	// Interval is how often a stream looks again at a store that cannot
 	// tell it when something was written.
 	Interval time.Duration
@@ -82,14 +82,9 @@ func (g *Gateway) interval() time.Duration {
 
 // ServeHTTP answers one request.
 func (g *Gateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	// The token is compared in a way that takes the same time whether it
-	// is nearly right or wholly wrong, and whatever its length: what is
-	// compared is a digest of each, and two digests are of one length.
-	token, bearer := strings.CutPrefix(r.Header.Get("Authorization"), "Bearer ")
-	shown := sha256.Sum256([]byte(token))
-	held := sha256.Sum256([]byte(g.Token))
-	if g.Token == "" || !bearer || subtle.ConstantTimeCompare(shown[:], held[:]) != 1 {
-		fail(w, http.StatusUnauthorized, errors.New("the request does not show the gateway's token (Authorization: Bearer …)"))
+	c := g.caller(r)
+	if c == nil {
+		fail(w, http.StatusUnauthorized, errors.New("the request does not show a token of the gateway's (Authorization: Bearer …)"))
 		return
 	}
 	parts := strings.Split(strings.Trim(r.URL.Path, "/"), "/")
@@ -102,7 +97,7 @@ func (g *Gateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	switch {
 	case len(parts) == 1 && r.Method == http.MethodPost:
 		if takes(w, query) {
-			g.start(w, r)
+			g.start(w, r, c)
 		}
 	case len(parts) == 1 && r.Method == http.MethodGet:
 		if !takes(w, query, "all", "status", "parent", "label", "at", "key", "watch") {
@@ -122,11 +117,11 @@ func (g *Gateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 		if query.Has("watch") {
 			s := newStream(w)
-			err := g.Client.Watch(ctx, filter, g.interval(), func(u client.Update) { s.send("run", u) })
+			err := c.Watch(ctx, filter, g.interval(), func(u client.Update) { s.send("run", u) })
 			s.failed(ctx, err)
 			return
 		}
-		runs, err := g.Client.List(ctx, filter)
+		runs, err := c.List(ctx, filter)
 		if runs == nil {
 			runs = []*client.Run{}
 		}
@@ -137,10 +132,27 @@ func (g *Gateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			fail(w, http.StatusNotFound, client.ErrNoRun)
 			return
 		}
-		g.run(w, r, id, parts[3:])
+		g.run(w, r, c, id, parts[3:])
 	default:
 		fail(w, http.StatusNotFound, fmt.Errorf("there is no such route"))
 	}
+}
+
+// caller gives the client the token of a request names, or nil. Every
+// token is compared, each in a way that takes the same time whether the
+// one shown is nearly right or wholly wrong, and whatever its length: what
+// is compared is a digest of each, and two digests are of one length.
+func (g *Gateway) caller(r *http.Request) *client.Client {
+	token, bearer := strings.CutPrefix(r.Header.Get("Authorization"), "Bearer ")
+	shown := sha256.Sum256([]byte(token))
+	var named *client.Client
+	for held, c := range g.Callers {
+		digest := sha256.Sum256([]byte(held))
+		if subtle.ConstantTimeCompare(shown[:], digest[:]) == 1 && held != "" && bearer {
+			named = c
+		}
+	}
+	return named
 }
 
 // takes says whether a request's query holds only parameters its route
@@ -207,7 +219,7 @@ func partsOf(form *multipart.Form) (map[string]part, error) {
 //	                name says what type of file it is
 //
 // A part the gateway does not know is refused, and so is one given twice.
-func (g *Gateway) start(w http.ResponseWriter, r *http.Request) {
+func (g *Gateway) start(w http.ResponseWriter, r *http.Request, c *client.Client) {
 	const shape = "a start is JSON, or an upload form (multipart/form-data) whose parts are start and input:<name>"
 	var s start
 	var st client.Start
@@ -282,12 +294,12 @@ func (g *Gateway) start(w http.ResponseWriter, r *http.Request) {
 		}
 		st.Allow = &permission.Layer{Allow: s.Allow, Deny: s.Deny}
 	}
-	id, err := g.Client.Start(r.Context(), st)
+	id, err := c.Start(r.Context(), st)
 	reply(w, map[string]any{"id": id}, err)
 }
 
 // run answers a request about one run.
-func (g *Gateway) run(w http.ResponseWriter, r *http.Request, id string, rest []string) {
+func (g *Gateway) run(w http.ResponseWriter, r *http.Request, c *client.Client, id string, rest []string) {
 	ctx := r.Context()
 	what, asks := "", []string{}
 	switch {
@@ -303,7 +315,7 @@ func (g *Gateway) run(w http.ResponseWriter, r *http.Request, id string, rest []
 	}
 	// An ID that is no run is answered as not found at once, on every
 	// route that names a run; one started a moment ago is waiting.
-	shown, err := g.Client.Show(ctx, id)
+	shown, err := c.Show(ctx, id)
 	if err != nil {
 		reply(w, nil, err)
 		return
@@ -323,18 +335,18 @@ func (g *Gateway) run(w http.ResponseWriter, r *http.Request, id string, rest []
 				ctx, cancel = context.WithTimeout(ctx, time.Duration(d))
 				defer cancel()
 			}
-			shown, err = g.Client.Wait(ctx, id, g.interval())
+			shown, err = c.Wait(ctx, id, g.interval())
 		}
 		reply(w, shown, err)
 	case what == "record" && r.Method == http.MethodGet && !r.URL.Query().Has("watch"):
 		// The record so far, and the run as it stands: what the stream
 		// gives, without staying.
 		entries := []client.Entry{}
-		run, err := g.Client.Record(ctx, id, func(entry client.Entry) { entries = append(entries, entry) })
+		run, err := c.Record(ctx, id, func(entry client.Entry) { entries = append(entries, entry) })
 		reply(w, map[string]any{"entries": entries, "run": run}, err)
 	case what == "record" && r.Method == http.MethodGet:
 		s := newStream(w)
-		run, err := g.Client.Follow(ctx, id, g.interval(), func(entry client.Entry) { s.send("entry", entry) })
+		run, err := c.Follow(ctx, id, g.interval(), func(entry client.Entry) { s.send("entry", entry) })
 		// A stream of a record says when the run has ended and how, so
 		// its end is told apart from a connection that was lost.
 		if err == nil && run.HasEnded() {
@@ -342,11 +354,11 @@ func (g *Gateway) run(w http.ResponseWriter, r *http.Request, id string, rest []
 		}
 		s.failed(ctx, err)
 	case what == "definition" && r.Method == http.MethodGet:
-		def, err := g.Client.Definition(ctx, id)
+		def, err := c.Definition(ctx, id)
 		reply(w, def, err)
 	case what == "files" && r.Method == http.MethodGet:
 		// The path is the one a blob was shown with, as it is.
-		contents, file, err := g.Client.Fetch(ctx, id, strings.Join(rest[1:], "/"))
+		contents, file, err := c.Fetch(ctx, id, strings.Join(rest[1:], "/"))
 		if err != nil {
 			reply(w, nil, err)
 			return
@@ -355,25 +367,25 @@ func (g *Gateway) run(w http.ResponseWriter, r *http.Request, id string, rest []
 		w.Header().Set("Content-Length", fmt.Sprint(file.Size))
 		io.Copy(w, contents)
 	case what == "cancel" && r.Method == http.MethodPost:
-		var c cancel
-		if read(w, r, &c) {
-			g.receipt(w, r, c.Life, func(life time.Duration) (string, error) { return g.Client.Cancel(ctx, id, life) })
+		var stop cancel
+		if read(w, r, &stop) {
+			g.receipt(w, r, c, stop.Life, func(life time.Duration) (string, error) { return c.Cancel(ctx, id, life) })
 		}
 	case what == "events" && r.Method == http.MethodPost:
 		var e event
 		if read(w, r, &e) {
-			g.receipt(w, r, e.Life, func(life time.Duration) (string, error) {
-				to, err := g.Client.Address(ctx, id)
+			g.receipt(w, r, c, e.Life, func(life time.Duration) (string, error) {
+				to, err := c.Address(ctx, id)
 				if err != nil {
 					return "", err
 				}
-				return g.Client.Send(ctx, to, e.Event, e.Data, life)
+				return c.Send(ctx, to, e.Event, e.Data, life)
 			})
 		}
 	case what == "tickets" && r.Method == http.MethodPost:
 		var a answer
 		if read(w, r, &a) {
-			g.receipt(w, r, a.Life, func(life time.Duration) (string, error) { return g.Client.Reply(ctx, id, a.Ticket, a.Value, life) })
+			g.receipt(w, r, c, a.Life, func(life time.Duration) (string, error) { return c.Reply(ctx, id, a.Ticket, a.Value, life) })
 		}
 	default:
 		fail(w, http.StatusNotFound, fmt.Errorf("there is no such route for a run"))
@@ -383,13 +395,13 @@ func (g *Gateway) run(w http.ResponseWriter, r *http.Request, id string, rest []
 // receipt sends a message, good for the life the request gives, and
 // answers with what the package reports for it: its receipt, or that it
 // was not taken up.
-func (g *Gateway) receipt(w http.ResponseWriter, r *http.Request, life machine.Duration, send func(life time.Duration) (string, error)) {
+func (g *Gateway) receipt(w http.ResponseWriter, r *http.Request, c *client.Client, life machine.Duration, send func(life time.Duration) (string, error)) {
 	message, err := send(time.Duration(life))
 	if err != nil {
 		reply(w, nil, err)
 		return
 	}
-	receipt, err := g.Client.WaitReceipt(r.Context(), message, time.Duration(life), g.interval())
+	receipt, err := c.WaitReceipt(r.Context(), message, time.Duration(life), g.interval())
 	reply(w, receipt, err)
 }
 

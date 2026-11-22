@@ -14,8 +14,8 @@ How it works
 3. The program asks for the run by its ID, and gets its status and output as
    JSON.
 
-Every request carries the gateway's token. Every request acts as the gateway's
-client, limited by that client's ceiling, which no request can raise.
+Every request carries a token of the gateway's. A token names a client, and the
+request acts as that client, limited by its ceiling, which no request can raise.
 
 Start the gateway
 -----------------
@@ -30,7 +30,7 @@ runs a gateway at a free port (`corbie manual a-project`).
 
 The gateway prints a new token each time it starts: `$TOKEN` below. With
 `--token-file <file>` it reads a token from a file and prints none. A request
-without the token gets 401.
+without a token of the gateway's gets 401.
 
 Start a run
 -----------
@@ -58,6 +58,38 @@ ends.
     {"id":"laptop-client/20261013T185126.250Z-571d935912","machine":"fetch-title",
      "type":"flow","status":"done","input":{"url":"https://example.com"},
      "output":{"title":"Example Domain","url":"https://example.com"}, …}
+
+Several clients
+---------------
+
+A gateway acts as one client for each `--client <config>`. Each config holds
+one client, enrolled with its own ceiling (`corbie manual parties`).
+
+1. A caller shows a token.
+2. The token names a client, and the person the token was given to.
+3. The gateway sends the request as that client.
+4. The run's record names the person.
+
+A line of the token file is a token, the client's name and the person.
+
+  179bd50585d0   editor   alice@example.com
+  93ab77c0e1f2   editor   bob@example.com
+  5c11d2a09b3e   viewer
+
+  corbie start gateway --client /etc/corbie/viewer --client /etc/corbie/editor --token-file tokens
+    gateway for the clients viewer, editor, listening on http://127.0.0.1:8371
+
+  corbie run show $ID
+    editor/20261013T185126.250Z-571d935912  running  statechart door  step 1
+      at: /door
+      person: "alice@example.com"
+
+- With no `--token-file`, the gateway prints a token for each client, and no
+  request has a person.
+- A list of runs names no person. `corbie run show <id> --record --json` gives
+  the person of each event a client sent.
+- Whoever has a token is its client. The gateway's computer holds each
+  client's key.
 
 A run in another client's tree
 ------------------------------

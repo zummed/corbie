@@ -849,6 +849,9 @@ func runText(run *client.Run, script bool) string {
 	if run.Cause.Run != "" {
 		fmt.Fprintf(&b, "  cause: %s step %d\n", run.Cause.Run, run.Cause.Step)
 	}
+	if run.Cause.Person != "" {
+		fmt.Fprintf(&b, "  person: %q\n", run.Cause.Person)
+	}
 	if len(run.Labels) > 0 {
 		fmt.Fprintf(&b, "  labels: %s\n", labelsOf(run))
 	}

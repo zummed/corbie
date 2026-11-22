@@ -104,9 +104,11 @@ type Env struct {
 	// For the gateway, and for the manual in a browser.
 	listen    string
 	tokenFile string
+	// clients are the configs whose clients the gateway acts as.
+	clients []string
 
-	// gatewayAt and gatewayToken are the address and the token of the
-	// gateway this process runs, for the programs started beside it.
+	// gatewayAt and gatewayToken are the address and the first token of
+	// the gateway this process runs, for the programs started beside it.
 	gatewayAt, gatewayToken string
 }
 
@@ -540,6 +542,11 @@ func (e *Env) Client() (*client.Client, error) {
 	if err != nil {
 		return nil, err
 	}
+	return e.clientOf(cfg)
+}
+
+// clientOf gives the client of a config.
+func (e *Env) clientOf(cfg identity.Config) (*client.Client, error) {
 	trusted, err := cfg.TrustList(identity.Client)
 	if err != nil {
 		return nil, err

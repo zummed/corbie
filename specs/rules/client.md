@@ -158,7 +158,7 @@ The detailed rules behind [the Client overview](../client.md).
 **R-client-169** A command with no `--config` and no `CORBIE_CONFIG` uses the config `.corbie` of the current directory, or of the nearest directory above it that has one, and with none the config in the user's config directory.
 *Accept:* while `corbie up` runs in a directory, `corbie run ls` run in a directory below it, with no config named, lists the runs of that `corbie up`; run where no directory above has a `.corbie`, it uses the user's config.
 
-**R-client-170** A program started beside a gateway in the same process, by `corbie start` or `corbie up`, has the gateway's address in `CORBIE_GATEWAY` and its token in `CORBIE_GATEWAY_TOKEN`.
+**R-client-170** A program started beside a gateway in the same process, by `corbie start` or `corbie up`, has the gateway's address in `CORBIE_GATEWAY` and its first token in `CORBIE_GATEWAY_TOKEN`.
 *Accept:* `corbie up frob` starts `corbie-frob` with `CORBIE_GATEWAY=http://127.0.0.1:<port>` and the token the gateway printed in `CORBIE_GATEWAY_TOKEN`.
 
 **R-client-137** `corbie start` with nothing named runs the roles the config holds: its controller, its runner, and the store's server when the config records where its directory is served. Anything named means exactly what is named.
@@ -238,11 +238,17 @@ The detailed rules behind [the Client overview](../client.md).
 **R-client-116** Files go in as uploads, whatever their bytes, and come out by their path in a result.
 *Accept:* a start of a location is made with an image as input, uploaded with the request; the run's script reads the image's bytes unchanged. A run's output shows a blob with a path; asking the gateway for that path of that run gives the bytes with their type.
 
-**R-client-119** A gateway is one client with one ceiling: every caller's run is started by that client, all callers act as it, and nothing in a request raises the ceiling.
-*Accept:* two callers start one run each; both runs carry the gateway's client in their names, each caller sees both in a listing, and either can cancel the other's. With the gateway's client given the ceiling `network`, a run started through the gateway whose definition allows `disk` is `denied` when it writes a file, whatever the request said.
+**R-client-119** A gateway acts as the clients of the configs `--client` names, or with none named as the client of its own config. A token names one of them, a request is sent as the client its token names, and nothing in a request raises that client's ceiling or names another client.
+*Accept:* a gateway has the clients `editor` and `viewer`, with two tokens for `editor` and one for `viewer`. A start with one of `editor`'s tokens gives a run whose name carries `editor`, and the other token lists it and cancels it. `viewer`'s token is shown what the run's head says, its request for the record is answered that the run is in a tree of `editor`, its cancel is refused, and its start of the location is `denied` by `viewer`'s ceiling. With `editor`'s ceiling `network`, a run started with its token whose definition allows `disk` is `denied` when it writes a file. *Test:* `Test_client_gateway_token_names_its_client`
 
-**R-client-121** Callers show the gateway a token it was given when it was started, and a request without the right one is refused and does nothing.
+**R-client-121** Callers show the gateway one of the tokens it was given when it was started, and a request without one is refused and does nothing.
 *Accept:* a gateway is started with its tokens; a start sent with no token, and one sent with a wrong token, are refused, and the store holds no upload and no message from either.
+
+**R-client-171** The gateway writes the person its caller's token names into every message it sends for the request, and a request names no person itself.
+*Accept:* a gateway has one token for `alice@example.com`, one for `bob@example.com` and one with no person, all of the client `editor`. Alice's token starts a run of a chart, and each token sends it an event: the run's cause names the client `editor`, its message and `alice@example.com`, Bob's event names `bob@example.com`, and the third names no person. A listing names no person. A start and an event whose JSON has `person` are refused, naming the field. `corbie run show` prints the person who started the run. *Test:* `Test_client_gateway_writes_the_tokens_person`, `Test_client_gateway_token_file`
+
+**R-client-172** The gateway's token file has a line for each token: the token, the name of the client it names, and the person it was given to. A line with a token alone names the client of a gateway that has one. With no file, the gateway makes a token for each client and prints it. A token on two lines, or a line whose client the gateway does not have, stops the gateway from starting and names the line.
+*Accept:* `corbie start gateway --client viewer --client editor --token-file tokens` answers each token of the file as its line's client, and a token of no line with 401. With no `--token-file` it prints a token for `viewer` and one for `editor`, and each is answered as that client. A file with one token on two lines, one naming the client `nobody`, and one whose line names no client while the gateway has two, each end the command with status 1, naming the line, and nothing listens. *Test:* `Test_client_gateway_token_file`
 
 **R-client-122** The gateway keeps nothing itself, runs wherever a process can stay up, and is not offered on serverless hosts.
 *Accept:* a gateway is stopped and another started on the same config between a start and a show; the show answers as it would have, and after a start's request has ended nothing of its uploads remains on the gateway's computer. A process started on a serverless host and asked to be a gateway refuses to start and says a gateway needs a process that stays up.

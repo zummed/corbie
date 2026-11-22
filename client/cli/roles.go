@@ -121,7 +121,8 @@ type setting struct {
 	jobs              int
 	wrapper           string
 	listen, tokenFile string
-	listened          bool // --listen was written, if empty
+	clients           []string // each --client, in the order written
+	listened          bool     // --listen was written, if empty
 	timeout           time.Duration
 }
 
@@ -140,6 +141,10 @@ func roleFlags(role string, set *setting, every *string) *flag.FlagSet {
 	case "gateway":
 		flags.StringVar(&set.listen, "listen", "127.0.0.1:8371", "")
 		flags.StringVar(&set.tokenFile, "token-file", "", "")
+		flags.Func("client", "", func(dir string) error {
+			set.clients = append(set.clients, dir)
+			return nil
+		})
 	case "store":
 		flags.StringVar(&set.listen, "listen", "", "")
 		flags.DurationVar(&set.timeout, "timeout", time.Minute, "")
@@ -319,7 +324,7 @@ func (e *Env) start(cfg identity.Config, named []item, before func() error) erro
 			running = append(running, role.Role{Name: name, Pass: r.Pass, Interval: set.interval, Notice: woken})
 			e.Say("runner %s  (%s), serving %d controller(s), %d jobs at once", id.Name, id.Fingerprint(), len(serves), set.jobs)
 		case "gateway":
-			e.listen, e.tokenFile = set.listen, set.tokenFile
+			e.listen, e.tokenFile, e.clients = set.listen, set.tokenFile, set.clients
 			gateway, err := e.gateway()
 			if err != nil {
 				return err
@@ -389,8 +394,8 @@ func (e *Env) start(cfg identity.Config, named []item, before func() error) erro
 
 // programEnv is the environment a program corbie starts is given: this
 // process's, with the config and the store the command line named, the
-// config of corbie up, and the address and the token of the gateway this
-// process runs.
+// config of corbie up, and the address and the first token of the gateway
+// this process runs.
 func (e *Env) programEnv() []string {
 	env := os.Environ()
 	if e.Given("config") || e.cmd.Name == "up" {

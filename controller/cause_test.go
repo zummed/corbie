@@ -191,3 +191,132 @@ func Test_inst_note_and_failed_call_name_the_step(t *testing.T) {
 		t.Fatalf("the failed call names %+v, not step %d of the caller", failed, calling)
 	}
 }
+
+// still is a singleton that waits.
+const still = `
+	statechart: still
+	lifetime: singleton
+	initial: w
+	states:
+	  w:
+	    on: { go: over }
+	  over: { end: done }
+`
+
+// A client's message that names a person leaves the person in the cause of
+// what the message does: the start of a run, an event to it, an event sent
+// to a key, a call into another client's tree and the singleton a submit
+// starts. A message that names none leaves none.
+func Test_inst_cause_names_the_person(t *testing.T) {
+	w := newWorld(t)
+	alice, bob := w.client.As("alice@example.com"), w.client.As("bob@example.com")
+	files := map[string]string{"/t/front": front, "/t/helper": helper, "/t/room": talk, "/t/still": still,
+		"/t/lookup": strings.Replace(waiter, "initial: w", "receive: [client:c2]\n\tinitial: w", 1)}
+	if r := w.submitTree(alice, w.tree("/t", "/srv/t", files, nil)); !r.Taken {
+		t.Fatalf("the tree was refused: %s", r.Refused)
+	}
+	w.settle()
+	// The singleton the submit started.
+	for run := range w.at("/t/still") {
+		if cause, _ := w.causeOf(run, machine.Start); cause.Client != "c1" || cause.Person != "alice@example.com" {
+			t.Errorf("the singleton's start names %+v", cause)
+		}
+	}
+	if len(w.at("/t/still")) != 1 {
+		t.Fatalf("the submit started %v at /t/still", w.at("/t/still"))
+	}
+	// A start, and an event to the run.
+	run := w.startAt(alice, "/t/front", client.Start{})
+	w.settle()
+	if _, err := bob.Send(ctx, w.to(run), "go", "x", time.Hour); err != nil {
+		t.Fatal(err)
+	}
+	w.settle()
+	if cause, _ := w.causeOf(run, machine.Start); cause.Client != "c1" || cause.Message == "" || cause.Person != "alice@example.com" {
+		t.Errorf("the start names %+v", cause)
+	}
+	if cause, _ := w.causeOf(run, "go"); cause.Client != "c1" || cause.Person != "bob@example.com" {
+		t.Errorf("go names %+v", cause)
+	}
+	// What the run asked for names the run's step, and no person.
+	if called := w.called(run); len(called) != 1 {
+		t.Fatalf("the desk called %v", called)
+	} else if cause, _ := w.causeOf(called[0], machine.Start); cause.Run != run || cause.Person != "" {
+		t.Errorf("the called run's start names %+v", cause)
+	}
+	// An event sent to a key.
+	key := "b"
+	if _, err := bob.Send(ctx, machine.Address{At: "/t/room", Key: &key}, "said", map[string]any{"text": "hi"}, time.Hour); err != nil {
+		t.Fatal(err)
+	}
+	w.settle()
+	found := false
+	for room := range w.at("/t/room") {
+		if head := w.head(room); head.Key == key {
+			found = true
+			if cause, _ := w.causeOf(room, "said"); cause.Client != "c1" || cause.Person != "bob@example.com" {
+				t.Errorf("the event sent to a key names %+v", cause)
+			}
+		}
+	}
+	if !found {
+		t.Fatalf("no run has the key %s: %v", key, w.at("/t/room"))
+	}
+	// A call into another client's tree.
+	carol := w.other("c2", "send:/t/**").As("carol@example.com")
+	id, err := carol.Start(ctx, client.Start{At: "/t/lookup"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	w.settle()
+	r, err := carol.Receipt(ctx, strings.SplitN(id, "/", 2)[1])
+	if err != nil || r == nil || r.Run == "" {
+		t.Fatalf("the call's receipt is %+v, %v", r, err)
+	}
+	if cause, _ := w.causeOf(r.Run, machine.Start); cause.Client != "c2" || cause.Person != "carol@example.com" {
+		t.Errorf("the called run's start names %+v", cause)
+	}
+	// A message that names no person, and a cancel that names one.
+	plain := w.startAt(w.client, "/t/front", client.Start{})
+	w.settle()
+	if cause, _ := w.causeOf(plain, machine.Start); cause.Client != "c1" || cause.Person != "" {
+		t.Errorf("a start with no person names %+v", cause)
+	}
+	if _, err := bob.Cancel(ctx, plain, time.Hour); err != nil {
+		t.Fatal(err)
+	}
+	w.settle()
+	steps := w.steps(plain)
+	last := steps[len(steps)-1]
+	if w.head(plain).Status != instance.Cancelled || len(last.Events) != 1 || last.Events[0].Cause.Client != "c1" || last.Events[0].Cause.Person != "bob@example.com" {
+		t.Errorf("the cancel left the run %s, and its last step took %+v", w.head(plain).Status, last.Events)
+	}
+}
+
+// A head is sealed to nobody, and names no person: the person of the
+// message that started a run is in the run's record alone.
+func Test_inst_head_names_no_person(t *testing.T) {
+	w := newWorld(t)
+	alice := w.client.As("alice@example.com")
+	if r := w.submitTree(alice, w.tree("/t", "/srv/t", map[string]string{"/t/still": still, "/t/lookup": waiter}, nil)); !r.Taken {
+		t.Fatalf("the tree was refused: %s", r.Refused)
+	}
+	run := w.startAt(alice, "/t/lookup", client.Start{})
+	w.settle()
+	runs := []string{run}
+	for single := range w.at("/t/still") {
+		runs = append(runs, single)
+	}
+	if len(runs) != 2 {
+		t.Fatalf("the runs are %v", runs)
+	}
+	for _, run := range runs {
+		if cause, _ := w.causeOf(run, machine.Start); cause.Person != "alice@example.com" {
+			t.Errorf("the record of %s names %+v", run, cause)
+		}
+		head := w.head(run)
+		if head.Cause.Client != "c1" || head.Cause.Message == "" || head.Cause.Person != "" {
+			t.Errorf("the head of %s names %+v", run, head.Cause)
+		}
+	}
+}

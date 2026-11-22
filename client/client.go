@@ -32,6 +32,9 @@ type Client struct {
 	Store      store.Store
 	// Now is the client's clock.
 	Now func() time.Time
+	// Person is the person the client sends its messages for, if it says:
+	// the controller writes it into the cause of what each message does.
+	Person string
 
 	sender store.Sender
 }
@@ -39,6 +42,11 @@ type Client struct {
 // New makes a client of a controller's store.
 func New(id *identity.Identity, controller identity.Card, s store.Store) *Client {
 	return &Client{ID: id, Controller: controller, Store: s, Now: time.Now}
+}
+
+// As gives the same client sending its messages for a person.
+func (c *Client) As(person string) *Client {
+	return &Client{ID: c.ID, Controller: c.Controller, Store: c.Store, Now: c.Now, Person: person}
 }
 
 func (c *Client) ctl() string { return c.Controller.Name }
@@ -496,6 +504,7 @@ func Taking(life time.Duration) time.Duration {
 func (c *Client) send(ctx context.Context, name string, life time.Duration, msg *instance.Message) error {
 	now := c.Now()
 	at := store.Message(c.ctl(), c.ID.Name, name)
+	msg.Person = c.Person
 	data, err := c.ID.Write(at, now, now.Add(good(life)), msg, c.Controller)
 	if err != nil {
 		return err

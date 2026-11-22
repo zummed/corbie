@@ -23,7 +23,12 @@ These are new.
   directory of machines, in `.corbie` of the directory: `corbie manual a-project`.
 - `corbie test --value-env NAME` sets a value from the environment variable.
 - A program started beside a gateway has its address in `CORBIE_GATEWAY` and
-  its token in `CORBIE_GATEWAY_TOKEN`.
+  its first token in `CORBIE_GATEWAY_TOKEN`.
+- A gateway acts as several clients: `gateway --client <config>`, once for
+  each. A line of `--token-file` is a token, the client it names and the person
+  it was given to: `corbie manual gateway`.
+- A run's record names the person a client sent each message for, as `person`
+  in a `cause`.
 
 After 0.27.0
 ------------

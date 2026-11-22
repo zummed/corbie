@@ -290,6 +290,8 @@ func (b *build) cause(a *arrival) instance.Cause {
 
 // give hands an event to the machine.
 func (b *build) give(event machine.Event, a *arrival) {
+	// The person a client sent the message for, which the machine reads.
+	event.Person = b.cause(a).Person
 	b.use(a)
 	b.record(event, a, false)
 	b.events = append(b.events, event)
@@ -831,7 +833,7 @@ func (b *build) run() machine.Run { return runOf(b.inst, b.st) }
 // runOf is what an expression reads of an instance in a state. Only a run
 // at a keyed location has a key.
 func runOf(inst string, st *instance.State) machine.Run {
-	run := machine.Run{ID: inst, Location: st.Location, Context: st.Above.Context, Tree: st.Tree, Values: st.Above.Values, Recorded: st.Recorded}
+	run := machine.Run{ID: inst, Location: st.Location, Context: st.Above.Context, Tree: st.Tree, Person: st.Above.Cause.Person, Values: st.Above.Values, Recorded: st.Recorded}
 	if st.Lifetime == machine.LifetimeKeyed {
 		key := st.Key
 		run.Key = &key
@@ -1424,7 +1426,9 @@ func (p *pass) begin(inst string, waiting []*arrival) (*taken, error) {
 		copied := *s
 		s, copied.Input = &copied, start.msg.Event.Data
 		st.Input = s.Input
-		b.events = []machine.Event{sentEvent(start.msg)}
+		first := sentEvent(start.msg)
+		first.Person = b.cause(start).Person
+		b.events = []machine.Event{first}
 		b.hear(start)
 	}
 	refused, err := b.first(s, start)

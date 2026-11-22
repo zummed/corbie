@@ -558,7 +558,7 @@ func (s *stepper) scope(holder string) machine.Scope {
 			tickets[s.all[name].state.Ticket] = value
 		}
 	}
-	event := map[string]any{"name": s.event.Name, "from": s.event.From, "data": s.event.Data}
+	event := map[string]any{"name": s.event.Name, "from": s.event.From, "data": s.event.Data, "person": s.event.Person}
 	if a := s.event.Sender; a != nil {
 		// A sent event's from is its sender's address, which a reply is
 		// sent to.

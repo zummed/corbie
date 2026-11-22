@@ -373,12 +373,12 @@ func (chartType) Check(c *machine.Checker, def *machine.Definition) {
 			note(job, s.Jobs[job])
 		}
 	}
-	// An event has a name, where it came from and its data, and nothing
-	// else for an expression to read.
+	// An event has a name, where it came from, its data and the person a
+	// client sent it for, and nothing else for an expression to read.
 	eventParts := func(place string, reads []machine.Read) {
 		for _, r := range reads {
-			if r.Name != "name" && r.Name != "from" && r.Name != "data" {
-				c.Problem(place, "\"event.%s\" reads a part an event does not have: an event has name, from and data (a job's output is event.data, and its error event.data.error)", r.Name)
+			if r.Name != "name" && r.Name != "from" && r.Name != "data" && r.Name != "person" {
+				c.Problem(place, "\"event.%s\" reads a part an event does not have: an event has name, from, data and person (a job's output is event.data, and its error event.data.error)", r.Name)
 			}
 		}
 	}

@@ -320,3 +320,81 @@ func Test_inst_head_names_no_person(t *testing.T) {
 		}
 	}
 }
+
+// signed is the transient file at /t/signed: it waits for an answer to its
+// ticket from a person other than the one it was started for, and ends with
+// who asked and who approved.
+const signed = `
+	statechart: signed
+	initial: waiting
+	states:
+	  waiting:
+	    ticket: approval
+	    on:
+	      approval:
+	        - { when: "${event.person != '' && event.person != run.person}", go: approved }
+	        - { go: waiting }
+	      note: { go: noted }
+	  noted:
+	    end: done
+	    output: { asked: "${run.person}", noted: "${event.person}" }
+	  approved:
+	    end: done
+	    output: { asked: "${run.person}", approved: "${event.person}" }
+`
+
+// A machine reads the person a client started its run for and the person a
+// client sent an event for, and decides by them: an approval is taken only
+// from a person other than the one who asked. A client that names no person
+// gives none.
+func Test_machine_reads_the_person_of_a_run_and_of_an_event(t *testing.T) {
+	w := newWorld(t)
+	alice, bob := w.client.As("alice@example.com"), w.client.As("bob@example.com")
+	if r := w.submitTree(w.client, w.tree("/t", "/srv/t", map[string]string{"/t/signed": signed}, nil)); !r.Taken {
+		t.Fatalf("the tree was refused: %s", r.Refused)
+	}
+	ticket := func(run string) string {
+		t.Helper()
+		value := w.latest(run).State.Tickets["waiting"].Value
+		if value == "" {
+			t.Fatalf("the run %s waits on no ticket: %+v", run, w.latest(run).State.Tickets)
+		}
+		return value
+	}
+	// Alice asks. Her own answer is not taken as the approval, and Bob's is.
+	run := w.startAt(alice, "/t/signed", client.Start{})
+	w.settle()
+	alice.Reply(ctx, run, ticket(run), true, time.Hour)
+	w.settle()
+	if head := w.head(run); head.Status != instance.Running {
+		t.Fatalf("after the answer of the person who asked, the run is %s", head.Status)
+	}
+	bob.Reply(ctx, run, ticket(run), true, time.Hour)
+	w.settle()
+	last := w.latest(run)
+	if out, _ := last.State.Output.(map[string]any); last.State.Status != instance.Done || out["asked"] != "alice@example.com" || out["approved"] != "bob@example.com" {
+		t.Fatalf("the run ended %s with %v", last.State.Status, last.State.Output)
+	}
+	// An event sent to the run by its address has its person too.
+	run = w.startAt(alice, "/t/signed", client.Start{})
+	w.settle()
+	bob.Send(ctx, w.to(run), "note", nil, time.Hour)
+	w.settle()
+	if out, _ := w.latest(run).State.Output.(map[string]any); out["asked"] != "alice@example.com" || out["noted"] != "bob@example.com" {
+		t.Fatalf("the run ended with %v", w.latest(run).State.Output)
+	}
+	// A client that names no person gives none, and its answer approves
+	// nothing.
+	run = w.startAt(w.client, "/t/signed", client.Start{})
+	w.settle()
+	w.client.Reply(ctx, run, ticket(run), true, time.Hour)
+	w.settle()
+	if head := w.head(run); head.Status != instance.Running {
+		t.Fatalf("after an answer that names no person, the run is %s", head.Status)
+	}
+	w.client.Send(ctx, w.to(run), "note", nil, time.Hour)
+	w.settle()
+	if out, _ := w.latest(run).State.Output.(map[string]any); out["asked"] != "" || out["noted"] != "" {
+		t.Fatalf("with no person named, the run ended with %v", w.latest(run).State.Output)
+	}
+}

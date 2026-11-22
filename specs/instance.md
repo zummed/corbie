@@ -33,6 +33,7 @@ A person is who the client sent the message for:
 - A gateway writes the person its caller's token names (see client.md).
 - A person is the client's claim. A client with its own key writes any person, or none, and the controller does not check it.
 - A head names no person: its cause is `{ client, message }`. The person is in the record, for those who may read it.
+- A machine reads the person of an event as `event.person` and the person its run was started for as `run.person` (see machine.md).
 - A message that reaches no run leaves no cause, so its person is not kept: a submit that starts no singleton, and a secret or a value that is set.
 
 A watcher is shown, for each step, the run's `state`, in one shape for every type. It holds nothing the head says.

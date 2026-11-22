@@ -5,13 +5,10 @@ Each section lists what changed after one release, the newest first.
 compatible before version 1: a file or a command written the old way is
 refused.
 
-After 0.27.0
+After 0.28.0
 ------------
 
 These behave differently.
-
-- The UI is part of `corbie`. `corbie ui` and `corbie start controller runner
-  ui` need no program `corbie-ui` on PATH: remove it.
 
 - A command with no `--config` and no `CORBIE_CONFIG` uses the config `.corbie`
   of the current directory, or of the nearest directory above it, before the
@@ -22,13 +19,24 @@ These behave differently.
 
 These are new.
 
-- `corbie add` writes a pack of ready-made machines into a project: `corbie
-  manual packs`.
 - `corbie up` sets up and runs a controller, a runner and a gateway on a
   directory of machines, in `.corbie` of the directory: `corbie manual a-project`.
 - `corbie test --value-env NAME` sets a value from the environment variable.
 - A program started beside a gateway has its address in `CORBIE_GATEWAY` and
   its token in `CORBIE_GATEWAY_TOKEN`.
+
+After 0.27.0
+------------
+
+These behave differently.
+
+- The UI is part of `corbie`. `corbie ui` and `corbie start controller runner
+  ui` need no program `corbie-ui` on PATH: remove it.
+
+These are new.
+
+- `corbie add` writes a pack of ready-made machines into a project: `corbie
+  manual packs`.
 
 After 0.26.1
 ------------

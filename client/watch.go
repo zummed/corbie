@@ -916,6 +916,9 @@ func (c *Client) Definition(ctx context.Context, id string) (*machine.Definition
 	return def, nil
 }
 
+// ErrNoStep is a step's number that a run's record does not hold.
+var ErrNoStep = errors.New("the run has no step")
+
 // Step gives one step entry of a run's record, as it is shown.
 func (c *Client) Step(ctx context.Context, id string, number int) (*Entry, error) {
 	if _, err := c.current(ctx, id); err != nil {
@@ -926,7 +929,7 @@ func (c *Client) Step(ctx context.Context, id string, number int) (*Entry, error
 		return nil, err
 	}
 	if step == nil {
-		return nil, fmt.Errorf("the run has no step %d", number)
+		return nil, fmt.Errorf("%w %d", ErrNoStep, number)
 	}
 	entry, err := stepEntry(id, step)
 	return &entry, err

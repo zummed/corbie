@@ -1,24 +1,63 @@
 Routes: every request the gateway answers, with its parameters, its answer and its status codes.
 
-The gateway is an HTTP server that starts and reads runs as one Corbie client.
-Every request has the header `Authorization: Bearer <token>`. Every answer is
+The gateway is an HTTP server that does what a Corbie client does, as the client
+its caller's token names. Every request has the header `Authorization: Bearer <token>`. Every answer is
 JSON, except a file and a stream, and a refusal is `{ "error": "<text>" }`.
 
 Routes
 ------
 
+  POST /trees                   submits a tree from a form; answers its receipt
   POST /runs                    starts a run of a location from a form; answers { "id": "<id>" }
-  GET /runs                     lists the gateway's runs in progress, as a JSON list
+  GET /runs                     lists the client's runs in progress, as a JSON list
   GET /runs/<id>                one run
   GET /runs/<id>/record         the record so far, child runs included: { "entries": […], "run": {…} }
+  GET /runs/<id>/steps/<n>      step n of the record, as its entry
   GET /runs/<id>/definition     the definition the run was started from, as JSON
+  GET /runs/<id>/tickets        the tickets the run waits on: { "<name>": "<the ticket>" }
+  GET /runs/<id>/files          the files of the result: { "<path>": { "type", "size" } }
   GET /runs/<id>/files/<path>   the bytes of the blob at that path, with its type as `Content-Type`
   POST /runs/<id>/cancel        cancels the run: { "life": "10m" }, or an empty body
   POST /runs/<id>/events        sends the run an event: { "event": "go", "data": …, "life": "10m" }
   POST /runs/<id>/tickets       answers a ticket: { "ticket": "<the ticket>", "value": …, "life": "10m" }
+  POST /events                  sends an event to a location or a key: { "to": "/room#alice", "event": "go", "data": … }
+  POST /secrets, POST /values   sets, removes or lists the client's secrets or values
 
 `<id>` is the whole ID with its slash, as in
 `/runs/laptop-client/20261013T185126.250Z-571d935912`.
+
+Submit a tree
+-------------
+
+`POST /trees` is `multipart/form-data` with these parts.
+
+  submit        JSON with the fields below
+  file:<path>   a file of the directory, by its path from the directory
+
+  at          "/house": the prefix the tree is recorded at; required
+  directory   "/srv/house": what the tree's machines read as `run.context`
+  file        "title.yaml": the tree is this one file, at the prefix
+  life        "10m": how long the submit is valid if no controller reads it, default 5m
+
+- Send every file a machine names: its scripts, the files it includes, and `.corbieignore`.
+- The gateway reads the files as `corbie run submit` reads a directory (`corbie manual a-directory`).
+- The answer is `{ "taken", "refused", "tree", "problems" }`. `tree` holds what `corbie run submit --json`
+  prints: `locations`, `cancelled`, `before`, `missing` and `untrusted`.
+- `problems` gives what is wrong with each file that is no machine, by its location. Its location keeps what was recorded before.
+
+Secrets and values
+------------------
+
+`POST /secrets` and `POST /values` take JSON with these fields, and answer the receipt.
+
+  act     "set", "remove" or "list"; required
+  at      "/house": the location; for set and remove
+  name    "API_KEY"; for set and remove
+  value   the value to set
+  life    "10m": how long the message is valid, default 5m
+
+- A list answers `{ "taken": true, "listed": [{ "name", "at", "value" }] }`. A secret has no `value`.
+- A client sets only at or under a prefix where it could submit a tree (`corbie manual using-secrets`).
 
 Start a run
 -----------
@@ -59,8 +98,8 @@ Query parameters
 Answers and status codes
 ------------------------
 
-A request to cancel, send an event or answer a ticket stays open until a
-controller reads the message. `life` is how long the message is valid, default 5m.
+A request to submit, cancel, send an event, answer a ticket or set a secret or
+a value stays open until a controller reads the message. `life` is how long the message is valid, default 5m.
 
   { "taken": true }                           the controller acted on the message
   { "taken": true, "acted": false }           for an event: whether a rule of the machine matched it
@@ -69,10 +108,10 @@ controller reads the message. `life` is how long the message is valid, default 5
   400   an unknown parameter, field or part, a part sent twice, an unreadable value or a location that cannot be one
   401   the token is missing or wrong
   403   more of a call than its result, as its definition or a cancel
-  404   the ID is not a run, or one in a tree of another client, the path is not a file of the run, or there is no such route
+  404   the ID is not a run, or one in a tree of another client, the path is not a file of the run, the record has no such step, or there is no such route
   409   the definition or a file of a run that is still `waiting`
   500   any other failure, such as a store that cannot be read
-  504   no controller read a cancel, an event or an answer within `life`
+  504   no controller read the message within `life`
 
 A run that was just submitted is answered as `waiting`, never with 404.
 

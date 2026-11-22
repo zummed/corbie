@@ -71,6 +71,12 @@ type part struct{ name, filename, contents string }
 // upload sends a start: an upload form of these parts.
 func (c caller) upload(parts ...part) (int, map[string]any, string) {
 	c.t.Helper()
+	return c.uploadTo("/runs", parts...)
+}
+
+// uploadTo sends an upload form of these parts to a route.
+func (c caller) uploadTo(route string, parts ...part) (int, map[string]any, string) {
+	c.t.Helper()
 	var body bytes.Buffer
 	form := multipart.NewWriter(&body)
 	for _, p := range parts {
@@ -87,7 +93,7 @@ func (c caller) upload(parts ...part) (int, map[string]any, string) {
 		io.WriteString(w, p.contents)
 	}
 	form.Close()
-	return c.send("POST", "/runs", form.FormDataContentType(), &body)
+	return c.send("POST", route, form.FormDataContentType(), &body)
 }
 
 // placed counts the trees the tests submit, each at a prefix of its own.

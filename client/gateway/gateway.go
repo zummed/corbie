@@ -17,11 +17,15 @@ import (
 	"mime/multipart"
 	"net/http"
 	"net/url"
+	"os"
+	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 
 	"github.com/zummed/corbie/client"
+	"github.com/zummed/corbie/instance"
 	"github.com/zummed/corbie/machine"
 	"github.com/zummed/corbie/permission"
 	"github.com/zummed/corbie/store"
@@ -88,12 +92,25 @@ func (g *Gateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	parts := strings.Split(strings.Trim(r.URL.Path, "/"), "/")
-	if parts[0] != "runs" {
-		fail(w, http.StatusNotFound, fmt.Errorf("there is no such route; the routes begin /runs"))
-		return
-	}
 	ctx := r.Context()
 	query := r.URL.Query()
+	if parts[0] != "runs" {
+		// What a client sends that names no run of its own.
+		switch route := strings.Join(parts, "/"); {
+		case r.Method != http.MethodPost:
+			fail(w, http.StatusNotFound, fmt.Errorf("there is no such route"))
+		case !slices.Contains([]string{"trees", "secrets", "values", "events"}, route):
+			fail(w, http.StatusNotFound, fmt.Errorf("there is no such route"))
+		case !takes(w, query):
+		case route == "trees":
+			g.submit(w, r, c)
+		case route == "events":
+			g.sendTo(w, r, c)
+		default:
+			g.set(w, r, c, strings.TrimSuffix(route, "s"))
+		}
+		return
+	}
 	switch {
 	case len(parts) == 1 && r.Method == http.MethodPost:
 		if takes(w, query) {
@@ -298,6 +315,210 @@ func (g *Gateway) start(w http.ResponseWriter, r *http.Request, c *client.Client
 	reply(w, map[string]any{"id": id}, err)
 }
 
+// submit is what the part named submit of a request to submit a tree holds,
+// as JSON: the prefix the tree is recorded at, the directory it came from,
+// which its machines read as run.context, and, for a tree of one file, the
+// file.
+type submit struct {
+	At        string           `json:"at"`
+	Directory string           `json:"directory,omitzero"`
+	File      string           `json:"file,omitzero"`
+	Life      machine.Duration `json:"life,omitzero"`
+}
+
+// submitted is the answer to a submit: its receipt, and what is wrong with
+// each file that could not be read as a machine, by its location.
+type submitted struct {
+	Taken    bool                `json:"taken"`
+	Refused  string              `json:"refused,omitzero"`
+	Tree     *instance.Submitted `json:"tree,omitzero"`
+	Problems map[string]string   `json:"problems,omitzero"`
+}
+
+// submit records a tree from an upload form. Its parts are:
+//
+//	submit          the prefix and what else a submit carries, as JSON
+//	file:<path>     a file of the directory, by its path from the directory
+//
+// The files are read as corbie run submit reads a directory: from a
+// directory of the gateway's computer that is gone before the gateway
+// answers.
+func (g *Gateway) submit(w http.ResponseWriter, r *http.Request, c *client.Client) {
+	const shape = "a submit is an upload form (multipart/form-data) whose parts are submit and file:<path>"
+	if err := r.ParseMultipartForm(held); err != nil {
+		fail(w, http.StatusBadRequest, fmt.Errorf("%s: %v", shape, err))
+		return
+	}
+	defer r.MultipartForm.RemoveAll()
+	parts, err := partsOf(r.MultipartForm)
+	if err != nil {
+		fail(w, http.StatusBadRequest, err)
+		return
+	}
+	given, has := parts["submit"]
+	if !has {
+		fail(w, http.StatusBadRequest, fmt.Errorf("the form has no part named submit; %s", shape))
+		return
+	}
+	var s submit
+	if text, err := given.text(); err != nil {
+		fail(w, http.StatusInternalServerError, err)
+		return
+	} else if err := json.Unmarshal([]byte(text), &s, json.RejectUnknownMembers(true)); err != nil {
+		fail(w, http.StatusBadRequest, fmt.Errorf("the part submit cannot be read: %v", err))
+		return
+	}
+	if err := store.CheckLocation(s.At); err != nil || s.At == "/" {
+		fail(w, http.StatusBadRequest, fmt.Errorf("a submit names the prefix the tree is recorded at, as at: / and the names of one or more directories, as /home"))
+		return
+	}
+	dir, err := os.MkdirTemp("", "corbie-tree-")
+	if err != nil {
+		fail(w, http.StatusInternalServerError, err)
+		return
+	}
+	defer os.RemoveAll(dir)
+	// A file is written inside the directory and nowhere else.
+	root, err := os.OpenRoot(dir)
+	if err != nil {
+		fail(w, http.StatusInternalServerError, err)
+		return
+	}
+	defer root.Close()
+	for name, p := range parts {
+		kind, file, _ := strings.Cut(name, ":")
+		switch {
+		case name == "submit":
+			continue
+		case kind != "file" || file == "":
+			fail(w, http.StatusBadRequest, fmt.Errorf("the form has a part named %q; %s", name, shape))
+			return
+		case !filepath.IsLocal(filepath.FromSlash(file)) || strings.Contains(file, `\`):
+			fail(w, http.StatusBadRequest, fmt.Errorf("the file %q is not a path inside the directory", file))
+			return
+		}
+		if err := place(root, file, p); err != nil {
+			fail(w, http.StatusInternalServerError, err)
+			return
+		}
+	}
+	var tree *client.Tree
+	if s.File != "" {
+		tree, err = client.ReadFile(dir, s.File, s.At, client.ScriptJob{})
+	} else {
+		tree, err = client.ReadTree(dir, s.At)
+	}
+	if err != nil {
+		fail(w, http.StatusBadRequest, errors.New(strings.ReplaceAll(err.Error(), dir+string(filepath.Separator), "")))
+		return
+	}
+	tree.Directory = s.Directory
+	message, err := c.Submit(r.Context(), tree, time.Duration(s.Life))
+	if err != nil {
+		reply(w, nil, err)
+		return
+	}
+	receipt, err := c.WaitReceipt(r.Context(), message, time.Duration(s.Life), g.interval())
+	if err != nil {
+		reply(w, nil, err)
+		return
+	}
+	answer := submitted{Taken: receipt.Taken, Refused: receipt.Refused, Tree: receipt.Tree}
+	for _, m := range tree.Machines {
+		if m.Problem != nil {
+			if answer.Problems == nil {
+				answer.Problems = map[string]string{}
+			}
+			answer.Problems[m.Location] = strings.ReplaceAll(m.Problem.Error(), dir+string(filepath.Separator), "")
+		}
+	}
+	reply(w, answer, nil)
+}
+
+// place writes a part of an upload form as a file of a directory.
+func place(root *os.Root, file string, p part) error {
+	if err := root.MkdirAll(filepath.Dir(filepath.FromSlash(file)), 0o700); err != nil {
+		return err
+	}
+	contents, err := p.open()
+	if err != nil {
+		return err
+	}
+	defer contents.Close()
+	out, err := root.OpenFile(filepath.FromSlash(file), os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
+	if err != nil {
+		return err
+	}
+	if _, err := io.Copy(out, contents); err != nil {
+		out.Close()
+		return err
+	}
+	return out.Close()
+}
+
+// setting is a set, a remove or a list of the secrets or the values a
+// client may set.
+type setting struct {
+	Act   string           `json:"act"`
+	At    string           `json:"at,omitzero"`
+	Name  string           `json:"name,omitzero"`
+	Value string           `json:"value,omitzero"`
+	Life  machine.Duration `json:"life,omitzero"`
+}
+
+// set sets, removes or lists the client's secrets or values, and answers
+// with the receipt.
+func (g *Gateway) set(w http.ResponseWriter, r *http.Request, c *client.Client, of string) {
+	var s setting
+	if !read(w, r, &s) {
+		return
+	}
+	ctx := r.Context()
+	send := map[string]func(life time.Duration) (string, error){
+		"secret set":    func(life time.Duration) (string, error) { return c.SetSecret(ctx, s.At, s.Name, s.Value, life) },
+		"secret remove": func(life time.Duration) (string, error) { return c.RemoveSecret(ctx, s.At, s.Name, life) },
+		"secret list":   func(life time.Duration) (string, error) { return c.ListSecrets(ctx, life) },
+		"value set":     func(life time.Duration) (string, error) { return c.SetValue(ctx, s.At, s.Name, s.Value, life) },
+		"value remove":  func(life time.Duration) (string, error) { return c.RemoveValue(ctx, s.At, s.Name, life) },
+		"value list":    func(life time.Duration) (string, error) { return c.ListValues(ctx, life) },
+	}[of+" "+s.Act]
+	if send == nil {
+		fail(w, http.StatusBadRequest, fmt.Errorf("act is set, remove or list"))
+		return
+	}
+	g.receipt(w, r, c, s.Life, send)
+}
+
+// sent is an event sent to an address: a location, or a location and a
+// key.
+type sent struct {
+	To    string           `json:"to"`
+	Event string           `json:"event"`
+	Data  any              `json:"data,omitzero"`
+	Life  machine.Duration `json:"life,omitzero"`
+}
+
+// sendTo sends an event to a location, or to a key at one, and answers
+// with the receipt.
+func (g *Gateway) sendTo(w http.ResponseWriter, r *http.Request, c *client.Client) {
+	var s sent
+	if !read(w, r, &s) {
+		return
+	}
+	if !strings.HasPrefix(s.To, "/") {
+		fail(w, http.StatusBadRequest, fmt.Errorf("to is a location from /, or a location and a key as /location#key; a run is sent an event at /runs/<id>/events"))
+		return
+	}
+	ctx := r.Context()
+	g.receipt(w, r, c, s.Life, func(life time.Duration) (string, error) {
+		to, err := c.Address(ctx, s.To)
+		if err != nil {
+			return "", fmt.Errorf("%w: %w", client.ErrStart, err)
+		}
+		return c.Send(ctx, to, s.Event, s.Data, life)
+	})
+}
+
 // run answers a request about one run.
 func (g *Gateway) run(w http.ResponseWriter, r *http.Request, c *client.Client, id string, rest []string) {
 	ctx := r.Context()
@@ -356,6 +577,20 @@ func (g *Gateway) run(w http.ResponseWriter, r *http.Request, c *client.Client, 
 	case what == "definition" && r.Method == http.MethodGet:
 		def, err := c.Definition(ctx, id)
 		reply(w, def, err)
+	case what == "files" && r.Method == http.MethodGet && len(rest) == 1:
+		files, err := c.Files(ctx, id)
+		reply(w, files, err)
+	case what == "tickets" && r.Method == http.MethodGet:
+		tickets, err := c.Tickets(ctx, id)
+		reply(w, tickets, err)
+	case what == "steps" && r.Method == http.MethodGet && len(rest) == 2:
+		number, err := strconv.Atoi(rest[1])
+		if err != nil || number < 1 {
+			fail(w, http.StatusNotFound, fmt.Errorf("a step is named by its number, from 1"))
+			return
+		}
+		step, err := c.Step(ctx, id, number)
+		reply(w, step, err)
 	case what == "files" && r.Method == http.MethodGet:
 		// The path is the one a blob was shown with, as it is.
 		contents, file, err := c.Fetch(ctx, id, strings.Join(rest[1:], "/"))
@@ -423,7 +658,7 @@ func reply(w http.ResponseWriter, v any, err error) {
 		status := http.StatusInternalServerError
 		var problems machine.Problems
 		switch {
-		case errors.Is(err, client.ErrNoRun), errors.Is(err, client.ErrNoFile):
+		case errors.Is(err, client.ErrNoRun), errors.Is(err, client.ErrNoFile), errors.Is(err, client.ErrNoStep):
 			status = http.StatusNotFound
 		case errors.Is(err, client.ErrCalled):
 			status = http.StatusForbidden

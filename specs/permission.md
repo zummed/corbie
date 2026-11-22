@@ -232,7 +232,8 @@ A script cannot reach outside itself except through the kinds above, and those a
 ```
 
 - Two clients whose ceilings match one prefix each set secrets and values there while it holds no tree. What one set stays when the other submits a tree there, and that tree's runs use it. The controller's owner gives each client its own prefix.
-- Whoever holds a token of a gateway is the client the token names, for everything the gateway offers, with any input.
+- Whoever holds a token of a gateway is the client the token names, for everything a client does. With a token of a client whose ceiling has `at:`, they submit a tree and run any script within that ceiling.
+- A secret or a value set through a gateway is read by the gateway's process on its way to the controller.
 - Whoever controls a gateway's computer is every client the gateway acts as: it holds their keys.
 - A person in a cause is the client's claim. A client writes any person, or none.
 - A client browsing the store sees that runs exist, their heads, and how many entries each record has, with their sizes and times. It opens only what is sealed to it.

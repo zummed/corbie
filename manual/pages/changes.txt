@@ -29,6 +29,9 @@ These are new.
   it was given to: `corbie manual gateway`.
 - A run's record names the person a client sent each message for, as `person`
   in a `cause`.
+- The gateway does everything a client does. New routes submit a tree, set,
+  remove and list secrets and values, send an event to a location or a key, and
+  give a run's tickets, one step and the files of its result: `corbie manual routes`.
 
 After 0.27.0
 ------------

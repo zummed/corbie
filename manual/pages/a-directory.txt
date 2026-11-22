@@ -38,6 +38,8 @@ memory, and keeps nothing when it stops.
   .corbie             the config it makes in the current directory, and removes; a command run there uses it
   corbie up ui        starts the UI as well, or any program corbie-<name> on PATH
   --store <address>   keeps the store, a directory or an S3 bucket, and the keys in .corbie
+  --secret-env NAME   sets a secret from the environment variable as it starts
+  a secret, later     corbie client secret set NAME --at /schedules, run in the same directory
 
 Reference
 ---------

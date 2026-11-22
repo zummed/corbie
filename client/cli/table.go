@@ -165,6 +165,10 @@ corbie up runs: corbie run start, corbie run ls, corbie ui.
                        from the environment variable of its name; repeatable
   --config <directory> another config than .corbie of the current directory
 
+While it runs, corbie client secret set and corbie client value set, run in
+the same directory, set a secret or a value at the directory's prefix. With
+the store in memory they last until it stops.
+
 The names and the words after them are corbie start's. The gateway listens
 at a free port, which gateway --listen host:port changes. A program is
 started with CORBIE_CONFIG, CORBIE_GATEWAY and CORBIE_GATEWAY_TOKEN in its

@@ -494,7 +494,7 @@ func (e *Env) open(address string) (store.Store, error) {
 	case address != inMemory:
 		return store.Open(address)
 	case e.memory == nil:
-		return nil, fmt.Errorf("the store of this config is in the memory of the corbie up that made it: only that process is its controller, and it sets a secret with --secret and a value with --value")
+		return nil, fmt.Errorf("the store of this config is in the memory of the corbie up that made it: only that process is its controller. Set a secret here as its client, with corbie client secret set <NAME> --at <prefix>, or give corbie up --secret")
 	}
 	return e.memory.As(store.Party{Kind: store.Owner}), nil
 }

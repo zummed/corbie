@@ -74,6 +74,10 @@ func TestUpRunsADirectoryAndKeepsNothing(t *testing.T) {
 	if status, _, problem := corbie("x\n", "controller", "secret", "set", "KEY", "-"); status != 1 || !strings.Contains(problem, "in the memory of the corbie up") {
 		t.Fatalf("a secret set from another process ended %d and said: %s", status, problem)
 	}
+	// The client sets a secret at the tree's prefix, as on any Corbie.
+	if status, set, problem := corbie("the value\n", "client", "secret", "set", "KEY", "-", "--at", at); status != 0 || !strings.Contains(set, "taken") {
+		t.Fatalf("a secret set by the client ended %d and printed:\n%s%s", status, set, problem)
+	}
 	// A second corbie up on the config is refused, and leaves it.
 	t.Chdir(dir)
 	if status, _, problem := corbie("", "up"); status != 1 || !strings.Contains(problem, "is running on the config") {

@@ -250,7 +250,8 @@ corbie up --store .corbie/store    a store that is kept, and its keys
 ```
 
 - A command run in the same directory, or below it, finds `.corbie` and is the client of that `corbie up`: `corbie run start`, `corbie run ls`, `corbie ui`.
-- `.corbie` holds the client's keys, the runner's keys and the address the store is served at. The controller's keys are in the process alone, so no other process is the controller: `--value`, `--secret` and `--secret-env` set values and secrets at `/`, as `corbie test` takes them.
+- `.corbie` holds the client's keys, the runner's keys and the address the store is served at. The controller's keys are in the process alone, so no other process is the controller, and `corbie controller secret set` there is refused.
+- `--value`, `--secret` and `--secret-env` set values and secrets at `/` as it starts, as `corbie test` takes them. While it runs, `corbie client secret set` and `corbie client value set` set them at the directory's prefix, as on any Corbie.
 - A file with a problem is reported before anything starts, and nothing is started.
 - The gateway listens at a free port, and `gateway --listen` names another. A program is given `CORBIE_CONFIG`, `CORBIE_GATEWAY` and `CORBIE_GATEWAY_TOKEN`.
 - A second `corbie up` on a config whose `corbie up` is running is refused. A config that a killed `corbie up` left is replaced.

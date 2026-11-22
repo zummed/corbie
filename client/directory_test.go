@@ -303,6 +303,15 @@ func TestLinksStayInTheContext(t *testing.T) {
 	if want := map[string]bool{"a.yaml": false, "x.yaml": false, "near.yaml": true}; !reflect.DeepEqual(got, want) {
 		t.Fatalf("read %v", got)
 	}
+	// A script read alone is a file of the directory too.
+	for _, script := range []string{"../outside/s.js", "s.js"} {
+		if _, err := client.ReadFile(filepath.Join(dir, "house"), script, "/alone", client.ScriptJob{}); err == nil || !strings.Contains(err.Error(), "outside the directory") {
+			t.Errorf("the script %s outside the directory was read: %v", script, err)
+		}
+	}
+	if alone, err := client.ReadFile(filepath.Join(dir, "house"), "near.js", "/alone", client.ScriptJob{}); err != nil || alone.Machines[0].Problem != nil {
+		t.Errorf("the script near.js was not read: %v", err)
+	}
 }
 
 // A tree reached by a link reads as the directory it names.

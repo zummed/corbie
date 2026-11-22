@@ -17,6 +17,9 @@ How it works
 Every request carries the gateway's token. Every request acts as the gateway's
 client, limited by that client's ceiling, which no request can raise.
 
+That is all a gateway needs. `corbie manual gateway-clients` adds several
+clients, the principal behind each request and sign-in through an OIDC issuer.
+
 Start the gateway
 -----------------
 
@@ -30,7 +33,7 @@ runs a gateway at a free port (`corbie manual a-project`).
 
 The gateway prints a new token each time it starts: `$TOKEN` below. With
 `--token-file <file>` it reads a token from a file and prints none. A request
-without the token gets 401.
+without a token of the gateway's gets 401.
 
 Start a run
 -----------
@@ -59,6 +62,44 @@ ends.
      "type":"flow","status":"done","input":{"url":"https://example.com"},
      "output":{"title":"Example Domain","url":"https://example.com"}, …}
 
+From a page in a browser
+------------------------
+
+A page of any website calls the gateway with `fetch`, and sends the token as
+`curl` does above.
+
+  const gateway = "http://127.0.0.1:8371"
+  const headers = { Authorization: "Bearer " + token,
+                    "Content-Type": "application/json" }
+  const started = await fetch(gateway + "/runs", {
+    method: "POST", headers,
+    body: JSON.stringify({ at: "/title", input: { url: "https://example.com" } }),
+  }).then((r) => r.json())
+  const run = await fetch(gateway + "/runs/" + started.id + "?wait", { headers })
+    .then((r) => r.json())
+
+- The gateway reads no cookie. A page without the token gets 401.
+- A page reads a `?watch` stream with `fetch`. A browser's `EventSource`
+  sends no token, and gets 401.
+- A page served over `https` needs the gateway at `https`. The gateway
+  listens on `http`, so a server in front of it provides `https`. As a
+  serverless function its URL is `https`.
+
+The command line through a gateway
+----------------------------------
+
+`corbie run …`, `corbie client secret …` and `corbie client value …` take
+`--gateway <address>`. The command sends the token in `CORBIE_GATEWAY_TOKEN`,
+and needs no config and no key on its computer.
+
+  export CORBIE_GATEWAY_TOKEN=179bd50585d0
+  corbie run submit house --gateway http://127.0.0.1:8371
+    /house/devices/boiler   singleton   started editor/20261013T185126.250Z-571d935912
+    /house/greet            transient   recorded
+
+A command prints the same through a gateway as with the client's own config.
+A Go program does the same with `client.Remote(address, token)`.
+
 A run in another client's tree
 ------------------------------
 
@@ -75,6 +116,8 @@ and is not shown.
 Other requests
 --------------
 
+  POST /trees                    submits a directory of machines
+  POST /secrets, POST /values    sets, removes or lists secrets or values
   GET /runs                      lists runs
   GET /runs/<id>/record          the run's record; with ?watch, a stream of it
   GET /runs/<id>/files/<path>    a file of the run's result
@@ -82,12 +125,13 @@ Other requests
   POST /runs/<id>/tickets        answers a ticket the run waits on
   POST /runs/<id>/cancel         cancels the run
 
-The gateway keeps no state: each request reads or writes the store. Its
-process must keep running, so it cannot run as a serverless function.
+The gateway keeps no state: each request reads or writes the store. It runs
+as a process, or as a serverless function (`corbie manual functions`).
 
 Reference
 ---------
 
+  corbie manual gateway-clients   several clients, people and an OIDC issuer
   corbie manual routes         every request in full, with files and streams
   corbie manual runs           the fields of a run in JSON
   corbie manual start          the gateway's flags

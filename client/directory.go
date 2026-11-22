@@ -28,6 +28,12 @@ type Tree struct {
 	// Listed is each file and directory .corbieignore lists that the
 	// directory holds, from the directory, a directory ending in /.
 	Listed []string
+	// Files is every file of the directory that was read, by its path from
+	// the directory: the machines, the scripts and the files they name, the
+	// files they include, and .corbieignore. A gateway is sent these.
+	Files map[string][]byte
+	// File is, for a tree of one file, that file's path from the directory.
+	File string
 }
 
 // A Machine is one *.yaml file of a tree.
@@ -68,7 +74,10 @@ func ReadTree(dir, at string) (*Tree, error) {
 	if err != nil {
 		return nil, err
 	}
-	t := &Tree{Prefix: at, Directory: full}
+	t := &Tree{Prefix: at, Directory: full, Files: map[string][]byte{}}
+	if src, err := os.ReadFile(filepath.Join(full, ignoreFile)); err == nil {
+		t.Files[ignoreFile] = src
+	}
 	err = filepath.WalkDir(full, func(name string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
@@ -92,7 +101,7 @@ func ReadTree(dir, at string) (*Tree, error) {
 		}
 		m := &Machine{Path: rel}
 		m.Location = at + "/" + strings.TrimSuffix(m.Path, ".yaml")
-		m.Draft, m.Problem = readMachine(full, m.Path, func(file string, src []byte, load func(string) ([]byte, error)) (*machine.Draft, error) {
+		m.Draft, m.Problem = readMachine(full, m.Path, t.Files, func(file string, src []byte, load func(string) ([]byte, error)) (*machine.Draft, error) {
 			return machine.ParseAt(file, src, load, func(file string) bool { return located(listed, file) })
 		})
 		t.Machines = append(t.Machines, m)
@@ -135,18 +144,30 @@ func ReadFile(dir, rel, at string, job ScriptJob) (*Tree, error) {
 		return nil, fmt.Errorf("--at %s: a prefix is / and the names of one or more directories, as /home, and is not / alone", at)
 	}
 	m := &Machine{Path: rel, Location: at}
+	t := &Tree{Prefix: at, Directory: dir, Machines: []*Machine{m}, Files: map[string][]byte{}, File: rel}
 	if strings.HasSuffix(rel, ".js") {
-		src, err := os.ReadFile(filepath.Join(dir, filepath.FromSlash(rel)))
+		full := filepath.Join(dir, filepath.FromSlash(rel))
+		if err := inside(dir, full); err != nil {
+			return nil, err
+		}
+		src, err := os.ReadFile(full)
 		if err != nil {
 			return nil, err
 		}
 		m.Draft, m.Problem = Script(path.Base(rel), src, job)
+		// To a gateway the tree is the flow the script is wrapped in, as a
+		// file beside the script.
+		t.File = strings.TrimSuffix(rel, ".js") + ".yaml"
+		t.Files[rel] = src
+		if t.Files[t.File], err = scriptFlow(path.Base(rel), job); err != nil {
+			return nil, err
+		}
 	} else {
-		m.Draft, m.Problem = readMachine(dir, rel, func(file string, src []byte, load func(string) ([]byte, error)) (*machine.Draft, error) {
+		m.Draft, m.Problem = readMachine(dir, rel, t.Files, func(file string, src []byte, load func(string) ([]byte, error)) (*machine.Draft, error) {
 			return machine.ParseAt(file, src, load, nil)
 		})
 	}
-	return &Tree{Prefix: at, Directory: dir, Machines: []*Machine{m}}, nil
+	return t, nil
 }
 
 // ignoreFile is the file at the top of a tree's directory that lists what
@@ -219,16 +240,22 @@ func inside(dir, full string) error {
 // ReadMachine reads the machine at rel in the context dir. A path in it may
 // name any file inside dir and none outside.
 func ReadMachine(dir, rel string) (*machine.Draft, error) {
-	return readMachine(dir, rel, machine.ParseIn)
+	return readMachine(dir, rel, nil, machine.ParseIn)
 }
 
-func readMachine(dir, rel string, parse func(string, []byte, func(string) ([]byte, error)) (*machine.Draft, error)) (*machine.Draft, error) {
+// readMachine reads a machine, and notes each file it reads in read, where
+// it is given one.
+func readMachine(dir, rel string, read map[string][]byte, parse func(string, []byte, func(string) ([]byte, error)) (*machine.Draft, error)) (*machine.Draft, error) {
 	load := func(name string) ([]byte, error) {
 		full := filepath.Join(dir, filepath.FromSlash(name))
 		if err := inside(dir, full); err != nil {
 			return nil, err
 		}
-		return os.ReadFile(full)
+		src, err := os.ReadFile(full)
+		if err == nil && read != nil {
+			read[path.Clean(filepath.ToSlash(name))] = src
+		}
+		return src, err
 	}
 	src, err := load(rel)
 	if err != nil {

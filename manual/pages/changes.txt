@@ -5,6 +5,36 @@ Each section lists what changed after one release, the newest first.
 compatible before version 1: a file or a command written the old way is
 refused.
 
+After 0.29.0
+------------
+
+These are new.
+
+- The gateway does everything a client does. New routes submit a tree, set,
+  remove and list secrets and values, send an event to a location or a key,
+  and give a run's tickets, one step and the files of its result:
+  `corbie manual routes`.
+- `corbie run …`, `corbie client secret …` and `corbie client value …` take
+  `--gateway <address>`, and send the token in `CORBIE_GATEWAY_TOKEN`. A Go
+  program makes such a client with `client.Remote`.
+- A page in a browser calls a gateway from any origin, with the token in
+  `Authorization`: `corbie manual gateway`.
+- A gateway runs as an AWS Lambda function, called through the function's
+  URL: `corbie manual functions`.
+- A gateway acts as several clients: `gateway --client <config>`, once for
+  each. A line of `--token-file` is a token, the client it names and the
+  principal it was given to, a person or a service:
+  `corbie manual gateway-clients`.
+- A gateway takes the tokens of an OIDC issuer: `gateway --oidc-issuer` and
+  `--oidc-audience`. A claim names the client and another the principal.
+- `corbie client show` prints which client a command is sent as, and through a
+  gateway the principal its token names.
+- A run's record names the principal a client sent each message for, as
+  `principal` in a `cause`.
+- A machine reads the principal a client sent an event for as
+  `event.principal`, and the principal a client started its run for as
+  `run.principal`.
+
 After 0.28.0
 ------------
 

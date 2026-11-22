@@ -134,6 +134,7 @@ states:
 		t.Errorf("corbie client secret list --json printed %s", listed)
 	}
 	asked(m, "", true, "client", "secret", "remove", "A_SECRET_OF_THIS_TEST", "--at", "/mine")
+	asked(m, "", true, "client", "show")
 	asked(m, "", true, "client", "value", "set", "HUB", "hub.lan", "--at", "/mine")
 	if listed := asked(m, "", true, "client", "value", "list"); listed != `[{"name":"HUB","at":"/mine","value":"hub.lan"}]`+"\n" {
 		t.Errorf("corbie client value list --json printed %s", listed)

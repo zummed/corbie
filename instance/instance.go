@@ -86,15 +86,24 @@ type Arrived struct {
 }
 
 // A Cause is what sent an event: the step of a run that asked for it, or a
-// message of a client. A note or a failure the controller writes for a step
+// message of a client, with the principal the client sent it for where the
+// message names one. A note or a failure the controller writes for a step
 // names that step. An event from the run's own script job or timer has
 // none. A Cause is apart from a message's From, the run the machine answers,
 // and an event's Source, the file the message came in.
 type Cause struct {
-	Run     string `json:"run,omitzero"`
-	Step    int    `json:"step,omitzero"`
-	Client  string `json:"client,omitzero"`
-	Message string `json:"message,omitzero"`
+	Run       string `json:"run,omitzero"`
+	Step      int    `json:"step,omitzero"`
+	Client    string `json:"client,omitzero"`
+	Message   string `json:"message,omitzero"`
+	Principal string `json:"principal,omitzero"`
+}
+
+// Public is the cause as a head gives it: a head is sealed to nobody, so it
+// names no principal.
+func (c Cause) Public() Cause {
+	c.Principal = ""
+	return c
 }
 
 // State is everything about an instance that is not its history.

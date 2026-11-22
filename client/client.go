@@ -32,8 +32,14 @@ type Client struct {
 	Store      store.Store
 	// Now is the client's clock.
 	Now func() time.Time
+	// Principal is the principal the client sends its messages for, if it says:
+	// the controller writes it into the cause of what each message does.
+	Principal string
 
 	sender store.Sender
+	// remote is the gateway the client sends to, where it has no store and
+	// no identity of its own.
+	remote *remote
 }
 
 // New makes a client of a controller's store.
@@ -41,9 +47,46 @@ func New(id *identity.Identity, controller identity.Card, s store.Store) *Client
 	return &Client{ID: id, Controller: controller, Store: s, Now: time.Now}
 }
 
+// Who is which client a Client is, and the principal it sends its messages
+// for.
+type Who struct {
+	Client    string `json:"client"`
+	Principal string `json:"principal,omitzero"`
+}
+
+// Who says which client this is. Through a gateway it is the client and the
+// principal the token names.
+func (c *Client) Who(ctx context.Context) (Who, error) {
+	if c.remote != nil {
+		var who Who
+		return who, c.remote.get(ctx, "/client", &who)
+	}
+	if err := c.identity(); err != nil {
+		return Who{}, err
+	}
+	return Who{Client: c.ID.Name, Principal: c.Principal}, nil
+}
+
+// As gives the same client sending its messages for a principal.
+func (c *Client) As(principal string) *Client {
+	return &Client{ID: c.ID, Controller: c.Controller, Store: c.Store, Now: c.Now, Principal: principal}
+}
+
 func (c *Client) ctl() string { return c.Controller.Name }
 
+// notice tells when this process writes under a name of the store. A client
+// that sends to a gateway has no store, and looks again at its interval.
+func (c *Client) notice(under string) (<-chan struct{}, func()) {
+	if c.remote != nil {
+		return nil, func() {}
+	}
+	return c.Store.Notice(under)
+}
+
 func (c *Client) identity() error {
+	if c.remote != nil {
+		return nil
+	}
 	if c.ID == nil {
 		return fmt.Errorf("this needs a client's identity, and there is none here (corbie init, or corbie client card, makes one)")
 	}
@@ -121,6 +164,9 @@ func WithFiles(input any, files map[string]InputFile) (any, error) {
 // NewRun chooses the name of a run before it is started, so that an
 // application can note it before anything is sent.
 func (c *Client) NewRun() (string, error) {
+	if c.remote != nil {
+		return "", fmt.Errorf("%w: a gateway names the run it starts", ErrStart)
+	}
 	if err := c.identity(); err != nil {
 		return "", err
 	}
@@ -131,6 +177,9 @@ func (c *Client) NewRun() (string, error) {
 // input itself, are written into the run's record first, and then the start
 // is sent. It gives the run's name.
 func (c *Client) Start(ctx context.Context, start Start) (string, error) {
+	if c.remote != nil {
+		return c.remote.start(ctx, start)
+	}
 	if err := c.identity(); err != nil {
 		return "", err
 	}
@@ -228,6 +277,9 @@ func (c *Client) Start(ctx context.Context, start Start) (string, error) {
 // keeps what was recorded before. It gives the name of the message, by which
 // its receipt is found.
 func (c *Client) Submit(ctx context.Context, tree *Tree, life time.Duration) (string, error) {
+	if c.remote != nil {
+		return c.remote.submit(ctx, tree, life)
+	}
 	if err := c.identity(); err != nil {
 		return "", err
 	}
@@ -345,6 +397,9 @@ func startMessage(run string) string {
 // answer are each good for the life given, or for a few minutes if it is
 // zero.
 func (c *Client) Cancel(ctx context.Context, run string, life time.Duration) (string, error) {
+	if c.remote != nil {
+		return c.remote.send(ctx, "/runs/"+run+"/cancel", lived(map[string]any{}, life))
+	}
 	if err := c.identity(); err != nil {
 		return "", err
 	}
@@ -365,6 +420,9 @@ func (c *Client) Cancel(ctx context.Context, run string, life time.Duration) (st
 // Send sends a named event to a run by its address. The controller takes it
 // as it takes a run's send, and its receipt names the run that took it.
 func (c *Client) Send(ctx context.Context, to machine.Address, event string, data any, life time.Duration) (string, error) {
+	if c.remote != nil {
+		return c.remote.sendTo(ctx, to, event, data, life)
+	}
 	if err := c.identity(); err != nil {
 		return "", err
 	}
@@ -388,6 +446,9 @@ func (c *Client) Send(ctx context.Context, to machine.Address, event string, dat
 // location its head names. A run of the client's own is named by its ID
 // alone until it has a head.
 func (c *Client) Address(ctx context.Context, text string) (machine.Address, error) {
+	if c.remote != nil && !strings.HasPrefix(text, "/") {
+		return c.remote.addressOf(text)
+	}
 	if strings.HasPrefix(text, "/") {
 		at, key, keyed := strings.Cut(text, "#")
 		to := machine.Address{At: at}
@@ -417,6 +478,9 @@ func (c *Client) Address(ctx context.Context, text string) (machine.Address, err
 // Reply answers a ticket of a run. The ticket is the authority: any client
 // that holds it may answer.
 func (c *Client) Reply(ctx context.Context, run, ticket string, value any, life time.Duration) (string, error) {
+	if c.remote != nil {
+		return c.remote.send(ctx, "/runs/"+run+"/tickets", lived(map[string]any{"ticket": ticket, "value": value}, life))
+	}
 	return c.sendNext(ctx, life, &instance.Message{Kind: instance.KindAnswer, Instance: run,
 		Answer: &instance.Answer{Ticket: ticket, Value: value}})
 }
@@ -457,6 +521,9 @@ func (c *Client) ListValues(ctx context.Context, life time.Duration) (string, er
 }
 
 func (c *Client) setting(ctx context.Context, life time.Duration, set instance.Setting) (string, error) {
+	if c.remote != nil {
+		return c.remote.setting(ctx, life, set)
+	}
 	if err := c.identity(); err != nil {
 		return "", err
 	}
@@ -496,6 +563,7 @@ func Taking(life time.Duration) time.Duration {
 func (c *Client) send(ctx context.Context, name string, life time.Duration, msg *instance.Message) error {
 	now := c.Now()
 	at := store.Message(c.ctl(), c.ID.Name, name)
+	msg.Principal = c.Principal
 	data, err := c.ID.Write(at, now, now.Add(good(life)), msg, c.Controller)
 	if err != nil {
 		return err
@@ -507,6 +575,9 @@ func (c *Client) send(ctx context.Context, name string, life time.Duration, msg 
 // Receipt reads the controller's answer to a message this client sent. It
 // gives nil while there is none.
 func (c *Client) Receipt(ctx context.Context, message string) (*instance.Receipt, error) {
+	if c.remote != nil {
+		return c.remote.receipt(message)
+	}
 	if err := c.identity(); err != nil {
 		return nil, err
 	}
@@ -532,7 +603,10 @@ var ErrNotTaken = errors.New("the message was not taken up: it is no longer good
 // come, the wait ends, saying the message was not taken up. It looks again
 // when this process writes to the store, and otherwise at the interval.
 func (c *Client) WaitReceipt(ctx context.Context, message string, life, interval time.Duration) (*instance.Receipt, error) {
-	notice, stop := c.Store.Notice(c.ctl())
+	if c.remote != nil {
+		return c.remote.receipt(message)
+	}
+	notice, stop := c.notice(c.ctl())
 	defer stop()
 	until := c.Now().Add(Taking(life))
 	for {

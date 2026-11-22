@@ -90,7 +90,7 @@ what corbie init set up.
   controller   this config's controller
   runner       this config's runner, for every controller it trusts
   gateway      an HTTP server that starts and reads runs as this config's
-               client
+               client, or as the clients of the configs --client names
   store        a server that gives other computers this computer's store
                directory, set up by corbie init store
   ui           the UI, started as corbie ui, as a program is
@@ -111,9 +111,23 @@ corbie <name> ….
   runner --exec-wrapper <command>  a command put before every program a job
                                    starts, such as a sandbox or a container
   gateway --listen host:port       where it listens; default 127.0.0.1:8371
-  gateway --token-file <file>      a file with the token every request must
-                                   carry; by default it makes one and prints
-                                   it
+  gateway --client <config>        a config whose client the gateway acts as;
+                                   written once for each client
+  gateway --token-file <file>      a file with a line for each token a request
+                                   may carry: the token, then the client it
+                                   names and the principal it was given to; by
+                                   default it makes a token for each client
+                                   and prints it
+  gateway --oidc-issuer <address>  an OIDC issuer whose tokens the gateway
+                                   takes too
+  gateway --oidc-audience <text>   who the issuer's tokens must be for; given
+                                   with the issuer
+  gateway --oidc-client-claim <c>  the claim that names the client; default
+                                   roles
+  gateway --oidc-principal-claim <c>
+                                   the claim that is the principal: the
+                                   person or the service a token is for;
+                                   default sub
   store --listen host:port         where it listens this time; default where
                                    corbie init store --listen said
   store --timeout <time>           closes a connection that sends nothing for
@@ -506,6 +520,14 @@ controller: remove the other first with corbie client remove.
 The config keeps the controller's name with its key, so a card with another
 key under that name is refused without --replace.`},
 
+		{Name: "client show", Summary: "print which client a command is sent as, and for which principal", Run: cmdClientShow, Help: `
+It prints the name of this config's client. With --gateway it prints the
+client and the principal the gateway's token names: what a command with that
+token is sent as.
+
+  corbie client show --gateway http://127.0.0.1:8371
+
+  corbie manual gateway-clients   several clients at one gateway`},
 		{Name: "client secret set", Usage: "<NAME> [- | --env] --at <location>", Summary: "set a secret for the runs at a location and below, in this client's trees", Run: cmdClientSecretSet, Help: `
 The controller takes it at a location where this client could submit a tree,
 or in one of its trees. The value is typed at the terminal and not shown. It

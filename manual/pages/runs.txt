@@ -42,7 +42,7 @@ here.
   started, ended        times in UTC
   parent                for a child run, the ID of the run that started it
   location, key         where its machine lives, and its key at a keyed location
-  cause                 what started it: { run, step } of another run, or { client, message }
+  cause                 what started it: { run, step } of another run, or { client, message, principal }
   called                for a start in another client's tree, the run the call started there
   jobs, timers          how many of its script jobs are on a runner, and how many timers it waits for
   tickets               the names of the tickets it waits on
@@ -53,7 +53,13 @@ here.
   error     anything else, such as a failed job the machine has no rule for, or a start the controller refused
 
 A field with no value is left out. A run in a list has no `title`, `output`,
-`error`, `refused`, `layer`, `fix` or `used`.
+`error`, `refused`, `layer`, `fix` or `used`, and its `cause` has no
+`principal`.
+
+`principal` is the person or the service the client sent the message for. A
+gateway writes the principal its caller's token names
+(`corbie manual gateway-clients`). It is the client's claim: a client with its
+own key writes any principal, or none.
 
 Files
 -----

@@ -44,6 +44,9 @@ type Message struct {
 	// Cause is, in a message the controller sends itself, what caused it:
 	// the step that asked for it, or the client's message it carries on.
 	Cause *Cause `json:"cause,omitzero"`
+	// Principal is, in a client's message, the principal the client sends it
+	// for. It is the client's claim.
+	Principal string `json:"principal,omitzero"`
 
 	Start  *Start         `json:"start,omitzero"`
 	Submit *Submit        `json:"submit,omitzero"`

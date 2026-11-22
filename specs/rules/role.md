@@ -78,6 +78,9 @@ The detailed rules behind the [Roles overview](../role.md).
 **R-role-37** On a serverless host a timer fires within a minute of its time; on a computer within the loop's interval of its time; and never before it.
 *Accept:* under a stand-in host that calls the controller once a minute, timers set for times spread across a minute are each delivered no later than a minute after their time, and none before it. Two copies of `corbie start controller` share a store, with the interval set to two seconds: a timer set by a step one copy took is delivered, by whichever copy, no later than about two seconds after its time, and not before it.
 
+**R-role-38** On a serverless host an HTTP server is called once for each request. It is given the request's method, path, query, headers and body, what it writes is sent to the host as it is written, with the status and the headers first, and its time ends before the host's limit. A call that is no HTTP request is answered 400 and told to the owner.
+*Accept:* under the stand-in for a serverless host, a `POST /things/one?a=1&b=two` with a body of bytes reaches the handler whole, and its answer of 201 with a header and a body is what the host is given. A handler that writes a second part only once the host has the first writes both. A handler that waits out a call of 600 ms is ended before that, and its answer is given. A call that holds a bucket's notice is answered 400, and the owner is told it is not an HTTP request. *Test:* `Test_role_serverless_host_calls_an_http_server_for_each_request`
+
 ## Interfaces
 
 Uses:
@@ -91,6 +94,6 @@ Uses:
 
 Used by:
 
-- **Client**: `corbie start` starts the loop for the roles named, and `corbie test` starts it with every role in one process on a store in memory.
+- **Client**: `corbie start` starts the loop for the roles named, and `corbie test` starts it with every role in one process on a store in memory. On a serverless host `corbie start gateway` has the host's HTTP requests given to the gateway.
 - **Controller** and **Runner**: each does its work only inside a pass, and relies on the three rules for what happens when a pass is killed or doubled.
 - **Machines**: a step is taken once however many copies take it (R-mach-04), and a timer is as punctual as its host allows (R-role-37).

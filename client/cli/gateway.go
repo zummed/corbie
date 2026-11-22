@@ -10,9 +10,11 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"slices"
 	"strings"
 	"time"
 
+	"github.com/zummed/corbie/client"
 	"github.com/zummed/corbie/client/gateway"
 	"github.com/zummed/corbie/identity"
 	"github.com/zummed/corbie/role"
@@ -20,46 +22,182 @@ import (
 )
 
 // gateway starts the gateway beside whatever other roles the process has,
-// and gives what stops it. A gateway is one client: every caller's run is
-// started by the client of this config.
+// and gives what stops it. A gateway acts as the clients of the configs
+// --client names, or with none named as the client of this config, and each
+// of its tokens names one of them.
 func (e *Env) gateway() (func(), error) {
-	if role.Serverless() {
-		return nil, fmt.Errorf("a gateway needs a process that stays up, and this is a serverless host")
+	var clients []*client.Client
+	if len(e.clients) == 0 {
+		c, err := e.Client()
+		if err != nil {
+			return nil, err
+		}
+		if c.ID == nil {
+			return nil, fmt.Errorf("a gateway acts as this computer's client, and there is none (corbie client card makes one)")
+		}
+		clients = append(clients, c)
 	}
-	c, err := e.Client()
-	if err != nil {
-		return nil, err
+	for _, dir := range e.clients {
+		// On a serverless host a client's config is copied to a place that
+		// is this copy's alone, as a role's is.
+		own, err := role.OwnConfig(dir)
+		if err != nil {
+			return nil, fmt.Errorf("--client %s: %w", dir, err)
+		}
+		c, err := e.clientOf(identity.Config{Dir: own})
+		switch {
+		case err != nil:
+			return nil, fmt.Errorf("--client %s: %w", dir, err)
+		case c.ID == nil:
+			return nil, fmt.Errorf("--client %s: the config holds no client (corbie client card makes one)", dir)
+		case slices.ContainsFunc(clients, func(o *client.Client) bool { return o.ID.Name == c.ID.Name }):
+			return nil, fmt.Errorf("--client %s: the gateway has a client named %s already", dir, c.ID.Name)
+		}
+		clients = append(clients, c)
 	}
-	if c.ID == nil {
-		return nil, fmt.Errorf("a gateway acts as this computer's client, and there is none (corbie client card makes one)")
+	var names []string
+	for _, c := range clients {
+		names = append(names, c.ID.Name)
 	}
-	token := ""
+	var callers map[string]*client.Client
+	first := ""
 	if e.tokenFile != "" {
 		data, err := os.ReadFile(e.tokenFile)
 		if err != nil {
 			return nil, err
 		}
-		token = strings.TrimSpace(string(data))
+		if callers, first, err = callersOf(string(data), clients); err != nil {
+			return nil, fmt.Errorf("%s: %w", e.tokenFile, err)
+		}
+		// What the file gave, by client, so that a line read otherwise than
+		// it was meant shows when the gateway starts.
+		for _, c := range clients {
+			var principals []string
+			tokens := 0
+			for _, named := range callers {
+				if named.ID.Name != c.ID.Name {
+					continue
+				}
+				tokens++
+				if named.Principal != "" {
+					principals = append(principals, named.Principal)
+				}
+			}
+			slices.Sort(principals)
+			line := fmt.Sprintf("gateway tokens for the client %s: %d", c.ID.Name, tokens)
+			if len(principals) > 0 {
+				line += ", for " + strings.Join(principals, ", ")
+			}
+			if len(callers) > 0 {
+				e.Say("%s", line)
+			}
+		}
 	}
-	if token == "" {
-		random := make([]byte, 24)
-		rand.Read(random)
-		token = hex.EncodeToString(random)
-		e.Say("gateway token (callers send it as Authorization: Bearer …): %s", token)
+	// The tokens of an OIDC issuer are taken where one is given.
+	var issuer *gateway.Issuer
+	if o := e.oidc; o.issuer != "" || o.audience != "" {
+		if o.issuer == "" || o.audience == "" {
+			return nil, fmt.Errorf("--oidc-issuer and --oidc-audience are given together: the issuer, and who its tokens must be for")
+		}
+		issuer = &gateway.Issuer{Address: o.issuer, Audience: o.audience, ClientClaim: o.client, PrincipalClaim: o.principal, Clients: clients}
+		if err := issuer.Open(e.ctx); err != nil {
+			return nil, err
+		}
 	}
-	listener, err := net.Listen("tcp", e.listen)
-	if err != nil {
-		return nil, err
+	if len(callers) == 0 && issuer == nil && role.Serverless() {
+		return nil, fmt.Errorf("a gateway on a serverless host takes the tokens of --token-file or of an OIDC issuer: with neither, each copy of the function would make a token of its own")
 	}
-	server := &http.Server{Handler: &gateway.Gateway{Client: c, Token: token}, ReadHeaderTimeout: 10 * time.Second}
-	go server.Serve(listener)
-	e.gatewayAt, e.gatewayToken = "http://"+listener.Addr().String(), token
-	e.Say("gateway for the client %s, listening on http://%s", c.ID.Name, listener.Addr())
-	return func() {
-		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-		defer cancel()
-		server.Shutdown(ctx)
-	}, nil
+	if len(callers) == 0 && issuer == nil {
+		// With no token given, a new one for each client.
+		callers = map[string]*client.Client{}
+		for _, c := range clients {
+			random := make([]byte, 24)
+			rand.Read(random)
+			token := hex.EncodeToString(random)
+			callers[token] = c
+			if first == "" {
+				first = token
+			}
+			if len(clients) == 1 {
+				e.Say("gateway token (callers send it as Authorization: Bearer …): %s", token)
+			} else {
+				e.Say("gateway token for the client %s (callers send it as Authorization: Bearer …): %s", c.ID.Name, token)
+			}
+		}
+	}
+	handler := &gateway.Gateway{Callers: callers, Issuer: issuer}
+	// On a serverless host the host calls the function once for each
+	// request, and nothing listens. Elsewhere the gateway listens.
+	where, stop := "answering the requests to this function's URL", func() {}
+	if role.Serverless() {
+		e.answers = handler
+	} else {
+		listener, err := net.Listen("tcp", e.listen)
+		if err != nil {
+			return nil, err
+		}
+		server := &http.Server{Handler: handler, ReadHeaderTimeout: 10 * time.Second}
+		go server.Serve(listener)
+		e.gatewayAt, e.gatewayToken = "http://"+listener.Addr().String(), first
+		where = "listening on http://" + listener.Addr().String()
+		stop = func() {
+			ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+			defer cancel()
+			server.Shutdown(ctx)
+		}
+	}
+	if issuer != nil {
+		e.Say("gateway takes the tokens of the OIDC issuer %s for the audience %s", issuer.Address, issuer.Audience)
+		e.Say("gateway takes a token as the first of the clients %s that its claim %s names, for the principal in its claim %s", strings.Join(names, ", "), issuer.ClientClaim, issuer.PrincipalClaim)
+	}
+	if len(names) == 1 {
+		e.Say("gateway for the client %s, %s", names[0], where)
+	} else {
+		e.Say("gateway for the clients %s, %s", strings.Join(names, ", "), where)
+	}
+	return stop, nil
+}
+
+// callersOf reads a gateway's token file: a line for each token, which
+// holds the token, then the name of the client it names, then the principal it
+// was given to. A line with a token alone names the gateway's one client. It
+// gives each token's client, sending for the line's principal, and the first
+// token.
+func callersOf(text string, clients []*client.Client) (callers map[string]*client.Client, first string, err error) {
+	var names []string
+	for _, c := range clients {
+		names = append(names, c.ID.Name)
+	}
+	callers, lines := map[string]*client.Client{}, map[string]int{}
+	for i, line := range strings.Split(text, "\n") {
+		fields := strings.Fields(line)
+		if len(fields) == 0 || strings.HasPrefix(fields[0], "#") {
+			continue
+		}
+		token, name, principal := fields[0], "", ""
+		if len(fields) > 1 {
+			name, principal = fields[1], strings.Join(fields[2:], " ")
+		}
+		var named *client.Client
+		for _, c := range clients {
+			if c.ID.Name == name || name == "" && len(clients) == 1 {
+				named = c
+			}
+		}
+		switch {
+		case lines[token] > 0:
+			return nil, "", fmt.Errorf("line %d has the token of line %d: a token names one client", i+1, lines[token])
+		case named == nil && name == "":
+			return nil, "", fmt.Errorf("line %d names no client, and the gateway has several: %s", i+1, strings.Join(names, ", "))
+		case named == nil:
+			return nil, "", fmt.Errorf("line %d names the client %s, and the gateway's clients are: %s", i+1, name, strings.Join(names, ", "))
+		}
+		callers[token], lines[token] = named.As(principal), i+1
+		if first == "" {
+			first = token
+		}
+	}
+	return callers, first, nil
 }
 
 // serve starts serving the controller's directory to other computers, beside

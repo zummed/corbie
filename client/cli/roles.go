@@ -115,12 +115,18 @@ func programOf(word string) (path string, args []string, err error) {
 	return path, nil, err
 }
 
+// oidc is the OIDC issuer whose tokens a gateway takes: its address, who its
+// tokens must be for, and the claims that name the client and the principal.
+type oidc struct{ issuer, audience, client, principal string }
+
 // A setting is what a role is given by the flags written after it.
 type setting struct {
 	interval          time.Duration
 	jobs              int
 	wrapper           string
 	listen, tokenFile string
+	clients           []string // each --client, in the order written
+	oidc              oidc
 	listened          bool // --listen was written, if empty
 	timeout           time.Duration
 }
@@ -140,6 +146,14 @@ func roleFlags(role string, set *setting, every *string) *flag.FlagSet {
 	case "gateway":
 		flags.StringVar(&set.listen, "listen", "127.0.0.1:8371", "")
 		flags.StringVar(&set.tokenFile, "token-file", "", "")
+		flags.Func("client", "", func(dir string) error {
+			set.clients = append(set.clients, dir)
+			return nil
+		})
+		flags.StringVar(&set.oidc.issuer, "oidc-issuer", "", "")
+		flags.StringVar(&set.oidc.audience, "oidc-audience", "", "")
+		flags.StringVar(&set.oidc.client, "oidc-client-claim", "roles", "")
+		flags.StringVar(&set.oidc.principal, "oidc-principal-claim", "sub", "")
 	case "store":
 		flags.StringVar(&set.listen, "listen", "", "")
 		flags.DurationVar(&set.timeout, "timeout", time.Minute, "")
@@ -231,6 +245,9 @@ func (e *Env) start(cfg identity.Config, named []item, before func() error) erro
 			if sets[i], err = settings(it); err != nil {
 				return err
 			}
+			if it.name == "gateway" && role.Serverless() && len(named) > 1 {
+				return fmt.Errorf("on a serverless host a gateway is a function of its own: the host calls it for each request, and a controller or a runner for each pass")
+			}
 			continue
 		}
 		path, first, err := programOf(it.name)
@@ -319,7 +336,8 @@ func (e *Env) start(cfg identity.Config, named []item, before func() error) erro
 			running = append(running, role.Role{Name: name, Pass: r.Pass, Interval: set.interval, Notice: woken})
 			e.Say("runner %s  (%s), serving %d controller(s), %d jobs at once", id.Name, id.Fingerprint(), len(serves), set.jobs)
 		case "gateway":
-			e.listen, e.tokenFile = set.listen, set.tokenFile
+			e.listen, e.tokenFile, e.clients = set.listen, set.tokenFile, set.clients
+			e.oidc = set.oidc
 			gateway, err := e.gateway()
 			if err != nil {
 				return err
@@ -336,6 +354,10 @@ func (e *Env) start(cfg identity.Config, named []item, before func() error) erro
 		}
 	}
 	report := func(name string, err error) { e.Say("%s: %s", name, e.clean(err.Error())) }
+	if role.Serverless() && e.answers != nil {
+		// The host calls for each request: nothing listens.
+		return role.Answer(e.ctx, func(err error) { report("gateway", err) }, e.answers)
+	}
 	if role.Serverless() {
 		// The host calls for each pass: there is no loop.
 		return role.Serve(e.ctx, report, running...)
@@ -389,8 +411,8 @@ func (e *Env) start(cfg identity.Config, named []item, before func() error) erro
 
 // programEnv is the environment a program corbie starts is given: this
 // process's, with the config and the store the command line named, the
-// config of corbie up, and the address and the token of the gateway this
-// process runs.
+// config of corbie up, and the address and the first token of the gateway
+// this process runs.
 func (e *Env) programEnv() []string {
 	env := os.Environ()
 	if e.Given("config") || e.cmd.Name == "up" {

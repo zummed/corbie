@@ -331,6 +331,10 @@ A send or a call needs the sender's permissions, a send or call job's own
   keyed run, or `{ client }`. A run reads its own address as
   `${run.address}`, and its key as `${run.key}`, which is null except at a keyed
   location.
+- The run reads the principal a client sent an event for as
+  `event.principal`, and the principal a client started it for as
+  `run.principal`. A gateway names the principal of its caller's token
+  (`corbie manual gateway-clients`). Each is empty when the client named none.
 - A send to a transient location starts a new run with the event's data as
   its input. A statechart is then given the event; any other machine is given
   only the start.

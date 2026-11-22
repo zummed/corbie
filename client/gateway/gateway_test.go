@@ -71,6 +71,12 @@ type part struct{ name, filename, contents string }
 // upload sends a start: an upload form of these parts.
 func (c caller) upload(parts ...part) (int, map[string]any, string) {
 	c.t.Helper()
+	return c.uploadTo("/runs", parts...)
+}
+
+// uploadTo sends an upload form of these parts to a route.
+func (c caller) uploadTo(route string, parts ...part) (int, map[string]any, string) {
+	c.t.Helper()
 	var body bytes.Buffer
 	form := multipart.NewWriter(&body)
 	for _, p := range parts {
@@ -87,7 +93,7 @@ func (c caller) upload(parts ...part) (int, map[string]any, string) {
 		io.WriteString(w, p.contents)
 	}
 	form.Close()
-	return c.send("POST", "/runs", form.FormDataContentType(), &body)
+	return c.send("POST", route, form.FormDataContentType(), &body)
 }
 
 // placed counts the trees the tests submit, each at a prefix of its own.
@@ -145,7 +151,7 @@ func TestGateway(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer local.Close()
-	server := httptest.NewServer(&gateway.Gateway{Client: local.Client, Token: "the-token"})
+	server := httptest.NewServer(&gateway.Gateway{Callers: map[string]*client.Client{"the-token": local.Client}})
 	defer server.Close()
 	c := caller{t: t, url: server.URL, token: "the-token", client: local.Client}
 
@@ -253,7 +259,7 @@ func TestOnlyTheWholeTokenIsTaken(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer local.Close()
-	server := httptest.NewServer(&gateway.Gateway{Client: local.Client, Token: "the-token"})
+	server := httptest.NewServer(&gateway.Gateway{Callers: map[string]*client.Client{"the-token": local.Client}})
 	defer server.Close()
 	for _, wrong := range []string{"", "t", "the-toke", "the-tokens", "the-tokem", "The-token", "the-token the-token"} {
 		if status, _, text := (caller{t: t, url: server.URL, token: wrong}).do("GET", "/runs", ""); status != http.StatusUnauthorized {
@@ -277,7 +283,7 @@ func TestOnlyTheWholeTokenIsTaken(t *testing.T) {
 			t.Errorf("Authorization: %s was answered %d", shown, resp.StatusCode)
 		}
 	}
-	none := httptest.NewServer(&gateway.Gateway{Client: local.Client})
+	none := httptest.NewServer(&gateway.Gateway{Callers: map[string]*client.Client{"": local.Client}})
 	defer none.Close()
 	for _, shown := range []string{"", "the-token"} {
 		if status, _, text := (caller{t: t, url: none.URL, token: shown}).do("GET", "/runs", ""); status != http.StatusUnauthorized {

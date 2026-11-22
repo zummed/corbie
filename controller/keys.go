@@ -810,7 +810,7 @@ func (p *pass) route(a *arrival) error {
 		}
 	}
 	out := &instance.Message{Kind: instance.KindSend, To: to, Sender: &machine.Address{Client: a.sender},
-		Cause: &instance.Cause{Client: a.sender, Message: base}, Event: msg.Event}
+		Cause: &instance.Cause{Client: a.sender, Message: base, Principal: msg.Principal}, Event: msg.Event}
 	if to.Run != "" {
 		out.Instance = to.Run
 	} else {

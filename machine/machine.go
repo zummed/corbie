@@ -29,6 +29,9 @@ type Event struct {
 	// Answer says the event is the answer to a ticket. Only the controller
 	// sets it, when it takes an answer.
 	Answer bool `json:"answer,omitzero"`
+	// Principal is the principal a client sent the event for, where the client
+	// named one. Only the controller sets it, from the client's message.
+	Principal string `json:"principal,omitzero"`
 }
 
 // The names of the events Corbie itself sends a machine.

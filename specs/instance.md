@@ -23,10 +23,18 @@ Each event in a step names its `cause`, which the controller writes:
 | Event | `cause` |
 |---|---|
 | asked for by a step of a run: a send, a call, a start, a cancel, an event to or from a child, an end, a tell; or the note or failure the controller writes when one of these cannot be delivered | `{ run, step }`: that run and step |
-| from a client: a start, an event, a call, a submit that starts a singleton | `{ client, message }`: the client and its message |
+| from a client: a start, an event, a call, a submit that starts a singleton | `{ client, message, principal }`: the client, its message, and the principal the message names, if it names one |
 | from the run's own script job or timer | none; `from` names the job or the timer, and the step that asked for it lists it among its asks |
 
 A viewer follows a request from a client's message through every send, call and child to its end by these causes. A run's cause is the cause of its start.
+
+A principal is the person or the service the client sent the message for:
+
+- A gateway writes the principal its caller's token names (see client.md).
+- A principal is the client's claim. A client with its own key writes any principal, or none, and the controller does not check it.
+- A head names no principal: its cause is `{ client, message }`. The principal is in the record, for those who may read it.
+- A machine reads the principal of an event as `event.principal` and the principal its run was started for as `run.principal` (see machine.md).
+- A message that reaches no run leaves no cause, so its principal is not kept: a submit that starts no singleton, and a secret or a value that is set.
 
 A watcher is shown, for each step, the run's `state`, in one shape for every type. It holds nothing the head says.
 

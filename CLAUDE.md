@@ -28,6 +28,7 @@ And these hold everywhere:
 - Nothing important lives in memory. Everything is in the store, and any process can stop at any moment.
 - Security rests on a few rules that can be said in a sentence. Do not add a check where there is no real boundary, and do not add fiddly mechanism for a special case. What Corbie does not defend against is said plainly in `specs/permission.md`.
 - If a normal person would need a special config, package or key to set something up, the design is wrong.
+- The simple case is the default and needs no setting. Each further feature is optional, is added to the simple case without changing it, and is documented after it. A process prints what it is set up to do when it starts, and a refusal says why, so that a person sets it up and finds a fault without reading the code.
 - Corbie's ideals come before any one application's convenience.
 
 ## Working on the specs

@@ -111,7 +111,7 @@ func TestUpGivesAProgramTheConfigAndTheGateway(t *testing.T) {
 	at := "/" + filepath.Base(dir)
 	t.Setenv("PORT_OF_THIS_TEST", "5432")
 	t.Chdir(dir)
-	program := standIn(t, "frob", `corbie-run() { :; }; echo "frob ran"`)
+	program := standIn(t, "frob", `echo "frob ran"`)
 	status, out, said := corbie("", "up", "--in", dir, "--value", "HOST=db.lan", "--value-env", "PORT_OF_THIS_TEST", "frob", "--flag")
 	if status != 1 || !strings.Contains(said, "the program frob stopped") {
 		t.Fatalf("corbie up frob ended %d and said:\n%s", status, said)

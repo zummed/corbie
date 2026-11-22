@@ -18,7 +18,7 @@ Every request carries the gateway's token. Every request acts as the gateway's
 client, limited by that client's ceiling, which no request can raise.
 
 That is all a gateway needs. `corbie manual gateway-clients` adds several
-clients, the person behind each request and sign-in through an OIDC issuer.
+clients, the principal behind each request and sign-in through an OIDC issuer.
 
 Start the gateway
 -----------------

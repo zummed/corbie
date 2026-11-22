@@ -1123,7 +1123,7 @@ func cmdClientValueRemove(e *Env, args []string) error {
 }
 
 // cmdClientShow prints which client the command is sent as: this config's,
-// or through a gateway the one the token names, with its person.
+// or through a gateway the one the token names, with its principal.
 func cmdClientShow(e *Env, args []string) error {
 	rest, err := e.Parse(args)
 	if err != nil {
@@ -1141,9 +1141,9 @@ func cmdClientShow(e *Env, args []string) error {
 		return err
 	}
 	return e.Print(who, func() string {
-		text := "client  " + who.Client + "\n"
-		if who.Person != "" {
-			text += fmt.Sprintf("person  %q\n", who.Person)
+		text := "client     " + who.Client + "\n"
+		if who.Principal != "" {
+			text += fmt.Sprintf("principal  %q\n", who.Principal)
 		}
 		return text
 	})

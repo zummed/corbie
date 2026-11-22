@@ -281,10 +281,10 @@ type Run struct {
 	Key      *string
 	Context  string
 	Tree     string
-	// Person is the person a client started the run for, where the client
+	// Principal is the principal a client started the run for, where the client
 	// named one.
-	Person string
-	Values map[string]string
+	Principal string
+	Values    map[string]string
 	// Recorded is what the run read at its first step of the machines
 	// recorded at the locations its definition calls, by location.
 	Recorded map[string]Recorded
@@ -394,7 +394,7 @@ func (e *Evaluator) give(name string, v any) (goja.Value, error) {
 // Eval gives the value of one expression in a scope.
 func (e *Evaluator) Eval(src string, scope Scope) (any, error) {
 	scope = maps.Clone(scope)
-	run := map[string]any{"id": e.of.ID, "location": e.of.Location, "key": nil, "context": e.of.Context, "tree": e.of.Tree, "person": e.of.Person}
+	run := map[string]any{"id": e.of.ID, "location": e.of.Location, "key": nil, "context": e.of.Context, "tree": e.of.Tree, "principal": e.of.Principal}
 	to := e.of.Address()
 	address := map[string]any{"at": to.At, "run": to.Run}
 	if to.Key != nil {

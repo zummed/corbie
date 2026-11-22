@@ -115,7 +115,7 @@ corbie <name> ….
                                    written once for each client
   gateway --token-file <file>      a file with a line for each token a request
                                    may carry: the token, then the client it
-                                   names and the person it was given to; by
+                                   names and the principal it was given to; by
                                    default it makes a token for each client
                                    and prints it
   gateway --oidc-issuer <address>  an OIDC issuer whose tokens the gateway
@@ -124,7 +124,10 @@ corbie <name> ….
                                    with the issuer
   gateway --oidc-client-claim <c>  the claim that names the client; default
                                    roles
-  gateway --oidc-person-claim <c>  the claim that is the person; default sub
+  gateway --oidc-principal-claim <c>
+                                   the claim that is the principal: the
+                                   person or the service a token is for;
+                                   default sub
   store --listen host:port         where it listens this time; default where
                                    corbie init store --listen said
   store --timeout <time>           closes a connection that sends nothing for
@@ -517,9 +520,9 @@ controller: remove the other first with corbie client remove.
 The config keeps the controller's name with its key, so a card with another
 key under that name is refused without --replace.`},
 
-		{Name: "client show", Summary: "print which client a command is sent as, and for which person", Run: cmdClientShow, Help: `
+		{Name: "client show", Summary: "print which client a command is sent as, and for which principal", Run: cmdClientShow, Help: `
 It prints the name of this config's client. With --gateway it prints the
-client and the person the gateway's token names: what a command with that
+client and the principal the gateway's token names: what a command with that
 token is sent as.
 
   corbie client show --gateway http://127.0.0.1:8371

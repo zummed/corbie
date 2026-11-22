@@ -28,20 +28,22 @@ These are new.
   `Authorization`: `corbie manual gateway`.
 - A gateway runs as an AWS Lambda function, called through the function's
   URL: `corbie manual functions`.
-- A machine reads the person a client sent an event for as `event.person`,
-  and the person a client started its run for as `run.person`.
+- A machine reads the principal a client sent an event for as
+  `event.principal`, and the principal a client started its run for as
+  `run.principal`.
 - A gateway acts as several clients: `gateway --client <config>`, once for
-  each. A line of `--token-file` is a token, the client it names and the person
-  it was given to: `corbie manual gateway-clients`.
-- A run's record names the person a client sent each message for, as `person`
-  in a `cause`.
+  each. A line of `--token-file` is a token, the client it names and the
+  principal it was given to, a person or a service:
+  `corbie manual gateway-clients`.
+- A run's record names the principal a client sent each message for, as
+  `principal` in a `cause`.
 - The gateway does everything a client does. New routes submit a tree, set,
   remove and list secrets and values, send an event to a location or a key, and
   give a run's tickets, one step and the files of its result: `corbie manual routes`.
 - A gateway takes the tokens of an OIDC issuer: `gateway --oidc-issuer` and
-  `--oidc-audience`. A claim names the client and another the person.
+  `--oidc-audience`. A claim names the client and another the principal.
 - `corbie client show` prints which client a command is sent as, and through a
-  gateway the person its token names.
+  gateway the principal its token names.
 - `corbie run …`, `corbie client secret …` and `corbie client value …` take
   `--gateway <address>`, and send the token in `CORBIE_GATEWAY_TOKEN`. A Go
   program makes such a client with `client.Remote`.

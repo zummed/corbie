@@ -273,7 +273,7 @@ func (b *build) record(event machine.Event, a *arrival, own bool) {
 	b.step.Events = append(b.step.Events, instance.Arrived{Event: event, Source: a.name, Cause: b.cause(a), Own: own})
 }
 
-// cause gives what sent a message: a client's message, with the person the
+// cause gives what sent a message: a client's message, with the principal the
 // client sent it for, or the step of a run that asked the controller for it.
 // A wake and a runner's message have none.
 func (b *build) cause(a *arrival) instance.Cause {
@@ -281,7 +281,7 @@ func (b *build) cause(a *arrival) instance.Cause {
 	case a.wake:
 		return instance.Cause{}
 	case a.kind == identity.Client:
-		return instance.Cause{Client: a.sender, Message: a.name[strings.LastIndexByte(a.name, '/')+1:], Person: a.msg.Person}
+		return instance.Cause{Client: a.sender, Message: a.name[strings.LastIndexByte(a.name, '/')+1:], Principal: a.msg.Principal}
 	case a.kind == identity.Controller && a.msg.Cause != nil:
 		return *a.msg.Cause
 	}
@@ -290,8 +290,8 @@ func (b *build) cause(a *arrival) instance.Cause {
 
 // give hands an event to the machine.
 func (b *build) give(event machine.Event, a *arrival) {
-	// The person a client sent the message for, which the machine reads.
-	event.Person = b.cause(a).Person
+	// The principal a client sent the message for, which the machine reads.
+	event.Principal = b.cause(a).Principal
 	b.use(a)
 	b.record(event, a, false)
 	b.events = append(b.events, event)
@@ -833,7 +833,7 @@ func (b *build) run() machine.Run { return runOf(b.inst, b.st) }
 // runOf is what an expression reads of an instance in a state. Only a run
 // at a keyed location has a key.
 func runOf(inst string, st *instance.State) machine.Run {
-	run := machine.Run{ID: inst, Location: st.Location, Context: st.Above.Context, Tree: st.Tree, Person: st.Above.Cause.Person, Values: st.Above.Values, Recorded: st.Recorded}
+	run := machine.Run{ID: inst, Location: st.Location, Context: st.Above.Context, Tree: st.Tree, Principal: st.Above.Cause.Principal, Values: st.Above.Values, Recorded: st.Recorded}
 	if st.Lifetime == machine.LifetimeKeyed {
 		key := st.Key
 		run.Key = &key
@@ -1427,7 +1427,7 @@ func (p *pass) begin(inst string, waiting []*arrival) (*taken, error) {
 		s, copied.Input = &copied, start.msg.Event.Data
 		st.Input = s.Input
 		first := sentEvent(start.msg)
-		first.Person = b.cause(start).Person
+		first.Principal = b.cause(start).Principal
 		b.events = []machine.Event{first}
 		b.hear(start)
 	}

@@ -203,7 +203,7 @@ Expressions are JavaScript. They read `input`, which is what the machine was sta
   run.address    the address other runs send to this run with: { at, run }, with key for a keyed run
   run.context    the absolute path of the directory last submitted at the run's tree
   run.tree       the prefix of the run's tree, such as /home
-  run.person     the person a client started the run for; empty when the client named none
+  run.principal  the principal a client started the run for; empty when the client named none
 ```
 
 `run.address` is what `event.from` gives a receiver of this run's sends, so a run hands out its own return address:
@@ -393,16 +393,16 @@ receive: { set: [thermostats/*, client:panel], stop: [client:panel] }  # by even
 
 The controller writes the sender into `event.from`: `{ at, run }`, with `key` for a keyed run, or `{ client }`. A send to it is a reply, and an address that names both a run and a key goes to the run. Anything about the sender in the data is only the sender's claim.
 
-The controller writes the person a client sent an event for into `event.person`, and the person a client started the run for into `run.person` (see instance.md):
+The controller writes the principal a client sent an event for into `event.principal`, and the principal a client started the run for into `run.principal` (see instance.md):
 
-- An event to the run's address and an answer to a ticket each have `event.person`.
-- Both are empty when the client named no person, and for what another run sent or started.
-- A person is the client's claim. A machine that decides by one trusts every client its `receive:` admits, and every client that holds its ticket.
+- An event to the run's address and an answer to a ticket each have `event.principal`.
+- Both are empty when the client named no principal, and for what another run sent or started.
+- A principal is the client's claim. A machine that decides by one trusts every client its `receive:` admits, and every client that holds its ticket.
 
 ```yaml
 on:
   approval:
-    - { when: "${event.person != '' && event.person != run.person}", go: approved }    # not the person who asked
+    - { when: "${event.principal != '' && event.principal != run.principal}", go: approved }    # not the principal that asked
 ```
 
 | What happens to a send | Result |

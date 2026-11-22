@@ -26,7 +26,7 @@ import (
 
 // An Issuer is an OIDC issuer whose tokens the gateway takes. A token it
 // signed for the audience names a client of the gateway's by a claim, and a
-// person by another.
+// principal by another.
 type Issuer struct {
 	// Address is the issuer as its tokens name it, and where it publishes
 	// its keys: https, or http on this computer.
@@ -34,8 +34,8 @@ type Issuer struct {
 	// Audience is who a token must be for.
 	Audience string
 	// ClientClaim is the claim that names the client: text, or a list of
-	// texts. PersonClaim is the claim that is the person.
-	ClientClaim, PersonClaim string
+	// texts. PrincipalClaim is the claim that is the principal.
+	ClientClaim, PrincipalClaim string
 	// Clients are the gateway's clients. A token names the first whose name
 	// is among its claim's values.
 	Clients []*client.Client
@@ -189,11 +189,11 @@ func (i *Issuer) key(ctx context.Context, id string) crypto.PublicKey {
 	return i.keys[id]
 }
 
-// Caller gives the client a token names, sending for the token's person,
+// Caller gives the client a token names, sending for the token's principal,
 // or why the token is not taken. A token is taken when the issuer signed
 // it, it names the issuer and the audience, its time has come and has not
 // passed, one of its client claim's values is a client of the gateway's,
-// and it has the person's claim.
+// and it has the principal's claim.
 func (i *Issuer) Caller(ctx context.Context, token string) (*client.Client, error) {
 	parts := strings.Split(token, ".")
 	if len(parts) != 3 {
@@ -241,15 +241,15 @@ func (i *Issuer) Caller(ctx context.Context, token string) (*client.Client, erro
 	case now.Add(leeway).Before(time.Unix(int64(begins), 0)):
 		return nil, errors.New("its time has not come")
 	}
-	person, _ := claims[i.PersonClaim].(string)
-	if person == "" {
-		return nil, fmt.Errorf("it has no claim %s, which names the person", i.PersonClaim)
+	principal, _ := claims[i.PrincipalClaim].(string)
+	if principal == "" {
+		return nil, fmt.Errorf("it has no claim %s, which names the principal", i.PrincipalClaim)
 	}
 	named := texts(claims[i.ClientClaim])
 	var clients []string
 	for _, c := range i.Clients {
 		if slices.Contains(named, c.ID.Name) {
-			return c.As(person), nil
+			return c.As(principal), nil
 		}
 		clients = append(clients, c.ID.Name)
 	}

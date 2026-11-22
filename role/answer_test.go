@@ -234,7 +234,7 @@ func Test_role_serverless_host_calls_a_gateway_for_each_request(t *testing.T) {
 	if status != 0 || !strings.Contains(said, "gateway for the client host-client, answering the requests to this function's URL") {
 		t.Fatalf("corbie start gateway ended %d: %s", status, said)
 	}
-	if first, body := host.answered(t, "call-1"); !strings.Contains(first, `"statusCode":200`) || strings.TrimSpace(body) != `{"client":"host-client","person":"alice@example.com"}` {
+	if first, body := host.answered(t, "call-1"); !strings.Contains(first, `"statusCode":200`) || strings.TrimSpace(body) != `{"client":"host-client","principal":"alice@example.com"}` {
 		t.Errorf("a request with a token was answered %s and %q", first, body)
 	}
 	if first, body := host.answered(t, "call-2"); !strings.Contains(first, `"statusCode":401`) || !strings.Contains(body, "does not show a token") {

@@ -102,16 +102,16 @@ func (i *issuer) token(alg, kid string, claims map[string]any) string {
 
 // A gateway with an OIDC issuer takes a token the issuer signed for the
 // gateway's audience: one of the claim's values names the client, and
-// another claim is the person. A token that is forged, from another issuer,
+// another claim is the principal. A token that is forged, from another issuer,
 // for another audience, past its time, signed in a way the key is not for,
-// or that names no client or no person, is refused, and the refusal says
+// or that names no client or no principal, is refused, and the refusal says
 // why.
 func Test_client_gateway_takes_an_issuers_tokens(t *testing.T) {
 	s := newSeveral(t)
 	viewer, editor := s.enrol("viewer"), s.enrol("editor", "at:/**")
 	idp := newIssuer(t)
 	var ahead atomic.Int64
-	held := &gateway.Issuer{Address: idp.server.URL, Audience: "api://corbie", ClientClaim: "roles", PersonClaim: "preferred_username",
+	held := &gateway.Issuer{Address: idp.server.URL, Audience: "api://corbie", ClientClaim: "roles", PrincipalClaim: "preferred_username",
 		Clients: []*client.Client{viewer, editor}, Now: func() time.Time { return time.Now().Add(time.Duration(ahead.Load())) }}
 	if err := held.Open(context.Background()); err != nil {
 		t.Fatal(err)
@@ -132,7 +132,7 @@ func Test_client_gateway_takes_an_issuers_tokens(t *testing.T) {
 		return all
 	}
 
-	// The issuer's token names the client and the person.
+	// The issuer's token names the client and the principal.
 	alice := as(idp.token("RS256", "rsa-1", claims(nil)))
 	at := alice.place(door, nil)
 	id := alice.start(map[string]any{"at": at})
@@ -146,7 +146,7 @@ func Test_client_gateway_takes_an_issuers_tokens(t *testing.T) {
 		}
 		time.Sleep(10 * time.Millisecond)
 	}
-	if cause, _ := run["cause"].(map[string]any); cause["client"] != "editor" || cause["person"] != "alice@example.com" {
+	if cause, _ := run["cause"].(map[string]any); cause["client"] != "editor" || cause["principal"] != "alice@example.com" {
 		t.Fatalf("the run's cause is %v", run["cause"])
 	}
 	// A key on the curve P-256, an audience among several, a role among

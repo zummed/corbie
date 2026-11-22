@@ -203,11 +203,11 @@ const still = `
 	  over: { end: done }
 `
 
-// A client's message that names a person leaves the person in the cause of
+// A client's message that names a principal leaves the principal in the cause of
 // what the message does: the start of a run, an event to it, an event sent
 // to a key, a call into another client's tree and the singleton a submit
 // starts. A message that names none leaves none.
-func Test_inst_cause_names_the_person(t *testing.T) {
+func Test_inst_cause_names_the_principal(t *testing.T) {
 	w := newWorld(t)
 	alice, bob := w.client.As("alice@example.com"), w.client.As("bob@example.com")
 	files := map[string]string{"/t/front": front, "/t/helper": helper, "/t/room": talk, "/t/still": still,
@@ -218,7 +218,7 @@ func Test_inst_cause_names_the_person(t *testing.T) {
 	w.settle()
 	// The singleton the submit started.
 	for run := range w.at("/t/still") {
-		if cause, _ := w.causeOf(run, machine.Start); cause.Client != "c1" || cause.Person != "alice@example.com" {
+		if cause, _ := w.causeOf(run, machine.Start); cause.Client != "c1" || cause.Principal != "alice@example.com" {
 			t.Errorf("the singleton's start names %+v", cause)
 		}
 	}
@@ -232,16 +232,16 @@ func Test_inst_cause_names_the_person(t *testing.T) {
 		t.Fatal(err)
 	}
 	w.settle()
-	if cause, _ := w.causeOf(run, machine.Start); cause.Client != "c1" || cause.Message == "" || cause.Person != "alice@example.com" {
+	if cause, _ := w.causeOf(run, machine.Start); cause.Client != "c1" || cause.Message == "" || cause.Principal != "alice@example.com" {
 		t.Errorf("the start names %+v", cause)
 	}
-	if cause, _ := w.causeOf(run, "go"); cause.Client != "c1" || cause.Person != "bob@example.com" {
+	if cause, _ := w.causeOf(run, "go"); cause.Client != "c1" || cause.Principal != "bob@example.com" {
 		t.Errorf("go names %+v", cause)
 	}
-	// What the run asked for names the run's step, and no person.
+	// What the run asked for names the run's step, and no principal.
 	if called := w.called(run); len(called) != 1 {
 		t.Fatalf("the desk called %v", called)
-	} else if cause, _ := w.causeOf(called[0], machine.Start); cause.Run != run || cause.Person != "" {
+	} else if cause, _ := w.causeOf(called[0], machine.Start); cause.Run != run || cause.Principal != "" {
 		t.Errorf("the called run's start names %+v", cause)
 	}
 	// An event sent to a key.
@@ -254,7 +254,7 @@ func Test_inst_cause_names_the_person(t *testing.T) {
 	for room := range w.at("/t/room") {
 		if head := w.head(room); head.Key == key {
 			found = true
-			if cause, _ := w.causeOf(room, "said"); cause.Client != "c1" || cause.Person != "bob@example.com" {
+			if cause, _ := w.causeOf(room, "said"); cause.Client != "c1" || cause.Principal != "bob@example.com" {
 				t.Errorf("the event sent to a key names %+v", cause)
 			}
 		}
@@ -273,14 +273,14 @@ func Test_inst_cause_names_the_person(t *testing.T) {
 	if err != nil || r == nil || r.Run == "" {
 		t.Fatalf("the call's receipt is %+v, %v", r, err)
 	}
-	if cause, _ := w.causeOf(r.Run, machine.Start); cause.Client != "c2" || cause.Person != "carol@example.com" {
+	if cause, _ := w.causeOf(r.Run, machine.Start); cause.Client != "c2" || cause.Principal != "carol@example.com" {
 		t.Errorf("the called run's start names %+v", cause)
 	}
-	// A message that names no person, and a cancel that names one.
+	// A message that names no principal, and a cancel that names one.
 	plain := w.startAt(w.client, "/t/front", client.Start{})
 	w.settle()
-	if cause, _ := w.causeOf(plain, machine.Start); cause.Client != "c1" || cause.Person != "" {
-		t.Errorf("a start with no person names %+v", cause)
+	if cause, _ := w.causeOf(plain, machine.Start); cause.Client != "c1" || cause.Principal != "" {
+		t.Errorf("a start with no principal names %+v", cause)
 	}
 	if _, err := bob.Cancel(ctx, plain, time.Hour); err != nil {
 		t.Fatal(err)
@@ -288,14 +288,14 @@ func Test_inst_cause_names_the_person(t *testing.T) {
 	w.settle()
 	steps := w.steps(plain)
 	last := steps[len(steps)-1]
-	if w.head(plain).Status != instance.Cancelled || len(last.Events) != 1 || last.Events[0].Cause.Client != "c1" || last.Events[0].Cause.Person != "bob@example.com" {
+	if w.head(plain).Status != instance.Cancelled || len(last.Events) != 1 || last.Events[0].Cause.Client != "c1" || last.Events[0].Cause.Principal != "bob@example.com" {
 		t.Errorf("the cancel left the run %s, and its last step took %+v", w.head(plain).Status, last.Events)
 	}
 }
 
-// A head is sealed to nobody, and names no person: the person of the
+// A head is sealed to nobody, and names no principal: the principal of the
 // message that started a run is in the run's record alone.
-func Test_inst_head_names_no_person(t *testing.T) {
+func Test_inst_head_names_no_principal(t *testing.T) {
 	w := newWorld(t)
 	alice := w.client.As("alice@example.com")
 	if r := w.submitTree(alice, w.tree("/t", "/srv/t", map[string]string{"/t/still": still, "/t/lookup": waiter}, nil)); !r.Taken {
@@ -311,18 +311,18 @@ func Test_inst_head_names_no_person(t *testing.T) {
 		t.Fatalf("the runs are %v", runs)
 	}
 	for _, run := range runs {
-		if cause, _ := w.causeOf(run, machine.Start); cause.Person != "alice@example.com" {
+		if cause, _ := w.causeOf(run, machine.Start); cause.Principal != "alice@example.com" {
 			t.Errorf("the record of %s names %+v", run, cause)
 		}
 		head := w.head(run)
-		if head.Cause.Client != "c1" || head.Cause.Message == "" || head.Cause.Person != "" {
+		if head.Cause.Client != "c1" || head.Cause.Message == "" || head.Cause.Principal != "" {
 			t.Errorf("the head of %s names %+v", run, head.Cause)
 		}
 	}
 }
 
 // signed is the transient file at /t/signed: it waits for an answer to its
-// ticket from a person other than the one it was started for, and ends with
+// ticket from a principal other than the one it was started for, and ends with
 // who asked and who approved.
 const signed = `
 	statechart: signed
@@ -332,22 +332,22 @@ const signed = `
 	    ticket: approval
 	    on:
 	      approval:
-	        - { when: "${event.person != '' && event.person != run.person}", go: approved }
+	        - { when: "${event.principal != '' && event.principal != run.principal}", go: approved }
 	        - { go: waiting }
 	      note: { go: noted }
 	  noted:
 	    end: done
-	    output: { asked: "${run.person}", noted: "${event.person}" }
+	    output: { asked: "${run.principal}", noted: "${event.principal}" }
 	  approved:
 	    end: done
-	    output: { asked: "${run.person}", approved: "${event.person}" }
+	    output: { asked: "${run.principal}", approved: "${event.principal}" }
 `
 
-// A machine reads the person a client started its run for and the person a
+// A machine reads the principal a client started its run for and the principal a
 // client sent an event for, and decides by them: an approval is taken only
-// from a person other than the one who asked. A client that names no person
+// from a principal other than the one who asked. A client that names no principal
 // gives none.
-func Test_machine_reads_the_person_of_a_run_and_of_an_event(t *testing.T) {
+func Test_machine_reads_the_principal_of_a_run_and_of_an_event(t *testing.T) {
 	w := newWorld(t)
 	alice, bob := w.client.As("alice@example.com"), w.client.As("bob@example.com")
 	if r := w.submitTree(w.client, w.tree("/t", "/srv/t", map[string]string{"/t/signed": signed}, nil)); !r.Taken {
@@ -367,7 +367,7 @@ func Test_machine_reads_the_person_of_a_run_and_of_an_event(t *testing.T) {
 	alice.Reply(ctx, run, ticket(run), true, time.Hour)
 	w.settle()
 	if head := w.head(run); head.Status != instance.Running {
-		t.Fatalf("after the answer of the person who asked, the run is %s", head.Status)
+		t.Fatalf("after the answer of the principal that asked, the run is %s", head.Status)
 	}
 	bob.Reply(ctx, run, ticket(run), true, time.Hour)
 	w.settle()
@@ -375,7 +375,7 @@ func Test_machine_reads_the_person_of_a_run_and_of_an_event(t *testing.T) {
 	if out, _ := last.State.Output.(map[string]any); last.State.Status != instance.Done || out["asked"] != "alice@example.com" || out["approved"] != "bob@example.com" {
 		t.Fatalf("the run ended %s with %v", last.State.Status, last.State.Output)
 	}
-	// An event sent to the run by its address has its person too.
+	// An event sent to the run by its address has its principal too.
 	run = w.startAt(alice, "/t/signed", client.Start{})
 	w.settle()
 	bob.Send(ctx, w.to(run), "note", nil, time.Hour)
@@ -383,18 +383,18 @@ func Test_machine_reads_the_person_of_a_run_and_of_an_event(t *testing.T) {
 	if out, _ := w.latest(run).State.Output.(map[string]any); out["asked"] != "alice@example.com" || out["noted"] != "bob@example.com" {
 		t.Fatalf("the run ended with %v", w.latest(run).State.Output)
 	}
-	// A client that names no person gives none, and its answer approves
+	// A client that names no principal gives none, and its answer approves
 	// nothing.
 	run = w.startAt(w.client, "/t/signed", client.Start{})
 	w.settle()
 	w.client.Reply(ctx, run, ticket(run), true, time.Hour)
 	w.settle()
 	if head := w.head(run); head.Status != instance.Running {
-		t.Fatalf("after an answer that names no person, the run is %s", head.Status)
+		t.Fatalf("after an answer that names no principal, the run is %s", head.Status)
 	}
 	w.client.Send(ctx, w.to(run), "note", nil, time.Hour)
 	w.settle()
 	if out, _ := w.latest(run).State.Output.(map[string]any); out["asked"] != "" || out["noted"] != "" {
-		t.Fatalf("with no person named, the run ended with %v", w.latest(run).State.Output)
+		t.Fatalf("with no principal named, the run ended with %v", w.latest(run).State.Output)
 	}
 }

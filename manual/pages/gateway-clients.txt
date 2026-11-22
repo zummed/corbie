@@ -1,4 +1,4 @@
-Gateway clients: one gateway for several clients, with the person behind each request and sign-in through an OIDC issuer.
+Gateway clients: one gateway for several clients, with the principal behind each request and sign-in through an OIDC issuer.
 
 Use it when people who may do different things send to one gateway, and a
 run's record must name who sent each request. A gateway with one client and
@@ -8,9 +8,11 @@ How it works
 ------------
 
 1. A caller shows a token.
-2. The token names a client, and the person the token was given to.
+2. The token names a client, and the principal the token was given to.
 3. The gateway sends the request as that client.
-4. The run's record names the person.
+4. The run's record names the principal.
+
+A principal is the person or the service a token was given to.
 
 Several clients
 ---------------
@@ -20,7 +22,7 @@ one client, enrolled with its own ceiling (`corbie manual parties`):
 
   corbie client card --name editor --config /etc/corbie/editor | corbie controller enrol - --ceiling "at:/boards" | corbie client trust - --config /etc/corbie/editor
 
-A line of the token file is a token, the client's name and the person.
+A line of the token file is a token, the client's name and the principal.
 
   179bd50585d0   editor   alice@example.com
   93ab77c0e1f2   editor   bob@example.com
@@ -34,26 +36,26 @@ A line of the token file is a token, the client's name and the person.
   corbie run show $ID
     editor/20261013T185126.250Z-571d935912  running  statechart door  step 1
       at: /door
-      person: "alice@example.com"
+      principal: "alice@example.com"
 
 - With no `--token-file`, the gateway prints a token for each client, and no
-  request has a person.
+  request has a principal.
 - The gateway reads no token from an empty line or a line that starts with `#`.
-- A list of runs names no person. `corbie run show <id> --record` names the
-  person after each event a client sent.
+- A list of runs names no principal. `corbie run show <id> --record` names the
+  principal after each event a client sent.
 - Whoever has a token is its client. The gateway's computer holds each
   client's key.
 
 Which client a token names
 --------------------------
 
-`corbie client show` prints the client and the person a token names: what a
+`corbie client show` prints the client and the principal a token names: what a
 request with that token is sent as.
 
   export CORBIE_GATEWAY_TOKEN=179bd50585d0
   corbie client show --gateway http://127.0.0.1:8371
-    client  editor
-    person  "alice@example.com"
+    client     editor
+    principal  "alice@example.com"
 
 Tokens of an OIDC issuer
 ------------------------
@@ -64,21 +66,22 @@ that the issuer says who may be which client.
 1. A caller gets a token from the issuer and shows it to the gateway.
 2. The gateway checks the issuer's signature, the audience and the token's time.
 3. The token's `roles` name the client: the first `--client` whose name is among them.
-4. The token's `sub` is the person.
+4. The token's `sub` is the principal.
 
   corbie start gateway --client /etc/corbie/editor --client /etc/corbie/viewer --oidc-issuer https://login.example.com/tenant/v2.0 --oidc-audience api://corbie
     gateway takes the tokens of the OIDC issuer https://login.example.com/tenant/v2.0 for the audience api://corbie
-    gateway takes a token as the first of the clients editor, viewer that its claim roles names, for the person in its claim sub
+    gateway takes a token as the first of the clients editor, viewer that its claim roles names, for the principal in its claim sub
     gateway for the clients editor, viewer, listening on http://127.0.0.1:8371
 
-  --oidc-issuer <address>         the issuer, as its tokens name it
-  --oidc-audience <text>          who a token must be for
-  --oidc-client-claim <claim>     the claim that names the client; default roles
-  --oidc-person-claim <claim>     the claim that is the person; default sub
+  --oidc-issuer <address>           the issuer, as its tokens name it
+  --oidc-audience <text>            who a token must be for
+  --oidc-client-claim <claim>       the claim that names the client; default roles
+  --oidc-principal-claim <claim>    the claim that is the principal; default sub
 
 - A token whose `roles` name several clients is the first of them in the order
   of `--client`. Write the client that may do most first.
-- For a person's sign-in name in Entra ID, give `--oidc-person-claim preferred_username`.
+- For a person's sign-in name in Entra ID, give
+  `--oidc-principal-claim preferred_username`.
 - The gateway has no page to sign in at. A caller gets its token from the
   issuer, and sends it as any token.
 
@@ -86,14 +89,14 @@ When a request is refused
 -------------------------
 
   401   the request does not show a token of the gateway's   no token, or one the gateway does not have
-  401   the request's token is not taken: <why>               an issuer's token: its signature, issuer, audience, time, client or person
+  401   the request's token is not taken: <why>               an issuer's token: its signature, issuer, audience, time, client or principal
   200   { "taken": false, "refused": "<why>" }                the controller refused the message, as the client's ceiling or the tree's client
   a run that ends `denied`, with its `layer` and `fix`        the run did what a permission layer does not allow
 
 - A refusal of an issuer's token says what the token has and what the gateway
   takes: `its claim roles is admin, which names none of the gateway's clients: editor, viewer`.
 - The gateway says what it is set up as when it starts: its clients, how many
-  tokens each has and for which persons, and its issuer.
+  tokens each has and for which principals, and its issuer.
 - The gateway prints nothing for a refused request. The caller is told why.
 
 Reference

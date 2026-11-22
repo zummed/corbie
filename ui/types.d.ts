@@ -272,7 +272,7 @@ export interface Cause {
   step?: number;
   client?: string;
   message?: string;
-  person?: string;
+  principal?: string;
 }
 
 export interface Trace {

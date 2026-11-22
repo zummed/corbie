@@ -849,8 +849,8 @@ func runText(run *client.Run, script bool) string {
 	if run.Cause.Run != "" {
 		fmt.Fprintf(&b, "  cause: %s step %d\n", run.Cause.Run, run.Cause.Step)
 	}
-	if run.Cause.Person != "" {
-		fmt.Fprintf(&b, "  person: %q\n", run.Cause.Person)
+	if run.Cause.Principal != "" {
+		fmt.Fprintf(&b, "  principal: %q\n", run.Cause.Principal)
 	}
 	if len(run.Labels) > 0 {
 		fmt.Fprintf(&b, "  labels: %s\n", labelsOf(run))
@@ -960,8 +960,8 @@ func (e *Env) entry(entry client.Entry) {
 		case event.From != "":
 			line += " from " + event.From
 		}
-		if person := event.Cause.Person; person != "" {
-			line += fmt.Sprintf(" for %q", person)
+		if principal := event.Cause.Principal; principal != "" {
+			line += fmt.Sprintf(" for %q", principal)
 		}
 		if failed, _ := event.Data.(map[string]any); failed["refused"] != nil {
 			// A refusal that reaches the run is printed in full with the

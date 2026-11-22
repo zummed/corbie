@@ -423,7 +423,7 @@ func (p *pass) carryTree(a *arrival, base string, entry *treeEntry) error {
 	slices.Sort(cancelled)
 	for _, done := range d.Done {
 		if done.Run != "" {
-			if err := p.startSingleton(entry.Client, a.msg.Person, base, done, running[done.Location]); err != nil {
+			if err := p.startSingleton(entry.Client, a.msg.Principal, base, done, running[done.Location]); err != nil {
 				return err
 			}
 		}
@@ -583,7 +583,7 @@ func (p *pass) runningAt(client, location, other string) (bool, error) {
 // cancelled; with none, those replaced gives. A start still waiting is
 // never the one replaced: it waits itself, and is left once the key's file
 // names this one.
-func (p *pass) startSingleton(client, person, base string, done instance.Recorded, running []string) error {
+func (p *pass) startSingleton(client, principal, base string, done instance.Recorded, running []string) error {
 	at := store.Key(p.ctl, done.Location, "")
 	name := store.Message(p.ctl, p.ctl, store.JobMessage(done.Run, base+".start"))
 	for {
@@ -604,7 +604,7 @@ func (p *pass) startSingleton(client, person, base string, done instance.Recorde
 		// its seed.
 		seed := make([]byte, 32)
 		rand.Read(seed)
-		msg := &instance.Message{Kind: instance.KindStart, Instance: done.Run, Cause: &instance.Cause{Client: client, Message: base, Person: person},
+		msg := &instance.Message{Kind: instance.KindStart, Instance: done.Run, Cause: &instance.Cause{Client: client, Message: base, Principal: principal},
 			Start: &instance.Start{Location: done.Location, Replaces: replaces, Seed: seed}}
 		if _, err := p.send(name, noEnd, msg, p.c.ID.Card); err != nil {
 			return err

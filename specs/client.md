@@ -114,7 +114,7 @@ Following from a terminal is one flag, `--watch`. It prints what the command pri
 
 `run send` to a key with no running run starts one, as the file's `lifetime: keyed` says, and `run send` to a transient location starts a new run of it. A client sends to the runs of its own trees with no `send:` entry, and only it cancels them. A send to another tree needs `send:` in the client's ceiling and `client:<its name>` in the receiver's `receive:` (see permission.md).
 
-`run show` prints a run's title, and `run ls` does not, since a listing reads only the heads. For a run another run started, `run show` prints `cause: <id> step <n>`. For a run a client's message started for a person, it prints `person:`, and `--record` writes the person after each event a client sent for one. In `--json`, a listing's row and `run show` give `cause`, and each step of a record gives the cause of each event and the run's `state` (see instance.md). `run show` can also print one step, one job's input and output, or the definition, can save a result's files to a directory, and with `--wait` stays until the run ends and prints its result.
+`run show` prints a run's title, and `run ls` does not, since a listing reads only the heads. For a run another run started, `run show` prints `cause: <id> step <n>`. For a run a client's message started for a principal, it prints `principal:`, and `--record` writes the principal after each event a client sent for one. In `--json`, a listing's row and `run show` give `cause`, and each step of a record gives the cause of each event and the run's `state` (see instance.md). `run show` can also print one step, one job's input and output, or the definition, can save a result's files to a directory, and with `--wait` stays until the run ends and prints its result.
 
 `run start <location>` sends a start; `run start --wait` waits for the run it started and `run start --watch` follows it. The tree's client starts a transient location with no `send:` entry. Another client's start is a call: its ceiling needs `send:` for the location, the file's `receive:` must list `client:<its name>`, and the start takes no labels or `--allow`. Under the ID it printed, it is shown only the call's result: the run's status and its output or error, and the result's files. A cancel of that ID is refused, naming the run the call started and its tree's client, which alone cancels it.
 
@@ -345,7 +345,7 @@ A tree belongs to the client that first submitted it. Every run keeps the defini
 
 ## The gateway
 
-The gateway offers the package over HTTP for applications not written in Go. Its routes do everything a client does: submit a tree, start a run of a location with an input, list, show and cancel runs, read a run's record, one step of it, its definition, its tickets and its files, send events and answers to a run, send an event to a location or to a key at one, and set, remove and list secrets and values. One route says which client and person the caller's token names. A listing and a record are each given as they stand, and with `?watch` as a stream that follows them. A stream the gateway closes ends with a message: `end` with the run when the run has ended, or `error` with the failure when the gateway could not read the store. A start is JSON, or an upload form when its input has files, which come out by their path in a result.
+The gateway offers the package over HTTP for applications not written in Go. Its routes do everything a client does: submit a tree, start a run of a location with an input, list, show and cancel runs, read a run's record, one step of it, its definition, its tickets and its files, send events and answers to a run, send an event to a location or to a key at one, and set, remove and list secrets and values. One route says which client and principal the caller's token names. A listing and a record are each given as they stand, and with `?watch` as a stream that follows them. A stream the gateway closes ends with a message: `end` with the run when the run has ended, or `error` with the failure when the gateway could not read the store. A start is JSON, or an upload form when its input has files, which come out by their path in a result.
 
 A submit is an upload form: the prefix, and each file of the directory by its path from the directory.
 
@@ -361,9 +361,9 @@ A gateway is started with `corbie start gateway`, alone or beside a controller a
 A gateway acts as one or more clients, and each of its tokens names one of them:
 
 1. A caller shows a token.
-2. The token names a client and the person the token was given to.
-3. The gateway sends the request as that client, and writes the person into each message it sends.
-4. The controller checks the message as it checks any client's, and writes the person into the cause (see instance.md).
+2. The token names a client and the principal the token was given to.
+3. The gateway sends the request as that client, and writes the principal into each message it sends.
+4. The controller checks the message as it checks any client's, and writes the principal into the cause (see instance.md).
 
 ```
 corbie start gateway                                                       this config's client, and a new token
@@ -373,7 +373,7 @@ corbie start gateway --client viewer --client editor --token-file tokens   the s
 
 `--client <config>` names a config whose client the gateway acts as, and is written once for each client. With none, the gateway acts as the client of its own config.
 
-`--token-file <file>` names a file with a line for each token: the token, the client's name, and the person the token was given to.
+`--token-file <file>` names a file with a line for each token: the token, the client's name, and the principal the token was given to.
 
 ```
 179bd50585d0   editor   alice@example.com
@@ -381,12 +381,12 @@ corbie start gateway --client viewer --client editor --token-file tokens   the s
 5c11d2a09b3e   viewer
 ```
 
-- A line with no person gives its requests none.
+- A line with no principal gives its requests none.
 - An empty line and a line that starts with `#` are passed over.
 - A line with a token alone names the client of a gateway that has one client.
-- With no token file, the gateway makes a token for each client and prints it, and no request has a person.
+- With no token file, the gateway makes a token for each client and prints it, and no request has a principal.
 - A token on two lines stops the gateway from starting, and so does a line whose client the gateway does not have. Each names the line.
-- The gateway reads the file when it starts, and says how many tokens it gave each client, and for which persons.
+- The gateway reads the file when it starts, and says how many tokens it gave each client, and for which principals.
 
 A gateway also takes the tokens of an OIDC issuer, such as Microsoft Entra ID:
 
@@ -397,14 +397,14 @@ corbie start gateway --client editor --client viewer --oidc-issuer https://login
 1. A caller shows a token the issuer signed.
 2. The gateway checks the signature with the keys the issuer publishes, and that the token names the issuer and the audience, and that its time has come and has not passed.
 3. The token's `roles` name the client: the first of the gateway's clients, in the order of `--client`, whose name is among them. The client that may do most is written first.
-4. The token's `sub` is the person.
+4. The token's `sub` is the principal.
 
 | Flag | Default | |
 |---|---|---|
 | `--oidc-issuer <address>` | none | the issuer, as its tokens name it: `https`, or `http` on this computer |
 | `--oidc-audience <text>` | none | who a token must be for; given with the issuer |
 | `--oidc-client-claim <claim>` | `roles` | the claim that names the client: a text, or a list of texts |
-| `--oidc-person-claim <claim>` | `sub` | the claim that is the person |
+| `--oidc-principal-claim <claim>` | `sub` | the claim that is the principal |
 
 - The gateway reads the issuer's keys when it starts, from the address the issuer's `/.well-known/openid-configuration` gives. An issuer it cannot read, or that names itself otherwise, stops it from starting.
 - A token signed with a key the gateway does not have makes it read the keys again, once a minute at most.
@@ -414,11 +414,11 @@ corbie start gateway --client editor --client viewer --oidc-issuer https://login
 - With an issuer and no token file, the gateway makes no token of its own.
 - The gateway has no page to sign in at. A caller gets its token from the issuer.
 
-A caller asks which client and person its token names, and `corbie client show --gateway <address>` prints them:
+A caller asks which client and principal its token names, and `corbie client show --gateway <address>` prints them:
 
 ```
-client  editor
-person  "alice@example.com"
+client     editor
+principal  "alice@example.com"
 ```
 
 A page in a browser calls the gateway from any origin:
@@ -428,7 +428,7 @@ A page in a browser calls the gateway from any origin:
 - A page shows its token in `Authorization`, as every caller does. The gateway reads no cookie, so a page without a token is refused.
 - A page reads a stream with `fetch`. A browser's `EventSource` sends no `Authorization`, and is refused.
 
-Whoever has a token is the client it names. Nothing in a request raises that client's ceiling, names another client or names a person. The gateway's computer holds the key of every client it acts as.
+Whoever has a token is the client it names. Nothing in a request raises that client's ceiling, names another client or names a principal. The gateway's computer holds the key of every client it acts as.
 
 It keeps nothing itself, so it runs as a process that listens, or on a serverless host as a function of its own:
 

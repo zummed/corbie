@@ -70,7 +70,7 @@ func Test_client_gateway_submits_a_tree(t *testing.T) {
 	if problems, _ := answer["problems"].(map[string]any); len(problems) != 1 || !strings.Contains(problems["/house/bad"].(string), "stages") || strings.Contains(text, temp) {
 		t.Fatalf("the submit's problems are %v", answer["problems"])
 	}
-	// The singleton's start names the person the token was given to.
+	// The singleton's start names the principal the token was given to.
 	var started map[string]any
 	for range 500 {
 		if _, started, _ = edits.do("GET", "/runs/"+single, ""); started["status"] == "running" {
@@ -78,7 +78,7 @@ func Test_client_gateway_submits_a_tree(t *testing.T) {
 		}
 		time.Sleep(10 * time.Millisecond)
 	}
-	if cause, _ := started["cause"].(map[string]any); cause["person"] != "alice@example.com" {
+	if cause, _ := started["cause"].(map[string]any); cause["principal"] != "alice@example.com" {
 		t.Fatalf("the singleton is %v", started)
 	}
 	// A run of the flow reads its script and its included file, and the

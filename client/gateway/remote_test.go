@@ -56,14 +56,14 @@ output: ${stages.copy.output}
 	// Its record followed to its end.
 	var entries []client.Entry
 	run, err := remote.Follow(ctx, id, time.Second, func(e client.Entry) { entries = append(entries, e) })
-	if err != nil || run.Status != "done" || run.Labels["team"] != "docs" || run.Cause.Person != "alice@example.com" {
+	if err != nil || run.Status != "done" || run.Labels["team"] != "docs" || run.Cause.Principal != "alice@example.com" {
 		t.Fatalf("the follow gave %+v, %v", run, err)
 	}
 	logged := false
 	for _, e := range entries {
 		logged = logged || e.Name == "log" && e.Data == "copying"
 	}
-	if len(entries) < 3 || !logged || entries[0].Step != 1 || entries[0].Events[0].Cause.Person != "alice@example.com" {
+	if len(entries) < 3 || !logged || entries[0].Step != 1 || entries[0].Events[0].Cause.Principal != "alice@example.com" {
 		t.Fatalf("the follow gave the entries %+v", entries)
 	}
 	var again []client.Entry

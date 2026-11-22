@@ -135,10 +135,10 @@ stages:
 	}
 }
 
-// The gateway writes the person a token names into every message it sends
-// for the token's requests: the start and each event name their own person
-// in the record, and a listing names none. A request names no person.
-func Test_client_gateway_writes_the_tokens_person(t *testing.T) {
+// The gateway writes the principal a token names into every message it sends
+// for the token's requests: the start and each event name their own principal
+// in the record, and a listing names none. A request names no principal.
+func Test_client_gateway_writes_the_tokens_principal(t *testing.T) {
 	s := newSeveral(t)
 	editor := s.enrol("editor", "at:/**")
 	as := s.serve(editor, map[string]*client.Client{
@@ -166,8 +166,8 @@ states:
 	if status != 200 {
 		t.Fatalf("the record was answered %d %s", status, text)
 	}
-	// Each event of the record, with the person of its cause.
-	persons := map[string][]string{}
+	// Each event of the record, with the principal of its cause.
+	principals := map[string][]string{}
 	for _, entry := range record["entries"].([]any) {
 		events, _ := entry.(map[string]any)["events"].([]any)
 		for _, e := range events {
@@ -176,37 +176,37 @@ states:
 			if cause["client"] != "editor" || cause["message"] == nil {
 				t.Errorf("the event %v names the cause %v", event["name"], cause)
 			}
-			person, _ := cause["person"].(string)
-			persons[event["name"].(string)] = append(persons[event["name"].(string)], person)
+			principal, _ := cause["principal"].(string)
+			principals[event["name"].(string)] = append(principals[event["name"].(string)], principal)
 		}
 	}
-	knocks := persons["knock"]
+	knocks := principals["knock"]
 	if len(knocks) != 2 || knocks[0] != "bob@example.com" || knocks[1] != "" {
-		t.Errorf("the knocks name the persons %q", knocks)
+		t.Errorf("the knocks name the principals %q", knocks)
 	}
-	if got := persons["open"]; len(got) != 1 || got[0] != "alice@example.com" {
-		t.Errorf("open names the persons %q", got)
+	if got := principals["open"]; len(got) != 1 || got[0] != "alice@example.com" {
+		t.Errorf("open names the principals %q", got)
 	}
 	// The run's cause is its start's, and a listing, which reads heads,
-	// names no person.
+	// names no principal.
 	run, _ := record["run"].(map[string]any)
-	if cause, _ := run["cause"].(map[string]any); cause["person"] != "alice@example.com" || cause["client"] != "editor" {
+	if cause, _ := run["cause"].(map[string]any); cause["principal"] != "alice@example.com" || cause["client"] != "editor" {
 		t.Errorf("the run's cause is %v", run["cause"])
 	}
 	if status, _, listed := bob.do("GET", "/runs?all", ""); status != 200 || !strings.Contains(listed, id) || strings.Contains(listed, "example.com") {
 		t.Errorf("the listing is %d %s", status, listed)
 	}
-	// A caller asks which client and person its token names.
-	for token, want := range map[caller]string{alice: `{"client":"editor","person":"alice@example.com"}`, nobody: `{"client":"editor"}`} {
+	// A caller asks which client and principal its token names.
+	for token, want := range map[caller]string{alice: `{"client":"editor","principal":"alice@example.com"}`, nobody: `{"client":"editor"}`} {
 		if status, _, text := token.do("GET", "/client", ""); status != 200 || strings.TrimSpace(text) != want {
 			t.Errorf("GET /client was answered %d %s", status, text)
 		}
 	}
-	// A request names no person.
-	for route, body := range map[string]string{"/runs": `{"at": "` + at + `", "person": "mallory@example.com"}`,
-		"/runs/" + id + "/events": `{"event": "knock", "person": "mallory@example.com"}`} {
-		if status, _, text := bob.send("POST", route, "application/json", strings.NewReader(body)); status != 400 || !strings.Contains(text, "person") {
-			t.Errorf("a request to %s that names a person was answered %d %s", route, status, text)
+	// A request names no principal.
+	for route, body := range map[string]string{"/runs": `{"at": "` + at + `", "principal": "mallory@example.com"}`,
+		"/runs/" + id + "/events": `{"event": "knock", "principal": "mallory@example.com"}`} {
+		if status, _, text := bob.send("POST", route, "application/json", strings.NewReader(body)); status != 400 || !strings.Contains(text, "principal") {
+			t.Errorf("a request to %s that names a principal was answered %d %s", route, status, text)
 		}
 	}
 }

@@ -10,7 +10,7 @@ answers a browser's `OPTIONS` request with no token, and reads no cookie.
 Routes
 ------
 
-  GET /client                   which client and person the token names: { "client", "person" }
+  GET /client                   which client and principal the token names: { "client", "principal" }
   POST /trees                   submits a tree from a form; answers its receipt
   POST /runs                    starts a run of a location from a form; answers { "id": "<id>" }
   GET /runs                     lists the client's runs in progress, as a JSON list

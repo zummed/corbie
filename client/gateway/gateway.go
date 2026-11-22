@@ -34,7 +34,7 @@ import (
 // A Gateway serves its clients' runs to callers that show a token.
 type Gateway struct {
 	// Callers gives, by the token a caller shows, the client the request
-	// acts as. The client's Person is the person the token was given to. A
+	// acts as. The client's Principal is the principal the token was given to. A
 	// request without one of the tokens is refused and does nothing.
 	Callers map[string]*client.Client
 	// Issuer is the OIDC issuer whose tokens the gateway takes too, if it

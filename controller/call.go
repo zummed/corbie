@@ -186,7 +186,7 @@ func (b *build) callIn(start *arrival, file *located, s *instance.Start) error {
 	seed := make([]byte, 32)
 	rand.Read(seed)
 	msg := &instance.Message{Kind: instance.KindStart, Instance: run, Sender: &machine.Address{Client: start.sender},
-		Cause: &instance.Cause{Client: start.sender, Message: base, Person: start.msg.Person}, Start: &instance.Start{
+		Cause: &instance.Cause{Client: start.sender, Message: base, Principal: start.msg.Principal}, Start: &instance.Start{
 			Location: s.Location, Input: input, Timeout: s.Timeout, Seed: seed,
 			Above: &instance.Above{CallReceipt: &instance.CallReceipt{Client: start.sender, Message: base}}}}
 	failure, err := p.send(store.Message(p.ctl, p.ctl, name), noEnd, msg, p.c.ID.Card)

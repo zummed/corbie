@@ -32,9 +32,9 @@ type Client struct {
 	Store      store.Store
 	// Now is the client's clock.
 	Now func() time.Time
-	// Person is the person the client sends its messages for, if it says:
+	// Principal is the principal the client sends its messages for, if it says:
 	// the controller writes it into the cause of what each message does.
-	Person string
+	Principal string
 
 	sender store.Sender
 	// remote is the gateway the client sends to, where it has no store and
@@ -47,15 +47,15 @@ func New(id *identity.Identity, controller identity.Card, s store.Store) *Client
 	return &Client{ID: id, Controller: controller, Store: s, Now: time.Now}
 }
 
-// Who is which client a Client is, and the person it sends its messages
+// Who is which client a Client is, and the principal it sends its messages
 // for.
 type Who struct {
-	Client string `json:"client"`
-	Person string `json:"person,omitzero"`
+	Client    string `json:"client"`
+	Principal string `json:"principal,omitzero"`
 }
 
 // Who says which client this is. Through a gateway it is the client and the
-// person the token names.
+// principal the token names.
 func (c *Client) Who(ctx context.Context) (Who, error) {
 	if c.remote != nil {
 		var who Who
@@ -64,12 +64,12 @@ func (c *Client) Who(ctx context.Context) (Who, error) {
 	if err := c.identity(); err != nil {
 		return Who{}, err
 	}
-	return Who{Client: c.ID.Name, Person: c.Person}, nil
+	return Who{Client: c.ID.Name, Principal: c.Principal}, nil
 }
 
-// As gives the same client sending its messages for a person.
-func (c *Client) As(person string) *Client {
-	return &Client{ID: c.ID, Controller: c.Controller, Store: c.Store, Now: c.Now, Person: person}
+// As gives the same client sending its messages for a principal.
+func (c *Client) As(principal string) *Client {
+	return &Client{ID: c.ID, Controller: c.Controller, Store: c.Store, Now: c.Now, Principal: principal}
 }
 
 func (c *Client) ctl() string { return c.Controller.Name }
@@ -563,7 +563,7 @@ func Taking(life time.Duration) time.Duration {
 func (c *Client) send(ctx context.Context, name string, life time.Duration, msg *instance.Message) error {
 	now := c.Now()
 	at := store.Message(c.ctl(), c.ID.Name, name)
-	msg.Person = c.Person
+	msg.Principal = c.Principal
 	data, err := c.ID.Write(at, now, now.Add(good(life)), msg, c.Controller)
 	if err != nil {
 		return err

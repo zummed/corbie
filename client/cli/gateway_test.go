@@ -30,7 +30,7 @@ func (m machine) second(name, ceiling string) machine {
 }
 
 // A gateway acts as the clients of the configs --client names. Each line of
-// its token file is a token, the client it names and the person it was given
+// its token file is a token, the client it names and the principal it was given
 // to, and with no file it makes a token for each client and prints it. A
 // file with a token twice, or a client the gateway does not have, stops the
 // gateway from starting, naming the line.
@@ -88,18 +88,18 @@ states:
 			t.Errorf("the token %q was answered %d %s", wrong, status, text)
 		}
 	}
-	// The person of a line is the rest of the line, and the run shows the
-	// person who started it.
+	// The principal of a line is the rest of the line, and the run shows the
+	// principal that started it.
 	if status, text := ask(url, "bobs", "POST", "/runs/"+run+"/events", `{"event": "knock"}`); status != 200 || !strings.Contains(text, `"taken":true`) {
 		t.Fatalf("bob's event was answered %d %s", status, text)
 	}
-	if shown := editor.ok("", "run", "show", run); !strings.Contains(shown, `  person: "alice@example.com"`+"\n") {
+	if shown := editor.ok("", "run", "show", run); !strings.Contains(shown, `  principal: "alice@example.com"`+"\n") {
 		t.Errorf("run show printed %s", shown)
 	}
-	if shown := editor.ok("", "run", "show", run, "--record", "--json"); !strings.Contains(shown, `"person":"Bob Smith"`) || !strings.Contains(shown, `"person":"alice@example.com"`) {
+	if shown := editor.ok("", "run", "show", run, "--record", "--json"); !strings.Contains(shown, `"principal":"Bob Smith"`) || !strings.Contains(shown, `"principal":"alice@example.com"`) {
 		t.Errorf("run show --record --json printed %s", shown)
 	}
-	if listed := editor.ok("", "run", "ls", "--json"); !strings.Contains(listed, run) || strings.Contains(listed, "person") {
+	if listed := editor.ok("", "run", "ls", "--json"); !strings.Contains(listed, run) || strings.Contains(listed, "principal") {
 		t.Errorf("run ls --json printed %s", listed)
 	}
 
@@ -201,7 +201,7 @@ func Test_client_commands_through_a_gateway(t *testing.T) {
 	}
 	// A run, waited for and watched.
 	out = sent("run", "start", "/house/greet", "--input", `{"name": "x"}`, "--wait")
-	if !strings.Contains(out, "  done  flow greet  step 2") || !strings.Contains(out, `person: "alice@example.com"`) || !strings.Contains(out, `"colour":"blue"`) {
+	if !strings.Contains(out, "  done  flow greet  step 2") || !strings.Contains(out, `principal: "alice@example.com"`) || !strings.Contains(out, `"colour":"blue"`) {
 		t.Fatalf("the run waited for printed %s", out)
 	}
 	if out := sent("run", "start", "/house/greet", "--input", `{"name": "w"}`, "--watch"); !strings.Contains(out, "say log: greeting") || !strings.Contains(out, "  done  flow greet  step 2") {
@@ -210,14 +210,14 @@ func Test_client_commands_through_a_gateway(t *testing.T) {
 	id := strings.TrimSpace(sent("run", "start", "/house/greet", "--input", `{"name": "y"}`))
 	editor.ok("", "run", "show", id, "--wait")
 
-	// Which client a command is sent as, and for which person.
-	if out := sent("client", "show"); out != "client  editor\nperson  \"alice@example.com\"\n" {
+	// Which client a command is sent as, and for which principal.
+	if out := sent("client", "show"); out != "client     editor\nprincipal  \"alice@example.com\"\n" {
 		t.Errorf("client show through the gateway printed %q", out)
 	}
-	if out := sent("client", "show", "--json"); out != `{"client":"editor","person":"alice@example.com"}`+"\n" {
+	if out := sent("client", "show", "--json"); out != `{"client":"editor","principal":"alice@example.com"}`+"\n" {
 		t.Errorf("client show --json through the gateway printed %q", out)
 	}
-	if out := editor.ok("", "client", "show"); out != "client  editor\n" {
+	if out := editor.ok("", "client", "show"); out != "client     editor\n" {
 		t.Errorf("client show with the client's config printed %q", out)
 	}
 	// What a command prints is the same both ways.
@@ -253,7 +253,7 @@ func Test_client_commands_through_a_gateway(t *testing.T) {
 	if out := sent("run", "reply", boiler, ticket, `"who is there"`); !strings.Contains(out, "taken") {
 		t.Errorf("the reply printed %s", out)
 	}
-	if record := editor.ok("", "run", "show", boiler, "--record", "--json"); strings.Count(record, `"person":"alice@example.com"`) < 4 || !strings.Contains(record, "who is there") {
+	if record := editor.ok("", "run", "show", boiler, "--record", "--json"); strings.Count(record, `"principal":"alice@example.com"`) < 4 || !strings.Contains(record, "who is there") {
 		t.Errorf("the boiler's record is %s", record)
 	}
 	if record := editor.ok("", "run", "show", boiler, "--record"); !strings.Contains(record, `<- start for "alice@example.com"`) || !strings.Contains(record, `<- poke from client:editor for "alice@example.com"`) {
@@ -285,7 +285,7 @@ func Test_client_commands_through_a_gateway(t *testing.T) {
 }
 
 // A gateway given an OIDC issuer and an audience takes the issuer's tokens:
-// a claim names the client and another the person. It makes no token of its
+// a claim names the client and another the principal. It makes no token of its
 // own, and an issuer it cannot read stops it from starting.
 func Test_client_gateway_oidc_flags(t *testing.T) {
 	m, _ := working(t, "all")
@@ -319,13 +319,13 @@ func Test_client_gateway_oidc_flags(t *testing.T) {
 	alice := token(fmt.Sprintf(`{"iss": %q, "aud": "api://corbie", "exp": %d, "roles": ["editor"], "sub": "s-1", "preferred_username": "alice@example.com"}`, idp.URL, time.Now().Add(time.Hour).Unix()))
 
 	gateway := []string{"start", "gateway", "--listen", "127.0.0.1:0", "--client", editor.config}
-	_, saying := m.staying(append(gateway, "--oidc-issuer", idp.URL, "--oidc-audience", "api://corbie", "--oidc-person-claim", "preferred_username")...)
+	_, saying := m.staying(append(gateway, "--oidc-issuer", idp.URL, "--oidc-audience", "api://corbie", "--oidc-principal-claim", "preferred_username")...)
 	listening := regexp.MustCompile(`listening on (http://\S+)`)
 	until(t, "the gateway", func() bool { return listening.MatchString(saying.String()) })
 	url := listening.FindStringSubmatch(saying.String())[1]
 	if said := saying.String(); strings.Contains(said, "gateway token ") ||
 		!strings.Contains(said, "gateway takes the tokens of the OIDC issuer "+idp.URL+" for the audience api://corbie\n") ||
-		!strings.Contains(said, "gateway takes a token as the first of the clients editor that its claim roles names, for the person in its claim preferred_username\n") {
+		!strings.Contains(said, "gateway takes a token as the first of the clients editor that its claim roles names, for the principal in its claim preferred_username\n") {
 		t.Fatalf("the gateway said %s", said)
 	}
 	// The issuer's token, sent by a command.
@@ -337,17 +337,17 @@ func Test_client_gateway_oidc_flags(t *testing.T) {
 	_, id, _ := bare.run("", "run", "start", "/door", "--gateway", url)
 	id = strings.TrimSpace(id)
 	until(t, "the run", func() bool { return strings.Contains(editor.ok("", "run", "show", id), "running") })
-	if shown := editor.ok("", "run", "show", id); !strings.HasPrefix(id, "editor/") || !strings.Contains(shown, `person: "alice@example.com"`) {
+	if shown := editor.ok("", "run", "show", id); !strings.HasPrefix(id, "editor/") || !strings.Contains(shown, `principal: "alice@example.com"`) {
 		t.Errorf("the run started with the issuer's token is %s", shown)
 	}
 	t.Setenv("CORBIE_GATEWAY_TOKEN", alice[:len(alice)-3]+"AAA")
 	if status, _, said := bare.run("", "run", "ls", "--gateway", url); status != 1 || !strings.Contains(said, "the request's token is not taken: its signature is not the issuer's") {
 		t.Errorf("a changed token ended %d and said %s", status, said)
 	}
-	// By default the person is the token's sub.
+	// By default the principal is the token's sub.
 	_, saying = m.staying(append(gateway, "--oidc-issuer", idp.URL, "--oidc-audience", "api://corbie")...)
 	until(t, "the gateway", func() bool { return listening.MatchString(saying.String()) })
-	if !strings.Contains(saying.String(), "that its claim roles names, for the person in its claim sub") {
+	if !strings.Contains(saying.String(), "that its claim roles names, for the principal in its claim sub") {
 		t.Errorf("the gateway said %s", saying.String())
 	}
 

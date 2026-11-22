@@ -116,8 +116,8 @@ func programOf(word string) (path string, args []string, err error) {
 }
 
 // oidc is the OIDC issuer whose tokens a gateway takes: its address, who its
-// tokens must be for, and the claims that name the client and the person.
-type oidc struct{ issuer, audience, client, person string }
+// tokens must be for, and the claims that name the client and the principal.
+type oidc struct{ issuer, audience, client, principal string }
 
 // A setting is what a role is given by the flags written after it.
 type setting struct {
@@ -153,7 +153,7 @@ func roleFlags(role string, set *setting, every *string) *flag.FlagSet {
 		flags.StringVar(&set.oidc.issuer, "oidc-issuer", "", "")
 		flags.StringVar(&set.oidc.audience, "oidc-audience", "", "")
 		flags.StringVar(&set.oidc.client, "oidc-client-claim", "roles", "")
-		flags.StringVar(&set.oidc.person, "oidc-person-claim", "sub", "")
+		flags.StringVar(&set.oidc.principal, "oidc-principal-claim", "sub", "")
 	case "store":
 		flags.StringVar(&set.listen, "listen", "", "")
 		flags.DurationVar(&set.timeout, "timeout", time.Minute, "")

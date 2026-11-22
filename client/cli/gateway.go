@@ -72,21 +72,21 @@ func (e *Env) gateway() (func(), error) {
 		// What the file gave, by client, so that a line read otherwise than
 		// it was meant shows when the gateway starts.
 		for _, c := range clients {
-			var persons []string
+			var principals []string
 			tokens := 0
 			for _, named := range callers {
 				if named.ID.Name != c.ID.Name {
 					continue
 				}
 				tokens++
-				if named.Person != "" {
-					persons = append(persons, named.Person)
+				if named.Principal != "" {
+					principals = append(principals, named.Principal)
 				}
 			}
-			slices.Sort(persons)
+			slices.Sort(principals)
 			line := fmt.Sprintf("gateway tokens for the client %s: %d", c.ID.Name, tokens)
-			if len(persons) > 0 {
-				line += ", for " + strings.Join(persons, ", ")
+			if len(principals) > 0 {
+				line += ", for " + strings.Join(principals, ", ")
 			}
 			if len(callers) > 0 {
 				e.Say("%s", line)
@@ -99,7 +99,7 @@ func (e *Env) gateway() (func(), error) {
 		if o.issuer == "" || o.audience == "" {
 			return nil, fmt.Errorf("--oidc-issuer and --oidc-audience are given together: the issuer, and who its tokens must be for")
 		}
-		issuer = &gateway.Issuer{Address: o.issuer, Audience: o.audience, ClientClaim: o.client, PersonClaim: o.person, Clients: clients}
+		issuer = &gateway.Issuer{Address: o.issuer, Audience: o.audience, ClientClaim: o.client, PrincipalClaim: o.principal, Clients: clients}
 		if err := issuer.Open(e.ctx); err != nil {
 			return nil, err
 		}
@@ -148,7 +148,7 @@ func (e *Env) gateway() (func(), error) {
 	}
 	if issuer != nil {
 		e.Say("gateway takes the tokens of the OIDC issuer %s for the audience %s", issuer.Address, issuer.Audience)
-		e.Say("gateway takes a token as the first of the clients %s that its claim %s names, for the person in its claim %s", strings.Join(names, ", "), issuer.ClientClaim, issuer.PersonClaim)
+		e.Say("gateway takes a token as the first of the clients %s that its claim %s names, for the principal in its claim %s", strings.Join(names, ", "), issuer.ClientClaim, issuer.PrincipalClaim)
 	}
 	if len(names) == 1 {
 		e.Say("gateway for the client %s, %s", names[0], where)
@@ -159,9 +159,9 @@ func (e *Env) gateway() (func(), error) {
 }
 
 // callersOf reads a gateway's token file: a line for each token, which
-// holds the token, then the name of the client it names, then the person it
+// holds the token, then the name of the client it names, then the principal it
 // was given to. A line with a token alone names the gateway's one client. It
-// gives each token's client, sending for the line's person, and the first
+// gives each token's client, sending for the line's principal, and the first
 // token.
 func callersOf(text string, clients []*client.Client) (callers map[string]*client.Client, first string, err error) {
 	var names []string
@@ -174,9 +174,9 @@ func callersOf(text string, clients []*client.Client) (callers map[string]*clien
 		if len(fields) == 0 || strings.HasPrefix(fields[0], "#") {
 			continue
 		}
-		token, name, person := fields[0], "", ""
+		token, name, principal := fields[0], "", ""
 		if len(fields) > 1 {
-			name, person = fields[1], strings.Join(fields[2:], " ")
+			name, principal = fields[1], strings.Join(fields[2:], " ")
 		}
 		var named *client.Client
 		for _, c := range clients {
@@ -192,7 +192,7 @@ func callersOf(text string, clients []*client.Client) (callers map[string]*clien
 		case named == nil:
 			return nil, "", fmt.Errorf("line %d names the client %s, and the gateway's clients are: %s", i+1, name, strings.Join(names, ", "))
 		}
-		callers[token], lines[token] = named.As(person), i+1
+		callers[token], lines[token] = named.As(principal), i+1
 		if first == "" {
 			first = token
 		}

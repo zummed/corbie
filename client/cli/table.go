@@ -274,6 +274,24 @@ Given a file, it records it as a tree of one file.
   corbie run start <location>   start a run of a transient location
   corbie manual a-directory     a tree of machines
 ` + scripts},
+		{Name: "run remove", Usage: "<prefix>", Summary: "remove a tree of this client's, with its runs, secrets and values", Run: cmdRemoveTree, Help: `
+It removes the tree recorded at the prefix. The controller does this:
+
+  1. It cancels every run at the tree's locations.
+  2. It removes every location of the tree.
+  3. It removes every secret and value set at the prefix or under it.
+  4. It removes the tree, so the prefix holds none.
+
+The command prints each location, each run it cancelled and each secret and
+value it removed, and exits when the cancelled runs have ended. A secret or a
+value set above the prefix stays. A run that has ended is kept as its
+definition's keep: says.
+
+Where the prefix holds no tree, it removes the secrets and values set there.
+
+  corbie run submit <directory>   record a tree
+  corbie manual a-directory       a tree of machines
+`},
 		{Name: "run start", Usage: "<location> [--input <json>] [--wait | --watch]", Summary: "start a run of a transient location and print its ID", Run: cmdRunStart, Help: `
 It starts a run of the file recorded at the location: it uploads the input's
 files and sends the start message. It prints the run's ID and exits, unless

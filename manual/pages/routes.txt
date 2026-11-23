@@ -12,6 +12,7 @@ Routes
 
   GET /client                   which client and principal the token names: { "client", "principal" }
   POST /trees                   submits a tree from a form; answers its receipt
+  POST /trees/remove            removes a tree: { "at": "/house", "life": "10m" }; answers its receipt
   POST /runs                    starts a run of a location from a form; answers { "id": "<id>" }
   GET /runs                     lists the client's runs in progress, as a JSON list
   GET /runs/<id>                one run
@@ -48,6 +49,9 @@ Submit a tree
 - The answer is `{ "taken", "refused", "tree", "problems" }`. `tree` holds what `corbie run submit --json`
   prints: `locations`, `cancelled`, `before`, `missing` and `untrusted`.
 - `problems` gives what is wrong with each file that is no machine, by its location. Its location keeps what was recorded before.
+
+`POST /trees/remove` removes the tree at `at`, with its runs and the secrets and values set at `at` or under it.
+The answer's `tree` holds `locations`, `cancelled` and `removed`, as `corbie run remove --json` prints them.
 
 Secrets and values
 ------------------

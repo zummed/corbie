@@ -81,6 +81,8 @@ states:
 	asked(m, "", true, "test", filepath.Join(dir, "make.js"), "--watch")
 	asked(m, "", true, "run", "submit", filepath.Join(dir, "make.js"))
 	asked(m, "", true, "run", "submit", filepath.Join(dir, "door.yaml"))
+	asked(m, "", true, "run", "submit", filepath.Join(dir, "door.yaml"), "--at", "/gone")
+	asked(m, "", true, "run", "remove", "/gone")
 	id, _ := object(asked(m, "", true, "run", "start", "/make"))["id"].(string)
 	asked(m, "", true, "run", "start", "/make", "--wait")
 	asked(m, "", true, "run", "start", "/make", "--watch")

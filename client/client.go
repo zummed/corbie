@@ -314,6 +314,21 @@ func (c *Client) Submit(ctx context.Context, tree *Tree, life time.Duration) (st
 	return name, c.send(ctx, name, life, &instance.Message{Kind: instance.KindSubmit, Submit: submit})
 }
 
+// RemoveTree removes the tree at a prefix: the controller cancels every run
+// at its locations, removes the locations and the secrets and values set at
+// or under the prefix, and then the tree. It gives the name of the message,
+// by which its receipt is found.
+func (c *Client) RemoveTree(ctx context.Context, prefix string, life time.Duration) (string, error) {
+	if c.remote != nil {
+		return c.remote.send(ctx, "/trees/remove", lived(map[string]any{"at": prefix}, life))
+	}
+	if err := c.identity(); err != nil {
+		return "", err
+	}
+	name := c.sender.Next(c.Now())
+	return name, c.send(ctx, name, life, &instance.Message{Kind: instance.KindSubmit, Submit: &instance.Submit{Prefix: prefix, Remove: true}})
+}
+
 // resolve gives a value as plain data, in which each file is what file
 // gives for it, and each blob that names the run it was shown for is the
 // reference to that blob, found as Fetch finds it.

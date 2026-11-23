@@ -33,6 +33,13 @@ import (
 //     started is sent its start and then its key's file is written.
 //  4. The locations whose files have gone are removed.
 //  5. The receipt is written, then the uploads go, then the message.
+//
+// A removal is a submit with no file. Every location's file has gone, so
+// steps 3 and 4 cancel every run and remove every location. Before step 5
+// the secrets and values set at or under the prefix are deleted, and after
+// the receipt is written the tree's entry is deleted. Its receipt is sealed
+// to the controller as well, so a removal taken again after its receipt was
+// written reads that it was taken and deletes the entry.
 
 // A treeEntry is what the controller keeps at a tree's prefix, sealed to
 // itself.
@@ -64,6 +71,9 @@ type changes struct {
 	Copy   []string `json:"copy,omitzero"`
 	Cancel []string `json:"cancel,omitzero"`
 	Remove []string `json:"remove,omitzero"`
+	// Unset are the names in the store of the secrets and values a removal
+	// deletes.
+	Unset []string `json:"unset,omitzero"`
 	// Before is the directory submitted before, when it was another.
 	Before    string   `json:"before,omitzero"`
 	Missing   []string `json:"missing,omitzero"`
@@ -100,6 +110,11 @@ func (p *pass) submit(a *arrival) error {
 		return err
 	}
 	if answered {
+		if msg.Remove {
+			if err := p.forget(a, base); err != nil {
+				return err
+			}
+		}
 		return p.submitted(a, base)
 	}
 	if err := store.CheckLocation(msg.Prefix); err != nil {
@@ -192,6 +207,9 @@ func (p *pass) checkTree(a *arrival, msg *instance.Submit) (string, error) {
 	refused, err := p.refusePrefix(a.sender, msg.Prefix)
 	if err != nil || refused != "" {
 		return refused, err
+	}
+	if msg.Remove && len(msg.Files)+len(msg.Problems) > 0 {
+		return fmt.Sprintf("a removal of the tree %s names no file", msg.Prefix), nil
 	}
 	locations := append(sortedKeys(msg.Files), msg.Problems...)
 	slices.Sort(locations)
@@ -299,7 +317,7 @@ func (p *pass) plan(a *arrival, base string, before *treeEntry) (*treeEntry, err
 	old := map[string]treeFile{}
 	if before != nil {
 		old = before.Files
-		if before.Directory != msg.Directory {
+		if before.Directory != msg.Directory && !msg.Remove {
 			entry.Changes.Before = before.Directory
 		}
 	}
@@ -384,7 +402,34 @@ func (p *pass) plan(a *arrival, base string, before *treeEntry) (*treeEntry, err
 		d.Remove = append(d.Remove, location)
 	}
 	slices.SortFunc(d.Done, func(x, y instance.Recorded) int { return strings.Compare(x.Location, y.Location) })
+	if msg.Remove {
+		under, err := store.Names(p.store.List(p.ctx, strings.TrimSuffix(store.LocationDir(p.ctl, msg.Prefix), "/+")))
+		if err != nil {
+			return nil, err
+		}
+		for _, name := range under {
+			if _, _, ok := settingAt(p.ctl, name); ok {
+				d.Unset = append(d.Unset, name)
+			}
+		}
+	}
 	return entry, nil
+}
+
+// settingAt reads the name in the store of a secret or a value set at a
+// location, as a receipt gives it: "secret NAME" or "value NAME", and the
+// location.
+func settingAt(ctl, name string) (what, at string, ok bool) {
+	at, entry, ok := store.ParseLocation(ctl, name)
+	if !ok {
+		return "", "", false
+	}
+	for kind, word := range map[string]string{"secrets/": "secret ", "values/": "value "} {
+		if found, is := strings.CutPrefix(entry, kind); is && !strings.Contains(found, "/") {
+			return word + found, at, true
+		}
+	}
+	return "", "", false
 }
 
 // holds says whether a location's singleton has a run: its key's file names
@@ -433,11 +478,54 @@ func (p *pass) carryTree(a *arrival, base string, entry *treeEntry) error {
 			return err
 		}
 	}
+	err = p.each(len(d.Unset), func(i int) error {
+		_, err := p.store.Delete(p.ctx, d.Unset[i], store.Overwrite)
+		return err
+	})
+	if err != nil {
+		return err
+	}
 	receipt := &instance.Receipt{Taken: true, Tree: &instance.Submitted{Locations: d.Done, Cancelled: cancelled, Before: d.Before, Missing: d.Missing, Untrusted: d.Untrusted}}
-	if err := p.writeReceipt(a.sender, a.name, receipt); err != nil {
+	for _, name := range d.Unset {
+		what, at, _ := settingAt(p.ctl, name)
+		receipt.Tree.Removed = append(receipt.Tree.Removed, what+" at "+at)
+	}
+	if !msg.Remove {
+		if err := p.writeReceipt(a.sender, a.name, receipt); err != nil {
+			return err
+		}
+		return p.submitted(a, base)
+	}
+	to, err := p.trusted(a.sender)
+	if err != nil || to == nil {
+		return err
+	}
+	if _, err := p.write(store.Receipt(p.ctl, a.sender, base), p.now.Add(instance.ReceiptLife), receipt, to.Card, p.c.ID.Card); err != nil {
+		return err
+	}
+	if err := p.forget(a, base); err != nil {
 		return err
 	}
 	return p.submitted(a, base)
+}
+
+// forget deletes the entry of a tree once the receipt of its removal says
+// the removal was taken, and only the entry written for that removal.
+func (p *pass) forget(a *arrival, base string) error {
+	msg := a.msg.Submit
+	receipt, err := p.ownReceipt(store.Receipt(p.ctl, a.sender, base))
+	if err != nil || receipt == nil || !receipt.Taken {
+		return err
+	}
+	entry, mark, err := p.readTree(msg.Prefix)
+	if errors.As(err, new(otherCase)) {
+		return nil
+	}
+	if err != nil || entry == nil || entry.Client != a.sender || entry.Submit != base || entry.Message != submitHash(msg) {
+		return err
+	}
+	_, err = p.store.Delete(p.ctx, store.Tree(p.ctl, msg.Prefix), store.OnlyIfUnchanged(mark))
+	return err
 }
 
 // record copies a file a submit uploaded to its location, writes the

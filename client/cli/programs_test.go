@@ -195,7 +195,7 @@ agent or decision, and each of its jobs is a script, a machine, or a send.
   check        start one small run, and report which part of a setup did not
                respond
   test         run a definition or a script in this process, with no setup
-  run          submit, start, ls, show, cancel, send, reply
+  run          submit, remove, start, ls, show, cancel, send, reply
   controller   card, enrol, remove, parties, secret, value, policy, cancel
   runner       card, trust, remove
   client       card, trust, remove, show, secret, value
@@ -304,6 +304,7 @@ func TestHelpIsAskedForWithTheFlag(t *testing.T) {
 	run := `The commands of corbie run:
 
   submit   record a directory or a file as a tree
+  remove   remove a tree of this client's, with its runs, secrets and values
   start    start a run of a transient location and print its ID
   ls       list runs
   show     show one run: its status and its result

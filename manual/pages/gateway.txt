@@ -117,6 +117,7 @@ Other requests
 --------------
 
   POST /trees                    submits a directory of machines
+  POST /trees/remove             removes a tree
   POST /secrets, POST /values    sets, removes or lists secrets or values
   GET /runs                      lists runs
   GET /runs/<id>/record          the run's record; with ?watch, a stream of it

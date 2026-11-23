@@ -261,14 +261,17 @@ func (e *Env) start(cfg identity.Config, named []item, before func() error) erro
 	}
 	// On a serverless host the roles use a copy of the config that is
 	// theirs alone.
-	own, err := role.OwnConfig(cfg.Dir)
-	if err != nil {
-		return err
+	// The config of corbie up there is the copy's own already.
+	if !e.whole {
+		own, err := role.OwnConfig(cfg.Dir)
+		if err != nil {
+			return err
+		}
+		if own != cfg.Dir {
+			defer os.RemoveAll(own)
+		}
+		cfg.Dir, e.config = own, own
 	}
-	if own != cfg.Dir {
-		defer os.RemoveAll(own)
-	}
-	cfg.Dir, e.config = own, own
 	var running []role.Role
 	var programs []program
 	for i, it := range named {

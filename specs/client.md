@@ -252,6 +252,7 @@ corbie up --store s3://…           a bucket as the store, when .corbie is set 
 - Every command run in the same directory, or below it, finds `.corbie` and uses it, as it uses any config.
 - `.corbie` stays when `corbie up` stops, and `corbie up` run again continues with its runs, secrets and values. Removing `.corbie` removes all of it.
 - `.corbie` holds a `.gitignore` that lists everything in it.
+- On a serverless host the config is `.corbie` in the copy's temporary directory, since a function's own directory is read-only (see Roles).
 - A file with a problem is reported before anything starts, and nothing is started.
 - The gateway listens at a free port, and `gateway --listen` names another. A program is given `CORBIE_CONFIG`, `CORBIE_GATEWAY` and `CORBIE_GATEWAY_TOKEN`.
 - `--value`, `--value-env`, `--secret` and `--secret-env` set values and secrets at `/` as it starts, as `corbie test` takes them.
@@ -453,10 +454,11 @@ client     editor
 principal  "alice@example.com"
 ```
 
-A caller starts a run and has its result in one request:
+One request starts a run and is answered with the run:
 
 - `POST /runs?wait` starts the run and answers when it has ended, with the run, as `GET /runs/<id>?wait` does. `?wait=30s` answers after 30 s at most.
-- With `?files`, a blob in the answered run carries its bytes: `{ "$blob": "<path>", "type", "size", "data": "<base64>" }`. Without it a blob is read with `GET /runs/<id>/files/<path>`.
+- A `wait` that is no length of time is answered 400, and no run is started.
+- With `?files`, a blob in the run's output has its bytes: `{ "$blob": "<path>", "type", "size", "data": "<base64>" }`. Without it a blob is read with `GET /runs/<id>/files/<path>`.
 
 A page in a browser calls the gateway from any origin:
 
@@ -467,7 +469,7 @@ A page in a browser calls the gateway from any origin:
 
 Whoever has a token is the client it names. Nothing in a request raises that client's ceiling, names another client or names a principal. The gateway's computer holds the key of every client it acts as.
 
-It keeps nothing itself, so it runs as a process that listens, or on a serverless host as a function of its own. `corbie up` there runs it in one function with the controller and the runner (see Roles):
+It keeps nothing itself, so it runs as a process that listens, or on a serverless host as a function of its own:
 
 1. The host calls the function once for each request that comes to the function's URL.
 2. The gateway answers the request as it answers any, as the client its token names.
@@ -476,6 +478,7 @@ It keeps nothing itself, so it runs as a process that listens, or on a serverles
 - A request's time ends ten seconds before the host's limit for a call. `?wait` then answers with the run as it stands, a stream closes, and a request that waits for the controller is answered 504, saying its time ended.
 - On a serverless host a stream goes on until its run ends or the request's time does, also after its caller has left.
 - The gateway takes its tokens from `--token-file` or from an issuer. With neither it does not start there: each copy of the function would make a token of its own.
+- `corbie up` there runs the gateway in one function with the controller and the runner (see Roles).
 - It is started beside no controller and no runner there: the host calls those for a pass, and the gateway for a request.
 - The host limits the size of a request, and so of the tree a submit uploads.
 

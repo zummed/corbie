@@ -14,13 +14,15 @@ How passes are started depends on the host, and on nothing else.
 
 On a **serverless host** the host calls for a pass when something is written to the role's inbox, and calls the controller once a minute so that wakes are noticed. Both are services the host and the bucket already offer. Corbie has no signalling of its own. A pass knows how long the host will let it run and finishes before that. Whatever it has not reached waits for the next pass, and a runner does not take a job it could not finish in the time left. A gateway does no passes: the host calls it once for each HTTP request, and it answers the request before the host's limit (see client.md).
 
-`corbie up` on a serverless host runs the controller, the runner and the gateway in the function's one process, with the store in a directory of the function's own. The host calls the function for each request of the gateway.
+`corbie up` on a serverless host runs the controller, the runner and the gateway in the function's one process. The config and the store are in the copy's temporary directory, and `--store` is refused. The host calls the function for each request of the gateway.
 
-- Each copy of the function is a Corbie of its own: no copy reads what another recorded.
+- Each copy of the function has its own store, and reads nothing another copy recorded.
+- A copy submits the directory when it starts.
 - The process runs only while a request is being answered, so a run proceeds only then.
-- What a copy recorded is gone when the host discards the copy.
+- A copy's store is deleted when the host discards the copy.
+- The copy prints where its config and store are, and that they are deleted with it.
 
-It suits work that starts and ends within one request. A run that must outlive its request needs a store in a bucket.
+Use it for a run that ends within the request that started it. A run that goes on after its request needs a store in a bucket, with a function for each role.
 
 On a **computer** `corbie start` runs passes in a loop, sleeping until the next thing is due or for a short interval, whichever is sooner. When one role in the process writes something that another role in the same process reads, the second is woken at once. A served directory does the same for a role on another computer: it tells the role when its inbox is written. That shortcut is the only thing a computer adds. It changes when a pass happens and never what a pass does.
 

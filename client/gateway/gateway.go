@@ -347,37 +347,48 @@ func (g *Gateway) start(w http.ResponseWriter, r *http.Request, c *client.Client
 		}
 		st.Allow = &permission.Layer{Allow: s.Allow, Deny: s.Deny}
 	}
+	// A wait that cannot be read is refused before anything starts.
+	limit, err := waitLimit(r.URL.Query())
+	if err != nil {
+		fail(w, http.StatusBadRequest, err)
+		return
+	}
 	id, err := c.Start(r.Context(), st)
-	if query := r.URL.Query(); err == nil && query.Has("wait") {
+	if err == nil && r.URL.Query().Has("wait") {
 		// The start and the wait are one request: its answer is the run.
-		g.shown(w, r, c, id)
+		g.shown(w, r, c, id, limit, nil)
 		return
 	}
 	reply(w, map[string]any{"id": id}, err)
 }
 
-// shown answers with a run. With wait the answer is given when the run has
-// ended, or when the wait's own limit or the caller's leaving cuts it short,
-// with the run as it stands. With files each blob of the output carries its
-// bytes.
-func (g *Gateway) shown(w http.ResponseWriter, r *http.Request, c *client.Client, id string) {
+// waitLimit is the limit a wait gives itself, as ?wait=30s, or none.
+func waitLimit(query url.Values) (time.Duration, error) {
+	limit := query.Get("wait")
+	if limit == "" {
+		return 0, nil
+	}
+	d, err := machine.ParseDuration(limit)
+	if err != nil {
+		return 0, fmt.Errorf("wait: %v", err)
+	}
+	return time.Duration(d), nil
+}
+
+// shown answers with a run: the one given, or with wait the run when it has
+// ended. A wait cut short, by its own limit or by the caller going away,
+// answers with the run as it stands. With files each blob of the output has
+// its bytes.
+func (g *Gateway) shown(w http.ResponseWriter, r *http.Request, c *client.Client, id string, limit time.Duration, shown *client.Run) {
 	ctx, query := r.Context(), r.URL.Query()
-	var shown *client.Run
 	var err error
 	if query.Has("wait") {
-		if limit := query.Get("wait"); limit != "" {
-			d, err := machine.ParseDuration(limit)
-			if err != nil {
-				fail(w, http.StatusBadRequest, fmt.Errorf("wait: %v", err))
-				return
-			}
+		if limit > 0 {
 			var cancel context.CancelFunc
-			ctx, cancel = context.WithTimeout(ctx, time.Duration(d))
+			ctx, cancel = context.WithTimeout(ctx, limit)
 			defer cancel()
 		}
 		shown, err = c.Wait(ctx, id, g.interval())
-	} else {
-		shown, err = c.Show(ctx, id)
 	}
 	if err == nil && query.Has("files") {
 		shown.Output, err = withBytes(r.Context(), c, id, shown.Output)
@@ -675,13 +686,19 @@ func (g *Gateway) run(w http.ResponseWriter, r *http.Request, c *client.Client, 
 	}
 	// An ID that is no run is answered as not found at once, on every
 	// route that names a run; one started a moment ago is waiting.
-	if _, err := c.Show(ctx, id); err != nil {
+	shown, err := c.Show(ctx, id)
+	if err != nil {
 		reply(w, nil, err)
 		return
 	}
 	switch {
 	case what == "" && r.Method == http.MethodGet:
-		g.shown(w, r, c, id)
+		limit, err := waitLimit(r.URL.Query())
+		if err != nil {
+			fail(w, http.StatusBadRequest, err)
+			return
+		}
+		g.shown(w, r, c, id, limit, shown)
 	case what == "record" && r.Method == http.MethodGet && !r.URL.Query().Has("watch"):
 		// The record so far, and the run as it stands: what the stream
 		// gives, without staying.

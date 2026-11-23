@@ -279,8 +279,13 @@ func Test_role_serverless_host_runs_a_whole_corbie(t *testing.T) {
 	t.Setenv("AWS_LAMBDA_RUNTIME_API", strings.TrimPrefix(server.URL, "http://"))
 	defer time.AfterFunc(60*time.Second, stop).Stop()
 
+	// A store named there would be one store for copies that each set it up.
+	if status, said := corbie(serving, "up", "--in", dir, "--store", t.TempDir(), "gateway", "--token-file", tokens); status == 0 || !strings.Contains(said, "takes no --store") {
+		t.Fatalf("corbie up --store ended %d: %s", status, said)
+	}
 	status, said := corbie(serving, "up", "--in", dir, "--at", "/work", "gateway", "--token-file", tokens)
-	if status != 0 || !strings.Contains(said, "/work/hello") || !strings.Contains(said, "answering the requests to this function's URL") {
+	if status != 0 || !strings.Contains(said, "/work/hello") || !strings.Contains(said, "answering the requests to this function's URL") ||
+		!strings.Contains(said, "which is this copy's alone") {
 		t.Fatalf("corbie up ended %d: %s", status, said)
 	}
 	first, body := host.answered(t, "call-1")

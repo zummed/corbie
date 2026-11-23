@@ -630,6 +630,19 @@ func Test_client_gateway_start_waits_and_gives_files(t *testing.T) {
 	if status, run, text := start("?wait=200ms", slow); status != 200 || run["status"] != "running" || time.Since(began) > 5*time.Second {
 		t.Errorf("a start with a wait of 200ms was answered %d %s after %s", status, text, time.Since(began))
 	}
+	// A wait that cannot be read is refused, and nothing is started.
+	before, _, _ := c.do("GET", "/runs?all", "")
+	_, _, listed := c.do("GET", "/runs?all", "")
+	if status, _, text := start("?wait=abc", at); status != 400 || !strings.Contains(text, "wait") {
+		t.Errorf("a start with a wait that is no length of time was answered %d %s", status, text)
+	}
+	if status, _, text := c.do("GET", "/runs/"+id+"?wait=abc", ""); status != 400 || !strings.Contains(text, "wait") {
+		t.Errorf("a wait that is no length of time was answered %d %s", status, text)
+	}
+	time.Sleep(300 * time.Millisecond)
+	if _, _, after := c.do("GET", "/runs?all", ""); before != 200 || strings.Count(after, `"id"`) != strings.Count(listed, `"id"`) {
+		t.Errorf("a start that was refused started a run: the list went from %s to %s", listed, after)
+	}
 	// With neither, a start is answered with the run's ID alone.
 	if status, run, text := start("", at); status != 200 || run["id"] == nil || run["status"] != nil {
 		t.Errorf("a start was answered %d %s", status, text)

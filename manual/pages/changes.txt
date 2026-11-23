@@ -5,6 +5,16 @@ Each section lists what changed after one release, the newest first.
 compatible before version 1: a file or a command written the old way is
 refused.
 
+After 0.32.0
+------------
+
+Change the path of a run's output or input that is itself a blob.
+
+  { "$blob": "file" }         the whole output; before, the path was empty and the gateway gave no bytes for it
+  { "$blob": "input/file" }   the whole input; before, `input/`
+
+`corbie run show <id> --save <dir>` saves it as `<dir>/file`.
+
 After 0.31.0
 ------------
 

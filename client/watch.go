@@ -860,7 +860,11 @@ func (c *Client) Files(ctx context.Context, id string) (map[string]File, error) 
 		return nil, err
 	}
 	files := map[string]File{}
-	named(output, "", "", files)
+	if _, whole := blob.AsRef(output); whole {
+		named(output, blob.Whole, blob.Whole, files)
+	} else {
+		named(output, "", "", files)
+	}
 	return files, nil
 }
 

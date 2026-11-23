@@ -227,6 +227,43 @@ func Test_client_gateway_blob_in_stream_entry_can_be_fetched(t *testing.T) {
 	}
 }
 
+// A run whose whole output is one blob shows it with the path file, and the
+// gateway gives its bytes at that path, to the client of the tree and to a
+// client that called the run. The route with no path is the list.
+func Test_client_gateway_whole_output_blob_is_fetched_by_its_path(t *testing.T) {
+	local, owner := served(t)
+	ctx := context.Background()
+	at := owner.place("flow: whole\nreceive: [client:gw]\nstages:\n  make: { job: { script: ./make.js } }\n",
+		map[string]string{"./make.js": `return blobs.make("all of it", { type: "text/markdown" })`})
+	gw, err := identity.New("gw", identity.Client)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := identity.WriteTrust(ctx, local.Controller.Store, local.Controller.ID, identity.Trust{Card: gw.Card, Ceiling: permission.Layer{Allow: []string{"send:/**"}}}); err != nil {
+		t.Fatal(err)
+	}
+	called := serve(t, client.New(gw, local.Controller.ID.Card, local.Memory.As(store.Party{Kind: store.Client, Name: "gw", Controller: local.Controller.ID.Name})))
+	for who, c := range map[string]caller{"the tree's client": owner, "a client that calls": called} {
+		status, started, text := c.send("POST", "/runs", "application/json", strings.NewReader(`{"at": "`+at+`"}`))
+		id, _ := started["id"].(string)
+		if status != 200 || id == "" {
+			t.Fatalf("the start by %s was answered %d %s", who, status, text)
+		}
+		_, run, text := c.do("GET", "/runs/"+id+"?wait", "")
+		if out, _ := run["output"].(map[string]any); run["status"] != "done" || out["$blob"] != "file" {
+			t.Fatalf("the run of %s ended %s", who, text)
+		}
+		if status, kind, text := c.fetch(id, "file"); status != 200 || text != "all of it" || kind != "text/markdown" {
+			t.Errorf("%s asked for the file and was answered %d %s %q", who, status, kind, text)
+		}
+		for _, route := range []string{"/files", "/files/"} {
+			if status, files, text := c.do("GET", "/runs/"+id+route, ""); status != 200 || len(files) != 1 || files["file"] == nil {
+				t.Errorf("%s asked for %s and was answered %d %s", who, route, status, text)
+			}
+		}
+	}
+}
+
 // An input of null in a start is no input: the machine sees what it sees
 // when nothing is sent.
 func Test_client_gateway_null_input_is_no_input(t *testing.T) {

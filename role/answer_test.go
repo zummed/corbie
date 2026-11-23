@@ -248,3 +248,50 @@ func Test_role_serverless_host_calls_a_gateway_for_each_request(t *testing.T) {
 		t.Errorf("a stream was answered %s and %q", first, body)
 	}
 }
+
+// corbie up on a serverless host is a whole Corbie in each copy of the
+// function: a controller, a runner and a gateway on a store of the copy's
+// own. The host calls for each request of the gateway, and a start that
+// waits is answered with the run, its blobs with their bytes.
+func Test_role_serverless_host_runs_a_whole_corbie(t *testing.T) {
+	dir := t.TempDir()
+	os.WriteFile(filepath.Join(dir, "hello.yaml"), []byte("flow: hello\nstages:\n  greet: { job: { script: ./greet.js, input: \"${input}\" } }\noutput: ${stages.greet.output}\n"), 0o600)
+	os.WriteFile(filepath.Join(dir, "greet.js"), []byte("return { said: \"hello, \" + input.name, file: blobs.make(\"zebra\", { type: \"text/plain\" }) }\n"), 0o600)
+	tokens := filepath.Join(t.TempDir(), "tokens")
+	os.WriteFile(tokens, []byte("the-token\n"), 0o600)
+	t.Setenv("TMPDIR", t.TempDir())
+	t.Chdir(t.TempDir())
+
+	serving, stop := context.WithCancel(ctx)
+	start := base64.StdEncoding.EncodeToString([]byte(`{"at": "/work/hello", "input": {"name": "host"}}`))
+	headers := map[string]string{"authorization": "Bearer the-token", "content-type": "application/json"}
+	host := &requests{
+		events: []string{
+			asked("POST", "/runs", "wait&files", start, true, headers),
+			asked("POST", "/runs", "wait", start, true, headers),
+		},
+		limits:  []time.Duration{60 * time.Second, 60 * time.Second},
+		answers: map[string]string{}, modes: map[string]string{},
+		done: stop,
+	}
+	server := httptest.NewServer(host)
+	defer server.Close()
+	t.Setenv("AWS_LAMBDA_RUNTIME_API", strings.TrimPrefix(server.URL, "http://"))
+	defer time.AfterFunc(60*time.Second, stop).Stop()
+
+	status, said := corbie(serving, "up", "--in", dir, "--at", "/work", "gateway", "--token-file", tokens)
+	if status != 0 || !strings.Contains(said, "/work/hello") || !strings.Contains(said, "answering the requests to this function's URL") {
+		t.Fatalf("corbie up ended %d: %s", status, said)
+	}
+	first, body := host.answered(t, "call-1")
+	if !strings.Contains(first, `"statusCode":200`) || !strings.Contains(body, `"status":"done"`) || !strings.Contains(body, `"said":"hello, host"`) ||
+		!strings.Contains(body, `"data":"`+base64.StdEncoding.EncodeToString([]byte("zebra"))+`"`) {
+		t.Errorf("a start that waits, with files, was answered %s and %s", first, body)
+	}
+	if _, body := host.answered(t, "call-2"); !strings.Contains(body, `"status":"done"`) || !strings.Contains(body, `"$blob"`) || strings.Contains(body, `"data"`) {
+		t.Errorf("a start that waits was answered %s", body)
+	}
+	if _, err := os.Stat(filepath.Join(os.Getenv("TMPDIR"), ".corbie", "store", "version")); err != nil {
+		t.Errorf("the store is not in a directory of the copy's own: %v", err)
+	}
+}

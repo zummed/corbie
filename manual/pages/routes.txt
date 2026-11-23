@@ -101,6 +101,10 @@ Query parameters
   GET /runs?watch               a stream of the list
   GET /runs/<id>?wait           answers when the run has ended
   GET /runs/<id>?wait=30s       answers after 30s at most, with the run as it is then
+  POST /runs?wait               starts the run and answers when it has ended, with the run
+  POST /runs?wait=30s           the same, after 30s at most
+  GET /runs/<id>?files          each blob of the output carries its bytes, as base64 in `data`
+  POST /runs?wait&files         the start, the wait and the bytes in one request
   GET /runs/<id>/record?watch   a stream of the record
 
 Answers and status codes

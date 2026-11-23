@@ -185,6 +185,32 @@ The first command prints the URL, which is `https`. Check it with the token.
 - With no token file and no OIDC issuer the function does not start. Its log
   says why.
 
+One function with every role
+----------------------------
+
+`corbie up` in a function runs the controller, the runner and the gateway in
+that one process, with the store in the function's temporary directory. It
+needs no bucket and no `corbie init`.
+
+  package/bootstrap    the start script below
+  package/corbie       the binary
+  package/project/…    the directory of machines
+  package/tokens       the token file
+
+  #!/bin/sh
+  cd "$LAMBDA_TASK_ROOT" && exec ./corbie up --in project gateway --token-file tokens
+
+Give the function a URL as for a gateway. A caller starts a run and has its
+result in one request, `POST /runs?wait&files` (`corbie manual routes`).
+
+- Each copy of the function has a store of its own. A request that names a
+  run or a tree another copy recorded is answered that there is none.
+- The process runs only while a request is being answered.
+- What a copy recorded is gone when Lambda discards the copy.
+
+Use it for work that ends with its request. A run that must outlive its
+request needs the bucket and the functions above.
+
 Computers beside functions
 --------------------------
 

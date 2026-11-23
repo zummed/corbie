@@ -37,9 +37,9 @@ func cmdUp(e *Env, args []string) error {
 	if _, err := e.Parse(mine); err != nil {
 		return err
 	}
-	if role.Serverless() {
-		return fmt.Errorf("corbie up needs a process that stays up, and this is a serverless host")
-	}
+	// On a serverless host each copy of the function is a Corbie of its
+	// own, with its store and its config in a directory of the copy's.
+	e.whole = role.Serverless()
 	if e.Given("at") && at == "" {
 		return Mistake("--at is empty: a prefix is / and the names of one or more directories, as /home")
 	}
@@ -72,6 +72,9 @@ func cmdUp(e *Env, args []string) error {
 	limit, err := ceiling(ceilingText, nil, nil, permission.Layer{}, permission.CheckList)
 	if err != nil {
 		return err
+	}
+	if e.config == "" && e.whole {
+		e.config = filepath.Join(os.TempDir(), client.ConfigName)
 	}
 	if e.config == "" {
 		if e.config, err = filepath.Abs(client.ConfigName); err != nil {

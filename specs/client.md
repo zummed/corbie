@@ -453,6 +453,11 @@ client     editor
 principal  "alice@example.com"
 ```
 
+A caller starts a run and has its result in one request:
+
+- `POST /runs?wait` starts the run and answers when it has ended, with the run, as `GET /runs/<id>?wait` does. `?wait=30s` answers after 30 s at most.
+- With `?files`, a blob in the answered run carries its bytes: `{ "$blob": "<path>", "type", "size", "data": "<base64>" }`. Without it a blob is read with `GET /runs/<id>/files/<path>`.
+
 A page in a browser calls the gateway from any origin:
 
 - The gateway answers the `OPTIONS` request a browser sends before a page's call, with no token.
@@ -462,7 +467,7 @@ A page in a browser calls the gateway from any origin:
 
 Whoever has a token is the client it names. Nothing in a request raises that client's ceiling, names another client or names a principal. The gateway's computer holds the key of every client it acts as.
 
-It keeps nothing itself, so it runs as a process that listens, or on a serverless host as a function of its own:
+It keeps nothing itself, so it runs as a process that listens, or on a serverless host as a function of its own. `corbie up` there runs it in one function with the controller and the runner (see Roles):
 
 1. The host calls the function once for each request that comes to the function's URL.
 2. The gateway answers the request as it answers any, as the client its token names.

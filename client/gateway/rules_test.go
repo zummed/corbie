@@ -3,6 +3,7 @@ package gateway_test
 import (
 	"bufio"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -581,5 +582,59 @@ func TestStreamSaysWhyItStopped(t *testing.T) {
 	rest, _ := io.ReadAll(lines)
 	if !strings.Contains(string(rest), "event: error\ndata: {\"error\":") || !strings.Contains(string(rest), io.ErrUnexpectedEOF.Error()) {
 		t.Fatalf("the stream ended %q", rest)
+	}
+}
+
+// A start with ?wait is answered with the run when it has ended, and with
+// ?files each blob of the run's output carries its bytes.
+func Test_client_gateway_start_waits_and_gives_files(t *testing.T) {
+	local, err := client.NewLocal(context.Background(), permission.Layer{}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer local.Close()
+	server := httptest.NewServer(&gateway.Gateway{Callers: map[string]*client.Client{"the-token": local.Client}})
+	defer server.Close()
+	c := caller{t: t, url: server.URL, token: "the-token", client: local.Client}
+	at := c.place("flow: file\nstages:\n  make: { job: { script: ./make.js } }\noutput: ${stages.make.output}\n",
+		map[string]string{"make.js": `return { n: 1, file: blobs.make("zebra", { type: "text/plain" }) }`})
+	slow := c.place("statechart: slow\ninitial: waiting\nstates:\n  waiting: { ticket: word }\n", nil)
+	start := func(query, at string) (int, map[string]any, string) {
+		return c.send("POST", "/runs"+query, "application/json", strings.NewReader(`{"at": "`+at+`"}`))
+	}
+
+	zebra := base64.StdEncoding.EncodeToString([]byte("zebra"))
+	status, run, text := start("?wait&files", at)
+	output, _ := run["output"].(map[string]any)
+	file, _ := output["file"].(map[string]any)
+	if status != 200 || run["status"] != "done" || output["n"] != float64(1) || file["data"] != zebra || file["type"] != "text/plain" || file["$blob"] == nil {
+		t.Fatalf("a start with wait and files was answered %d %s", status, text)
+	}
+	// Without files a blob is named and read by its path, as before.
+	status, run, text = start("?wait", at)
+	output, _ = run["output"].(map[string]any)
+	file, _ = output["file"].(map[string]any)
+	if status != 200 || run["status"] != "done" || file["$blob"] == nil || file["data"] != nil {
+		t.Fatalf("a start with wait was answered %d %s", status, text)
+	}
+	id, _ := run["id"].(string)
+	if status, _, text := c.do("GET", "/runs/"+id+"/files/"+file["$blob"].(string), ""); status != 200 || text != "zebra" {
+		t.Errorf("the blob read by its path was answered %d %q", status, text)
+	}
+	// A run shown later gives its files too.
+	if _, run, text := c.do("GET", "/runs/"+id+"?files", ""); !strings.Contains(text, zebra) || run["status"] != "done" {
+		t.Errorf("GET with files was answered %s", text)
+	}
+	// A wait's own limit answers with the run as it stands.
+	began := time.Now()
+	if status, run, text := start("?wait=200ms", slow); status != 200 || run["status"] != "running" || time.Since(began) > 5*time.Second {
+		t.Errorf("a start with a wait of 200ms was answered %d %s after %s", status, text, time.Since(began))
+	}
+	// With neither, a start is answered with the run's ID alone.
+	if status, run, text := start("", at); status != 200 || run["id"] == nil || run["status"] != nil {
+		t.Errorf("a start was answered %d %s", status, text)
+	}
+	if status, _, text := start("?watch", at); status != 400 || !strings.Contains(text, "watch") {
+		t.Errorf("a start with a parameter it does not take was answered %d %s", status, text)
 	}
 }

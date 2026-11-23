@@ -8,6 +8,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"crypto/subtle"
+	"encoding/base64"
 	"encoding/json/v2"
 	"errors"
 	"fmt"
@@ -136,7 +137,7 @@ func (g *Gateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	switch {
 	case len(parts) == 1 && r.Method == http.MethodPost:
-		if takes(w, query) {
+		if takes(w, query, "wait", "files") {
 			g.start(w, r, c)
 		}
 	case len(parts) == 1 && r.Method == http.MethodGet:
@@ -347,7 +348,74 @@ func (g *Gateway) start(w http.ResponseWriter, r *http.Request, c *client.Client
 		st.Allow = &permission.Layer{Allow: s.Allow, Deny: s.Deny}
 	}
 	id, err := c.Start(r.Context(), st)
+	if query := r.URL.Query(); err == nil && query.Has("wait") {
+		// The start and the wait are one request: its answer is the run.
+		g.shown(w, r, c, id)
+		return
+	}
 	reply(w, map[string]any{"id": id}, err)
+}
+
+// shown answers with a run. With wait the answer is given when the run has
+// ended, or when the wait's own limit or the caller's leaving cuts it short,
+// with the run as it stands. With files each blob of the output carries its
+// bytes.
+func (g *Gateway) shown(w http.ResponseWriter, r *http.Request, c *client.Client, id string) {
+	ctx, query := r.Context(), r.URL.Query()
+	var shown *client.Run
+	var err error
+	if query.Has("wait") {
+		if limit := query.Get("wait"); limit != "" {
+			d, err := machine.ParseDuration(limit)
+			if err != nil {
+				fail(w, http.StatusBadRequest, fmt.Errorf("wait: %v", err))
+				return
+			}
+			var cancel context.CancelFunc
+			ctx, cancel = context.WithTimeout(ctx, time.Duration(d))
+			defer cancel()
+		}
+		shown, err = c.Wait(ctx, id, g.interval())
+	} else {
+		shown, err = c.Show(ctx, id)
+	}
+	if err == nil && query.Has("files") {
+		shown.Output, err = withBytes(r.Context(), c, id, shown.Output)
+	}
+	reply(w, shown, err)
+}
+
+// withBytes gives a run's output with the bytes of each blob in it, as
+// base64 in the blob's data.
+func withBytes(ctx context.Context, c *client.Client, id string, v any) (any, error) {
+	var err error
+	switch v := v.(type) {
+	case []any:
+		for i := range v {
+			if v[i], err = withBytes(ctx, c, id, v[i]); err != nil {
+				return nil, err
+			}
+		}
+	case map[string]any:
+		if path, is := v["$blob"].(string); is {
+			contents, _, err := c.Fetch(ctx, id, path)
+			if err != nil {
+				return nil, err
+			}
+			data, err := io.ReadAll(contents)
+			if err != nil {
+				return nil, err
+			}
+			v["data"] = base64.StdEncoding.EncodeToString(data)
+			return v, nil
+		}
+		for k := range v {
+			if v[k], err = withBytes(ctx, c, id, v[k]); err != nil {
+				return nil, err
+			}
+		}
+	}
+	return v, nil
 }
 
 // submit is what the part named submit of a request to submit a tree holds,
@@ -600,36 +668,20 @@ func (g *Gateway) run(w http.ResponseWriter, r *http.Request, c *client.Client, 
 	case len(rest) > 0:
 		what = rest[0]
 	case r.Method == http.MethodGet:
-		asks = []string{"wait"}
+		asks = []string{"wait", "files"}
 	}
 	if !takes(w, r.URL.Query(), asks...) {
 		return
 	}
 	// An ID that is no run is answered as not found at once, on every
 	// route that names a run; one started a moment ago is waiting.
-	shown, err := c.Show(ctx, id)
-	if err != nil {
+	if _, err := c.Show(ctx, id); err != nil {
 		reply(w, nil, err)
 		return
 	}
 	switch {
 	case what == "" && r.Method == http.MethodGet:
-		if query := r.URL.Query(); query.Has("wait") {
-			// A wait may give its own limit. Cut short, by its limit or by
-			// the caller going away, it answers with the run as it stands.
-			if limit := query.Get("wait"); limit != "" {
-				d, err := machine.ParseDuration(limit)
-				if err != nil {
-					fail(w, http.StatusBadRequest, fmt.Errorf("wait: %v", err))
-					return
-				}
-				var cancel context.CancelFunc
-				ctx, cancel = context.WithTimeout(ctx, time.Duration(d))
-				defer cancel()
-			}
-			shown, err = c.Wait(ctx, id, g.interval())
-		}
-		reply(w, shown, err)
+		g.shown(w, r, c, id)
 	case what == "record" && r.Method == http.MethodGet && !r.URL.Query().Has("watch"):
 		// The record so far, and the run as it stands: what the stream
 		// gives, without staying.

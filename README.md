@@ -60,7 +60,7 @@ return {
 Connect your assistant once.
 
 ```sh
-claude mcp add corbie -- corbie mcp --allow test
+claude mcp add corbie -- corbie mcp
 ```
 
 Then ask for what you want "using Corbie". It reads the manual, writes the machine and runs it.

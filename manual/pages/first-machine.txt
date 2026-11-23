@@ -76,7 +76,7 @@ An assistant can write both files. Connect it to Corbie once. This command is
 for Claude Code, and any assistant that uses MCP servers takes the same
 settings.
 
-  claude mcp add corbie -- corbie mcp --allow test
+  claude mcp add corbie -- corbie mcp
 
 Then ask. Say "using Corbie", or the assistant writes a program of its own.
 
@@ -86,5 +86,8 @@ Then ask. Say "using Corbie", or the assistant writes a program of its own.
 The assistant reads this manual through the connection, writes the two files
 and runs them with `corbie test`. Each script runs as your user, limited only
 by the `allow:` lists the assistant wrote. Read them.
+
+The assistant may run every command of Corbie's. `corbie mcp --allow "run ls"
+--allow "run show"` gives it only the commands named.
 
 Next: `corbie manual a-list` runs one job for each item of a list.

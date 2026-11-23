@@ -205,7 +205,8 @@ A shape a `list:` job gives is read the same way: every step of that agent after
 A script cannot reach outside itself except through the kinds above, and those are checked. Beyond that, these are true and Corbie says so.
 
 - A program a job starts does its own reading, writing and connecting, as the runner's user. The permissions govern the start and nothing after. A runner's owner can put a box around started programs (see Runner); Corbie does not build one.
-- A model allowed `test` through `corbie mcp` runs each script it writes as the user who started `corbie mcp`. Under `corbie test` the ceilings allow everything, so the only limit is the `allow:` lists the model wrote.
+- A model through `corbie mcp` runs every command of Corbie's, as the user who started `corbie mcp`. `--allow` gives it only the commands named.
+- A model allowed `test` runs each script it writes as that user. Under `corbie test` the ceilings allow everything, so the only limit is the `allow:` lists the model wrote.
 - A permission to connect to a host governs the connection and nothing sent over it. A job allowed an MCP server can call any of its tools; what a call can do is set by the credentials the server is given.
 - An agent's listed tools are described by whoever wrote the list, and the model reads that text as it reads a tool's result.
 - A tool that calls a machine in another tree is described by that tree's owner, and the model reads that text as it reads a tool's result. It changes when that owner submits.

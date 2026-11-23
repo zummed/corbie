@@ -8,6 +8,11 @@ refused.
 After 0.29.0
 ------------
 
+Change this command.
+
+  corbie mcp                     the model may run every command of Corbie's
+  corbie mcp --allow <command>   as before: the model may run only the commands named
+
 These are new.
 
 - The gateway does everything a client does. New routes submit a tree, set,

@@ -172,7 +172,7 @@ the user's config directory  ~/.config/corbie on Linux
 
 The commands, their help, the manual's pages about them and the names by which a model is allowed to run them all come from one table.
 
-`corbie <word>`, where the word begins no command, runs the program `corbie-<word>` from PATH with the rest of the line, this process's standard input, output, error and environment, and ends with the program's exit status. A command in the table always wins. A model through `corbie mcp` runs a program only for a command the server was started with permission for.
+`corbie <word>`, where the word begins no command, runs the program `corbie-<word>` from PATH with the rest of the line, this process's standard input, output, error and environment, and ends with the program's exit status. A command in the table always wins. A model through `corbie mcp` runs a program only for a command the server's `--allow` names.
 
 When no program `corbie-<word>` is on PATH, `corbie` names the program it looked for, prints `corbie --help lists the commands.` and ends with status 2.
 
@@ -198,7 +198,7 @@ The program is given `manual` and `version` beside its own commands, and no `mcp
 ```
 corbie board manual                       Corbie's pages, the program's pages and its commands
 corbie board manual board-cards           a page the program added
-corbie mcp --allow "board new"            a model may run corbie board new, and no other
+corbie mcp --allow "board new"            a model may run corbie board new, and no other command
 ```
 
 ```
@@ -468,9 +468,16 @@ corbie run submit house --gateway https://corbie.example.com
 
 ## For a model
 
-`corbie mcp` serves two tools to a model: the manual, and the command line. The model may run only the commands it was started with permission for, each named by its whole name, as in `--allow "run submit"`, with the config the server was started on. It needs nothing running and keeps nothing.
+`corbie mcp` serves two tools to a model: the manual, and the command line. A command runs with the config the server was started on. The server needs nothing running and keeps nothing.
 
-A permission may name a program's command, as in `--allow "board new"`. When the server starts, it runs `corbie board manual --json` once:
+```
+corbie mcp                                        the model may run every command of Corbie's
+corbie mcp --allow "run ls" --allow "run show"    the model may run those two only
+```
+
+`--allow` names a command by its whole name. A host that gives the model a shell lets it run every command there, so `--allow` limits a model only where the host gives it no shell and the commands named run no script.
+
+`--allow` may name a program's command, as in `--allow "board new"`. When the server starts, it runs `corbie board manual --json` once:
 
 1. The program's pages join the manual, and its commands' pages name its commands.
 2. The model is told the program's page named after it, `board`, after Corbie's briefing.

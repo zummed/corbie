@@ -86,7 +86,7 @@ secrets and values                those set at its location or above; the neares
 - A child started by `machine:` runs at its parent's location. A machine made while running runs at the location of the job that starts it.
 - A made machine's sends would carry that job's location in `event.from`, which is why it addresses no other run.
 
-A tree belongs to the client that first submitted it. Only that client submits there, removes the tree and cancels the runs at its locations, and it and the clients a file's `read:` lists read them (see Reading). A client submits trees only at prefixes its ceiling's `at:` entries match.
+A tree belongs to the client that first submitted it. Only that client submits there and cancels the runs at its locations, only it and the controller's owner remove the tree, and it and the clients a file's `read:` lists read them (see Reading). A client submits trees only at prefixes its ceiling's `at:` entries match.
 
 ```
 work$ corbie client card | ssh ctl corbie controller enrol - --ceiling "at:/work,network,secret:*@*"

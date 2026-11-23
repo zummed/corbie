@@ -58,3 +58,31 @@ func TestRemoveRemovesATree(t *testing.T) {
 		}
 	}
 }
+
+// corbie controller tree remove removes a tree whose client the controller
+// no longer trusts, and says so where no tree is.
+func TestOwnerRemovesAnyTree(t *testing.T) {
+	m, _ := working(t, "all")
+	dir := files(t, map[string]string{
+		"home/boiler.yaml": "statechart: boiler\nlifetime: singleton\ninitial: idle\nstates:\n  idle:\n    on: { stop: off }\n  off: { end: done }\n",
+	})
+	out := m.ok("", "run", "submit", filepath.Join(dir, "home"))
+	started := regexp.MustCompile(`started (box-client/\S+)`).FindStringSubmatch(out)
+	if started == nil {
+		t.Fatalf("the submit printed %s", out)
+	}
+	m.ok("", "client", "value", "set", "HOST", "boiler.lan", "--at", "/home")
+	if status, _, said := m.run("", "controller", "tree", "remove", "/away"); status != 1 || !strings.Contains(said, "no tree is recorded at /away") {
+		t.Fatalf("a removal where no tree is ended %d and said %s", status, said)
+	}
+	if status, _, said := m.run("", "controller", "tree", "remove", "/"); status != 2 || !strings.Contains(said, "name the prefix of one tree") {
+		t.Fatalf("a removal at / ended %d and said %s", status, said)
+	}
+	m.ok("", "controller", "tree", "remove", "/home")
+	until(t, "the tree removed", func() bool {
+		return strings.Contains(m.ok("", "run", "show", started[1]), "  cancelled  ") && !strings.Contains(m.ok("", "controller", "value", "list"), "boiler.lan")
+	})
+	if out := m.ok("", "run", "remove", "/home"); out != "nothing was recorded or set at /home or under it\n" {
+		t.Fatalf("after the owner's removal the client's printed %q", out)
+	}
+}

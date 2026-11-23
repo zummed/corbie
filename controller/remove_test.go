@@ -1,6 +1,7 @@
 package controller_test
 
 import (
+	"fmt"
 	"slices"
 	"strings"
 	"testing"
@@ -194,6 +195,127 @@ func Test_ctl_removal_stopped_after_every_write(t *testing.T) {
 				!slices.Equal(receipt.Tree.Removed, wantReceipt.Tree.Removed) || len(receipt.Tree.Removed) != 2 {
 				t.Fatalf("stopped after %d writes and late by %s, the receipt is %+v", n, late, receipt.Tree)
 			}
+		}
+	}
+}
+
+// ownerRemoves writes the owner's removal of a tree into the controller's
+// inbox, as corbie controller tree remove does. It gives the message's name.
+func (w *world) ownerRemoves(prefix string) string {
+	w.t.Helper()
+	w.placed++
+	name := store.Message("ctl", "ctl", fmt.Sprintf("owner-20261010T120000.000000Z-%06d", w.placed))
+	msg := &instance.Message{Kind: instance.KindSubmit, Submit: &instance.Submit{Prefix: prefix, Remove: true}}
+	data, err := w.ctl.Write(name, w.clock(), w.clock().Add(24*time.Hour), msg, w.ctl.Card)
+	if err != nil {
+		w.t.Fatal(err)
+	}
+	if _, err := w.ctrl.Store.Write(ctx, name, data, store.OnlyIfNew); err != nil {
+		w.t.Fatal(err)
+	}
+	return name
+}
+
+// The owner removes any client's tree with the controller's own key, also
+// one whose client is trusted no longer: its runs are cancelled, and its
+// locations, what is set under its prefix and the tree are removed. A
+// prefix inside a tree is refused, and a submit the controller's key sends
+// that is no removal is no message.
+func Test_ctl_owner_removes_any_tree(t *testing.T) {
+	w := newWorld(t)
+	run := w.submitTree(w.client, w.tree("/x", "", map[string]string{"/x/kept": waiting}, nil)).Tree.Locations[0].Run
+	w.submitTree(w.client, w.tree("/y", "", map[string]string{"/y": waiting}, nil))
+	w.secret("K", "in x", "/x/kept")
+	if err := identity.WriteTrust(ctx, w.ctrl.Store, w.ctl, identity.Trust{Card: w.c1.Card, Removed: true}); err != nil {
+		t.Fatal(err)
+	}
+	w.ownerRemoves("/x/kept")
+	w.settle()
+	if !w.has(store.Tree("ctl", "/x")) || !w.has(store.LocationFile("ctl", "/x/kept")) || w.head(run).Status != "running" {
+		t.Fatalf("a removal inside the tree left %v", w.list(store.Locations("ctl")))
+	}
+	w.ownerRemoves("/x")
+	w.settle()
+	if status := w.head(run).Status; status != "cancelled" {
+		t.Fatalf("the run is %s", status)
+	}
+	for _, name := range w.list(store.Locations("ctl")) {
+		if at, entry, _ := store.ParseLocation("ctl", name); (at == "/x" || strings.HasPrefix(at, "/x/")) && !strings.HasPrefix(entry, "keys/") {
+			t.Fatalf("%s is still in the store", name)
+		}
+	}
+	if !w.has(store.Tree("ctl", "/y")) || len(w.at("/y")) != 1 {
+		t.Fatalf("the tree /y is %v", w.at("/y"))
+	}
+	if left := append(w.list(store.Inbox("ctl")), w.list(store.Receipts("ctl", "ctl"))...); len(left) > 0 {
+		t.Fatalf("the removals left %v", left)
+	}
+	// A submit under the controller's key that removes nothing.
+	name := store.Message("ctl", "ctl", "owner-20261010T120000.000000Z-000099")
+	data, err := w.ctl.Write(name, w.clock(), w.clock().Add(time.Hour), &instance.Message{Kind: instance.KindSubmit, Submit: &instance.Submit{Prefix: "/y"}}, w.ctl.Card)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := w.ctrl.Store.Write(ctx, name, data, store.OnlyIfNew); err != nil {
+		t.Fatal(err)
+	}
+	w.settle()
+	if !w.has(store.Tree("ctl", "/y")) || len(w.at("/y")) != 1 || w.head(w.onlyAt("/y")).Status != "running" {
+		t.Fatalf("a submit of the controller's own changed the tree /y: %v", w.at("/y"))
+	}
+}
+
+// onlyAt gives the one root run at a location.
+func (w *world) onlyAt(location string) string {
+	w.t.Helper()
+	for run := range w.at(location) {
+		return run
+	}
+	w.t.Fatalf("no run is at %s", location)
+	return ""
+}
+
+// The owner's removal, stopped after any single write, leaves what one never
+// stopped leaves.
+func Test_ctl_owner_removal_stopped_after_every_write(t *testing.T) {
+	story := func(stopAfter int64) (string, bool) {
+		w := newWorld(t)
+		gone := strings.Replace(waiting, "statechart: waiting", "statechart: gone", 1)
+		w.submitTree(w.client, w.tree("/x", "/srv/a", map[string]string{"/x/kept": waiting, "/x/gone": gone}, nil))
+		w.secret("K", "in x", "/x")
+		w.ownerRemoves("/x")
+		inner := w.ctrl.Store
+		s := &stopping{Store: inner}
+		s.left.Store(stopAfter)
+		w.ctrl = controller.New(w.ctl, s)
+		w.ctrl.Now = w.clock
+		for range 6 {
+			if _, err := w.ctrl.Pass(ctx); err != nil {
+				break
+			}
+			w.tick(400 * time.Millisecond)
+		}
+		w.afresh(inner)
+		for range 6 {
+			w.settle()
+			w.tick(time.Second)
+		}
+		return w.trees(), s.stopped.Load()
+	}
+	want, _ := story(1 << 40)
+	if !strings.HasPrefix(want, "/x/kept runs: [cancelled]\n/x/gone runs: [cancelled]\n") || !strings.Contains(want, "waiting: [] uploads: []") {
+		t.Fatalf("the removal never stopped left:\n%s", want)
+	}
+	for n := int64(0); ; n++ {
+		got, stopped := story(n)
+		if !stopped {
+			if n < 6 {
+				t.Fatalf("the removal made only %d writes", n)
+			}
+			break
+		}
+		if got != want {
+			t.Fatalf("stopped after %d writes, the removal left:\n%s\nnever stopped:\n%s", n, got, want)
 		}
 	}
 }

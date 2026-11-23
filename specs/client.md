@@ -45,7 +45,7 @@ corbie run cancel <id>                  cancel a run in one of this client's tre
 corbie run send <id> <event> [data]     send an event to a run
 corbie run reply <id> <ticket> [value]  answer a ticket that a run waits on
 
-corbie controller …                     enrol and remove runners and clients, set ceilings, tags and prefixes, manage secrets and values, cancel any run
+corbie controller …                     enrol and remove runners and clients, set ceilings, tags and prefixes, manage secrets and values, cancel any run, remove any tree
 corbie runner …                         print a card, trust a controller
 corbie client …                         print a card, trust a controller, show which client a command is sent as, manage secrets and values in this client's trees
 
@@ -68,7 +68,7 @@ The commands form a tree. A word at the top is a command, or begins several comm
                respond
   test         run a definition or a script in this process, with no setup
   run          submit, remove, start, ls, show, cancel, send, reply
-  controller   card, enrol, remove, parties, secret, value, policy, cancel
+  controller   card, enrol, remove, parties, secret, value, policy, cancel, tree
   runner       card, trust, remove
   client       card, trust, remove, show, secret, value
   manual       print a page of the manual, or list the pages; web
@@ -349,6 +349,16 @@ removed: secret BOILER_PASSWORD at /home/devices/boiler
 - A run that has ended is kept for the time its definition gives.
 - Where the prefix holds no tree, the command removes the secrets and values set at it or under it.
 - A prefix inside or above a tree, and another client's tree, are refused as a submit there is.
+
+The owner removes any client's tree, also one whose client was removed:
+
+```
+$ corbie controller tree remove /home
+the removal is in the controller's inbox; the controller acts on it at its next pass
+```
+
+- The command fails when no tree is recorded at the prefix.
+- It does not wait, as `corbie controller cancel` does not.
 
 - A submit at a prefix inside or above another tree is refused, naming that tree. `/` is never a tree.
 - A submit at a tree another client owns is refused, naming the owner.

@@ -107,6 +107,7 @@ What the submit does at a location:
 
 - A secret or a value set above the prefix stays.
 - A run that has ended stays for the time its `keep:` gives.
+- `corbie controller tree remove <prefix>` removes any client's tree, with the controller's config. It does not wait.
 
 `corbie test <directory>` checks each send and call whose `at:` is written out and is in the tree, as the controller would:
 

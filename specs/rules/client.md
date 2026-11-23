@@ -199,6 +199,8 @@ The detailed rules behind [the Client overview](../client.md).
 
 **R-client-183** `corbie run remove <prefix>` removes the tree at the prefix. It prints each location as `removed`, each run cancelled and each secret and value removed, and exits when each run it cancelled has ended. Where nothing was recorded or set at the prefix or under it, it says so. A refused removal prints the refusal and fails. The package removes a tree with `RemoveTree`, and the gateway at `POST /trees/remove` with `{"at": "<prefix>"}`, which answers the receipt. *Test:* `TestRemoveRemovesATree`, `Test_client_gateway_submits_a_tree` and `Test_client_commands_through_a_gateway`
 
+**R-client-184** `corbie controller tree remove <prefix>` writes the owner's removal of the tree at the prefix into the controller's inbox with the controller's own key, and does not wait. It fails when no tree is recorded at the prefix. *Test:* `TestOwnerRemovesAnyTree`
+
 **R-client-148** A file with a problem is reported, its location keeps what was recorded before and its runs, and the rest of the tree is done. The command then fails, whether it prints text or JSON, and its JSON gives each problem's text by location. *Test:* `TestFileWithAProblemKeepsItsLocation` and `client_submit_problems_in_json`
 
 **R-client-149** A run reads the tree's directory as `run.context` and its location as `run.location`, and so does what it starts. A singleton is given no input, and a singleton file whose `input:` needs a value is a file with a problem. *Test:* `TestContextIsReadByARunAndItsChildren` and `mach_singleton_needing_input_refused`

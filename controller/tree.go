@@ -40,6 +40,11 @@ import (
 // the receipt is written the tree's entry is deleted. Its receipt is sealed
 // to the controller as well, so a removal taken again after its receipt was
 // written reads that it was taken and deletes the entry.
+//
+// The owner's removal is one the controller's own key sent. It removes any
+// client's tree, is refused nothing a client's ceiling or a tree's client
+// would refuse, and has no receipt: taken again after the entry is deleted,
+// it finds no tree and nothing set.
 
 // A treeEntry is what the controller keeps at a tree's prefix, sealed to
 // itself.
@@ -53,6 +58,16 @@ type treeEntry struct {
 	Changes changes `json:"changes"`
 	// Message is the SHA-256 of what that submit's message says.
 	Message string `json:"message"`
+	// Owner says that submit is the owner's removal, sent with the
+	// controller's own key.
+	Owner bool `json:"owner,omitzero"`
+}
+
+// names says whether the entry was written for a submit: the one under a
+// name, from a sender.
+func (e *treeEntry) names(a *arrival, base string) bool {
+	owner := a.kind == identity.Controller
+	return e.Owner == owner && (owner || e.Client == a.sender) && e.Submit == base
 }
 
 // A treeFile is what the tree's entry keeps of one of its files.
@@ -128,7 +143,7 @@ func (p *pass) submit(a *arrival) error {
 	if err != nil {
 		return err
 	}
-	if entry != nil && entry.Client == a.sender && entry.Submit == base {
+	if entry != nil && entry.names(a, base) {
 		// The entry names a submit under this name. The one it was written
 		// for was taken then, and is carried out however late it is now,
 		// once the checks a submit is given pass again. Another under the
@@ -162,7 +177,11 @@ func (p *pass) submit(a *arrival) error {
 		// The submit the entry names is carried out first: worked out
 		// against what it is still to do, this one would leave undone a
 		// restart that one was to make.
-		waiting, err := p.store.ReadPart(p.ctx, store.Message(p.ctl, entry.Client, entry.Submit), 0, 1)
+		sender := entry.Client
+		if entry.Owner {
+			sender = p.ctl
+		}
+		waiting, err := p.store.ReadPart(p.ctx, store.Message(p.ctl, sender, entry.Submit), 0, 1)
 		if err != nil {
 			return err
 		}
@@ -259,20 +278,24 @@ func (p *pass) checkTree(a *arrival, msg *instance.Submit) (string, error) {
 // refusePrefix says why a client may not submit a tree at a prefix, if it
 // may not: the client is not trusted, the prefix is /, the client's
 // ceiling's at: entries do not match it, a tree is above it or below it, or
-// the tree there is another client's.
+// the tree there is another client's. The owner, whose sender is the
+// controller, is refused only / and a prefix above or below a tree.
 func (p *pass) refusePrefix(sender, prefix string) (string, error) {
-	client, err := p.trusted(sender)
-	if err != nil {
-		return "", err
-	}
-	if !client.Trusted() {
-		return fmt.Sprintf("the client %s is not trusted", sender), nil
+	owner := sender == p.ctl
+	if !owner {
+		client, err := p.trusted(sender)
+		if err != nil {
+			return "", err
+		}
+		if !client.Trusted() {
+			return fmt.Sprintf("the client %s is not trusted", sender), nil
+		}
+		if r := (&permission.Set{Layers: []permission.Layer{ceilingOf(client)}}).Check(permission.At, prefix); r != nil && prefix != "/" {
+			return r.Error(), nil
+		}
 	}
 	if prefix == "/" {
 		return "/ is never a tree: it is where secrets and values every tree uses are set", nil
-	}
-	if r := (&permission.Set{Layers: []permission.Layer{ceilingOf(client)}}).Check(permission.At, prefix); r != nil {
-		return r.Error(), nil
 	}
 	// No tree is above it, and none below.
 	for _, above := range store.Above(prefix)[1:] {
@@ -304,7 +327,7 @@ func (p *pass) refusePrefix(sender, prefix string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	if entry != nil && entry.Client != sender {
+	if entry != nil && entry.Client != sender && !owner {
 		return fmt.Sprintf("the tree %s belongs to the client %s", prefix, entry.Client), nil
 	}
 	return "", nil
@@ -314,6 +337,13 @@ func (p *pass) refusePrefix(sender, prefix string) (string, error) {
 func (p *pass) plan(a *arrival, base string, before *treeEntry) (*treeEntry, error) {
 	msg := a.msg.Submit
 	entry := &treeEntry{Client: a.sender, Directory: msg.Directory, Files: map[string]treeFile{}, Submit: base, Message: submitHash(msg)}
+	if a.kind == identity.Controller {
+		// The owner's removal cancels the runs of the tree's client.
+		entry.Owner, entry.Client = true, ""
+		if before != nil {
+			entry.Client = before.Client
+		}
+	}
 	old := map[string]treeFile{}
 	if before != nil {
 		old = before.Files
@@ -496,12 +526,14 @@ func (p *pass) carryTree(a *arrival, base string, entry *treeEntry) error {
 		}
 		return p.submitted(a, base)
 	}
-	to, err := p.trusted(a.sender)
-	if err != nil || to == nil {
-		return err
-	}
-	if _, err := p.write(store.Receipt(p.ctl, a.sender, base), p.now.Add(instance.ReceiptLife), receipt, to.Card, p.c.ID.Card); err != nil {
-		return err
+	if a.kind != identity.Controller {
+		to, err := p.trusted(a.sender)
+		if err != nil || to == nil {
+			return err
+		}
+		if _, err := p.write(store.Receipt(p.ctl, a.sender, base), p.now.Add(instance.ReceiptLife), receipt, to.Card, p.c.ID.Card); err != nil {
+			return err
+		}
 	}
 	if err := p.forget(a, base); err != nil {
 		return err
@@ -510,18 +542,21 @@ func (p *pass) carryTree(a *arrival, base string, entry *treeEntry) error {
 }
 
 // forget deletes the entry of a tree once the receipt of its removal says
-// the removal was taken, and only the entry written for that removal.
+// the removal was taken, and only the entry written for that removal. The
+// owner's removal has no receipt.
 func (p *pass) forget(a *arrival, base string) error {
 	msg := a.msg.Submit
-	receipt, err := p.ownReceipt(store.Receipt(p.ctl, a.sender, base))
-	if err != nil || receipt == nil || !receipt.Taken {
-		return err
+	if a.kind != identity.Controller {
+		receipt, err := p.ownReceipt(store.Receipt(p.ctl, a.sender, base))
+		if err != nil || receipt == nil || !receipt.Taken {
+			return err
+		}
 	}
 	entry, mark, err := p.readTree(msg.Prefix)
 	if errors.As(err, new(otherCase)) {
 		return nil
 	}
-	if err != nil || entry == nil || entry.Client != a.sender || entry.Submit != base || entry.Message != submitHash(msg) {
+	if err != nil || entry == nil || !entry.names(a, base) || entry.Message != submitHash(msg) {
 		return err
 	}
 	_, err = p.store.Delete(p.ctx, store.Tree(p.ctl, msg.Prefix), store.OnlyIfUnchanged(mark))

@@ -479,6 +479,13 @@ also allows reading it.
 		{Name: "controller cancel", Usage: "<id>", Summary: "cancel any run, in any client's tree", Run: cmdControllerCancel, Help: `
 It writes the cancel to the controller's inbox and does not wait. The
 controller cancels the run the next time it polls.`},
+		{Name: "controller tree remove", Usage: "<prefix>", Summary: "remove any client's tree, with its runs, secrets and values", Run: cmdControllerTreeRemove, Help: `
+It removes the tree recorded at the prefix as corbie run remove does, whichever
+client the tree belongs to, also one the controller no longer trusts. It
+writes the removal to the controller's inbox and does not wait. The
+controller removes the tree the next time it polls.
+
+  corbie run remove <prefix>   what a removal removes`},
 
 		{Name: "runner card", Usage: "[--name <name>] [--identity <address>]", Summary: "create this computer's runner and print its card", Run: cmdCard(identity.Runner), Help: `
 It creates the runner's identity if the config has none, and prints its card,

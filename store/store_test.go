@@ -23,10 +23,8 @@ func kinds(t *testing.T) map[string]Store {
 	if err != nil {
 		t.Fatal(err)
 	}
-	memory, err := Open("memory:")
-	if err != nil {
-		t.Fatal(err)
-	}
+	// A memory store of the test's own: the address memory: names one store for the process.
+	memory := Store(NewMemory().As(Party{Kind: Owner}))
 	fake := newFakeS3(t)
 	key := fake.newKey(Party{Kind: Owner})
 	t.Setenv("AWS_ACCESS_KEY_ID", key.id)
@@ -364,5 +362,28 @@ func TestVersion(t *testing.T) {
 				t.Fatalf("an unknown version: %v", err)
 			}
 		})
+	}
+}
+
+// The address memory: names one store for the process: what one party
+// writes there, another party opened in the same process reads.
+func Test_store_memory_address_is_one_store_of_the_process(t *testing.T) {
+	ctx := context.Background()
+	first, err := Open("memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := Open("memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	name := "trust/one-store-of-the-process"
+	if _, err := first.Write(ctx, name, []byte("written"), Overwrite); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { first.Delete(ctx, name, Overwrite) })
+	got, _, err := second.Read(ctx, name)
+	if err != nil || string(got) != "written" {
+		t.Fatalf("the second open of memory: read %q, %v: it is another store", got, err)
 	}
 }

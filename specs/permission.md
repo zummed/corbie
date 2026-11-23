@@ -234,6 +234,7 @@ A script cannot reach outside itself except through the kinds above, and those a
 
 - Two clients whose ceilings match one prefix each set secrets and values there while it holds no tree. What one set stays when the other submits a tree there, and that tree's runs use it. The controller's owner gives each client its own prefix.
 - Whoever holds a token of a gateway is the client the token names, for everything a client does. With a token of a client whose ceiling has `at:`, they submit a tree and run any script within that ceiling.
+- Built for `js/wasm`, a script that computes without end is not stopped at its time limit, and nothing limits a job's memory (see Roles). Whoever started the program ends it.
 - A gateway answers a page of any website. A page that has a token is the token's client, and a page that has none is refused.
 - A secret or a value set through a gateway is read by the gateway's process on its way to the controller.
 - Whoever controls a gateway's computer is every client the gateway acts as: it holds their keys.

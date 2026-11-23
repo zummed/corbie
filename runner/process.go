@@ -41,14 +41,20 @@ func JobMain() {
 		fmt.Fprintln(os.Stderr, "the job's process:", err)
 		os.Exit(2)
 	}
-	w := wire{opened}
+	jobOn(wire{opened}, os.Exit, role.Lost)
+}
+
+// jobOn runs one job over a channel. end is told how it ended, and lost
+// that the runner went away.
+func jobOn(w wire, end func(int), lost func()) {
 	first, err := w.receive()
 	if err != nil || first.Op != opBegin || first.Begin == nil {
-		os.Exit(2)
+		end(2)
+		return
 	}
 	b := first.Begin
 	ctx, cancel := context.WithCancel(context.Background())
-	ch := &channel{wire: w, answers: make(chan *piece, 1)}
+	ch := &channel{wire: w, answers: make(chan *piece, 1), lost: lost}
 	job := &plugin.Job{Context: ctx, Perms: &permission.Set{Layers: b.Layers, Scratch: b.Scratch}, Scratch: b.Scratch,
 		Wrapper: b.Wrapper, SearchPath: b.SearchPath, Secrets: b.Job.Secrets, Channel: ch, Noted: ch.noted}
 	e := newEngine(b, job, ch)
@@ -59,6 +65,9 @@ func JobMain() {
 		cancel()
 	}
 	ch.stop = stop
+	if ch.lost == nil {
+		ch.lost = func() { stop(&machine.Error{Status: machine.StatusError, Error: "the job's runner went away"}) }
+	}
 	go ch.listen()
 
 	// A script past its time limit is stopped from inside first.
@@ -77,7 +86,7 @@ func JobMain() {
 	job.End()
 	result.Job, result.Attempt, result.Used = b.Job.Name, b.Job.Attempt, job.Perms.Used()
 	w.send(&piece{Op: opResult, Result: result}, nil)
-	os.Exit(0)
+	end(0)
 }
 
 // channel is the job's end of its own channel to the runner. A script
@@ -86,6 +95,7 @@ type channel struct {
 	wire
 	answers chan *piece
 	stop    func(why *machine.Error)
+	lost    func()
 	ask     sync.Mutex
 }
 
@@ -96,7 +106,8 @@ func (c *channel) listen() {
 	for {
 		p, err := c.receive()
 		if err != nil {
-			role.Lost()
+			c.lost()
+			return
 		}
 		switch p.Op {
 		case opStop:
@@ -105,7 +116,8 @@ func (c *channel) listen() {
 			if p.Size > 0 {
 				data := make([]byte, p.Size)
 				if _, err := io.ReadFull(c.R, data); err != nil {
-					role.Lost()
+					c.lost()
+					return
 				}
 				p.Data = data
 			}

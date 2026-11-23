@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 )
 
 // VersionName is the name of the value that holds the layout's version.
@@ -18,7 +19,7 @@ const VersionName = "version"
 const Version = 2
 
 // Open opens the store an address names. The address alone says which kind
-// it is: "memory:" is a new memory store, "s3://…" a bucket, "corbie://…" a
+// it is: "memory:" is the process's one memory store, "s3://…" a bucket, "corbie://…" a
 // directory another computer serves, which OpenServed opens, and anything else a
 // directory.
 func Open(address string) (Store, error) {
@@ -26,7 +27,7 @@ func Open(address string) (Store, error) {
 	case address == "":
 		return nil, fmt.Errorf("store: no address given")
 	case address == "memory:":
-		return NewMemory().As(Party{Kind: Owner}), nil
+		return processMemory().As(Party{Kind: Owner}), nil
 	case strings.HasPrefix(address, "s3://"):
 		return openBucket(address)
 	case IsServed(address):
@@ -42,6 +43,10 @@ func Open(address string) (Store, error) {
 	}
 	return OpenDirectory(dir)
 }
+
+// processMemory is the one memory store of the process, which every party
+// started in the process shares and which goes when the process does.
+var processMemory = sync.OnceValue(NewMemory)
 
 // IsDirectory says whether an address names a directory, which keeps no party out
 // of anything.

@@ -12,6 +12,7 @@ The release has one binary for each system.
   Linux      corbie-linux-amd64, corbie-linux-arm64
   macOS      corbie-darwin-arm64, corbie-darwin-amd64
   Windows    corbie-windows-amd64.exe
+  a browser  corbie-js-wasm.wasm
 
 Corbie is tested on Linux, and its store, runner, permissions and keys on
 Windows too. Some things differ elsewhere.
@@ -26,6 +27,11 @@ Windows too. Some things differ elsewhere.
   root can elsewhere.
 - On Windows, a directory store's newest names can be lost when the power
   goes: Windows cannot sync a directory.
+- In a browser, a page's code starts the program with a command's words, as
+  `corbie up --store memory:`. A job runs in the program's own process, with
+  no limit on its memory. The gateway listens on no port: the page's code
+  calls it. The plugins that need a connection, a file or a program do not
+  work there.
 
 Choose where it runs
 --------------------

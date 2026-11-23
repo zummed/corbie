@@ -431,6 +431,8 @@ A page in a browser calls the gateway from any origin:
 
 Whoever has a token is the client it names. Nothing in a request raises that client's ceiling, names another client or names a principal. The gateway's computer holds the key of every client it acts as.
 
+Built for `js/wasm`, the gateway listens on no port. The code that started the program calls it for each request, as `corbieGateway.fetch`, and is answered as a caller over a connection is.
+
 It keeps nothing itself, so it runs as a process that listens, or on a serverless host as a function of its own:
 
 1. The host calls the function once for each request that comes to the function's URL.

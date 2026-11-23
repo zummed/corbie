@@ -256,7 +256,7 @@ func Test_id_fast_receiver_clock_does_not_drop_good_messages(t *testing.T) {
 
 func Test_id_removed_name_stays_reserved(t *testing.T) {
 	ctx := context.Background()
-	s, _ := store.Open("memory:")
+	s := store.Store(store.NewMemory().As(store.Party{Kind: store.Owner}))
 	ctl := party(t, "ctl", Controller)
 	first, second := party(t, "laptop", Runner), party(t, "laptop", Runner)
 

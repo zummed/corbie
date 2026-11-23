@@ -56,6 +56,9 @@ The detailed rules behind the [Roles overview](../role.md).
 
 **C-role-18** A job and a step in a process of its own are each started the one way, on every host: the same binary, with nothing of the role's environment, in a group of its own, over a channel of their own. A program built on Corbie that runs a job's process therefore runs a step's. Where the system can, it refuses a step's process memory past its limit, so that a request for more ends the process and fills nothing. *Test:* `role_made_step_on_a_host` and `role_system_refuses_memory_past_the_limit`
 
+**R-role-39** Built for `js/wasm`, a process starts no other: a job, and a step taken apart, run in the role's own process, over a channel of the same kind. Nothing limits a job's memory there, and a script that computes without end is not stopped.
+*Accept:* the command is built for `js/wasm` and run under Node as `corbie up` on a directory, with the store `memory:`. A run of a flow whose stage is a script ends `done` with the script's output, and a run of a flow whose stage is a machine made while running ends `done` with that machine's output. *Test:* `Test_role_js_wasm_runs_a_job_and_answers_its_hosts_code`
+
 ## Several copies
 
 **R-role-21** Any number of copies of a role may run against one store, and any copy may be stopped at any instant.

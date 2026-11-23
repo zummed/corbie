@@ -24,7 +24,7 @@ type world struct {
 }
 
 func newWorld(t *testing.T) *world {
-	s, _ := store.Open("memory:")
+	s := store.Store(store.NewMemory().As(store.Party{Kind: store.Owner}))
 	ctl, _ := identity.New("ctl", identity.Controller)
 	c1, _ := identity.New("c1", identity.Client)
 	return &world{t, s, ctl, c1}

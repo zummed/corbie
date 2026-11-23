@@ -163,11 +163,11 @@ type placeHead struct {
 // fixed is what a run has from its start, which never changes: its title,
 // the prefix of its tree, its lifetime, whether a call started it, the job
 // of its parent's it is, whether a machine above it or it was made while
-// running, and the directory last submitted at its tree. The UI reads it
+// running. The UI reads it
 // from the record of a run in a tree of its client.
 type fixed struct {
-	Title, Tree, Lifetime, Job, Dir string
-	Called, Made                    bool
+	Title, Tree, Lifetime, Job string
+	Called, Made               bool
 }
 
 // A rootLine is one root run: the chain of running runs from it to the
@@ -734,7 +734,7 @@ func fixedOf(ctx context.Context, c *client.Client, run *client.Run) (f fixed, f
 		return f, false, err
 	}
 	st := &step.State
-	return fixed{Title: st.Title, Tree: st.Tree, Lifetime: st.Lifetime, Job: st.Above.Job, Dir: st.Above.Context,
+	return fixed{Title: st.Title, Tree: st.Tree, Lifetime: st.Lifetime, Job: st.Above.Job,
 		Called: st.Above.CallJob != "" || st.Above.CallReceipt != nil, Made: st.Above.Made}, true, nil
 }
 

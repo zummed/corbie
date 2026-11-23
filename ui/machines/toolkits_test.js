@@ -12,6 +12,7 @@ test("machines_toolkits_show_what_offers_each", async () => {
   equal(rows.length, want.Toolkits.length, "the toolkits listed");
   equal(rows.map(r => text($(".name", r))), want.Toolkits.map(k => k.Name), "the toolkits' names");
   const open = parts.toolkit.Open;
+  equal($$(".files h2.group").map(text), parts.list.Trees.map(t => t.Prefix), "the trees");
   equal(text($(".files .filelist > a[aria-current] .name")), open.Name, "the toolkit chosen");
   equal(text($(".view .head > span")), open.Name, "the head of the toolkit chosen");
   equal(text($(".view .body .description")), "messages", "its description");
@@ -20,7 +21,7 @@ test("machines_toolkits_show_what_offers_each", async () => {
   for (const [i, o] of open.Offered.entries()) {
     const first = $("a.start", offered[i]);
     equal(words(first), o.Name, "an agent that offers it");
-    equal(first.getAttribute("href"), "/machines?" + new URLSearchParams({ file: o.File }), `the link to ${o.Name}`);
+    equal(first.getAttribute("href"), "/machines?" + new URLSearchParams({ at: o.At }), `the link to ${o.Name}`);
   }
   const cards = $$(".view .toolcards section.tool");
   equal(cards.map(c => text($(".tname", c))), open.Tools.map(t => t.Name), "the tool cards");
@@ -29,21 +30,8 @@ test("machines_toolkits_show_what_offers_each", async () => {
   assert($("p.job a", tell)?.getAttribute("href").startsWith("/machines?"), "the tool's job does not link to its machine");
 });
 
-test("machines_toolkits_show_the_problems_in_their_file", () => {
-  equal($$(".files .problems .problem").length, parts.list.Problems.length, "the problems above the list");
-  equal($$(".view nav.tabs a").map(text), ["Drawing", "Text"], "the tabs");
-  equal($$(".view nav.tabs a")[1].getAttribute("href"), "/toolkits?" + new URLSearchParams({ toolkit: parts.toolkit.Open.ID, view: "text" }), "the Text tab's address");
-});
-
 test("machines_pages_only_read", () => {
   equal($$("main form, main input, main textarea, main select").length, 0, "the fields on the Toolkits page");
-});
-
-test("machines_toolkits_page_follows_the_directory", async () => {
-  const own = "agent: own\nmodel: { name: claude-sonnet-5-5, secret: KEY }\nprompt: hello\ntoolkits:\n  messages:\n    description: other messages, as now\n    tools:\n      read: { description: reads, job: { script: ./own.js } }\n";
-  const res = await fetch("/written", { method: "POST", body: new URLSearchParams({ file: "own.yaml", text: own }) });
-  assert(res.ok, "the file was not written");
-  await until(() => $$(".files .filelist > a small").some(s => text(s).includes("other messages, as now")), "the list as the directory is now", 6000);
 });
 
 test("machines_toolkits_panels_fit_the_window_and_scroll_inside", () => {
@@ -71,10 +59,5 @@ test("machines_toolkits_choosing_a_toolkit_shows_it_in_place", async () => {
   equal(text($(".view .head > span")), name, "the head of the toolkit shown");
   history.back();
   await until(() => parts.toolkit.Open.ID === first, "Back showing the toolkit first chosen");
-  click($$(".view nav.tabs a").find(a => text(a) === "Text"));
-  await until(() => parts.toolkit.ShowText && $(".view pre.code"), "its text");
-  assert(location.search.includes("view=text"), "the address does not name the tab: " + location.search);
-  history.back();
-  await until(() => !parts.toolkit.ShowText && $(".view .toolcards"), "Back showing its tools");
   assert(window.samePage, "Back loaded another page");
 });

@@ -1,8 +1,8 @@
 # Controller
 
-The Controller page lists the runners and clients the controller trusts, the trees it has recorded, and the secrets and values set at each location, and changes the parties, secrets and values. It is offered when the UI acts as the controller.
+The Controller page lists the runners and clients the controller trusts, and the secrets and values set at each location, and changes the parties, secrets and values. It is offered when the UI acts as the controller.
 
-The page reads the store through Corbie's packages: the parties as `corbie controller parties` reads them, the secrets and values as `corbie controller secret list` and `corbie controller value list` read them, and each tree as the controller recorded it at its prefix. Each action runs its `corbie controller` command, with the controller's config, which is why the page needs the controller. The page shows what an action changed at once, and reads the store again at the interval.
+The page reads the store through Corbie's packages: the parties as `corbie controller parties` reads them, the secrets and values as `corbie controller secret list` and `corbie controller value list` read them. Each action runs its `corbie controller` command, with the controller's config, which is why the page needs the controller. The page shows what an action changed at once, and reads the store again at the interval.
 
 ## Check
 
@@ -34,21 +34,6 @@ Enrol shows what the command prints back, the controller's card and the store's 
 A runner's prefixes are typed as a list, such as `/home,/netops/tools`, and go to the command as `--at` once for each. Tags leaves a runner's prefixes as they are, and Prefixes leaves its tags. A runner set to the prefix `/` is sent every tree's jobs.
 
 Remove keeps the name with its key, marked as removed and signed by the controller. A removed party's line offers only Enrol, since setting its tags, prefixes or ceiling again would trust it again.
-
-## Trees
-
-Each tree is a line with its prefix, the client that owns it, and the directory last submitted there. Its locations follow, each with its lifetime:
-
-```
-/home                 tree of laptop-client, from /home/paul/house
-  devices/boiler      singleton
-  rooms/thermostat    keyed
-  tools/lookup        transient
-```
-
-- A location is written from its tree's prefix. A location the prefix names in full keeps its last name.
-- A tree and each location link to the Runs page narrowed to them.
-- The page changes no tree: only a tree's client submits there.
 
 ## Secrets and values
 

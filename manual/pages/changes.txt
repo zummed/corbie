@@ -13,6 +13,16 @@ Change this command.
   corbie mcp                     the model may run every command of Corbie's
   corbie mcp --allow <command>   as before: the model may run only the commands named
 
+Change how the UI is started.
+
+  corbie ui                 shows the machines the controller recorded, and reads no directory
+  corbie ui --dir <dir>     removed: submit the directory with `corbie run submit`
+  corbie ui controller      needed for Machines and Toolkits; a UI started as the client alone has Runs
+  corbie ui with no store   refused: `corbie init` or `corbie up ui` sets one up
+
+The Machines page shows no file's text and no problems: `corbie run submit`
+and `corbie test` print a file's problems.
+
 After 0.29.0
 ------------
 

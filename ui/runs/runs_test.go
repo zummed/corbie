@@ -1023,15 +1023,14 @@ func Test_runs_a_run_is_named_by_its_title(t *testing.T) {
 	}
 
 	// Where the UI offers Machines, the run's page links to its machine,
-	// asked for at its location and the directory its tree was submitted
-	// from.
+	// asked for at its location.
 	var asked []string
-	machine := func(_ context.Context, location, dir string, cards []string) (string, string, error) {
-		asked = append(asked, fmt.Sprint(location, " ", dir != "", " ", cards))
-		return "/machines?file=door.yaml", "door.yaml", nil
+	machine := func(_ context.Context, location string, cards []string) (string, error) {
+		asked = append(asked, fmt.Sprint(location, " ", cards))
+		return "/machines?at=%2Fhouse%2Fdoor", nil
 	}
 	h = New(Config{List: &listed{from: viewer}, Lister: viewer, Client: c, Machine: machine, Interval: time.Second, Shell: page.Shell{}})
-	if s := partOf[summaryPart](t, partsOf(t, get(t, h, "/run/"+id)), "summary"); s.Defined == nil || s.Defined.Href != "/machines?file=door.yaml" || len(asked) == 0 || asked[0] != "/house/door true []" {
+	if s := partOf[summaryPart](t, partsOf(t, get(t, h, "/run/"+id)), "summary"); s.Defined == nil || s.Defined.Href != "/machines?at=%2Fhouse%2Fdoor" || s.Defined.Location != "/house/door" || len(asked) == 0 || asked[0] != "/house/door []" {
 		t.Errorf("the run's page asked for its machine as %v, and links to %+v", asked, s.Defined)
 	}
 
@@ -1374,7 +1373,7 @@ func Test_runs_a_run_links_to_its_machine(t *testing.T) {
 	for _, r := range runs {
 		byID[r.ID] = r
 	}
-	facts := map[string]fixed{"a-client/1": {Dir: "/src/house"}, "a-client/2": {Job: "pause#1"}, "a-client/3": {Job: "doze.nap"}, "a-client/4": {Job: "make", Made: true}}
+	facts := map[string]fixed{"a-client/1": {}, "a-client/2": {Job: "pause#1"}, "a-client/3": {Job: "doze.nap"}, "a-client/4": {Job: "make", Made: true}}
 	for _, c := range []struct {
 		id, root, cards string
 	}{{"a-client/1", "a-client/1", ""}, {"a-client/2", "a-client/1", "pause"}, {"a-client/3", "a-client/1", "pause doze"}, {"a-client/4", "", ""}, {"b-client/5", "", ""}} {
@@ -1390,8 +1389,8 @@ func Test_runs_a_run_links_to_its_machine(t *testing.T) {
 	}
 
 	// The link is beside the run's address and in the head of its
-	// drawing, with a tooltip that the file is as it is now.
-	d := &definedAt{Href: "/machines?file=schedules%2Faway.yaml&open=pause", File: "schedules/away.yaml", Cards: "pause"}
+	// drawing, with a tooltip that the definition is as it is recorded now.
+	d := &definedAt{Href: "/machines?at=%2Fhome%2Fschedules%2Faway&open=pause", Location: "/home/schedules/away", Cards: "pause"}
 	summaryOf := func(v runView) SummaryPart { return runParts(v).Summary }
 	if got := summaryOf(runView{Run: runs[1], Defined: d}).Defined; got != d {
 		t.Errorf("the run's head does not link to its machine: %v", got)
@@ -1403,8 +1402,8 @@ func Test_runs_a_run_links_to_its_machine(t *testing.T) {
 	if got := decoded[shown](t, view).Defined; got == nil || *got != *d {
 		t.Errorf("the head of the run's drawing does not link to its machine: %s", view)
 	}
-	if !strings.Contains(string(script), "the file on the Machines page as it is now; the drawing here is the definition this run started with") {
-		t.Errorf("the link to a run's machine does not say the file is as it is now")
+	if !strings.Contains(string(script), "the definition recorded there now, on the Machines page; the drawing here is the definition this run started with") {
+		t.Errorf("the link to a run's machine does not say the definition is as it is recorded now")
 	}
 	if got := summaryOf(runView{Run: runs[0]}).Defined; got != nil {
 		t.Errorf("a run with no machine to show links to one: %v", got)

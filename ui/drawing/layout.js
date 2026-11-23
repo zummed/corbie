@@ -88,7 +88,6 @@ function itemOf(card) {
     href: card.Href,
     in: card.In ? drawOf(card.In) : null,
     narrow: card.Narrow,
-    line: card.Line ?? "",
   };
 }
 
@@ -168,7 +167,6 @@ class Drawn {
       tile: null,
       fold: null,
       tooltip: it.title || "",
-      line: it.line || "",
       in: null,
     };
     let y = ty;
@@ -1369,7 +1367,7 @@ function drawAgent(a) {
   const tools = { x: 0, y: 0, w: Math.max(acrossAll + 2 * inner, cardW), h: innerTop + high + inner };
   const total = hasTools ? tools.w : cardW;
   const left = margin;
-  const model = itemOf({ Icon: "model", Name: a.Model, Line: a.ModelLine });
+  const model = itemOf({ Icon: "model", Name: a.Model });
   const top = size(model);
   top.x = left + (total - top.w) / 2;
   top.y = margin + 18;
@@ -1463,7 +1461,7 @@ function titleOf(first, when) {
 // drawDecision draws two things, one below the other: the model, and the
 // answers, with each question's name.
 function drawDecision(dec) {
-  const model = itemOf({ Icon: "model", Name: dec.Model, Line: dec.ModelLine });
+  const model = itemOf({ Icon: "model", Name: dec.Model });
   const answers = itemOf(dec.Answers);
   const top = size(model), below = size(answers);
   const total = Math.max(top.w, below.w);

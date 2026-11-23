@@ -15,7 +15,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/zummed/corbie/blob"
 	"github.com/zummed/corbie/client"
 	"github.com/zummed/corbie/instance"
 	"github.com/zummed/corbie/store"
@@ -38,15 +37,10 @@ type Config struct {
 	Client     *client.Client
 	Controller bool
 	Command    page.Command
-	// Machine gives the address on the Machines page of the machine at a
-	// location of a tree submitted from a directory, with cards unfolded,
-	// and its file; none where the UI offers no Machines page.
-	Machine func(ctx context.Context, location, dir string, cards []string) (href, file string, err error)
-	// Differs gives the lines of the file now at a location of a tree
-	// submitted from a directory that differ from a definition: none where
-	// they are the same or the Machines page does not show the file. None
-	// where the UI offers no Machines page.
-	Differs func(ctx context.Context, location, dir string, def blob.Ref) ([]string, error)
+	// Machine gives the address on the Machines page of the machine
+	// recorded at a location, with cards unfolded; none where the UI offers
+	// no Machines page.
+	Machine func(ctx context.Context, location string, cards []string) (string, error)
 	// Steps reads the latest step of each run, shared with the other pages
 	// that read them; with none the Runs pages keep their own.
 	Steps    *Steps
@@ -349,42 +343,24 @@ func (h *handler) rootOf(ctx context.Context, id string) (*client.Run, fixed, []
 	return root, facts[root.ID], cards, nil
 }
 
-// defined gives where the Machines page shows a run's machine as its file
-// now is: the file of the run's location, or of its root's for a child,
-// unfolded down the cards of the jobs that started each child. A run in
+// defined gives where the Machines page shows a run's machine as it is
+// recorded now: the machine at the run's location, or at its root's for a
+// child, unfolded down the cards of the jobs that started each child. A run in
 // another client's tree, one whose machine was made while running, and one
 // the Machines page does not show, have none.
 func (h *handler) defined(ctx context.Context, id string) (*definedAt, error) {
 	if h.Machine == nil {
 		return nil, nil
 	}
-	root, f, cards, err := h.rootOf(ctx, id)
+	root, _, cards, err := h.rootOf(ctx, id)
 	if root == nil || err != nil {
 		return nil, err
 	}
-	href, file, err := h.Machine(ctx, root.Location, f.Dir, cards)
+	href, err := h.Machine(ctx, root.Location, cards)
 	if href == "" || err != nil {
 		return nil, err
 	}
-	return &definedAt{Href: href, File: file, Cards: strings.Join(cards, " › ")}, nil
-}
-
-// differs gives the lines of the file a run's root was started from that
-// differ now from the definition the root started with: none where they
-// are the same, or the UI cannot read which.
-func (h *handler) differs(ctx context.Context, id string) ([]string, error) {
-	if h.Differs == nil {
-		return nil, nil
-	}
-	root, f, _, err := h.rootOf(ctx, id)
-	if root == nil || err != nil {
-		return nil, err
-	}
-	step, err := h.step(ctx, root.ID, 1)
-	if err != nil || step == nil {
-		return nil, err
-	}
-	return h.Differs(ctx, root.Location, f.Dir, step.State.Definition)
+	return &definedAt{Href: href, Location: root.Location, Cards: strings.Join(cards, " › ")}, nil
 }
 
 // cardsOf gives the root of a run, and the cards of the jobs that started
@@ -407,9 +383,9 @@ func cardsOf(id string, byID map[string]*client.Run, facts map[string]fixed) (*c
 }
 
 // definedAt is where the Machines page shows a run's machine: its address,
-// its file, and the cards unfolded down to it.
+// its location, and the cards unfolded down to it.
 type definedAt struct {
-	Href, File, Cards string
+	Href, Location, Cards string
 }
 
 // byID gives the runs of the list by their IDs.

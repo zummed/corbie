@@ -413,7 +413,6 @@ table.kids svg.g { margin-right: 6px; }
 .machine .state.pick { cursor: pointer; }
 .machine .state.pick:focus-visible { outline: none; }
 .machine .state.pick:focus-visible rect.box { stroke: var(--accent); stroke-width: 2; }
-.machine a.line:hover text.title { fill: var(--accent); text-decoration: underline; }
 .machine .count > rect { fill: var(--petrol); stroke: var(--paper); stroke-width: 1.5; }
 .machine .count > text { font: 600 10.5px var(--mono); fill: var(--paper); }
 
@@ -421,43 +420,19 @@ table.kids svg.g { margin-right: 6px; }
 .ide { flex: 1; min-height: 0; display: grid; grid-template-columns: var(--files, 300px) 18px minmax(0, 1fr); row-gap: 18px; }
 .ide > * { min-height: 0; overflow: auto; }
 .files { display: flex; flex-direction: column; }
-.files > .head { position: sticky; top: 0; z-index: 1; background: var(--plate); }
-.files > .head .at { flex: none; color: var(--ink); }
 .files .filelist > p { margin: 0; padding: 8px 16px; border-bottom: 1px solid var(--line); font: 11.5px/1.4 var(--mono); }
-.files .unread { color: var(--rowan); }
-.files .unread a { text-decoration: underline; text-underline-offset: 3px; }
-.files h2.kind { margin: 0; padding: 18px 16px 8px; border-bottom: 1px solid var(--line); }
-.files h2.kind a { float: right; font: 400 11.5px var(--mono); letter-spacing: 0; text-transform: none; color: var(--ink2); }
-.files h2.kind a:hover, .files h2.kind a[aria-current] { color: var(--ink); text-decoration: underline; text-underline-offset: 3px; }
 .files h2.group { margin: 0; padding: 14px 16px 6px; border-bottom: 1px solid var(--line); font: 500 11.5px var(--mono); letter-spacing: 0; text-transform: none; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.files .bad { min-width: 19px; height: 19px; padding: 0 6px; border-radius: 999px; font: 500 11px/19px var(--mono); text-align: center; color: var(--rowan); background: color-mix(in srgb, var(--rowan) 15%, transparent); }
-.files .chip { height: 19px; padding: 0 8px; border-radius: 999px; font: 500 11px/19px var(--sans); color: var(--ink2); background: var(--hover); white-space: nowrap; }
-.problems { flex: none; margin: 10px 12px; padding: 10px 10px 4px; border: 1px solid color-mix(in srgb, var(--rowan) 35%, var(--line)); border-radius: 6px; }
-.problem { display: grid; gap: 3px; padding: 6px 0; font: 12px/1.4 var(--mono); overflow-wrap: anywhere; }
-.problem + .problem { border-top: 1px solid var(--line); }
-.problem p { margin: 0; }
-.problem .at { color: var(--rowan); }
-.problem .at:hover { text-decoration: underline; text-underline-offset: 3px; }
-.problem .place { color: var(--ink2); }
-.problem small { font-size: 11.5px; color: var(--ink2); }
+.files h2.group small { margin-left: 10px; font: 400 11.5px var(--mono); color: var(--ink2); }
 .view { display: flex; flex-direction: column; }
 .view > .head { position: sticky; top: 0; z-index: 1; background: var(--plate); }
 .view > section { padding: 12px 16px; border-bottom: 1px solid var(--line); }
 .view > .drawn { flex: 1 0 420px; border: 0; }
 .view .named { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 5px 18px; font: 12.5px/1.4 var(--mono); overflow-wrap: anywhere; }
 .place .description { margin: 0 0 10px; font: 13px/1.5 var(--mono); }
-.uses p { margin: 10px 0 0; font-size: 12px; }
-.included { display: flex; flex-wrap: wrap; gap: 6px 14px; font: 12.5px var(--mono); }
-.included h2 { flex-basis: 100%; }
-.included p { margin: 0; }
 pre.code { flex: 1 0 auto; margin: 0; padding: 12px 16px 12px 0; font: 13px/1.7 var(--mono); white-space: pre; tab-size: 2; counter-reset: line; }
 .code .l { display: block; min-height: 1.7em; padding-right: 16px; }
 .code .l::before { counter-increment: line; content: counter(line); display: inline-block; width: 52px; margin-right: 18px; text-align: right; color: var(--ink2); opacity: .55; }
-.code .l.err { background: color-mix(in srgb, var(--rowan) 9%, transparent); }
-.code .l.err::before { color: var(--rowan); opacity: 1; }
 .code .k { color: var(--accent); } .code .x { color: var(--amber); } .code .c { color: var(--ink2); }
-.code a.c:hover { color: var(--accent); text-decoration: underline; text-underline-offset: 3px; }
-.code .l:target { background: color-mix(in srgb, var(--accent) 12%, transparent); }
 .view.toolkit > .body { max-width: 1040px; }
 .view.toolkit .description { margin: 0 0 18px; font: 13px/1.5 var(--mono); }
 .view.toolkit .offered td { vertical-align: middle; padding-block: 6px; }
@@ -521,8 +496,7 @@ form.enrol pre.said { flex: 1 1 100%; margin: 0; white-space: pre-wrap; overflow
   ::view-transition-group(*), ::view-transition-old(*), ::view-transition-new(*) { animation: none !important; }
 }
 
-/* The Machines page: the line a card's name opens is lit, and a location counts its runs. */
-.code .l.here { background: color-mix(in srgb, var(--accent) 12%, transparent); }
+/* The Machines page: a location counts its runs. */
 .place .counted { color: var(--ink2); }
 
 /* A run's page: why the run is where it is, the file that changed, a job's facts and logs, and how long a job took. */
@@ -532,9 +506,6 @@ form.enrol pre.said { flex: 1 1 100%; margin: 0; white-space: pre-wrap; overflow
 .why button.link:disabled { cursor: default; }
 dl.why-facts { margin: -2px 0 10px; font: 12px var(--mono); }
 dl.why-facts dd { white-space: normal; }
-.differs { margin: 0 0 8px; font: 12px var(--mono); color: var(--ink2); }
-.differs > summary { cursor: pointer; color: var(--amber, var(--ink2)); }
-.differs pre { margin: 6px 0 0; padding: 8px 12px; max-height: 160px; overflow: auto; background: var(--plate); border: 1px solid var(--line); border-radius: 6px; }
 .wait { flex-wrap: wrap; }
 .wait .jobfacts { font-size: 11.5px; }
 .logs { list-style: none; margin: 4px 0 0; padding: 0; width: 100%; font: 11.5px var(--mono); }

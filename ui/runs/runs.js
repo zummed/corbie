@@ -2,7 +2,7 @@
 // unfolded as the store changes, a line or a row opens its run, the button
 // at a line's start unfolds it, and a panel shows one tab at a time.
 import { createContext, createDeferred, createEffect, createMemo, createSignal, createStore, isPending, onSettled, useContext, Errored } from "solid-js";
-import { html, parts, mount, lit, bump, Icon, Status, Act, Handle, tabs, plural, word, lineHref } from "ui";
+import { html, parts, mount, lit, bump, Icon, Status, Act, Handle, tabs, plural, word } from "ui";
 import { Drawing } from "drawing";
 
 // middle cuts a long address in its middle, where keys that differ at
@@ -149,8 +149,7 @@ const said = row => row.What.map(w => w.Text).join("");
 function Why() {
   const steps = useContext(StepsContext);
   const w = () => parts.summary.Why;
-  return html`<Show when=${w}>${y => html`<p class="why" id="why"><button type="button" class="link" onClick=${() => steps.select(y().Row)} disabled=${() => !y().Row}>${() => y().Lead}${() => (y().Since ? " " + ago(y().Since) : "")}${() => (y().Rest ? " " + y().Rest : "")}</button></p><Show when=${() => y().Facts?.length}><dl class="refusal why-facts"><For each=${() => y().Facts}>${f => html`<dt>${() => f.Name}</dt><dd>${() => f.Text}</dd>`}</For></dl></Show>`}</Show>
-  <Show when=${() => parts.summary.Differs?.length}><details class="differs" id="differs"><summary>the file changed since this run started</summary><pre>${() => parts.summary.Differs.join("\n")}</pre></details></Show>`;
+  return html`<Show when=${w}>${y => html`<p class="why" id="why"><button type="button" class="link" onClick=${() => steps.select(y().Row)} disabled=${() => !y().Row}>${() => y().Lead}${() => (y().Since ? " " + ago(y().Since) : "")}${() => (y().Rest ? " " + y().Rest : "")}</button></p><Show when=${() => y().Facts?.length}><dl class="refusal why-facts"><For each=${() => y().Facts}>${f => html`<dt>${() => f.Name}</dt><dd>${() => f.Text}</dd>`}</For></dl></Show>`}</Show>`;
 }
 
 function Summary() {
@@ -166,9 +165,9 @@ function Summary() {
   </div>`;
 }
 
-// Defined links to the machine a run was started from, as its file is now.
+// Defined links to the machine a run was started from, as it is recorded now.
 function Defined(props) {
-  return html`<Show when=${() => props.at}>${d => html`<a class="def" href=${() => d().Href} title="the file on the Machines page as it is now; the drawing here is the definition this run started with">${() => d().File}${() => (d().Cards ? " › " + d().Cards : "")}</a>`}</Show>`;
+  return html`<Show when=${() => props.at}>${d => html`<a class="def" href=${() => d().Href} title="the definition recorded there now, on the Machines page; the drawing here is the definition this run started with">${() => d().Location}${() => (d().Cards ? " › " + d().Cards : "")}</a>`}</Show>`;
 }
 
 function Waits() {
@@ -514,7 +513,7 @@ function View() {
   const v = () => steps.shown();
   return html`<section class=${() => ["panel", "asof", { pending: isPending(() => steps.shown()) }]} id="view">
     <Show when=${() => v()?.Row}>${row => html`<div class="head"><${Icon} type=${() => v().Type} /><span>${() => row().Run.Machine}</span><span class="dim">${() => v().Type}</span><${Defined} at=${() => v().Defined} /><span class="facts">as of step ${() => row().Step}, ${() => v().Time}</span></div>`}</Show>
-    <div class="drawn"><Show when=${() => v()?.Drawing} fallback=${() => html`<p class="dim">${() => (v()?.Row ? "no drawing" : "a run in another client's tree: only its status can be read")}</p>`}><${Drawing} scene=${() => v().Drawing} lit=${() => steps.hovered() ?? []} onCard=${path => steps.touched(path)} lineHref=${() => (parts.summary.Defined ? lineHref : undefined)} /></Show></div>
+    <div class="drawn"><Show when=${() => v()?.Drawing} fallback=${() => html`<p class="dim">${() => (v()?.Row ? "no drawing" : "a run in another client's tree: only its status can be read")}</p>`}><${Drawing} scene=${() => v().Drawing} lit=${() => steps.hovered() ?? []} onCard=${path => steps.touched(path)} /></Show></div>
   </section>`;
 }
 

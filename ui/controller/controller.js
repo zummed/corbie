@@ -1,10 +1,9 @@
-// The Controller page: the runners and clients the controller trusts, its
-// trees, and the secrets and values set at each location. Each action runs
+// The Controller page: the runners and clients the controller trusts, and
+// the secrets and values set at each location. Each action runs
 // one of Corbie's corbie controller commands.
 import { html, parts, mount, lit, Act } from "ui";
 
 const join = (list, by = ", ") => (list ?? []).join(by);
-const runs = at => "/runs?at=" + encodeURIComponent(at);
 
 // Hidden is a field the page fills in: the name or the location an action
 // is for.
@@ -85,13 +84,6 @@ function Controller() {
           <label><input type="checkbox" name="replace" value="1" /> Replace</label>
         <//>
       <//>
-    </div>
-    <div class="panel">
-      <div class="head"><h2>Trees</h2></div>
-      <table class="list"><thead><tr><th>Location</th><th>Lifetime</th></tr></thead>
-        <tbody><For each=${() => parts.trees} keyed=${t => t.Prefix} fallback=${() => html`<tr><td class="dim">no trees</td></tr>`}>${t => html`
-          <tr class="tree" ref=${lit(() => ({ key: "tree " + t().Prefix, data: [t().Client, t().Directory] }))}><td><a href=${() => runs(t().Prefix)}>${() => t().Prefix}</a></td><td class="dim cut" title=${() => `the tree of ${t().Client}, last submitted from ${t().Directory}`}>tree of ${() => t().Client}, from ${() => t().Directory}</td></tr>
-          <For each=${() => t().Locations} keyed=${l => l.At}>${l => html`<tr ref=${lit(() => ({ key: "location " + l().At, data: l() }))}><td class="in" title=${() => l().At}><a href=${() => runs(l().At)}>${() => l().Name}</a></td><td>${() => l().Lifetime}</td></tr>`}</For>`}</For></tbody></table>
     </div>
     <div class="panel">
       <div class="head"><h2>Secrets and values</h2></div>

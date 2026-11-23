@@ -20,7 +20,7 @@
 <header class="header">
   <a class="logo" href="/"><svg class="crow" viewBox="-62 -48 142 110" aria-hidden="true"><path d="M-58 6L-26-44L16-34Z" fill-opacity=".95"/><path d="M16-34L76-4L22 8Z" fill-opacity=".8"/><path d="M22 8L76-4L30 20Z" fill-opacity=".55"/><path d="M-58 6L16-34L22 8Z" fill-opacity=".7"/><path d="M-58 6L22 8L8 44Z" fill-opacity=".5"/><path d="M-58 6L8 44L-44 58Z" fill-opacity=".35"/><circle cx="-4" cy="-16" r="5.5"/></svg>Corbie</a>
   <nav>{{range .Offered}}<a href="/{{lower .}}"{{if eq . $.Current}} aria-current="page"{{end}}>{{.}}</a>{{end}}<a href="/manual/" target="_blank" rel="noopener">Manual</a></nav>
-  <p class="as">{{if .Parties}}as {{range .Parties}}<code>{{.}}</code>{{end}}{{else if .NoStore}}<span title="{{.NoStore}}">no store</span>{{else}}a viewer{{end}}<span class="live{{if not .Stream}} still{{end}}" id="live" title="following the store"></span></p>
+  <p class="as">{{if .Parties}}as {{range .Parties}}<code>{{.}}</code>{{end}}{{else}}a viewer{{end}}<span class="live{{if not .Stream}} still{{end}}" id="live" title="following the store"></span></p>
 </header>
 <main{{if .Stream}} data-stream="{{.Stream}}"{{end}}></main>
 <script type="application/json" id="parts">{{.Data}}</script>

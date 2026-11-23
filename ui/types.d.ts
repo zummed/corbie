@@ -141,7 +141,7 @@ export interface PagePart {
 
 export interface DefinedAt {
   Href: string;
-  File: string;
+  Location: string;
   Cards: string;
 }
 
@@ -175,7 +175,6 @@ export interface SummaryPart {
   Took: string;
   Cancel: string;
   Why: Why | null;
-  Differs: string[];
 }
 
 export interface LogLine {
@@ -319,7 +318,6 @@ export interface Card {
   Href: string;
   In?: Scene | null;
   Narrow: boolean;
-  Line: string;
 }
 
 export interface Stage {
@@ -380,7 +378,6 @@ export interface Toolkit {
 export interface Agent {
   Model: string;
   Mark: string;
-  ModelLine: string;
   Turn: number;
   Turns: number;
   Toolkits: Toolkit[];
@@ -391,7 +388,6 @@ export interface Agent {
 export interface Decision {
   Model: string;
   Mark: string;
-  ModelLine: string;
   Answers: Card;
 }
 
@@ -437,9 +433,25 @@ export interface RunParts {
   shown?: Shown | null;
 }
 
-export interface List {
-  Dir: string;
-  DirFull: string;
+export interface Entry {
+  Location: string;
+  Name: string;
+  Type: string;
+  First: string;
+  Lifetime: string;
+  Description: string;
+}
+
+export interface Listed {
+  Prefix: string;
+  Client: string;
+  Directory: string;
+  Entries: Entry[];
+}
+
+export interface Index {
+  Stamp: string;
+  Trees: Listed[];
 }
 
 export interface AtLocation {
@@ -451,22 +463,10 @@ export interface AtLocation {
 export interface Span {
   Class: string;
   Text: string;
-  Href: string;
 }
 
 export interface CodeLine {
   Spans: Span[];
-  ID: string;
-  Bad: boolean;
-}
-
-export interface Problem {
-  File: string;
-  Place: string;
-  Text: string;
-  Line: number;
-  Breaks: string[];
-  Top: boolean;
 }
 
 export interface MachinesPlace {
@@ -488,39 +488,20 @@ export interface Use {
   State: string;
 }
 
-export interface Entry {
-  Path: string;
-  Type: string;
-  First: string;
-  Location: string;
-  Lifetime: string;
-  Description: string;
-  Problems: number;
-  Included: number;
-  Listed: boolean;
-}
-
 export interface View {
   Open: string;
   Kind: string;
   First: string;
-  Facts: string;
   Stamp: string;
   View: string;
-  Drawable: boolean;
   Text: CodeLine[];
-  Found: Problem[];
   Place: MachinesPlace | null;
   Uses: Use[];
-  File: Entry | null;
-  Included: string[];
-  Controller: boolean;
-  Runs: boolean;
   Drawing: Scene | null;
 }
 
 export interface MachinesParts {
-  files: List;
+  list: Index | null;
   runs: Record<string, AtLocation>;
   view?: View | null;
 }
@@ -530,6 +511,7 @@ export interface ToolkitTool {
   Description: string;
   Job: string;
   File: string;
+  At: string;
   Call: string;
   Event: string;
   To: string;
@@ -541,12 +523,14 @@ export interface ToolkitTool {
 export interface Start {
   Name: string;
   File: string;
+  At: string;
   Type: string;
 }
 
 export interface Offer {
   Name: string;
   File: string;
+  At: string;
   When: string;
   Lifetime: string;
   Started: string;
@@ -555,31 +539,29 @@ export interface Offer {
 
 export interface MachinesToolkit {
   ID: string;
+  Tree: string;
   Name: string;
   Description: string;
   File: string;
   Instructions: string;
   InstructionsFile: string;
   Opening: boolean;
-  Broken: boolean;
   Tools: ToolkitTool[];
   Offered: Offer[];
 }
 
-export interface ToolkitList {
-  Dir: string;
-  DirFull: string;
+export interface ToolkitTree {
+  Prefix: string;
   Toolkits: MachinesToolkit[];
-  Problems: Problem[];
-  Unread: string;
+}
+
+export interface ToolkitList {
+  Trees: ToolkitTree[];
   Stamp: string;
 }
 
 export interface ToolkitChosen {
   Open: MachinesToolkit | null;
-  Found: Problem[];
-  ShowText: boolean;
-  Text: CodeLine[];
   Stamp: string;
 }
 
@@ -600,19 +582,6 @@ export interface Party {
   Acts: string[];
 }
 
-export interface Location {
-  At: string;
-  Name: string;
-  Lifetime: string;
-}
-
-export interface Tree {
-  Prefix: string;
-  Client: string;
-  Directory: string;
-  Locations: Location[];
-}
-
 export interface Setting {
   At: string;
   Name: string;
@@ -622,6 +591,5 @@ export interface Setting {
 
 export interface ControllerParts {
   parties: Party[];
-  trees: Tree[];
   settings: Setting[];
 }

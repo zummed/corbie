@@ -8,13 +8,10 @@ import (
 	"cmp"
 	"context"
 	"embed"
-	"encoding/json/jsontext"
 	"encoding/json/v2"
 	"fmt"
 	"io"
-	"maps"
 	"net/http"
-	"path"
 	"slices"
 	"strings"
 	"time"
@@ -59,18 +56,6 @@ type party struct {
 	Acts []string
 }
 
-// A Tree is one the controller recorded at its prefix: its client, the
-// directory last submitted there, and its locations.
-type Tree struct {
-	Prefix, Client, Directory string
-	Locations                 []Location
-}
-
-// A Location is one of a tree's, named from the tree's prefix.
-type Location struct {
-	At, Name, Lifetime string
-}
-
 // A setting is a secret or a value set at a location. A secret's Value is
 // never given.
 type setting struct {
@@ -79,18 +64,7 @@ type setting struct {
 
 type view struct {
 	Parties []party
-	Trees   []Tree
 	Set     []setting
-}
-
-// recorded is what the controller keeps of a tree at its prefix, sealed to
-// itself.
-type recorded struct {
-	Client    string `json:"client"`
-	Directory string `json:"directory"`
-	Files     map[string]struct {
-		Lifetime string `json:"lifetime"`
-	} `json:"files"`
 }
 
 // New gives the Controller page.
@@ -130,9 +104,6 @@ func (h *handler) read(ctx context.Context) (view, error) {
 		v.Parties = append(v.Parties, p)
 	}
 	slices.SortFunc(v.Parties, func(a, b party) int { return strings.Compare(a.Kind+a.Name, b.Kind+b.Name) })
-	if v.Trees, err = h.trees(ctx); err != nil {
-		return v, err
-	}
 	secrets, err := secret.List(ctx, h.Store, h.Controller.Name)
 	if err != nil {
 		return v, err
@@ -153,72 +124,19 @@ func (h *handler) read(ctx context.Context) (view, error) {
 	return v, nil
 }
 
-func (h *handler) trees(ctx context.Context) ([]Tree, error) {
-	return Trees(ctx, h.Store, h.Controller)
-}
-
-// Trees reads every tree the controller recorded, by prefix.
-func Trees(ctx context.Context, s store.Store, ctl *identity.Identity) ([]Tree, error) {
-	names, err := store.Names(s.List(ctx, store.Locations(ctl.Name)))
-	if err != nil {
-		return nil, err
-	}
-	var trees []Tree
-	for _, name := range names {
-		prefix, entry, ok := store.ParseLocation(ctl.Name, name)
-		if !ok || entry != "tree" {
-			continue
-		}
-		data, mark, err := s.Read(ctx, name)
-		if err != nil {
-			return nil, err
-		}
-		if mark == store.None {
-			continue
-		}
-		// Of what the controller keeps, the page reads only some fields.
-		var raw jsontext.Value
-		var r recorded
-		_, err = identity.Read(data, name, ctl.Card, ctl, &raw)
-		if err == nil {
-			err = json.Unmarshal(raw, &r)
-		}
-		if err != nil {
-			return nil, fmt.Errorf("the tree at %s: %w", prefix, err)
-		}
-		t := Tree{Prefix: prefix, Client: r.Client, Directory: r.Directory}
-		for _, at := range slices.Sorted(maps.Keys(r.Files)) {
-			t.Locations = append(t.Locations, Location{At: at, Name: nameIn(prefix, at), Lifetime: r.Files[at].Lifetime})
-		}
-		trees = append(trees, t)
-	}
-	slices.SortFunc(trees, func(a, b Tree) int { return strings.Compare(a.Prefix, b.Prefix) })
-	return trees, nil
-}
-
-// nameIn writes a location from its tree's prefix; a location the prefix
-// names in full keeps its last name.
-func nameIn(prefix, at string) string {
-	if at == prefix {
-		return path.Base(at)
-	}
-	return strings.TrimPrefix(at, strings.TrimSuffix(prefix, "/")+"/")
-}
-
-// parts gives the page's parts: the runners and clients, the trees, and
-// the secrets and values set.
+// parts gives the page's parts: the runners and clients, and the secrets
+// and values set.
 func (h *handler) parts(ctx context.Context) (Parts, error) {
 	v, err := h.read(ctx)
 	if err != nil {
 		return Parts{}, err
 	}
-	return Parts{Parties: v.Parties, Trees: v.Trees, Settings: v.Set}, nil
+	return Parts{Parties: v.Parties, Settings: v.Set}, nil
 }
 
 // Parts are the parts of the Controller page.
 type Parts struct {
 	Parties  []party   `json:"parties"`
-	Trees    []Tree    `json:"trees"`
 	Settings []setting `json:"settings"`
 }
 

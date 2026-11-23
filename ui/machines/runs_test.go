@@ -5,7 +5,6 @@ import (
 	"errors"
 	"net/http"
 	"slices"
-	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -81,7 +80,6 @@ func latest(ctx context.Context, c *client.Client, run *client.Run) (*instance.S
 // directory holding the keyed room is submitted at /house, with the
 // Machines page on it acting as the controller and the client.
 type house struct {
-	dir   string
 	l     *client.Local
 	list  *poked
 	pages *Pages
@@ -112,18 +110,15 @@ func newHouse(t *testing.T, interval time.Duration) *house {
 	if receipt, err := l.WaitReceipt(ctx, message, 0, client.LocalInterval); err != nil || !receipt.Taken {
 		t.Fatalf("the submit was not taken: %+v %v", receipt, err)
 	}
-	h := &house{dir: dir, l: l, list: &poked{from: l.Client}}
+	h := &house{l: l, list: &poked{from: l.Client}}
 	for key, event := range map[string]string{"1": "knock", "2": "knock", "3": "shut", "4": "break"} {
 		h.send(t, key, event)
 	}
 	h.waitFor(t, func(runs []*client.Run) bool {
 		return len(runs) == 4 && slices.ContainsFunc(runs, func(r *client.Run) bool { return r.Status == instance.Failed })
 	})
-	h.pages, err = New(Config{Dir: dir, Controller: l.Controller.ID, Store: l.Controller.Store, Runs: true, List: h.list, Client: l.Client, Latest: latest,
+	h.pages = New(Config{Controller: l.Controller.ID, Store: l.Controller.Store, List: h.list, Client: l.Client, Latest: latest,
 		Interval: interval, Shell: page.Shell{Offered: []string{"Runs", "Machines", "Toolkits"}}})
-	if err != nil {
-		t.Fatal(err)
-	}
 	return h
 }
 
@@ -155,7 +150,7 @@ func (h *house) waitFor(t *testing.T, match func([]*client.Run) bool) []*client.
 func Test_machines_a_location_counts_its_runs(t *testing.T) {
 	h := newHouse(t, time.Second)
 	p := h.pages
-	ix, err := p.h.tree(context.Background())
+	ix, err := p.h.index.current(context.Background())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -171,7 +166,7 @@ func Test_machines_a_location_counts_its_runs(t *testing.T) {
 		t.Errorf("the room's states hold %v of its runs", at.In)
 	}
 	if len(counted) != 1 {
-		t.Errorf("runs are counted at locations the directory has no machine at: %v", counted)
+		t.Errorf("runs are counted at locations with none: %v", counted)
 	}
 
 	// Another client's runs are counted at their location, and not in its
@@ -181,10 +176,10 @@ func Test_machines_a_location_counts_its_runs(t *testing.T) {
 		t.Errorf("acting as no client, the room counts %+v", got)
 	}
 
-	// With no store, nothing is counted.
+	// With no list, nothing is counted.
 	p.h.List = nil
 	if got := must(p.h.counted(context.Background(), ix)); len(got) != 0 {
-		t.Errorf("with no store, the page counts %v", got)
+		t.Errorf("with no list, the page counts %v", got)
 	}
 }
 
@@ -193,47 +188,6 @@ func must[V any](v V, err error) V {
 		panic(err)
 	}
 	return v
-}
-
-func Test_machines_a_run_differs_from_its_file(t *testing.T) {
-	h := newHouse(t, time.Second)
-	ctx := context.Background()
-	runs, err := h.list.Runs()
-	if err != nil {
-		t.Fatal(err)
-	}
-	run := runs[slices.IndexFunc(runs, func(r *client.Run) bool { return r.Key == "1" })]
-	step := must(latest(ctx, h.l.Client, run))
-	def, real := step.State.Definition, h.pages.h.dir.real
-	differs := func() []string {
-		t.Helper()
-		got, err := h.pages.Differs(ctx, "/house/room", real, def)
-		if err != nil {
-			t.Fatal(err)
-		}
-		return got
-	}
-	if got := differs(); got != nil {
-		t.Errorf("a run started from the files as they are differs by %q", got)
-	}
-	write(t, h.dir, map[string]string{"clean.js": "return 'cleaner'"})
-	if got := differs(); !slices.Equal(got, []string{"a script changed: ./clean.js"}) {
-		t.Errorf("with its script changed, a run differs by %q", got)
-	}
-	write(t, h.dir, map[string]string{"clean.js": "return 'clean'", "inner.yaml": strings.Replace(inner, "end: done", "end: failed", 1)})
-	if got := differs(); !slices.Equal(got, []string{"a child changed: ./inner.yaml"}) {
-		t.Errorf("with its child changed, a run differs by %q", got)
-	}
-	write(t, h.dir, map[string]string{"inner.yaml": inner, "room.yaml": "# a room\n" + strings.Replace(room, "  broke: { end: failed }\n", "  broke: { end: done }\n", 1)})
-	if got := differs(); !slices.Equal(got, []string{`- states.broke.end: "failed"`, `+ states.broke.end: "done"`}) {
-		t.Errorf("with a value changed, a run differs by %q", got)
-	}
-	if got, err := h.pages.Differs(ctx, "/house/room", t.TempDir(), def); err != nil || got != nil {
-		t.Errorf("a run of a tree submitted from another directory differs by %q, %v", got, err)
-	}
-	if got, err := h.pages.Differs(ctx, "/house/gone", real, def); err != nil || got != nil {
-		t.Errorf("a run at a location with no machine differs by %q, %v", got, err)
-	}
 }
 
 // Test_machines_counts_in_the_browser runs counts_test.js on the room of a
@@ -262,6 +216,6 @@ func Test_machines_counts_in_the_browser(t *testing.T) {
 		}
 		h.list.poke()
 	})
-	mux.Handle("/", servedBy(h.dir, h.pages))
-	pagetest.Run(t, pagetest.Config{Handler: mux, Page: "/machines?file=room.yaml", Module: "machines/counts_test.js"})
+	mux.Handle("/", served(h.pages))
+	pagetest.Run(t, pagetest.Config{Handler: mux, Page: "/machines?at=/house/room", Module: "machines/counts_test.js"})
 }

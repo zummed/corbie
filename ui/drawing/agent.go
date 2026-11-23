@@ -19,7 +19,6 @@ func agentOf(def *machine.Definition, a *agent.Agent, run *Run, w *walker) *Agen
 		out.Turns = 20
 	}
 	out.Mark = jobMark(run, "turn")
-	out.ModelLine = lineOf(w.lines, "model")
 	if out.Mark != "" && out.Mark != "failed" && out.Mark != "now" {
 		out.Mark = "done"
 	}
@@ -38,11 +37,7 @@ func agentOf(def *machine.Definition, a *agent.Agent, run *Run, w *walker) *Agen
 		if tool.Job != nil && strings.HasPrefix(tool.Job.Script, "corbie:") {
 			continue // Corbie's own, which no definition writes
 		}
-		place := "tools." + t
-		if tool.Toolkit != "" {
-			place = "toolkits." + tool.Toolkit + ".tools." + t
-		}
-		c := Card{Name: t, Title: titleOf(tool.Description, tool.When), Line: lineOf(w.lines, place)}
+		c := Card{Name: t, Title: titleOf(tool.Description, tool.When)}
 		w.describe(&c, t, tool.Job)
 		it := Tool{Card: c, When: tool.When != "", Mark: jobMark(run, t)}
 		if i, ok := at[tool.Toolkit]; ok {
@@ -62,7 +57,7 @@ func agentOf(def *machine.Definition, a *agent.Agent, run *Run, w *walker) *Agen
 		out.Toolkits[i].Folded = run != nil && g.Toolkit && !used
 	}
 	if ask := def.Ask; ask != nil {
-		c := Card{Name: "ask", Line: lineOf(w.lines, "ask")}
+		c := Card{Name: "ask"}
 		w.describe(&c, "ask", ask)
 		out.Ask, out.AskMark = &c, jobMark(run, "ask")
 	}

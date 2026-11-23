@@ -125,14 +125,6 @@ function relight(el, light) {
   el.classList.add(light);
 }
 
-// lineHref gives the address of a line of a file, written "file:line", in
-// the Machines page's Text tab; a line with no file has none.
-export function lineHref(at) {
-  const i = at.lastIndexOf(":");
-  if (i < 0) return undefined;
-  return `/machines?file=${encodeURIComponent(at.slice(0, i))}&view=text#L${at.slice(i + 1)}`;
-}
-
 // plural gives a count of a thing: 1 run, 2 runs.
 export const plural = (n, one) => `${n} ${word(n, one)}`;
 

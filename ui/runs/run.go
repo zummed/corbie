@@ -33,7 +33,7 @@ func runParts(v runView) RunParts {
 		Page: PagePart{ID: r.ID, Mine: v.Mine},
 		Summary: SummaryPart{ID: r.ID, Machine: r.Machine, Type: r.Type, Status: r.Status, Failure: r.Failure,
 			Title: r.Title, Location: r.Location, Address: v.Address, At: v.At, Defined: v.Defined,
-			Started: v.Started, Ended: v.Ended, Took: v.Took, Cancel: v.Cancel, Why: v.Why, Differs: v.Differs},
+			Started: v.Started, Ended: v.Ended, Took: v.Took, Cancel: v.Cancel, Why: v.Why},
 		Path:     v.Path,
 		Waits:    WaitsPart{ID: r.ID, Ended: r.HasEnded(), Waits: v.Waits, Reply: v.Reply, Send: v.Send, Labels: v.Labels, Timeout: v.Timeout},
 		Output:   OutputPart{Ended: r.HasEnded(), Refused: r.Refused, Layer: r.Layer, Fix: r.Fix, Error: r.Error, Output: v.Output, Used: v.Used, Files: v.Files},
@@ -67,16 +67,14 @@ type PagePart struct {
 	Mine bool
 }
 
-// SummaryPart is the head of a run's page: the run, why it is where it is,
-// and the lines of its file that differ now from the definition it
-// started with.
+// SummaryPart is the head of a run's page: the run, and why it is where it
+// is.
 type SummaryPart struct {
 	ID, Machine, Type, Status, Failure, Title, Location, Address, At string
 	Defined                                                          *definedAt
 	Started, Ended, Took                                             string
 	Cancel                                                           *page.Call
 	Why                                                              *why
-	Differs                                                          []string
 }
 
 // A why is why a run is where it is, in one line: what it is doing, since
@@ -143,7 +141,6 @@ type runView struct {
 	Shown                *shown
 	Defined              *definedAt
 	Why                  *why
-	Differs              []string
 	Timeout              string
 	Follows              string
 }
@@ -669,9 +666,6 @@ func (h *handler) runOf(ctx context.Context, id string, entries []client.Entry, 
 		v.Follows = v.Why.Row
 	case newest(v.Rows) != nil:
 		v.Follows = newest(v.Rows).Key
-	}
-	if v.Differs, err = h.differs(ctx, id); err != nil {
-		return v, err
 	}
 	if run.Output != nil {
 		data, _ := json.Marshal(run.Output, json.Deterministic(true))

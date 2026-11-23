@@ -432,29 +432,15 @@ test("drawing_camera_frames_a_child_from_its_first_frame", async () => {
 });
 
 // drawWith mounts a drawing of a fixture with the props a page gives it:
-// lineHref, the paths of cards lit, what a pick does, and counts. lit and
+// the paths of cards lit, what a pick does, and counts. lit and
 // counts are parts, so a test can change them as a page does.
-async function drawWith(name, { lineHref, lit = [], onCard, counts = {} } = {}, size = { width: 900, height: 700 }) {
-  const box = mount(() => html`<div class="drawn" style="flex: 1"><${Drawing} scene=${() => parts.scene} lineHref=${lineHref} lit=${() => parts.lit} onCard=${onCard} counts=${() => parts.counts} /></div>`, { scene: await fixture(name), lit, counts }, size);
+async function drawWith(name, { lit = [], onCard, counts = {} } = {}, size = { width: 900, height: 700 }) {
+  const box = mount(() => html`<div class="drawn" style="flex: 1"><${Drawing} scene=${() => parts.scene} lit=${() => parts.lit} onCard=${onCard} counts=${() => parts.counts} /></div>`, { scene: await fixture(name), lit, counts }, size);
   await settle(3);
   const v = box.querySelector(".viewport");
   assert(v, `${name} is not drawn`);
   return v;
 }
-
-// A card's name links to the line of its file that writes it, where the
-// page gives lines an address; the card's own link is on the rest of it.
-test("drawing_card_name_links_to_its_line", async () => {
-  let v = await drawWith("lookup-in-child", { lineHref: line => "/machines?line=" + line });
-  const check = card(v, "check");
-  const name = check.querySelector("text.title").closest("a");
-  assert(name?.matches("a.line"), "the name of a card is no link to its line");
-  equal(name.getAttribute("href"), "/machines?line=" + "4", "the address of check's line");
-  equal(check.querySelector("a.card").getAttribute("href"), "/run/a-client/9", "the link of the rest of the card");
-  assert(!name.closest("a.card") && !check.querySelector("a.card a"), "a link is inside another");
-  v = await drawWith("lookup-in-child");
-  assert(!v.querySelector("a.line"), "a name links to its line where the page gives lines no address");
-});
 
 // A card's tooltip gives its job's limits, and a flow's arrow why one stage
 // waits for the other.

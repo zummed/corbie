@@ -1,0 +1,8 @@
+{
+  "status": "failed",
+  "failure": "denied",
+  "error_contains": [
+    "guarded: ",
+    "no to all"
+  ]
+}

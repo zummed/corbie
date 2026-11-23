@@ -138,6 +138,10 @@ type Job struct {
 	// script or machine is in that machine's definition. Only the controller
 	// sets it.
 	Above bool `json:"above,omitzero"`
+	// Hook names the hook the job is, and Level which machine above
+	// declares it, the nearest being 0, for a hook taken from above.
+	Hook  string `json:"hook,omitzero"`
+	Level int    `json:"level,omitzero"`
 	// Wants names the emitted values the machine acts on.
 	Wants []string `json:"wants,omitzero"`
 }

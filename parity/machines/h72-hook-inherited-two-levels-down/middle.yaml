@@ -1,0 +1,7 @@
+flow: middle
+stages:
+  low:
+    each: [1, 2]
+    job: { machine: ./guarded-chart.yaml, input: { n: "${item}" } }
+output:
+  low: ${stages.low.output}

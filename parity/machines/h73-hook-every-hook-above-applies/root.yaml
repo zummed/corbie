@@ -1,0 +1,17 @@
+# The root's hook says no. The child has a hook of its own that says yes.
+# Every hook above a job applies, so the child's marked stage is denied by the
+# root's hook, and the run fails.
+flow: parent
+hooks:
+  approval: { before: { script: ./no.js }, when: "${job.approve}" }
+stages:
+  kid:
+    job: { machine: ./child.yaml, input: { n: 1 } }
+  own:
+    job: { script: ./add.js, input: { n: 100 }, approve: true }
+  own_refused:
+    when: ${stages.own.failed}
+    job: { script: ./echo.js, input: { error: "${stages.own.error}" } }
+output:
+  kid: ${stages.kid.output}
+  own_refused: ${stages.own_refused.output}

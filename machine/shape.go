@@ -131,6 +131,13 @@ func (s *Shape) field(name string) *Field {
 	return nil
 }
 
+// hookShape is the shape of a hook.
+var hookShape = &Shape{Name: "hook", What: "a hook", Fields: []Field{
+	{Name: "before", Kind: KindJob, Description: "a job that runs before a job starts; the job starts when it gives { ok: true }"},
+	{Name: "after", Kind: KindJob, Description: "a job that runs after a job has ended, given its result"},
+	{Name: "when", Kind: KindWord, Description: "a condition, one expression, on the job: the hook runs for the jobs it holds for; every job, if not given"},
+}}
+
 // The fields every type of machine takes, beside its type and its name.
 var shared = []Field{
 	{Name: "description", Kind: KindText, Description: "what the machine is for, in plain text that Corbie keeps with the definition and fills nothing into"},
@@ -140,6 +147,7 @@ var shared = []Field{
 	{Name: "deny", Kind: KindList, Description: "what no script the definition runs may do"},
 	{Name: "approve", Kind: KindList, Description: "permissions a job may use only after the definition's ask approves it"},
 	{Name: "ask", Kind: KindJob, Description: "the job that approves when a job needs approval"},
+	{Name: "hooks", Kind: KindNamed, Of: hookShape, Description: "jobs that run before or after the jobs of the machine and of the machines below it, by name"},
 	{Name: "title", Kind: KindText, Description: "what a run is called, filled in from its input when it starts; only the client of its tree sees it"},
 	{Name: "meta", Kind: KindValue, Description: "data of any kind, which Corbie keeps with the definition and never reads"},
 	{Name: "lifetime", Kind: KindWord,

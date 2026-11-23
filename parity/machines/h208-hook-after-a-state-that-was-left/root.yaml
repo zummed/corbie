@@ -1,0 +1,12 @@
+# The chart leaves the state while the hook after its job is still running.
+statechart: left
+hooks:
+  slow: { after: { machine: ./slow.yaml }, when: "${job.name == 'working'}" }
+initial: working
+states:
+  working:
+    job: ./one.js
+    timers: { give_up: 1s }
+    on: { done: ran, give_up: gone }
+  ran: { end: done, output: ran }
+  gone: { end: done, output: left while the hook ran }

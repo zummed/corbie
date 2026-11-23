@@ -1,0 +1,13 @@
+{
+  "status": "done",
+  "output": {
+    "note": {
+      "ask_fails": {
+        "<contains>": "failed on purpose"
+      },
+      "ask_approves_none": {
+        "<contains>": "gave no { ok: true }"
+      }
+    }
+  }
+}

@@ -1,0 +1,6 @@
+flow: ask-approves-none
+hooks:
+  approval: { before: { script: ./echo.js }, when: "${job.approve}" }
+stages:
+  guarded:
+    job: { script: ./add.js, input: { n: 1 }, approve: true }

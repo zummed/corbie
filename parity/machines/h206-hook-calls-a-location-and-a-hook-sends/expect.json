@@ -1,0 +1,15 @@
+{
+  "status": "done",
+  "output": [
+    {
+      "item": 20,
+      "output": "refunded 20"
+    },
+    {
+      "item": 900,
+      "error": {
+        "<contains>": "the hook approval refused it: over 100"
+      }
+    }
+  ]
+}

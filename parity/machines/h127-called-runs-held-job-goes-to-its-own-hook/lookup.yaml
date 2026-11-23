@@ -1,0 +1,7 @@
+flow: lookup
+hooks:
+  approval: { before: { script: ./yes.js }, when: "${job.approve}" }
+input: { n: number }
+stages:
+  guarded: { job: { script: ./add.js, input: { n: "${input.n}" }, approve: true } }
+output: ${stages.guarded.output}

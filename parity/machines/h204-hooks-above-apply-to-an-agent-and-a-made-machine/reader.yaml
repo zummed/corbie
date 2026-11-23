@@ -1,0 +1,6 @@
+agent: reader
+model: { name: scripted, service: anthropic }
+turn: ./turn.js
+prompt: Read two pages.
+tools:
+  fetch: { description: Fetch a page, args: { url: string }, job: { script: ./fetch.js, input: { url: "${args.url}" } } }

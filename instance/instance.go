@@ -142,6 +142,8 @@ type State struct {
 	Keep machine.Duration `json:"keep,omitzero"`
 	// Ask is the ask its definition names, for what it starts.
 	Ask *machine.JobSpec `json:"ask,omitzero"`
+	// Hooks are the hooks its definition names, for what it starts.
+	Hooks map[string]*machine.HookSpec `json:"hooks,omitzero"`
 	// Recorded is what the instance read at its first step of the machine
 	// recorded at each location its definition calls in full, by location.
 	Recorded map[string]machine.Recorded `json:"recorded,omitzero"`
@@ -204,6 +206,9 @@ type Above struct {
 	Approve []string `json:"approve,omitzero"`
 	// Ask is the nearest ask above, for a machine that has none of its own.
 	Ask *AskAbove `json:"ask,omitzero"`
+	// Hooks are the hooks of each machine above that has some, the nearest
+	// first.
+	Hooks []HooksAbove `json:"hooks,omitzero"`
 	// IsAsk says the instance is itself run as an ask.
 	IsAsk bool `json:"is_ask,omitzero"`
 	// Made says a machine above it, or the instance itself, was made while
@@ -258,6 +263,25 @@ type AskAbove struct {
 	Layers     []permission.Layer `json:"layers,omitzero"`
 }
 
+// HooksAbove are the hooks a machine takes from one machine above: the
+// hooks as written, the definition that declares them and the input their
+// values are filled from.
+type HooksAbove struct {
+	Hooks      map[string]*machine.HookSpec `json:"hooks"`
+	Definition blob.Ref                     `json:"definition"`
+	Input      any                          `json:"input,omitzero"`
+	Layers     []permission.Layer           `json:"layers,omitzero"`
+}
+
+// A HookRef names one hook that is to run for a job: the machine that
+// declares it, -1 for the job's own and otherwise its place in the hooks
+// from above, and the hook's name there.
+type HookRef struct {
+	Level int    `json:"level"`
+	Name  string `json:"name"`
+	After bool   `json:"after,omitzero"`
+}
+
 // A Going is a job still going.
 type Going struct {
 	machine.Job
@@ -290,6 +314,13 @@ type Going struct {
 	Held bool `json:"held,omitzero"`
 	// ForAsk lists the held jobs this job of the ask is deciding.
 	ForAsk []string `json:"for_ask,omitzero"`
+	// Hooks are the hooks still to run for the job: before it starts,
+	// while it is held, and after it, once it has ended.
+	Hooks []HookRef `json:"hooks,omitzero"`
+	// For is the job a hook's job runs for.
+	For string `json:"for,omitzero"`
+	// Outcome is how the job ended, kept while the hooks after it run.
+	Outcome *machine.Event `json:"outcome,omitzero"`
 }
 
 // AskName is the name of the job that gives the yes when a job needs

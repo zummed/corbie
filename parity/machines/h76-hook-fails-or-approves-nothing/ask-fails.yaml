@@ -1,0 +1,6 @@
+flow: ask-fails
+hooks:
+  approval: { before: { script: ./fail.js }, when: "${job.approve}" }
+stages:
+  guarded:
+    job: { script: ./add.js, input: { n: 1 }, approve: true }

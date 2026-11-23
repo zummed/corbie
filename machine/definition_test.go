@@ -191,7 +191,7 @@ func Test_mach_unknown_or_repeated_field_is_refused(t *testing.T) {
 	}
 	// The problem names the fields the mapping takes: at the top, those
 	// every type takes and then the type's own.
-	if got := problems(t, "probe: p\nValue: 1\n", nil); !strings.Contains(got, `"Value" is not a field that belongs here: a probe takes probe, description, input, keep, limits, allow, deny, approve, ask, title, meta, lifetime, update, receive, read, work, value`) {
+	if got := problems(t, "probe: p\nValue: 1\n", nil); !strings.Contains(got, `"Value" is not a field that belongs here: a probe takes probe, description, input, keep, limits, allow, deny, approve, ask, hooks, title, meta, lifetime, update, receive, read, work, value`) {
 		t.Fatalf("a name in the wrong case: %s", got)
 	}
 	if got := problems(t, "probe: p\nwork:\n  a: { script: ./a.js, retries: 3 }\n", map[string]string{"a.js": ""}); !strings.Contains(got, `"retries" is not a field that belongs here: a job takes script, files, machine, send, call, input, allow, deny, timeout, restart, memory, tags, approve`) {

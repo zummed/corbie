@@ -439,7 +439,7 @@ func mark(ticket string) string {
 // or the called run that is the job.
 func (b *build) jobOf(a *arrival, full string) *instance.Going {
 	for _, job := range b.st.Jobs {
-		if job.Full() != full || job.Held {
+		if job.Full() != full || job.Held || job.Outcome != nil {
 			continue
 		}
 		switch a.kind {
@@ -566,11 +566,32 @@ func (b *build) renew(job *instance.Going) {
 // is the controller's own to act on.
 func (b *build) settle(job *instance.Going, event machine.Event, a *arrival) {
 	b.unwakeJob(job)
-	b.forget(job)
+	if job.For != "" {
+		b.forget(job)
+		b.hookEnded(job, event, a)
+		return
+	}
 	if job.Name == instance.AskName {
+		b.forget(job)
 		b.askEnded(job, event, a)
 		return
 	}
+	if b.hooked() && !job.Began.IsZero() {
+		// The hooks after a job that started run before the machine is given
+		// its outcome.
+		job.Outcome = &event
+		refs, err := b.hooksFor(job, true)
+		if err != nil {
+			event = machine.Event{Name: machine.Failed, From: job.Name, Data: b.p.failf("%v", err).Value()}
+		} else if len(refs) > 0 {
+			b.use(a)
+			b.record(machine.Event{Name: event.Name, From: job.Full(), Data: event.Data}, a, true)
+			job.Hooks, job.Runner, job.Child, job.Called = refs, "", "", ""
+			b.startHook(job, a)
+			return
+		}
+	}
+	b.forget(job)
 	b.give(event, a)
 }
 
@@ -781,7 +802,7 @@ func (b *build) readDefinition(s *instance.Start) *stepOut {
 		}
 		// What a machine made while running holds is denied when it is held:
 		// its definition's ask is not one that applies.
-		if len(problems) == 0 && needsAsk && !st.Above.Made && st.Ask == nil && st.Above.Ask == nil {
+		if len(problems) == 0 && needsAsk && !st.Above.Made && st.Ask == nil && st.Above.Ask == nil && len(st.Hooks)+len(st.Above.Hooks) == 0 {
 			problems = machine.Problems{{Text: "a job is marked for approval, or a permission is listed in approve:, and no ask applies: neither this definition nor any machine above it has one"}}
 		}
 		if read.Problems = problems; len(problems) > 0 {
@@ -942,6 +963,7 @@ func (b *build) apply(requests []machine.Request) error {
 				b.cancel(job)
 				b.unwakeJob(job)
 				b.forget(job)
+				b.dropHooks(job)
 				if job.Held {
 					b.unhold(job)
 				}
@@ -1005,6 +1027,7 @@ func (b *build) begin(req *machine.Job, earlier *instance.Going) error {
 		b.cancel(old)
 		b.unwakeJob(old)
 		b.forget(old)
+		b.dropHooks(old)
 	}
 	if b.st.Asked == nil {
 		b.st.Asked = map[string]int{}
@@ -1073,6 +1096,23 @@ func (b *build) begin(req *machine.Job, earlier *instance.Going) error {
 		b.fail(job, "job limit reached: this instance may start %d jobs", b.def.Jobs)
 	case job.IsMachine() && b.st.Above.Depth+1 > b.st.Above.MaxDepth:
 		b.fail(job, "depth limit reached: a root may have %d levels of machines below it", b.st.Above.MaxDepth)
+	case b.hooked():
+		// The hooks before the job run first, one at a time. A job marked for
+		// approval starts only after one of them.
+		refs, err := b.hooksFor(job, false)
+		switch {
+		case err != nil:
+			b.fail(job, "%v", err)
+		case len(refs) > 0:
+			job.Held, job.Hooks = true, refs
+			b.ask(instance.Ask{Kind: instance.AskHold, Name: job.Full(), Job: &job.Job})
+			b.startHook(job, nil)
+		case b.holds(job):
+			b.ask(instance.Ask{Kind: instance.AskFail, Name: job.Full(), Message: b.message("fail"),
+				Error: &machine.Error{Status: machine.StatusDenied, Error: "the job is marked for approval and no before hook is for it"}})
+		default:
+			b.launch(job)
+		}
 	case b.holds(job):
 		// Held before anything of it exists: no message to a runner, and no
 		// child.
@@ -1636,6 +1676,7 @@ func (b *build) above(def *machine.Definition) {
 	// of one is not kept.
 	if !st.Above.Made {
 		st.Ask = def.Ask
+		st.Hooks = def.Hooks
 	}
 	st.Keep = machine.Duration(b.p.keepFor(def, &st.Above))
 	st.Above.Approve = append(slices.Clone(st.Above.Approve), def.Approve...)

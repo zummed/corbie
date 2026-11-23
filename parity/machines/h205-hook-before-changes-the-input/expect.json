@@ -1,0 +1,14 @@
+{
+  "status": "done",
+  "output": [
+    {
+      "item": 20,
+      "output": "refunded 20"
+    },
+    {
+      "item": 900,
+      "output": "refunded 100"
+    }
+  ],
+  "note": "the prototype of hooks: a before hook that changes a job's input. The flow asked for 900 and its record says 900, and the job ran with 100."
+}

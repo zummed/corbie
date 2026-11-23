@@ -1,0 +1,12 @@
+# The ask approves nothing; a stage's when: reads stages.guarded.failed.
+flow: asks
+hooks:
+  approval: { before: { script: ./no.js }, when: "${job.approve}" }
+stages:
+  guarded:
+    job: { script: ./add.js, input: { n: 1 }, approve: true }
+  cleanup:
+    when: ${stages.guarded.failed}
+    job: { script: ./echo.js, input: { error: "${stages.guarded.error}" } }
+output:
+  cleanup: ${stages.cleanup.output}

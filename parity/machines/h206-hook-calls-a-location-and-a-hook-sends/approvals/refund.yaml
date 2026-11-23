@@ -1,0 +1,6 @@
+flow: refund-approval
+description: Says whether a refund may be made.
+input: { amount: number }
+stages:
+  rule: { job: { script: ./rule.js, input: { amount: "${input.amount}" } } }
+output: ${stages.rule.output}

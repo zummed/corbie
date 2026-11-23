@@ -1,0 +1,9 @@
+{
+  "status": "failed",
+  "failure": "denied",
+  "error_contains": [
+    "kid: ",
+    "guarded: ",
+    "not today"
+  ]
+}

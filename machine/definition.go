@@ -33,6 +33,9 @@ type Definition struct {
 	// approves it.
 	Approve []string `json:"approve,omitzero"`
 	Ask     *JobSpec `json:"ask,omitzero"`
+	// Hooks are the jobs that run before or after the jobs of the machine
+	// and of the machines below it, by name.
+	Hooks map[string]*HookSpec `json:"hooks,omitzero"`
 	// Description says what the machine is for: plain text, with nothing
 	// filled in.
 	Description string `json:"description,omitzero"`
@@ -98,6 +101,15 @@ type JobSpec struct {
 	Approve bool         `json:"approve,omitzero"`
 	// Alone says the job has only its own permissions.
 	Alone bool `json:"alone,omitzero"`
+}
+
+// A HookSpec is a hook as a definition writes it: a job that runs before a
+// job starts or after it has ended, and the condition on the job that says
+// which jobs it runs for.
+type HookSpec struct {
+	Before *JobSpec `json:"before,omitzero"`
+	After  *JobSpec `json:"after,omitzero"`
+	When   string   `json:"when,omitzero"`
 }
 
 // IsMachine says whether the job is a machine.
@@ -655,6 +667,17 @@ func check(def *Definition) *Checker {
 		}
 	}
 	c.Job("ask", def.Ask, "input")
+	for _, name := range sortedKeys(def.Hooks) {
+		h, place := def.Hooks[name], "hooks."+name
+		if (h.Before == nil) == (h.After == nil) {
+			c.Problem(place, "a hook writes one of before: and after:")
+		}
+		c.Job(place+".before", h.Before, "input", "job")
+		c.Job(place+".after", h.After, "input", "job", "result")
+		if h.When != "" {
+			c.Cond(place+".when", h.When, "input", "job", "result")
+		}
+	}
 	c.approves = false // the ask's own job is never itself held by this definition's marks
 	t.Check(c, def)
 	return c

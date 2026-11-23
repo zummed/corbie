@@ -1,0 +1,10 @@
+{
+  "status": "done",
+  "output": {
+    "cleanup": {
+      "error": {
+        "<contains>": "no to all"
+      }
+    }
+  }
+}

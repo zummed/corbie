@@ -1,0 +1,9 @@
+{
+  "status": "failed",
+  "failure": "denied",
+  "error_contains": [
+    "kid: guarded: ",
+    "no to all"
+  ],
+  "note": "the prototype of hooks: the child's own hook says yes and the root's says no, and every hook above a job applies, so the job is denied. With ask:, the child's own ask decided alone (parity case 73)."
+}

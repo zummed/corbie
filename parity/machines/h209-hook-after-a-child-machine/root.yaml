@@ -1,0 +1,7 @@
+# A hook after a job that is a machine replaces the child's output.
+flow: parent
+hooks:
+  strip: { after: { script: ./strip.js }, when: "${job.name == 'kid'}" }
+stages:
+  kid: { job: { machine: ./child.yaml } }
+output: ${stages.kid.output}

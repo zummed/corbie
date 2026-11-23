@@ -186,6 +186,26 @@ func (p *Parser) fill(written map[string]any, t Type, place string) (draft *Draf
 		def.Ask = p.Job("ask", ask)
 		p.draft.ask = def.Ask.Machine
 	}
+	hooks, names := f.Map("hooks")
+	for _, name := range names {
+		place := "hooks." + name
+		hf := p.Fields(place, hooks[name], hookShape)
+		if hf == nil {
+			continue
+		}
+		h := &HookSpec{When: hf.Cond("when")}
+		if v, ok := hf.Value("before"); ok {
+			h.Before = p.Job(place+".before", v)
+		}
+		if v, ok := hf.Value("after"); ok {
+			h.After = p.Job(place+".after", v)
+		}
+		hf.Done()
+		if def.Hooks == nil {
+			def.Hooks = map[string]*HookSpec{}
+		}
+		def.Hooks[name] = h
+	}
 	def.Title = f.Text("title")
 	def.Meta, _ = f.Value("meta")
 	p.location(def, f, limits)
@@ -233,7 +253,7 @@ func (p *Parser) fill(written map[string]any, t Type, place string) (draft *Draf
 		}
 		approves = approves || child.needsAsk
 	}
-	p.draft.needsAsk = approves && def.Ask == nil
+	p.draft.needsAsk = approves && def.Ask == nil && len(def.Hooks) == 0
 	return p.draft, p.draft.needsAsk
 }
 

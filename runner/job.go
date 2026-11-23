@@ -138,7 +138,7 @@ func (j *supervised) run() *instance.Result {
 		defer close(done)
 		// From outside, what the process really holds is judged well past the
 		// limit: the script's engine counts only its own values.
-		go proc.Watch(2*job.Memory+(64<<20), done, func() {
+		go role.Watch(proc.Cmd.Process.Pid, 2*job.Memory+(64<<20), done, func() {
 			j.stop(&machine.Error{Status: machine.StatusError,
 				Error: fmt.Sprintf("the job went past its memory limit of %d bytes", job.Memory)})
 			proc.Kill()

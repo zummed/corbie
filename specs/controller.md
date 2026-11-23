@@ -144,6 +144,23 @@ The controller writes the tree's entry before anything else, naming the submit a
 
 A submit changes no other tree. Only the tree's client cancels the runs at its locations, and it and the clients a file's `read:` lists read them. Another client starts a run there only with a call or a send (see Sending and calling).
 
+A removal of a tree is a submit that names no file and is marked as a removal. The controller checks it by steps 1 and 2, refuses one that names a file, and then does this:
+
+1. It writes the tree's entry, naming the removal, the files gone and the secrets and values set at the prefix or under it.
+2. It cancels every run at the tree's locations and removes the locations, as for a file gone from the tree.
+3. It deletes those secrets and values.
+4. It writes the receipt, sealed to the client and to itself: each location, the runs cancelled, and each secret and value removed.
+5. It deletes the tree's entry, and then the message.
+
+The prefix then holds no tree. A removal taken again after a stop reads from its receipt that it was taken, and deletes the entry only where the entry was written for it. A removal at a prefix with no tree does steps 1 and 3 to 5.
+
+The owner's removal is one written with the controller's own key, which `corbie controller tree remove` writes into the controller's inbox. It removes any client's tree by the same steps:
+
+- The controller refuses it only at `/` and at a prefix inside or above a tree, and checks no ceiling and no client.
+- It cancels the runs of the tree's client.
+- It writes no receipt. Taken again after the entry is deleted, it finds no tree and nothing set.
+- A submit written with the controller's own key that is no removal is no message.
+
 A client's set or remove of a secret or a value names a location. The controller takes it where the client could submit a tree at the location or above it, by the checks of steps 1 and 2, and keeps it as one the owner set (see secret.md). It refuses one where the client may not set before it reads what is set there, so the refusal says nothing of another client's tree.
 
 1. The controller writes the receipt, sealed to the client and to itself, with the SHA-256 of the setting it answers: kind, act, location, name and value.

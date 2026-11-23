@@ -665,6 +665,60 @@ func (e *Env) submit(tree *client.Tree) error {
 	return err
 }
 
+// cmdRemoveTree removes the tree at a prefix, and stays until each run the
+// removal cancelled has ended.
+func cmdRemoveTree(e *Env, args []string) error {
+	rest, err := e.Parse(args)
+	if err != nil {
+		return err
+	}
+	if len(rest) != 1 || store.CheckLocation(rest[0]) != nil || rest[0] == "/" {
+		return Mistake("name the prefix of one tree: / and the names of one or more directories, as /home")
+	}
+	c, err := e.Client()
+	if err != nil {
+		return err
+	}
+	message, err := c.RemoveTree(e.ctx, rest[0], 0)
+	if err != nil {
+		return err
+	}
+	receipt, err := e.receipt(c, message, 0)
+	if err != nil {
+		return err
+	}
+	if !receipt.Taken {
+		e.Print(receipt, func() string { return "refused: " + receipt.Refused + "\n" })
+		return errRunFailed
+	}
+	done := receipt.Tree
+	for _, id := range done.Cancelled {
+		if _, err := c.Wait(e.ctx, id, interval); err != nil {
+			return err
+		}
+	}
+	return e.Print(done, func() string {
+		var b strings.Builder
+		width := 0
+		for _, row := range done.Locations {
+			width = max(width, len(row.Location))
+		}
+		for _, row := range done.Locations {
+			fmt.Fprintf(&b, "%-*s   %-9s   %s\n", width, row.Location, row.Lifetime, row.What)
+		}
+		for _, id := range done.Cancelled {
+			fmt.Fprintf(&b, "cancelled: %s\n", id)
+		}
+		for _, name := range done.Removed {
+			fmt.Fprintf(&b, "removed: %s\n", name)
+		}
+		if len(done.Locations)+len(done.Removed) == 0 {
+			fmt.Fprintf(&b, "nothing was recorded or set at %s or under it\n", rest[0])
+		}
+		return b.String()
+	})
+}
+
 // contextOf gives the context of a file and its path from there: the current
 // directory, or the file's own directory for a file outside it.
 func contextOf(file string) (context, rel string, err error) {

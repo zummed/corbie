@@ -57,7 +57,7 @@ A plugin's page in the manual is its specification. It lists each call, its opti
 | `html`, `xml` | reading a page or a document as a tree |
 | `yaml` | reading a YAML document as data, and writing data as YAML |
 | `time` | the date and time of day an instant has in a time zone, and the instant of a date and time in one |
-| `websocket` | a connection that carries messages both ways, kept alive while the script works; it opens none built for `js/wasm`, where the browser would open it past the job's permissions |
+| `websocket` | a connection that carries messages both ways, kept alive while the script works |
 | `ssh` | running a command on another computer |
 | `blobs` | making and reading blobs |
 | `secrets` | handles to secrets |

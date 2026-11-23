@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"net"
+	"net/http"
 	"net/url"
 	"time"
 
@@ -95,9 +96,21 @@ func connect(job *plugin.Job, first any, opt plugin.Options) (any, error) {
 	if err != nil {
 		return nil, err
 	}
+	client := &http.Client{
+		Transport: &http.Transport{
+			Proxy:             nil, // nothing of the machine's own settings is used
+			DisableKeepAlives: true,
+			DialContext: func(ctx context.Context, network, address string) (net.Conn, error) {
+				return job.Dial(ctx, address)
+			},
+		},
+		// A redirect would carry the headers to a place they were not
+		// revealed for.
+		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
+	}
 	ctx, cancel := context.WithTimeout(job.Context, limit)
 	defer cancel()
-	conn, err := dial(ctx, job, to.String(), header)
+	conn, _, err := websocket.Dial(ctx, to.String(), &websocket.DialOptions{HTTPClient: client, HTTPHeader: header})
 	if err != nil {
 		return nil, failure(err, to, limit)
 	}

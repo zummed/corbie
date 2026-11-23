@@ -138,6 +138,18 @@ func Test_client_gateway_submits_a_tree(t *testing.T) {
 	if _, _, listed := edits.do("GET", "/runs?all&at=/other", ""); strings.TrimSpace(listed) != "[]" {
 		t.Errorf("a refused submit left the runs %s", listed)
 	}
+	// A removal sent to the gateway removes the tree as corbie run remove
+	// does, with what is set in it, and only for the tree's client.
+	if status, _, text := edits.json("POST", "/secrets", `{"act": "set", "at": "/house/greet", "name": "K", "value": "v"}`); status != 200 {
+		t.Fatalf("the set was answered %d %s", status, text)
+	}
+	if status, answer, text := views.json("POST", "/trees/remove", `{"at": "/house"}`); status != 200 || answer["taken"] != false {
+		t.Errorf("the viewer's removal was answered %d %s", status, text)
+	}
+	if status, answer, text := edits.json("POST", "/trees/remove", `{"at": "/house"}`); status != 200 || answer["taken"] != true ||
+		!strings.Contains(text, `"removed":["secret K at /house/greet"]`) || !strings.Contains(text, `"location":"/house/devices/boiler"`) {
+		t.Errorf("the removal was answered %d %s", status, text)
+	}
 	// Nothing of a submit's files remains on the gateway's computer.
 	if left, err := os.ReadDir(temp); err != nil || len(left) != 0 {
 		t.Errorf("the gateway left %v in its temporary directory (%v)", left, err)

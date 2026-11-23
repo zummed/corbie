@@ -33,6 +33,18 @@ import (
 //     started is sent its start and then its key's file is written.
 //  4. The locations whose files have gone are removed.
 //  5. The receipt is written, then the uploads go, then the message.
+//
+// A removal is a submit with no file. Every location's file has gone, so
+// steps 3 and 4 cancel every run and remove every location. Before step 5
+// the secrets and values set at or under the prefix are deleted, and after
+// the receipt is written the tree's entry is deleted. Its receipt is sealed
+// to the controller as well, so a removal taken again after its receipt was
+// written reads that it was taken and deletes the entry.
+//
+// The owner's removal is one the controller's own key sent. It removes any
+// client's tree, is refused nothing a client's ceiling or a tree's client
+// would refuse, and has no receipt: taken again after the entry is deleted,
+// it finds no tree and nothing set.
 
 // A treeEntry is what the controller keeps at a tree's prefix, sealed to
 // itself.
@@ -46,6 +58,16 @@ type treeEntry struct {
 	Changes changes `json:"changes"`
 	// Message is the SHA-256 of what that submit's message says.
 	Message string `json:"message"`
+	// Owner says that submit is the owner's removal, sent with the
+	// controller's own key.
+	Owner bool `json:"owner,omitzero"`
+}
+
+// names says whether the entry was written for a submit: the one under a
+// name, from a sender.
+func (e *treeEntry) names(a *arrival, base string) bool {
+	owner := a.kind == identity.Controller
+	return e.Owner == owner && (owner || e.Client == a.sender) && e.Submit == base
 }
 
 // A treeFile is what the tree's entry keeps of one of its files.
@@ -64,6 +86,9 @@ type changes struct {
 	Copy   []string `json:"copy,omitzero"`
 	Cancel []string `json:"cancel,omitzero"`
 	Remove []string `json:"remove,omitzero"`
+	// Unset are the names in the store of the secrets and values a removal
+	// deletes.
+	Unset []string `json:"unset,omitzero"`
 	// Before is the directory submitted before, when it was another.
 	Before    string   `json:"before,omitzero"`
 	Missing   []string `json:"missing,omitzero"`
@@ -100,6 +125,11 @@ func (p *pass) submit(a *arrival) error {
 		return err
 	}
 	if answered {
+		if msg.Remove {
+			if err := p.forget(a, base); err != nil {
+				return err
+			}
+		}
 		return p.submitted(a, base)
 	}
 	if err := store.CheckLocation(msg.Prefix); err != nil {
@@ -113,7 +143,7 @@ func (p *pass) submit(a *arrival) error {
 	if err != nil {
 		return err
 	}
-	if entry != nil && entry.Client == a.sender && entry.Submit == base {
+	if entry != nil && entry.names(a, base) {
 		// The entry names a submit under this name. The one it was written
 		// for was taken then, and is carried out however late it is now,
 		// once the checks a submit is given pass again. Another under the
@@ -147,7 +177,11 @@ func (p *pass) submit(a *arrival) error {
 		// The submit the entry names is carried out first: worked out
 		// against what it is still to do, this one would leave undone a
 		// restart that one was to make.
-		waiting, err := p.store.ReadPart(p.ctx, store.Message(p.ctl, entry.Client, entry.Submit), 0, 1)
+		sender := entry.Client
+		if entry.Owner {
+			sender = p.ctl
+		}
+		waiting, err := p.store.ReadPart(p.ctx, store.Message(p.ctl, sender, entry.Submit), 0, 1)
 		if err != nil {
 			return err
 		}
@@ -192,6 +226,14 @@ func (p *pass) checkTree(a *arrival, msg *instance.Submit) (string, error) {
 	refused, err := p.refusePrefix(a.sender, msg.Prefix)
 	if err != nil || refused != "" {
 		return refused, err
+	}
+	if msg.Remove && len(msg.Files)+len(msg.Problems) > 0 {
+		return fmt.Sprintf("a removal of the tree %s names no file", msg.Prefix), nil
+	}
+	if msg.Remove {
+		if _, refused, err := p.setUnder(msg.Prefix); err != nil || refused != "" {
+			return refused, err
+		}
 	}
 	locations := append(sortedKeys(msg.Files), msg.Problems...)
 	slices.Sort(locations)
@@ -241,20 +283,24 @@ func (p *pass) checkTree(a *arrival, msg *instance.Submit) (string, error) {
 // refusePrefix says why a client may not submit a tree at a prefix, if it
 // may not: the client is not trusted, the prefix is /, the client's
 // ceiling's at: entries do not match it, a tree is above it or below it, or
-// the tree there is another client's.
+// the tree there is another client's. The owner, whose sender is the
+// controller, is refused only / and a prefix above or below a tree.
 func (p *pass) refusePrefix(sender, prefix string) (string, error) {
-	client, err := p.trusted(sender)
-	if err != nil {
-		return "", err
-	}
-	if !client.Trusted() {
-		return fmt.Sprintf("the client %s is not trusted", sender), nil
+	owner := sender == p.ctl
+	if !owner {
+		client, err := p.trusted(sender)
+		if err != nil {
+			return "", err
+		}
+		if !client.Trusted() {
+			return fmt.Sprintf("the client %s is not trusted", sender), nil
+		}
+		if r := (&permission.Set{Layers: []permission.Layer{ceilingOf(client)}}).Check(permission.At, prefix); r != nil && prefix != "/" {
+			return r.Error(), nil
+		}
 	}
 	if prefix == "/" {
 		return "/ is never a tree: it is where secrets and values every tree uses are set", nil
-	}
-	if r := (&permission.Set{Layers: []permission.Layer{ceilingOf(client)}}).Check(permission.At, prefix); r != nil {
-		return r.Error(), nil
 	}
 	// No tree is above it, and none below.
 	for _, above := range store.Above(prefix)[1:] {
@@ -286,7 +332,7 @@ func (p *pass) refusePrefix(sender, prefix string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	if entry != nil && entry.Client != sender {
+	if entry != nil && entry.Client != sender && !owner {
 		return fmt.Sprintf("the tree %s belongs to the client %s", prefix, entry.Client), nil
 	}
 	return "", nil
@@ -296,10 +342,17 @@ func (p *pass) refusePrefix(sender, prefix string) (string, error) {
 func (p *pass) plan(a *arrival, base string, before *treeEntry) (*treeEntry, error) {
 	msg := a.msg.Submit
 	entry := &treeEntry{Client: a.sender, Directory: msg.Directory, Files: map[string]treeFile{}, Submit: base, Message: submitHash(msg)}
+	if a.kind == identity.Controller {
+		// The owner's removal cancels the runs of the tree's client.
+		entry.Owner, entry.Client = true, ""
+		if before != nil {
+			entry.Client = before.Client
+		}
+	}
 	old := map[string]treeFile{}
 	if before != nil {
 		old = before.Files
-		if before.Directory != msg.Directory {
+		if before.Directory != msg.Directory && !msg.Remove {
 			entry.Changes.Before = before.Directory
 		}
 	}
@@ -384,7 +437,66 @@ func (p *pass) plan(a *arrival, base string, before *treeEntry) (*treeEntry, err
 		d.Remove = append(d.Remove, location)
 	}
 	slices.SortFunc(d.Done, func(x, y instance.Recorded) int { return strings.Compare(x.Location, y.Location) })
+	if msg.Remove {
+		// The removal was refused already where one was set at a location
+		// of another case.
+		var err error
+		if d.Unset, _, err = p.setUnder(msg.Prefix); err != nil {
+			return nil, err
+		}
+	}
 	return entry, nil
+}
+
+// setUnder gives the names in the store of the secrets and values set at a
+// prefix or under it. On a file system that ignores case, /Work and /work
+// are one directory: it says why a removal is refused where one of them was
+// set at a location of another case, as a remove of that one is.
+func (p *pass) setUnder(prefix string) (names []string, refused string, err error) {
+	under, err := store.Names(p.store.List(p.ctx, strings.TrimSuffix(store.LocationDir(p.ctl, prefix), "/+")))
+	if err != nil {
+		return nil, "", err
+	}
+	for _, name := range under {
+		if _, _, ok := settingAt(p.ctl, name); ok {
+			names = append(names, name)
+		}
+	}
+	others := make([]string, len(names))
+	err = p.each(len(names), func(i int) error {
+		data, _, err := p.store.Read(p.ctx, names[i])
+		if v, bad := identity.Parse(data); err == nil && data != nil && bad == nil && v.At != names[i] && strings.EqualFold(v.At, names[i]) {
+			others[i] = v.At
+		}
+		return err
+	})
+	if err != nil {
+		return nil, "", err
+	}
+	for i, other := range others {
+		if other != "" {
+			what, at, _ := settingAt(p.ctl, names[i])
+			_, set, _ := settingAt(p.ctl, other)
+			return nil, fmt.Sprintf("the %s is set at %s, which this store keeps in the same file as %s because its file system ignores case", what, set, at), nil
+		}
+	}
+	return names, "", nil
+}
+
+// settingAt reads the name in the store of a secret or a value set at a
+// location, as a receipt gives it: "secret NAME" or "value NAME", and the
+// location.
+func settingAt(ctl, name string) (what, at string, ok bool) {
+	at, entry, ok := store.ParseLocation(ctl, name)
+	if !ok {
+		return "", "", false
+	}
+	for kind, word := range map[string]string{"secrets/": "secret ", "values/": "value "} {
+		if found, is := strings.CutPrefix(entry, kind); is && !strings.Contains(found, "/") {
+			return word + found, at, true
+		}
+	}
+	return "", "", false
 }
 
 // holds says whether a location's singleton has a run: its key's file names
@@ -433,11 +545,59 @@ func (p *pass) carryTree(a *arrival, base string, entry *treeEntry) error {
 			return err
 		}
 	}
+	err = p.each(len(d.Unset), func(i int) error {
+		_, err := p.store.Delete(p.ctx, d.Unset[i], store.Overwrite)
+		return err
+	})
+	if err != nil {
+		return err
+	}
 	receipt := &instance.Receipt{Taken: true, Tree: &instance.Submitted{Locations: d.Done, Cancelled: cancelled, Before: d.Before, Missing: d.Missing, Untrusted: d.Untrusted}}
-	if err := p.writeReceipt(a.sender, a.name, receipt); err != nil {
+	for _, name := range d.Unset {
+		what, at, _ := settingAt(p.ctl, name)
+		receipt.Tree.Removed = append(receipt.Tree.Removed, what+" at "+at)
+	}
+	if !msg.Remove {
+		if err := p.writeReceipt(a.sender, a.name, receipt); err != nil {
+			return err
+		}
+		return p.submitted(a, base)
+	}
+	if a.kind != identity.Controller {
+		to, err := p.trusted(a.sender)
+		if err != nil || to == nil {
+			return err
+		}
+		if _, err := p.write(store.Receipt(p.ctl, a.sender, base), p.now.Add(instance.ReceiptLife), receipt, to.Card, p.c.ID.Card); err != nil {
+			return err
+		}
+	}
+	if err := p.forget(a, base); err != nil {
 		return err
 	}
 	return p.submitted(a, base)
+}
+
+// forget deletes the entry of a tree once the receipt of its removal says
+// the removal was taken, and only the entry written for that removal. The
+// owner's removal has no receipt.
+func (p *pass) forget(a *arrival, base string) error {
+	msg := a.msg.Submit
+	if a.kind != identity.Controller {
+		receipt, err := p.ownReceipt(store.Receipt(p.ctl, a.sender, base))
+		if err != nil || receipt == nil || !receipt.Taken {
+			return err
+		}
+	}
+	entry, mark, err := p.readTree(msg.Prefix)
+	if errors.As(err, new(otherCase)) {
+		return nil
+	}
+	if err != nil || entry == nil || !entry.names(a, base) || entry.Message != submitHash(msg) {
+		return err
+	}
+	_, err = p.store.Delete(p.ctx, store.Tree(p.ctl, msg.Prefix), store.OnlyIfUnchanged(mark))
+	return err
 }
 
 // record copies a file a submit uploaded to its location, writes the

@@ -42,10 +42,9 @@ cp $signals/dev-shared.js $dev/signals/dev-shared.js
 description = "Build the corbie binary for every platform a release carries, into build/dist/; VERSION is the version the binaries print"
 run = """
 set -e
-for target in linux/amd64 linux/arm64 darwin/amd64 darwin/arm64 windows/amd64 js/wasm; do
+for target in linux/amd64 linux/arm64 darwin/amd64 darwin/arm64 windows/amd64; do
   os=${target%/*} arch=${target#*/} ext=
   if [ "$os" = windows ]; then ext=.exe; fi
-  if [ "$os" = js ]; then ext=.wasm; fi
   GOOS=$os GOARCH=$arch go build -trimpath -ldflags="-s -w -X github.com/zummed/corbie/client/cli.Version=${VERSION:-}" -o "build/dist/corbie-$os-$arch$ext" ./cmd/corbie
 done
 """

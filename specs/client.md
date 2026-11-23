@@ -8,7 +8,7 @@ The client is a public Go package in the Corbie repository. An application writt
 
 It does two kinds of thing.
 
-It **sends**: submit a tree, start a run of a location, cancel runs, send an event, answer a ticket, set, remove and list its secrets and values. To submit a tree it reads every file, writes each machine out with its includes resolved and its short forms filled out, checks the whole and reports everything wrong at once, and uploads the definitions and the files they name side by side, a bounded number at a time. A start names a location and may carry input, labels, a list that narrows what the run may do, and a timeout. Any value in the input may be a file, and the start is sent once every file is in the store.
+It **sends**: submit a tree, remove a tree, start a run of a location, cancel runs, send an event, answer a ticket, set, remove and list its secrets and values. To submit a tree it reads every file, writes each machine out with its includes resolved and its short forms filled out, checks the whole and reports everything wrong at once, and uploads the definitions and the files they name side by side, a bounded number at a time. A start names a location and may carry input, labels, a list that narrows what the run may do, and a timeout. Any value in the input may be a file, and the start is sent once every file is in the store.
 
 It **reads**: list runs and follow the list as it changes; show one run, where it stands and how it ended; read a run's record so far, children included, and follow it as it grows; fetch a file from a result; show the definition a run was started from.
 
@@ -37,6 +37,7 @@ corbie test flow.yaml                   run a definition or a script in this pro
 
 corbie run submit flow.yaml             record one file as a tree, and start it if it is a singleton
 corbie run submit <dir> --at <prefix>   record a directory as a tree, and start its singletons
+corbie run remove <prefix>              remove a tree, with its runs and the secrets and values set in it
 corbie run start <location>             start a run of a transient location and print its ID
 corbie run ls                           list runs
 corbie run show <id>                    show one run: its status and its result
@@ -44,7 +45,7 @@ corbie run cancel <id>                  cancel a run in one of this client's tre
 corbie run send <id> <event> [data]     send an event to a run
 corbie run reply <id> <ticket> [value]  answer a ticket that a run waits on
 
-corbie controller …                     enrol and remove runners and clients, set ceilings, tags and prefixes, manage secrets and values, cancel any run
+corbie controller …                     enrol and remove runners and clients, set ceilings, tags and prefixes, manage secrets and values, cancel any run, remove any tree
 corbie runner …                         print a card, trust a controller
 corbie client …                         print a card, trust a controller, show which client a command is sent as, manage secrets and values in this client's trees
 
@@ -66,8 +67,8 @@ The commands form a tree. A word at the top is a command, or begins several comm
   check        start one small run, and report which part of a setup did not
                respond
   test         run a definition or a script in this process, with no setup
-  run          submit, start, ls, show, cancel, send, reply
-  controller   card, enrol, remove, parties, secret, value, policy, cancel
+  run          submit, remove, start, ls, show, cancel, send, reply
+  controller   card, enrol, remove, parties, secret, value, policy, cancel, tree
   runner       card, trust, remove
   client       card, trust, remove, show, secret, value
   manual       print a page of the manual, or list the pages; web
@@ -329,6 +330,36 @@ A submit does this, and exits when each run it cancelled has ended and each star
 
 A tree belongs to the client that first submitted it. Every run keeps the definition it started with, and a submit changes no other tree.
 
+`corbie run remove <prefix>` removes a tree, and exits when each run it cancelled has ended.
+
+```
+$ corbie run remove /home
+/home/devices/boiler   singleton   removed
+/home/schedules/away   transient   removed
+cancelled: <id>
+removed: secret BOILER_PASSWORD at /home/devices/boiler
+```
+
+1. The controller cancels every run at the tree's locations.
+2. It removes every location of the tree.
+3. It removes every secret and value set at the prefix or under it.
+4. It removes the tree. The prefix then holds no tree, and a client whose ceiling matches it submits there.
+
+- A secret or a value set above the prefix stays.
+- A run that has ended is kept for the time its definition gives.
+- Where the prefix holds no tree, the command removes the secrets and values set at it or under it.
+- A prefix inside or above a tree, and another client's tree, are refused as a submit there is.
+
+The owner removes any client's tree, also one whose client was removed:
+
+```
+$ corbie controller tree remove /home
+the removal is in the controller's inbox; the controller acts on it at its next pass
+```
+
+- The command fails when no tree is recorded at the prefix.
+- It does not wait, as `corbie controller cancel` does not.
+
 - A submit at a prefix inside or above another tree is refused, naming that tree. `/` is never a tree.
 - A submit at a tree another client owns is refused, naming the owner.
 - A submit at a prefix that no `at:` entry of the client's ceiling matches is refused.
@@ -345,7 +376,7 @@ A tree belongs to the client that first submitted it. Every run keeps the defini
 
 ## The gateway
 
-The gateway offers the package over HTTP for applications not written in Go. Its routes do everything a client does: submit a tree, start a run of a location with an input, list, show and cancel runs, read a run's record, one step of it, its definition, its tickets and its files, send events and answers to a run, send an event to a location or to a key at one, and set, remove and list secrets and values. One route says which client and principal the caller's token names. A listing and a record are each given as they stand, and with `?watch` as a stream that follows them. A stream the gateway closes ends with a message: `end` with the run when the run has ended, or `error` with the failure when the gateway could not read the store. A start is JSON, or an upload form when its input has files, which come out by their path in a result.
+The gateway offers the package over HTTP for applications not written in Go. Its routes do everything a client does: submit a tree, remove a tree, start a run of a location with an input, list, show and cancel runs, read a run's record, one step of it, its definition, its tickets and its files, send events and answers to a run, send an event to a location or to a key at one, and set, remove and list secrets and values. One route says which client and principal the caller's token names. A listing and a record are each given as they stand, and with `?watch` as a stream that follows them. A stream the gateway closes ends with a message: `end` with the run when the run has ended, or `error` with the failure when the gateway could not read the store. A start is JSON, or an upload form when its input has files, which come out by their path in a result.
 
 A submit is an upload form: the prefix, and each file of the directory by its path from the directory.
 
@@ -430,8 +461,6 @@ A page in a browser calls the gateway from any origin:
 - A page reads a stream with `fetch`. A browser's `EventSource` sends no `Authorization`, and is refused.
 
 Whoever has a token is the client it names. Nothing in a request raises that client's ceiling, names another client or names a principal. The gateway's computer holds the key of every client it acts as.
-
-Built for `js/wasm`, the gateway listens on no port. The code that started the program calls it for each request, as `corbieGateway.fetch`, and is answered as a caller over a connection is. A call with other arguments than a request's is given an `Error`, and a request that fails in the program is answered 500; the program keeps running in both cases.
 
 It keeps nothing itself, so it runs as a process that listens, or on a serverless host as a function of its own:
 

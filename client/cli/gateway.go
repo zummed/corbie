@@ -131,9 +131,6 @@ func (e *Env) gateway() (func(), error) {
 	where, stop := "answering the requests to this function's URL", func() {}
 	if role.Serverless() {
 		e.answers = handler
-	} else if role.Hosted(handler) {
-		// Built for js/wasm there is no port: the code that started the program calls the gateway.
-		where = "answering the requests of the code that started it"
 	} else {
 		listener, err := net.Listen("tcp", e.listen)
 		if err != nil {

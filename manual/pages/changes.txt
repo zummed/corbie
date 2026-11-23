@@ -5,13 +5,16 @@ Each section lists what changed after one release, the newest first.
 compatible before version 1: a file or a command written the old way is
 refused.
 
-After 0.29.0
+After 0.30.0
 ------------
 
 Change this command.
 
   corbie mcp                     the model may run every command of Corbie's
   corbie mcp --allow <command>   as before: the model may run only the commands named
+
+After 0.29.0
+------------
 
 These are new.
 

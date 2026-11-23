@@ -1,0 +1,5 @@
+{
+  "status": "done",
+  "output": "posted in #test: Report for acme, written by (an address).",
+  "note": "the prototype of hooks: the root's hooks change the input of one job and the output of another, each in a machine the root runs and did not write."
+}

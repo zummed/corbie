@@ -1,0 +1,7 @@
+# Someone else's machine: it makes a report and runs a machine of its own to post it.
+flow: report
+input: { customer: string }
+stages:
+  fetch: { job: { script: ./fetch.js, input: { customer: "${input.customer}" } } }
+  deliver: { job: { machine: ./deliver.yaml, input: { text: "${stages.fetch.output}" } } }
+output: ${stages.deliver.output}

@@ -1,0 +1,12 @@
+# My machine runs the vendor's, and changes two jobs inside it.
+flow: mine
+hooks:
+  quiet:
+    before: { script: ./quiet.js }
+    when: "${job.name == 'post'}"
+  mask:
+    after: { script: ./mask.js }
+    when: "${job.name == 'fetch'}"
+stages:
+  report: { job: { machine: ./vendor/report.yaml, input: { customer: acme } } }
+output: ${stages.report.output}

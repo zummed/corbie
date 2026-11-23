@@ -1,0 +1,5 @@
+flow: deliver
+input: { text: string }
+stages:
+  post: { job: { script: ./post.js, input: { channel: "#customers", text: "${input.text}" } } }
+output: ${stages.post.output}

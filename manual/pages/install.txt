@@ -67,4 +67,4 @@ The setup works when all four are `ok`. A step that did not answer is `late`
 or `never`, with the likely cause on the next line.
 
   corbie check --tag gpu             sends the job to a runner with the tag gpu
-  corbie mcp --allow check           lets an AI assistant run the check
+  corbie mcp                         lets an AI assistant run the check

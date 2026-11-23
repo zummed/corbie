@@ -929,6 +929,30 @@ func Test_client_allowed_name_and_command_from_one_reading(t *testing.T) {
 	}
 }
 
+// A server started with no --allow gives a model every command of corbie's,
+// and no program's.
+func Test_client_model_runs_every_command_by_default(t *testing.T) {
+	m, _ := working(t, "all")
+	standIn(t, "frob", `echo "the program ran"`)
+	dir := files(t, map[string]string{"double.js": `return input.n * 2`})
+	answers := m.model(nil, []string{"run", "ls"}, []string{"test", filepath.Join(dir, "double.js"), "--input", `{"n": 4}`},
+		[]string{"controller", "parties"}, []string{"frob"})
+	for i, answer := range answers[:3] {
+		if answer.Failed || answer.Ended != 0 {
+			t.Errorf("call %d, of a server started with no --allow, was answered %+v", i+1, answer)
+		}
+	}
+	if !answers[3].Failed || !strings.Contains(answers[3].Text, "is not a command") || strings.Contains(answers[3].Text, "the program ran") {
+		t.Errorf("a program, of a server started with no --allow, was answered %+v", answers[3])
+	}
+	out := m.ok(`{"jsonrpc":"2.0","id":1,"method":"tools/list"}`+"\n", "mcp")
+	for _, c := range cli.Commands {
+		if !strings.Contains(out, "corbie "+c.Name+" ") {
+			t.Errorf("a model of a server started with no --allow is told nothing of corbie %s", c.Name)
+		}
+	}
+}
+
 // A command refused to a model is refused before any part of it runs.
 func Test_client_model_refused_command_does_nothing(t *testing.T) {
 	m := machine{t, filepath.Join(t.TempDir(), "config")}

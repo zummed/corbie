@@ -65,4 +65,4 @@ A pack added from a branch is read at the branch's newest commit each time. A pa
 
 A pack's scripts run with the permissions its machines give them, and with the secrets set at the locations its starting files place them at. A pack is trusted as any file a person copies into the project is, and Corbie checks nothing more. Its files are in the project to be read, and `git diff` shows what an update changed.
 
-`corbie mcp` gives a model `corbie add` only when the server was started with `--allow add`.
+`corbie mcp` gives a model `corbie add` by default, and with `--allow` only when the line names `add`.

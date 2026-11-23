@@ -17,12 +17,12 @@ import (
 )
 
 // cmdMCP serves two tools to a model over standard input and output: the
-// manual, and corbie's command line. The model may run only the commands
-// the server was started with permission for, with the config the server
-// was started on. A command allowed may be a program's, as in --allow
-// "board new": the program's pages join the manual, and its commands are
-// run as corbie <name> runs them. The server needs nothing running and
-// keeps nothing.
+// manual, and corbie's command line. By default the model may run every
+// command of corbie's; with --allow it may run only the commands named. A
+// command runs with the config the server was started on. A command named
+// may be a program's, as in --allow "board new": the program's pages join
+// the manual, and its commands are run as corbie <name> runs them. The
+// server needs nothing running and keeps nothing.
 func cmdMCP(e *Env, args []string) error {
 	var allow list
 	e.Flags.Var(&allow, "allow", "")
@@ -31,7 +31,7 @@ func cmdMCP(e *Env, args []string) error {
 		return err
 	}
 	if len(rest) > 0 {
-		return Mistake("mcp takes only flags: --allow <command>, as many times as there are commands to allow")
+		return Mistake("mcp takes only flags: --allow <command>, as many times as there are commands to allow, or none to allow every command")
 	}
 	t := e.table
 	if t.guests, err = e.guests(allow); err != nil {
@@ -150,7 +150,7 @@ func (t table) tools(allow []string) []any {
 	var commands []string
 	for i := range t.commands {
 		c := &t.commands[i]
-		if !slices.Contains(allow, c.Name) {
+		if !may(allow, c.Name) {
 			continue
 		}
 		line := fmt.Sprintf("%s — %s", strings.TrimSpace(t.named(c)+" "+c.Usage), c.Summary)
@@ -164,7 +164,7 @@ func (t table) tools(allow []string) []any {
 	// the command as it is typed.
 	for _, g := range t.guests {
 		for _, page := range g.commands() {
-			if slices.Contains(allow, strings.TrimPrefix(page.Name, "corbie ")) {
+			if may(allow, strings.TrimPrefix(page.Name, "corbie ")) {
 				usage, _, _ := strings.Cut(page.Text, "\n")
 				commands = append(commands, fmt.Sprintf("%s — %s", usage, page.Summary))
 			}
@@ -174,17 +174,14 @@ func (t table) tools(allow []string) []any {
 	if len(t.guests) > 0 {
 		results = "Corbie's results are JSON, and a program's are as the program prints them."
 	}
-	allowed := "No commands are allowed to you."
-	if len(commands) > 0 {
-		allowed = "The commands allowed to you:\n" + strings.Join(commands, "\n") +
-			"\nrun show and run start also stay until the run ends when given --wait or --watch, and run ls --watch stays until it is stopped."
-	}
+	told := "The commands allowed to you:\n" + strings.Join(commands, "\n") +
+		"\nrun show and run start also stay until the run ends when given --wait or --watch, and run ls --watch stays until it is stopped."
 	return []any{
 		map[string]any{"name": "manual",
 			"description": "The manual of corbie, with the pages of each program a command is allowed of. With no page it lists the pages; with a page it gives that page. Read a plugin's or a machine type's page before writing a script or a definition that uses it.",
 			"inputSchema": map[string]any{"type": "object", "properties": map[string]any{"page": map[string]any{"type": "string"}}}},
 		map[string]any{"name": "corbie",
-			"description": "Runs one command of corbie and gives back its result, what it said along the way, and which of three ways it ended: 0 success, 1 failure, 2 a mistake in how it was written. Give the arguments as a list, without the word corbie. " + results + "\n" + allowed,
+			"description": "Runs one command of corbie and gives back its result, what it said along the way, and which of three ways it ended: 0 success, 1 failure, 2 a mistake in how it was written. Give the arguments as a list, without the word corbie. " + results + "\n" + told,
 			"inputSchema": map[string]any{"type": "object", "required": []any{"args"},
 				"properties": map[string]any{"args": map[string]any{"type": "array", "items": map[string]any{"type": "string"}}}}},
 	}
@@ -224,7 +221,7 @@ func (e *Env) call(ctx context.Context, t table, name string, arguments map[stri
 			if whole == "" {
 				return fmt.Sprintf("%q is not a command", strings.Join(args, " ")), true
 			}
-			if !slices.Contains(allow, whole) {
+			if !may(allow, whole) {
 				return fmt.Sprintf("the command %q is not one this server was started with permission for", whole), true
 			}
 			if namesConfigOrStore(args) {
@@ -241,7 +238,7 @@ func (e *Env) call(ctx context.Context, t table, name string, arguments map[stri
 		if cmd == nil {
 			return fmt.Sprintf("%q is not a command", strings.Join(args, " ")), true
 		}
-		if !slices.Contains(allow, cmd.Name) {
+		if !may(allow, cmd.Name) {
 			return fmt.Sprintf("the command %q is not one this server was started with permission for", cmd.Name), true
 		}
 		// corbie start's line names programs beside roles: it is read as
@@ -271,6 +268,13 @@ func (e *Env) call(ctx context.Context, t table, name string, arguments map[stri
 		return ran(status, out, errOut)
 	}
 	return fmt.Sprintf("there is no tool named %q", name), true
+}
+
+// may says whether the model may run the command of that whole name. A
+// server's line that names no command allows every command of corbie's,
+// and no program's.
+func may(allow []string, name string) bool {
+	return len(allow) == 0 || slices.Contains(allow, name)
 }
 
 // namesConfigOrStore says whether a command line names a config or a

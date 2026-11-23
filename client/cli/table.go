@@ -568,18 +568,21 @@ It reads no config and no store.
   --listen host:port   where it listens; default 127.0.0.1:7403`},
 		{Name: "mcp", Usage: "[--allow <command>]…", Summary: "serve the manual and the commands to a model, as an MCP server", Stays: true, Run: cmdMCP, Help: `
 It is an MCP server on standard input and output, with two tools: manual,
-which prints a page, and corbie, which runs a command. Commands run with this
-server's config and store, and the model can name no other. The server needs
-no controller or runner running, and keeps no state.
+which prints a page, and corbie, which runs a command. By default the model
+may run every command of Corbie's. Commands run with this server's config and
+store, and the model can name no other. The server needs no controller or
+runner running, and keeps no state.
 
-  --allow <command>   a command the model may run, by its whole name, such as
-                      test, "run submit" or a program's "board new";
-                      repeatable; default none
+  --allow <command>   the model may run only the commands named, each by its
+                      whole name, such as test, "run show" or a program's
+                      "board new"; repeatable; default every command of
+                      Corbie's and no program's
 
 A program's command adds the program's pages to the manual, and the model is
 told the program's page named after it.
 
-  corbie mcp --allow test --allow "run submit" --allow "run show"
+  corbie mcp                                      every command
+  corbie mcp --allow "run ls" --allow "run show"  those two only
 
   corbie manual first-machine   adding the server to an assistant`},
 		{Name: "add", Usage: "[<pack>[@<ref>]]… [--set WORD=<name>]… [--in <directory>]", Summary: "write a pack of ready-made machines into a project", Run: cmdAdd, Help: `

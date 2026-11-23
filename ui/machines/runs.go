@@ -24,9 +24,9 @@ type atLocation struct {
 	In                   map[string]int
 }
 
-// counted gives the runs at each location of the directory, from the list of
-// runs the UI reads and the latest step of each of its client's running
-// runs there. With no list, nothing is counted.
+// counted gives the runs at each location a machine is recorded at, from
+// the list of runs the UI reads and the latest step of each of its client's
+// running runs there. With no list, nothing is counted.
 func (h *handler) counted(ctx context.Context, ix *index) (map[string]atLocation, error) {
 	out := map[string]atLocation{}
 	if h.List == nil {
@@ -36,15 +36,9 @@ func (h *handler) counted(ctx context.Context, ix *index) (map[string]atLocation
 	if err != nil {
 		return nil, err
 	}
-	ours := map[string]bool{}
-	for _, m := range ix.machines {
-		if m.Location != "" {
-			ours[m.Location] = true
-		}
-	}
 	now := time.Now()
 	for _, r := range runs {
-		if r.Parent != "" || !ours[r.Location] {
+		if r.Parent != "" || ix.machines[r.Location] == nil {
 			continue
 		}
 		at := out[r.Location]
@@ -102,70 +96,88 @@ func (h *handler) in(ctx context.Context, run *client.Run) ([]string, error) {
 	return names, nil
 }
 
-// Differs gives how the machine now in the directory at a location differs
-// from the definition a run there started with, stored at def in the run's
-// record, which the UI's client reads:
+// Differs gives how the definition now recorded at a location differs from
+// the definition a run there started with, stored at def in the run's
+// record:
 //
-//   - each value removed, with "-" before it and its path, and each value
-//     added, with "+";
+//   - each value the run has and the location has not, with "-" before it
+//     and its path, and each value the location has and the run has not,
+//     with "+";
 //   - each file a job runs whose contents differ: `a script changed: ./find.js`;
 //   - each child machine that differs in any of these: `a child changed: ./stuck.yaml`.
 //
-// It gives none where they are the same, and where the page does not show
-// the location's machine: a tree submitted from another directory, or no
-// machine there.
-func (p *Pages) Differs(ctx context.Context, location, dir string, def blob.Ref) ([]string, error) {
+// It gives none where they are the same, and where no machine is recorded
+// at the location.
+func (p *Pages) Differs(ctx context.Context, location string, def blob.Ref) ([]string, error) {
 	h := p.h
-	if dir != h.dir.real || h.Client == nil {
+	ix, err := h.index.current(ctx)
+	if err != nil {
+		return nil, err
+	}
+	m := ix.machines[location]
+	if m == nil {
 		return nil, nil
 	}
-	ix, err := h.tree(ctx)
-	if err != nil {
+	// A stored definition never changes, so two are compared once.
+	key := def.At + "\n" + m.Ref.At
+	h.mu.Lock()
+	found, ok := h.differ[key]
+	h.mu.Unlock()
+	if ok {
+		return found, nil
+	}
+	if found, err = differs(ctx, h.Store, def, m.Ref); err != nil {
 		return nil, err
 	}
-	for _, m := range ix.machines {
-		if m.Location == location && m.Draft != nil {
-			return differs(ctx, h.Client.Store, def, m.Draft)
-		}
-	}
-	return nil, nil
+	h.mu.Lock()
+	h.differ[key] = found
+	h.mu.Unlock()
+	return found, nil
 }
 
-// differs gives how a draft differs from the definition stored at ref, as
-// Differs gives it.
-func differs(ctx context.Context, s store.Store, ref blob.Ref, d *machine.Draft) ([]string, error) {
-	was, err := machine.Load(ctx, s, ref)
+// differs gives how the definition stored at now differs from the one
+// stored at was, as Differs gives it.
+func differs(ctx context.Context, s store.Store, was, now blob.Ref) ([]string, error) {
+	a, err := machine.Load(ctx, s, was)
 	if err != nil {
 		return nil, err
 	}
-	a, err := compared(was)
+	b, err := machine.Load(ctx, s, now)
 	if err != nil {
 		return nil, err
 	}
-	b, err := compared(d.Definition)
+	before, err := compared(a)
 	if err != nil {
 		return nil, err
 	}
-	out := lineDiff(a, b)
-	for _, name := range sortedKeys(was.Scripts) {
-		now, ok := d.Files[name]
+	after, err := compared(b)
+	if err != nil {
+		return nil, err
+	}
+	out := lineDiff(before, after)
+	for _, name := range sortedKeys(a.Scripts) {
+		script, ok := b.Scripts[name]
 		if !ok {
 			continue // its job is gone, which a value's line says
 		}
-		contents, err := blob.ReadAll(ctx, s, ref.Beside(was.Scripts[name]), blob.StepLimit)
+		x, err := blob.ReadAll(ctx, s, was.Beside(a.Scripts[name]), blob.StepLimit)
 		if err != nil {
 			return nil, err
 		}
-		if !bytes.Equal(contents, now) {
+		y, err := blob.ReadAll(ctx, s, now.Beside(script), blob.StepLimit)
+		if err != nil {
+			return nil, err
+		}
+		if !bytes.Equal(x, y) {
 			out = append(out, "a script changed: "+name)
 		}
 	}
-	for _, name := range sortedKeys(was.Machines) {
-		child := d.Children[name]
-		if child == nil {
+	for _, name := range sortedKeys(a.Machines) {
+		child, ok := b.Machines[name]
+		if !ok {
 			continue
 		}
-		changed, err := differs(ctx, s, ref.Beside(was.Machines[name]), child)
+		changed, err := differs(ctx, s, was.Beside(a.Machines[name]), now.Beside(child))
 		if err != nil {
 			return nil, err
 		}

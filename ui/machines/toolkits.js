@@ -1,12 +1,12 @@
-// The Toolkits page: the toolkits the agents in the directory offer, and the
-// toolkit chosen with its tools and what offers and starts it, or its
-// file's text. Choosing a toolkit or a tab shows it in place, and the page
-// shows the toolkit again when the directory changed on disk.
+// The Toolkits page: the toolkits the agents of the machines recorded offer,
+// by tree, and the toolkit chosen with its tools and what offers and starts
+// it. Choosing a toolkit shows it in place, and the page shows the toolkit
+// again when a submit changed a tree.
 import { createEffect, createSignal } from "solid-js";
 import { html, parts, receive, mount, Icon, Handle, plural } from "ui";
-import { Problems, Code, machineHref, base } from "/machines/shared.js";
+import { machineHref } from "/machines/shared.js";
 
-const toolkitHref = (id, text) => "/toolkits?" + new URLSearchParams(text ? { toolkit: id, view: "text" } : { toolkit: id });
+const toolkitHref = id => "/toolkits?" + new URLSearchParams({ toolkit: id });
 
 // failed is why the toolkit could not be shown at the address asked for;
 // asked counts the addresses asked for, and only the answer to the latest
@@ -14,8 +14,7 @@ const toolkitHref = (id, text) => "/toolkits?" + new URLSearchParams(text ? { to
 const [failed, setFailed] = createSignal("");
 let asked = 0;
 
-// show asks the UI for the toolkit an address chooses, as its tab shows
-// it, and puts it in place as the stream puts a part. A failure is shown in
+// show asks the UI for the toolkit an address chooses, and puts it in place as the stream puts a part. A failure is shown in
 // the view, and the toolkit stays as it was.
 async function show(href, push) {
   const at = new URL(href, location.href);
@@ -46,18 +45,21 @@ function inPlace(e) {
   show(href, true);
 }
 
-// FileLink is a link to a file on the Machines page, its name in code.
-const FileLink = props => html`<a href=${() => machineHref(props.file)} title=${() => props.file}><code>${() => props.text}</code></a>`;
+// Named is a machine, a file or a location in code: a link to the machine
+// recorded at a location on the Machines page, where there is one.
+const Named = props => html`<Show when=${() => props.at} fallback=${() => html`<code>${() => props.text}</code>`}><a href=${() => machineHref(props.at)} title=${() => props.at}><code>${() => props.text}</code></a></Show>`;
+
+// base gives the last name of a path.
+const base = p => p.slice(p.lastIndexOf("/") + 1);
 
 // Job is what a tool's job is: a call with the input it fixes, a send, or
 // the machine or script it runs.
 function Job(props) {
   const t = () => props.tool;
-  const named = text => (t().File ? html`<${FileLink} file=${() => t().File} text=${text} />` : html`<code>${text}</code>`);
-  return html`<Show when=${() => t().Call} fallback=${() => html`<Show when=${() => t().Job === "send"} fallback=${() => html`<p class="job">${() => t().Job} ${() => (t().File ? html`<${FileLink} file=${() => t().File} text=${() => base(t().File)} />` : "")}</p>`}>
-      <p class="job">send <code>${() => t().Event}</code> to ${() => named(t().To)}</p>
+  return html`<Show when=${() => t().Call} fallback=${() => html`<Show when=${() => t().Job === "send"} fallback=${() => html`<p class="job">${() => t().Job} ${() => (t().File ? html`<${Named} at=${() => t().At} text=${() => base(t().File)} />` : "")}</p>`}>
+      <p class="job">send <code>${() => t().Event}</code> to <${Named} at=${() => t().At} text=${() => t().To} /></p>
     </Show>`}>
-    <p class="job">call ${() => named(t().Call)}</p>
+    <p class="job">call <${Named} at=${() => t().At} text=${() => t().Call} /></p>
     ${() => (t().Fixed.length ? html`<p class="job">input: ${() => t().Fixed.join(", ")}</p>` : "")}
   </Show>`;
 }
@@ -72,11 +74,15 @@ function Tool(props) {
   </section>`;
 }
 
+// Starter is an agent or a machine that starts one: a link to the machine
+// recorded at its location, or its name alone where it has none.
+const Starter = props => html`<Show when=${() => props.at} fallback=${() => html`<span class="start" title=${() => props.file}><${Icon} type=${() => props.type} />${() => props.name}</span>`}><a class="start" href=${() => machineHref(props.at)} title=${() => props.at}><${Icon} type=${() => props.type} />${() => props.name}</a></Show>`;
+
 function Offer(props) {
   const o = () => props.offer;
   return html`<tr>
-    <td><a class="start" href=${() => machineHref(o().File)} title=${() => o().File}><${Icon} type="agent" />${() => o().Name}</a>${" "}<small>${() => o().File}</small>${() => (o().When ? html`${" "}<code class="when">when: ${() => o().When}</code>` : "")}</td>
-    <td class="wrap"><For each=${() => o().Starts}>${s => html`<a class="start" href=${() => machineHref(s.File)} title=${() => s.File}><${Icon} type=${() => s.Type} />${() => s.Name}</a>`}</For>${() => (o().Lifetime ? html`<span class="dim">${() => o().Lifetime}: ${() => o().Started}</span>` : "")}</td>
+    <td><${Starter} at=${() => o().At} file=${() => o().File} type="agent" name=${() => o().Name} />${" "}<small>${() => o().At || o().File}</small>${() => (o().When ? html`${" "}<code class="when">when: ${() => o().When}</code>` : "")}</td>
+    <td class="wrap"><For each=${() => o().Starts}>${s => html`<${Starter} at=${() => s.At} file=${() => s.File} type=${() => s.Type} name=${() => s.Name} />`}</For>${() => (o().Lifetime ? html`<span class="dim">${() => o().Lifetime}: ${() => o().Started}</span>` : "")}</td>
   </tr>`;
 }
 
@@ -86,44 +92,38 @@ function Body(props) {
   const k = () => props.toolkit;
   return html`<div class="body">
     <p class="description">${() => k().Description}</p>
-    ${() => (k().InstructionsFile ? html`<p class="instructions">instructions <${FileLink} file=${() => k().InstructionsFile} text=${() => k().InstructionsFile} /></p>` : k().Instructions ? html`<p class="instructions" title="instructions">${() => k().Instructions}</p>` : "")}
+    ${() => (k().InstructionsFile ? html`<p class="instructions">instructions <code>${() => k().InstructionsFile}</code></p>` : k().Instructions ? html`<p class="instructions" title="instructions">${() => k().Instructions}</p>` : "")}
     <table class="list offered"><thead><tr><th>Offered by</th><th>Started by</th></tr></thead><tbody><For each=${() => k().Offered} keyed=${o => o.File + " " + o.Name}>${o => html`<${Offer} offer=${o} />`}</For></tbody></table>
     <h2>Tools</h2>
     <div class="toolcards"><For each=${() => k().Tools} keyed=${t => t.Name}>${t => html`<${Tool} tool=${t} />`}</For></div>
   </div>`;
 }
 
-// View is the toolkit chosen, with the problems found in its file.
+// View is the toolkit chosen.
 function View() {
-  const v = () => parts.toolkit;
-  const k = () => v().Open;
+  const k = () => parts.toolkit.Open;
   return html`<div class="panel view toolkit">
     <Show when=${k} fallback=${() => html`<div class="body"><p class="dim">no toolkit chosen</p></div>`}>
       <div class="head"><${Icon} type="toolkit" /><span>${() => k().Name}</span><span class="facts">${() => k().File}</span>${() => (k().Opening ? html`<span class="approve">opening it needs approval</span>` : "")}</div>
       <Show when=${failed}><p class="said bad failed">${failed}</p></Show>
-      <Show when=${() => k().File}>
-        <nav class="tabs"><a href=${() => toolkitHref(k().ID)} aria-current=${() => (v().ShowText ? undefined : "page")}>Drawing</a><a href=${() => toolkitHref(k().ID, true)} aria-current=${() => (v().ShowText ? "page" : undefined)}>Text</a></nav>
-      </Show>
-      <${Problems} problems=${() => v().Found} />
-      <Show when=${() => v().ShowText} fallback=${() => html`<${Body} toolkit=${k} />`}><${Code} lines=${() => v().Text} label=${() => k().File} /></Show>
+      <${Body} toolkit=${k} />
     </Show>
   </div>`;
 }
 
-// List is the toolkits, under the directory's problems.
+// List is the toolkits of each tree.
 function List() {
-  const v = () => parts.list;
   return html`<div class="filelist list">
-    ${() => (v().Unread ? html`<p class="unread">not read to its end: ${() => v().Unread}</p>` : "")}
-    <${Problems} problems=${() => v().Problems} />
-    <For each=${() => v().Toolkits} keyed=${k => k.ID} fallback=${() => html`<p class="dim">no toolkits here</p>`}>${k => html`
-      <a href=${() => toolkitHref(k().ID)} aria-current=${() => (parts.toolkit.Open?.ID === k().ID ? "page" : undefined)}><${Icon} type="toolkit" /><span class="name" title=${() => k().File}>${() => k().Name}</span>${() => (k().Broken ? html`<span class="chip">has problems</span>` : "")}<small>${() => plural(k().Tools.length, "tool")} · ${() => k().Description}</small></a>`}</For>
+    <For each=${() => parts.list.Trees} keyed=${t => t.Prefix} fallback=${() => html`<p class="dim">no toolkits recorded</p>`}>${t => html`
+      <h2 class="group">${() => t().Prefix}</h2>
+      <For each=${() => t().Toolkits} keyed=${k => k.ID}>${k => html`
+        <a href=${() => toolkitHref(k().ID)} aria-current=${() => (parts.toolkit.Open?.ID === k().ID ? "page" : undefined)}><${Icon} type="toolkit" /><span class="name" title=${() => k().File}>${() => k().Name}</span><small>${() => plural(k().Tools.length, "tool")} · ${() => k().Description}</small></a>`}</For>`}</For>
   </div>`;
 }
 
 function Toolkits() {
   // The page asks for the toolkit it shows again when the stream gives the
-  // directory as read at another mark than the toolkit shown was.
+  // trees as read at another mark than the toolkit shown was.
   createEffect(
     () => parts.list.Stamp !== parts.toolkit.Stamp,
     changed => {
@@ -131,8 +131,7 @@ function Toolkits() {
     }
   );
   return html`<div class="ide" onClick=${inPlace}>
-    <nav class="panel files" aria-label=${() => "The toolkits in " + parts.list.DirFull}>
-      <div class="head"><span class="facts" title=${() => parts.list.DirFull}>${() => parts.list.Dir}</span></div>
+    <nav class="panel files" aria-label="The toolkits of the machines the controller recorded">
       <${List} />
     </nav>
     <${Handle} size="files" />

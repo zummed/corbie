@@ -27,7 +27,7 @@ const fill = 1.6;
 //
 //   scene      the graph to draw
 //   focus      the path of a card for the camera to frame
-//   lineHref   gives the address of a "file:line", which a card's name links to
+//   lineHref   gives the address of a "file:line" for the card at a path, which the card's name links to, or none
 //   lit        the paths of cards to light, as the pointer lights them
 //   onCard     called with a card's path when a person picks a card that is no link
 //   counts     a number for each card's path, drawn on the card where above 0
@@ -62,7 +62,7 @@ function Viewport(props) {
   // card does with its line, a pick and its count.
   const ctx = {
     lights: (key, from, to) => lit(hot(), key, from, to) || shown().has(key) || (from !== undefined && (shown().has(from) || shown().has(to))),
-    lineHref: line => (line && props.lineHref ? props.lineHref(line) : ""),
+    lineHref: (line, path) => (line && props.lineHref ? props.lineHref(line, path) : ""),
     picks: () => !!props.onCard,
     pick: path => props.onCard?.(path),
     count: path => props.counts?.[path] ?? 0,
@@ -230,7 +230,7 @@ function Card(props) {
   const c = () => props.card;
   const key = () => props.prefix + c().key;
   const path = () => (props.path ? props.path + "/" : "") + c().name;
-  const lineHref = () => props.ctx.lineHref(c().line);
+  const lineHref = () => props.ctx.lineHref(c().line, path());
   const picks = () => props.ctx.picks() && !c().href;
   const count = () => props.ctx.count(path());
   const x = v => num(v - c().box.x), y = v => num(v - c().box.y);
@@ -252,7 +252,7 @@ function Card(props) {
   }
   return html`<g class="at" style=${() => at(c().box.x, c().box.y)}><g class=${() => [c().class, { lit: props.ctx.lights(key()), pick: picks() }]} data-key=${key} data-path=${path} tabindex=${() => (picks() ? "0" : undefined)} onClick=${pick} onKeyDown=${enter}>
     <a class="card" href=${() => c().href || undefined}>${body()}</a>
-    <Show when=${lineHref} fallback=${name}>${href => html`<a class="line" href=${href}>${name()}<title>${() => "the line that writes it: " + c().line}</title></a>`}</Show>
+    <Show when=${lineHref} fallback=${name}>${href => html`<a class="line" href=${href}>${name()}<title>${() => "written at " + c().line}</title></a>`}</Show>
     <Show when=${() => count() > 0}>${() => html`<g class="count" transform=${() => `translate(${num(c().box.w - 12)} 0)`}><rect x=${() => num(-(10 + 7 * String(count()).length) / 2)} y="-9" width=${() => 10 + 7 * String(count()).length} height="18" rx="9" /><text text-anchor="middle" y="4">${count}</text><title>${() => `${count()} running here now`}</title></g>`}</Show>
     <title>${() => c().tooltip}</title>
   </g><Show when=${() => c().in}>${i => html`<g class="at in" style=${() => at(i().x - c().box.x, i().y - c().box.y)}><${Parts} of=${() => i()} prefix=${() => key() + " › "} path=${path} ctx=${props.ctx} /></g>`}</Show></g>`;

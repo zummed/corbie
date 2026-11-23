@@ -18,13 +18,12 @@ corbie ui client controller    acts as both; the client must trust the config's 
 
 Acting as no party, it is a viewer, which needs no identity: only the controller's card and the store's address. A config holds them after `corbie client trust`, or where the controller is in it.
 
-- A directory another computer serves has no viewers: a UI there is started as the client.
+- A store another computer serves has no viewers: a UI there is started as the client.
 - On a bucket, the key in the environment, not the config, says what the UI can read.
 
 ```
 --listen host:port    where it listens; default 127.0.0.1:8373, or a free port when that one is in use
 --token-file <file>   a file holding the token every request must show; by default it makes one and prints it
---dir <directory>     the directory of machines, read as a tree; default the directory it was started in
 --interval <time>     how often it reads the store again; default 1s, or 10s for a bucket
 ```
 
@@ -40,13 +39,12 @@ A UI listens on this computer only, and refuses a `--listen` address of any othe
 ## What each party opens
 
 ```
-the directory   Machines and Toolkits, to read; every UI but none
 no party        Runs, with every run's status; /metrics
 client          each of its own runs in full, with Reply, Send and Cancel; Reply on any run, with a ticket's value
-controller      Controller, with its trees, secrets and values; cancelling any run
+controller      Machines and Toolkits, to read; Controller, with its parties, secrets and values; cancelling any run
 ```
 
-With nothing named after `corbie ui`, a store that cannot be opened leaves the directory alone: the UI prints why, and offers Machines and Toolkits. A party or `none` named needs the store, and the UI refuses to start without it.
+The UI needs the store, and refuses to start where it cannot open it.
 
 A page or an action the UI's parties may not use is not offered, and a request for one is refused. What the store lets the parties read limits the rest.
 

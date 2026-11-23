@@ -163,7 +163,6 @@ func get(t *testing.T, h http.Handler) string {
 // shown is the page's parts, as the page is given them to draw.
 type shown struct {
 	Parties  []party   `json:"parties"`
-	Trees    []Tree    `json:"trees"`
 	Settings []setting `json:"settings"`
 }
 
@@ -198,7 +197,7 @@ func post(h http.Handler, act string, form url.Values) *httptest.ResponseRecorde
 	return w
 }
 
-func Test_controller_lists_parties_trees_secrets_and_values(t *testing.T) {
+func Test_controller_lists_parties_secrets_and_values(t *testing.T) {
 	s := partsOf(t, get(t, lab(t, nil)))
 	if p := partyOf(t, s, "lab-runner"); p.Kind != "runner" || fmt.Sprint(p.At) != "[/]" {
 		t.Errorf("the page does not list at / a runner enrolled with no --at: %+v", p)
@@ -214,22 +213,6 @@ func Test_controller_lists_parties_trees_secrets_and_values(t *testing.T) {
 	}
 	if !regexp.MustCompile(`^[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}$`).MatchString(partyOf(t, s, "lab-client").Fingerprint) {
 		t.Errorf("the page does not show a card's fingerprint")
-	}
-	trees := map[string]Tree{}
-	for _, tr := range s.Trees {
-		trees[tr.Prefix] = tr
-	}
-	home := trees["/home"]
-	if home.Client != "lab-client" || home.Directory == "" {
-		t.Errorf("the tree at /home is listed as %+v", home)
-	}
-	for _, want := range []Location{{"/home/devices/boiler", "devices/boiler", "singleton"}, {"/home/rooms/thermostat", "rooms/thermostat", "keyed"}, {"/home/tools/lookup", "tools/lookup", "transient"}} {
-		if !slices.Contains(home.Locations, want) {
-			t.Errorf("the tree at /home does not list %+v: %+v", want, home.Locations)
-		}
-	}
-	if hello := trees["/hello"]; len(hello.Locations) != 1 || hello.Locations[0].At != "/hello" || hello.Locations[0].Name != "hello" {
-		t.Errorf("the tree at /hello is listed as %+v", hello)
 	}
 	want := []setting{{At: "/", Name: "ANTHROPIC_KEY", Kind: "secret"}, {At: "/home", Name: "HUB", Kind: "value", Value: "192.0.2.8:8123"}}
 	if !slices.Equal(s.Settings, want) {

@@ -10,12 +10,6 @@ import (
 	"github.com/zummed/corbie/store"
 )
 
-// A storeError is a store that cannot be opened, or a config that knows of
-// none. With nothing named, it leaves the directory alone.
-type storeError struct{ error }
-
-func (e storeError) Unwrap() error { return e.error }
-
 // parties is what the UI acts as: a lister of runs, which reads every
 // run's status, and the client and the controller
 // where it was started as them.
@@ -61,7 +55,7 @@ func open(ctx context.Context, e *cli.Env, cfg identity.Config, asClient, asCont
 	}
 	if asClient || (held != nil && !asController) {
 		if held == nil {
-			return nil, storeError{fmt.Errorf("this computer's client trusts no controller yet: corbie init sets one computer up, and corbie client trust takes a controller's card")}
+			return nil, fmt.Errorf("this computer's client trusts no controller yet: corbie init sets one computer up, and corbie client trust takes a controller's card")
 		}
 		if asController && (held.Card.Name != card.Name || held.Card.Fingerprint() != card.Fingerprint()) {
 			return nil, fmt.Errorf("the config's client trusts the controller %s, not the config's own %s: name one party, client or controller", held.Card.Name, card.Name)
@@ -69,7 +63,7 @@ func open(ctx context.Context, e *cli.Env, cfg identity.Config, asClient, asCont
 		card, recorded = held.Card, held.Store
 	}
 	if card.Name == "" {
-		return nil, storeError{fmt.Errorf("this config knows no controller: corbie client trust takes a controller's card, or corbie init sets one computer up")}
+		return nil, fmt.Errorf("this config knows no controller: corbie client trust takes a controller's card, or corbie init sets one computer up")
 	}
 	if asClient {
 		if me, err = cfg.Load(ctx, identity.Client); err != nil {
@@ -79,7 +73,7 @@ func open(ctx context.Context, e *cli.Env, cfg identity.Config, asClient, asCont
 
 	s, err := e.Open(recorded, me, card)
 	if err != nil {
-		return nil, storeError{err}
+		return nil, err
 	}
 
 	if me != nil {
@@ -94,7 +88,7 @@ func open(ctx context.Context, e *cli.Env, cfg identity.Config, asClient, asCont
 	// every party that reads heads read them all.
 	p.lister = client.New(nil, card, s)
 	if _, err := p.lister.List(ctx, client.Filter{}); err != nil {
-		return nil, storeError{err}
+		return nil, err
 	}
 	return p, nil
 }

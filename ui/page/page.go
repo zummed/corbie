@@ -32,15 +32,13 @@ func Assets() http.Handler {
 }
 
 // A Shell is a page around what is its own: its title, the pages the UI
-// offers and the one it belongs to, the parties the UI acts as, why it has
-// no store where it has none, the stream it follows, and the script that
-// draws it.
+// offers and the one it belongs to, the parties the UI acts as, the stream
+// it follows, and the script that draws it.
 type Shell struct {
 	Title   string
 	Current string
 	Offered []string
 	Parties []string
-	NoStore string
 	Stream  string
 	Script  string
 }

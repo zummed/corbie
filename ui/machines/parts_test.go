@@ -12,25 +12,19 @@ import (
 	"github.com/zummed/corbie/ui/drawing"
 )
 
-// listedPart is the part "files" as the page is given it.
-type listedPart struct {
-	Dir, DirFull, Prefix, Unread, Stamp string
-	Groups                              []group
-	Files                               []entry
-	Ignore                              bool
-	Problems                            []problem
-}
-
 // shown is a Machines or Toolkits page's parts, as the page is given them
-// to draw, and the JSON they are given as.
+// to draw, and the JSON they are given as. List is the list of either
+// page: Trees holds the machines of each tree on the Machines page, and
+// Toolkits the list of the Toolkits page.
 type shown struct {
-	Files   listedPart    `json:"files"`
-	View    view          `json:"view"`
-	List    toolkitList   `json:"list"`
-	Toolkit toolkitChosen `json:"toolkit"`
-	// Toolkits is the Toolkits page's two parts as one view.
-	Toolkits toolkitsView `json:"-"`
-	JSON     string       `json:"-"`
+	List struct {
+		Stamp string
+		Trees []listed
+	} `json:"list"`
+	View     view          `json:"view"`
+	Toolkits toolkitList   `json:"-"`
+	Toolkit  toolkitChosen `json:"toolkit"`
+	JSON     string        `json:"-"`
 }
 
 var partsAt = regexp.MustCompile(`(?s)<script type="application/json" id="parts">(.*?)</script>`)
@@ -51,36 +45,35 @@ func pageOf(t *testing.T, h http.Handler, target string) shown {
 	if err := json.Unmarshal([]byte(m[1]), &s); err != nil {
 		t.Fatalf("%s carries parts that do not read: %v", target, err)
 	}
-	l, k := s.List, s.Toolkit
-	s.Toolkits = toolkitsView{Dir: l.Dir, DirFull: l.DirFull, Toolkits: l.Toolkits, Problems: l.Problems, Unread: l.Unread, Stamp: l.Stamp,
-		Open: k.Open, Found: k.Found, ShowText: k.ShowText, Text: k.Text}
+	if err := json.Unmarshal([]byte(m[1]), &struct {
+		List *toolkitList `json:"list"`
+	}{&s.Toolkits}); err != nil {
+		t.Fatalf("%s carries a list that does not read: %v", target, err)
+	}
 	var v jsontext.Value = []byte(m[1])
 	v.Indent()
 	s.JSON = string(v)
 	return s
 }
 
-// entryOf gives the machine of the list in a file.
-func (s shown) entryOf(file string) *entry {
-	for _, g := range s.Files.Groups {
-		for i, e := range g.Entries {
-			if e.Path == file {
-				return &g.Entries[i]
+// entryOf gives the machine of the list at a location.
+func (s shown) entryOf(location string) *entry {
+	for _, t := range s.List.Trees {
+		for i, e := range t.Entries {
+			if e.Location == location {
+				return &t.Entries[i]
 			}
 		}
 	}
 	return nil
 }
 
-// text gives a file's text as the page shows it, a line at a time, each
-// line's spans written as class:text, and the lines marked with a !.
+// text gives a definition as the page shows it, a line at a
+// time, each line's spans written as class:text.
 func text(lines []codeLine) []string {
 	var out []string
 	for _, l := range lines {
 		var b strings.Builder
-		if l.Bad {
-			b.WriteString("!")
-		}
 		for _, s := range l.Spans {
 			if s.Class != "" {
 				b.WriteString("[" + s.Class + ":" + s.Text + "]")
@@ -91,23 +84,6 @@ func text(lines []codeLine) []string {
 		out = append(out, b.String())
 	}
 	return out
-}
-
-// problemsSaid gives the problems as the page writes them, with the
-// machines each breaks.
-func problemsSaid(found []problem) string {
-	var out []string
-	for _, p := range found {
-		line := p.File + " " + p.Place + " " + p.Text
-		if p.Top {
-			line = p.File + "/ is the top of a tree"
-		}
-		if len(p.Breaks) > 0 {
-			line += " breaks " + strings.Join(p.Breaks, ",")
-		}
-		out = append(out, line)
-	}
-	return strings.Join(out, "\n")
 }
 
 // cards gives every card of a drawing, the cards unfolded inside cards

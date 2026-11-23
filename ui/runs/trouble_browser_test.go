@@ -30,9 +30,10 @@ type troubled struct {
 	ids     map[string]string
 }
 
-// The file of fails differs from the definition its run started with, as
-// the Machines page gives it: a value by its path, and a script.
-func differs(ctx context.Context, location, dir string, def blob.Ref) ([]string, error) {
+// The definition recorded at the location of fails differs from the one its
+// run started with, as the Machines page gives it: a value by its path, and
+// a script.
+func differs(ctx context.Context, location string, def blob.Ref) ([]string, error) {
 	if location != "/trouble/fails" || def == (blob.Ref{}) {
 		return nil, nil
 	}

@@ -151,7 +151,7 @@ failed (error) at stage wait
   child     statechart stuck failed (timeout)
 ```
 
-Where the UI offers Machines and the run's file on disk now differs from the definition the run started with, a line says `the file changed since this run started`, and opens to the lines that differ.
+Where the UI offers Machines and a submit has changed the definition recorded at the run's location since the run started, as `update: drain` leaves it, a line says `a submit changed the definition since this run started`, and opens to the lines that differ.
 
 The path goes up from the run, by parent, to its root, and down to the deepest running run, by the newest running child at each level. Where a send or a call started the root, the run that sent or called comes first, with `⇢`; its tooltip says which, where the root is in a tree of the UI's client. The run itself is in bold, and the run of the step selected is lit. Holding the pointer over a run shows its title, its address and its ID, as over a name.
 
@@ -242,7 +242,7 @@ Steps and the drawing point at each other:
 
 - Holding the pointer over a row lights the cards of the drawing it is about: a state entered or left, a stage, the job that ended or failed.
 - A click on a card that is no link selects the newest row about it.
-- Where the run links to its machine's file, a card's name links to the line of the file that writes it, on the Machines page.
+- Where a run at its own location links to its machine, a card's name links to its lines in the Definition tab of that machine, on the Machines page.
 
 The drawing shows the selected row's run as it was at the row's step, from its record up to that step and the state that step left (see Drawing). It is the page's run, with the card of each job that started a run on the way to the selected row's run unfolded, that run drawn inside it:
 
@@ -252,23 +252,23 @@ each run below it   as of its latest step at or before the row, inside the card 
 the row's run       as of the row's step
 ```
 
-A row of a send's or a call's group is of a run the page's run did not start, and its run is drawn alone. The drawing's view moves to the cards the step marks, the deepest first, so following rows into a child moves the view into its card, and back out (see Drawing). Its head names the selected row's run and its machine's file, as the title line does.
+A row of a send's or a call's group is of a run the page's run did not start, and its run is drawn alone. The drawing's view moves to the cards the step marks, the deepest first, so following rows into a child moves the view into its card, and back out (see Drawing). Its head names the selected row's run and its machine's location, as the title line does.
 
 - The UI sends the drawing and the details of the newest row as the run's page follows the run, so the page asks for nothing while it follows.
 - The page asks the UI for a row the person selects, and keeps each answer while the page is open: a row's drawing and details as of its step do not change.
 - A selection is shown at once. While its answer is on its way, the drawing before it stays, dimmed after a moment.
 
-### The machine's file
+### The machine's location
 
-The file links to the Machines page, opened on the machine of a run in a tree of the UI's client:
+The location links to the Machines page, opened on the machine of a run in a tree of the UI's client:
 
 ```
-a run at its own location   the file at that location: devices/boiler.yaml
-a child                     its root's file, unfolded down the cards of the jobs that started each child: schedules/away.yaml › pause
+a run at its own location   the machine recorded at that location: /home/devices/boiler
+a child                     its root's machine, unfolded down the cards of the jobs that started each child: /home/schedules/away › pause
 ```
 
-- The Machines page shows the file as it is on disk now, which may differ from the definition the run started with. The run's drawing is the definition it runs, and the link's tooltip says so. Where they differ, the line under the title says so.
-- There is no link where the UI offers no Machines page, where the run's tree was submitted from another directory or at another prefix than the page reads, where a machine on the way was made while running, and on a run in another client's tree.
+- The Machines page shows the definition recorded at the location now, which a submit may have changed since the run started. The run's drawing is the definition it runs, and the link's tooltip says so. Where they differ, the line under the title says so.
+- There is no link where the UI offers no Machines page, where no machine is recorded at the root's location, where a machine on the way was made while running, and on a run in another client's tree.
 
 The details of a row have four tabs, and Open opens the row's run's page:
 

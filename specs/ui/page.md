@@ -8,8 +8,8 @@ The header is at the top of every page. It holds Corbie's logo, the pages the UI
 
 ```
 Runs         the list of runs, and each run's page
-Machines     the machines in the directory
-Toolkits     the toolkits in the directory, and what offers each
+Machines     the machines the controller recorded, when the UI acts as the controller
+Toolkits     the toolkits of those machines, and what offers each
 Controller   runners, clients and secrets, when the UI acts as the controller
 Manual       Corbie's manual, as corbie manual web serves it, in Corbie's own look
 ```
@@ -23,7 +23,7 @@ The UI is a dashboard. It uses the whole window, with a 20px margin and no colum
 - A status is a dot and a word, and a failure adds its kind in brackets: `failed (denied)`. The dot is petrol for running, moss for done and rowan for failed.
 - A time is its time of day when it is today, and has its date on any other day: `20:29`, `10 Nov 20:29`.
 - A machine's type is an icon beside its name, drawn as its drawing draws the type: stages for a flow, rounded states for a statechart, and the model's star for an agent.
-- The status colours mark status: rowan also marks problems and the buttons that cancel or remove, and petrol what a run is doing now. A blue marks the field with the keyboard, a link under the pointer, and the keys of a machine's text.
+- The status colours mark status: rowan also marks the buttons that cancel or remove, and petrol what a run is doing now. A blue marks the field with the keyboard, a link under the pointer, and the keys of a machine's text.
 - Corbie's gradient, from petrol through blue to violet, colours the icons of the types. No panel has a gradient or a shadow.
 - A page follows the computer's light or dark setting, with the manual's colours.
 
@@ -78,7 +78,7 @@ a run that ends               its line is lit in its status's colour, and moves 
 a row of Steps that appears   it slides in from below, in 0.35s
 the state a run is in         its outline pulses, every 2.6s
 a count that changes          it lifts and settles, in 0.5s
-another file on Machines      the views cross-fade in place, in 0.18s
+another machine on Machines     the views cross-fade in place, in 0.18s
 another page                  the page shown stays until the next is drawn
 ```
 

@@ -13,7 +13,7 @@ const panel = name => $$("main .panel").find(p => text($(".head h2", p)) === nam
 // rowOf gives the row of a table whose first cell is a name.
 const rowOf = (p, name) => $$("tbody tr", p).find(tr => text(tr.cells[0]) === name);
 
-test("controller_lists_parties_trees_secrets_and_values", () => {
+test("controller_lists_parties_secrets_and_values", () => {
   for (const [title, kind] of [["Runners", "runner"], ["Clients", "client"]]) {
     const names = $$("tbody tr", panel(title)).map(tr => text(tr.cells[0]));
     equal(names, parts.parties.filter(p => p.Kind === kind).map(p => p.Name), `the ${kind}s`);
@@ -21,8 +21,6 @@ test("controller_lists_parties_trees_secrets_and_values", () => {
   const gpu = rowOf(panel("Runners"), "gpu-box");
   equal(text(gpu.cells[2]), "/home, /hello", "the runner's prefixes");
   equal(text(gpu.cells[3]), "gpu, big", "the runner's tags");
-  const trees = $$("tbody tr.tree a", panel("Trees")).map(a => a.getAttribute("href"));
-  equal(trees, ["/runs?at=%2Fhello", "/runs?at=%2Fhome"], "the trees, linked to their runs");
   const settings = $$("tbody tr", panel("Secrets and values")).map(tr => [...tr.cells].slice(0, 4).map(text));
   equal(settings, [["/", "ANTHROPIC_KEY", "secret", ""], ["/home", "HUB", "value", "192.0.2.8:8123"]], "the secrets and values");
 });

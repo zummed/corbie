@@ -445,7 +445,7 @@ async function drawWith(name, { lineHref, lit = [], onCard, counts = {} } = {}, 
 // A card's name links to the line of its file that writes it, where the
 // page gives lines an address; the card's own link is on the rest of it.
 test("drawing_card_name_links_to_its_line", async () => {
-  let v = await drawWith("lookup-in-child", { lineHref: line => "/machines?line=" + line });
+  let v = await drawWith("lookup-in-child", { lineHref: (line, path) => (path.includes("/") ? "" : "/machines?line=" + line) });
   const check = card(v, "check");
   const name = check.querySelector("text.title").closest("a");
   assert(name?.matches("a.line"), "the name of a card is no link to its line");

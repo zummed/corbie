@@ -158,4 +158,4 @@ Each area below has an overview in this directory, written to be read. The detai
 
 **[Packs](pack.md).** `corbie add`: ready-made machines, written into a project from a git repository or a directory.
 
-**[UI](ui/README.md).** `corbie ui`: the runs, the machines in a directory, the toolkits and the controller, in a browser. Its areas are under `ui/`, each with its overview and its rules.
+**[UI](ui/README.md).** `corbie ui`: the runs, the machines the controller recorded, their toolkits and the controller, in a browser. Its areas are under `ui/`, each with its overview and its rules.

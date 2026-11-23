@@ -56,14 +56,13 @@ func viewer(t *testing.T, dir string) string {
 // started starts a UI on a config without listening, as corbie ui with
 // the arguments would. A UI that is not started gives what corbie ui
 // ended with and said.
-func started(ctx context.Context, config, dir string, args ...string) (*ui, error) {
+func started(ctx context.Context, config string, args ...string) (*ui, error) {
 	var u *ui
 	starting := []cli.Command{{Name: "", Usage: Commands[0].Usage, Run: func(e *cli.Env, args []string) error {
 		o, err := parse(e, args)
 		if err != nil {
 			return err
 		}
-		o.dir = dir
 		u, err = start(ctx, e, o)
 		return err
 	}}}
@@ -95,7 +94,7 @@ func served(t *testing.T, parties ...string) http.Handler {
 	t.Helper()
 	ctx, cancel := context.WithCancel(context.Background())
 	t.Cleanup(cancel)
-	u, err := started(ctx, lab(t, t.TempDir(), "lab"), t.TempDir(), parties...)
+	u, err := started(ctx, lab(t, t.TempDir(), "lab"), parties...)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -173,23 +172,20 @@ func Test_serve_party_listens_on_this_computer_only(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	for _, args := range [][]string{{"client", "--listen", ":8373"}, {"controller", "--listen", "0.0.0.0:8373"}, {"client", "controller", "--listen", "192.168.1.5:8373"}, {"--listen", ":8373"}} {
-		if _, err := started(ctx, config, dir, args...); !mistaken(err) || !strings.Contains(err.Error(), "this computer") || !strings.Contains(err.Error(), "none") {
+		if _, err := started(ctx, config, args...); !mistaken(err) || !strings.Contains(err.Error(), "this computer") || !strings.Contains(err.Error(), "none") {
 			t.Errorf("corbie ui %s gave %v", strings.Join(args, " "), err)
 		}
 	}
 	for _, args := range [][]string{{"client", "--listen", "127.0.0.1:8373"}, {"client", "--listen", "localhost:8373"}, {"controller", "--listen", "[::1]:8373"}, {"none", "--listen", ":8373"}} {
-		if _, err := started(ctx, config, dir, args...); err != nil {
+		if _, err := started(ctx, config, args...); err != nil {
 			t.Errorf("corbie ui %s was refused: %v", strings.Join(args, " "), err)
 		}
 	}
-	if _, err := started(ctx, viewer(t, dir), dir, "none", "--listen", ":8373"); err != nil {
+	if _, err := started(ctx, viewer(t, dir), "none", "--listen", ":8373"); err != nil {
 		t.Errorf("corbie ui none --listen :8373 on a viewer's config was refused: %v", err)
 	}
-	if _, err := started(ctx, viewer(t, dir), dir, "--listen", ":8373"); !mistaken(err) {
-		t.Errorf("a UI that shows the directory listened on every address: %v", err)
-	}
-	if _, err := started(ctx, filepath.Join(dir, "no-such-config"), dir, "--listen", ":8373"); !mistaken(err) {
-		t.Errorf("a UI of the directory alone listened on every address: %v", err)
+	if _, err := started(ctx, viewer(t, dir), "--listen", ":8373"); !mistaken(err) {
+		t.Errorf("a UI with no party named, and not none, listened on every address: %v", err)
 	}
 }
 
@@ -201,14 +197,14 @@ func Test_serve_client_must_trust_the_configs_controller(t *testing.T) {
 	corbie(t, "", "client", "remove", "a-controller", "--config", a)
 	corbie(t, enrolled, "client", "trust", "-", "--config", a)
 	for _, args := range [][]string{{"client", "controller"}, nil} {
-		_, err := started(context.Background(), a, dir, args...)
+		_, err := started(context.Background(), a, args...)
 		if err == nil || !strings.Contains(err.Error(), "b-controller") || !strings.Contains(err.Error(), "a-controller") || !strings.Contains(err.Error(), "name one party") {
 			t.Errorf("a UI whose client trusts another controller, started with corbie ui %s, gave %v", strings.Join(args, " "), err)
 		}
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	if _, err := started(ctx, a, dir, "client"); err != nil {
+	if _, err := started(ctx, a, "client"); err != nil {
 		t.Errorf("the client alone was refused: %v", err)
 	}
 }
@@ -284,7 +280,7 @@ func Test_serve_acts_as_the_parties_named(t *testing.T) {
 		{viewer(t, dir), nil, ""},
 	} {
 		ctx, cancel := context.WithCancel(context.Background())
-		u, err := started(ctx, c.config, t.TempDir(), c.args...)
+		u, err := started(ctx, c.config, c.args...)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -310,11 +306,11 @@ func Test_serve_each_party_opens_its_pages(t *testing.T) {
 		open, shut, header []string
 	}{
 		{[]string{"none"}, []string{"/runs", "/metrics"}, []string{"/machines", "/toolkits", "/controller"}, nil},
-		{[]string{"client"}, []string{"/runs", "/metrics", "/machines", "/toolkits"}, []string{"/controller"}, []string{"/machines Machines", "/toolkits Toolkits"}},
+		{[]string{"client"}, []string{"/runs", "/metrics"}, []string{"/machines", "/toolkits", "/controller"}, nil},
 		{[]string{"controller"}, []string{"/runs", "/metrics", "/machines", "/toolkits", "/controller"}, nil, []string{"/machines Machines", "/toolkits Toolkits", "/controller Controller"}},
 	} {
 		ctx, cancel := context.WithCancel(context.Background())
-		u, err := started(ctx, config, t.TempDir(), c.args...)
+		u, err := started(ctx, config, c.args...)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -346,49 +342,19 @@ func Test_serve_each_party_opens_its_pages(t *testing.T) {
 	}
 }
 
-func Test_serve_directory_alone_needs_no_store(t *testing.T) {
-	dir := t.TempDir()
-	os.WriteFile(filepath.Join(dir, "a.yaml"), []byte("# a comment\nflow: a\nstages:\n  one: { job: ./a.js }\n"), 0o644)
-	os.WriteFile(filepath.Join(dir, "a.js"), []byte("return 1"), 0o644)
+// The UI needs the store: with none it refuses to start, whatever it is
+// started as, and says why.
+func Test_serve_refuses_to_start_without_the_store(t *testing.T) {
 	config := filepath.Join(t.TempDir(), "no-such-config")
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	u, err := started(ctx, config, dir)
-	if err != nil {
-		t.Fatalf("corbie ui with no store was refused: %v", err)
-	}
-	if u.noStore == nil || !strings.Contains(u.noStore.Error(), "knows no controller") {
-		t.Errorf("the UI does not say why it has no store: %v", u.noStore)
-	}
-	h := guard(token, "127.0.0.1:8373", u.handler)
-	cookie := []string{"Cookie", "corbie-ui-8373=" + token}
-	if w := ask(h, "GET", "/machines"); w.Code != http.StatusUnauthorized {
-		t.Errorf("the directory was shown without the token: %d", w.Code)
-	}
-	w := ask(h, "GET", "/machines", cookie...)
-	body := w.Body.String()
-	if w.Code != http.StatusOK || !strings.Contains(body, `"Name":"one"`) {
-		t.Errorf("Machines answered %d:\n%s", w.Code, body)
-	}
-	if !strings.Contains(body, "no store") || strings.Contains(body, `href="/runs"`) || strings.Contains(body, `href="/controller"`) {
-		t.Errorf("the header offers what is not there:\n%s", body)
-	}
-	if w := ask(h, "GET", "/", cookie...); w.Header().Get("Location") != "/machines" {
-		t.Errorf("/ goes to %q", w.Header().Get("Location"))
-	}
-	for _, path := range []string{"/runs", "/metrics", "/controller"} {
-		if w := ask(h, "GET", path, cookie...); w.Code != http.StatusNotFound {
-			t.Errorf("%s answered %d", path, w.Code)
+	for _, named := range [][]string{nil, {"none"}, {"client"}, {"controller"}} {
+		if _, err := started(ctx, config, named...); err == nil || mistaken(err) {
+			t.Errorf("corbie ui %s with no store gave %v", strings.Join(named, " "), err)
 		}
 	}
-	for _, named := range []string{"none", "client", "controller"} {
-		if _, err := started(ctx, config, dir, named); err == nil {
-			t.Errorf("corbie ui %s started with no store", named)
-		}
-	}
-	u, err = started(ctx, viewer(t, labbed(t)), dir)
-	if err != nil {
-		t.Fatal(err)
+	if _, err := started(ctx, config); err == nil || !strings.Contains(err.Error(), "knows no controller") {
+		t.Errorf("the UI does not say why it has no store: %v", err)
 	}
 	broken := labbed(t)
 	entries, _ := os.ReadDir(filepath.Join(broken, "lab", "client"))
@@ -398,13 +364,19 @@ func Test_serve_directory_alone_needs_no_store(t *testing.T) {
 	if len(entries) == 0 {
 		t.Fatalf("the config holds no client's files to break")
 	}
-	if _, err := started(ctx, filepath.Join(broken, "lab"), dir); err == nil {
-		t.Errorf("a client's key that cannot be read left the directory alone")
+	if _, err := started(ctx, filepath.Join(broken, "lab")); err == nil {
+		t.Errorf("a UI started with a client's key that cannot be read")
 	}
-	for _, path := range []string{"/runs", "/machines"} {
-		if w := ask(u.handler, "GET", path); w.Code != http.StatusOK {
-			t.Errorf("a viewer's config with a store: %s answered %d", path, w.Code)
-		}
+	// A viewer's config has a store, and no party: the UI shows the runs.
+	u, err := started(ctx, viewer(t, labbed(t)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if w := ask(u.handler, "GET", "/runs"); w.Code != http.StatusOK {
+		t.Errorf("a viewer's config with a store: /runs answered %d", w.Code)
+	}
+	if w := ask(u.handler, "GET", "/"); w.Header().Get("Location") != "/runs" {
+		t.Errorf("/ goes to %q", w.Header().Get("Location"))
 	}
 }
 
@@ -422,7 +394,7 @@ func Test_page_loads_nothing_from_another_site(t *testing.T) {
 	dir := t.TempDir()
 	os.WriteFile(filepath.Join(dir, "two.yaml"), []byte("flow: two\nstages:\n  a: { job: ./a.js }\n"), 0o644)
 	os.WriteFile(filepath.Join(dir, "a.js"), []byte("return 1"), 0o644)
-	u, err := started(ctx, lab(t, t.TempDir(), "lab"), dir, "client", "controller")
+	u, err := started(ctx, lab(t, t.TempDir(), "lab"), "client", "controller")
 	if err != nil {
 		t.Fatal(err)
 	}

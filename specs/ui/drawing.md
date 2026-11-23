@@ -46,9 +46,9 @@ tags: gpu
 allow: network, send:devices/boiler
 ```
 
-Where a page offers the Machines page, a card's name links to the line of the first value written under it, such as `support.yaml:14` for a stage whose key is on line 13, in the file most of its values are in; the rest of a card that is a link follows its own link. A card a page can pick, which is no link, is picked by a click or by Enter. A page can give a card a count, such as how many runs are in that state now, which is drawn at the card's top right.
+Where a page gives lines an address, a card's name links to the line of the first value written under it, such as `support.yaml:14` for a stage whose key is on line 13, in the file most of its values are in, and its tooltip gives that file and line; the rest of a card that is a link follows its own link. A card a page can pick, which is no link, is picked by a click or by Enter. A page can give a card a count, such as how many runs are in that state now, which is drawn at the card's top right.
 
-A card whose job names a machine shows the machine's type as its icon and `type: name` as its line. The Machines page knows the machine from its file, and a run's page from the definition the run was started from. A machine known by neither is written as the definition names it, `machine: ./find.yaml`.
+A card whose job names a machine shows the machine's type as its icon and `type: name` as its line. The Machines page knows the machine from the definition recorded at its location, and a run's page from the definition the run was started from. A machine known by neither is written as the definition names it, `machine: ./find.yaml`.
 
 A job that sends or calls is a card with these lines:
 
@@ -57,7 +57,7 @@ a job that sends   send: set, to: devices/boiler
 a job that calls   call: services/weather, and on a run's page the called run's type: name
 ```
 
-A send's card has a statechart's icon, since only a statechart takes an event. On a run's page a call's card links to the run it called. On the Machines page it links to the file of the machine at the location it calls, where the location is written out and the directory has a machine there.
+A send's card has a statechart's icon, since only a statechart takes an event. On a run's page a call's card links to the run it called. On the Machines page it links to the machine recorded at the location it calls, where the location is written out and a machine is recorded there.
 
 An arrow goes straight down. Arrows from one card run along one line, so a branch is one line that divides; in a flow and an agent, arrows into one row run along a rail above the row. A drawing has as few arrows as say what it does.
 

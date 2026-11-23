@@ -68,8 +68,8 @@ type PagePart struct {
 }
 
 // SummaryPart is the head of a run's page: the run, why it is where it is,
-// and the lines of its file that differ now from the definition it
-// started with.
+// and how the definition now recorded at its location differs from the one
+// it started with.
 type SummaryPart struct {
 	ID, Machine, Type, Status, Failure, Title, Location, Address, At string
 	Defined                                                          *definedAt

@@ -150,7 +150,7 @@ function Why() {
   const steps = useContext(StepsContext);
   const w = () => parts.summary.Why;
   return html`<Show when=${w}>${y => html`<p class="why" id="why"><button type="button" class="link" onClick=${() => steps.select(y().Row)} disabled=${() => !y().Row}>${() => y().Lead}${() => (y().Since ? " " + ago(y().Since) : "")}${() => (y().Rest ? " " + y().Rest : "")}</button></p><Show when=${() => y().Facts?.length}><dl class="refusal why-facts"><For each=${() => y().Facts}>${f => html`<dt>${() => f.Name}</dt><dd>${() => f.Text}</dd>`}</For></dl></Show>`}</Show>
-  <Show when=${() => parts.summary.Differs?.length}><details class="differs" id="differs"><summary>the file changed since this run started</summary><pre>${() => parts.summary.Differs.join("\n")}</pre></details></Show>`;
+  <Show when=${() => parts.summary.Differs?.length}><details class="differs" id="differs"><summary>a submit changed the definition since this run started</summary><pre>${() => parts.summary.Differs.join("\n")}</pre></details></Show>`;
 }
 
 function Summary() {
@@ -166,9 +166,9 @@ function Summary() {
   </div>`;
 }
 
-// Defined links to the machine a run was started from, as its file is now.
+// Defined links to the machine a run was started from, as it is recorded now.
 function Defined(props) {
-  return html`<Show when=${() => props.at}>${d => html`<a class="def" href=${() => d().Href} title="the file on the Machines page as it is now; the drawing here is the definition this run started with">${() => d().File}${() => (d().Cards ? " › " + d().Cards : "")}</a>`}</Show>`;
+  return html`<Show when=${() => props.at}>${d => html`<a class="def" href=${() => d().Href} title="the definition recorded there now, on the Machines page; the drawing here is the definition this run started with">${() => d().Location}${() => (d().Cards ? " › " + d().Cards : "")}</a>`}</Show>`;
 }
 
 function Waits() {
@@ -509,12 +509,20 @@ function Path() {
 // selected row's run unfolded, as of the row's step. The drawing moves its
 // own view to what the step marks. While the answer for a row is on its
 // way, the drawing before it stays, dimmed.
+// cardLine gives the address of a card's line in the Definition tab of the
+// run's machine: none where the run links to no machine or is a child, and
+// none for a card of a run drawn inside another.
+function cardLine(line, path) {
+  const d = parts.summary.Defined;
+  return d && !d.Cards && !path.includes("/") ? lineHref(d.Location, line) : "";
+}
+
 function View() {
   const steps = useContext(StepsContext);
   const v = () => steps.shown();
   return html`<section class=${() => ["panel", "asof", { pending: isPending(() => steps.shown()) }]} id="view">
     <Show when=${() => v()?.Row}>${row => html`<div class="head"><${Icon} type=${() => v().Type} /><span>${() => row().Run.Machine}</span><span class="dim">${() => v().Type}</span><${Defined} at=${() => v().Defined} /><span class="facts">as of step ${() => row().Step}, ${() => v().Time}</span></div>`}</Show>
-    <div class="drawn"><Show when=${() => v()?.Drawing} fallback=${() => html`<p class="dim">${() => (v()?.Row ? "no drawing" : "a run in another client's tree: only its status can be read")}</p>`}><${Drawing} scene=${() => v().Drawing} lit=${() => steps.hovered() ?? []} onCard=${path => steps.touched(path)} lineHref=${() => (parts.summary.Defined ? lineHref : undefined)} /></Show></div>
+    <div class="drawn"><Show when=${() => v()?.Drawing} fallback=${() => html`<p class="dim">${() => (v()?.Row ? "no drawing" : "a run in another client's tree: only its status can be read")}</p>`}><${Drawing} scene=${() => v().Drawing} lit=${() => steps.hovered() ?? []} onCard=${path => steps.touched(path)} lineHref=${cardLine} /></Show></div>
   </section>`;
 }
 

@@ -18,58 +18,44 @@ import (
 )
 
 // A toolkit is a group of tools under an agent's `toolkits:`, as the
-// Toolkits page shows it. File is the file it is included from, where one is
-// written, Instructions the first line of its `instructions:`, or
-// InstructionsFile the file they are included from, Opening says opening it
-// needs approval, and Broken that its file has problems.
+// Toolkits page shows it. Tree is the prefix of its tree, File the file its
+// tools were submitted in, where that is not its agent's own, Instructions
+// the first line of its `instructions:`, or InstructionsFile the file they
+// were included from, and Opening says opening it needs approval.
 type toolkit struct {
-	ID, Name, Description, File    string
-	Instructions, InstructionsFile string
-	Opening, Broken                bool
-	Tools                          []toolkitTool
-	Offered                        []offer
-	key                            string
+	ID, Tree, Name, Description, File string
+	Instructions, InstructionsFile    string
+	Opening                           bool
+	Tools                             []toolkitTool
+	Offered                           []offer
+	key                               string
 }
 
 // A toolkitTool is a tool of a toolkit: its job's kind, script, machine,
-// call or send, the file that job names or of the machine at the location
-// it calls or sends to, the location a call names, the event a send sends
-// and the address it sends it to, the names of the input a call fixes, its
-// `when:`, and whether the job needs approval.
+// call or send, the file a script or a machine job names, the location a
+// call names, the event a send sends and the address it sends it to, the
+// location of the machine recorded where the job calls, sends or runs, the
+// names of the input a call fixes, its `when:`, and whether the job needs
+// approval.
 type toolkitTool struct {
-	Name, Description, Job, File, Call, Event, To, When string
-	Fixed                                               []string
-	Approve                                             bool
+	Name, Description, Job, File, At, Call, Event, To, When string
+	Fixed                                                   []string
+	Approve                                                 bool
 }
 
-// An offer is an agent that offers a toolkit, with the `when:` of its entry,
-// the machines that start it, and for an agent in a file of its own, how its
-// location's runs start.
+// An offer is an agent that offers a toolkit: its name, its file, the
+// location of the machine recorded from that file, the `when:` of its
+// entry, the machines that start it, and for an agent at a location, how
+// its location's runs start.
 type offer struct {
-	Name, File, When, Lifetime, Started string
-	Starts                              []start
+	Name, File, At, When, Lifetime, Started string
+	Starts                                  []start
 }
 
-// A start is a machine that starts an agent.
+// A start is a machine that starts an agent: its name, its file, the
+// location it is recorded at, and its type.
 type start struct {
-	Name, File, Type string
-}
-
-// toolkitsView is the Toolkits page as it is drawn, its one part
-// "toolkits". It lists the project's problems as the Machines page does,
-// and shows the toolkit chosen with the problems found in its file, or its
-// file's text. Dir is the directory, cut short, and DirFull the whole of it.
-type toolkitsView struct {
-	Dir      string
-	DirFull  string
-	Toolkits []toolkit
-	Open     *toolkit
-	Problems []problem
-	Found    []problem
-	ShowText bool
-	Text     []codeLine
-	Unread   string
-	Stamp    string
+	Name, File, At, Type string
 }
 
 // A node is one file of a machine as the toolkits are read: the type and name of
@@ -78,41 +64,47 @@ type node struct {
 	name, kind string
 }
 
-// toolkitIndex is what the machines in a directory say of toolkits: above
-// gives the files of the machines that run or call the machine in a file.
+// toolkitIndex is what the machines of one tree say of toolkits: files
+// gives the machine recorded from each file, and above the files of the
+// machines that run or call the machine in a file.
 type toolkitIndex struct {
 	ix       *index
+	tree     string
+	files    map[string]*recorded
 	byFile   map[string]*node
 	above    map[string][]string
 	toolkits map[string]*toolkit
 }
 
-// toolkitsOf reads every toolkit an agent in the directory offers, and
-// through them the machines they name and call. A machine with
-// problems offers none, since Corbie does not write it out.
+// toolkitsOf reads every toolkit an agent of the machines recorded offers,
+// tree by tree, and through them the machines they name and call.
 func toolkitsOf(ix *index) []toolkit {
-	px := &toolkitIndex{ix: ix, byFile: map[string]*node{}, above: map[string][]string{}, toolkits: map[string]*toolkit{}}
-	for _, file := range sortedKeys(ix.machines) {
-		if m := ix.machines[file]; m.Draft != nil {
-			px.add(file, m.Draft)
-		}
-	}
 	var toolkits []toolkit
-	for _, p := range px.toolkits {
-		for i := range p.Offered {
-			o := &p.Offered[i]
-			o.Starts = px.startsOf(o.File)
-			if m := ix.machines[o.File]; m != nil && m.Draft != nil && px.byFile[o.File].kind == "agent" {
-				o.Lifetime, o.Started = m.Draft.Definition.Lifetime, startedBy(m.Draft.Definition.Lifetime, m.Location)
-			}
+	for _, t := range ix.Trees {
+		px := &toolkitIndex{ix: ix, tree: t.Prefix, files: map[string]*recorded{}, byFile: map[string]*node{}, above: map[string][]string{}, toolkits: map[string]*toolkit{}}
+		for _, e := range t.Entries {
+			m := ix.machines[e.Location]
+			px.files[m.File] = m
 		}
-		slices.SortFunc(p.Offered, func(a, b offer) int { return strings.Compare(a.File+a.Name, b.File+b.Name) })
-		toolkits = append(toolkits, *p)
+		for _, file := range sortedKeys(px.files) {
+			px.add(file, px.files[file].Draft)
+		}
+		for _, key := range sortedKeys(px.toolkits) {
+			p := px.toolkits[key]
+			for i := range p.Offered {
+				o := &p.Offered[i]
+				o.Starts = px.startsOf(o.File)
+				if m := px.files[o.File]; m != nil && px.byFile[o.File].kind == "agent" {
+					o.Lifetime, o.Started = m.Draft.Definition.Lifetime, startedBy(m.Draft.Definition.Lifetime, m.Location)
+				}
+			}
+			slices.SortFunc(p.Offered, func(a, b offer) int { return strings.Compare(a.File+a.Name, b.File+b.Name) })
+			toolkits = append(toolkits, *p)
+		}
 	}
-	for i := range toolkits {
-		toolkits[i].Broken = toolkits[i].File != "" && slices.ContainsFunc(ix.Problems, func(p problem) bool { return p.File == toolkits[i].File })
-	}
-	slices.SortFunc(toolkits, func(a, b toolkit) int { return strings.Compare(a.Name+a.key, b.Name+b.key) })
+	slices.SortStableFunc(toolkits, func(a, b toolkit) int {
+		return cmp.Or(strings.Compare(a.Tree, b.Tree), strings.Compare(a.Name+a.key, b.Name+b.key))
+	})
 	uses := map[string]int{}
 	for i := range toolkits {
 		p := &toolkits[i]
@@ -125,19 +117,13 @@ func toolkitsOf(ix *index) []toolkit {
 	return toolkits
 }
 
-// toolkitsView gives the Toolkits page with a toolkit chosen, by default the
-// first.
-func (ix *index) toolkitsView(open string) toolkitsView {
-	v := toolkitsView{Toolkits: ix.toolkits, Problems: ix.Problems, Unread: ix.Unread, Stamp: ix.Stamp}
-	for i := range v.Toolkits {
-		if v.Toolkits[i].ID == open || (open == "" && i == 0) {
-			v.Open = &v.Toolkits[i]
-		}
+// at gives the location of the machine recorded from a file of the tree,
+// or nothing where the file has none.
+func (px *toolkitIndex) at(file string) string {
+	if m := px.files[file]; m != nil {
+		return m.Location
 	}
-	if v.Open != nil && v.Open.File != "" {
-		v.Found = ix.at(v.Open.File)
-	}
-	return v
+	return ""
 }
 
 // add reads a machine in a file once, and what it names.
@@ -162,8 +148,9 @@ func (px *toolkitIndex) read(file string, d *machine.Draft) {
 		if j.Job.Call == nil || j.Job.Call.Expr != "" {
 			continue
 		}
-		if called := px.ix.fileAt(j.Job.Call.At); called != "" && !slices.Contains(px.above[called], file) {
-			px.above[called] = append(px.above[called], file)
+		called := px.ix.machines[px.ix.locationOf(px.tree, j.Job.Call.At)]
+		if called != nil && called.Tree == px.tree && !slices.Contains(px.above[called.File], file) {
+			px.above[called.File] = append(px.above[called.File], file)
 		}
 	}
 	for _, name := range sortedKeys(d.Children) {
@@ -198,16 +185,16 @@ func (px *toolkitIndex) offers(file string, a *agent.Agent, d *machine.Draft) {
 		}
 		p := px.toolkits[key]
 		if p == nil {
-			p = &toolkit{Name: name, Description: a.Toolkits[name].Description, File: included, key: key}
+			p = &toolkit{Tree: px.tree, Name: name, Description: a.Toolkits[name].Description, File: included, key: key}
 			p.Instructions, p.InstructionsFile = instructionsOf(d.Definition, name, a.Toolkits[name].Instructions, cmp.Or(included, file))
 			for _, tool := range tools {
-				p.Tools = append(p.Tools, px.ix.toolOf(tool, a.Tools[tool], d))
+				p.Tools = append(p.Tools, px.toolOf(tool, a.Tools[tool], d))
 			}
 			px.toolkits[key] = p
 		}
 		p.Opening = p.Opening || a.Toolkits[name].Approve
 		if !slices.ContainsFunc(p.Offered, func(o offer) bool { return o.File == file && o.Name == d.Definition.Name }) {
-			p.Offered = append(p.Offered, offer{Name: d.Definition.Name, File: file, When: a.Toolkits[name].When})
+			p.Offered = append(p.Offered, offer{Name: d.Definition.Name, File: file, At: px.at(file), When: a.Toolkits[name].When})
 		}
 	}
 }
@@ -234,11 +221,10 @@ func fileOf(line string) string {
 	return line
 }
 
-// toolOf gives a tool as the page shows it, its paths written from the
-// directory: a call's or a send's file is that of the machine at the
-// location it calls or sends to. A call is written `call:` or as a job's
-// `call:`.
-func (ix *index) toolOf(name string, t *agent.Tool, d *machine.Draft) toolkitTool {
+// toolOf gives a tool as the page shows it: a call's or a send's location
+// is that of the machine recorded where it calls or sends to. A call is
+// written `call:` or as a job's `call:`.
+func (px *toolkitIndex) toolOf(name string, t *agent.Tool, d *machine.Draft) toolkitTool {
 	out := toolkitTool{Name: name, Description: t.Description, When: t.When}
 	if t.Job == nil {
 		return out
@@ -250,13 +236,13 @@ func (ix *index) toolOf(name string, t *agent.Tool, d *machine.Draft) toolkitToo
 	}
 	if called != "" {
 		fixed, _ := t.Job.Input.(map[string]any)
-		out.Job, out.Call, out.File, out.Fixed = "call", called, ix.fileAt(called), sortedKeys(fixed)
+		out.Job, out.Call, out.At, out.Fixed = "call", called, px.ix.locationOf(px.tree, called), sortedKeys(fixed)
 		return out
 	}
 	if s := t.Job.Send; s != nil {
 		out.Job, out.Event, out.To = "send", s.Event, drawing.Address(&s.To)
 		if s.To.Expr == "" {
-			out.File = ix.fileAt(s.To.At)
+			out.At = px.ix.locationOf(px.tree, s.To.At)
 		}
 		return out
 	}
@@ -264,6 +250,7 @@ func (ix *index) toolOf(name string, t *agent.Tool, d *machine.Draft) toolkitToo
 		out.Job = "machine"
 		if d.Children[t.Job.Machine] != nil && !strings.HasPrefix(t.Job.Machine, "in-place-") {
 			out.File = path.Clean(t.Job.Machine)
+			out.At = px.at(out.File)
 		}
 		return out
 	}
@@ -281,25 +268,27 @@ func writtenFrom(name string) string {
 	return path.Clean(name)
 }
 
-// fileAt gives the file of the machine at a location a definition writes
-// out, from the tree's prefix or from / where it begins with /, or nothing
-// where the directory has no machine there.
-func (ix *index) fileAt(at string) string {
+// locationOf gives the location a definition of a tree writes out, read
+// from the tree's prefix or from / where it begins with /, where a machine
+// is recorded there, or nothing.
+func (ix *index) locationOf(tree, at string) string {
 	if at == "" || machine.HasExpr(at) {
 		return ""
 	}
-	location := at
 	if !strings.HasPrefix(at, "/") {
-		location = path.Join(ix.Prefix, at)
+		at = path.Join(tree, at)
 	}
-	return ix.located[location]
+	if ix.machines[at] == nil {
+		return ""
+	}
+	return at
 }
 
-// called gives the address on the Machines page of the machine at a
-// location a call writes out, or none.
-func (ix *index) called(at string) string {
-	if file := ix.fileAt(at); file != "" {
-		return "/machines?" + url.Values{"file": {file}}.Encode()
+// called gives the address on the Machines page of the machine recorded at
+// a location a call of a tree writes out, or none.
+func (ix *index) called(tree, at string) string {
+	if location := ix.locationOf(tree, at); location != "" {
+		return machineHref(location, nil)
 	}
 	return ""
 }
@@ -310,12 +299,12 @@ func (ix *index) called(at string) string {
 // in.
 func (px *toolkitIndex) startsOf(file string) []start {
 	if h := px.byFile[file]; h.kind != "agent" {
-		return []start{{Name: h.name, File: file, Type: h.kind}}
+		return []start{{Name: h.name, File: file, At: px.at(file), Type: h.kind}}
 	}
 	var starts []start
 	for _, above := range px.above[file] {
 		h := px.byFile[above]
-		starts = append(starts, start{Name: h.name, File: above, Type: h.kind})
+		starts = append(starts, start{Name: h.name, File: above, At: px.at(above), Type: h.kind})
 	}
 	slices.SortFunc(starts, func(a, b start) int { return strings.Compare(a.File, b.File) })
 	return starts
@@ -332,111 +321,101 @@ func startedBy(lifetime, location string) string {
 	return "a call, a send, or corbie run start " + location + ", starts each run"
 }
 
-// toolkitsPage reads the Toolkits page as an address asks for it: the
-// toolkit chosen, and its file's text where the address says view=text.
-func (h *handler) toolkitsPage(ctx context.Context, q url.Values) (toolkitsView, error) {
-	ix, err := h.tree(ctx)
-	if err != nil {
-		return toolkitsView{}, err
-	}
-	v := ix.toolkitsView(q.Get("toolkit"))
-	v.Dir, v.DirFull = short(shortly(h.Dir)), shortly(h.Dir)
-	if v.Open != nil && v.Open.File != "" && q.Get("view") == "text" {
-		src, _, err := h.dir.read(v.Open.File)
-		if err != nil {
-			return v, err
+// ToolkitsParts are the parts of the Toolkits page: the list, and the
+// toolkit chosen, which the page has as it loads and asks for at
+// /toolkits/view.
+type ToolkitsParts struct {
+	List    toolkitList    `json:"list"`
+	Toolkit *toolkitChosen `json:"toolkit,omitzero"`
+}
+
+// toolkitList is the list of the Toolkits page: the toolkits of each tree,
+// and the mark of the trees they were read at.
+type toolkitList struct {
+	Trees []toolkitTree
+	Stamp string
+}
+
+// A toolkitTree is the toolkits the agents of one tree offer.
+type toolkitTree struct {
+	Prefix   string
+	Toolkits []toolkit
+}
+
+// toolkitChosen is the toolkit chosen, and the mark of the trees it was
+// read at.
+type toolkitChosen struct {
+	Open  *toolkit
+	Stamp string
+}
+
+// listOfToolkits gives the list of the Toolkits page.
+func (ix *index) listOfToolkits() toolkitList {
+	l := toolkitList{Stamp: ix.Stamp}
+	for _, k := range ix.toolkits {
+		if n := len(l.Trees); n == 0 || l.Trees[n-1].Prefix != k.Tree {
+			l.Trees = append(l.Trees, toolkitTree{Prefix: k.Tree})
 		}
-		v.ShowText, v.Text = true, colour(src, v.Open.File, v.Found)
+		t := &l.Trees[len(l.Trees)-1]
+		t.Toolkits = append(t.Toolkits, k)
 	}
-	return v, nil
+	return l
+}
+
+// chosenToolkit reads the Toolkits page at an address: the toolkit it
+// chooses, by default the first. It gives the status of the answer where
+// it cannot.
+func (h *handler) chosenToolkit(ctx context.Context, q url.Values) (*index, *toolkitChosen, int, error) {
+	ix, err := h.index.current(ctx)
+	if err != nil {
+		return nil, nil, http.StatusInternalServerError, err
+	}
+	open, v := q.Get("toolkit"), &toolkitChosen{Stamp: ix.Stamp}
+	for i := range ix.toolkits {
+		if ix.toolkits[i].ID == open || (open == "" && i == 0) {
+			v.Open = &ix.toolkits[i]
+		}
+	}
+	if open != "" && v.Open == nil {
+		return ix, v, http.StatusNotFound, fmt.Errorf("there is no toolkit %s", open)
+	}
+	return ix, v, http.StatusOK, nil
 }
 
 // showToolkits is the Toolkits page.
 func (h *handler) showToolkits(w http.ResponseWriter, r *http.Request) {
-	v, status, err := h.chosenToolkit(r.Context(), r.URL.Query())
+	ix, v, status, err := h.chosenToolkit(r.Context(), r.URL.Query())
 	if err != nil {
 		page.Error(w, status, err.Error())
 		return
 	}
 	s := h.Shell
 	s.Title, s.Current, s.Stream, s.Script = "Toolkits", "Toolkits", "/toolkits/stream", "/toolkits/script.js"
-	page.Write(w, s, ToolkitsParts{List: listOfToolkits(v), Toolkit: chosenOf(v)})
-}
-
-// chosenToolkit reads the Toolkits page at an address: the toolkit it
-// chooses, as its tab shows it. It gives the status of the answer where it
-// cannot.
-func (h *handler) chosenToolkit(ctx context.Context, q url.Values) (toolkitsView, int, error) {
-	v, err := h.toolkitsPage(ctx, q)
-	if err != nil {
-		return v, http.StatusNotFound, err
-	}
-	if id := q.Get("toolkit"); id != "" && v.Open == nil {
-		return v, http.StatusNotFound, fmt.Errorf("there is no toolkit %s", id)
-	}
-	return v, http.StatusOK, nil
+	page.Write(w, s, ToolkitsParts{List: ix.listOfToolkits(), Toolkit: v})
 }
 
 // toolkitPart answers the part "toolkit" of the Toolkits page at the
 // address its query gives, as JSON: the page asks for it when it shows
-// another toolkit or tab in place, or when the directory changed.
+// another toolkit in place, or when a submit changed a tree.
 func (h *handler) toolkitPart(w http.ResponseWriter, r *http.Request) {
-	v, status, err := h.chosenToolkit(r.Context(), r.URL.Query())
+	_, v, status, err := h.chosenToolkit(r.Context(), r.URL.Query())
 	if err != nil {
 		page.Error(w, status, err.Error())
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
-	json.MarshalWrite(w, chosenOf(v), json.Deterministic(true))
+	json.MarshalWrite(w, v, json.Deterministic(true))
 }
 
-// streamToolkits sends the page the list of toolkits as the directory now
+// streamToolkits sends the page the list of toolkits as the store now
 // holds it, whatever toolkit the page shows.
 func (h *handler) streamToolkits(w http.ResponseWriter, r *http.Request) {
 	never := make(chan struct{})
 	page.Stream(w, r, h.Interval, func() <-chan struct{} { return never }, func(ctx context.Context) (any, error) {
-		v, err := h.toolkitsPage(ctx, url.Values{})
+		ix, err := h.index.current(ctx)
 		if err != nil {
 			return nil, err
 		}
-		return ToolkitsParts{List: listOfToolkits(v)}, nil
+		return ToolkitsParts{List: ix.listOfToolkits()}, nil
 	})
-}
-
-// ToolkitsParts are the parts of the Toolkits page: the list, and the
-// toolkit chosen as its tab shows it, which the page has as it loads and
-// asks for at /toolkits/view.
-type ToolkitsParts struct {
-	List    toolkitList    `json:"list"`
-	Toolkit *toolkitChosen `json:"toolkit,omitzero"`
-}
-
-// toolkitList is the list of the Toolkits page: the directory, the
-// toolkits and the problems of its machines, and the mark of the directory
-// it was read at.
-type toolkitList struct {
-	Dir, DirFull string
-	Toolkits     []toolkit
-	Problems     []problem
-	Unread       string
-	Stamp        string
-}
-
-// toolkitChosen is the toolkit chosen, the problems found in its file, its
-// file's text where the Text tab is chosen, and the mark of the directory
-// it was read at.
-type toolkitChosen struct {
-	Open     *toolkit
-	Found    []problem
-	ShowText bool
-	Text     []codeLine
-	Stamp    string
-}
-
-func listOfToolkits(v toolkitsView) toolkitList {
-	return toolkitList{Dir: v.Dir, DirFull: v.DirFull, Toolkits: v.Toolkits, Problems: v.Problems, Unread: v.Unread, Stamp: v.Stamp}
-}
-
-func chosenOf(v toolkitsView) *toolkitChosen {
-	return &toolkitChosen{Open: v.Open, Found: v.Found, ShowText: v.ShowText, Text: v.Text, Stamp: v.Stamp}
 }

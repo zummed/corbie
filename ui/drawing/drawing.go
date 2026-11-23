@@ -228,7 +228,7 @@ type Unfold struct {
 	Called func(at string) string
 }
 
-// Unfolded gives the graph of a machine read from its file, with a link on
+// Unfolded gives the graph of a machine and the machines it names, with a link on
 // each card whose job names a machine, and the machines of the cards
 // unfolded inside them.
 func Unfolded(draft *machine.Draft, u Unfold) (Scene, error) {

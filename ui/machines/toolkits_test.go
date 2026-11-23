@@ -3,12 +3,12 @@ package machines
 import (
 	"fmt"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/zummed/corbie/ui/drawing"
 )
@@ -80,13 +80,28 @@ toolkits:
 	return dir
 }
 
+// toolkitsView is the toolkits the pages read of a directory, and the one
+// chosen.
+type toolkitsView struct {
+	Toolkits []toolkit
+	Open     *toolkit
+	// pages is the pages the toolkits were read by.
+	pages *Pages
+}
+
+// toolkitsView_ records a directory at / and its name in a new lab, and
+// gives its toolkits with one chosen, by default the first.
 func toolkitsView_(t *testing.T, dir, open string) toolkitsView {
 	t.Helper()
-	d, err := newDir(dir)
-	if err != nil {
-		t.Fatal(err)
+	b := newLab(t)
+	b.submit(t, dir, "")
+	v := toolkitsView{Toolkits: b.index(t).toolkits, pages: b.pages}
+	for i := range v.Toolkits {
+		if v.Toolkits[i].ID == open || (open == "" && i == 0) {
+			v.Open = &v.Toolkits[i]
+		}
 	}
-	return d.index("").toolkitsView(open)
+	return v
 }
 
 func byDescription(t *testing.T, v toolkitsView, description string) toolkit {
@@ -124,7 +139,7 @@ func Test_machines_toolkits_show_what_offers_each(t *testing.T) {
 		ids = append(ids, p.ID)
 	}
 	if got := strings.Join(ids, " "); got != "kept messages messages-2 yml zed" {
-		t.Fatalf("the toolkits are %q: %+v", got, v.Unread)
+		t.Fatalf("the toolkits are %q", got)
 	}
 	if v.Open == nil || v.Open.ID != "kept" {
 		t.Errorf("the first toolkit is not open: %+v", v.Open)
@@ -157,110 +172,55 @@ func Test_machines_toolkits_show_what_offers_each(t *testing.T) {
 		t.Errorf("the shared toolkit in %q is offered by %q", shared.File, got)
 	}
 	support, looker := shared.Offered[0], shared.Offered[1]
-	if got := strings.Join(startsOf(support), " "); got != "conversation" || support.Starts[0].File != ".kit/conversation.yaml" || support.Lifetime != "transient" {
+	prefix := "/" + filepath.Base(dir)
+	if got := strings.Join(startsOf(support), " "); got != "conversation" || support.Starts[0].File != ".kit/conversation.yaml" || support.Starts[0].At != prefix+"/.kit/conversation" ||
+		support.Lifetime != "transient" || support.At != prefix+"/support" || shared.Tree != prefix {
 		t.Errorf("support is started by %q: %+v", got, support)
 	}
-	if looker.File != "timed.yaml" || len(looker.Starts) != 1 || looker.Starts[0].File != "timed.yaml" || looker.Lifetime != "" {
+	if looker.File != "timed.yaml" || looker.At != prefix+"/timed" || len(looker.Starts) != 1 || looker.Starts[0].At != prefix+"/timed" || looker.Lifetime != "" {
 		t.Errorf("an agent written in place is not started by the machine it is written in: %+v", looker)
 	}
-	if len(shared.Tools) != 1 || !shared.Tools[0].Approve || shared.Tools[0].Job != "machine" || shared.Tools[0].File != ".kit/post.yaml" {
+	if len(shared.Tools) != 1 || !shared.Tools[0].Approve || shared.Tools[0].Job != "machine" || shared.Tools[0].File != ".kit/post.yaml" || shared.Tools[0].At != prefix+"/.kit/post" {
 		t.Errorf("the tool is %+v", shared.Tools)
 	}
 
 	if len(own.Offered) != 1 || own.File != "" || len(own.Offered[0].Starts) != 0 || own.Offered[0].Lifetime != "transient" {
 		t.Errorf("an agent in its own file that nothing names is %+v", own)
 	}
-	if tool := own.Tools[0]; tool.Job != "script" || tool.File != "own.js" {
+	if tool := own.Tools[0]; tool.Job != "script" || tool.File != "own.js" || tool.At != "" {
 		t.Errorf("the tool is %+v", tool)
 	}
 	if s := zed.Offered[0].Starts; len(s) != 1 || s[0].File != ".kit/dead.yaml" {
 		t.Errorf("a machine in a dotted directory is not listed as a start: %+v", s)
 	}
-	if s := yml.Offered[0].Starts; len(s) != 1 || s[0].File != "side.yaml" {
-		t.Errorf("the machine above a .yml file is %+v", s)
+	// An agent in a file that is no machine has no location.
+	if o := yml.Offered[0]; len(o.Starts) != 1 || o.Starts[0].File != "side.yaml" || o.File != "side.yml" || o.At != "" || o.Lifetime != "" {
+		t.Errorf("the machine above a .yml file is %+v", o)
 	}
-	link := filepath.Join(t.TempDir(), "link")
-	if err := os.Symlink(dir, link); err != nil {
-		t.Fatal(err)
-	}
-	if linked := toolkitsView_(t, link, ""); len(linked.Toolkits) != len(v.Toolkits) {
-		t.Errorf("through a link to the directory the toolkits are %+v", linked.Toolkits)
-	}
-
-	h, err := New(Config{Dir: dir, Interval: time.Second})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if z := pageOf(t, h, "/toolkits?toolkit=zed").Toolkits.Open; z == nil || len(z.Offered) != 1 || fmt.Sprint(startsOf(z.Offered[0])) != "[dead]" ||
+	h := v.pages
+	if z := pageOf(t, h, "/toolkits?toolkit=zed").Toolkit.Open; z == nil || len(z.Offered) != 1 || fmt.Sprint(startsOf(z.Offered[0])) != "[dead]" ||
 		z.Offered[0].Lifetime+": "+z.Offered[0].Started != "transient: a call, a send, or corbie run start /"+filepath.Base(dir)+"/behind, starts each run" {
 		t.Errorf("an agent does not say what starts it: %+v", z)
 	}
 	p := pageOf(t, h, "/toolkits?toolkit=messages-2")
-	m := p.Toolkits.Open
+	m := p.Toolkit.Open
 	if m == nil || m.ID != "messages-2" || len(m.Tools) != 1 || m.Description != "messages" || !m.Tools[0].Approve || m.File == "" {
 		t.Errorf("the page shows the toolkit as %+v", m)
 	}
-	if !slices.ContainsFunc(p.Toolkits.Problems, func(f problem) bool { return f.File == "bad.yaml" }) || p.Toolkits.ShowText {
-		t.Errorf("the page does not list the directory's problems: %+v", p.Toolkits.Problems)
+	// The list is by tree.
+	if l := p.Toolkits; len(l.Trees) != 1 || l.Trees[0].Prefix != prefix || len(l.Trees[0].Toolkits) != len(v.Toolkits) {
+		t.Errorf("the list of toolkits is %+v", l.Trees)
 	}
 	for _, gone := range []string{"net:example.com", "timer", "something new"} {
 		if strings.Contains(p.JSON, gone) {
 			t.Errorf("the page shows %q:\n%s", gone, p.JSON)
 		}
 	}
-	keptText := pageOf(t, h, "/toolkits?toolkit=kept&view=text").Toolkits
-	if lines := text(keptText.Text); !keptText.ShowText || keptText.Open.File != "toolkits/kept/toolkit.yaml" || len(lines) == 0 || !strings.HasPrefix(lines[0], "[k:description]") || keptText.Text[0].ID != "L1" {
-		t.Errorf("the toolkit's Text tab does not show its file: %q", lines)
-	}
 	if w := do(h, "GET", "/toolkits?toolkit=gone", nil); w.Code != http.StatusNotFound {
 		t.Errorf("a toolkit that is not there answered %d", w.Code)
 	}
 	if w := do(h, "GET", "/toolkits?toolkit=../../etc/passwd", nil); w.Code != http.StatusNotFound {
 		t.Errorf("a path answered %d", w.Code)
-	}
-}
-
-func Test_machines_toolkits_show_the_problems_in_their_file(t *testing.T) {
-	dir := t.TempDir()
-	write(t, dir, map[string]string{
-		".corbieignore":     "toolkits/\n",
-		"a.yaml":            "agent: a\n" + agentHead + "toolkits:\n  net: { include: ./toolkits/net.yaml }\n",
-		"b.yaml":            "flow: b\ninclude: ./toolkits/net.yaml\nstages:\n  x: { job: { script: r.js } }\n",
-		"r.js":              "return 1",
-		"toolkits/net.yaml": "description: the network\ntools:\n  r: { description: r, job: { script: r.js } }\n",
-	})
-	v := toolkitsView_(t, dir, "net")
-	// The agent offers the toolkit; the flow that includes its file has a
-	// problem there, so the toolkit is marked as having problems.
-	if v.Open == nil || len(v.Open.Offered) != 1 || !v.Open.Broken || v.Open.File != "toolkits/net.yaml" {
-		t.Fatalf("the toolkit is %+v", v.Open)
-	}
-	if len(v.Found) != 1 || v.Found[0].File != "toolkits/net.yaml" || !slices.Equal(v.Found[0].Breaks, []string{"b.yaml"}) || v.Found[0].Line != 2 {
-		t.Errorf("the problems in the toolkit's file are %+v", v.Found)
-	}
-	if !slices.EqualFunc(v.Problems, v.Found, func(a, b problem) bool { return a.File == b.File && a.Line == b.Line && a.Text == b.Text }) {
-		t.Errorf("the Toolkits list gives the problems %+v, and not the directory's", v.Problems)
-	}
-	h, err := New(Config{Dir: dir, Interval: time.Second})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if p := pageOf(t, h, "/toolkits?toolkit=net").Toolkits; !p.Open.Broken || len(p.Found) != 1 || !p.Toolkits[0].Broken {
-		t.Errorf("a toolkit whose file has problems is shown as %+v", p)
-	}
-
-	// An agent with problems offers nothing: its toolkit is not listed,
-	// and the problems in the toolkit's file are listed above the list.
-	write(t, dir, map[string]string{
-		"b.yaml":            "flow: b\nstages:\n  x: { job: { machine: ./a.yaml } }\n",
-		"toolkits/net.yaml": "description: the network\ntools:\n  r:\n    does: r\n    job: { script: r.js }\n",
-	})
-	v = toolkitsView_(t, dir, "")
-	if len(v.Toolkits) != 0 {
-		t.Errorf("a toolkit offered only by a machine with problems is listed: %+v", v.Toolkits)
-	}
-	if len(v.Problems) == 0 || v.Problems[0].File != "toolkits/net.yaml" || len(v.Problems[0].Breaks) != 2 || v.Problems[0].Line == 0 {
-		t.Errorf("the problems in the toolkit's file are %+v", v.Problems)
 	}
 }
 
@@ -469,9 +429,7 @@ func callsProject(t *testing.T) string {
 func Test_machines_toolkits_call_machines_by_their_location(t *testing.T) {
 	dir := callsProject(t)
 	v := toolkitsView_(t, dir, "orders")
-	if len(v.Problems) != 0 {
-		t.Fatalf("the project has problems: %+v", v.Problems)
-	}
+	prefix := "/" + filepath.Base(dir)
 	orders := v.Open
 	if orders == nil || orders.File != "toolkits/orders/toolkit.yaml" || orders.InstructionsFile != "toolkits/orders/instructions.md" || orders.Instructions != "" {
 		t.Fatalf("the toolkit is %+v", orders)
@@ -481,23 +439,23 @@ func Test_machines_toolkits_call_machines_by_their_location(t *testing.T) {
 	}
 	var starts []string
 	for _, s := range orders.Offered[0].Starts {
-		starts = append(starts, s.File+" "+s.Type)
+		starts = append(starts, s.At+" "+s.Type)
 	}
-	if got := strings.Join(starts, ", "); got != "caller.yaml flow, conversation.yaml statechart" {
+	if got := strings.Join(starts, ", "); got != prefix+"/caller flow, "+prefix+"/conversation statechart" {
 		t.Errorf("the agent called by its location is started by %q", got)
 	}
 	find := toolNamed(t, orders, "find")
-	if find.Job != "call" || find.Call != "people/find" || find.File != "people/find.yaml" || !slices.Equal(find.Fixed, []string{"table"}) ||
+	if find.Job != "call" || find.Call != "people/find" || find.At != prefix+"/people/find" || !slices.Equal(find.Fixed, []string{"table"}) ||
 		!find.Approve || find.When != "input.asker.name != ''" || find.Description != "Find a person by email." {
 		t.Errorf("the call tool is %+v", find)
 	}
 	// A tool whose job is a call is a call, and one whose job is a send is
 	// a send, as the agent's drawing says.
-	if tell := toolNamed(t, orders, "tell"); tell.Job != "call" || tell.Call != "chat/post" || tell.File != "chat/post.yaml" ||
+	if tell := toolNamed(t, orders, "tell"); tell.Job != "call" || tell.Call != "chat/post" || tell.At != prefix+"/chat/post" ||
 		!slices.Equal(tell.Fixed, []string{"room"}) || !tell.Approve || tell.Description != "Tell the room." {
 		t.Errorf("a tool whose job is a call is %+v", tell)
 	}
-	if ping := toolNamed(t, orders, "ping"); ping.Job != "send" || ping.Event != "ping" || ping.To != "chat/post" || ping.File != "chat/post.yaml" || ping.Call != "" {
+	if ping := toolNamed(t, orders, "ping"); ping.Job != "send" || ping.Event != "ping" || ping.To != "chat/post" || ping.At != prefix+"/chat/post" || ping.Call != "" {
 		t.Errorf("a tool whose job is a send is %+v", ping)
 	}
 
@@ -505,84 +463,41 @@ func Test_machines_toolkits_call_machines_by_their_location(t *testing.T) {
 	if infra.Name != "infra" || len(infra.Offered) != 1 || infra.Instructions != "Restart only when asked." {
 		t.Errorf("the toolkit is %+v", infra)
 	}
-	if r := toolNamed(t, &infra, "restart"); r.Job != "call" || r.File != "people/find.yaml" || r.Description != "Find a person by email." || !slices.Equal(r.Fixed, []string{"table"}) || r.When != "input.x" {
+	if r := toolNamed(t, &infra, "restart"); r.Job != "call" || r.At != prefix+"/people/find" || r.Description != "Find a person by email." || !slices.Equal(r.Fixed, []string{"table"}) || r.When != "input.x" {
 		t.Errorf("a call tool is %+v", r)
 	}
-	if ping := toolNamed(t, &infra, "ping"); ping.Job != "send" || ping.Event != "ping" || ping.To != "chat/post#infra" || ping.File != "chat/post.yaml" {
+	if ping := toolNamed(t, &infra, "ping"); ping.Job != "send" || ping.Event != "ping" || ping.To != "chat/post#infra" || ping.At != prefix+"/chat/post" {
 		t.Errorf("a tool whose job is a send to a key is %+v", ping)
 	}
 
-	h, err := New(Config{Dir: dir, Interval: time.Second})
-	if err != nil {
-		t.Fatal(err)
-	}
+	h := v.pages
 	orders.key = ""
-	if p := pageOf(t, h, "/toolkits?toolkit=orders").Toolkits; p.Open == nil || fmt.Sprintf("%+v", *p.Open) != fmt.Sprintf("%+v", *orders) {
+	if p := pageOf(t, h, "/toolkits?toolkit=orders").Toolkit; p.Open == nil || fmt.Sprintf("%+v", *p.Open) != fmt.Sprintf("%+v", *orders) {
 		t.Errorf("the page shows the toolkit as %+v, not %+v", p.Open, orders)
 	}
-	if p := pageOf(t, h, "/toolkits?toolkit=infra").Toolkits; p.Open == nil || p.Open.Instructions != "Restart only when asked." {
+	if p := pageOf(t, h, "/toolkits?toolkit=infra").Toolkit; p.Open == nil || p.Open.Instructions != "Restart only when asked." {
 		t.Errorf("the instructions written in a toolkit's file are not shown: %+v", p.Open)
 	}
 
 	// The agent's drawing links a call tool's card to the machine it calls,
 	// and the conversation's to the agent.
-	agent := pageOf(t, h, "/machines?file=agents/support.yaml").View.Drawing
-	if c := card(agent, "find"); c == nil || c.Href != "/machines?file=people%2Ffind.yaml" || !slices.Contains(c.Lines, "call: people/find") {
+	agent := pageOf(t, h, "/machines?at="+prefix+"/agents/support").View.Drawing
+	if c := card(agent, "find"); c == nil || c.Href != "/machines?at="+url.QueryEscape(prefix+"/people/find") || !slices.Contains(c.Lines, "call: people/find") {
 		t.Errorf("the agent's drawing does not link the call tool to the machine it calls: %+v", c)
 	}
 	if agent == nil || agent.Agent == nil || !slices.ContainsFunc(agent.Agent.Toolkits, func(k drawing.Toolkit) bool { return k.Toolkit && k.When != "" }) {
 		t.Errorf("the agent's drawing does not give the toolkit's when: %+v", agent)
 	}
-	if c := card(pageOf(t, h, "/machines?file=conversation.yaml").View.Drawing, "talking"); c == nil || c.Href != "/machines?file=agents%2Fsupport.yaml" {
+	if c := card(pageOf(t, h, "/machines?at="+prefix+"/conversation").View.Drawing, "talking"); c == nil || c.Href != "/machines?at="+url.QueryEscape(prefix+"/agents/support") {
 		t.Errorf("a call's card does not link to the machine it calls: %+v", c)
 	}
 }
 
-// A file written as a toolkit is a toolkit only where an agent's
-// toolkits: names it; any other is a file, listed or included.
-func Test_machines_toolkits_no_agent_offers_are_files(t *testing.T) {
-	dir := t.TempDir()
-	write(t, dir, map[string]string{
-		".corbieignore":        "toolkits/\nshared.yaml\n",
-		"r.js":                 "return 1",
-		"a.yaml":               "agent: a\n" + agentHead + "toolkits:\n  orders: { include: ./toolkits/orders.yaml }\n",
-		"b.yaml":               "flow: b\ninclude: ./shared.yaml\nstages:\n  x: { job: { script: r.js } }\n",
-		"shared.yaml":          "description: shared\n",
-		"toolkits/orders.yaml": "description: orders\ntools:\n  r: { description: r, job: { script: r.js } }\n",
-		"toolkits/infra.yaml":  "description: infra\ntools:\n  r: { description: r, job: { script: r.js } }\n",
-	})
-	v := toolkitsView_(t, dir, "")
-	var ids []string
-	for _, p := range v.Toolkits {
-		ids = append(ids, p.ID+" "+p.File)
-	}
-	if got := strings.Join(ids, ", "); got != "orders toolkits/orders.yaml" {
-		t.Errorf("the toolkits are %q", got)
-	}
-	h, err := New(Config{Dir: dir, Interval: time.Second})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if body := do(h, "GET", "/toolkits?toolkit=infra", nil); body.Code != http.StatusNotFound {
-		t.Errorf("a toolkit file no agent offers answered %d", body.Code)
-	}
-	var files []string
-	for _, f := range pageOf(t, h, "/machines").Files.Files {
-		files = append(files, fmt.Sprintf("%s %t %d", f.Path, f.Listed, f.Included))
-	}
-	if want := []string{"shared.yaml true 1", "toolkits/ true 0", "toolkits/orders.yaml true 1"}; !slices.Equal(files, want) {
-		t.Errorf("the Files list is %v, not %v: a file below a listed directory that no machine includes has no row of its own", files, want)
-	}
-	if v := pageOf(t, h, "/machines?file=toolkits/infra.yaml").View; v.Facts != "listed in .corbieignore" || v.File == nil || len(v.Included) != 0 {
-		t.Errorf("a toolkit file no agent offers is shown as %+v", v)
-	}
-}
-
 // A placed agent takes its type from a file .corbieignore lists, and writes
-// a toolkit in place: the toolkit is in the agent's own file, so it has no
-// file it is included from, on the Toolkits page, in the agent's drawing,
-// or in the drawing of a machine that runs it, unfolded.
-func Test_machines_toolkits_written_in_a_placed_agent_are_in_its_file(t *testing.T) {
+// a toolkit in place: the toolkit is in the agent's own machine, so it has
+// no file it is included from, on the Toolkits page, in the agent's
+// drawing, or in the drawing of a machine that runs it, unfolded.
+func Test_machines_toolkits_written_in_a_placed_agent_are_in_its_machine(t *testing.T) {
 	dir := t.TempDir()
 	write(t, dir, map[string]string{
 		".corbieignore":       "shared/\n",
@@ -593,17 +508,12 @@ func Test_machines_toolkits_written_in_a_placed_agent_are_in_its_file(t *testing
 		"dotted.yaml":         "flow: dotted\nstages:\n  a: { job: { machine: ./agents/support.yaml } }\n",
 	})
 	v := toolkitsView_(t, dir, "")
-	if len(v.Problems) != 0 {
-		t.Fatalf("the project has problems: %+v", v.Problems)
+	prefix := "/" + filepath.Base(dir)
+	if p := byDescription(t, v, "written here"); p.File != "" || len(p.Offered) != 1 || p.Offered[0].At != prefix+"/agents/support" {
+		t.Errorf("a toolkit written in a placed agent is included from %q, and offered by %+v", p.File, p.Offered)
 	}
-	if p := byDescription(t, v, "written here"); p.File != "" {
-		t.Errorf("a toolkit written in a placed agent is included from %q", p.File)
-	}
-	h, err := New(Config{Dir: dir, Interval: time.Second})
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, address := range []string{"/machines?file=agents/support.yaml", "/machines?file=parent.yaml&open=a", "/machines?file=dotted.yaml&open=a"} {
+	h := v.pages
+	for _, address := range []string{"/machines?at=" + prefix + "/agents/support", "/machines?at=" + prefix + "/parent&open=a", "/machines?at=" + prefix + "/dotted&open=a"} {
 		scene := pageOf(t, h, address).View.Drawing
 		if c := card(scene, "a"); c != nil && c.In != nil {
 			scene = c.In

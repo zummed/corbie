@@ -119,18 +119,16 @@ export function bump(of) {
   return e => { el = e; };
 }
 
+// lineHref gives the address of the lines of the Definition tab of the
+// machine at a location that were written at a line of a file, "file:line".
+export function lineHref(at, line) {
+  return "/machines?" + new URLSearchParams({ at, view: "definition" }) + "#" + encodeURIComponent(line);
+}
+
 function relight(el, light) {
   el.classList.remove("new", "moved", "ended", "bump");
   void el.offsetWidth;
   el.classList.add(light);
-}
-
-// lineHref gives the address of a line of a file, written "file:line", in
-// the Machines page's Text tab; a line with no file has none.
-export function lineHref(at) {
-  const i = at.lastIndexOf(":");
-  if (i < 0) return undefined;
-  return `/machines?file=${encodeURIComponent(at.slice(0, i))}&view=text#L${at.slice(i + 1)}`;
 }
 
 // plural gives a count of a thing: 1 run, 2 runs.

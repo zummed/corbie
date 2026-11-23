@@ -46,6 +46,19 @@ func (c caller) do(method, path, body string) (int, map[string]any, string) {
 	return c.send(method, path, "", strings.NewReader(body))
 }
 
+// listed gives a listing once it holds the run, or as it is after 5
+// seconds. A listing reads heads, and a head is written a moment after the
+// record and the receipt.
+func (c caller) listed(path, id string) (int, string) {
+	c.t.Helper()
+	for deadline := time.Now().Add(5 * time.Second); ; time.Sleep(5 * time.Millisecond) {
+		status, _, text := c.do("GET", path, "")
+		if status != 200 || strings.Contains(text, id) || time.Now().After(deadline) {
+			return status, text
+		}
+	}
+}
+
 func (c caller) send(method, path, kind string, body io.Reader) (int, map[string]any, string) {
 	c.t.Helper()
 	req, _ := http.NewRequest(method, c.url+path, body)
@@ -231,13 +244,13 @@ func TestGateway(t *testing.T) {
 	if entries, _ := record["entries"].([]any); status != 200 || len(entries) != strings.Count(got, "event: entry") || !strings.Contains(text, `"run":{`) || !strings.Contains(text, `"status":"done"`) {
 		t.Fatalf("the record so far was answered %d %s, and the stream was:\n%s", status, text, got)
 	}
-	if status, _, text := c.do("GET", "/runs?all&label=team=ops", ""); status != 200 || !strings.Contains(text, id) {
+	if status, text := c.listed("/runs?all&label=team=ops", id); status != 200 || !strings.Contains(text, id) {
 		t.Fatalf("the listing was answered %d %s", status, text)
 	}
 	// A listing narrowed to a location, and to a key there, gives the runs
 	// and their IDs.
 	at, _ := run["location"].(string)
-	if status, _, text := c.do("GET", "/runs?all&at="+at, ""); status != 200 || at == "" || !strings.Contains(text, id) {
+	if status, text := c.listed("/runs?all&at="+at, id); status != 200 || at == "" || !strings.Contains(text, id) {
 		t.Fatalf("the listing at %q was answered %d %s", at, status, text)
 	}
 	for _, query := range []string{"?all&at=/elsewhere", "?all&at=" + at + "&key=alice"} {

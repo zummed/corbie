@@ -499,7 +499,9 @@ form.enrol pre.said { flex: 1 1 100%; margin: 0; white-space: pre-wrap; overflow
 .differs { margin: 0 0 8px; font: 12px var(--mono); color: var(--ink2); }
 .differs > summary { cursor: pointer; color: var(--amber, var(--ink2)); }
 .differs pre { margin: 6px 0 0; padding: 8px 12px; max-height: 160px; overflow: auto; background: var(--plate); border: 1px solid var(--line); border-radius: 6px; }
-/* The Machines page: a location counts its runs. */
+.machine a.line:hover text.title { fill: var(--accent); text-decoration: underline; }
+/* The Machines page: the lines a card's name opens are lit, and a location counts its runs. */
+.code .l.here { background: color-mix(in srgb, var(--accent) 12%, transparent); }
 .place .counted { color: var(--ink2); }
 
 /* A run's page: why the run is where it is, the file that changed, a job's facts and logs, and how long a job took. */

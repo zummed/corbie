@@ -46,7 +46,7 @@ tags: gpu
 allow: network, send:devices/boiler
 ```
 
-A card a page can pick, which is no link, is picked by a click or by Enter. A page can give a card a count, such as how many runs are in that state now, which is drawn at the card's top right.
+Where a page gives lines an address, a card's name links to the line of the first value written under it, such as `support.yaml:14` for a stage whose key is on line 13, in the file most of its values are in, and its tooltip gives that file and line; the rest of a card that is a link follows its own link. A card a page can pick, which is no link, is picked by a click or by Enter. A page can give a card a count, such as how many runs are in that state now, which is drawn at the card's top right.
 
 A card whose job names a machine shows the machine's type as its icon and `type: name` as its line. The Machines page knows the machine from the definition recorded at its location, and a run's page from the definition the run was started from. A machine known by neither is written as the definition names it, `machine: ./find.yaml`.
 

@@ -526,6 +526,47 @@ stages:
   sum: { each: { emitted: find }, job: ./w.js }
 `
 
+// A card gives where its file writes it, as file:line: a stage, a state,
+// a state inside another, a tool, a tool of a toolkit, the ask and the
+// model.
+func Test_drawing_card_gives_its_line(t *testing.T) {
+	flow := scene(t, definition(t, limited, given), nil)
+	lines := map[string]string{}
+	for _, st := range flow.Flow.Stages {
+		lines[st.Card.Name] = st.Card.Line
+	}
+	if want := map[string]string{"find": "3", "tell": "5", "after": "6", "sum": "7"}; !maps.Equal(lines, want) {
+		t.Errorf("the stages are written at %v, not %v", lines, want)
+	}
+	// A card whose values are in two files, as where a value is included,
+	// gives the first line in the file most of them are in.
+	split := map[string]string{"stages.a.when": "base.yaml:1", "stages.a.job.script": "inc.yaml:5", "stages.a.job.timeout": "inc.yaml:6", "stages.b.job": "base.yaml:9"}
+	if got := lineOf(split, "stages.a"); got != "inc.yaml:5" {
+		t.Errorf("a card written across two files gives the line %q, not inc.yaml:5", got)
+	}
+	if got := lineOf(map[string]string{"stages.a.when": "b.yaml:7", "stages.a.job": "a.yaml:9"}, "stages.a"); got != "a.yaml:9" {
+		t.Errorf("a card with as many values in two files gives the line %q, not that of the file named first, a.yaml:9", got)
+	}
+	chart := scene(t, definition(t, held, given), nil)
+	lines = map[string]string{}
+	for _, st := range chart.Chart.States {
+		lines[st.Name] = st.Card.Line
+	}
+	if want := map[string]string{"idle": "5", "busy": "8", "one": "12", "two": "14"}; !maps.Equal(lines, want) {
+		t.Errorf("the states are written at %v, not %v", lines, want)
+	}
+	agent := scene(t, definition(t, helper, given), nil)
+	lines = map[string]string{"model": agent.Agent.ModelLine, "ask": agent.Agent.Ask.Line}
+	for _, g := range agent.Agent.Toolkits {
+		for _, tool := range g.Tools {
+			lines[tool.Card.Name] = tool.Card.Line
+		}
+	}
+	if want := map[string]string{"model": "2", "ask": "5", "look": "7", "idle": "8", "tell": "13"}; !maps.Equal(lines, want) {
+		t.Errorf("the agent's cards are written at %v, not %v", lines, want)
+	}
+}
+
 // A card's tooltip gives its job's limits, with lengths of time as a
 // definition writes them, and a flow gives why each stage waits for
 // another: what it reads, follows: or each: { emitted: … }.

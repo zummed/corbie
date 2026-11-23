@@ -178,6 +178,35 @@ test("machines_choosing_a_machine_shows_it_in_place", async () => {
   list.style.height = "";
 });
 
+test("machines_card_opens_its_line", async () => {
+  window.samePage = true;
+  click(row("/bot/.kit/listen"));
+  await until(() => parts.view.Open === "/bot/.kit/listen" && $("#drawing a.line"), "the machine drawn with its cards' lines");
+  const hearing = $$("#drawing a.line").find(a => text(a).startsWith("hearing"));
+  assert(hearing, "the card hearing does not link to its line");
+  const at = parts.view.Drawing.Chart.States.find(s => s.Name === "hearing").Card.Line;
+  equal(at, ".kit/listen.yaml:5", "where hearing is written");
+  equal(hearing.getAttribute("href"), "/machines?at=%2Fbot%2F.kit%2Flisten&view=definition#.kit%2Flisten.yaml%3A5", "the address of hearing's line");
+  click(hearing);
+  await until(() => parts.view.View === "definition" && $(".code .l.here"), "the definition at hearing's line");
+  assert(window.samePage, "the line opened another page");
+  const lit = $$(".code .l.here");
+  assert(lit.length > 0 && lit.every(l => text(l).endsWith("# " + at)), "the lines lit are not those written at " + at);
+  assert(text(lit[0]).includes("script: ./.kit/hear.js"), "the line lit is not the card's: " + text(lit[0]));
+  const box = $(".ide > .view").getBoundingClientRect(), line = lit[0].getBoundingClientRect();
+  assert(line.top >= box.top && line.bottom <= box.bottom, "the line lit is out of view");
+  history.back();
+  await until(() => parts.view.Open === "/bot/.kit/listen" && parts.view.View === "drawing", "Back showing the drawing");
+  // A card of a machine unfolded inside another has no line to open.
+  click($$("#drawing svg.machine a.card").find(a => (a.getAttribute("href") ?? "").includes("open=talking")));
+  await until(() => $("#drawing g.unfolded"), "the card unfolded");
+  equal($$("#drawing g.at.in a.line").length, 0, "the lines linked inside the card unfolded");
+  history.back();
+  await until(() => !$("#drawing g.unfolded"), "the card folded");
+  history.back();
+  await until(() => parts.view.Open === "/bot/support", "Back showing the agent");
+});
+
 test("machines_panels_fit_the_window_and_scroll_inside", () => {
   const ide = $(".ide");
   assert(ide.getBoundingClientRect().bottom <= innerHeight + 1, "the page is longer than the window");

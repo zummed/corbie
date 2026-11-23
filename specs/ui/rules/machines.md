@@ -22,6 +22,8 @@ The rules behind [the Machines overview](../machines.md). Area code: `machines`.
 
 **R-machines-16** A machine's location gives how many root runs there are running and how many failed today, and each state and running stage of its drawing gives how many of the UI's client's running runs at the location are in it, from each run's latest step; another client's runs are counted at the location only. The counts follow the store. *Test:* `machines_a_location_counts_its_runs`, `machines_location_row_says_its_counts`, `machines_drawing_counts_the_runs_in_each_state`, `machines_counts_follow_the_store`
 
+**R-machines-17** A card's name on a drawing links to the Definition tab, which shows the lines written at the card's file and line lit, in place; a card of a machine unfolded inside another has no such link. *Test:* `machines_card_opens_its_line`
+
 **R-machines-18** Machines gives Runs the values of the definition now recorded at a run's location that differ from the definition the run started with, and each script and child machine whose contents differ; none where they are the same, and none where no machine is recorded there. *Test:* `machines_a_run_differs_from_the_definition_recorded`
 
 **R-machines-12** Definition shows the definition recorded at the location: its type and name, then its fields by name, each value with the file and line it was submitted from. *Test:* `machines_definition_shows_where_each_value_is_from`

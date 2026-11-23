@@ -242,6 +242,7 @@ Steps and the drawing point at each other:
 
 - Holding the pointer over a row lights the cards of the drawing it is about: a state entered or left, a stage, the job that ended or failed.
 - A click on a card that is no link selects the newest row about it.
+- Where a run at its own location links to its machine, a card's name links to its lines in the Definition tab of that machine, on the Machines page.
 
 The drawing shows the selected row's run as it was at the row's step, from its record up to that step and the state that step left (see Drawing). It is the page's run, with the card of each job that started a run on the way to the selected row's run unfolded, that run drawn inside it:
 

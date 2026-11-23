@@ -491,6 +491,9 @@ func Test_machines_definition_shows_where_each_value_is_from(t *testing.T) {
 			t.Errorf("%s is from %q, not %q:\n%s", want, got, from, code)
 		}
 	}
+	if i := slices.IndexFunc(lines, func(l string) bool { return strings.Contains(l, "[k:effort]: high") }); i < 0 || v.Text[i].From != "family.yaml:3" {
+		t.Errorf("a line does not give where it is from for a card to open")
+	}
 	if !slices.Contains(lines, "  Be brief.") {
 		t.Errorf("a text of several lines is not written as a block:\n%s", code)
 	}

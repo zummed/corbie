@@ -46,10 +46,12 @@ The rules behind [the Drawing overview](../drawing.md). Area code: `drawing`.
 
 **R-drawing-15** A card's tooltip gives its job's `timeout`, `restart`, `tags` and `allow:` where the definition sets them, and a flow's arrow gives why one stage waits for the other. *Test:* `drawing_tooltips_give_limits_and_why_a_stage_waits`, `drawing_tooltips_are_drawn_on_cards_and_arrows`
 
+**R-drawing-16** Where the page gives a card's line an address, the card's name links to the line of the first value written under it, in the file most of its values are in, and the rest of a card that is a link follows its own link; a card is never a link inside another. *Test:* `drawing_card_gives_its_line`, `drawing_card_name_links_to_its_line`
+
 **R-drawing-17** A page can light cards by their paths, as the pointer lights them, pick a card that is no link by a click or Enter and be given its path, and draw a count above 0 at a card's top right. *Test:* `drawing_cards_lit_by_the_page`, `drawing_card_is_picked_by_the_page`, `drawing_card_counts`
 
 **C-drawing-01** What a card, a chip and a holder write fits inside it in the fonts the page is given, and no two cards overlap: the layout estimates the widths of letters, and only a browser sets them. *Test:* `drawing_text_fits_its_card`, `drawing_cards_do_not_overlap`
 
 ## Interfaces
 
-Drawing uses no other area of the UI. Runs and Machines give a page a machine's graph, from `Draw` and `Unfolded`, with the graphs of a run's children in `Run.In`, and the page draws it with `Drawing` from `drawing.js`, which the UI serves at `/drawing/`. A page gives `Drawing` the graph (`scene`), and where it needs them: the path of a card to frame (`focus`), the paths of cards to light (`lit`), what a pick does (`onCard`), and a count for each card's path (`counts`).
+Drawing uses no other area of the UI. Runs and Machines give a page a machine's graph, from `Draw` and `Unfolded`, with the graphs of a run's children in `Run.In`, and the page draws it with `Drawing` from `drawing.js`, which the UI serves at `/drawing/`. A page gives `Drawing` the graph (`scene`), and where it needs them: the path of a card to frame (`focus`), the address of a card's line (`lineHref`), the paths of cards to light (`lit`), what a pick does (`onCard`), and a count for each card's path (`counts`).

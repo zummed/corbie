@@ -39,7 +39,8 @@ function Span(props) {
   return html`<Show when=${() => s().Class} fallback=${() => s().Text}><span class=${() => s().Class}>${() => s().Text}</span></Show>`;
 }
 
-// Code is a definition as text, read only, a line at a time.
+// Code is a definition as text, read only, a line at a time, the lines
+// written at the file and line the address names lit.
 export function Code(props) {
-  return html`<pre class="code" aria-label=${() => props.label}><For each=${() => props.lines}>${l => html`<span class="l"><For each=${() => l.Spans}>${s => html`<${Span} span=${() => s} />`}</For></span>`}</For></pre>`;
+  return html`<pre class="code" aria-label=${() => props.label}><For each=${() => props.lines}>${l => html`<span class=${() => ["l", { here: !!l.From && l.From === props.here }]}><For each=${() => l.Spans}>${s => html`<${Span} span=${() => s} />`}</For></span>`}</For></pre>`;
 }

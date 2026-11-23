@@ -27,11 +27,12 @@ const fill = 1.6;
 //
 //   scene      the graph to draw
 //   focus      the path of a card for the camera to frame
+//   lineHref   gives the address of a "file:line" for the card at a path, which the card's name links to, or none
 //   lit        the paths of cards to light, as the pointer lights them
 //   onCard     called with a card's path when a person picks a card that is no link
 //   counts     a number for each card's path, drawn on the card where above 0
 export function Drawing(props) {
-  return html`<Show when=${() => props.scene}>${() => html`<${Viewport} scene=${() => props.scene} focus=${() => props.focus} lit=${() => props.lit} onCard=${() => props.onCard} counts=${() => props.counts} />`}</Show>`;
+  return html`<Show when=${() => props.scene}>${() => html`<${Viewport} scene=${() => props.scene} focus=${() => props.focus} lineHref=${() => props.lineHref} lit=${() => props.lit} onCard=${() => props.onCard} counts=${() => props.counts} />`}</Show>`;
 }
 
 function Viewport(props) {
@@ -58,9 +59,10 @@ function Viewport(props) {
     return new Set(cards.filter(c => want.includes(c.path)).map(c => c.key));
   });
   // What every part of the drawing is given: what lights it, and what a
-  // card does with a pick and its count.
+  // card does with its line, a pick and its count.
   const ctx = {
     lights: (key, from, to) => lit(hot(), key, from, to) || shown().has(key) || (from !== undefined && (shown().has(from) || shown().has(to))),
+    lineHref: (line, path) => (line && props.lineHref ? props.lineHref(line, path) : ""),
     picks: () => !!props.onCard,
     pick: path => props.onCard?.(path),
     count: path => props.counts?.[path] ?? 0,
@@ -221,12 +223,14 @@ function Shape(props) {
 // Card is a card, placed where its box is, with the drawing unfolded inside
 // it, whose parts are named after the card. Its body is a link where the
 // card has one, and the same element where it has none, so it glides as the
-// link comes and goes; a card that is no link can be picked, by a click or
-// by Enter; and a count above 0 is drawn at its top right.
+// link comes and goes; its name links to its line in its file, where the page
+// gives lines an address; a card that is neither can be picked, by a click
+// or by Enter; and a count above 0 is drawn at its top right.
 function Card(props) {
   const c = () => props.card;
   const key = () => props.prefix + c().key;
   const path = () => (props.path ? props.path + "/" : "") + c().name;
+  const lineHref = () => props.ctx.lineHref(c().line, path());
   const picks = () => props.ctx.picks() && !c().href;
   const count = () => props.ctx.count(path());
   const x = v => num(v - c().box.x), y = v => num(v - c().box.y);
@@ -248,7 +252,7 @@ function Card(props) {
   }
   return html`<g class="at" style=${() => at(c().box.x, c().box.y)}><g class=${() => [c().class, { lit: props.ctx.lights(key()), pick: picks() }]} data-key=${key} data-path=${path} tabindex=${() => (picks() ? "0" : undefined)} onClick=${pick} onKeyDown=${enter}>
     <a class="card" href=${() => c().href || undefined}>${body()}</a>
-    ${name()}
+    <Show when=${lineHref} fallback=${name}>${href => html`<a class="line" href=${href}>${name()}<title>${() => "written at " + c().line}</title></a>`}</Show>
     <Show when=${() => count() > 0}>${() => html`<g class="count" transform=${() => `translate(${num(c().box.w - 12)} 0)`}><rect x=${() => num(-(10 + 7 * String(count()).length) / 2)} y="-9" width=${() => 10 + 7 * String(count()).length} height="18" rx="9" /><text text-anchor="middle" y="4">${count}</text><title>${() => `${count()} running here now`}</title></g>`}</Show>
     <title>${() => c().tooltip}</title>
   </g><Show when=${() => c().in}>${i => html`<g class="at in" style=${() => at(i().x - c().box.x, i().y - c().box.y)}><${Parts} of=${() => i()} prefix=${() => key() + " › "} path=${path} ctx=${props.ctx} /></g>`}</Show></g>`;

@@ -14,7 +14,7 @@ func flowOf(f *flow.Flow, run *Run, w *walker) *Flow {
 	stages := run.latest().Stages
 	for _, n := range sortedKeys(f.Stages) {
 		s := f.Stages[n]
-		st := Stage{Card: Card{Name: n, Title: titleOf("", s.When)}, After: []string{}, Why: map[string]string{}, When: s.When != "", Stack: s.Each != nil || s.Emits != "" || s.Blob != nil}
+		st := Stage{Card: Card{Name: n, Title: titleOf("", s.When), Line: lineOf(w.lines, "stages."+n)}, After: []string{}, Why: map[string]string{}, When: s.When != "", Stack: s.Each != nil || s.Emits != "" || s.Blob != nil}
 		for _, wait := range waitsFor(s) {
 			if _, ok := f.Stages[wait.stage]; ok && wait.stage != n {
 				st.After = append(st.After, wait.stage)

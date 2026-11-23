@@ -319,6 +319,7 @@ export interface Card {
   Href: string;
   In?: Scene | null;
   Narrow: boolean;
+  Line: string;
 }
 
 export interface Stage {
@@ -379,6 +380,7 @@ export interface Toolkit {
 export interface Agent {
   Model: string;
   Mark: string;
+  ModelLine: string;
   Turn: number;
   Turns: number;
   Toolkits: Toolkit[];
@@ -389,6 +391,7 @@ export interface Agent {
 export interface Decision {
   Model: string;
   Mark: string;
+  ModelLine: string;
   Answers: Card;
 }
 
@@ -468,6 +471,7 @@ export interface Span {
 
 export interface CodeLine {
   Spans: Span[];
+  From: string;
 }
 
 export interface MachinesPlace {

@@ -425,9 +425,11 @@ func (h *handler) stream(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// A codeLine is one line of a definition as text, in spans.
+// A codeLine is one line of a definition as text, in spans, and the file
+// and line its value was submitted from, as file:line.
 type codeLine struct {
 	Spans []span
+	From  string
 }
 
 // A span is part of a line: a key, an expression, a comment, or plain.
@@ -513,6 +515,7 @@ func (w *writing) line(text, place string) {
 		if from := w.lines[at]; from != "" {
 			pad := strings.Repeat(" ", max(1, commentAt-len([]rune(text))))
 			l.Spans = append(l.Spans, span{Text: pad}, span{Class: "c", Text: "# " + from})
+			l.From = from
 			break
 		}
 		at = at[:max(strings.LastIndexAny(at, ".["), 0)]

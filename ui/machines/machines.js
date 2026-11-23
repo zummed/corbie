@@ -4,14 +4,19 @@
 // a submit changed it. Unfolding a card moves the drawing in to it, and
 // folding it moves back out to the card it was in.
 import { createEffect, createSignal, flush } from "solid-js";
-import { html, parts, receive, mount, Icon, Handle } from "ui";
+import { html, parts, receive, mount, Icon, Handle, lineHref } from "ui";
 import { Drawing } from "drawing";
 import { Code, machineHref, focusOf, focusAt } from "/machines/shared.js";
 
 // focus is the card the drawing moves in to, "" being the whole machine;
-// shownAt is the address the machine chosen is shown as; failed is why the
-// machine chosen could not be shown at the address asked for.
+// lineAt is the file and line the address names, whose lines of the
+// definition are lit; shownAt is the address the machine chosen is shown
+// as; failed is why the machine chosen could not be shown at the address
+// asked for.
+const lineOf = hash => decodeURIComponent(hash.slice(1));
 const [focus, setFocus] = createSignal(focusAt(location.href));
+const [lineAt, setLineAt] = createSignal(lineOf(location.hash));
+const toLine = () => document.querySelector(".code .l.here")?.scrollIntoView({ block: "center" });
 const [failed, setFailed] = createSignal("");
 let shownAt = location.href;
 
@@ -40,8 +45,10 @@ async function show(href, push) {
       setFailed("");
       receive({ type: "part", id: "view", data: answer });
       if (moved !== null) setFocus(moved);
+      setLineAt(lineOf(at.hash));
       flush();
       if (other) document.querySelector(".ide > .view")?.scrollTo(0, 0);
+      toLine();
     };
     // Another machine cross-fades in over the one shown, which stays until the
     // new one is drawn.
@@ -118,6 +125,11 @@ function Uses(props) {
 // tab gives the address of one of the tabs of the machine chosen.
 const tab = (at, view) => machineHref(at, view === "drawing" ? undefined : view);
 
+// cardLine gives the address of a card's line in the Definition tab: none
+// for a card of a machine unfolded inside another, whose values the tab
+// does not hold.
+const cardLine = (line, path) => (path.includes("/") ? "" : lineHref(parts.view.Open, line));
+
 // View is the part "view": the machine chosen. Its drawing is drawn anew
 // for each machine, so that the camera frames another machine at once, and
 // moves only within one.
@@ -130,8 +142,8 @@ function View() {
       <nav class="tabs"><For each=${["drawing", "definition"]}>${t => html`<a href=${() => tab(v().Open, t)} aria-current=${() => (v().View === t ? "page" : undefined)}>${{ drawing: "Drawing", definition: "Definition" }[t]}</a>`}</For></nav>
       <Show when=${() => v().Place}><${Place} place=${() => v().Place} /></Show>
       <Show when=${() => v().Uses.length}><${Uses} view=${v} /></Show>
-      <Show when=${() => v().View === "drawing"} fallback=${() => html`<${Code} lines=${() => v().Text} label=${() => v().Open} />`}>
-        <section class="drawn" id="drawing"><For each=${() => [v().Open]}>${() => html`<${Drawing} scene=${() => v().Drawing} focus=${focus} counts=${() => parts.runs[v().Open]?.In} />`}</For></section>
+      <Show when=${() => v().View === "drawing"} fallback=${() => html`<${Code} lines=${() => v().Text} label=${() => v().Open} here=${lineAt} />`}>
+        <section class="drawn" id="drawing"><For each=${() => [v().Open]}>${() => html`<${Drawing} scene=${() => v().Drawing} focus=${focus} counts=${() => parts.runs[v().Open]?.In} lineHref=${cardLine} />`}</For></section>
       </Show>
     </div>
   </Show>`;
@@ -157,3 +169,4 @@ function Machines() {
 
 window.addEventListener("popstate", () => show(location.href, false));
 mount(Machines);
+toLine();

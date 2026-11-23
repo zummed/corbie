@@ -107,7 +107,8 @@ type Scene struct {
 
 // A Card is what a card says: the icon of what its job is, its name, a line
 // for each fact about its job, its tooltip, its link, the machine unfolded
-// inside it, and whether it is narrow, as a final state is.
+// inside it, whether it is narrow, as a final state is, and where its file
+// writes it, as file:line, where the definition says.
 type Card struct {
 	Icon, Name string
 	Lines      []string
@@ -115,6 +116,7 @@ type Card struct {
 	Href       string
 	In         *Scene `json:",omitzero"`
 	Narrow     bool
+	Line       string
 }
 
 // A Flow is its stages, by name.
@@ -166,9 +168,11 @@ type Rule struct {
 }
 
 // An Agent is its model with its mark and the turn it is on, how many turns
-// it has, what it can call, and its ask with the ask's mark.
+// it has, what it can call, its ask with the ask's mark, and where its file
+// writes the model.
 type Agent struct {
 	Model, Mark string
+	ModelLine   string
 	Turn, Turns int
 	Toolkits    []Toolkit
 	Ask         *Card `json:",omitzero"`
@@ -192,9 +196,11 @@ type Tool struct {
 	Mark string
 }
 
-// A Decision is its model with its mark, and its answers.
+// A Decision is its model with its mark, where its file writes the model,
+// and its answers.
 type Decision struct {
 	Model, Mark string
+	ModelLine   string
 	Answers     Card
 }
 
@@ -231,6 +237,7 @@ func Unfolded(draft *machine.Draft, u Unfold) (Scene, error) {
 
 func sceneOf(def *machine.Definition, run *Run, w *walker) (Scene, error) {
 	s := Scene{Type: def.Type, Name: def.Name}
+	w.lines = def.Lines
 	switch def.Type {
 	case "flow":
 		var f flow.Flow
@@ -256,6 +263,8 @@ func sceneOf(def *machine.Definition, run *Run, w *walker) (Scene, error) {
 			return s, err
 		}
 		s.Decision = decisionOf(&dec, run)
+		s.Decision.ModelLine = lineOf(def.Lines, "model")
+		s.Decision.Answers.Line = lineOf(def.Lines, "questions")
 	default:
 		return s, fmt.Errorf("a machine of type %q has no drawing", def.Type)
 	}
@@ -274,6 +283,7 @@ type walker struct {
 	children map[string]Child
 	in       map[string]Scene
 	path     string
+	lines    map[string]string
 }
 
 // open gives the link of a card whose job names a machine in a draft, and
@@ -394,6 +404,54 @@ func short(d time.Duration) string {
 		s = s[:len(s)-2]
 	}
 	return s
+}
+
+// lineOf gives where a definition writes the value at a place, such as
+// stages.find, as file:line: the first line of the values under it in the
+// file most of them are in, the file named first where two have as many,
+// or nothing where it writes none. Corbie gives the line of each value
+// that is no map or list, so it is the line of the first such value, not
+// of the place's own key.
+func lineOf(lines map[string]string, place string) string {
+	type at struct {
+		values, first int
+	}
+	files := map[string]*at{}
+	for k, v := range lines {
+		if k != place && !strings.HasPrefix(k, place+".") && !strings.HasPrefix(k, place+"[") {
+			continue
+		}
+		file, line := "", v
+		if i := strings.LastIndexByte(v, ':'); i >= 0 {
+			file, line = v[:i], v[i+1:]
+		}
+		n, err := strconv.Atoi(line)
+		if err != nil {
+			continue
+		}
+		f := files[file]
+		if f == nil {
+			f = &at{first: n}
+			files[file] = f
+		}
+		f.values++
+		f.first = min(f.first, n)
+	}
+	if len(files) == 0 {
+		return ""
+	}
+	names := slices.Sorted(maps.Keys(files))
+	best := names[0]
+	for _, file := range names[1:] {
+		if files[file].values > files[best].values {
+			best = file
+		}
+	}
+	f := files[best]
+	if best == "" {
+		return strconv.Itoa(f.first)
+	}
+	return best + ":" + strconv.Itoa(f.first)
 }
 
 // describeJob writes a card's icon, its line and its link. The machine a

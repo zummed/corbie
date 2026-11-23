@@ -71,6 +71,8 @@ Definition    the definition recorded at the location, each value with the file 
 
 On the drawing, each state and each running stage shows how many of the UI's client's running runs at the machine's location are in it now; another client's runs are counted at the location only.
 
+A card's name links to the Definition tab, which lights the lines written at the card's file and line. A card of a machine unfolded inside another has no such link, since the tab holds only the machine at the location.
+
 Unfolding a card moves the drawing in to it, and folding it moves the drawing back out to the card it was in, or to the whole machine. Back folds and unfolds as the address was. Where the machine cannot be shown at the address asked for, the view says why and keeps what it shows.
 
 The address of a machine is `/machines?at=<location>`, with `open=<card path>` for each card unfolded, a card's path being the names of the cards down to it joined by `/`: `/machines?at=/home/schedules/away&open=pause`. A run's page links to the address of the machine recorded at its root's location (see Runs).

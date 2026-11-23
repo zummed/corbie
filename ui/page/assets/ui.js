@@ -119,6 +119,12 @@ export function bump(of) {
   return e => { el = e; };
 }
 
+// lineHref gives the address of the lines of the Definition tab of the
+// machine at a location that were written at a line of a file, "file:line".
+export function lineHref(at, line) {
+  return "/machines?" + new URLSearchParams({ at, view: "definition" }) + "#" + encodeURIComponent(line);
+}
+
 function relight(el, light) {
   el.classList.remove("new", "moved", "ended", "bump");
   void el.offsetWidth;

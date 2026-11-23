@@ -2,7 +2,7 @@
 // unfolded as the store changes, a line or a row opens its run, the button
 // at a line's start unfolds it, and a panel shows one tab at a time.
 import { createContext, createDeferred, createEffect, createMemo, createSignal, createStore, isPending, onSettled, useContext, Errored } from "solid-js";
-import { html, parts, mount, lit, bump, Icon, Status, Act, Handle, tabs, plural, word } from "ui";
+import { html, parts, mount, lit, bump, Icon, Status, Act, Handle, tabs, plural, word, lineHref } from "ui";
 import { Drawing } from "drawing";
 
 // middle cuts a long address in its middle, where keys that differ at
@@ -509,12 +509,20 @@ function Path() {
 // selected row's run unfolded, as of the row's step. The drawing moves its
 // own view to what the step marks. While the answer for a row is on its
 // way, the drawing before it stays, dimmed.
+// cardLine gives the address of a card's line in the Definition tab of the
+// run's machine: none where the run links to no machine or is a child, and
+// none for a card of a run drawn inside another.
+function cardLine(line, path) {
+  const d = parts.summary.Defined;
+  return d && !d.Cards && !path.includes("/") ? lineHref(d.Location, line) : "";
+}
+
 function View() {
   const steps = useContext(StepsContext);
   const v = () => steps.shown();
   return html`<section class=${() => ["panel", "asof", { pending: isPending(() => steps.shown()) }]} id="view">
     <Show when=${() => v()?.Row}>${row => html`<div class="head"><${Icon} type=${() => v().Type} /><span>${() => row().Run.Machine}</span><span class="dim">${() => v().Type}</span><${Defined} at=${() => v().Defined} /><span class="facts">as of step ${() => row().Step}, ${() => v().Time}</span></div>`}</Show>
-    <div class="drawn"><Show when=${() => v()?.Drawing} fallback=${() => html`<p class="dim">${() => (v()?.Row ? "no drawing" : "a run in another client's tree: only its status can be read")}</p>`}><${Drawing} scene=${() => v().Drawing} lit=${() => steps.hovered() ?? []} onCard=${path => steps.touched(path)} /></Show></div>
+    <div class="drawn"><Show when=${() => v()?.Drawing} fallback=${() => html`<p class="dim">${() => (v()?.Row ? "no drawing" : "a run in another client's tree: only its status can be read")}</p>`}><${Drawing} scene=${() => v().Drawing} lit=${() => steps.hovered() ?? []} onCard=${path => steps.touched(path)} lineHref=${cardLine} /></Show></div>
   </section>`;
 }
 

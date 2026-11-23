@@ -458,7 +458,6 @@ One request starts a run and is answered with the run:
 
 - `POST /runs?wait` starts the run and answers when it has ended, with the run, as `GET /runs/<id>?wait` does. `?wait=30s` answers after 30 s at most.
 - A `wait` that is no length of time is answered 400, and no run is started.
-- With `?files`, a blob in the run's output has its bytes: `{ "$blob": "<path>", "type", "size", "data": "<base64>" }`. Without it a blob is read with `GET /runs/<id>/files/<path>`.
 
 A page in a browser calls the gateway from any origin:
 

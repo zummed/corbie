@@ -3,7 +3,6 @@ package gateway_test
 import (
 	"bufio"
 	"context"
-	"encoding/base64"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -585,9 +584,9 @@ func TestStreamSaysWhyItStopped(t *testing.T) {
 	}
 }
 
-// A start with ?wait is answered with the run when it has ended, and with
-// ?files each blob of the run's output carries its bytes.
-func Test_client_gateway_start_waits_and_gives_files(t *testing.T) {
+// A start with ?wait is answered with the run when it has ended. A blob of
+// its output is read by its path, as for any run.
+func Test_client_gateway_start_waits(t *testing.T) {
 	local, err := client.NewLocal(context.Background(), permission.Layer{}, nil)
 	if err != nil {
 		t.Fatal(err)
@@ -603,27 +602,15 @@ func Test_client_gateway_start_waits_and_gives_files(t *testing.T) {
 		return c.send("POST", "/runs"+query, "application/json", strings.NewReader(`{"at": "`+at+`"}`))
 	}
 
-	zebra := base64.StdEncoding.EncodeToString([]byte("zebra"))
-	status, run, text := start("?wait&files", at)
+	status, run, text := start("?wait", at)
 	output, _ := run["output"].(map[string]any)
 	file, _ := output["file"].(map[string]any)
-	if status != 200 || run["status"] != "done" || output["n"] != float64(1) || file["data"] != zebra || file["type"] != "text/plain" || file["$blob"] == nil {
-		t.Fatalf("a start with wait and files was answered %d %s", status, text)
-	}
-	// Without files a blob is named and read by its path, as before.
-	status, run, text = start("?wait", at)
-	output, _ = run["output"].(map[string]any)
-	file, _ = output["file"].(map[string]any)
-	if status != 200 || run["status"] != "done" || file["$blob"] == nil || file["data"] != nil {
+	if status != 200 || run["status"] != "done" || output["n"] != float64(1) || file["$blob"] == nil {
 		t.Fatalf("a start with wait was answered %d %s", status, text)
 	}
 	id, _ := run["id"].(string)
 	if status, _, text := c.do("GET", "/runs/"+id+"/files/"+file["$blob"].(string), ""); status != 200 || text != "zebra" {
 		t.Errorf("the blob read by its path was answered %d %q", status, text)
-	}
-	// A run shown later gives its files too.
-	if _, run, text := c.do("GET", "/runs/"+id+"?files", ""); !strings.Contains(text, zebra) || run["status"] != "done" {
-		t.Errorf("GET with files was answered %s", text)
 	}
 	// A wait's own limit answers with the run as it stands.
 	began := time.Now()
@@ -631,7 +618,6 @@ func Test_client_gateway_start_waits_and_gives_files(t *testing.T) {
 		t.Errorf("a start with a wait of 200ms was answered %d %s after %s", status, text, time.Since(began))
 	}
 	// A wait that cannot be read is refused, and nothing is started.
-	before, _, _ := c.do("GET", "/runs?all", "")
 	_, _, listed := c.do("GET", "/runs?all", "")
 	if status, _, text := start("?wait=abc", at); status != 400 || !strings.Contains(text, "wait") {
 		t.Errorf("a start with a wait that is no length of time was answered %d %s", status, text)
@@ -640,10 +626,10 @@ func Test_client_gateway_start_waits_and_gives_files(t *testing.T) {
 		t.Errorf("a wait that is no length of time was answered %d %s", status, text)
 	}
 	time.Sleep(300 * time.Millisecond)
-	if _, _, after := c.do("GET", "/runs?all", ""); before != 200 || strings.Count(after, `"id"`) != strings.Count(listed, `"id"`) {
+	if _, _, after := c.do("GET", "/runs?all", ""); strings.Count(after, `"id"`) != strings.Count(listed, `"id"`) {
 		t.Errorf("a start that was refused started a run: the list went from %s to %s", listed, after)
 	}
-	// With neither, a start is answered with the run's ID alone.
+	// With no wait, a start is answered with the run's ID alone.
 	if status, run, text := start("", at); status != 200 || run["id"] == nil || run["status"] != nil {
 		t.Errorf("a start was answered %d %s", status, text)
 	}

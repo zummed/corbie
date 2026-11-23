@@ -267,10 +267,9 @@ func Test_role_serverless_host_runs_a_whole_corbie(t *testing.T) {
 	headers := map[string]string{"authorization": "Bearer the-token", "content-type": "application/json"}
 	host := &requests{
 		events: []string{
-			asked("POST", "/runs", "wait&files", start, true, headers),
 			asked("POST", "/runs", "wait", start, true, headers),
 		},
-		limits:  []time.Duration{60 * time.Second, 60 * time.Second},
+		limits:  []time.Duration{60 * time.Second},
 		answers: map[string]string{}, modes: map[string]string{},
 		done: stop,
 	}
@@ -289,12 +288,8 @@ func Test_role_serverless_host_runs_a_whole_corbie(t *testing.T) {
 		t.Fatalf("corbie up ended %d: %s", status, said)
 	}
 	first, body := host.answered(t, "call-1")
-	if !strings.Contains(first, `"statusCode":200`) || !strings.Contains(body, `"status":"done"`) || !strings.Contains(body, `"said":"hello, host"`) ||
-		!strings.Contains(body, `"data":"`+base64.StdEncoding.EncodeToString([]byte("zebra"))+`"`) {
-		t.Errorf("a start that waits, with files, was answered %s and %s", first, body)
-	}
-	if _, body := host.answered(t, "call-2"); !strings.Contains(body, `"status":"done"`) || !strings.Contains(body, `"$blob"`) || strings.Contains(body, `"data"`) {
-		t.Errorf("a start that waits was answered %s", body)
+	if !strings.Contains(first, `"statusCode":200`) || !strings.Contains(body, `"status":"done"`) || !strings.Contains(body, `"said":"hello, host"`) {
+		t.Errorf("a start that waits was answered %s and %s", first, body)
 	}
 	if _, err := os.Stat(filepath.Join(os.Getenv("TMPDIR"), ".corbie", "store", "version")); err != nil {
 		t.Errorf("the store is not in a directory of the copy's own: %v", err)

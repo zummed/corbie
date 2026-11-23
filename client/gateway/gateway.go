@@ -8,7 +8,6 @@ import (
 	"context"
 	"crypto/sha256"
 	"crypto/subtle"
-	"encoding/base64"
 	"encoding/json/v2"
 	"errors"
 	"fmt"
@@ -137,7 +136,7 @@ func (g *Gateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	switch {
 	case len(parts) == 1 && r.Method == http.MethodPost:
-		if takes(w, query, "wait", "files") {
+		if takes(w, query, "wait") {
 			g.start(w, r, c)
 		}
 	case len(parts) == 1 && r.Method == http.MethodGet:
@@ -377,8 +376,7 @@ func waitLimit(query url.Values) (time.Duration, error) {
 
 // shown answers with a run: the one given, or with wait the run when it has
 // ended. A wait cut short, by its own limit or by the caller going away,
-// answers with the run as it stands. With files each blob of the output has
-// its bytes.
+// answers with the run as it stands.
 func (g *Gateway) shown(w http.ResponseWriter, r *http.Request, c *client.Client, id string, limit time.Duration, shown *client.Run) {
 	ctx, query := r.Context(), r.URL.Query()
 	var err error
@@ -390,43 +388,7 @@ func (g *Gateway) shown(w http.ResponseWriter, r *http.Request, c *client.Client
 		}
 		shown, err = c.Wait(ctx, id, g.interval())
 	}
-	if err == nil && query.Has("files") {
-		shown.Output, err = withBytes(r.Context(), c, id, shown.Output)
-	}
 	reply(w, shown, err)
-}
-
-// withBytes gives a run's output with the bytes of each blob in it, as
-// base64 in the blob's data.
-func withBytes(ctx context.Context, c *client.Client, id string, v any) (any, error) {
-	var err error
-	switch v := v.(type) {
-	case []any:
-		for i := range v {
-			if v[i], err = withBytes(ctx, c, id, v[i]); err != nil {
-				return nil, err
-			}
-		}
-	case map[string]any:
-		if path, is := v["$blob"].(string); is {
-			contents, _, err := c.Fetch(ctx, id, path)
-			if err != nil {
-				return nil, err
-			}
-			data, err := io.ReadAll(contents)
-			if err != nil {
-				return nil, err
-			}
-			v["data"] = base64.StdEncoding.EncodeToString(data)
-			return v, nil
-		}
-		for k := range v {
-			if v[k], err = withBytes(ctx, c, id, v[k]); err != nil {
-				return nil, err
-			}
-		}
-	}
-	return v, nil
 }
 
 // submit is what the part named submit of a request to submit a tree holds,
@@ -679,7 +641,7 @@ func (g *Gateway) run(w http.ResponseWriter, r *http.Request, c *client.Client, 
 	case len(rest) > 0:
 		what = rest[0]
 	case r.Method == http.MethodGet:
-		asks = []string{"wait", "files"}
+		asks = []string{"wait"}
 	}
 	if !takes(w, r.URL.Query(), asks...) {
 		return

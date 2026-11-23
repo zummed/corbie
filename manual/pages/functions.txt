@@ -200,9 +200,11 @@ needs no bucket and no `corbie init`.
   #!/bin/sh
   cd "$LAMBDA_TASK_ROOT" && exec ./corbie up --in project gateway --token-file tokens
 
-Give the function a URL as for a gateway. `POST /runs?wait&files` starts a
-run and is answered with it (`corbie manual routes`).
+Give the function a URL as for a gateway. `POST /runs?wait` starts a run and
+is answered with it (`corbie manual routes`).
 
+- A run's blob is read in a later request, which may go to another copy. A
+  run there gives what its caller needs as values in its output.
 - Each copy of the function has its own store. A request for a run that
   another copy recorded is answered 404, and a run started at a tree that
   another copy recorded fails with `nothing is recorded at`.

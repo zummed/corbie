@@ -151,6 +151,8 @@ failed (error) at stage wait
   child     statechart stuck failed (timeout)
 ```
 
+Where the UI offers Machines and a submit has changed the definition recorded at the run's location since the run started, as `update: drain` leaves it, a line says `a submit changed the definition since this run started`, and opens to the lines that differ.
+
 The path goes up from the run, by parent, to its root, and down to the deepest running run, by the newest running child at each level. Where a send or a call started the root, the run that sent or called comes first, with `⇢`; its tooltip says which, where the root is in a tree of the UI's client. The run itself is in bold, and the run of the step selected is lit. Holding the pointer over a run shows its title, its address and its ID, as over a name.
 
 On the left are four tabs: Steps, Waiting on, Output and Children. On the right are the drawing and the details of the step selected.
@@ -264,7 +266,7 @@ a run at its own location   the machine recorded at that location: /home/devices
 a child                     its root's machine, unfolded down the cards of the jobs that started each child: /home/schedules/away › pause
 ```
 
-- The Machines page shows the definition recorded at the location now, which a submit may have changed since the run started. The run's drawing is the definition it runs, and the link's tooltip says so.
+- The Machines page shows the definition recorded at the location now, which a submit may have changed since the run started. The run's drawing is the definition it runs, and the link's tooltip says so. Where they differ, the line under the title says so.
 - There is no link where the UI offers no Machines page, where no machine is recorded at the root's location, where a machine on the way was made while running, and on a run in another client's tree.
 
 The details of a row have four tabs, and Open opens the row's run's page:

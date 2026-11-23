@@ -166,3 +166,11 @@ if (which === "logs") {
     assert(lines.some(l => l.includes("progress 0 of 5")), `no progress in ${lines}`);
   });
 }
+
+test("runs_a_run_says_its_definition_changed", async () => {
+  await streamed();
+  const differs = document.getElementById("differs");
+  if (which !== "fails") return assert(!differs, "a run whose definition is the same says it changed");
+  assert(differs && text(differs.querySelector("summary")) === "a submit changed the definition since this run started", "the run does not say its definition changed");
+  equal(text(differs.querySelector("pre")), "stages.find.job: ./find.js a script changed: ./check.js", "the lines that differ");
+});

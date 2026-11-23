@@ -21,7 +21,8 @@ Change how the UI is started.
   corbie ui with no store   refused: `corbie init` or `corbie up ui` sets one up
 
 The Machines page shows no file's text and no problems: `corbie run submit`
-and `corbie test` print a file's problems.
+and `corbie test` print a file's problems. A run's page says when a submit
+changed the definition at its location since the run started.
 
 After 0.29.0
 ------------

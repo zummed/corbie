@@ -22,7 +22,9 @@ The rules behind [the Machines overview](../machines.md). Area code: `machines`.
 
 **R-machines-16** A machine's location gives how many root runs there are running and how many failed today, and each state and running stage of its drawing gives how many of the UI's client's running runs at the location are in it, from each run's latest step; another client's runs are counted at the location only. The counts follow the store. *Test:* `machines_a_location_counts_its_runs`, `machines_location_row_says_its_counts`, `machines_drawing_counts_the_runs_in_each_state`, `machines_counts_follow_the_store`
 
-**R-machines-12** Written out shows the definition recorded at the location: its type and name, then its fields by name, each value with the file and line it was submitted from. *Test:* `machines_written_out_shows_where_each_value_is_from`
+**R-machines-18** Machines gives Runs the values of the definition now recorded at a run's location that differ from the definition the run started with, and each script and child machine whose contents differ; none where they are the same, and none where no machine is recorded there. *Test:* `machines_a_run_differs_from_the_definition_recorded`
+
+**R-machines-12** Definition shows the definition recorded at the location: its type and name, then its fields by name, each value with the file and line it was submitted from. *Test:* `machines_definition_shows_where_each_value_is_from`
 
 ## Secrets and values
 
@@ -34,4 +36,4 @@ The rules behind [the Machines overview](../machines.md). Area code: `machines`.
 
 ## Interfaces
 
-Machines uses Pages for the shell, the stream and its errors (`page.Shell`, `page.Write`, `page.Stream`, `page.Error`), and its tests use `pagetest.Run`, and Drawing to draw a definition and to find a toolkit's file (`drawing.Unfolded`, `drawing.Unfold`, `drawing.ToolkitFile`), and to write an address as a drawing does (`drawing.Address`). Serve gives it the controller and its store (`Config.Controller`, `Config.Store`), the list of runs the UI reads (`Config.List`), the client it acts as (`Config.Client`), and the latest step of a run as the Runs page reads it (`Config.Latest`), and Runs asks it for the address of the machine at a location (`Pages.Href`).
+Machines uses Pages for the shell, the stream and its errors (`page.Shell`, `page.Write`, `page.Stream`, `page.Error`), and its tests use `pagetest.Run`, and Drawing to draw a definition and to find a toolkit's file (`drawing.Unfolded`, `drawing.Unfold`, `drawing.ToolkitFile`), and to write an address as a drawing does (`drawing.Address`). Serve gives it the controller and its store (`Config.Controller`, `Config.Store`), the list of runs the UI reads (`Config.List`), the client it acts as (`Config.Client`), and the latest step of a run as the Runs page reads it (`Config.Latest`), and Runs asks it for the address of the machine at a location (`Pages.Href`), and how the definition a run started with, by its reference, differs from the one recorded at its location (`Pages.Differs`).

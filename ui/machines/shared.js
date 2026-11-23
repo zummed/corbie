@@ -1,4 +1,4 @@
-// What the Machines and Toolkits pages share: a definition written out, and
+// What the Machines and Toolkits pages share: a definition as text, and
 // the address of a machine on the Machines page.
 import { html } from "ui";
 
@@ -39,7 +39,7 @@ function Span(props) {
   return html`<Show when=${() => s().Class} fallback=${() => s().Text}><span class=${() => s().Class}>${() => s().Text}</span></Show>`;
 }
 
-// Code is a definition written out, read only, a line at a time.
+// Code is a definition as text, read only, a line at a time.
 export function Code(props) {
-  return html`<pre class="code written" aria-label=${() => props.label}><For each=${() => props.lines}>${l => html`<span class="l"><For each=${() => l.Spans}>${s => html`<${Span} span=${() => s} />`}</For></span>`}</For></pre>`;
+  return html`<pre class="code" aria-label=${() => props.label}><For each=${() => props.lines}>${l => html`<span class="l"><For each=${() => l.Spans}>${s => html`<${Span} span=${() => s} />`}</For></span>`}</For></pre>`;
 }

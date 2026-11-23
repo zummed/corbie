@@ -40,7 +40,7 @@ test("machines_secrets_and_values_used_are_listed", () => {
 });
 
 test("machines_drawing_is_shown", () => {
-  equal($$(".view nav.tabs a").map(text), ["Drawing", "Written out"], "the tabs");
+  equal($$(".view nav.tabs a").map(text), ["Drawing", "Definition"], "the tabs");
   equal($(".view nav.tabs a[aria-current]") && text($(".view nav.tabs a[aria-current]")), "Drawing", "the tab chosen");
   const svg = $("#drawing svg.machine");
   assert(svg, "the machine is not drawn");
@@ -51,12 +51,12 @@ test("machines_pages_only_read", () => {
   equal($$("main form, main input, main textarea, main select").length, 0, "the fields on the Machines page");
 });
 
-test("machines_written_out_shows_where_each_value_is_from", async () => {
-  click(tab("Written out"));
-  await until(() => parts.view.View === "written" && $(".view pre.code.written"), "the machine written out");
-  assert(location.search.includes("view=written"), "the address does not name the tab: " + location.search);
+test("machines_definition_shows_where_each_value_is_from", async () => {
+  click(tab("Definition"));
+  await until(() => parts.view.View === "definition" && $(".view pre.code"), "the machine's definition");
+  assert(location.search.includes("view=definition"), "the address does not name the tab: " + location.search);
   equal($$(".view pre.code > .l").length, parts.view.Text.length, "the lines of the definition");
-  equal(text($(".view nav.tabs a[aria-current]")), "Written out", "the tab chosen");
+  equal(text($(".view nav.tabs a[aria-current]")), "Definition", "the tab chosen");
   equal(text($(".view pre.code > .l")).replace(/\s+/g, " "), "agent: support # support.yaml:1", "the first line");
   assert($$(".view pre.code .c").some(c => text(c) === "# toolkits/toolkit.yaml:3"), "no value gives the file it was included from");
   equal($$(".view pre.code a").length, 0, "the links in the definition");
@@ -93,7 +93,7 @@ test("machines_focus_is_the_card_unfolded_or_the_card_it_was_in", () => {
   equal(focusOf("/machines?at=/a&open=talking", "/machines?at=/a&open=talking&open=talking%2Fanswering"), "talking/answering", "unfolding a card inside it");
   equal(focusOf("/machines?at=/a&open=talking&open=talking%2Fanswering", "/machines?at=/a&open=talking"), "talking", "folding the card inside");
   equal(focusOf("/machines?at=/a&open=talking&open=talking%2Fanswering", "/machines?at=/a"), "", "folding the outer card");
-  equal(focusOf("/machines?at=/a&open=talking", "/machines?at=/a&open=talking&view=written"), null, "another tab");
+  equal(focusOf("/machines?at=/a&open=talking", "/machines?at=/a&open=talking&view=definition"), null, "another tab");
   equal(focusAt("/machines?at=/a&open=talking&open=talking%2Fanswering"), "talking/answering", "a page opened at an address");
   equal(focusAt("/machines?at=/a"), "", "a page opened at a machine");
 });
@@ -102,9 +102,9 @@ test("machines_latest_address_asked_for_is_shown", async () => {
   // Two tabs chosen at once, the answer to the first held back so that it
   // comes last: the page shows the tab chosen last.
   const real = window.fetch;
-  window.fetch = (u, o) => (String(u).includes("view=written") ? wait(300).then(() => real(u, o)) : real(u, o));
+  window.fetch = (u, o) => (String(u).includes("view=definition") ? wait(300).then(() => real(u, o)) : real(u, o));
   try {
-    click(tab("Written out"));
+    click(tab("Definition"));
     click(tab("Drawing"));
     await until(() => parts.view.View === "drawing" && !location.search.includes("view="), "the tab chosen last");
     await wait(600);

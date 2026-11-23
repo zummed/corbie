@@ -15,6 +15,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/zummed/corbie/blob"
 	"github.com/zummed/corbie/client"
 	"github.com/zummed/corbie/instance"
 	"github.com/zummed/corbie/store"
@@ -41,6 +42,11 @@ type Config struct {
 	// recorded at a location, with cards unfolded; none where the UI offers
 	// no Machines page.
 	Machine func(ctx context.Context, location string, cards []string) (string, error)
+	// Differs gives how the definition now recorded at a location differs
+	// from a definition a run started with: none where they are the same
+	// or no machine is recorded there. None where the UI offers no
+	// Machines page.
+	Differs func(ctx context.Context, location string, def blob.Ref) ([]string, error)
 	// Steps reads the latest step of each run, shared with the other pages
 	// that read them; with none the Runs pages keep their own.
 	Steps    *Steps
@@ -361,6 +367,24 @@ func (h *handler) defined(ctx context.Context, id string) (*definedAt, error) {
 		return nil, err
 	}
 	return &definedAt{Href: href, Location: root.Location, Cards: strings.Join(cards, " › ")}, nil
+}
+
+// differs gives how the definition now recorded at the location of a run's
+// root differs from the definition the root started with: none where they
+// are the same, or the UI cannot read which.
+func (h *handler) differs(ctx context.Context, id string) ([]string, error) {
+	if h.Differs == nil {
+		return nil, nil
+	}
+	root, _, _, err := h.rootOf(ctx, id)
+	if root == nil || err != nil {
+		return nil, err
+	}
+	step, err := h.step(ctx, root.ID, 1)
+	if err != nil || step == nil {
+		return nil, err
+	}
+	return h.Differs(ctx, root.Location, step.State.Definition)
 }
 
 // cardsOf gives the root of a run, and the cards of the jobs that started

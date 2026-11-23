@@ -68,7 +68,7 @@ func (s shown) entryOf(location string) *entry {
 	return nil
 }
 
-// text gives a definition written out as the page shows it, a line at a
+// text gives a definition as the page shows it, a line at a
 // time, each line's spans written as class:text.
 func text(lines []codeLine) []string {
 	var out []string

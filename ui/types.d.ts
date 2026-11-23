@@ -175,6 +175,7 @@ export interface SummaryPart {
   Took: string;
   Cancel: string;
   Why: Why | null;
+  Differs: string[];
 }
 
 export interface LogLine {

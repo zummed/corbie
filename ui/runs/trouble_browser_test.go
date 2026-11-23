@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/zummed/corbie/blob"
 	"github.com/zummed/corbie/client"
 	"github.com/zummed/corbie/machine"
 	"github.com/zummed/corbie/ui/drawing"
@@ -27,6 +28,16 @@ type troubled struct {
 	h       *handler
 	handler http.Handler
 	ids     map[string]string
+}
+
+// The definition recorded at the location of fails differs from the one its
+// run started with, as the Machines page gives it: a value by its path, and
+// a script.
+func differs(ctx context.Context, location string, def blob.Ref) ([]string, error) {
+	if location != "/trouble/fails" || def == (blob.Ref{}) {
+		return nil, nil
+	}
+	return []string{"stages.find.job: ./find.js", "a script changed: ./check.js"}, nil
 }
 
 func newTrouble(t *testing.T) *troubled {
@@ -74,7 +85,8 @@ func newTrouble(t *testing.T) *troubled {
 	}
 
 	h := newHandler(Config{List: &listed{from: viewer}, Lister: viewer, Client: l.Client, Interval: time.Second, Shell: page.Shell{Offered: []string{"Runs"}, Parties: []string{l.Client.ID.Name}},
-		Command: func(ctx context.Context, c page.Call) page.Answer { return page.Answer{Out: `{"taken": true}`} }})
+		Command: func(ctx context.Context, c page.Call) page.Answer { return page.Answer{Out: `{"taken": true}`} },
+		Differs: differs})
 	mux := http.NewServeMux()
 	mux.Handle("GET /assets/", http.StripPrefix("/assets", page.Assets()))
 	mux.Handle("GET /drawing/", http.StripPrefix("/drawing", drawing.Files()))

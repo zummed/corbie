@@ -221,7 +221,7 @@ func start(ctx context.Context, e *cli.Env, o options) (*ui, error) {
 		mux.Handle("/machines/", areaMachines)
 		mux.Handle("/toolkits", areaMachines)
 		mux.Handle("/toolkits/", areaMachines)
-		c.Machine = areaMachines.Href
+		c.Machine, c.Differs = areaMachines.Href, areaMachines.Differs
 		areaController := controller.New(controller.Config{Controller: p.controller, Store: p.store, Command: command, Interval: interval, Changed: u.list.Changed, Shell: shell})
 		mux.Handle("/controller", areaController)
 		mux.Handle("/controller/", areaController)

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/http"
 	"slices"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -80,6 +81,7 @@ func latest(ctx context.Context, c *client.Client, run *client.Run) (*instance.S
 // directory holding the keyed room is submitted at /house, with the
 // Machines page on it acting as the controller and the client.
 type house struct {
+	dir   string
 	l     *client.Local
 	list  *poked
 	pages *Pages
@@ -110,7 +112,7 @@ func newHouse(t *testing.T, interval time.Duration) *house {
 	if receipt, err := l.WaitReceipt(ctx, message, 0, client.LocalInterval); err != nil || !receipt.Taken {
 		t.Fatalf("the submit was not taken: %+v %v", receipt, err)
 	}
-	h := &house{l: l, list: &poked{from: l.Client}}
+	h := &house{dir: dir, l: l, list: &poked{from: l.Client}}
 	for key, event := range map[string]string{"1": "knock", "2": "knock", "3": "shut", "4": "break"} {
 		h.send(t, key, event)
 	}
@@ -188,6 +190,53 @@ func must[V any](v V, err error) V {
 		panic(err)
 	}
 	return v
+}
+
+// submit writes files into the house's directory and records it again at
+// /house.
+func (h *house) submit(t *testing.T, files map[string]string) {
+	t.Helper()
+	write(t, h.dir, files)
+	(&lab{l: h.l}).submit(t, h.dir, "/house")
+}
+
+func Test_machines_a_run_differs_from_the_definition_recorded(t *testing.T) {
+	h := newHouse(t, time.Second)
+	ctx := context.Background()
+	runs, err := h.list.Runs()
+	if err != nil {
+		t.Fatal(err)
+	}
+	run := runs[slices.IndexFunc(runs, func(r *client.Run) bool { return r.Key == "1" })]
+	def := must(latest(ctx, h.l.Client, run)).State.Definition
+	differs := func() []string {
+		t.Helper()
+		got, err := h.pages.Differs(ctx, "/house/room", def)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return got
+	}
+	if got := differs(); got != nil {
+		t.Errorf("a run started from the definition recorded differs by %q", got)
+	}
+	// The room drains: a submit leaves its runs on the definition they
+	// started with.
+	h.submit(t, map[string]string{"clean.js": "return 'cleaner'"})
+	if got := differs(); !slices.Equal(got, []string{"a script changed: ./clean.js"}) {
+		t.Errorf("with its script changed, a run differs by %q", got)
+	}
+	h.submit(t, map[string]string{"clean.js": "return 'clean'", "inner.yaml": strings.Replace(inner, "end: done", "end: failed", 1)})
+	if got := differs(); !slices.Equal(got, []string{"a child changed: ./inner.yaml"}) {
+		t.Errorf("with its child changed, a run differs by %q", got)
+	}
+	h.submit(t, map[string]string{"inner.yaml": inner, "room.yaml": "# a room\n" + strings.Replace(room, "  broke: { end: failed }\n", "  broke: { end: done }\n", 1)})
+	if got := differs(); !slices.Equal(got, []string{`- states.broke.end: "failed"`, `+ states.broke.end: "done"`}) {
+		t.Errorf("with a value changed, a run differs by %q", got)
+	}
+	if got, err := h.pages.Differs(ctx, "/house/gone", def); err != nil || got != nil {
+		t.Errorf("a run at a location with no machine differs by %q, %v", got, err)
+	}
 }
 
 // Test_machines_counts_in_the_browser runs counts_test.js on the room of a

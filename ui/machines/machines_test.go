@@ -367,7 +367,7 @@ func Test_machines_secrets_and_values_used_are_listed(t *testing.T) {
 			t.Fatal(set)
 		}
 	}
-	shipping := pageOf(t, b.pages, "/machines?view=written&at=/dock/shipper")
+	shipping := pageOf(t, b.pages, "/machines?view=definition&at=/dock/shipper")
 	want := []use{{"A", "secret", "set at /"}, {"B", "secret", "not set at /dock/shipper or above"}, {"HUB", "value", "set at /dock"}}
 	if !slices.Equal(shipping.View.Uses, want) {
 		t.Errorf("the secrets and values are shown as %+v, not %+v", shipping.View.Uses, want)
@@ -449,21 +449,21 @@ func Test_machines_a_machine_shows_its_location(t *testing.T) {
 	}
 }
 
-func Test_machines_written_out_shows_where_each_value_is_from(t *testing.T) {
+func Test_machines_definition_shows_where_each_value_is_from(t *testing.T) {
 	b := recordedAt(t, "/kin", map[string]string{
 		"family.yaml":   "agent: family\ninclude: ./base.yaml\nmodel: { effort: high }\nallow:\n  - { include: ./base.yaml#allow }\n  - send:devices/*\ntools:\n  look: { description: looks, job: ./look.js }\n",
 		"base.yaml":     "model: { name: claude-sonnet-5-5, secret: ANTHROPIC_KEY }\nprompt: |\n  ${input.said}\n  Be brief.\nallow: [\"fs.read:${input.dir}/**\"]\n",
 		"look.js":       "return 1",
 		".corbieignore": "base.yaml\n",
 	})
-	v := pageOf(t, b.pages, "/machines?at=/kin/family&view=written").View
-	if v.View != "written" || v.Drawing != nil {
-		t.Errorf("the Written out tab is not chosen: %q", v.View)
+	v := pageOf(t, b.pages, "/machines?at=/kin/family&view=definition").View
+	if v.View != "definition" || v.Drawing != nil {
+		t.Errorf("the Definition tab is not chosen: %q", v.View)
 	}
 	lines := text(v.Text)
 	code := strings.Join(lines, "\n")
 	if len(lines) == 0 || !strings.HasPrefix(lines[0], "[k:agent]: family ") || !strings.HasSuffix(lines[0], "[c:# family.yaml:1]") {
-		t.Fatalf("the definition written out does not begin with its type and name:\n%s", code)
+		t.Fatalf("the definition does not begin with its type and name:\n%s", code)
 	}
 	at := func(want string) string {
 		t.Helper()
@@ -473,7 +473,7 @@ func Test_machines_written_out_shows_where_each_value_is_from(t *testing.T) {
 				return strings.TrimSuffix(from, "]")
 			}
 		}
-		t.Errorf("the definition written out does not hold %s:\n%s", want, code)
+		t.Errorf("the definition does not hold %s:\n%s", want, code)
 		return ""
 	}
 	for want, from := range map[string]string{
@@ -495,7 +495,7 @@ func Test_machines_written_out_shows_where_each_value_is_from(t *testing.T) {
 		t.Errorf("a text of several lines is not written as a block:\n%s", code)
 	}
 	if strings.Contains(code, "include") || strings.Contains(code, "[k:lines]") || strings.Contains(code, "[k:body]") {
-		t.Errorf("the definition written out holds an include or its lines:\n%s", code)
+		t.Errorf("the definition holds an include or its lines:\n%s", code)
 	}
 	// The fields follow the type and name by name.
 	var keys []string
@@ -531,7 +531,7 @@ func Test_machines_pages_only_read(t *testing.T) {
 			t.Errorf("GET %s answered %d", path, w.Code)
 		}
 	}
-	pageOf(t, b.pages, "/machines?at=/docs/review&view=written")
+	pageOf(t, b.pages, "/machines?at=/docs/review&view=definition")
 	pageOf(t, b.pages, "/toolkits")
 	// That the pages show no form is checked in the browser, by
 	// machines_test.js and toolkits_test.js.

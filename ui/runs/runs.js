@@ -149,7 +149,8 @@ const said = row => row.What.map(w => w.Text).join("");
 function Why() {
   const steps = useContext(StepsContext);
   const w = () => parts.summary.Why;
-  return html`<Show when=${w}>${y => html`<p class="why" id="why"><button type="button" class="link" onClick=${() => steps.select(y().Row)} disabled=${() => !y().Row}>${() => y().Lead}${() => (y().Since ? " " + ago(y().Since) : "")}${() => (y().Rest ? " " + y().Rest : "")}</button></p><Show when=${() => y().Facts?.length}><dl class="refusal why-facts"><For each=${() => y().Facts}>${f => html`<dt>${() => f.Name}</dt><dd>${() => f.Text}</dd>`}</For></dl></Show>`}</Show>`;
+  return html`<Show when=${w}>${y => html`<p class="why" id="why"><button type="button" class="link" onClick=${() => steps.select(y().Row)} disabled=${() => !y().Row}>${() => y().Lead}${() => (y().Since ? " " + ago(y().Since) : "")}${() => (y().Rest ? " " + y().Rest : "")}</button></p><Show when=${() => y().Facts?.length}><dl class="refusal why-facts"><For each=${() => y().Facts}>${f => html`<dt>${() => f.Name}</dt><dd>${() => f.Text}</dd>`}</For></dl></Show>`}</Show>
+  <Show when=${() => parts.summary.Differs?.length}><details class="differs" id="differs"><summary>a submit changed the definition since this run started</summary><pre>${() => parts.summary.Differs.join("\n")}</pre></details></Show>`;
 }
 
 function Summary() {

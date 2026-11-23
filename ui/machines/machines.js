@@ -1,5 +1,5 @@
 // The Machines page: the machines the controller recorded, by tree, and the
-// machine chosen drawn or written out. Choosing a machine, a tab or a
+// machine chosen drawn or as its definition. Choosing a machine, a tab or a
 // card's link shows it in place, and the page shows the machine again when
 // a submit changed it. Unfolding a card moves the drawing in to it, and
 // folding it moves back out to the card it was in.
@@ -127,7 +127,7 @@ function View() {
     <div class="panel view">
       <div class="head"><${Icon} type=${() => v().Kind} /><span>${() => v().Open}</span><span class="facts">${() => v().First}</span></div>
       <Show when=${failed}><p class="said bad failed">${failed}</p></Show>
-      <nav class="tabs"><For each=${["drawing", "written"]}>${t => html`<a href=${() => tab(v().Open, t)} aria-current=${() => (v().View === t ? "page" : undefined)}>${{ drawing: "Drawing", written: "Written out" }[t]}</a>`}</For></nav>
+      <nav class="tabs"><For each=${["drawing", "definition"]}>${t => html`<a href=${() => tab(v().Open, t)} aria-current=${() => (v().View === t ? "page" : undefined)}>${{ drawing: "Drawing", definition: "Definition" }[t]}</a>`}</For></nav>
       <Show when=${() => v().Place}><${Place} place=${() => v().Place} /></Show>
       <Show when=${() => v().Uses.length}><${Uses} view=${v} /></Show>
       <Show when=${() => v().View === "drawing"} fallback=${() => html`<${Code} lines=${() => v().Text} label=${() => v().Open} />`}>

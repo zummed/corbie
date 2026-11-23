@@ -1,5 +1,5 @@
 // Package machines is the Machines page: the machines the controller
-// recorded, by tree, each drawn and written out. The Toolkits page shows
+// recorded, by tree, each drawn and as its definition. The Toolkits page shows
 // the same machines from the tools up. Both only read the store.
 package machines
 
@@ -15,6 +15,7 @@ import (
 	"regexp"
 	"slices"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/zummed/corbie/client"
@@ -59,6 +60,9 @@ type List interface {
 type handler struct {
 	Config
 	index *indexed
+	// differ keeps how two stored definitions differ, by their references.
+	mu     sync.Mutex
+	differ map[string][]string
 }
 
 //go:embed machines.js toolkits.js shared.js
@@ -81,7 +85,7 @@ type Pages struct {
 
 // New gives the Machines and Toolkits pages.
 func New(c Config) *Pages {
-	h := &handler{Config: c, index: &indexed{store: c.Store, ctl: c.Controller}}
+	h := &handler{Config: c, index: &indexed{store: c.Store, ctl: c.Controller}, differ: map[string][]string{}}
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /machines", h.show)
 	mux.HandleFunc("GET /machines/stream", h.stream)
@@ -124,7 +128,7 @@ func machineHref(location string, open map[string]bool) string {
 
 // view is the machine chosen on the Machines page, as the page draws it:
 // its part "view". Open is its location, View the tab chosen, drawing or
-// written, and Stamp the mark of the trees it was read at.
+// definition, and Stamp the mark of the trees it was read at.
 type view struct {
 	*index  `json:"-"`
 	Open    string
@@ -195,7 +199,7 @@ type MachinesParts struct {
 
 // machinesPage reads the machine the address chooses, by default the first,
 // as the tab the address chooses shows it: its drawing, with the cards the
-// address names unfolded, or it written out. It gives the status of the
+// address names unfolded, or its definition. It gives the status of the
 // answer where it cannot.
 func (h *handler) machinesPage(ctx context.Context, q url.Values) (view, int, error) {
 	ix, err := h.index.current(ctx)
@@ -220,8 +224,8 @@ func (h *handler) machinesPage(ctx context.Context, q url.Values) (view, int, er
 	if v.Uses, err = h.usesOf(ctx, m); err != nil {
 		return v, http.StatusInternalServerError, err
 	}
-	if v.View == "written" {
-		v.Text, err = writtenOut(def)
+	if v.View == "definition" {
+		v.Text, err = definitionOf(def)
 		if err != nil {
 			return v, http.StatusInternalServerError, err
 		}
@@ -421,7 +425,7 @@ func (h *handler) stream(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// A codeLine is one line of a definition written out, in spans.
+// A codeLine is one line of a definition as text, in spans.
 type codeLine struct {
 	Spans []span
 }
@@ -469,10 +473,10 @@ func colourLine(line string) codeLine {
 // commentAt is the column at which a value's file and line are written.
 const commentAt = 45
 
-// writtenOut gives a definition as it is recorded: its type and name, then
+// definitionOf gives a definition as it is recorded: its type and name, then
 // its fields by name, the type's own among them, each value with the file
 // and line it was submitted from.
-func writtenOut(def *machine.Definition) ([]codeLine, error) {
+func definitionOf(def *machine.Definition) ([]codeLine, error) {
 	d := *def
 	d.Scripts, d.Machines, d.Lines = nil, nil, nil
 	data, err := json.Marshal(d)
@@ -488,14 +492,14 @@ func writtenOut(def *machine.Definition) ([]codeLine, error) {
 		delete(fields, name)
 	}
 	maps.Copy(fields, body)
-	w := &written{lines: def.Lines}
+	w := &writing{lines: def.Lines}
 	w.scalar(def.Type+":", def.Name, def.Type, "")
 	w.mapping(fields, "", "", "")
 	return w.out, nil
 }
 
-// A written writes a definition's values out, a line at a time.
-type written struct {
+// A writing writes a definition's values, a line at a time.
+type writing struct {
 	lines map[string]string
 	out   []codeLine
 }
@@ -503,7 +507,7 @@ type written struct {
 // line writes one line, with the file and line of the value at a place.
 // A value a short form was filled out to has the line of the short form:
 // the nearest place above its own that has one.
-func (w *written) line(text, place string) {
+func (w *writing) line(text, place string) {
 	l := colourLine(text)
 	for at := place; at != ""; {
 		if from := w.lines[at]; from != "" {
@@ -518,7 +522,7 @@ func (w *written) line(text, place string) {
 
 // mapping writes a mapping's fields by name at an indent. The first is
 // written after first, which stands in for the indent.
-func (w *written) mapping(m map[string]any, place, indent, first string) {
+func (w *writing) mapping(m map[string]any, place, indent, first string) {
 	for i, k := range sortedKeys(m) {
 		lead, at := indent, k
 		if i == 0 {
@@ -536,7 +540,7 @@ func (w *written) mapping(m map[string]any, place, indent, first string) {
 }
 
 // value writes a value after what leads it, at an indent.
-func (w *written) value(lead string, v any, place, indent string) {
+func (w *writing) value(lead string, v any, place, indent string) {
 	switch v := v.(type) {
 	case map[string]any:
 		if len(v) == 0 {
@@ -566,7 +570,7 @@ func (w *written) value(lead string, v any, place, indent string) {
 
 // scalar writes a value that is no mapping or list as YAML writes it, a
 // text of several lines as a block under its first line.
-func (w *written) scalar(lead string, v any, place, indent string) {
+func (w *writing) scalar(lead string, v any, place, indent string) {
 	text, _ := yaml.Marshal(v)
 	head, rest, _ := strings.Cut(strings.TrimSuffix(string(text), "\n"), "\n")
 	w.line(lead+" "+head, place)

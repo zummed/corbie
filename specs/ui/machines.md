@@ -1,6 +1,6 @@
 # Machines
 
-The Machines page shows the machines the controller has recorded: each tree, the machine at each of its locations, and for the one chosen its description, its location, the secrets and values it uses, its drawing and its definition written out. The Toolkits page shows the same machines from the tools up: each toolkit, what offers it and what starts that. A UI that acts as the controller offers both, and both only read: `corbie run submit` changes a tree.
+The Machines page shows the machines the controller has recorded: each tree, the machine at each of its locations, and for the one chosen its description, its location, the secrets and values it uses, its drawing and its definition. The Toolkits page shows the same machines from the tools up: each toolkit, what offers it and what starts that. A UI that acts as the controller offers both, and both only read: `corbie run submit` changes a tree.
 
 On both pages, choosing a machine, a toolkit, a tab or a card's link shows it in place, and the address names it. The list keeps its place, and Back shows what was shown before.
 
@@ -62,11 +62,11 @@ approve    send:devices/boiler
 
 A machine with no `description:` shows no line above the rows.
 
-The tabs Drawing and Written out choose the view, Drawing by default:
+The tabs Drawing and Definition choose the view, Drawing by default:
 
 ```
 Drawing       the machine drawn, as Drawing says; a card that names a machine unfolds it in place
-Written out   the definition recorded at the location, each value with the file and line it was submitted from
+Definition    the definition recorded at the location, each value with the file and line it was submitted from
 ```
 
 On the drawing, each state and each running stage shows how many of the UI's client's running runs at the machine's location are in it now; another client's runs are counted at the location only.
@@ -75,7 +75,7 @@ Unfolding a card moves the drawing in to it, and folding it moves the drawing ba
 
 The address of a machine is `/machines?at=<location>`, with `open=<card path>` for each card unfolded, a card's path being the names of the cards down to it joined by `/`: `/machines?at=/home/schedules/away&open=pause`. A run's page links to the address of the machine recorded at its root's location (see Runs).
 
-Written out gives the machine's type and name, then its fields by name. A value's file is written from the directory submitted:
+Definition gives the machine's type and name, then its fields by name. A value's file is written from the directory submitted:
 
 ```
 agent: support
@@ -85,6 +85,15 @@ model:
 ```
 
 When a submit changes the machine shown, read at the interval, it is shown again. The counts of runs follow the store, and change at once when the UI reads a change in the list of runs.
+
+A run's page gives how the definition now recorded at its location differs from the definition the run started with:
+
+```
+- description: "a room"                 a value the run has and the location has not, with its path
++ states.open.on.shut.0.go: "closed"    a value the location has and the run has not
+a script changed: ./clean.js            a file a job runs, whose contents differ
+a child changed: ./inner.yaml           a child machine that differs in any of these
+```
 
 ## Secrets and values
 

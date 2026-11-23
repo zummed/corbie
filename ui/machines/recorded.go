@@ -104,9 +104,11 @@ func nameIn(prefix, at string) string {
 
 // A recorded is the machine recorded at a location: its tree's prefix, the
 // hash of its file, the file it was submitted in, written from the
-// directory submitted, and its definition with the child machines it names.
+// directory submitted, where its definition is stored, and its definition
+// with the child machines it names.
 type recorded struct {
 	Location, Tree, Hash, File string
+	Ref                        blob.Ref
 	Draft                      *machine.Draft
 }
 
@@ -222,7 +224,7 @@ func (c *indexed) recorded(ctx context.Context, prefix string, at location) (*re
 	if def := draft.Definition; at.At == prefix {
 		from = cmp.Or(fileOf(def.Lines[def.Type]), from)
 	}
-	return &recorded{Location: at.At, Tree: prefix, Hash: file.Hash, File: from, Draft: draft}, nil
+	return &recorded{Location: at.At, Tree: prefix, Hash: file.Hash, File: from, Ref: file.Definition, Draft: draft}, nil
 }
 
 // typeAndName gives a machine's type and name as the list and its page

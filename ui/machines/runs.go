@@ -1,10 +1,14 @@
 package machines
 
 import (
+	"bytes"
 	"context"
+	"encoding/json/v2"
 	"slices"
+	"strconv"
 	"time"
 
+	"github.com/zummed/corbie/blob"
 	"github.com/zummed/corbie/client"
 	"github.com/zummed/corbie/instance"
 	"github.com/zummed/corbie/machine"
@@ -90,4 +94,169 @@ func (h *handler) in(ctx context.Context, run *client.Run) ([]string, error) {
 		}
 	}
 	return names, nil
+}
+
+// Differs gives how the definition now recorded at a location differs from
+// the definition a run there started with, stored at def in the run's
+// record:
+//
+//   - each value the run has and the location has not, with "-" before it
+//     and its path, and each value the location has and the run has not,
+//     with "+";
+//   - each file a job runs whose contents differ: `a script changed: ./find.js`;
+//   - each child machine that differs in any of these: `a child changed: ./stuck.yaml`.
+//
+// It gives none where they are the same, and where no machine is recorded
+// at the location.
+func (p *Pages) Differs(ctx context.Context, location string, def blob.Ref) ([]string, error) {
+	h := p.h
+	ix, err := h.index.current(ctx)
+	if err != nil {
+		return nil, err
+	}
+	m := ix.machines[location]
+	if m == nil {
+		return nil, nil
+	}
+	// A stored definition never changes, so two are compared once.
+	key := def.At + "\n" + m.Ref.At
+	h.mu.Lock()
+	found, ok := h.differ[key]
+	h.mu.Unlock()
+	if ok {
+		return found, nil
+	}
+	if found, err = differs(ctx, h.Store, def, m.Ref); err != nil {
+		return nil, err
+	}
+	h.mu.Lock()
+	h.differ[key] = found
+	h.mu.Unlock()
+	return found, nil
+}
+
+// differs gives how the definition stored at now differs from the one
+// stored at was, as Differs gives it.
+func differs(ctx context.Context, s store.Store, was, now blob.Ref) ([]string, error) {
+	a, err := machine.Load(ctx, s, was)
+	if err != nil {
+		return nil, err
+	}
+	b, err := machine.Load(ctx, s, now)
+	if err != nil {
+		return nil, err
+	}
+	before, err := compared(a)
+	if err != nil {
+		return nil, err
+	}
+	after, err := compared(b)
+	if err != nil {
+		return nil, err
+	}
+	out := lineDiff(before, after)
+	for _, name := range sortedKeys(a.Scripts) {
+		script, ok := b.Scripts[name]
+		if !ok {
+			continue // its job is gone, which a value's line says
+		}
+		x, err := blob.ReadAll(ctx, s, was.Beside(a.Scripts[name]), blob.StepLimit)
+		if err != nil {
+			return nil, err
+		}
+		y, err := blob.ReadAll(ctx, s, now.Beside(script), blob.StepLimit)
+		if err != nil {
+			return nil, err
+		}
+		if !bytes.Equal(x, y) {
+			out = append(out, "a script changed: "+name)
+		}
+	}
+	for _, name := range sortedKeys(a.Machines) {
+		child, ok := b.Machines[name]
+		if !ok {
+			continue
+		}
+		changed, err := differs(ctx, s, was.Beside(a.Machines[name]), now.Beside(child))
+		if err != nil {
+			return nil, err
+		}
+		if len(changed) > 0 {
+			out = append(out, "a child changed: "+name)
+		}
+	}
+	return out, nil
+}
+
+// compared gives a definition as the lines Differs compares: one line for
+// each value, with its path, such as `states.open.on.shut.0.go: "closed"`,
+// without what a store or a file's layout gives it: the references to its
+// stored files and machines, and each value's line. The paths of the
+// type's own fields are written from its top, as the file writes them.
+func compared(def *machine.Definition) ([]string, error) {
+	d := *def
+	d.Scripts, d.Machines, d.Lines = nil, nil, nil
+	data, err := json.Marshal(d)
+	if err != nil {
+		return nil, err
+	}
+	var v map[string]any
+	if err := json.Unmarshal(data, &v); err != nil {
+		return nil, err
+	}
+	body := v["body"]
+	delete(v, "body")
+	var out []string
+	flatten("", v, &out)
+	flatten("", body, &out)
+	return out, nil
+}
+
+// flatten writes a value as one line for each value in it, with its path.
+func flatten(at string, v any, out *[]string) {
+	join := func(name string) string {
+		if at == "" {
+			return name
+		}
+		return at + "." + name
+	}
+	switch v := v.(type) {
+	case map[string]any:
+		for _, k := range sortedKeys(v) {
+			flatten(join(k), v[k], out)
+		}
+	case []any:
+		for i, item := range v {
+			flatten(join(strconv.Itoa(i)), item, out)
+		}
+	default:
+		data, _ := json.Marshal(v)
+		*out = append(*out, at+": "+string(data))
+	}
+}
+
+// lineDiff gives the lines of a that b has not, with "-", then the lines of
+// b that a has not, with "+". Each line holds its value's path, so a line
+// is in both or it differs.
+func lineDiff(a, b []string) []string {
+	in := func(lines []string) map[string]bool {
+		set := map[string]bool{}
+		for _, l := range lines {
+			set[l] = true
+		}
+		return set
+	}
+	inA, inB := in(a), in(b)
+	var out []string
+	for _, l := range a {
+		if !inB[l] {
+			out = append(out, "- "+l)
+		}
+	}
+	for _, l := range b {
+		if !inA[l] {
+			out = append(out, "+ "+l)
+		}
+	}
+	return out
 }

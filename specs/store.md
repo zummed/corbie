@@ -136,7 +136,7 @@ The serving computer is the store. While it is off nothing moves, and what was w
 
 A **bucket** is for several computers and for serverless hosts. It needs a service that offers the three ways of writing, ordered listing with each value's ETag, reading part of a value, and copying a value within the store. Corbie names the services it is tested against, says which of them can enforce the table above, and claims nothing more. In a bucket each party holds its own key, and the bucket's policy limits that key to its row of the table. Corbie prints the policy for each party. A policy cannot hold a name to one part, so it lets a runner or a client add names deeper in a record than the layout draws; it never lets one replace or remove anything.
 
-**Memory** is for `corbie test` and Corbie's own tests. It enforces the table as a bucket does, so access rules can be tried without a bucket. The address `memory:` is one store for the process: every party started in the process shares it, and it goes when the process does. `corbie up --store memory:` so runs a directory of machines and keeps nothing.
+**Memory** is for `corbie test` and Corbie's own tests. It enforces the table as a bucket does, so access rules can be tried without a bucket. The address `memory:` is one store for the process: every party started in the process shares it, and it goes when the process does. `corbie up --store memory:` so runs a directory of machines and keeps none of its runs. Its config stays, and each start sets the store up again for the parties the config holds. It starts no program: a program is a process of its own.
 
 ## What the store is trusted with
 

@@ -12,8 +12,9 @@ import (
 // The command builds for js/wasm, and there corbie up runs a controller, a
 // runner and a gateway in the one process: a job runs beside its runner,
 // the store memory: is one store for them all, and the gateway listens on
-// no port and answers the code that started the program. Node stands in for
-// a browser.
+// no port and answers the code that started the program. A job with a
+// memory: runs, and a call the gateway cannot read leaves the program up.
+// Node stands in for a browser.
 func Test_role_js_wasm_runs_a_job_and_answers_its_hosts_code(t *testing.T) {
 	node, err := exec.LookPath("node")
 	if err != nil {
@@ -40,7 +41,7 @@ func Test_role_js_wasm_runs_a_job_and_answers_its_hosts_code(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	write(filepath.Join(work, "double.yaml"), "flow: double\nstages:\n  twice: { job: { script: ./double.js, input: \"${input}\" } }\noutput: ${stages.twice.output}\n")
+	write(filepath.Join(work, "double.yaml"), "flow: double\nstages:\n  twice: { job: { script: ./double.js, memory: 64MB, input: \"${input}\" } }\noutput: ${stages.twice.output}\n")
 	write(filepath.Join(work, "double.js"), "return { doubled: input.n * 2 }\n")
 	// A machine made while running: the controller takes its steps apart from itself.
 	write(filepath.Join(work, "made.yaml"), "flow: made\nstages:\n  make: { job: { script: ./make.js } }\n  run: { job: { machine: \"${stages.make.output}\" } }\noutput: ${stages.run.output}\n")
@@ -48,7 +49,16 @@ func Test_role_js_wasm_runs_a_job_and_answers_its_hosts_code(t *testing.T) {
 	token := filepath.Join(dir, "token")
 	write(token, "token-of-the-test\n")
 
-	run := exec.Command(node, "testdata/js_wasm.cjs", filepath.Join(strings.TrimSpace(string(root)), "lib", "wasm", "wasm_exec.js"), program, work, filepath.Join(dir, "config"), token)
+	// The config is used twice: the store went with the first process, and
+	// the second sets it up again.
+	for range 2 {
+		jsWasmOnce(t, node, strings.TrimSpace(string(root)), program, work, filepath.Join(dir, "config"), token)
+	}
+}
+
+func jsWasmOnce(t *testing.T, node, root, program, work, config, token string) {
+	t.Helper()
+	run := exec.Command(node, "testdata/js_wasm.cjs", filepath.Join(root, "lib", "wasm", "wasm_exec.js"), program, work, config, token)
 	var failed strings.Builder
 	run.Stderr = &failed
 	out, err := run.Output()
@@ -56,8 +66,10 @@ func Test_role_js_wasm_runs_a_job_and_answers_its_hosts_code(t *testing.T) {
 		t.Fatalf("%v\n%s", err, failed.String())
 	}
 	var got struct {
-		Said string
-		Who  struct {
+		Said   string
+		Short  string
+		Stayed bool
+		Who    struct {
 			Status int
 			Body   string
 		}
@@ -87,6 +99,12 @@ func Test_role_js_wasm_runs_a_job_and_answers_its_hosts_code(t *testing.T) {
 	}
 	if !strings.Contains(got.Said, "answering the requests of the code that started it") {
 		t.Errorf("the gateway did not say that it listens on no port:\n%s", got.Said)
+	}
+	if !strings.Contains(got.Short, "corbieGateway.fetch takes") {
+		t.Errorf("a call with three arguments gave %q", got.Short)
+	}
+	if !got.Stayed {
+		t.Error("the function that stops a request did something after the answer was whole")
 	}
 	if got.Who.Status != 200 || !strings.Contains(got.Who.Body, `"client"`) {
 		t.Errorf("GET /client was answered %d %s", got.Who.Status, got.Who.Body)

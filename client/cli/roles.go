@@ -257,6 +257,11 @@ func (e *Env) start(cfg identity.Config, named []item, before func() error) erro
 		if role.Serverless() {
 			return fmt.Errorf("a program needs a process that stays up, and this is a serverless host")
 		}
+		if recorded, err := cfg.ControllerStore(); err != nil {
+			return err
+		} else if recorded == "memory:" {
+			return fmt.Errorf("a program is a process of its own, and the store memory: is this process's alone: the program %s would find none of its runs", it.name)
+		}
 		found[i] = program{name: it.name, path: path, args: append(first, it.words...)}
 	}
 	// On a serverless host the roles use a copy of the config that is

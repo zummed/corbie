@@ -100,7 +100,7 @@ Each rule here is checked on the memory store opened as the party named, and on 
 ## Kinds of store
 
 **R-store-67** The address `memory:` names one store for the process. Every party opened at it in the process reads what the others wrote, and nothing of it is left when the process ends.
-*Accept:* a value written through one open of `memory:` is read through a second open in the same process. `corbie up --store memory:` on a directory starts its roles and submits the directory. *Test:* `Test_store_memory_address_is_one_store_of_the_process`, `Test_role_js_wasm_runs_a_job_and_answers_its_hosts_code`
+*Accept:* a value written through one open of `memory:` is read through a second open in the same process. `corbie up --store memory:` on a directory starts its roles and submits the directory, and does so again when it is started a second time on the same config. With a program named it starts nothing and gives the reason. *Test:* `Test_store_memory_address_is_one_store_of_the_process`, `Test_store_memory_address_starts_no_program`, `Test_role_js_wasm_runs_a_job_and_answers_its_hosts_code`
 
 **R-store-48** In a directory every value is one plain file, at a path that follows from its name, and every party on the computer can read and write all of it.
 *Accept:* after a run on a directory store, find the run's head and its step entries with a file listing and print them with ordinary tools, using nothing of Corbie's. A process acting as a runner reads a head, a step entry and a trust entry, and deletes a message in the controller's inbox: none is refused.

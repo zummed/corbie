@@ -41,12 +41,17 @@ const ask = (method, path, body) => new Promise((resolve) => {
     if (i > 3000) { console.error("corbie up did not start the gateway and submit the directory:\n" + said.join("")); process.exit(1) }
     await new Promise((r) => setTimeout(r, 10))
   }
+  // A call the gateway cannot read asks nothing, and the program stays up.
+  const short = String(globalThis.corbieGateway.fetch("GET", "/client", {}))
+  let stopFirst
+  await new Promise((resolve) => { stopFirst = globalThis.corbieGateway.fetch("GET", "/client", {}, null, () => {}, () => {}, resolve) })
+  const stayed = stopFirst() === undefined
   const who = await ask("GET", "/client")
   const started = await ask("POST", "/runs", { at: "/work/double", input: { n: 21 } })
   const id = JSON.parse(started.body).id
   const run = id ? await ask("GET", `/runs/${id}?wait`) : { status: 0, body: "{}" }
   const madeID = JSON.parse((await ask("POST", "/runs", { at: "/work/made" })).body).id
   const made = madeID ? await ask("GET", `/runs/${madeID}?wait`) : { status: 0, body: "{}" }
-  process.stdout.write(JSON.stringify({ said: said.join(""), who, started, run: { status: run.status, body: JSON.parse(run.body) }, made: { status: made.status, body: JSON.parse(made.body) } }))
+  process.stdout.write(JSON.stringify({ said: said.join(""), short, stayed, who, started, run: { status: run.status, body: JSON.parse(run.body) }, made: { status: made.status, body: JSON.parse(made.body) } }))
   process.exit(0)
 })()

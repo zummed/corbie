@@ -46,6 +46,12 @@ func Start(command []string, dir string, out io.Writer) (*Process, error) {
 	return &Process{Cmd: cmd, Wire: &Wire{R: fromChildR, W: toChildW}, to: toChildW, from: fromChildR}, nil
 }
 
+// Watch calls over once, when what the process and everything it started
+// hold passes a limit, and returns when done closes.
+func (p *Process) Watch(limit int64, done <-chan struct{}, over func()) {
+	Watch(p.Cmd.Process.Pid, limit, done, over)
+}
+
 // Kill stops the process and everything it started.
 func (p *Process) Kill() { killGroup(p.Cmd) }
 

@@ -3,8 +3,9 @@
 package role
 
 import (
+	"context"
+	"errors"
 	"io"
-	"os/exec"
 )
 
 // In WebAssembly there is one process, and it starts no other. A piece of
@@ -13,7 +14,6 @@ import (
 
 // A Process is a piece of work started with a channel to it.
 type Process struct {
-	Cmd  *exec.Cmd // none here
 	Wire *Wire
 	end  func()
 }
@@ -24,6 +24,9 @@ var Work func(command []string, w *Wire)
 
 // Start starts a piece of work beside its starter.
 func Start(command []string, dir string, out io.Writer) (*Process, error) {
+	if Work == nil {
+		return nil, errors.New("this program holds nothing that does the work")
+	}
 	toWork, fromStarter := io.Pipe()
 	toStarter, fromWork := io.Pipe()
 	go func() {
@@ -35,6 +38,13 @@ func Start(command []string, dir string, out io.Writer) (*Process, error) {
 		toStarter.Close()
 	}}, nil
 }
+
+// Watch only waits here: the work has no memory of its own to count, in
+// one process with its starter and everything else.
+func (p *Process) Watch(limit int64, done <-chan struct{}, over func()) { <-done }
+
+// WatchOwn does nothing here, for the same reason.
+func WatchOwn(ctx context.Context, limit int64, over func()) {}
 
 // Kill stops the work: its channel closes, and it ends as it would with its starter gone.
 func (p *Process) Kill() { p.end() }

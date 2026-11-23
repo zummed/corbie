@@ -290,7 +290,10 @@ func (p *pass) accept(name string, data []byte) (*arrival, error) {
 	// one; so is a client's send to an address, which the controller routes.
 	clientSend := kind == identity.Client && msg.Kind == instance.KindSend
 	forNone := msg.Kind == instance.KindSubmit || msg.Kind == instance.KindSet
-	if forNone && (kind != identity.Client || msg.Instance != "") ||
+	// The one submit the controller's own key sends is the owner's removal
+	// of a tree.
+	ownerRemoval := kind == identity.Controller && msg.Kind == instance.KindSubmit && msg.Submit.Remove
+	if forNone && (kind != identity.Client && !ownerRemoval || msg.Instance != "") ||
 		clientSend && msg.Instance != "" ||
 		!forNone && !clientSend && store.CheckInstance(msg.Instance) != nil {
 		return nil, nil

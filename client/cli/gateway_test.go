@@ -263,6 +263,11 @@ func Test_client_commands_through_a_gateway(t *testing.T) {
 	if shown := editor.ok("", "run", "show", boiler); !strings.Contains(shown, "  cancelled  ") {
 		t.Errorf("after the cancel the boiler is %s", shown)
 	}
+	// A removal of the tree, with the value and the secret set in it.
+	if out := sent("run", "remove", "/house"); !strings.Contains(out, "/house/greet            transient   removed\n") ||
+		!strings.Contains(out, "removed: secret KEY at /house\n") || !strings.Contains(out, "removed: value COLOUR at /house\n") {
+		t.Errorf("the removal printed %s", out)
+	}
 
 	// What is refused.
 	if status, _, said := via("controller", "parties"); status != 2 || !strings.Contains(said, "--gateway is for the commands a client sends") {

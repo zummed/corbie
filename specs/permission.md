@@ -86,7 +86,7 @@ secrets and values                those set at its location or above; the neares
 - A child started by `machine:` runs at its parent's location. A machine made while running runs at the location of the job that starts it.
 - A made machine's sends would carry that job's location in `event.from`, which is why it addresses no other run.
 
-A tree belongs to the client that first submitted it. Only that client submits there and cancels the runs at its locations, and it and the clients a file's `read:` lists read them (see Reading). A client submits trees only at prefixes its ceiling's `at:` entries match.
+A tree belongs to the client that first submitted it. Only that client submits there and cancels the runs at its locations, only it and the controller's owner remove the tree, and it and the clients a file's `read:` lists read them (see Reading). A client submits trees only at prefixes its ceiling's `at:` entries match.
 
 ```
 work$ corbie client card | ssh ctl corbie controller enrol - --ceiling "at:/work,network,secret:*@*"
@@ -232,7 +232,7 @@ A script cannot reach outside itself except through the kinds above, and those a
   14 levels of files that each name the next twice   3.9 seconds   230 MiB, twice that with each level
 ```
 
-- Two clients whose ceilings match one prefix each set secrets and values there while it holds no tree. What one set stays when the other submits a tree there, and that tree's runs use it. The controller's owner gives each client its own prefix.
+- Two clients whose ceilings match one prefix each set secrets and values there while it holds no tree. What one set stays when the other submits a tree there, and that tree's runs use it. Either removes all of it with `corbie run remove`, as each could remove it name by name. The controller's owner gives each client its own prefix.
 - Whoever holds a token of a gateway is the client the token names, for everything a client does. With a token of a client whose ceiling has `at:`, they submit a tree and run any script within that ceiling.
 - A gateway answers a page of any website. A page that has a token is the token's client, and a page that has none is refused.
 - A secret or a value set through a gateway is read by the gateway's process on its way to the controller.

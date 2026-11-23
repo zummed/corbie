@@ -129,7 +129,7 @@ The detailed rules behind the [Instances overview](../instance.md).
 **R-inst-61** The receipt for an event names the run that took it and says whether the machine acted on it or had no rule for it.
 *Accept:* send `go` to a statechart in a state with a rule for `go`: the receipt names the run and says it was acted on. Send `go` again while the chart is busy in a state with no such rule: the receipt says there was no rule for it.
 
-**R-inst-62** A receipt is sealed to the client that sent the message, and one for a set, remove or list of secrets or values to the controller as well (C-ctl-100), and is kept for a day, a taken call's as R-inst-69 says.
+**R-inst-62** A receipt is sealed to the client that sent the message, and one for a set, remove or list of secrets or values (C-ctl-100) or for a removal of a tree (C-ctl-107) to the controller as well, and is kept for a day, a taken call's as R-inst-69 says.
 *Accept:* a receipt for a refused start, whose text quotes the definition, shows none of that text when read raw from the store, and another client handed the raw value cannot open it. A receipt can be read twenty-three hours after it was written, under a message whose name carries a time a year old as well, and is gone after a day and a housekeeping pass.
 
 **R-inst-64** A message sent twice gets the same answer twice.

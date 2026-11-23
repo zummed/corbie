@@ -104,12 +104,14 @@ type Start struct {
 // A Submit records a directory as a tree at a prefix. Files are its
 // machines, by location, each uploaded with the message; Problems are the
 // locations of files that could not be read, which keep what was recorded
-// before.
+// before. One with Remove removes the tree at the prefix, and the secrets
+// and values set at or under it: it names no file.
 type Submit struct {
 	Prefix    string                `json:"prefix"`
-	Directory string                `json:"directory"`
+	Directory string                `json:"directory,omitzero"`
 	Files     map[string]SubmitFile `json:"files,omitzero"`
 	Problems  []string              `json:"problems,omitzero"`
+	Remove    bool                  `json:"remove,omitzero"`
 }
 
 // A SubmitFile is one machine of a submit: its stored definition among the

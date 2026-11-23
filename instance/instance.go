@@ -425,12 +425,15 @@ type Listed struct {
 // tree, the runs it cancelled, the directory last submitted there when it
 // was another, the secrets and values the files use that are not set, and
 // the clients the files' read: lists that the controller does not trust.
+// Removed are the secrets and values a removal of the tree removed, each as
+// "secret NAME at /location" or "value NAME at /location".
 type Submitted struct {
 	Locations []Recorded `json:"locations,omitzero"`
 	Cancelled []string   `json:"cancelled,omitzero"`
 	Before    string     `json:"before,omitzero"`
 	Missing   []string   `json:"missing,omitzero"`
 	Untrusted []string   `json:"untrusted,omitzero"`
+	Removed   []string   `json:"removed,omitzero"`
 }
 
 // Recorded is what a submit did at one location: started, restarted,

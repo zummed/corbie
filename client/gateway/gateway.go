@@ -120,11 +120,13 @@ func (g *Gateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			}
 		case r.Method != http.MethodPost:
 			fail(w, http.StatusNotFound, fmt.Errorf("there is no such route"))
-		case !slices.Contains([]string{"trees", "secrets", "values", "events"}, route):
+		case !slices.Contains([]string{"trees", "trees/remove", "secrets", "values", "events"}, route):
 			fail(w, http.StatusNotFound, fmt.Errorf("there is no such route"))
 		case !takes(w, query):
 		case route == "trees":
 			g.submit(w, r, c)
+		case route == "trees/remove":
+			g.removeTree(w, r, c)
 		case route == "events":
 			g.sendTo(w, r, c)
 		default:
@@ -539,6 +541,23 @@ func (g *Gateway) set(w http.ResponseWriter, r *http.Request, c *client.Client, 
 		return
 	}
 	g.receipt(w, r, c, s.Life, send)
+}
+
+// removed is the prefix of a tree to remove.
+type removed struct {
+	At   string           `json:"at"`
+	Life machine.Duration `json:"life,omitzero"`
+}
+
+// removeTree removes the tree at a prefix, and answers with the receipt.
+func (g *Gateway) removeTree(w http.ResponseWriter, r *http.Request, c *client.Client) {
+	var s removed
+	if !read(w, r, &s) {
+		return
+	}
+	g.receipt(w, r, c, s.Life, func(life time.Duration) (string, error) {
+		return c.RemoveTree(r.Context(), s.At, life)
+	})
 }
 
 // sent is an event sent to an address: a location, or a location and a

@@ -33,6 +33,7 @@ corbie client secret list
 - Set at the same location under the same name, a later secret replaces an earlier one, whoever set either. Nothing records who set it.
 - Where two clients' ceilings match a prefix with no tree, each sets there, and either replaces what the other set. Once one submits a tree there, the other sets nothing at it or below it.
 - A remove fails when the name is not set at the location given. Where the client may not set, the refusal says nothing of what is set there.
+- `corbie run remove <prefix>` removes every secret and value set at the prefix or under it, with the tree there (see client.md).
 - The client's list gives the names and locations at or under the prefixes where it may set. The owner's list gives every one, a client's included.
 
 This gives a client no more than it has. A secret goes only to a job that names it, under every ceiling, and only runs in the client's own trees use one set there. The controller's owner can read any secret, whoever set it, since the controller holds the key that opens it.

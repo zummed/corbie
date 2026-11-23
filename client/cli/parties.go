@@ -1257,6 +1257,42 @@ func cmdControllerCancel(e *Env, args []string) error {
 	return nil
 }
 
+// cmdControllerTreeRemove removes any client's tree, with the controller's
+// own key.
+func cmdControllerTreeRemove(e *Env, args []string) error {
+	rest, err := e.Parse(args)
+	if err != nil {
+		return err
+	}
+	if len(rest) != 1 || store.CheckLocation(rest[0]) != nil || rest[0] == "/" {
+		return Mistake("name the prefix of one tree: / and the names of one or more directories, as /home")
+	}
+	ctl, s, err := e.Controller()
+	if err != nil {
+		return err
+	}
+	_, mark, err := s.Read(e.ctx, store.Tree(ctl.Name, rest[0]))
+	if err != nil {
+		return err
+	}
+	if mark == store.None {
+		return fmt.Errorf("no tree is recorded at %s", rest[0])
+	}
+	var sender store.Sender
+	now := time.Now()
+	name := store.Message(ctl.Name, ctl.Name, "owner-"+sender.Next(now))
+	msg := &instance.Message{Kind: instance.KindSubmit, Submit: &instance.Submit{Prefix: rest[0], Remove: true}}
+	data, err := ctl.Write(name, now, now.Add(24*time.Hour), msg, ctl.Card)
+	if err != nil {
+		return err
+	}
+	if _, err := s.Write(e.ctx, name, data, store.OnlyIfNew); err != nil {
+		return err
+	}
+	e.Say("the removal is in the controller's inbox; the controller acts on it at its next pass")
+	return nil
+}
+
 // cmdPolicy prints the policy that limits one party's key to a bucket to
 // what that party may touch.
 func cmdPolicy(e *Env, args []string) error {

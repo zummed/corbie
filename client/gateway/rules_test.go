@@ -3,7 +3,9 @@ package gateway_test
 import (
 	"bufio"
 	"context"
+	"encoding/base64"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -585,8 +587,9 @@ func TestStreamSaysWhyItStopped(t *testing.T) {
 }
 
 // A start with ?wait is answered with the run when it has ended. A blob of
-// its output is read by its path, as for any run.
-func Test_client_gateway_start_waits(t *testing.T) {
+// its output is read by its path, as for any run, or with ?files has its
+// bytes in the answer.
+func Test_client_gateway_start_waits_and_gives_files(t *testing.T) {
 	local, err := client.NewLocal(context.Background(), permission.Layer{}, nil)
 	if err != nil {
 		t.Fatal(err)
@@ -612,7 +615,85 @@ func Test_client_gateway_start_waits(t *testing.T) {
 	if status, _, text := c.do("GET", "/runs/"+id+"/files/"+file["$blob"].(string), ""); status != 200 || text != "zebra" {
 		t.Errorf("the blob read by its path was answered %d %q", status, text)
 	}
-	// A wait's own limit answers with the run as it stands.
+	// With files, each blob of the output has its bytes, and the rest of the output is as it was.
+	b64 := func(text string) string { return base64.StdEncoding.EncodeToString([]byte(text)) }
+	status, run, text = start("?wait&files", at)
+	output, _ = run["output"].(map[string]any)
+	file, _ = output["file"].(map[string]any)
+	if status != 200 || run["status"] != "done" || output["n"] != float64(1) || file["data"] != b64("zebra") || file["type"] != "text/plain" || file["size"] != float64(5) || file["$blob"] != "file" || run["withheld"] != nil {
+		t.Fatalf("a start with wait and files was answered %d %s", status, text)
+	}
+	if _, run, text := c.do("GET", "/runs/"+id+"?files", ""); !strings.Contains(text, b64("zebra")) || run["status"] != "done" {
+		t.Errorf("GET with files was answered %s", text)
+	}
+	// An output that is itself a blob.
+	whole := c.place("flow: whole\nstages:\n  make: { job: { script: ./whole.js } }\noutput: ${stages.make.output}\n",
+		map[string]string{"whole.js": `return blobs.make("zebra")`})
+	if _, run, text := start("?wait&files", whole); fmt.Sprint(run["output"].(map[string]any)["data"]) != b64("zebra") {
+		t.Errorf("a run whose output is a blob was answered %s", text)
+	}
+	// A blob in a list, the same blob at two places, a blob written out
+	// inside a text, and values that only look like blobs: one that names a
+	// blob's path, one with data of its own, and one that holds a blob.
+	mixed := c.place("flow: mixed\nstages:\n  make: { job: { script: ./mixed.js } }\noutput:\n  made: ${stages.make.output}\n  text: \"see ${stages.make.output.file} end\"\n",
+		map[string]string{"mixed.js": `const b = blobs.make("ab")
+			return { file: blobs.make("zebra"), list: [b, { again: b }],
+				looks: { "$blob": "made.file" }, more: { "$blob": "made.file", type: "x", size: 1, data: "mine" }, holds: { "$blob": "x", inner: blobs.make("cd") } }`})
+	status, run, text = start("?wait&files", mixed)
+	output, _ = run["output"].(map[string]any)
+	made, _ := output["made"].(map[string]any)
+	at2 := func(v any, keys ...any) any {
+		for _, k := range keys {
+			switch k := k.(type) {
+			case string:
+				m, _ := v.(map[string]any)
+				v = m[k]
+			case int:
+				l, _ := v.([]any)
+				if k >= len(l) {
+					return nil
+				}
+				v = l[k]
+			}
+		}
+		return v
+	}
+	if status != 200 || run["status"] != "done" || at2(made, "file", "data") != b64("zebra") || at2(made, "list", 0, "data") != b64("ab") || at2(made, "list", 1, "again", "data") != b64("ab") ||
+		at2(made, "looks", "data") != nil || at2(made, "looks", "$blob") != "made.file" || at2(made, "more", "data") != "mine" || at2(made, "holds", "inner", "data") != b64("cd") || at2(made, "holds", "$blob") != "x" ||
+		!strings.Contains(fmt.Sprint(output["text"]), b64("zebra")) || !strings.HasPrefix(fmt.Sprint(output["text"]), "see ") {
+		t.Errorf("a run with blobs and values like blobs was answered %d %s", status, text)
+	}
+	// The blobs are given up to a size together: 5 + 2 + 2 + 2 + 5 bytes here.
+	// Past it the run is answered with no bytes, and says why and how each is read.
+	mixedID, _ := run["id"].(string)
+	small := httptest.NewServer(&gateway.Gateway{Callers: map[string]*client.Client{"the-token": local.Client}, MaxFiles: 15})
+	defer small.Close()
+	exact := httptest.NewServer(&gateway.Gateway{Callers: map[string]*client.Client{"the-token": local.Client}, MaxFiles: 16})
+	defer exact.Close()
+	_, run, text = caller{t: t, url: small.URL, token: "the-token"}.do("GET", "/runs/"+mixedID+"?files", "")
+	withheld, _ := run["withheld"].(string)
+	if run["status"] != "done" || !strings.Contains(withheld, "16 bytes") || !strings.Contains(withheld, "/runs/"+mixedID+"/files/") || strings.Contains(text, b64("zebra")) || at2(run["output"], "made", "file", "$blob") != "made.file" {
+		t.Errorf("blobs of 16 bytes, with at most 15 given, were answered %s", text)
+	}
+	if _, run, text := (caller{t: t, url: exact.URL, token: "the-token"}).do("GET", "/runs/"+mixedID+"?files", ""); run["withheld"] != nil || !strings.Contains(text, b64("zebra")) {
+		t.Errorf("blobs of 16 bytes, with at most 16 given, were answered %s", text)
+	}
+	// On a start past the size, the answer is still the run.
+	if status, run, text := (caller{t: t, url: small.URL, token: "the-token"}).send("POST", "/runs?wait&files", "application/json", strings.NewReader(`{"at": "`+mixed+`"}`)); status != 200 || run["id"] == nil || run["status"] != "done" || run["withheld"] == nil {
+		t.Errorf("a start with files past the size was answered %d %s", status, text)
+	}
+	// files needs wait on a start: alone it is answered 400, and starts no run.
+	_, _, listedBefore := c.do("GET", "/runs?all", "")
+	if status, _, text := start("?files", at); status != 400 || !strings.Contains(text, "wait") {
+		t.Errorf("a start with files and no wait was answered %d %s", status, text)
+	}
+	if _, _, after := c.do("GET", "/runs?all", ""); strings.Count(after, `"id"`) != strings.Count(listedBefore, `"id"`) {
+		t.Errorf("a start with files and no wait started a run")
+	}
+	// A wait's own limit answers with the run as it stands, with files too.
+	if status, run, text := start("?wait=200ms&files", slow); status != 200 || run["status"] != "running" {
+		t.Errorf("a start with a wait of 200ms and files was answered %d %s", status, text)
+	}
 	began := time.Now()
 	if status, run, text := start("?wait=200ms", slow); status != 200 || run["status"] != "running" || time.Since(began) > 5*time.Second {
 		t.Errorf("a start with a wait of 200ms was answered %d %s after %s", status, text, time.Since(began))

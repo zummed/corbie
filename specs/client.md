@@ -459,6 +459,14 @@ One request starts a run and is answered with the run:
 - `POST /runs?wait` starts the run and answers when it has ended, with the run, as `GET /runs/<id>?wait` does. `?wait=30s` answers after 30 s at most.
 - A `wait` that is no length of time is answered 400, and no run is started.
 
+`?files` puts the bytes of each blob of the run's output in the answer:
+
+- A blob is then `{ "$blob": "<path>", "type", "size", "data": "<base64>" }`. Without `?files` it has no `data`, and `GET /runs/<id>/files/<path>` gives its bytes.
+- `POST /runs?wait&files` and `GET /runs/<id>?files` take it. On a start `?files` needs `?wait`: alone it is answered 400, and no run is started.
+- A blob written out inside a text has its `data` there too.
+- A value that has a `$blob` key and is not a blob is unchanged.
+- The gateway gives at most 64 MiB of blobs in one answer, counted together. Past that the run is answered with no `data`, and its `withheld` says why and where each blob is read.
+
 A page in a browser calls the gateway from any origin:
 
 - The gateway answers the `OPTIONS` request a browser sends before a page's call, with no token.

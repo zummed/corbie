@@ -2,6 +2,7 @@ package client
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json/v2"
 	"errors"
 	"fmt"
@@ -838,6 +839,22 @@ func (c *Client) Files(ctx context.Context, id string) (map[string]File, error) 
 		files := map[string]File{}
 		return files, c.remote.get(ctx, "/runs/"+id+"/files", &files)
 	}
+	output, err := c.output(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	files := map[string]File{}
+	if _, whole := blob.AsRef(output); whole {
+		named(output, blob.Whole, blob.Whole, files)
+	} else {
+		named(output, "", "", files)
+	}
+	return files, nil
+}
+
+// output gives a run's output as the store has it, each blob in it as its
+// reference: of the run's latest step, or of a call's result.
+func (c *Client) output(ctx context.Context, id string) (any, error) {
 	var given any
 	latest, err := c.current(ctx, id)
 	switch {
@@ -855,17 +872,43 @@ func (c *Client) Files(ctx context.Context, id string) (map[string]File, error) 
 	default:
 		given = latest.State.Output
 	}
-	output, err := plain(given)
+	return plain(given)
+}
+
+// OutputWithBytes gives a run's output as Show gives it, with the bytes of
+// each blob beside its path, type and size, as base64 in data. The blobs
+// are named where the shown output is made, so each is the one its path
+// fetches. size is how many bytes the blobs are together: when that is
+// more than most, no blob is read and no output is given.
+func (c *Client) OutputWithBytes(ctx context.Context, id string, most int64) (output any, size int64, err error) {
+	if c.remote != nil {
+		var run Run
+		return run.Output, 0, c.remote.get(ctx, "/runs/"+id+"?files", &run)
+	}
+	stored, err := c.output(ctx, id)
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
-	files := map[string]File{}
-	if _, whole := blob.AsRef(output); whole {
-		named(output, blob.Whole, blob.Whole, files)
-	} else {
-		named(output, "", "", files)
+	// Counted as they are shown, a blob written out inside a text too.
+	blob.Shown(stored, func(_ string, ref blob.Ref) (any, error) {
+		size += ref.Size
+		return nil, nil
+	})
+	if size > most {
+		return nil, size, nil
 	}
-	return files, nil
+	output, err = blob.Shown(stored, func(path string, ref blob.Ref) (any, error) {
+		reader, err := blob.Open(ctx, c.Store, ref)
+		if err != nil {
+			return nil, err
+		}
+		data, err := io.ReadAll(reader)
+		if err != nil {
+			return nil, err
+		}
+		return map[string]any{"$blob": path, "type": ref.Type, "size": float64(ref.Size), "data": base64.StdEncoding.EncodeToString(data)}, nil
+	})
+	return output, size, err
 }
 
 // calledOutput gives the output of a call into another client's tree, from

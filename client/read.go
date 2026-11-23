@@ -36,6 +36,9 @@ type Run struct {
 	Title  string `json:"title,omitzero"`
 	Input  any    `json:"input,omitzero"`
 	Output any    `json:"output,omitzero"`
+	// Withheld says why the output's blobs have no bytes, where the run was
+	// asked for with them.
+	Withheld string `json:"withheld,omitzero"`
 	// Used lists the permissions the run used: those of every job in it
 	// and below it.
 	Used []string `json:"used,omitzero"`

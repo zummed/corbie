@@ -43,6 +43,10 @@ type Gateway struct {
 	// Interval is how often a stream looks again at a store that cannot
 	// tell it when something was written.
 	Interval time.Duration
+	// MaxFiles is the most bytes the blobs of one run's output are given
+	// with the run, together; zero is 64 MiB, as much as a script is handed
+	// whole.
+	MaxFiles int64
 }
 
 // start is what the part named start of a request to start a run holds,
@@ -136,7 +140,7 @@ func (g *Gateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	switch {
 	case len(parts) == 1 && r.Method == http.MethodPost:
-		if takes(w, query, "wait") {
+		if takes(w, query, "wait", "files") {
 			g.start(w, r, c)
 		}
 	case len(parts) == 1 && r.Method == http.MethodGet:
@@ -346,8 +350,12 @@ func (g *Gateway) start(w http.ResponseWriter, r *http.Request, c *client.Client
 		}
 		st.Allow = &permission.Layer{Allow: s.Allow, Deny: s.Deny}
 	}
-	// A wait that cannot be read is refused before anything starts.
+	// A wait that cannot be read is refused before anything starts, and so
+	// is files with no wait: a start alone is answered with no run.
 	limit, err := waitLimit(r.URL.Query())
+	if err == nil && r.URL.Query().Has("files") && !r.URL.Query().Has("wait") {
+		err = errors.New("files gives the blobs of the run a start waited for, and needs wait")
+	}
 	if err != nil {
 		fail(w, http.StatusBadRequest, err)
 		return
@@ -376,7 +384,8 @@ func waitLimit(query url.Values) (time.Duration, error) {
 
 // shown answers with a run: the one given, or with wait the run when it has
 // ended. A wait cut short, by its own limit or by the caller going away,
-// answers with the run as it stands.
+// answers with the run as it stands. With files each file of the output has
+// its bytes.
 func (g *Gateway) shown(w http.ResponseWriter, r *http.Request, c *client.Client, id string, limit time.Duration, shown *client.Run) {
 	ctx, query := r.Context(), r.URL.Query()
 	var err error
@@ -387,6 +396,20 @@ func (g *Gateway) shown(w http.ResponseWriter, r *http.Request, c *client.Client
 			defer cancel()
 		}
 		shown, err = c.Wait(ctx, id, g.interval())
+	}
+	// The request's own time, not the wait's: a wait cut short is answered too.
+	if err == nil && query.Has("files") && shown.Output != nil {
+		most := g.MaxFiles
+		if most == 0 {
+			most = 64 << 20
+		}
+		var output any
+		var size int64
+		if output, size, err = c.OutputWithBytes(r.Context(), id, most); err == nil && size > most {
+			shown.Withheld = fmt.Sprintf("the blobs of the output are %d bytes together, and at most %d are given with a run: read each at /runs/%s/files/<its path>", size, most, id)
+		} else if err == nil {
+			shown.Output = output
+		}
 	}
 	reply(w, shown, err)
 }
@@ -641,7 +664,7 @@ func (g *Gateway) run(w http.ResponseWriter, r *http.Request, c *client.Client, 
 	case len(rest) > 0:
 		what = rest[0]
 	case r.Method == http.MethodGet:
-		asks = []string{"wait"}
+		asks = []string{"wait", "files"}
 	}
 	if !takes(w, r.URL.Query(), asks...) {
 		return

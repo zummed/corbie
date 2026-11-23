@@ -360,7 +360,7 @@ output: ${stages.read.output}
 	if status != 404 || !strings.Contains(text, "nothing") {
 		t.Fatalf("a start carrying a file that is not there was answered %d %s", status, text)
 	}
-	if _, _, listed := c.do("GET", "/runs?all", ""); strings.Count(listed, `"id"`) != 2 {
+	if _, listed := c.listed("/runs?all", second); strings.Count(listed, `"id"`) != 2 {
 		t.Fatalf("after two starts and one refused, the listing is %s", listed)
 	}
 }
@@ -416,7 +416,7 @@ output: ${stages.call.output}
 	if run["status"] != "done" || quotedAny(run["output"]) != `{"n":1,"status":200}` || run["labels"].(map[string]any)["team"] != "docs" || shown.Load() != "the token set at /" {
 		t.Fatalf("the run ended %s, and its job showed the token %q", text, shown.Load())
 	}
-	if _, _, listed := c.do("GET", "/runs?all&label=team=docs", ""); !strings.Contains(listed, run["id"].(string)) {
+	if _, listed := c.listed("/runs?all&label=team=docs", run["id"].(string)); !strings.Contains(listed, run["id"].(string)) {
 		t.Fatalf("the listing narrowed to the label is %s", listed)
 	}
 	// What the list narrowed away is refused, and the refusal names the

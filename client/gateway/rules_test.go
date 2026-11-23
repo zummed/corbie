@@ -296,13 +296,8 @@ func Test_client_gateway_two_copies_answer_alike(t *testing.T) {
 	if _, _, text := two.do("GET", "/runs/"+id+"?wait=50ms", ""); !strings.Contains(text, `"status":"running"`) {
 		t.Fatalf("before the event the run is %s", text)
 	}
-	for deadline := time.Now().Add(5 * time.Second); ; time.Sleep(5 * time.Millisecond) {
-		if _, _, text := one.do("GET", "/runs", ""); strings.Contains(text, id) {
-			break
-		}
-		if time.Now().After(deadline) {
-			t.Fatal("the run was never listed")
-		}
+	if _, text := one.listed("/runs", id); !strings.Contains(text, id) {
+		t.Fatal("the run was never listed")
 	}
 	alike(id)
 	if status, receipt, text := one.do("POST", "/runs/"+id+"/events", `{"event": "open", "data": {"who": "one"}}`); status != 200 || receipt["acted"] != true {
@@ -312,13 +307,8 @@ func Test_client_gateway_two_copies_answer_alike(t *testing.T) {
 		t.Fatalf("the other gateway answered %s", text)
 	}
 	// The head follows the record by a moment: both list the run as ended.
-	for deadline := time.Now().Add(5 * time.Second); ; time.Sleep(5 * time.Millisecond) {
-		if _, _, text := one.do("GET", "/runs?all&status=done", ""); strings.Contains(text, id) {
-			break
-		}
-		if time.Now().After(deadline) {
-			t.Fatal("the run was never listed as done")
-		}
+	if _, text := one.listed("/runs?all&status=done", id); !strings.Contains(text, id) {
+		t.Fatal("the run was never listed as done")
 	}
 	alike(id)
 	// A stream from either carries the same entries and the same end.

@@ -81,7 +81,7 @@ func Test_client_gateway_token_names_its_client(t *testing.T) {
 		t.Fatalf("the editor's token was shown %d %s", status, text)
 	}
 	// Another token of the same client.
-	if status, _, text := second.do("GET", "/runs", ""); status != 200 || !strings.Contains(text, id) {
+	if status, text := second.listed("/runs", id); status != 200 || !strings.Contains(text, id) {
 		t.Fatalf("the editor's other token lists %d %s", status, text)
 	}
 	// A token of another client: the run is not one of its own. It is shown
@@ -193,7 +193,7 @@ states:
 	if cause, _ := run["cause"].(map[string]any); cause["principal"] != "alice@example.com" || cause["client"] != "editor" {
 		t.Errorf("the run's cause is %v", run["cause"])
 	}
-	if status, _, listed := bob.do("GET", "/runs?all", ""); status != 200 || !strings.Contains(listed, id) || strings.Contains(listed, "example.com") {
+	if status, listed := bob.listed("/runs?all", id); status != 200 || !strings.Contains(listed, id) || strings.Contains(listed, "example.com") {
 		t.Errorf("the listing is %d %s", status, listed)
 	}
 	// A caller asks which client and principal its token names.

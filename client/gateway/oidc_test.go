@@ -161,7 +161,7 @@ func Test_client_gateway_takes_an_issuers_tokens(t *testing.T) {
 		"several audiences": idp.token("RS256", "rsa-1", claims(map[string]any{"aud": []string{"other", "api://corbie"}})),
 		"a role as text":    idp.token("RS256", "rsa-1", claims(map[string]any{"roles": "editor"})),
 	} {
-		if status, _, text := as(token).do("GET", "/runs", ""); status != 200 || !strings.Contains(text, id) {
+		if status, text := as(token).listed("/runs", id); status != 200 || !strings.Contains(text, id) {
 			t.Errorf("a token with %s was answered %d %s", name, status, text)
 		}
 	}

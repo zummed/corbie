@@ -202,16 +202,8 @@ func Test_client_gateway_sends_to_an_address(t *testing.T) {
 	if status != 200 || receipt["taken"] != true || run == "" {
 		t.Fatalf("an event to a key was answered %d %s", status, text)
 	}
-	// The receipt can come before the head: the run is listed a moment
-	// after.
-	for deadline := time.Now().Add(5 * time.Second); ; time.Sleep(5 * time.Millisecond) {
-		_, _, listed := c.do("GET", "/runs?at="+at+"&key=alice", "")
-		if strings.Contains(listed, run) {
-			break
-		}
-		if time.Now().After(deadline) {
-			t.Fatalf("the runs with the key are %s", listed)
-		}
+	if _, listed := c.listed("/runs?at="+at+"&key=alice", run); !strings.Contains(listed, run) {
+		t.Errorf("the runs with the key are %s", listed)
 	}
 	if status, again, text := c.json("POST", "/events", `{"to": "`+at+`#alice", "event": "bye"}`); status != 200 || again["run"] != run || again["acted"] != true {
 		t.Errorf("a second event to the key was answered %d %s", status, text)

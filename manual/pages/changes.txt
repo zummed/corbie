@@ -5,7 +5,7 @@ Each section lists what changed after one release, the newest first.
 compatible before version 1: a file or a command written the old way is
 refused.
 
-After 0.30.0
+After 0.32.0
 ------------
 
 Change the path of a run's output or input that is itself a blob.
@@ -15,10 +15,8 @@ Change the path of a run's output or input that is itself a blob.
 
 `corbie run show <id> --save <dir>` saves it as `<dir>/file`.
 
-Change this command.
-
-  corbie mcp                     the model may run every command of Corbie's
-  corbie mcp --allow <command>   as before: the model may run only the commands named
+After 0.31.0
+------------
 
 Change how the UI is started.
 
@@ -30,6 +28,14 @@ Change how the UI is started.
 The Machines page shows no file's text and no problems: `corbie run submit`
 and `corbie test` print a file's problems. A run's page says when a submit
 changed the definition at its location since the run started.
+
+After 0.30.0
+------------
+
+Change this command.
+
+  corbie mcp                     the model may run every command of Corbie's
+  corbie mcp --allow <command>   as before: the model may run only the commands named
 
 After 0.29.0
 ------------

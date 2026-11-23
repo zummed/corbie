@@ -319,3 +319,40 @@ func Test_ctl_owner_removal_stopped_after_every_write(t *testing.T) {
 		}
 	}
 }
+
+// On a file system that ignores case, /Work and /work are one directory: a
+// removal at one is refused while a secret or a value is set at the other,
+// and removes nothing.
+func Test_ctl_remove_refuses_what_is_set_at_another_case(t *testing.T) {
+	w := newWorld(t)
+	w.secret("K", "work", "/work/deep")
+	if err := secret.SetValue(ctx, w.ctrl.Store, w.ctl, "/work", "V", "work"); err != nil {
+		t.Fatal(err)
+	}
+	// As a file system that ignores case shows them.
+	for from, to := range map[string]string{
+		store.Secret("ctl", "/work/deep", "K"): store.Secret("ctl", "/Work/deep", "K"),
+		store.Value("ctl", "/work", "V"):       store.Value("ctl", "/Work", "V"),
+	} {
+		if _, err := w.ctrl.Store.Copy(ctx, from, to); err != nil {
+			t.Fatal(err)
+		}
+	}
+	r := w.removeTree(w.client, "/Work")
+	if r.Taken || !strings.Contains(r.Refused, "is set at /work") || !strings.Contains(r.Refused, "because its file system ignores case") {
+		t.Fatalf("a removal at /Work over what is set at /work gave %+v", r)
+	}
+	w.ownerRemoves("/Work")
+	w.settle()
+	for _, name := range []string{store.Secret("ctl", "/Work/deep", "K"), store.Value("ctl", "/Work", "V")} {
+		if !w.has(name) {
+			t.Fatalf("%s was removed", name)
+		}
+	}
+	if w.has(store.Tree("ctl", "/Work")) {
+		t.Fatalf("the refused removals left an entry for a tree")
+	}
+	if r := w.removeTree(w.client, "/work"); !r.Taken || len(r.Tree.Removed) != 2 {
+		t.Fatalf("a removal at /work gave %+v", r)
+	}
+}

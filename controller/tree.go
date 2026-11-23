@@ -230,6 +230,11 @@ func (p *pass) checkTree(a *arrival, msg *instance.Submit) (string, error) {
 	if msg.Remove && len(msg.Files)+len(msg.Problems) > 0 {
 		return fmt.Sprintf("a removal of the tree %s names no file", msg.Prefix), nil
 	}
+	if msg.Remove {
+		if _, refused, err := p.setUnder(msg.Prefix); err != nil || refused != "" {
+			return refused, err
+		}
+	}
 	locations := append(sortedKeys(msg.Files), msg.Problems...)
 	slices.Sort(locations)
 	given := map[string]bool{}
@@ -433,17 +438,49 @@ func (p *pass) plan(a *arrival, base string, before *treeEntry) (*treeEntry, err
 	}
 	slices.SortFunc(d.Done, func(x, y instance.Recorded) int { return strings.Compare(x.Location, y.Location) })
 	if msg.Remove {
-		under, err := store.Names(p.store.List(p.ctx, strings.TrimSuffix(store.LocationDir(p.ctl, msg.Prefix), "/+")))
-		if err != nil {
+		// The removal was refused already where one was set at a location
+		// of another case.
+		var err error
+		if d.Unset, _, err = p.setUnder(msg.Prefix); err != nil {
 			return nil, err
-		}
-		for _, name := range under {
-			if _, _, ok := settingAt(p.ctl, name); ok {
-				d.Unset = append(d.Unset, name)
-			}
 		}
 	}
 	return entry, nil
+}
+
+// setUnder gives the names in the store of the secrets and values set at a
+// prefix or under it. On a file system that ignores case, /Work and /work
+// are one directory: it says why a removal is refused where one of them was
+// set at a location of another case, as a remove of that one is.
+func (p *pass) setUnder(prefix string) (names []string, refused string, err error) {
+	under, err := store.Names(p.store.List(p.ctx, strings.TrimSuffix(store.LocationDir(p.ctl, prefix), "/+")))
+	if err != nil {
+		return nil, "", err
+	}
+	for _, name := range under {
+		if _, _, ok := settingAt(p.ctl, name); ok {
+			names = append(names, name)
+		}
+	}
+	others := make([]string, len(names))
+	err = p.each(len(names), func(i int) error {
+		data, _, err := p.store.Read(p.ctx, names[i])
+		if v, bad := identity.Parse(data); err == nil && data != nil && bad == nil && v.At != names[i] && strings.EqualFold(v.At, names[i]) {
+			others[i] = v.At
+		}
+		return err
+	})
+	if err != nil {
+		return nil, "", err
+	}
+	for i, other := range others {
+		if other != "" {
+			what, at, _ := settingAt(p.ctl, names[i])
+			_, set, _ := settingAt(p.ctl, other)
+			return nil, fmt.Sprintf("the %s is set at %s, which this store keeps in the same file as %s because its file system ignores case", what, set, at), nil
+		}
+	}
+	return names, "", nil
 }
 
 // settingAt reads the name in the store of a secret or a value set at a

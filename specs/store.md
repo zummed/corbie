@@ -105,7 +105,7 @@ A store is a directory, a directory served to other computers, a bucket or memor
 
 A **directory** is for one computer. Every value is a plain file, so a person can look at an instance with ordinary tools. A listing reads every file it lists. A change the directory has answered is on disk: a computer that loses power comes back with everything it said it had written, and nothing it said it had deleted. Windows cannot sync a directory, so there a name made or removed just before the power went may be lost, as far as NTFS keeps it. Every party on the computer can read and write all of it. A directory keeps no party out of anything, and Corbie says so.
 
-On a file system that ignores case, as macOS's and Windows's do by default, `/Work` and `/work` are one directory. A secret or a value set at one of them is refused while the other has that name set, and so is a remove. A tree submitted at one of them is refused while the other is a tree. Listing the secrets or the values reads every file under `locations/`.
+On a file system that ignores case, as macOS's and Windows's do by default, `/Work` and `/work` are one directory. A secret or a value set at one of them is refused while the other has that name set, and so is a remove. A removal of a tree at one of them is refused while a secret or a value is set at the other or under it. A tree submitted at one of them is refused while the other is a tree. Listing the secrets or the values reads every file under `locations/`.
 
 A **served directory** is for a few computers of one's own, with nothing rented and nothing else installed. The computer that holds the directory and the controller serves it, and a party on another computer reaches it at `corbie://host:port`. Roles on the serving computer use the directory as it is.
 
@@ -136,7 +136,7 @@ The serving computer is the store. While it is off nothing moves, and what was w
 
 A **bucket** is for several computers and for serverless hosts. It needs a service that offers the three ways of writing, ordered listing with each value's ETag, reading part of a value, and copying a value within the store. Corbie names the services it is tested against, says which of them can enforce the table above, and claims nothing more. In a bucket each party holds its own key, and the bucket's policy limits that key to its row of the table. Corbie prints the policy for each party. A policy cannot hold a name to one part, so it lets a runner or a client add names deeper in a record than the layout draws; it never lets one replace or remove anything.
 
-**Memory** is for `corbie test` and Corbie's own tests. It enforces the table as a bucket does, so access rules can be tried without a bucket. The address `memory:` is one store for the process: every party started in the process shares it, and it goes when the process does. `corbie up --store memory:` so runs a directory of machines and keeps none of its runs. Its config stays, and each start sets the store up again for the parties the config holds. It starts no program: a program is a process of its own.
+**Memory** is for `corbie test` and Corbie's own tests. It enforces the table as a bucket does, so access rules can be tried without a bucket.
 
 ## What the store is trusted with
 

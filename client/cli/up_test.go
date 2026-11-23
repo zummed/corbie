@@ -138,20 +138,3 @@ func TestUpGivesAProgramTheConfigAndTheGateway(t *testing.T) {
 		t.Errorf("the program was started with %q", got)
 	}
 }
-
-// A store in memory is its process's alone, and a program is a process of
-// its own: corbie up starts none on it.
-func Test_store_memory_address_starts_no_program(t *testing.T) {
-	dir := files(t, map[string]string{"hello.yaml": hello, "greet.js": greet})
-	at := "/" + filepath.Base(dir)
-	out, said, stop := up(t, dir, "--store", "memory:")
-	until(t, "the submit", func() bool { return strings.Contains(out.String(), at+"/hello   transient   recorded") })
-	if status := stop(); status != 0 {
-		t.Fatalf("corbie up --store memory: ended %d:\n%s", status, said)
-	}
-	standIn(t, "frob", `echo "frob ran"`)
-	status, ran, problem := corbie("", "up", "--in", dir, "frob")
-	if status != 1 || !strings.Contains(problem, "the store memory: is this process's alone") || strings.Contains(ran, "frob ran") {
-		t.Errorf("corbie up frob on a store in memory ended %d and said:\n%s%s", status, ran, problem)
-	}
-}

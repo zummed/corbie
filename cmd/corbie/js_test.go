@@ -11,7 +11,7 @@ import (
 
 // The command builds for js/wasm, and there corbie up runs a controller, a
 // runner and a gateway in the one process: a job runs beside its runner,
-// the store memory: is one store for them all, and the gateway listens on
+// the gateway listens on
 // no port and answers the code that started the program. A job with a
 // memory: runs, and a call the gateway cannot read leaves the program up.
 // Node stands in for a browser.
@@ -49,16 +49,7 @@ func Test_role_js_wasm_runs_a_job_and_answers_its_hosts_code(t *testing.T) {
 	token := filepath.Join(dir, "token")
 	write(token, "token-of-the-test\n")
 
-	// The config is used twice: the store went with the first process, and
-	// the second sets it up again.
-	for range 2 {
-		jsWasmOnce(t, node, strings.TrimSpace(string(root)), program, work, filepath.Join(dir, "config"), token)
-	}
-}
-
-func jsWasmOnce(t *testing.T, node, root, program, work, config, token string) {
-	t.Helper()
-	run := exec.Command(node, "testdata/js_wasm.cjs", filepath.Join(root, "lib", "wasm", "wasm_exec.js"), program, work, config, token)
+	run := exec.Command(node, "testdata/js_wasm.cjs", filepath.Join(strings.TrimSpace(string(root)), "lib", "wasm", "wasm_exec.js"), program, work, filepath.Join(dir, "config"), token)
 	var failed strings.Builder
 	run.Stderr = &failed
 	out, err := run.Output()

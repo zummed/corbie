@@ -1,5 +1,5 @@
 // Runs the command built for js/wasm as the code of a page does, under Node:
-// corbie up on a directory with the store in memory, then the gateway's
+// corbie up on a directory, then the gateway's
 // requests, made by calling it. Prints what it was answered, as JSON.
 //
 //   node js_wasm.cjs <wasm_exec.js> <corbie.wasm> <directory> <config> <token file>
@@ -23,7 +23,7 @@ const ask = (method, path, body) => new Promise((resolve) => {
 
 ;(async () => {
   const go = new Go()
-  go.argv = ["corbie", "up", "--in", directory, "--at", "/work", "--store", "memory:", "--config", config, "gateway", "--token-file", tokenFile]
+  go.argv = ["corbie", "up", "--in", directory, "--at", "/work", "--config", config, "gateway", "--token-file", tokenFile]
   go.env = { TMPDIR: require("os").tmpdir(), HOME: config }
   go.exit = (code) => { console.error(`corbie up ended with ${code}`); process.exit(1) }
   // What the command prints is kept, and not printed.

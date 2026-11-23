@@ -33,7 +33,7 @@ func (c *counting) ReadPart(ctx context.Context, name string, from, length int64
 }
 
 func memory(t *testing.T) *counting {
-	s := store.Store(store.NewMemory().As(store.Party{Kind: store.Owner}))
+	s, _ := store.Open("memory:")
 	return &counting{Store: s}
 }
 

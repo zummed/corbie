@@ -79,13 +79,7 @@ func cmdUp(e *Env, args []string) error {
 		}
 	}
 	cfg := identity.Config{Dir: e.config}
-	recorded, err := cfg.ControllerStore()
-	if err != nil {
-		return err
-	}
-	// A store in memory went with the process that held it, and is set up
-	// again for the parties the config holds.
-	if !cfg.Has(identity.Controller) || recorded == "memory:" {
+	if !cfg.Has(identity.Controller) {
 		// Nothing in the config is for a repository.
 		if err := os.MkdirAll(cfg.Dir, 0o700); err != nil {
 			return err
@@ -94,9 +88,7 @@ func cmdUp(e *Env, args []string) error {
 			return err
 		}
 		address := e.store
-		if recorded != "" {
-			address = recorded
-		} else if address == "" {
+		if address == "" {
 			address = filepath.Join(cfg.Dir, "store")
 		}
 		if err := ownStore(address); err != nil {

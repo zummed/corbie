@@ -181,7 +181,7 @@ var waitingFiles = map[string]string{
 }
 
 func Test_blob_trim_follows_references_inside_blobs(t *testing.T) {
-	mem := store.Store(store.NewMemory().As(store.Party{Kind: store.Owner}))
+	mem, _ := store.Open("memory:")
 	k := keeping(t, mem)
 	run, _ := k.client.NewRun()
 	// A blob in the run's record that nothing refers to.

@@ -28,7 +28,7 @@ Windows too. Some things differ elsewhere.
 - On Windows, a directory store's newest names can be lost when the power
   goes: Windows cannot sync a directory.
 - In a browser, a page's code starts the program with Go's `wasm_exec.js`
-  and a command's words, as `corbie up --store memory:`.
+  and a command's words, as `corbie up`.
 - In a browser, the page gives the program a file system as `globalThis.fs`:
   Go's `wasm_exec.js` has none there, and `corbie up` reads and writes files.
 - In a browser, a job runs in the program's own process, and its `memory:`

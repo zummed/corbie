@@ -515,3 +515,37 @@ func TestFileGivenTwiceIsOneBlob(t *testing.T) {
 		t.Fatalf("the run's record holds %d blobs; its definition, its script, the file and the one the client wrote with the start are four", len(blobs))
 	}
 }
+
+// A value that is itself a blob is shown with the path file, and never
+// with an empty one: a run's whole output and its whole input are each
+// listed, fetched and named under it.
+func TestAValueThatIsItselfABlobHasThePathFile(t *testing.T) {
+	l := local(t)
+	whole := run(t, l, "flow: whole\nstages:\n  make: { job: { script: ./make.js } }\n",
+		map[string]string{"make.js": `return blobs.make("all of it", { type: "text/markdown" })`}, nil)
+	if shown := jsonOf(whole.Output); whole.Status != instance.Done || !strings.Contains(shown, `"$blob":"file"`) {
+		t.Fatalf("the run ended %s and shows its output as %s", whole.Status, shown)
+	}
+	files, err := l.Files(ctx, whole.ID)
+	if file := files["file"]; err != nil || len(files) != 1 || file.Name != "file" || file.Type != "text/markdown" {
+		t.Fatalf("the files listed are %+v (%v)", files, err)
+	}
+	// The same blob is the whole input of a second run.
+	given := run(t, l, "flow: given\nstages:\n  read: { job: { script: ./read.js, input: \"${input}\" } }\n",
+		map[string]string{"read.js": `return blobs.read(input)`}, map[string]any{"$blob": "file", "run": whole.ID})
+	if shown := jsonOf(given.Input); given.Output != "all of it" || !strings.Contains(shown, `"$blob":"input/file"`) {
+		t.Fatalf("the second run gave %v and shows its input as %s", given.Output, shown)
+	}
+	for id, at := range map[string]string{whole.ID: "file", given.ID: "input/file"} {
+		contents, fetched, err := l.Fetch(ctx, id, at)
+		if err != nil {
+			t.Fatalf("the path %q cannot be fetched: %v", at, err)
+		}
+		if text, _ := io.ReadAll(contents); string(text) != "all of it" || fetched.Type != "text/markdown" {
+			t.Errorf("the path %q fetched %q, %+v", at, text, fetched)
+		}
+	}
+	if _, _, err := l.Fetch(ctx, whole.ID, ""); !errors.Is(err, client.ErrNoFile) {
+		t.Errorf("the empty path was answered %v", err)
+	}
+}

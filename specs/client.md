@@ -24,7 +24,7 @@ A run shows its location, its key at a keyed location, and its cause: the step o
 
 A run waiting on a ticket shows the ticket's name. The ticket's value is in the record, which only the client of the run's tree and the clients its file's `read:` lists can read. Only those clients are shown the run's title, its input, its output, the failure's text and the permissions it used, and a client's `run ls` lists only the runs of its trees and those whose head lists it. Another client that asks for more than the run's status is told there is no such run of its own, and which client's tree the run is in. A client that called the run from outside the tree is shown its status and its output or error, from the call's result, and the run its call started (see instance.md).
 
-A blob in any value is shown as its type, its size and the path to ask for it by. Its key is never shown, at the command line, over HTTP or to a model.
+A blob in any value is shown as its type, its size and the path to ask for it by. The path is the blob's place in the value, and `file` for a value that is itself a blob. Its key is never shown, at the command line, over HTTP or to a model.
 
 ## The command line
 

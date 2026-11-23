@@ -37,11 +37,15 @@ func (r Ref) Value() any {
 	return map[string]any{"$blob": r.At, "type": r.Type, "size": float64(r.Size), "key": r.Key}
 }
 
+// Whole is the path of a value that is itself a blob. It has no place in a
+// value that holds it.
+const Whole = "file"
+
 // Walk gives a copy of a value in which every reference has been replaced
 // by what fn gives for it. The path says where in the value it was found. A
 // reference written out inside a text is text, and is passed over.
 func Walk(v any, fn func(path string, ref Ref) (any, error)) (any, error) {
-	return walk(v, "", fn, false)
+	return walk(v, top(v), fn, false)
 }
 
 // Shown is Walk for a value that is to be displayed or handed to a model:
@@ -49,7 +53,15 @@ func Walk(v any, fn func(path string, ref Ref) (any, error)) (any, error) {
 // gives for it is written in its place. A text is where the contents of a
 // blob end up, and they may hold another blob's reference.
 func Shown(v any, fn func(path string, ref Ref) (any, error)) (any, error) {
-	return walk(v, "", fn, true)
+	return walk(v, top(v), fn, true)
+}
+
+// top is the path a walk starts with.
+func top(v any) string {
+	if _, whole := AsRef(v); whole {
+		return Whole
+	}
+	return ""
 }
 
 func walk(v any, at string, fn func(string, Ref) (any, error), texts bool) (any, error) {

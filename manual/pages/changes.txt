@@ -8,6 +8,13 @@ refused.
 After 0.30.0
 ------------
 
+Change the path of a run's output or input that is itself a blob.
+
+  { "$blob": "file" }         the whole output; before, the path was empty and the gateway gave no bytes for it
+  { "$blob": "input/file" }   the whole input; before, `input/`
+
+`corbie run show <id> --save <dir>` saves it as `<dir>/file`.
+
 Change this command.
 
   corbie mcp                     the model may run every command of Corbie's

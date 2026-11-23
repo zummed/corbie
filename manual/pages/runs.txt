@@ -68,7 +68,9 @@ A blob is printed as `{ "$blob": <path>, "type", "size" }`. The path gives the
 blob's place in the run.
 
   report, pages[2]                      in the output
+  file                                  the whole output, when it is one blob
   input/report                          in the input
+  input/file                            the whole input, when it is one blob
   steps/3/events[0].data.report         in step 3 of the record
   emits/<job>/1/values[0].data.report   in a value that the job emitted
   definition/scripts.<name>             a script of the definition

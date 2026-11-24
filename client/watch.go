@@ -742,6 +742,10 @@ type File struct {
 	Size int64  `json:"size"`
 }
 
+// ErrFilesTooLarge is an output whose blobs are more than are given with a
+// run.
+var ErrFilesTooLarge = errors.New("the blobs of the output are more than are given with a run")
+
 // ErrNoFile is a path that names no blob of the run.
 var ErrNoFile = errors.New("the run shows no file at the path")
 
@@ -880,48 +884,38 @@ func (c *Client) output(ctx context.Context, id string) (any, error) {
 // are named where the shown output is made, so each is the one its path
 // fetches.
 //
-// withheld says why no output is given: the blobs are more than most bytes
-// together, in which case none is read, or one of them could not be read.
-// The run is still there to show, and each blob is still read by its path.
+// The blobs are at most most bytes together, each counted where it is
+// named: past that the error is ErrFilesTooLarge and no more is read.
 // Through a gateway, the limit is that gateway's.
-func (c *Client) OutputWithBytes(ctx context.Context, id string, most int64) (output any, withheld string, err error) {
+func (c *Client) OutputWithBytes(ctx context.Context, id string, most int64) (any, error) {
 	if c.remote != nil {
 		var run Run
 		err := c.remote.get(ctx, "/runs/"+id+"?files", &run)
-		return run.Output, run.Withheld, err
+		return run.Output, err
 	}
 	stored, err := c.output(ctx, id)
 	if err != nil {
-		return nil, "", err
+		return nil, err
 	}
-	// Counted as they are shown, a blob written out inside a text too.
-	var size int64
-	blob.Shown(stored, func(_ string, ref blob.Ref) (any, error) {
-		size += ref.Size
-		return nil, nil
-	})
-	const how = "each blob is read by its path, at /runs/%s/files/<path>"
-	if size > most {
-		return nil, fmt.Sprintf("the blobs of the output are %d bytes together, and at most %d are given with a run: "+how, size, most, id), nil
-	}
-	var failed string
-	output, err = blob.Shown(stored, func(path string, ref blob.Ref) (any, error) {
-		reader, err := blob.Open(ctx, c.Store, ref)
-		if err != nil {
-			failed = path
-			return nil, err
+	// A blob named at several places is read once.
+	read := map[blob.Ref]string{}
+	left := most
+	return blob.Shown(stored, func(path string, ref blob.Ref) (any, error) {
+		if ref.Size > left {
+			return nil, fmt.Errorf("%w, at most %d bytes together: each blob is read at /runs/%s/files/<path>", ErrFilesTooLarge, most, id)
 		}
-		data, err := io.ReadAll(reader)
-		if err != nil {
-			failed = path
-			return nil, err
+		left -= ref.Size
+		data, ok := read[ref]
+		if !ok {
+			contents, err := blob.ReadAll(ctx, c.Store, ref, ref.Size)
+			if err != nil {
+				return nil, fmt.Errorf("the blob at %q: %w", path, err)
+			}
+			data = base64.StdEncoding.EncodeToString(contents)
+			read[ref] = data
 		}
-		return map[string]any{"$blob": path, "type": ref.Type, "size": float64(ref.Size), "data": base64.StdEncoding.EncodeToString(data)}, nil
+		return map[string]any{"$blob": path, "type": ref.Type, "size": float64(ref.Size), "data": data}, nil
 	})
-	if failed != "" {
-		return nil, fmt.Sprintf("the blob at %q could not be read: %v: "+how, failed, err, id), nil
-	}
-	return output, "", err
 }
 
 // calledOutput gives the output of a call into another client's tree, from

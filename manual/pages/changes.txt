@@ -15,12 +15,6 @@ Change the path of a run's output or input that is itself a blob.
 
 `corbie run show <id> --save <dir>` saves it as `<dir>/file`.
 
-- On AWS Lambda, `corbie up` runs the controller, the runner and the gateway
-  in one function, with no bucket (`corbie manual functions`).
-- The gateway's `POST /runs?wait` answers with the run when it has ended.
-- The gateway's `?files`, on that request and on `GET /runs/<id>`, puts the
-  bytes of each blob of the run's output in the answer.
-
 After 0.31.0
 ------------
 

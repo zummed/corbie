@@ -107,9 +107,9 @@ Query parameters
   GET /runs/<id>?files          one run; each blob of its output has `data`
   GET /runs/<id>/record?watch   a stream of the record
 
-`?files` gives at most 64 MiB of blobs in one answer. Past that the run is
-answered with no `data`, and its `withheld` says why. Each blob is then read
-at `/runs/<id>/files/<path>`. On a start `?files` needs `?wait`.
+`?files` gives at most 64 MiB of blobs in one answer, and answers 413 past
+that. Each blob is then read at `/runs/<id>/files/<path>`. On a start `?files`
+needs `?wait`. An error after a run has started has the run's ID, as `id`.
 
 Answers and status codes
 ------------------------

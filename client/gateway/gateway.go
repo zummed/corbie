@@ -28,6 +28,7 @@ import (
 	"github.com/zummed/corbie/instance"
 	"github.com/zummed/corbie/machine"
 	"github.com/zummed/corbie/permission"
+	"github.com/zummed/corbie/plugin"
 	"github.com/zummed/corbie/store"
 )
 
@@ -44,8 +45,7 @@ type Gateway struct {
 	// tell it when something was written.
 	Interval time.Duration
 	// MaxFiles is the most bytes the blobs of one run's output are given
-	// with the run, together; zero is 64 MiB, as much as a script is handed
-	// whole.
+	// with the run, together; zero is plugin.MaxWhole.
 	MaxFiles int64
 }
 
@@ -385,12 +385,12 @@ func waitLimit(query url.Values) (time.Duration, error) {
 // shown answers with a run: the one given, or with wait the run when it has
 // ended. A wait cut short, by its own limit or by the caller going away,
 // answers with the run as it stands. With files each file of the output has
-// its bytes.
+// its bytes. An error is answered with the run's ID.
 func (g *Gateway) shown(w http.ResponseWriter, r *http.Request, c *client.Client, id string, limit time.Duration, shown *client.Run) {
 	ctx, query := r.Context(), r.URL.Query()
 	var err error
 	if query.Has("wait") {
-		if limit > 0 {
+		if query.Get("wait") != "" {
 			var cancel context.CancelFunc
 			ctx, cancel = context.WithTimeout(ctx, limit)
 			defer cancel()
@@ -398,19 +398,27 @@ func (g *Gateway) shown(w http.ResponseWriter, r *http.Request, c *client.Client
 		shown, err = c.Wait(ctx, id, g.interval())
 	}
 	// The request's own time, not the wait's: a wait cut short is answered
-	// too. Whatever keeps the blobs back, the run is answered.
+	// too.
 	if err == nil && query.Has("files") && shown.Output != nil {
 		most := g.MaxFiles
 		if most == 0 {
-			most = 64 << 20
+			most = plugin.MaxWhole
 		}
-		var output any
-		if output, shown.Withheld, err = c.OutputWithBytes(r.Context(), id, most); err == nil && shown.Withheld == "" {
-			shown.Output = output
-		}
+		shown.Output, err = c.OutputWithBytes(r.Context(), id, most)
+	}
+	if err != nil {
+		err = ofRun{id, err}
 	}
 	reply(w, shown, err)
 }
+
+// ofRun is an error about a run, which its answer names.
+type ofRun struct {
+	id string
+	error
+}
+
+func (e ofRun) Unwrap() error { return e.error }
 
 // submit is what the part named submit of a request to submit a tree holds,
 // as JSON: the prefix the tree is recorded at, the directory it came from,
@@ -780,7 +788,11 @@ func reply(w http.ResponseWriter, v any, err error) {
 	if err != nil {
 		status := http.StatusInternalServerError
 		var problems machine.Problems
+		var run ofRun
+		errors.As(err, &run)
 		switch {
+		case errors.Is(err, client.ErrFilesTooLarge):
+			status = http.StatusRequestEntityTooLarge
 		case errors.Is(err, client.ErrNoRun), errors.Is(err, client.ErrNoFile), errors.Is(err, client.ErrNoStep):
 			status = http.StatusNotFound
 		case errors.Is(err, client.ErrCalled):
@@ -799,6 +811,9 @@ func reply(w http.ResponseWriter, v any, err error) {
 		case errors.Is(err, context.Canceled):
 			return
 		}
+		if run.id != "" {
+			err = ofRun{run.id, err}
+		}
 		fail(w, status, err)
 		return
 	}
@@ -812,7 +827,12 @@ func reply(w http.ResponseWriter, v any, err error) {
 }
 
 func fail(w http.ResponseWriter, status int, err error) {
-	data, _ := json.Marshal(map[string]any{"error": err.Error()})
+	said := map[string]any{"error": err.Error()}
+	var run ofRun
+	if errors.As(err, &run) {
+		said["id"] = run.id
+	}
+	data, _ := json.Marshal(said)
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 	w.Write(append(data, '\n'))

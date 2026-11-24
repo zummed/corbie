@@ -458,6 +458,7 @@ One request starts a run and is answered with the run:
 
 - `POST /runs?wait` starts the run and answers when it has ended, with the run, as `GET /runs/<id>?wait` does. `?wait=30s` answers after 30 s at most.
 - A `wait` that is no length of time is answered 400, and no run is started.
+- An error after the run has started is answered with the run's ID, as `id` beside `error`.
 
 `?files` puts the bytes of each blob of the run's output in the answer:
 
@@ -465,8 +466,9 @@ One request starts a run and is answered with the run:
 - `POST /runs?wait&files` and `GET /runs/<id>?files` take it. On a start `?files` needs `?wait`: alone it is answered 400, and no run is started.
 - A blob written out inside a text has its `data` there too.
 - A value that has a `$blob` key and is not a blob gets no `data`. A blob inside it gets `data`.
-- The gateway gives at most 64 MiB of blobs in one answer, counted together. Past that the run is answered with no `data`, and its `withheld` says why and where each blob is read.
-- A blob that cannot be read is answered the same way: the run, no `data`, and `withheld` naming the blob's path.
+- The gateway gives at most 64 MiB of blobs in one answer, each counted at every place the output names it. Past that it reads no more and answers 413, with the run's ID and where each blob is read.
+- A blob that cannot be read is answered 500, with the run's ID and the blob's path.
+- While it answers, the gateway uses about six times the blobs' bytes in memory.
 
 A page in a browser calls the gateway from any origin:
 
@@ -486,8 +488,8 @@ It keeps nothing itself, so it runs as a process that listens, or on a serverles
 - A request's time ends ten seconds before the host's limit for a call. `?wait` then answers with the run as it stands, a stream closes, and a request that waits for the controller is answered 504, saying its time ended.
 - On a serverless host a stream goes on until its run ends or the request's time does, also after its caller has left.
 - The gateway takes its tokens from `--token-file` or from an issuer. With neither it does not start there: each copy of the function would make a token of its own.
+- `corbie start` starts it beside no controller and no runner there: the host calls those for a pass, and the gateway for a request.
 - `corbie up` there runs the gateway in one function with the controller and the runner (see Roles).
-- It is started beside no controller and no runner there: the host calls those for a pass, and the gateway for a request.
 - The host limits the size of a request, and so of the tree a submit uploads.
 
 ## Through a gateway

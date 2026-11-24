@@ -10,11 +10,11 @@ Nothing is carried in memory from one pass to the next. Whatever a pass needs it
 
 ## Hosts
 
-How passes are started depends on the host, and on nothing else.
+How passes are started depends on the host.
 
-On a **serverless host** the host calls for a pass when something is written to the role's inbox, and calls the controller once a minute so that wakes are noticed. Both are services the host and the bucket already offer. Corbie has no signalling of its own. A pass knows how long the host will let it run and finishes before that. Whatever it has not reached waits for the next pass, and a runner does not take a job it could not finish in the time left. A gateway does no passes: the host calls it once for each HTTP request, and it answers the request before the host's limit (see client.md).
+On a **serverless host**, for a role that `corbie start` runs, the host calls for a pass when something is written to the role's inbox, and calls the controller once a minute so that wakes are noticed. Both are services the host and the bucket already offer. Corbie has no signalling of its own. A pass knows how long the host will let it run and finishes before that. Whatever it has not reached waits for the next pass, and a runner does not take a job it could not finish in the time left. A gateway does no passes: the host calls it once for each HTTP request, and it answers the request before the host's limit (see client.md).
 
-`corbie up` on a serverless host runs the controller, the runner and the gateway in the function's one process. The config and the store are in the copy's temporary directory, and `--store` is refused. The host calls the function for each request of the gateway.
+`corbie up` on a serverless host runs the controller, the runner and the gateway in the function's one process. The config and the store are in the copy's temporary directory by default, and `--store` and `CORBIE_STORE` are refused. The host calls the function for each request of the gateway. The controller and the runner start their passes as on a computer, while a request is being answered, and know no limit of the host's.
 
 - Each copy of the function has its own store, and reads nothing another copy recorded.
 - A copy submits the directory when it starts.

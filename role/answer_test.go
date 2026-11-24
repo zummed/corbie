@@ -268,8 +268,10 @@ func Test_role_serverless_host_runs_a_whole_corbie(t *testing.T) {
 	host := &requests{
 		events: []string{
 			asked("POST", "/runs", "wait", start, true, headers),
+			asked("POST", "/runs", "wait&files", start, true, headers),
+			asked("GET", "/runs", "all", "", false, headers),
 		},
-		limits:  []time.Duration{60 * time.Second},
+		limits:  []time.Duration{60 * time.Second, 60 * time.Second, 60 * time.Second},
 		answers: map[string]string{}, modes: map[string]string{},
 		done: stop,
 	}
@@ -282,14 +284,26 @@ func Test_role_serverless_host_runs_a_whole_corbie(t *testing.T) {
 	if status, said := corbie(serving, "up", "--in", dir, "--store", t.TempDir(), "gateway", "--token-file", tokens); status == 0 || !strings.Contains(said, "takes no --store") {
 		t.Fatalf("corbie up --store ended %d: %s", status, said)
 	}
+	t.Setenv("CORBIE_STORE", t.TempDir())
+	if status, said := corbie(serving, "up", "--in", dir, "gateway", "--token-file", tokens); status == 0 || !strings.Contains(said, "no CORBIE_STORE") {
+		t.Fatalf("corbie up with CORBIE_STORE set ended %d: %s", status, said)
+	}
+	os.Unsetenv("CORBIE_STORE")
 	status, said := corbie(serving, "up", "--in", dir, "--at", "/work", "gateway", "--token-file", tokens)
 	if status != 0 || !strings.Contains(said, "/work/hello") || !strings.Contains(said, "answering the requests to this function's URL") ||
-		!strings.Contains(said, "which is this copy's alone") {
+		!strings.Contains(said, "config and store in "+filepath.Join(os.Getenv("TMPDIR"), ".corbie")) {
 		t.Fatalf("corbie up ended %d: %s", status, said)
 	}
 	first, body := host.answered(t, "call-1")
 	if !strings.Contains(first, `"statusCode":200`) || !strings.Contains(body, `"status":"done"`) || !strings.Contains(body, `"said":"hello, host"`) {
 		t.Errorf("a start that waits was answered %s and %s", first, body)
+	}
+	// The host calls the same copy for each request, and its store is there for each.
+	if second, body := host.answered(t, "call-2"); !strings.Contains(second, `"statusCode":200`) || !strings.Contains(body, base64.StdEncoding.EncodeToString([]byte("zebra"))) {
+		t.Errorf("a second start, with files, was answered %s and %s", second, body)
+	}
+	if third, body := host.answered(t, "call-3"); !strings.Contains(third, `"statusCode":200`) || strings.Count(body, `"location":"/work/hello"`) != 2 {
+		t.Errorf("the list of runs, asked third, was answered %s and %s", third, body)
 	}
 	if _, err := os.Stat(filepath.Join(os.Getenv("TMPDIR"), ".corbie", "store", "version")); err != nil {
 		t.Errorf("the store is not in a directory of the copy's own: %v", err)

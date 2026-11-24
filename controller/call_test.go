@@ -224,33 +224,33 @@ func Test_ctl_removing_a_caller_leaves_the_run_it_called(t *testing.T) {
 	}
 }
 
-// A called run's held jobs go to its own file's ask, and one with none is
-// refused as it starts, though its caller has an ask.
-func Test_ctl_called_runs_held_jobs_go_to_its_own_ask(t *testing.T) {
+// A called run's marked jobs wait for its own file's hooks, and one with none
+// is refused as it starts, though its caller has a hook.
+func Test_ctl_called_run_takes_only_its_own_files_hooks(t *testing.T) {
 	held := `
 		flow: lookup
-		ASK
+		HOOKS
 		stages:
 		  s: { job: { script: ./work.js, approve: true } }
 	`
-	asking := strings.Replace(caller, "flow: caller", "flow: caller\n\task: ./ask.js", 1)
-	scripts := map[string]string{"work.js": "return 1", "ask.js": "return { approved: [] }"}
+	asking := strings.Replace(caller, "flow: caller", "flow: caller\n\thooks: { ask: { before: ./ask.js, when: \"${job.approve}\" } }", 1)
+	scripts := map[string]string{"work.js": "return 1", "ask.js": "return { ok: false }"}
 	for _, own := range []bool{true, false} {
 		w := newWorld(t)
 		w.newRunner()
-		ask := ""
+		hooks := ""
 		if own {
-			ask = "ask: ./ask.js"
+			hooks = "hooks: { ask: { before: ./ask.js, when: \"${job.approve}\" } }"
 		}
-		all := map[string]string{"/t/caller": asking, "/t/lookup": strings.Replace(held, "ASK", ask, 1)}
+		all := map[string]string{"/t/caller": asking, "/t/lookup": strings.Replace(held, "HOOKS", hooks, 1)}
 		if r := w.submitTree(w.client, w.tree("/t", "/srv/t", all, scripts)); !r.Taken {
 			t.Fatalf("the tree was refused: %s", r.Refused)
 		}
 		run := w.startAt(w.client, "/t/caller", client.Start{})
 		w.settle()
 		if !own {
-			if failure := w.failure(run); !strings.Contains(failure, "no ask applies") {
-				t.Fatalf("with no ask of its own the call gave %q", failure)
+			if failure := w.failure(run); !strings.Contains(failure, "no hook runs before it") {
+				t.Fatalf("with no hook of its own the call gave %q", failure)
 			}
 			continue
 		}
@@ -263,20 +263,20 @@ func Test_ctl_called_runs_held_jobs_go_to_its_own_ask(t *testing.T) {
 				}
 			}
 		}
-		if !slices.Equal(asked, []string{"ask lookup"}) {
+		if !slices.Equal(asked, []string{"s.ask lookup"}) {
 			t.Fatalf("the called run sent %v", asked)
 		}
 	}
 }
 
-// A caller's approve: [send:…] holds a call job for its ask; a
-// statechart's send action with the same list is never held.
+// A caller's approve: [send:…] marks a call job, which is held for its hook;
+// a statechart's send action with the same list is never held.
 func Test_ctl_approve_send_holds_a_call(t *testing.T) {
 	w := newWorld(t)
-	held := strings.Replace(caller, "flow: caller", "flow: caller\n\tapprove: [\"send:**\"]\n\task: ./ask.js", 1)
+	held := strings.Replace(caller, "flow: caller", "flow: caller\n\tapprove: [\"send:**\"]\n\thooks: { ask: { before: ./ask.js, when: \"${job.approve}\" } }", 1)
 	all := map[string]string{"/t/caller": held, "/t/lookup": lookup, "/t/room": talk,
-		"/t/router": strings.Replace(router, "statechart: router", "statechart: router\n\tapprove: [\"send:**\"]\n\task: ./ask.js", 1)}
-	if r := w.submitTree(w.client, w.tree("/t", "/srv/t", all, map[string]string{"ask.js": "return { approved: [] }"})); !r.Taken {
+		"/t/router": strings.Replace(router, "statechart: router", "statechart: router\n\tapprove: [\"send:**\"]\n\thooks: { ask: { before: ./ask.js, when: \"${job.approve}\" } }", 1)}
+	if r := w.submitTree(w.client, w.tree("/t", "/srv/t", all, map[string]string{"ask.js": "return { ok: false }"})); !r.Taken {
 		t.Fatalf("the tree was refused: %s", r.Refused)
 	}
 	run := w.startAt(w.client, "/t/caller", client.Start{})
@@ -309,14 +309,14 @@ func Test_ctl_approve_send_holds_only_a_call_to_a_listed_location(t *testing.T) 
 	flow: caller
 	allow: ["send:lookup", "send:other"]
 	approve: ["send:lookup"]
-	ask: ./ask.js
+	hooks: { ask: { before: ./ask.js, when: "${job.approve}" } }
 	stages:
 	  look: { job: { call: { at: lookup }, input: 1 } }
 	  tell: { job: { call: { at: other }, input: 2 } }
 	output: ${stages.tell.output}
 `
 	all := map[string]string{"/t/caller": both, "/t/lookup": lookup, "/t/other": lookup}
-	if r := w.submitTree(w.client, w.tree("/t", "/srv/t", all, map[string]string{"ask.js": "return { approved: [] }"})); !r.Taken {
+	if r := w.submitTree(w.client, w.tree("/t", "/srv/t", all, map[string]string{"ask.js": "return { ok: false }"})); !r.Taken {
 		t.Fatalf("the tree was refused: %s", r.Refused)
 	}
 	run := w.startAt(w.client, "/t/caller", client.Start{})

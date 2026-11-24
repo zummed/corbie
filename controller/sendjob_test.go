@@ -102,15 +102,15 @@ func Test_ctl_send_job_too_large_to_write_fails(t *testing.T) {
 	}
 }
 
-// A flow's approve: [send:…] holds a send job to that location for its
-// ask: the event is written once the ask approves the job, and never when it
-// approves nothing.
+// A flow's approve: [send:…] marks a send job to that location, which waits
+// for its hook: the event is written once the hook says yes, and never when
+// it says no.
 func Test_ctl_approve_send_holds_a_send_job(t *testing.T) {
 	const tell = `
 		flow: tell
 		allow: ["send:**"]
 		approve: ["send:/t/room"]
-		ask: ./ask.js
+		hooks: { ask: { before: ./ask.js, when: "${job.approve}" } }
 		stages:
 		  tell: { job: { send: { to: { at: room, key: "chat:1" }, event: said, data: { text: hello } } } }
 	`
@@ -131,11 +131,7 @@ func Test_ctl_approve_send_holds_a_send_job(t *testing.T) {
 		if holds != 1 || len(w.sentBy(run)) != 0 || len(w.runsOf("talk")) != 0 {
 			t.Fatalf("the send job was held %d times and sent %v", holds, w.sentBy(run))
 		}
-		approved := []any{}
-		if approve {
-			approved = append(approved, "tell")
-		}
-		w.result(r1, run, instance.AskName, instance.Result{Status: instance.Done, Output: map[string]any{"approved": approved}})
+		w.result(r1, run, "tell.ask", instance.Result{Status: instance.Done, Output: map[string]any{"ok": approve}})
 		w.settle()
 		rooms := w.runsOf("talk")
 		if !approve {
@@ -145,10 +141,10 @@ func Test_ctl_approve_send_holds_a_send_job(t *testing.T) {
 			continue
 		}
 		if head := w.head(run); head.Status != instance.Done {
-			t.Fatalf("after the ask the flow is %s: %+v", head.Status, w.latest(run).State.Error)
+			t.Fatalf("after the hook the flow is %s: %+v", head.Status, w.latest(run).State.Error)
 		}
 		if len(rooms) != 1 || !slices.Equal(w.told(rooms[0]), []string{"hello"}) {
-			t.Fatalf("after the ask the rooms are %v", rooms)
+			t.Fatalf("after the hook the rooms are %v", rooms)
 		}
 	}
 }
@@ -161,12 +157,12 @@ func Test_ctl_approve_send_holds_no_send_job_without_a_location(t *testing.T) {
 		flow: tell
 		allow: ["send:room"]
 		approve: ["send:room"]
-		ask: ./ask.js
+		hooks: { ask: { before: ./ask.js, when: "${job.approve}" } }
 		stages:
 		  tell: { job: { send: { to: "${({ client: 'c2' })}", event: said, data: { text: hello } } } }
 	`
 	w := newWorld(t)
-	w.roomsWith(map[string]string{"/t/tell": tell}, map[string]string{"ask.js": "return { approved: [] }"})
+	w.roomsWith(map[string]string{"/t/tell": tell}, map[string]string{"ask.js": "return { ok: false }"})
 	run := w.startAt(w.client, "/t/tell", client.Start{})
 	w.settle()
 	var sent []instance.Ask
@@ -382,14 +378,14 @@ func Test_ctl_ended_run_with_a_note_takes_what_comes_later(t *testing.T) {
 	}
 }
 
-// A held call or send job is shown to the ask as what it is: the location a
-// call starts, or where a send goes, its event and its data.
-func Test_ctl_ask_is_told_a_held_call_or_send(t *testing.T) {
+// A hook reads a held call or send job as what it is: the location a call
+// starts, or where a send goes, its event and its data.
+func Test_ctl_hook_reads_a_held_call_or_send(t *testing.T) {
 	const tell = `
 		flow: tell
 		allow: ["send:**"]
 		approve: ["send:**"]
-		ask: ./ask.js
+		hooks: { ask: { before: ./ask.js, when: "${job.approve}" } }
 		stages:
 		  c: { job: { call: { at: lookup }, input: { n: 5 } } }
 		  s: { job: { send: { to: { at: room, key: "chat:1" }, event: said, data: { text: hello } } } }
@@ -399,21 +395,17 @@ func Test_ctl_ask_is_told_a_held_call_or_send(t *testing.T) {
 	w.roomsWith(map[string]string{"/t/tell": tell, "/t/lookup": lookup}, map[string]string{"ask.js": "return input"})
 	w.startAt(w.client, "/t/tell", client.Start{})
 	w.settle()
-	var jobs []any
-	for _, msg := range w.inboxOf(r1) {
-		if in, _ := msg.Job.Input.(map[string]any); in["jobs"] != nil {
-			jobs, _ = in["jobs"].([]any)
-		}
-	}
 	got := map[string]map[string]any{}
-	for _, job := range jobs {
-		j := job.(map[string]any)
-		got[j["name"].(string)] = j
+	for _, msg := range w.inboxOf(r1) {
+		if in, _ := msg.Job.Input.(map[string]any); in["job"] != nil {
+			j := in["job"].(map[string]any)
+			got[j["name"].(string)] = j
+		}
 	}
 	call, _ := got["c"]["call"].(map[string]any)
 	send, _ := got["s"]["send"].(map[string]any)
 	to, _ := send["to"].(map[string]any)
 	if call["at"] != "/t/lookup" || got["c"]["script"] != nil || to["at"] != "/t/room" || to["key"] != "chat:1" || send["event"] != "said" || got["s"]["script"] != nil {
-		t.Fatalf("the ask was told %v", jobs)
+		t.Fatalf("the hooks read %v", got)
 	}
 }

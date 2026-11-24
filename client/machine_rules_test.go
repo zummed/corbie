@@ -93,10 +93,10 @@ func TestAgentToolScopeIsFilledFromTheAgentsInput(t *testing.T) {
 	}
 }
 
-// A definition a script made may mark a job for approval and have no ask of
-// its own. Whether an ask applies is settled where it is started: under a
-// machine with an ask it runs, and with no ask anywhere above it fails at
-// its start, saying so.
+// A definition a script made may mark a job for approval and write no hook.
+// Whether a hook runs before the job is settled where it is started: under a
+// machine with a hook it runs, and with none anywhere above it the job is
+// denied, saying so.
 func TestMadeDefinitionsApprovalsAreCheckedWhereItIsStarted(t *testing.T) {
 	files := map[string]string{
 		"make.js": `
@@ -104,7 +104,7 @@ func TestMadeDefinitionsApprovalsAreCheckedWhereItIsStarted(t *testing.T) {
 				"flow: made\nstages:\n  held: { job: { script: ./step.js, approve: true } }\noutput: ${stages.held.output}\n",
 				{ files: { "./step.js": "return 7" } })
 		`,
-		"ask.js": `return { approved: input.jobs.map(r => r.name) }`,
+		"ask.js": `return { ok: true }`,
 	}
 	const maker = `
 		flow: maker
@@ -115,11 +115,11 @@ func TestMadeDefinitionsApprovalsAreCheckedWhereItIsStarted(t *testing.T) {
 		output: ${stages.go.output}
 	`
 	l := local(t)
-	r := run(t, l, strings.Replace(maker, "ASK", "ask: ./ask.js", 1), files, nil)
+	r := run(t, l, strings.Replace(maker, "ASK", "hooks: { yes: { before: ./ask.js, when: \"${job.approve}\" } }", 1), files, nil)
 	check(t, r.Status, r.Output, "done", `7`)
 	r = run(t, l, strings.Replace(maker, "ASK", "", 1), files, nil)
-	if r.Status != "failed" || !strings.Contains(r.Error, "go: ") || !strings.Contains(r.Error, "no ask applies") {
-		t.Fatalf("with no ask above it the made definition's run ended %s: %s", r.Status, r.Error)
+	if r.Status != "failed" || !strings.Contains(r.Error, "go: ") || !strings.Contains(r.Error, "no hook runs before it") {
+		t.Fatalf("with no hook above it the made definition's run ended %s: %s", r.Status, r.Error)
 	}
 }
 
@@ -525,11 +525,11 @@ func Test_mach_description_is_kept_as_written(t *testing.T) {
 // refusal tells the two apart.
 func Test_mach_approve_is_a_list_on_a_definition_and_a_flag_on_a_job(t *testing.T) {
 	for def, want := range map[string]string{
-		"flow: f\nask: ./ask.js\napprove: true\nstages:\n  a: { job: ./add.js }\n":                              "approve: at the top of a definition, this is a list of the permissions a job may use only after a yes",
-		"flow: f\nask: ./ask.js\nstages:\n  a: { job: { script: ./add.js, approve: [exec] } }\n":                "stages.a.job.approve: in a job, this is true or false",
-		"flow: f\nask: ./ask.js\napprove: [exec]\nstages:\n  a: { job: { script: ./add.js, approve: true } }\n": "",
+		"flow: f\nhooks: { no: { before: ./ask.js } }\napprove: true\nstages:\n  a: { job: ./add.js }\n":                              "approve: at the top of a definition, this is a list of the permissions a job may use only after a yes",
+		"flow: f\nhooks: { no: { before: ./ask.js } }\nstages:\n  a: { job: { script: ./add.js, approve: [exec] } }\n":                "stages.a.job.approve: in a job, this is true or false",
+		"flow: f\nhooks: { no: { before: ./ask.js } }\napprove: [exec]\nstages:\n  a: { job: { script: ./add.js, approve: true } }\n": "",
 	} {
-		_, err := machineParse(def, map[string]string{"add.js": scripts["add.js"], "ask.js": "return { approved: [] }"})
+		_, err := machineParse(def, map[string]string{"add.js": scripts["add.js"], "ask.js": "return { ok: false }"})
 		switch {
 		case want == "" && err != nil:
 			t.Errorf("%s was refused: %v", def, err)

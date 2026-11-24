@@ -92,10 +92,10 @@ func lying(kind string, args []string) {
 		out.Step.Used = append(out.Step.Used, args...)
 
 	case "above":
-		job := &machine.Job{Name: "x", Script: "./step.js", Above: true, Allow: []string{"net:*"},
+		job := &machine.Job{Name: "x", Script: "./step.js", Hook: "ok", Above: true, Allow: []string{"net:*"},
 			Found: &machine.Found{In: "m", Blob: in.State.Definition}}
 		ask(instance.Ask{Kind: instance.AskScript, Name: "x", Attempt: 1, Runner: "r1", Message: store.JobMessage(in.Instance, "x"), At: soon, What: "due.x~1", Job: job})
-		out.Requests = []machine.Request{{Job: &machine.Job{Name: "x", Script: "./step.js", Above: true, Allow: []string{"net:*"}}}}
+		out.Requests = []machine.Request{{Job: &machine.Job{Name: "x", Script: "./step.js", Hook: "ok", Above: true, Allow: []string{"net:*"}}}}
 
 	case "to":
 		ref := in.State.Definition.Value()
@@ -118,13 +118,13 @@ func lying(kind string, args []string) {
 		out.State.Machine = "another"
 		out.State.Keep = machine.Duration(1000 * time.Hour)
 		out.State.TimeoutAt = time.Time{}
-		out.State.Ask = nil
+		out.State.Hooks = nil
 		out.State.Above.Approve = nil
 		out.State.Above.Keep = machine.Duration(1000 * time.Hour)
 		out.Limit = "1000h"
 
 	case "unasked":
-		// A job that an ask above must hold, with the list that holds it gone.
+		// A job that a list above marks for approval, with the list gone.
 		out.State.Above.Approve = nil
 		job := &machine.Job{Name: "x", Script: "./step.js", Allow: []string{"net:a.example"},
 			Found: &machine.Found{In: "m", Blob: in.State.Definition}}
@@ -133,11 +133,11 @@ func lying(kind string, args []string) {
 		out.Requests = []machine.Request{{Job: &machine.Job{Name: "x", Script: "./step.js", Allow: []string{"net:a.example"}}}}
 
 	case "fills":
-		// A job held for approval, and an answer that offers a filled ask of
-		// its own, which the controller ignores.
+		// A job marked for approval, and an answer that offers a filled hook
+		// of its own, which the controller ignores.
 		out.Requests = []machine.Request{{Job: &machine.Job{Name: "x", Script: "./step.js", Approve: true}}}
 		filled := map[string]any{"job": &machine.Job{Name: "x", Script: "./step.js", Allow: []string{"all"}}}
-		out.Asks = map[string]any{instance.AskName: filled}
+		out.Asks = map[string]any{"ok": filled}
 
 	case "two jobs":
 		out.Requests = []machine.Request{{Job: &machine.Job{Name: "x", Script: "./step.js"}}, {Job: &machine.Job{Name: "y", Script: "./step.js"}}}
@@ -167,7 +167,7 @@ func lying(kind string, args []string) {
 		long := machine.Duration(1<<63 - 1)
 		out.Requests = []machine.Request{
 			{Job: &machine.Job{Name: "x", Script: "./step.js", Allow: strange, Deny: strange, Timeout: long, Restart: &machine.Restart{Limit: -1}, Memory: -1,
-				Input: bad("../..", "text/plain"), Wants: strange, Shown: bad("", ""), Files: strange}},
+				Input: bad("../..", "text/plain"), Wants: strange, Tool: bad("", ""), Meta: bad("", ""), Hook: "ok", Level: 9, Files: strange}},
 			{Job: &machine.Job{Name: "y", Stored: bad("../../secrets/x", blob.Definition), Allow: strange, Timeout: long, Input: bad("", blob.Definition)}},
 			{Job: &machine.Job{Name: "z", Stored: bad("ctl/locations/+/secrets/x", blob.Definition)}},
 			{Job: &machine.Job{Name: "w", Stored: bad("../x", "text/javascript")}},
@@ -472,14 +472,14 @@ func Test_ctl_answer_says_nothing_of_what_a_step_used(t *testing.T) {
 	w.done(owner)
 }
 
-// A job in an answer has no say in whether it is an ask from above. With no
-// ask above, that used to end the controller.
+// A job in an answer has no say in whether it is a hook from above. With no
+// hook above, that would end the controller.
 func Test_ctl_answer_cannot_mark_a_job_as_from_above(t *testing.T) {
 	w := newWorld(t)
 	owner := w.submit(family, nil, nil)
 	run := w.lied(plain, "above")
 	w.settle()
-	if job := w.latest(w.child(run)).State.Jobs["x"]; job == nil || job.Above {
+	if job := w.latest(w.child(run)).State.Jobs["x"]; job == nil || job.Above || job.Hook != "" {
 		t.Fatalf("the job is %+v", job)
 	}
 	w.done(owner)
@@ -487,16 +487,17 @@ func Test_ctl_answer_cannot_mark_a_job_as_from_above(t *testing.T) {
 
 const asking = `
 	flow: maker
-	ask: ./ok.js
+	hooks: { ok: { before: ./ok.js, when: "${job.approve}" } }
 	stages:
 	  make: { job: ./make.js }
 	  go: { job: { machine: "${stages.make.output}" } }
 `
 
-var asked = map[string]string{"make.js": "return 1", "ok.js": "return { approved: input.jobs.map(j => j.name) }"}
+var asked = map[string]string{"make.js": "return 1", "ok.js": "return { ok: true }"}
 
-// With an ask above, a job marked as from above would run under that ask's
-// layers, and the narrowing of a made machine would be gone.
+// With a hook above, a job marked as a hook from above would run under the
+// layers of the machine that declares it, and the narrowing of a made machine
+// would be gone.
 func Test_ctl_answer_cannot_drop_a_made_machines_narrowing(t *testing.T) {
 	w := newWorld(t)
 	_, r1 := w.madeUnder(asking, plain, asked, "above")
@@ -642,15 +643,15 @@ func Test_ctl_keep_of_a_made_machine_is_no_longer_than_its_parents(t *testing.T)
 
 const asksFirst = `
 	flow: maker
-	ask: ./ok.js
+	hooks: { ok: { before: ./ok.js, when: "${job.approve}" } }
 	approve: [ network ]
 	stages:
 	  make: { job: ./make.js }
 	  go: { job: { machine: "${stages.make.output}" } }
 `
 
-// A job that declares what an approve: list above it lists stays held,
-// whatever the answer says of the list.
+// A job that declares what an approve: list above it lists stays marked, and
+// is held for the hook, whatever the answer says of the list.
 func Test_ctl_answer_cannot_clear_what_approval_holds(t *testing.T) {
 	w := newWorld(t)
 	run, r1 := w.madeUnder(asksFirst, plain, asked, "unasked")
@@ -662,42 +663,42 @@ func Test_ctl_answer_cannot_clear_what_approval_holds(t *testing.T) {
 	}
 	for name := range w.inboxOf(r1) {
 		if strings.HasSuffix(name, ".x") {
-			t.Fatalf("%s went to the runner with no ask", name)
+			t.Fatalf("%s went to the runner before its hook", name)
 		}
 	}
 }
 
-// An answer has nowhere to name or fill an ask. A step taken over cannot put
-// its own script there and have it decide what the machine holds, or run it
-// with the layers of the machine that declares the ask.
-func Test_ctl_answer_cannot_fill_an_owners_ask(t *testing.T) {
+// An answer has nowhere to name or fill a hook. A step taken over cannot put
+// its own script there and have it say what the machine's jobs may do, or run
+// it with the layers of the machine that declares the hook.
+func Test_ctl_answer_cannot_fill_an_owners_hook(t *testing.T) {
 	w := newWorld(t)
 	_, r1 := w.madeUnder(asking, plain, asked, "fills")
 	for _, msg := range w.inboxOf(r1) {
-		if msg.Job == nil || msg.Job.Name != instance.AskName {
+		if msg.Job == nil || msg.Job.Name != "x.ok" {
 			continue
 		}
 		if msg.Job.Path != "./ok.js" {
-			t.Fatalf("the ask runs %s", msg.Job.Path)
+			t.Fatalf("the hook runs %s", msg.Job.Path)
 		}
 		return
 	}
-	t.Fatal("no ask was sent")
+	t.Fatal("no hook's job was sent")
 }
 
-// An owner's machine that names who decides, and starts a machine made while
-// running that is allowed what its approve: list holds.
+// An owner's machine that names the hook before a marked job, and starts a
+// machine made while running that is allowed what its approve: list lists.
 const humanAsks = `
 	flow: maker
-	ask: ./human.js
+	hooks: { human: { before: ./human.js, when: "${job.approve}" } }
 	approve: [ "fs.read:/x/**" ]
 	stages:
 	  make: { job: ./make.js }
 	  go: { job: { machine: "${stages.make.output}", allow: [ "fs.read:/x/**" ] } }
 `
 
-// madeUnderHuman runs humanAsks, has its ask approve the job that starts the
-// made machine, and takes that machine as far as its jobs go. It gives the
+// madeUnderHuman runs humanAsks, has its hook say yes to the job that starts
+// the made machine, and takes that machine as far as its jobs go. It gives the
 // run and the machine made.
 func (w *world) madeUnderHuman(r1 *identity.Identity, made *machine.Draft) (run, child string) {
 	w.t.Helper()
@@ -709,20 +710,21 @@ func (w *world) madeUnderHuman(r1 *identity.Identity, made *machine.Draft) (run,
 	}
 	w.result(r1, run, "make", instance.Result{Status: instance.Done, Output: ref.Value()})
 	w.settle()
-	w.result(r1, run, instance.AskName, instance.Result{Status: instance.Done, Output: map[string]any{"approved": []any{"go"}}})
+	w.result(r1, run, "go.human", instance.Result{Status: instance.Done, Output: map[string]any{"ok": true}})
 	w.settle()
 	w.pass()
 	w.settle()
 	return run, w.child(run)
 }
 
-// wantHuman says the ask an instance started is the owner's: its path, the
-// blob of the owner's own script, and no narrowing of the machine that asks.
+// wantHuman says the hook's job an instance started is the owner's: its path,
+// the blob of the owner's own script, and no narrowing of the machine whose
+// job it runs for.
 func (w *world) wantHuman(r1 *identity.Identity, run, asker string) {
 	w.t.Helper()
 	var theirs, owners *instance.Job
 	for _, msg := range w.inboxOf(r1) {
-		if msg.Job == nil || !strings.HasPrefix(msg.Job.Name, instance.AskName) {
+		if msg.Job == nil || !strings.HasSuffix(msg.Job.Name, ".human") {
 			continue
 		}
 		switch msg.Instance {
@@ -732,21 +734,21 @@ func (w *world) wantHuman(r1 *identity.Identity, run, asker string) {
 			theirs = msg.Job
 		}
 		if msg.Job.Path != "./human.js" {
-			w.t.Fatalf("%s asks %s", msg.Instance, msg.Job.Path)
+			w.t.Fatalf("the hook of %s runs %s", msg.Instance, msg.Job.Path)
 		}
 	}
 	switch {
 	case owners == nil || theirs == nil:
-		w.t.Fatalf("the owner's ask is %+v, and that of the machine below is %+v", owners, theirs)
+		w.t.Fatalf("the owner's hook is %+v, and that of the machine below is %+v", owners, theirs)
 	case theirs.Script.At != owners.Script.At:
-		w.t.Fatalf("the machine below runs %+v, and the owner's ask is %+v", theirs.Script, owners.Script)
+		w.t.Fatalf("the machine below runs %+v, and the owner's hook is %+v", theirs.Script, owners.Script)
 	case slices.ContainsFunc(theirs.Layers, func(l permission.Layer) bool { return strings.Contains(l.Name, `the job "go"`) }):
-		w.t.Fatalf("the ask has the layers of the machine that asks: %+v", theirs.Layers)
+		w.t.Fatalf("the hook has the layers of the machine whose job it runs for: %+v", theirs.Layers)
 	}
 }
 
-// madeHolding answers a machine's job with a made machine that holds a job. A
-// client's check would refuse it for having no ask.
+// madeHolding answers a machine's job with a made machine that marks a job. A
+// client's check would refuse it for having no hook before a job.
 func (w *world) madeHolding(r1 *identity.Identity, run string) {
 	w.t.Helper()
 	made, err := machine.ParseMade([]byte("flow: below\nstages:\n  b: { job: { script: ./step.js, approve: true } }\n"),
@@ -767,33 +769,32 @@ func (w *world) newRunner() *identity.Identity {
 	return r1
 }
 
-// A definition made while running does not replace the decider the owner
-// named. Its check refuses an ask, and a process that skips the check gains
-// nothing: the ask is not kept, and what it holds goes to the owner's ask,
-// under the machine that holds it.
-func Test_ctl_made_machine_has_no_ask_of_its_own(t *testing.T) {
+// A definition made while running does not replace the hooks the owner
+// named. Its check refuses hooks, and a process that skips the check gains
+// nothing: they are not kept, and the owner's hook runs for its marked job.
+func Test_ctl_made_machine_has_no_hooks_of_its_own(t *testing.T) {
 	w := newWorld(t)
 	r1 := w.newRunner()
 	w.lieNext("held")
 	run, child := w.madeUnderHuman(r1, w.draft(`
 		flow: below
-		ask: ./step.js
+		hooks: { mine: { before: ./step.js } }
 		stages:
 		  b: { job: { script: ./step.js, allow: [ "fs.read:/x/**" ] } }
 	`, map[string]string{"step.js": "return 1"}))
-	if st := w.latest(child).State; st.Ask != nil {
-		t.Fatalf("the machine keeps the ask %+v", st.Ask)
+	if st := w.latest(child).State; st.Hooks != nil {
+		t.Fatalf("the machine keeps the hooks %+v", st.Hooks)
 	}
 	w.wantHuman(r1, run, child)
 }
 
-// A machine that writes an ask is told it has none, and the owner's flow
-// carries on.
-func Test_ctl_made_machine_that_writes_an_ask_fails(t *testing.T) {
+// A machine made while running that writes hooks is told it writes none, and
+// the owner's flow carries on.
+func Test_ctl_made_machine_that_writes_hooks_fails(t *testing.T) {
 	w := newWorld(t)
 	r1 := w.newRunner()
 	run := w.holder(r1)
-	ref, err := w.draft("flow: below\nask: ./step.js\nstages:\n  b: { job: ./step.js }\n", map[string]string{"step.js": "return 1"}).Store(ctx, w.ctrl.Store, "ctl", run)
+	ref, err := w.draft("flow: below\nhooks: { mine: { before: ./step.js } }\nstages:\n  b: { job: ./step.js }\n", map[string]string{"step.js": "return 1"}).Store(ctx, w.ctrl.Store, "ctl", run)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -802,14 +803,14 @@ func Test_ctl_made_machine_that_writes_an_ask_fails(t *testing.T) {
 	w.pass()
 	w.settle()
 	st := w.latest(w.child(run)).State
-	if st.Status != instance.Failed || st.Error == nil || !strings.Contains(st.Error.Error, "no ask of its own") {
+	if st.Status != instance.Failed || st.Error == nil || !strings.Contains(st.Error.Error, "a machine made while running writes no hooks") {
 		t.Errorf("the machine ended %s: %+v", st.Status, st.Error)
 	}
 }
 
-// A made machine hands down the ask above it: one written in place in it goes
-// to the owner's ask too.
-func Test_ctl_made_machine_hands_down_the_ask_above_it(t *testing.T) {
+// A made machine hands down the hooks above it: the owner's hook runs for a
+// marked job of a machine written in place in it too.
+func Test_ctl_made_machine_hands_down_the_hooks_above_it(t *testing.T) {
 	w := newWorld(t)
 	r1 := w.newRunner()
 	run, child := w.madeUnderHuman(r1, w.draft(`
@@ -825,9 +826,9 @@ func Test_ctl_made_machine_hands_down_the_ask_above_it(t *testing.T) {
 	w.wantHuman(r1, run, w.child(child))
 }
 
-// With no ask above it a made machine has none to go to, and its machine is
-// told why.
-func Test_ctl_made_machine_with_no_ask_above_is_denied(t *testing.T) {
+// With no hook above it a made machine's marked job has none before it, and
+// its machine is told why.
+func Test_ctl_made_machine_with_no_hook_above_is_denied(t *testing.T) {
 	w := newWorld(t)
 	r1 := w.newRunner()
 	run := w.holder(r1)
@@ -837,7 +838,7 @@ func Test_ctl_made_machine_with_no_ask_above_is_denied(t *testing.T) {
 	w.settle()
 	st := w.latest(w.child(run)).State
 	if st.Status != instance.Failed || st.Error == nil || st.Error.Status != machine.StatusDenied ||
-		!strings.Contains(st.Error.Error, "a machine made while running uses only an ask above it") {
+		!strings.Contains(st.Error.Error, "the job is marked for approval and no hook runs before it") {
 		t.Errorf("the machine ended %s: %+v", st.Status, st.Error)
 	}
 	for _, msg := range w.inboxOf(r1) {
@@ -847,14 +848,14 @@ func Test_ctl_made_machine_with_no_ask_above_is_denied(t *testing.T) {
 	}
 }
 
-// An owner's ask that is a machine runs for a made machine, and takes no ask
-// from above it.
-func Test_ctl_ask_that_is_a_machine_runs_for_a_made_machine(t *testing.T) {
+// An owner's hook that is a machine runs for a made machine's job, and takes
+// no hook from above it.
+func Test_ctl_hook_that_is_a_machine_runs_for_a_made_machine(t *testing.T) {
 	w := newWorld(t)
 	r1 := w.newRunner()
 	run := w.submit(`
 		flow: maker
-		ask: { machine: ./asks.yaml }
+		hooks: { asks: { before: { machine: ./asks.yaml }, when: "${job.approve}" } }
 		stages:
 		  make: { job: ./make.js }
 		  go: { job: { machine: "${stages.make.output}" } }
@@ -867,8 +868,8 @@ func Test_ctl_ask_that_is_a_machine_runs_for_a_made_machine(t *testing.T) {
 	w.settle()
 	child := w.child(run)
 	st := w.latest(w.child(child)).State
-	if !st.Above.IsAsk || st.Above.Ask != nil || st.Above.Approve != nil || st.Machine != "asks" {
-		t.Fatalf("the machine run as the ask has %+v", st)
+	if !st.Above.IsHook || st.Above.Hooks != nil || st.Above.Approve != nil || st.Machine != "asks" {
+		t.Fatalf("the machine run as the hook has %+v", st)
 	}
 	for _, msg := range w.inboxOf(r1) {
 		if msg.Job != nil && msg.Job.Path == "./step.js" {
@@ -877,19 +878,20 @@ func Test_ctl_ask_that_is_a_machine_runs_for_a_made_machine(t *testing.T) {
 	}
 }
 
-// An ask that is a machine is the words of the machine that declares it, for
-// whoever it runs. Its own ask stands, and what it holds is held, not denied.
-func Test_ctl_owners_ask_machine_for_a_made_machine_keeps_its_own_ask(t *testing.T) {
+// A hook that is a machine is the words of the machine that declares it,
+// whichever job it runs for. Its own hooks are its own, and its marked job is
+// held for them, not denied.
+func Test_ctl_owners_hook_machine_for_a_made_machine_keeps_its_own_hooks(t *testing.T) {
 	w := newWorld(t)
 	r1 := w.newRunner()
 	run := w.submit(`
 		flow: maker
-		ask: { machine: ./asks.yaml }
+		hooks: { asks: { before: { machine: ./asks.yaml }, when: "${job.approve}" } }
 		stages:
 		  make: { job: ./make.js }
 		  go: { job: { machine: "${stages.make.output}" } }
 	`, map[string]string{"make.js": "return 1", "human.js": "return {}",
-		"asks.yaml": "flow: asks\nask: ./human.js\nstages:\n  say: { job: { script: ./human.js, approve: true } }\n"}, nil)
+		"asks.yaml": "flow: asks\nhooks: { human: { before: ./human.js } }\nstages:\n  say: { job: { script: ./human.js, approve: true } }\n"}, nil)
 	w.settle()
 	w.madeHolding(r1, run)
 	w.settle()
@@ -897,11 +899,11 @@ func Test_ctl_owners_ask_machine_for_a_made_machine_keeps_its_own_ask(t *testing
 	w.settle()
 	asks := w.child(w.child(run))
 	st := w.latest(asks).State
-	if st.Above.Made || !st.Above.IsAsk || st.Status != instance.Running {
-		t.Fatalf("the machine run as the ask is %s: %+v, %+v", st.Status, st.Above, st.Error)
+	if st.Above.Made || !st.Above.IsHook || st.Status != instance.Running {
+		t.Fatalf("the machine run as the hook is %s: %+v, %+v", st.Status, st.Above, st.Error)
 	}
-	if msg := w.inboxOf(r1)[w.jobName(r1, instance.AskName)]; msg == nil || msg.Job.Path != "./human.js" || msg.Instance != asks {
-		t.Fatalf("the ask of the machine run as the ask is %+v", msg)
+	if msg := w.inboxOf(r1)[w.jobName(r1, "say.human")]; msg == nil || msg.Job.Path != "./human.js" || msg.Instance != asks {
+		t.Fatalf("the hook of the machine run as the hook is %+v", msg)
 	}
 }
 
@@ -963,7 +965,7 @@ func Test_ctl_client_start_names_a_location(t *testing.T) {
 const lister = `
 	agent: lister
 	model: { name: m, service: anthropic, address: "http://127.0.0.1:1", secret: KEY }
-	ask: ./ok.js
+	hooks: { ok: { before: ./ok.js, when: "${job.approve}" } }
 	prompt: hello
 	tools:
 	  t:
@@ -1117,18 +1119,18 @@ func Test_ctl_made_definition_past_a_limit_fails_that_machine(t *testing.T) {
 	}
 }
 
-// An owner's agent takes its steps in a process, and its ask is still its
-// definition's words: an answer has nowhere to name or fill one, and the ask
+// An owner's agent takes its steps in a process, and its hooks are still its
+// definition's words: an answer has nowhere to name or fill one, and the hook
 // is read from the definition and filled here.
-func Test_ctl_answer_cannot_write_a_listed_agents_ask(t *testing.T) {
+func Test_ctl_answer_cannot_write_a_listed_agents_hook(t *testing.T) {
 	w := newWorld(t)
 	run, r1 := w.listed()
 	w.lieNext("after a list", "fills")
 	w.result(r1, run, "t", oneTool)
 	w.settle()
-	ask := w.inboxOf(r1)[w.jobName(r1, instance.AskName)]
-	if ask == nil || ask.Job.Path != "./ok.js" {
-		t.Errorf("the ask is %+v", ask)
+	hook := w.inboxOf(r1)[w.jobName(r1, "x.ok")]
+	if hook == nil || hook.Job.Path != "./ok.js" {
+		t.Errorf("the hook's job is %+v", hook)
 	}
 }
 
@@ -1258,7 +1260,7 @@ func Test_ctl_stored_step_with_hostile_content_ends_no_controller(t *testing.T) 
 func Test_ctl_answer_with_a_name_no_definition_holds_fails_its_machine(t *testing.T) {
 	long := strings.Repeat("a", 101)
 	for _, c := range []struct{ kind, name string }{
-		{"job", ""}, {"job", "ask"}, {"job", "ask#2"}, {"job", "../../secrets/x"}, {"job", "a/b"}, {"job", "x@2"}, {"job", "x#2"}, {"job", "x.cancel"}, {"job", long},
+		{"job", ""}, {"job", "../../secrets/x"}, {"job", "a/b"}, {"job", "x@2"}, {"job", "x#2"}, {"job", "x.cancel"}, {"job", long},
 		{"timer", "a/b"}, {"timer", ".."}, {"timer", long}, {"ticket", long}, {"id", long},
 	} {
 		w := newWorld(t)

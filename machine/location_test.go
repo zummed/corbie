@@ -298,13 +298,13 @@ func Test_mach_values_are_read_by_name(t *testing.T) {
 }
 
 // A job may send an event, and then takes to, event and data, and approve,
-// allow and deny, and nothing else. It is one of a script, a machine, a send
+// meta, allow and deny, and nothing else. It is one of a script, a machine, a send
 // or a call.
 func Test_mach_a_job_sends(t *testing.T) {
-	parsed(t, "probe: p\nwork:\n  a: { send: { to: { at: devices/boiler }, event: set, data: { target: 12 } }, approve: true, allow: [\"net:hub.lan\"] }\nask: ./ask.js\n", map[string]string{"ask.js": ""})
+	parsed(t, "probe: p\nwork:\n  a: { send: { to: { at: devices/boiler }, event: set, data: { target: 12 } }, approve: true, meta: { team: heating }, allow: [\"net:hub.lan\"] }\nhooks:\n  yes: { before: ./yes.js }\n", map[string]string{"yes.js": ""})
 	got := problems(t, "probe: p\nwork:\n  a: { send: { to: { at: x }, event: e }, input: 1, timeout: 5s }\n  b: { send: { to: { at: x }, event: e }, script: ./a.js }\n  c: { send: { to: { at: x }, event: done } }\n  d: { send: { to: { at: x }, event: \"${input.e}\" } }\n", map[string]string{"a.js": ""})
 	for _, want := range []string{
-		"work.a: a send takes to, event and data, and approve, allow and deny: it has no input, timeout",
+		"work.a: a send takes to, event and data, and approve, meta, allow and deny: it has no input, timeout",
 		"work.b: a job writes one of script:, machine:, call: and send:",
 		`work.c.send.event: "done": no machine can send an event named`,
 		`work.d.send.event: "${input.e}": the event's name is written out`,

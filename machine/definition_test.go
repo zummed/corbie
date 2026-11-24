@@ -191,7 +191,7 @@ func Test_mach_unknown_or_repeated_field_is_refused(t *testing.T) {
 	}
 	// The problem names the fields the mapping takes: at the top, those
 	// every type takes and then the type's own.
-	if got := problems(t, "probe: p\nValue: 1\n", nil); !strings.Contains(got, `"Value" is not a field that belongs here: a probe takes probe, description, input, keep, limits, allow, deny, approve, ask, hooks, title, meta, lifetime, update, receive, read, work, value`) {
+	if got := problems(t, "probe: p\nValue: 1\n", nil); !strings.Contains(got, `"Value" is not a field that belongs here: a probe takes probe, description, input, keep, limits, allow, deny, approve, hooks, title, meta, lifetime, update, receive, read, work, value`) {
 		t.Fatalf("a name in the wrong case: %s", got)
 	}
 	if got := problems(t, "probe: p\nwork:\n  a: { script: ./a.js, retries: 3 }\n", map[string]string{"a.js": ""}); !strings.Contains(got, `"retries" is not a field that belongs here: a job takes script, files, machine, send, call, input, allow, deny, timeout, restart, memory, tags, approve`) {
@@ -363,7 +363,6 @@ func TestNamesAreNotValues(t *testing.T) {
 		"probe: p\nwork:\n  a: { script: ./a.js, allow: [\"${input.x}:y\"] }\n":        "is not a permission",
 		"probe: p\nwork:\n  a: { script: ./a.js, allow: [\"secret:${input.x}@*\"] }\n": "a secret's name is written out",
 		"probe: p\nwork:\n  a: { script: \"./${input.x}.js\" }\n":                      "exactly one expression",
-		"probe: p\nwork:\n  ask: ./a.js\n":                                             "taken by the definition's ask",
 	} {
 		if got := problems(t, src, js); !strings.Contains(got, want) {
 			t.Errorf("%q: %s", src, got)
@@ -401,17 +400,17 @@ func TestPermissionScopeReadsOnlyTheInput(t *testing.T) {
 	}
 }
 
-// A definition made while a machine runs may hold a job for approval with
-// no ask of its own: whether one applies is settled where it is started.
+// A definition made while a machine runs may mark a job for approval with
+// no hook before it: whether one runs for it is settled where it is started.
 // Everything else wrong with it is still found.
-func TestParseMadeLeavesTheAskOpen(t *testing.T) {
+func TestParseMadeLeavesTheHookOpen(t *testing.T) {
 	js := map[string]string{"a.js": "", "held.yaml": "probe: held\nwork:\n  a: { script: ./a.js, approve: true }\n"}
 	for _, src := range []string{
 		"probe: p\nwork:\n  a: { script: ./a.js, approve: true }\n",
 		"probe: p\napprove: [exec]\nwork:\n  a: { script: ./a.js }\n",
 		"probe: p\nwork:\n  kid: { machine: ./held.yaml }\n",
 	} {
-		if got := problems(t, src, js); !strings.Contains(got, "give the definition an ask") {
+		if got := problems(t, src, js); !strings.Contains(got, "give the definition a hook with before:") {
 			t.Errorf("%q, written and sent by a client: %s", src, got)
 		}
 		if _, err := ParseMade([]byte(src), files(js)); err != nil {
@@ -420,10 +419,10 @@ func TestParseMadeLeavesTheAskOpen(t *testing.T) {
 	}
 	for src, want := range map[string]string{
 		"probe: p\nwork:\n  a: { script: ./missing.js, approve: true }\n": "missing.js",
-		"probe: p\nask: { machine: ./held.yaml }\n":                       "takes no ask from above it",
+		"probe: p\nhooks:\n  h: { before: { machine: ./held.yaml } }\n": "takes no hook from above it",
 	} {
 		_, err := ParseMade([]byte(src), files(js))
-		if err == nil || !strings.Contains(err.Error(), want) || strings.Contains(err.Error(), "give the definition an ask") {
+		if err == nil || !strings.Contains(err.Error(), want) || strings.Contains(err.Error(), "give the definition a hook with before:") {
 			t.Errorf("%q, made while a machine runs: %v", src, err)
 		}
 	}

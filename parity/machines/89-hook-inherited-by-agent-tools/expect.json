@@ -1,0 +1,88 @@
+{
+  "status": "done",
+  "output": {
+    "text": "Finished."
+  },
+  "record": [
+    {
+      "machine": "careful",
+      "ask": {
+        "kind": "script",
+        "name": "guarded_add.approval",
+        "job": {
+          "input": {
+            "job": {
+              "name": "guarded_add",
+              "run": {
+                "machine": "careful"
+              },
+              "tool": {
+                "name": "guarded_add",
+                "args": {
+                  "n": 1
+                },
+                "description": "Add one, once approved",
+                "said": "Two guarded calls."
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "machine": "careful",
+      "ask": {
+        "kind": "script",
+        "name": "guarded_add.1.approval",
+        "job": {
+          "input": {
+            "job": {
+              "name": "guarded_add",
+              "tool": {
+                "name": "guarded_add",
+                "args": {
+                  "n": 2
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "machine": "careful",
+      "ask": {
+        "kind": "script",
+        "name": "guarded_add"
+      }
+    },
+    {
+      "machine": "careful",
+      "ask": {
+        "kind": "script",
+        "name": "guarded_add.1"
+      },
+      "absent": true
+    },
+    {
+      "machine": "careful",
+      "emit": {
+        "job": "turn#2",
+        "name": "log",
+        "data": {
+          "<contains>": "denied"
+        }
+      }
+    },
+    {
+      "machine": "careful",
+      "emit": {
+        "job": "turn#2",
+        "name": "log",
+        "data": {
+          "<contains>": "odd numbers only"
+        }
+      }
+    }
+  ]
+}

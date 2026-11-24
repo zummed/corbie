@@ -103,7 +103,8 @@ func (e *Error) Value() any {
 // by its location, as a run of its own, or a send.
 type Job struct {
 	// Name says what asked for the job: a stage, a state, a tool, an
-	// agent's turn, the ask; an item of a list adds its position.
+	// agent's turn; an item of a list adds its position, and a hook's job
+	// the hook's name.
 	Name string `json:"name"`
 
 	Script  string   `json:"script,omitzero"`  // a script of the definition, by its path
@@ -133,16 +134,13 @@ type Job struct {
 	// Alone says the job has only its own permissions, and none of the
 	// lists written for the whole definition.
 	Alone bool `json:"alone,omitzero"`
-	// Shown is what the ask is shown about the job, beside its name and
-	// its input, where the job is held for approval.
-	Shown any `json:"shown,omitzero"`
-	// Above says the job is an ask taken from a machine above, whose
-	// script or machine is in that machine's definition. Only the controller
-	// sets it.
-	Above bool `json:"above,omitzero"`
-	// Hook names the hook the job is, and Level which machine above
-	// declares it, the nearest being 0, for a hook taken from above.
+	// Tool is what a hook reads of an agent's tool call as job.tool.
+	Tool any `json:"tool,omitzero"`
+	// Hook names the hook the job is. Above says a machine above declares
+	// it, whose script or machine is in that machine's definition, and Level
+	// which machine, the nearest being 0. Only the controller sets them.
 	Hook  string `json:"hook,omitzero"`
+	Above bool   `json:"above,omitzero"`
 	Level int    `json:"level,omitzero"`
 	// Wants names the emitted values the machine acts on.
 	Wants []string `json:"wants,omitzero"`

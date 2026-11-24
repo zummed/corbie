@@ -1,9 +1,10 @@
-# approve: [send:…] holds the chart's call job for its ask. The send
+# approve: [send:…] marks the chart's call job, which waits for its hook. The send
 # action on entering the state is never held.
 statechart: caller
 allow: ["send:**"]
 approve: ["send:**"]
-ask: ./yes.js
+hooks:
+  approval: { before: { script: ./yes.js }, when: "${job.approve}" }
 initial: calling
 states:
   calling:

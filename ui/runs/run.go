@@ -997,6 +997,9 @@ func marksOf(id string, entries []client.Entry, status string, st *instance.Stat
 				continue
 			}
 			name := jobOf(a.Name)
+			if a.Job != nil && a.Job.Hook != "" {
+				name = drawing.HookJob(a.Job.Hook)
+			}
 			s.Asked = append(s.Asked, name)
 			if r := byID[cmp.Or(a.Child, callee(a))]; r != nil {
 				m.Children[name] = drawing.Child{ID: r.ID, Machine: r.Machine, Type: r.Type}
@@ -1008,6 +1011,9 @@ func marksOf(id string, entries []client.Entry, status string, st *instance.Stat
 		for _, key := range slices.Sorted(maps.Keys(st.Jobs)) {
 			j := st.Jobs[key]
 			name := jobOf(j.Name)
+			if j.Hook != "" {
+				name = drawing.HookJob(j.Hook)
+			}
 			m.Going = append(m.Going, name)
 			if j.Held {
 				m.Held = append(m.Held, name)

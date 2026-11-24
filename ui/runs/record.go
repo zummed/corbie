@@ -99,7 +99,7 @@ func lines(e client.Entry, name string, day time.Time) []line {
 				text = fmt.Sprintf("%s fails, denied: %s", ask.Name, ask.Error.Refused)
 			}
 		case instance.AskHold:
-			text = fmt.Sprintf("hold %s for the ask", ask.Name)
+			text = fmt.Sprintf("hold %s for its hooks", ask.Name)
 		case instance.AskNote:
 			text = ask.Text
 		default:
@@ -513,8 +513,8 @@ func (b *rowBuilder) rows(id string, depth int, in string) []stepRow {
 				name := jobOf(a.Name)
 				var w []word
 				switch {
-				case name == instance.AskName:
-					w = say("ask started ", bold(child.Machine))
+				case a.Job != nil && a.Job.Hook != "":
+					w = say("hook ", bold(a.Job.Hook), " started ", bold(child.Machine))
 				case run.Type == "flow":
 					w = say("stage ", bold(name), " started ", bold(child.Machine))
 				case run.Type == "statechart":
@@ -561,14 +561,21 @@ func (b *rowBuilder) rows(id string, depth int, in string) []stepRow {
 				}
 				add(r)
 			case instance.AskHold:
-				r := stepRow{What: say("held ", bold(jobOf(a.Name)), " for approval"), Kind: "held", Facts: jobFacts(a, b.byID), Cards: []string{jobOf(a.Name)}}
+				// The hook the job is held for is the one the same step started
+				// for it.
+				r := stepRow{What: say("held ", bold(jobOf(a.Name))), Kind: "held", Facts: jobFacts(a, b.byID), Cards: []string{jobOf(a.Name)}}
 				if a.Job != nil {
 					r.In = a.Job.Input
 				}
 				for _, c := range e.Asks {
-					if c.Kind == instance.AskChild && jobOf(c.Name) == instance.AskName {
-						ask := linkOf(c.Child, b.byID)
-						r.Facts = append(r.Facts, fact{Name: "held for", Text: c.Child + statusOf(b.byID[c.Child]), Run: &ask})
+					if c.Job == nil || c.Job.Hook == "" || !strings.HasPrefix(c.Name, a.Name+".") {
+						continue
+					}
+					r.What = say("held ", bold(jobOf(a.Name)), " for ", bold(c.Job.Hook))
+					r.Facts = append(r.Facts, fact{Name: "hook", Text: c.Job.Hook})
+					if c.Kind == instance.AskChild {
+						hook := linkOf(c.Child, b.byID)
+						r.Facts = append(r.Facts, fact{Name: "held for", Text: c.Child + statusOf(b.byID[c.Child]), Run: &hook})
 					}
 				}
 				add(r)
@@ -820,7 +827,7 @@ func jobFacts(a *instance.Ask, byID map[string]*client.Run) []fact {
 		if j.Approve {
 			facts = append(facts, fact{Name: "approve", Text: "true"})
 		}
-		if shown, _ := j.Shown.(map[string]any); shown != nil {
+		if shown, _ := j.Tool.(map[string]any); shown != nil {
 			if toolkit, _ := shown["toolkit"].(string); toolkit != "" {
 				facts = append(facts, fact{Name: "toolkit", Text: toolkit})
 			}

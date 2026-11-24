@@ -384,8 +384,13 @@ export interface Agent {
   Turn: number;
   Turns: number;
   Toolkits: Toolkit[];
-  Ask?: Card | null;
-  AskMark: string;
+  Hooks: Hook[] | null;
+}
+
+export interface Hook {
+  Card: Card;
+  When: boolean;
+  Mark: string;
 }
 
 export interface Decision {

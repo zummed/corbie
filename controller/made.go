@@ -329,7 +329,7 @@ func (b *build) wrong(out *stepOut, size int) *machine.Error {
 				return b.p.failf("the step gave the name %.40q, which no definition holds", name)
 			}
 		}
-		if r.Job != nil && (r.Job.Name == instance.AskName || strings.HasSuffix(r.Job.Name, cancelSuffix)) {
+		if r.Job != nil && strings.HasSuffix(r.Job.Name, cancelSuffix) {
 			return b.p.failf("the step gave the name %.40q, which no definition holds", r.Job.Name)
 		}
 		if r.Send != nil && r.Send.At != nil && !machine.SendsToAddresses(b.def) {

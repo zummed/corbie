@@ -1,0 +1,40 @@
+{
+  "status": "done",
+  "output": {
+    "n": 2
+  },
+  "note": "R-perm-69: a called run's held jobs go only to its own file's hooks.",
+  "record": [
+    {
+      "machine": "lookup",
+      "ask": {
+        "kind": "script",
+        "name": "guarded.approval",
+        "job": {
+          "input": {
+            "job": {
+              "run": {
+                "machine": "lookup"
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "machine": "caller",
+      "ask": {
+        "kind": "script",
+        "name": "look.approval"
+      },
+      "absent": true
+    },
+    {
+      "machine": "lookup",
+      "ask": {
+        "kind": "hold",
+        "name": "guarded"
+      }
+    }
+  ]
+}

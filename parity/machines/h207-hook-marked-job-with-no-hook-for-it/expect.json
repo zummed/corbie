@@ -1,7 +1,0 @@
-{
-  "status": "failed",
-  "failure": "denied",
-  "error_contains": [
-    "marked: the job is marked for approval and no before hook is for it"
-  ]
-}

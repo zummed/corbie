@@ -1,0 +1,11 @@
+# The stage marked approve: true is one that starts a child flow. The hook
+# runs before the child starts. The child, which has no hook of its own,
+# then waits for the same hook for its own marked stage.
+flow: parent
+hooks:
+  approval: { before: { script: ./yes.js }, when: "${job.approve}" }
+stages:
+  kid:
+    job: { machine: ./guarded-flow.yaml, input: { n: 1 }, approve: true }
+output:
+  kid: ${stages.kid.output}

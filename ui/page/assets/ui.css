@@ -367,7 +367,7 @@ table.kids svg.g { margin-right: 6px; }
 .machine .state rect.outer { fill: none; stroke: var(--line); stroke-width: 1; transition: width var(--glide), height var(--glide); }
 .machine .state > a.card[href]:hover rect.box { stroke: var(--accent); }
 .machine .state.unfolded rect.box { fill: color-mix(in srgb, var(--plate) 45%, var(--paper)); }
-.machine .state.reply rect.box, .machine .state.ask rect.box { fill: var(--paper); }
+.machine .state.reply rect.box, .machine .state.hook rect.box { fill: var(--paper); }
 .machine .state.when rect.box, .machine .state.sends rect.box { stroke-dasharray: 5 3; }
 .machine .state.skipped rect.box { stroke-dasharray: 3 3; }
 .machine .state.skipped text { fill: var(--ink2); }

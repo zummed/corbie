@@ -1,7 +1,0 @@
-{
-  "status": "done",
-  "output": {
-    "n": 2
-  },
-  "note": "R-perm-69: a called run's held jobs go only to its own file's ask."
-}

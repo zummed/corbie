@@ -29,10 +29,9 @@ type Definition struct {
 	Jobs    int            `json:"jobs,omitzero"`    // how many jobs an instance may start
 	Allow   []string       `json:"allow,omitzero"`
 	Deny    []string       `json:"deny,omitzero"`
-	// Approve lists the permissions a job may use only after the ask
-	// approves it.
+	// Approve lists the permissions that mark a job for approval: a job
+	// that declares one starts only after a hook before it.
 	Approve []string `json:"approve,omitzero"`
-	Ask     *JobSpec `json:"ask,omitzero"`
 	// Hooks are the jobs that run before or after the jobs of the machine
 	// and of the machines below it, by name.
 	Hooks map[string]*HookSpec `json:"hooks,omitzero"`
@@ -106,12 +105,22 @@ type JobSpec struct {
 }
 
 // A HookSpec is a hook as a definition writes it: a job that runs before a
-// job starts or after it has ended, and the condition on the job that says
-// which jobs it runs for.
+// job starts or after it has ended done, and the condition on the job that
+// says which jobs it runs for.
 type HookSpec struct {
 	Before *JobSpec `json:"before,omitzero"`
 	After  *JobSpec `json:"after,omitzero"`
 	When   string   `json:"when,omitzero"`
+}
+
+// HasBefore says whether any of the hooks runs before a job.
+func HasBefore(hooks map[string]*HookSpec) bool {
+	for _, h := range hooks {
+		if h.Before != nil {
+			return true
+		}
+	}
+	return false
 }
 
 // IsMachine says whether the job is a machine.
@@ -335,13 +344,11 @@ func (c *Checker) Name(place, name string) {
 		c.Problem(place, "%q is a name, and a name cannot be an expression", name)
 	case !nameForm.MatchString(name):
 		c.Problem(place, "%q is not a name: use letters, digits, '_' and '-', starting with a letter", name)
-	case name == "ask":
-		c.Problem(place, "the name \"ask\" is taken by the definition's ask")
 	}
 }
 
-// Approves notes that the definition holds something for approval other
-// than a job marked for it, which needs an ask as such a job does.
+// Approves notes that the definition marks something for approval other
+// than a job, which needs a hook before it as a marked job does.
 func (c *Checker) Approves() { c.approves = true }
 
 // reading adds to the names a place gives what every expression reads.
@@ -431,7 +438,7 @@ func (c *Checker) Job(place string, s *JobSpec, names ...string) {
 		c.Problem(place, "a job writes one of script:, machine:, call: and send:, and this one writes none")
 	case s.IsSend():
 		if s.Input != nil || s.Timeout != "" || s.Restart != nil || s.Memory != 0 || len(s.Tags) > 0 || len(s.Files) > 0 {
-			c.Problem(place, "a send takes to, event and data, and approve, allow and deny: it has no input, timeout, restart, memory, tags or files")
+			c.Problem(place, "a send takes to, event and data, and approve, meta, allow and deny: it has no input, timeout, restart, memory, tags or files")
 		}
 		c.sends = append(c.sends, PlacedSend{Place: place + ".send.to", To: &s.Send.To, Event: s.Send.Event, Job: s})
 		c.Address(place+".send.to", &s.Send.To, names...)
@@ -561,8 +568,8 @@ func (c *Checker) permissions(place string, allow, deny []string) {
 }
 
 // Check gives everything wrong with a definition in full form. The second
-// result says whether any job in it is held for approval, which needs an
-// ask in the definition or above it.
+// result says whether any job in it is marked for approval, which needs a
+// hook before it in the definition or above it.
 func Check(def *Definition) (Problems, bool) {
 	c := check(def)
 	return c.problems, c.approves || len(def.Approve) > 0
@@ -668,19 +675,23 @@ func check(def *Definition) *Checker {
 			c.Problem(at, "%v", err)
 		}
 	}
-	c.Job("ask", def.Ask, "input")
 	for _, name := range sortedKeys(def.Hooks) {
 		h, place := def.Hooks[name], "hooks."+name
+		c.Name(place, name)
 		if (h.Before == nil) == (h.After == nil) {
 			c.Problem(place, "a hook writes one of before: and after:")
 		}
-		c.Job(place+".before", h.Before, "input", "job")
-		c.Job(place+".after", h.After, "input", "job", "result", "output")
+		names := []string{"input", "job"}
+		if h.After != nil {
+			names = append(names, "output")
+		}
+		c.Job(place+".before", h.Before, names...)
+		c.Job(place+".after", h.After, names...)
 		if h.When != "" {
-			c.Cond(place+".when", h.When, "input", "job", "result", "output")
+			c.Cond(place+".when", h.When, names...)
 		}
 	}
-	c.approves = false // the ask's own job is never itself held by this definition's marks
+	c.approves = false // a hook's own job takes no hook, so its mark needs none
 	t.Check(c, def)
 	return c
 }
@@ -802,10 +813,11 @@ type Draft struct {
 	Definition *Definition
 	Files      map[string][]byte
 	Children   map[string]*Draft
-	// needsAsk says a job in it is held for approval and it has no ask.
-	needsAsk bool
-	// ask is the machine it runs as its ask, if its ask is a machine.
-	ask string
+	// needsHook says a job in it is marked for approval and it has no hook
+	// before a job.
+	needsHook bool
+	// hooks are the machines it runs as hooks.
+	hooks map[string]bool
 	// size is the size of the definition as it is stored.
 	size int
 	// written is the definition as it is written out, with what it

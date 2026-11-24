@@ -1,0 +1,15 @@
+flow: refunds
+allow: [send:approvals/refund, send:log]
+hooks:
+  approval:
+    before: { call: { at: approvals/refund }, input: { amount: "${job.input.amount}" } }
+    when: "${job.approve}"
+  told:
+    after: { send: { to: { at: log }, event: ran, data: { job: "${job.name}", output: "${output}" } } }
+stages:
+  refund:
+    each: [20, 900]
+    job: { script: ./refund.js, input: { amount: "${item}" }, approve: true }
+  unmarked:
+    job: { script: ./refund.js, input: { amount: 1 } }
+output: ${stages.refund.output}

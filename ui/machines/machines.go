@@ -146,7 +146,7 @@ type view struct {
 // as its definition says: its description, its location, its lifetime, what a
 // changed file does to its runs, how many may run at once, who may send to
 // it and call it, the locations it may send to and call, and the
-// permissions a job uses only after its ask approves.
+// permissions that mark a job for approval.
 type place struct {
 	Description, Location, Lifetime, Started, Update, Updated string
 	Runs                                                      int
@@ -361,9 +361,6 @@ func secretsOf(d *machine.Draft) []string {
 		allow := slices.Clone(d.Definition.Allow)
 		for _, job := range machine.Jobs(d.Definition) {
 			allow = append(allow, job.Job.Allow...)
-		}
-		if d.Definition.Ask != nil {
-			allow = append(allow, d.Definition.Ask.Allow...)
 		}
 		for _, name := range secret.Named(allow) {
 			all[name] = true

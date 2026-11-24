@@ -8,7 +8,7 @@ import (
 	"github.com/zummed/corbie/machine/agent"
 )
 
-// agentOf gives an agent's model, what it can call, and its ask. On a run's
+// agentOf gives an agent's model, what it can call, and its hooks. On a run's
 // page a toolkit whose tools the run has not asked for is folded.
 func agentOf(def *machine.Definition, a *agent.Agent, run *Run, w *walker) *Agent {
 	out := &Agent{Model: a.Model.Name, Turns: a.Turns, Toolkits: []Toolkit{}, Turn: run.latest().Turn}
@@ -61,10 +61,14 @@ func agentOf(def *machine.Definition, a *agent.Agent, run *Run, w *walker) *Agen
 		used := slices.ContainsFunc(g.Tools, func(t Tool) bool { return t.Mark != "never" })
 		out.Toolkits[i].Folded = run != nil && g.Toolkit && !used
 	}
-	if ask := def.Ask; ask != nil {
-		c := Card{Name: "ask", Line: lineOf(w.lines, "ask")}
-		w.describe(&c, "ask", ask)
-		out.Ask, out.AskMark = &c, jobMark(run, "ask")
+	for _, name := range sortedKeys(def.Hooks) {
+		h, when, job := def.Hooks[name], "before", def.Hooks[name].Before
+		if job == nil {
+			when, job = "after", h.After
+		}
+		c := Card{Name: name, Title: titleOf(when+" a job", h.When), Line: lineOf(w.lines, "hooks."+name)}
+		w.describe(&c, HookJob(name), job)
+		out.Hooks = append(out.Hooks, Hook{Card: c, When: h.When != "", Mark: jobMark(run, HookJob(name))})
 	}
 	return out
 }
@@ -88,8 +92,8 @@ func decisionOf(dec *agent.Decision, run *Run) *Decision {
 	return out
 }
 
-// jobMark is how a tool or an ask of a run is marked: where the run failed,
-// held for the ask, going now, asked for at an earlier step, or never asked
+// jobMark is how a tool or a hook of a run is marked: where the run failed,
+// held for a hook, going now, asked for at an earlier step, or never asked
 // for.
 func jobMark(run *Run, name string) string {
 	switch {

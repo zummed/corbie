@@ -1,0 +1,11 @@
+# A per-item stage marked approve: true over four items. The hook runs
+# once for each job, and says yes to two.
+flow: asks
+hooks:
+  approval: { before: { script: ./odd.js }, when: "${job.approve}" }
+stages:
+  guarded:
+    each: [1, 2, 3, 4]
+    job: { script: ./add.js, input: { n: "${item}" }, approve: true }
+output:
+  guarded: ${stages.guarded.output}

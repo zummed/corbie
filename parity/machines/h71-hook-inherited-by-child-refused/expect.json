@@ -1,9 +1,0 @@
-{
-  "status": "failed",
-  "failure": "denied",
-  "error_contains": [
-    "second: ",
-    "guarded: ",
-    "no to all"
-  ]
-}

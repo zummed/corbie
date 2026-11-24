@@ -1,0 +1,56 @@
+{
+  "status": "done",
+  "note": "R-mach-170: each tool says in meta: where it is approved, one hook asks there, a second hook is for a refund over 100, and a marked tool with no meta is denied.",
+  "record": [
+    {
+      "machine": "helper",
+      "emit": {
+        "job": "restart.team",
+        "name": "log",
+        "data": {
+          "<contains>": "asked in #infra, of infra:approve"
+        }
+      }
+    },
+    {
+      "machine": "helper",
+      "emit": {
+        "job": "refund.team",
+        "name": "log",
+        "data": {
+          "<contains>": "asked in #orders-team, of orders:approve"
+        }
+      }
+    },
+    {
+      "machine": "helper",
+      "emit": {
+        "job": "refund.1.finance",
+        "name": "log",
+        "data": {
+          "<contains>": "asked in #finance"
+        }
+      }
+    },
+    {
+      "machine": "helper",
+      "emit": {
+        "job": "turn#3",
+        "name": "log",
+        "data": {
+          "<contains>": "the hook finance refused it: finance said no"
+        }
+      }
+    },
+    {
+      "machine": "helper",
+      "emit": {
+        "job": "turn#3",
+        "name": "log",
+        "data": {
+          "<contains>": "the hook team could not be started"
+        }
+      }
+    }
+  ]
+}

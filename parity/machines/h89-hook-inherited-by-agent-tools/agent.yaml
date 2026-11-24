@@ -1,9 +1,0 @@
-agent: careful
-model: { name: scripted, service: anthropic }
-turn: ./turn.js
-prompt: Add some numbers.
-tools:
-  guarded_add:
-    description: Add one, once approved
-    args: { n: number }
-    job: { script: ./add.js, input: { n: "${args.n}" }, approve: true }

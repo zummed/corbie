@@ -1,0 +1,22 @@
+# The root chart's hook says no, and its child flow marks a stage
+# approve: true. Where the root has a failed: it is taken; where it has
+# none, the root ends denied too.
+statechart: parent
+hooks:
+  approval: { before: { script: ./no.js }, when: "${job.approve}" }
+initial: first
+states:
+  first:
+    job: { machine: ./guarded-flow.yaml, input: { n: 1 } }
+    on:
+      done: unexpected
+      failed: noting
+  noting:
+    job: { script: ./echo.js, input: { name: "${event.name}", error: "${event.data.error}" } }
+    on: { done: second }
+  second:
+    job: { machine: ./guarded-flow.yaml, input: { n: 2 } }
+    on: { done: unexpected }
+  unexpected:
+    end: done
+    output: { unexpected: true }

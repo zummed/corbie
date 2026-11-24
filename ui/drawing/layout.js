@@ -1352,7 +1352,7 @@ function drawAgent(a) {
   const columns = groups.filter(g => !g.Folded).map(g => [g]);
   const folded = groups.filter(g => g.Folded);
   if (folded.length > 0) columns.push(folded);
-  const askItem = a.Ask ? itemOf(a.Ask) : null;
+  const hookItems = (a.Hooks ?? []).map(h => ({ hook: h, item: itemOf(h.Card) }));
 
   let acrossAll = Math.max(columns.length - 1, 0) * sideGap, high = 0;
   for (const c of columns) {
@@ -1360,10 +1360,10 @@ function drawAgent(a) {
     acrossAll += w;
     high = Math.max(high, h);
   }
-  if (askItem) {
-    acrossAll = Math.max(acrossAll, size(askItem).w);
+  for (const { item } of hookItems) {
+    acrossAll = Math.max(acrossAll, size(item).w);
     if (high > 0) high += 12;
-    high += size(askItem).h;
+    high += size(item).h;
   }
   const hasTools = high > 0;
   const tools = { x: 0, y: 0, w: Math.max(acrossAll + 2 * inner, cardW), h: innerTop + high + inner };
@@ -1397,11 +1397,13 @@ function drawAgent(a) {
       }
       x += w + sideGap;
     }
-    if (askItem) {
-      const b = size(askItem);
+    let hy = bottom(tools) - inner;
+    for (const { hook, item } of hookItems.toReversed()) {
+      const b = size(item);
       b.x = cx(tools) - b.w / 2;
-      b.y = bottom(tools) - inner - b.h;
-      d.paint(askItem, b, ("state ask " + a.AskMark).trim(), cardR, [], "ask");
+      b.y = hy - b.h;
+      hy = b.y - 12;
+      d.paint(item, b, ("state hook " + (hook.When ? "when " : "") + hook.Mark).trim(), cardR, [], "hook " + hook.Card.Name);
     }
     d.down(top, tools, cls, `${a.Turns} turns`, { from: "model", to: "holder tools" });
     y = bottom(tools);

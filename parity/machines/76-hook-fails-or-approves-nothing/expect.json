@@ -1,0 +1,39 @@
+{
+  "status": "done",
+  "output": {
+    "note": {
+      "hook_fails": {
+        "<contains>": "failed on purpose"
+      },
+      "hook_gives_nothing": {
+        "<contains>": "gave neither { ok: true } nor { ok: false, note }"
+      }
+    }
+  },
+  "record": [
+    {
+      "machine": "hook-fails",
+      "status": "failed"
+    },
+    {
+      "machine": "hook-gives-nothing",
+      "status": "failed"
+    },
+    {
+      "machine": "hook-fails",
+      "ask": {
+        "kind": "script",
+        "name": "guarded"
+      },
+      "absent": true
+    },
+    {
+      "machine": "hook-gives-nothing",
+      "ask": {
+        "kind": "script",
+        "name": "guarded"
+      },
+      "absent": true
+    }
+  ]
+}

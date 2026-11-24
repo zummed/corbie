@@ -1,0 +1,4 @@
+flow: log
+input: { job: string, output: any }
+stages:
+  write: { job: { script: ./write.js, input: "${input}" } }

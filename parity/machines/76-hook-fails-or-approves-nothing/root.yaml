@@ -1,0 +1,14 @@
+# Two children, each with a hook of its own and a stage marked approve:
+# true. One hook's script fails; the other ends done with no { ok } in
+# it. Each child's failure is handled by a stage that notes its error.
+flow: parent
+stages:
+  hook_fails:
+    job: { machine: ./hook-fails.yaml, input: { child: hook-fails } }
+  hook_gives_nothing:
+    job: { machine: ./hook-gives-nothing.yaml, input: { child: hook-gives-nothing } }
+  note:
+    when: ${stages.hook_fails.failed && stages.hook_gives_nothing.failed}
+    job: { script: ./echo.js, input: { hook_fails: "${stages.hook_fails.error}", hook_gives_nothing: "${stages.hook_gives_nothing.error}" } }
+output:
+  note: ${stages.note.output}

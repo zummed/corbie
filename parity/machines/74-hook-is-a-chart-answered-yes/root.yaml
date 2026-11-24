@@ -1,0 +1,11 @@
+# The hook is a statechart that waits for a client's reply. The flow's marked
+# stage waits; the client says yes; the hook ends with the answer and the
+# stage runs.
+flow: asks
+hooks:
+  approval: { before: { machine: ./ask-person.yaml }, when: "${job.approve}" }
+stages:
+  guarded:
+    job: { script: ./add.js, input: { n: 1 }, approve: true }
+output:
+  guarded: ${stages.guarded.output}

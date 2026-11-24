@@ -133,8 +133,8 @@ func (s *Shape) field(name string) *Field {
 
 // hookShape is the shape of a hook.
 var hookShape = &Shape{Name: "hook", What: "a hook", Fields: []Field{
-	{Name: "before", Kind: KindJob, Description: "a job that runs before a job starts; the job starts when it gives { ok: true }"},
-	{Name: "after", Kind: KindJob, Description: "a job that runs after a job has ended, given its result"},
+	{Name: "before", Kind: KindJob, Description: "a job that runs before a job starts: { ok: true } lets the job go on, with the input it gives if it gives one, and anything else denies the job"},
+	{Name: "after", Kind: KindJob, Description: "a job that runs after a job has ended done: { ok: true } gives the machine the job's output, or the output it gives, and anything else fails the job"},
 	{Name: "when", Kind: KindWord, Description: "a condition, one expression, on the job: the hook runs for the jobs it holds for; every job, if not given"},
 }}
 
@@ -145,8 +145,7 @@ var shared = []Field{
 	{Name: "keep", Kind: KindDuration, Description: "how long its instances are kept after they end (a week)"},
 	{Name: "allow", Kind: KindList, Description: "permissions for every script the definition runs"},
 	{Name: "deny", Kind: KindList, Description: "what no script the definition runs may do"},
-	{Name: "approve", Kind: KindList, Description: "permissions a job may use only after the definition's ask approves it"},
-	{Name: "ask", Kind: KindJob, Description: "the job that approves when a job needs approval"},
+	{Name: "approve", Kind: KindList, Description: "permissions that mark a job for approval: a job that declares one starts only after a hook before it"},
 	{Name: "hooks", Kind: KindNamed, Of: hookShape, Description: "jobs that run before or after the jobs of the machine and of the machines below it, by name"},
 	{Name: "title", Kind: KindText, Description: "what a run is called, filled in from its input when it starts; only the client of its tree sees it"},
 	{Name: "meta", Kind: KindValue, Description: "data of any kind, which Corbie keeps with the definition and never reads"},
@@ -208,8 +207,8 @@ var JobShape = &Shape{Name: "job", What: "a job", Fields: []Field{
 	{Name: "restart", Kind: KindFields, Description: "what happens when the job ends", Of: restartShape},
 	{Name: "memory", Kind: KindSize, Description: "the most memory the job may use"},
 	{Name: "tags", Kind: KindList, Description: "chooses runners: one that has every tag"},
-	{Name: "approve", Kind: KindFlag, Description: "wait for the definition's ask to approve it"},
-	{Name: "meta", Kind: KindValue, Description: "data of any kind, which the job's hooks read as job.meta and nothing else reads"},
+	{Name: "approve", Kind: KindFlag, Description: "marks the job for approval: it starts only after a hook before it"},
+	{Name: "meta", Kind: KindValue, Description: "data of any kind, which hooks read as job.meta and nothing else reads"},
 }}
 
 // definitionShape is the shape of a definition before its type's own

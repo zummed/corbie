@@ -1,0 +1,14 @@
+{
+  "status": "done",
+  "output": [
+    {
+      "item": 20,
+      "output": "refunded 20"
+    },
+    {
+      "item": 900,
+      "output": "refunded 100"
+    }
+  ],
+  "note": "R-mach-167: a hook before a job gives the input the job starts with. The flow asked for 900, and the job ran with 100."
+}

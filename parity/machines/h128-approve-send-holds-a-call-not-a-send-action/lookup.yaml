@@ -1,4 +1,0 @@
-statechart: lookup
-initial: found
-states:
-  found: { end: done, output: found }

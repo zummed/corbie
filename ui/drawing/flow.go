@@ -32,7 +32,7 @@ func flowOf(f *flow.Flow, run *Run, w *walker) *Flow {
 
 // stageMark is how a stage's status is marked. A stage still running when
 // its run ended is marked by how the run ended, and one whose job is held
-// for the ask is marked held.
+// for a hook is marked held.
 func stageMark(name, status string, run *Run) string {
 	switch {
 	case status == "running" && run.Failed:

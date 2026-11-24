@@ -1,0 +1,14 @@
+# ask-person.yaml: a hook that waits for a person. It hands out the ticket
+# decision and ends with what the answer says.
+statechart: ask-person
+input: { job: any }
+initial: asking
+states:
+  asking:
+    ticket: decision
+    on: { decision: decided }
+  decided:
+    end: done
+    output:
+      ok: ${event.data.yes}
+      note: ${event.data.note}

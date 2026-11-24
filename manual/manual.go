@@ -47,7 +47,7 @@ var order = []struct{ name, group string }{
 	{"tightening", "Tasks"},
 	{"using-secrets", "Tasks"},
 	{"schedules", "Tasks"},
-	{"approval", "Tasks"},
+	{"hooks", "Tasks"},
 	{"packs", "Tasks"},
 	{"gateway", "Tasks"},
 	{"gateway-clients", "Tasks"},

@@ -47,7 +47,7 @@ Fields
   questions   each question under its name: { type, instructions, criteria }
 
 `state:` and `questions:` read `input`, `values` and `run`. A decision ignores
-events sent to it, and has no tools, no ask and no approval.
+events sent to it, and has no tools.
 
 Corbie gives the `decide` job the connection to the model's service and the
 key bound to that connection, and nothing from the definition's `allow:`.

@@ -1,10 +1,9 @@
-Definitions: every type of machine shares these fields, expressions, jobs, events and approval.
+Definitions: every type of machine shares these fields, expressions, jobs, events and hooks.
 
 A definition is a YAML file. One field gives the machine's type and name:
 `flow: digest`, `statechart: review`, `agent: librarian` or
 `decision: urgent`. It may be written anywhere in the file, or come from a file it includes. A name is letters,
-digits, `_` and `-`, and starts with a letter. No stage, state, tool or job is
-named `ask`, the name of the definition's ask.
+digits, `_` and `-`, and starts with a letter.
 
 Fields every type takes
 -----------------------
@@ -15,8 +14,8 @@ Fields every type takes
   limits: { timeout: 1h }      how much a run may use, as below
   allow: [net:example.com]     permissions of every script job in the definition
   deny: [exec]                 what no script job in the definition may do
-  approve: [disk]              permissions that hold a job for approval
-  ask: { script: ./ask.js }    the job that approves held jobs
+  approve: [disk]              permissions that mark a job for approval
+  hooks: { small: { before: ./small.js } }    jobs that run before or after other jobs, as below
   title: "${input.topic}"      a run's title, filled in when it starts, as below
   meta: { owner: alice }        data Corbie keeps and never reads; no expression in it is filled in
   lifetime: singleton          how runs start at the file's location, as below
@@ -201,7 +200,8 @@ of its own whose result is the job's output.
   timeout: 5m                  for a script, how long it may run, default 5m;
                                for a machine, the child run's timeout
   restart: { limit: 2 }        what happens when the job ends, as below; with none it runs once
-  approve: true                the job waits until the definition's ask approves it
+  approve: true                marks the job for approval: it starts only after a `before` hook
+  meta: { team: orders }       data hooks read as `job.meta`, and nothing else reads
   files: [./lib.js]            script only: files the script loads with require("./lib.js")
   memory: 256MB                script only: the most memory it may use, in B, KB, MB or GB
   tags: [gpu]                  script only: the job goes to a runner that has every tag
@@ -257,10 +257,10 @@ A job with `restart:` runs again when it ends. With none it runs once.
   delivers its values again.
 - With `after: always` and no limit, the machine sees no outcome, so a stage
   waiting on the job never ends.
-- A restart after a failure is the same job, under a yes it was already given.
-- A restart after a job ended well is a new job: it is held again if it needs
-  approval, has a new `job.request`, and counts against `limits: { jobs: }`.
-- An ask that ends well is final, whatever its policy says.
+- A restart after a failure is the same job: its `before` hooks do not run again.
+- A restart after a job ended well is a new job: its `before` hooks run again,
+  it has a new `job.request`, and it counts against `limits: { jobs: }`.
+- A hook's job that ends well is final, whatever its policy says.
 
 Locations
 ---------
@@ -304,12 +304,12 @@ for the result.
 - `at`, `key` and `run` may hold expressions, and `to` may be one expression
   that gives an address. The address is checked once it is filled in.
 - A send job ends `done` once the event is written. It takes `to`, `event`,
-  `data`, `approve`, `allow` and `deny`, and nothing else.
+  `data`, `approve`, `meta`, `allow` and `deny`, and nothing else.
 - A call job's output is the called run's result. It fails if the receiver
   refuses it, if the location is not transient or is at its `limits: { runs }`,
   or if the run fails.
-- A call job takes `call`, `input`, `timeout`, `restart`, `approve`, `allow`
-  and `deny`. Its `timeout` is the called run's, and each restart calls again.
+- A call job takes `call`, `input`, `timeout`, `restart`, `approve`, `meta`,
+  `allow` and `deny`. Its `timeout` is the called run's, and each restart calls again.
 - The called run belongs to its own tree's client. Cancelling the call job
   cancels it.
 - A key is any text of 1 to 256 characters. Anyone who can list runs can read
@@ -374,74 +374,99 @@ A failed job's status is `error`, `timeout`, `denied` or `cancelled`, and
 `denied` adds `refused`, `layer` and `fix` to the data. Each type's page lists
 the events it acts on.
 
-Approval
---------
+Hooks
+-----
 
-`corbie manual approval` has the mechanism and an example. The controller
-holds a job in two cases.
+`corbie manual hooks` has the mechanism and an example. A hook is a job that
+runs before or after the jobs of its machine and of the machines it runs.
+
+  hooks: { small: { before: ./small.js, when: "${job.approve}" } }    a hook named `small`
+
+  before: ./small.js                 a job that runs before a job starts
+  after: { machine: ./mask.yaml }    a job that runs after a job has ended `done`
+  when: "${job.approve}"             a condition on the job; with none, every job
+
+A hook writes one of `before:` and `after:`. Its job is a script, a machine, a
+call or a send.
+
+  { ok: true }           before a job: it goes on. After a job: the machine is given its output
+  { ok: true, input }    before a job: it starts with that input
+  { ok: true, output }   after a job: the machine is given that output
+  { ok: false, note }    before a job: it fails with status `denied`. After a job: it fails
+  any other result       as `{ ok: false }`
+
+- A hook that fails, or whose values cannot be filled in, refuses the job.
+- A hook that is a send returns nothing, and refuses nothing.
+- A refused job's error holds the hook's name and its note.
+- A changed input changes no permission: the job's `allow:` is filled first.
+- The run's record holds each hook's result. The machine is not told of a
+  changed input: a stage's own values and an agent's conversation hold what
+  was first asked for.
+- After a hook gives another output, the record still holds the job's own.
+
+A hook's expressions read `input`, `values` and `run` of the machine that names
+it, and `job`. After a job they read `output`, the job's output.
+
+  job.name       the stage, state or tool that asked for the job
+  job.run        the run the job is a job of: { id, machine }
+  job.input      the input the job is given
+  job.allow      the permissions the job declares
+  job.approve    true when the job is marked for approval
+  job.meta       the job's `meta:`
+  job.script, job.machine, job.call or job.send    what the job runs
+  job.tool       for an agent's tool call: { name, entry, toolkit, description, args, said }
+
+- A hook with no `input:` is given `{ job }`, and after a job `{ job, output }`.
+- A hook's `allow:` scopes read `input` and `values`, and never `job`.
+- A hook's job has its own permissions, and those of the machine that names it.
+- A hook's job is named for the job and the hook, as `refund.0.small`.
+
+Which hooks run for a job:
+
+- Every hook whose `when:` holds runs, one at a time: the machine's own in the
+  order of their names, then those of each machine above it, the nearest first.
+- A hook runs once for one job. A hook's own job takes no hook.
+- A machine run as a hook takes no hook and no `approve:` list from above it.
+- A run started by a send or a call takes only its own file's hooks.
+- A job that is no longer wanted while a hook runs for it is dropped, and the
+  hook's job is cancelled.
+- A hook has no time limit of its own: its job's `timeout:` is how long it may take.
+
+A job is marked for approval in two cases.
 
 - The job has `approve: true`.
 - The job's `allow:` list declares a permission that `approve:` lists, in
   kind and their scopes match a common value, or when one is a group of that kind.
-  kind and either scope covers the other, or when one is a group of that kind.
   A call or a send job declares only `send:` for its location.
 
-The ask is a job, and the controller adds two fields to its input.
+A marked job starts only after a `before` hook, with no permission it did not
+have. One that no `before` hook is for fails with status `denied`, and a run of
+a definition that marks a job and has no `before` hook in it or above it is
+refused as it starts.
 
-  ask: ./ask.js                   a script
-  ask: { machine: ./ask.yaml }    a machine, which can wait for a person
+A script hook runs alone under `corbie test`. This one refuses a job whose
+`allow:` list has an `fs.write` entry.
 
-  input.asking    { machine, instance }: the machine whose jobs are held, and its run's ID
-  input.jobs      [{ name, input, allow, script, machine, call or send, asked }]: each held job
+    // writes.js
+    const writes = (input.job.allow || []).some(a => a.startsWith("fs.write"))
+    return { ok: !writes, note: "writes are not approved here" }
 
-- A held job has `asked: { tool, description, args, said }` only for an agent's
-  tool call, with `entry` too for a tool from a `list:`, and `toolkit`, the
-  toolkit's name, for a tool of a toolkit or for `open`. The list of an entry
-  in a toolkit has `asked: { toolkit }`.
-- A held call job has `call: { at }`, and a held send job `send: { to, event, data }`.
-
-The ask returns `{ approved: [names of jobs], note: "..." }`.
-
-  a job the ask names            starts, with no permission it did not have
-  a job the ask does not name    fails with status `denied`; its error has the note
-
-An ask that fails, whose values cannot be filled in, or that returns any other
-value, approves nothing.
-
-- A machine with no `ask:` uses the nearest `ask:` above it.
-- Where the held jobs of a machine made while running go is under Words from
-  outside.
-- The controller starts the ask once for the held jobs of one step.
-- A machine run as an ask uses no `ask:` and no `approve:` list from above it.
-- A run started by a send or a call uses only its own file's `ask:`.
-- A run of a definition that can hold a job and has no `ask:` in it or above
-  it is refused as it starts.
-
-A script ask runs alone under `corbie test`. This one approves a job only if
-its `allow:` list has no `fs.write` entry.
-
-    // ask.js
-    return {
-      approved: input.jobs.filter(r => !r.allow.some(a => a.startsWith("fs.write"))).map(r => r.name),
-      note: "writes are not approved here",
-    }
-
-    corbie test ask.js --input '{"jobs": [{"name": "look", "allow": ["fs.read:/srv/**"]}, {"name": "tidy", "allow": ["fs.write:/srv/**"]}]}'
-      output: {"approved":["look"],"note":"writes are not approved here"}
+    corbie test writes.js --input '{"job": {"name": "tidy", "allow": ["fs.write:/srv/**"]}}'
+      output: {"note":"writes are not approved here","ok":false}
 
 Words from outside
 ------------------
 
 A machine made while running, which a script or a model wrote, and the tools a
-`list:` gives an agent are words from outside. They name no ask and no address.
+`list:` gives an agent are words from outside. They name no hook and no address.
 
-- A machine made while running has no ask of its own. Its held jobs go to the
-  nearest `ask:` above it that was not made while running, and with none they
-  fail with status `denied`. One that writes `ask:` fails as it starts.
+- A machine made while running writes no hooks: one that does fails as it
+  starts. The hooks above it that were not made while running run for its
+  jobs, and its jobs give them no `meta`.
 - A machine made while running sends only to its parent and its children. A
   send to an address or a call fails it.
 - A tool from a `list:` runs the entry's `job:`, which the definition writes,
-  and waits for the agent's `ask:` as any tool does.
+  and takes the agent's hooks as any tool does.
 
 Reference
 ---------

@@ -48,7 +48,7 @@ here.
   tickets               the names of the tickets it waits on
   labels                the labels it was started with
 
-  denied    a job was refused a permission, or the ask did not approve a job
+  denied    a job was refused a permission, or a hook before a job refused it
   timeout   the run's timeout passed; a job that timed out fails its run with `error`
   error     anything else, such as a failed job the machine has no rule for, or a start the controller refused
 

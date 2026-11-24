@@ -1,0 +1,100 @@
+Hooks: a hook is a job that runs before or after other jobs, to refuse a job, change its input or change its output.
+
+How it works
+------------
+
+1. A definition names hooks under `hooks:`. Each has `before:` or `after:`,
+   which is a job, and `when:`, a condition on the job.
+2. Before a job starts, each `before` hook whose `when:` holds runs. `{ ok: true }`
+   lets the job start, and any other result fails it with status `denied`.
+3. After a job ends `done`, each `after` hook whose `when:` holds runs, and
+   may give the machine another output in its place.
+
+This is the same for a flow's stage, a statechart's state and an agent's tool,
+in the machine that names the hook and in every machine it runs.
+
+Example
+-------
+
+The flow starts one refund job for 20 and one for 900. The hook `small` lets a
+refund of 100 or less start.
+
+    # refunds.yaml
+    flow: refunds
+    hooks:
+      small: { before: { script: ./small.js } }
+
+    stages:
+      refund:
+        each: [20, 900]
+        job:
+          script: ./refund.js
+          input: { amount: "${item}" }
+
+    output: ${stages.refund.output}
+
+    // small.js
+    return { ok: input.job.input.amount <= 100, note: "over 100" }
+
+    // refund.js
+    return "refunded " + input.amount
+
+    corbie test refunds.yaml
+      output: [{"item":20,"output":"refunded 20"},{"error":"the hook small refused it: over 100","item":900}]
+
+The refund of 20 ran. The refund of 900 never started, and its error holds the
+hook's name and its note.
+
+What a hook returns
+-------------------
+
+  { ok: true }           before a job: it goes on. After a job: the machine is given its output
+  { ok: true, input }    before a job: it starts with that input
+  { ok: true, output }   after a job: the machine is given that output
+  { ok: false, note }    before a job: it fails with status `denied`. After a job: it fails
+  any other result       as `{ ok: false }`, and so is a hook that fails
+
+A hook that is a send returns nothing, and refuses nothing.
+
+What a hook reads
+-----------------
+
+  input, values, run    those of the machine that names the hook
+  job                   the job the hook runs for: `{ name, run, input, allow, approve, meta, tool }`
+  output                after a job, its output
+
+A hook with no `input:` is given `{ job }`, and after a job `{ job, output }`.
+In a hook's script, the job it runs for is `input.job`.
+
+Approval
+--------
+
+`approve: true` marks a job for approval, and so does a permission the
+definition lists in `approve:`. A marked job starts only after a `before` hook,
+and `job.approve` is true for it:
+
+  hooks:
+    approval: { before: { machine: ./approval.yaml }, when: "${job.approve}" }
+
+- A marked job that no `before` hook is for fails with status `denied`.
+- A hook that is a statechart waits for a person, who answers with
+  `corbie run reply`.
+- A job's `meta:` is data the hook reads as `job.meta`, such as who approves it.
+
+Which hooks run
+---------------
+
+- A hook with no `when:` runs for every job.
+- Every hook whose `when:` holds runs, one at a time: the machine's own in the
+  order of their names, then those of each machine above it.
+- A hook runs once for one job, and its job is named for both, as `refund.0.small`.
+- A run that a send or a call started takes only its own file's hooks.
+- A machine made while running writes no hooks, as `corbie manual definitions`
+  says under Words from outside.
+
+Reference
+---------
+
+  corbie manual definitions    hooks in full, `approve:` and `meta:`
+  corbie manual statechart     a statechart that waits for a person's answer
+  corbie manual agent          an agent's tools, and what a hook reads of a tool's call

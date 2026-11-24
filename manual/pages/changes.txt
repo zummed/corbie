@@ -8,6 +8,19 @@ refused.
 After 0.32.0
 ------------
 
+Change `ask:` to a hook, as `corbie manual hooks` says.
+
+  ask: ./ask.js                           hooks: { approval: { before: ./ask.js, when: "${job.approve}" } }
+  input.jobs, a list                      input.job, one job: the hook runs once for each held job
+  input.asking.machine                    input.job.run.machine
+  a job's asked: { tool, args, … }        input.job.tool: { name, args, … }
+  return { approved: [names], note }      return { ok: true } or { ok: false, note }
+  the nearest ask above a job             every hook above a job runs, the job's own machine's first
+  a stage, state or tool named ask        allowed
+
+`approve: true` and `approve: [exec]` mark a job as before. A marked job that
+no `before` hook is for fails with status `denied`.
+
 Change the path of a run's output or input that is itself a blob.
 
   { "$blob": "file" }         the whole output; before, the path was empty and the gateway gave no bytes for it

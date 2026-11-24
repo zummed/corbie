@@ -128,6 +128,8 @@ type Job struct {
 	Memory  int64    `json:"memory,omitzero"`
 	Tags    []string `json:"tags,omitzero"`
 	Approve bool     `json:"approve,omitzero"`
+	// Meta is data the job's hooks read, and nothing else does.
+	Meta any `json:"meta,omitzero"`
 	// Alone says the job has only its own permissions, and none of the
 	// lists written for the whole definition.
 	Alone bool `json:"alone,omitzero"`

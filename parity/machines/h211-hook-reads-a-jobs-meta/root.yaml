@@ -1,0 +1,16 @@
+# The agent's writer knows no team's channel: one hook asks wherever each
+# tool's meta says, and a second is for a refund over 100.
+agent: helper
+model: { name: scripted, service: anthropic }
+turn: ./turn.js
+prompt: Refund order 7 twice and restart web-1.
+hooks:
+  team:
+    when: "${job.approve}"
+    before: { script: ./ask-in.js, input: { channel: "${job.meta.channel}", approvers: "${job.meta.approvers}", tool: "${job.tool.name}", args: "${job.tool.args}" } }
+  finance:
+    when: "${job.approve && job.tool.name == 'refund' && job.tool.args.amount > 100}"
+    before: { script: ./ask-in.js, input: { channel: "#finance", approvers: finance, tool: "${job.tool.name}", args: "${job.tool.args}" } }
+toolkits:
+  orders: { include: toolkits/orders/toolkit.yaml }
+  infra: { include: toolkits/infra/toolkit.yaml }

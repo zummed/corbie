@@ -99,6 +99,8 @@ type JobSpec struct {
 	Memory  int64        `json:"memory,omitzero"`
 	Tags    []string     `json:"tags,omitzero"`
 	Approve bool         `json:"approve,omitzero"`
+	// Meta is data the job's hooks read, and nothing else does.
+	Meta any `json:"meta,omitzero"`
 	// Alone says the job has only its own permissions.
 	Alone bool `json:"alone,omitzero"`
 }
@@ -199,7 +201,7 @@ func (s *AddressSpec) Fill(e *Evaluator, scope Scope, place string) (*Address, e
 // Fill gives the job with its values filled in from a scope.
 func (s *JobSpec) Fill(e *Evaluator, scope Scope, place, name string) (*Job, error) {
 	job := &Job{Name: name, Files: s.Files, Deny: s.Deny, Restart: s.Restart,
-		Memory: s.Memory, Tags: s.Tags, Approve: s.Approve, Alone: s.Alone}
+		Memory: s.Memory, Tags: s.Tags, Approve: s.Approve, Meta: s.Meta, Alone: s.Alone}
 	var err error
 	if job.Input, err = e.Fill(s.Input, scope, place+".input"); err != nil {
 		return nil, err

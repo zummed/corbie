@@ -1,0 +1,7 @@
+# The orders team's toolkit: it says where its refunds are approved, and by whom.
+description: Orders and refunds.
+tools:
+  refund:
+    description: Refund an order
+    args: { order: number, amount: number }
+    job: { script: ./tool.js, input: { did: refund, args: "${args}" }, approve: true, meta: { channel: "#orders-team", approvers: "orders:approve" } }

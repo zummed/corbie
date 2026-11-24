@@ -209,6 +209,7 @@ var JobShape = &Shape{Name: "job", What: "a job", Fields: []Field{
 	{Name: "memory", Kind: KindSize, Description: "the most memory the job may use"},
 	{Name: "tags", Kind: KindList, Description: "chooses runners: one that has every tag"},
 	{Name: "approve", Kind: KindFlag, Description: "wait for the definition's ask to approve it"},
+	{Name: "meta", Kind: KindValue, Description: "data of any kind, which the job's hooks read as job.meta and nothing else reads"},
 }}
 
 // definitionShape is the shape of a definition before its type's own

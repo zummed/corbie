@@ -40,6 +40,9 @@ func (b *build) seen(job *instance.Going) map[string]any {
 	if len(job.Allow) > 0 {
 		what["allow"] = toList(job.Allow)
 	}
+	if job.Meta != nil {
+		what["meta"] = job.Meta
+	}
 	if shown, ok := job.Shown.(map[string]any); ok {
 		tool := map[string]any{}
 		for k, v := range shown {

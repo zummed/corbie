@@ -389,6 +389,7 @@ func (p *Parser) Job(place string, written any) *JobSpec {
 	s.Restart = p.restart(f.at("restart"), f.Fields("restart"))
 	s.Memory = f.Size("memory")
 	s.Tags = f.Strings("tags")
+	s.Meta, _ = f.Value("meta")
 	if _, isList := f.m["approve"].([]any); isList {
 		f.take("approve", KindFlag)
 		p.Problem(f.at("approve"), "in a job, this is true or false; the permissions a job may use only after a yes are listed in approve: at the top of the definition")

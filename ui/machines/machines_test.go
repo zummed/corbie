@@ -170,7 +170,7 @@ states:
 		".kit/unused.yaml":      "flow: unused\nstages:\n  a: { job: ./hear.js }\n",
 		".kit/post.yaml":        "flow: post\nstages:\n  a: { job: ./hear.js }\n",
 		".kit/hear.js":          "return 1",
-		"support.yaml":          "agent: support\nmodel: { name: claude-sonnet-5-5, secret: KEY }\nprompt: hello\nask: { machine: .kit/post.yaml }\ntoolkits:\n  messages: { include: ./toolkits/toolkit.yaml }\n",
+		"support.yaml":          "agent: support\nmodel: { name: claude-sonnet-5-5, secret: KEY }\nprompt: hello\nhooks: { approval: { before: { machine: .kit/post.yaml }, when: \"${job.approve}\" } }\ntoolkits:\n  messages: { include: ./toolkits/toolkit.yaml }\n",
 		"toolkits/toolkit.yaml": "description: messages\ntools:\n  tell: { description: tells, job: { machine: .kit/post.yaml, approve: true } }\n",
 		"people/scopes.yaml":    "people: []\n",
 		".corbieignore":         "toolkits/\npeople/scopes.yaml\nshared/\n",
@@ -326,8 +326,8 @@ func Test_machines_drawing_unfolds_as_the_address_says(t *testing.T) {
 	}
 
 	agent := pageOf(t, h, "/machines?at=/bot/support").View
-	if card(agent.Drawing, "tell") == nil || card(agent.Drawing, "ask") == nil || !slices.Contains(card(agent.Drawing, "tell").Lines, "approve: true") {
-		t.Errorf("the agent's drawing does not hold tell, its approval and the ask: %+v", agent.Drawing)
+	if card(agent.Drawing, "tell") == nil || card(agent.Drawing, "approval") == nil || !slices.Contains(card(agent.Drawing, "tell").Lines, "approve: true") {
+		t.Errorf("the agent's drawing does not hold tell, its approval and the hook: %+v", agent.Drawing)
 	}
 	if agent.Drawing.Agent == nil || !slices.ContainsFunc(agent.Drawing.Agent.Toolkits, func(k drawing.Toolkit) bool { return k.File == "toolkits/toolkit.yaml" }) {
 		t.Errorf("the agent's drawing does not give its toolkit's file: %+v", agent.Drawing.Agent)

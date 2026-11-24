@@ -568,7 +568,7 @@ func (b *rowBuilder) rows(id string, depth int, in string) []stepRow {
 					r.In = a.Job.Input
 				}
 				for _, c := range e.Asks {
-					if c.Job == nil || c.Job.Hook == "" || !strings.HasPrefix(c.Name, a.Name+".") {
+					if a.Job == nil || c.Job == nil || c.Job.Hook == "" || c.Job.Name != a.Job.Name+"."+c.Job.Hook {
 						continue
 					}
 					r.What = say("held ", bold(jobOf(a.Name)), " for ", bold(c.Job.Hook))

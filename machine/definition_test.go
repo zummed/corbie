@@ -419,7 +419,7 @@ func TestParseMadeLeavesTheHookOpen(t *testing.T) {
 	}
 	for src, want := range map[string]string{
 		"probe: p\nwork:\n  a: { script: ./missing.js, approve: true }\n": "missing.js",
-		"probe: p\nhooks:\n  h: { before: { machine: ./held.yaml } }\n": "takes no hook from above it",
+		"probe: p\nhooks:\n  h: { before: { machine: ./held.yaml } }\n":   "takes no hook from above it",
 	} {
 		_, err := ParseMade([]byte(src), files(js))
 		if err == nil || !strings.Contains(err.Error(), want) || strings.Contains(err.Error(), "give the definition a hook with before:") {

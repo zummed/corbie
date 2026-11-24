@@ -113,8 +113,8 @@ func cards(s *drawing.Scene) []drawing.Card {
 				add(tool.Card)
 			}
 		}
-		if s.Agent.Ask != nil {
-			add(*s.Agent.Ask)
+		for _, hook := range s.Agent.Hooks {
+			add(hook.Card)
 		}
 	}
 	if s.Decision != nil {

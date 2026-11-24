@@ -538,7 +538,7 @@ func (p *pass) child(inst string, step *instance.Step, ask *instance.Ask) *insta
 		Layers:  layers,
 		Approve: st.Above.Approve, Context: st.Above.Context, Values: st.Above.Values,
 		IsHook: job.Hook != "",
-		Made:  made || st.Above.Made && !job.Above, Keep: st.Keep, Readers: st.Above.Readers}
+		Made:   made || st.Above.Made && !job.Above, Keep: st.Keep, Readers: st.Above.Readers}
 	// The hooks above the child are its machine's own and then those above
 	// that. A machine made while running keeps none of its own, so it hands
 	// down those above it.

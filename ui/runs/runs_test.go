@@ -531,28 +531,29 @@ func get(t *testing.T, h http.Handler, path string) string {
 }
 
 func Test_runs_own_run_shown_in_full(t *testing.T) {
-	// The ask a step starts is named ask, and a job's failure that ended
-	// the run is noted.
-	restart := &machine.Job{Name: "restart", Shown: map[string]any{"toolkit": "infra"}}
+	// The job of a hook a step starts is marked by the hook's name, and a
+	// job's failure that ended the run is noted.
+	restart := &machine.Job{Name: "restart", Tool: map[string]any{"toolkit": "infra"}}
+	hook := &machine.Job{Name: "restart.approval", Hook: "approval"}
 	entries := []client.Entry{{ID: "a-client/1", Step: 1,
 		Events: []instance.Arrived{{Event: machine.Event{Name: "failed", From: "turn#1"}}},
 		Asks: []instance.Ask{
 			{Kind: instance.AskHold, Name: "restart#1", Job: restart},
 			{Kind: instance.AskHold, Name: "look#1", Job: &machine.Job{Name: "look"}},
-			{Kind: instance.AskChild, Name: "ask#1", Child: "a-client/2"},
+			{Kind: instance.AskChild, Name: "restart.approval#1", Child: "a-client/2", Job: hook},
 		}}}
 	byID := map[string]*client.Run{
 		"a-client/2": {ID: "a-client/2", Machine: "approval", Type: "flow"},
 	}
 	st := &instance.State{Jobs: map[string]*instance.Going{
-		"restart": {Job: *restart, Held: true},
-		"ask#1":   {Job: machine.Job{Name: "ask"}, ForAsk: []string{"restart"}},
+		"restart":          {Job: *restart, Held: true},
+		"restart.approval": {Job: *hook, For: "restart"},
 	}}
 	m := marksOf("a-client/1", entries, "failed", st, byID)
-	if m.Children["ask"].ID != "a-client/2" {
-		t.Errorf("the ask's run is known as %+v", m.Children)
+	if m.Children[drawing.HookJob("approval")].ID != "a-client/2" {
+		t.Errorf("the hook's run is known as %+v", m.Children)
 	}
-	if strings.Join(m.Going, " ") != "ask restart" || strings.Join(m.Steps[0].Failed, " ") != "turn" || !m.Failed {
+	if strings.Join(m.Going, ", ") != "restart, hook approval" || strings.Join(m.Steps[0].Failed, " ") != "turn" || !m.Failed {
 		t.Errorf("the run is marked as %+v", m)
 	}
 
@@ -567,13 +568,13 @@ func Test_runs_own_run_shown_in_full(t *testing.T) {
 		t.Errorf("the held tool does not name its toolkit: %+v", held)
 	}
 
-	// A flow's and a statechart's ask is no stage or state: its row says the
-	// ask started its run.
+	// A flow's and a statechart's hook is no stage or state: its row says the
+	// hook started its run.
 	for _, kind := range []string{"flow", "statechart"} {
 		asked := []client.Entry{{ID: "a-client/4", Step: 1,
 			Asks: []instance.Ask{
 				{Kind: instance.AskHold, Name: "ship#1", Job: &machine.Job{Name: "ship", Approve: true}},
-				{Kind: instance.AskChild, Name: "ask#1", Child: "a-client/5"},
+				{Kind: instance.AskChild, Name: "ship.approval#1", Child: "a-client/5", Job: &machine.Job{Name: "ship.approval", Hook: "approval"}},
 			}}}
 		of := map[string]*client.Run{
 			"a-client/4": {ID: "a-client/4", Machine: "deploy", Type: kind},
@@ -583,8 +584,8 @@ func Test_runs_own_run_shown_in_full(t *testing.T) {
 		for _, r := range rowsOf("a-client/4", asked, of, nil, at, at) {
 			said = append(said, r.Said())
 		}
-		if !slices.Contains(said, "held ship for approval") || !slices.Contains(said, "ask started approval") {
-			t.Errorf("a %s's ask is shown as %q", kind, said)
+		if !slices.Contains(said, "held ship for approval") || !slices.Contains(said, "hook approval started approval") {
+			t.Errorf("a %s's hook is shown as %q", kind, said)
 		}
 	}
 

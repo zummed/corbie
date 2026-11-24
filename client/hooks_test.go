@@ -181,3 +181,51 @@ func Test_mach_hook_from_above_filled_from_declaring_machine(t *testing.T) {
 		t.Fatalf("a job of the child that reads what only the hook may: %s/%s refused %q: %s", r.Status, r.Failure, r.Refused, r.Error)
 	}
 }
+
+// A hook writes one of before: and after:, and its name is a name.
+func Test_mach_a_hook_writes_before_or_after(t *testing.T) {
+	for hooks, want := range map[string]string{
+		`{ both: { before: ./add.js, after: ./add.js } }`:                                                    "hooks.both: a hook writes one of before: and after:",
+		`{ neither: { when: "${job.approve}" } }`:                                                            "hooks.neither: a hook writes one of before: and after:",
+		`{ "two words": { before: ./add.js } }`:                                                              `"two words" is not a name`,
+		`{ reads: { before: ./add.js, when: "${output}" } }`:                                                 `reads "output"`,
+		`{ fine: { after: { script: ./add.js, input: { n: "${output.n}" } }, when: "${job.name == 'a'}" } }`: "",
+	} {
+		_, err := machineParse("flow: f\nhooks: "+hooks+"\nstages:\n  a: { job: ./add.js }\n", map[string]string{"add.js": scripts["add.js"]})
+		switch {
+		case want == "" && err != nil:
+			t.Errorf("%s was refused: %v", hooks, err)
+		case want != "" && (err == nil || !strings.Contains(err.Error(), want)):
+			t.Errorf("%s was not refused with %q: %v", hooks, want, err)
+		}
+	}
+}
+
+// A hook reads the meta: of a job its owner wrote, and none of a job of a
+// machine made while running, which a script wrote.
+func Test_mach_made_machine_gives_hooks_no_meta(t *testing.T) {
+	l := local(t)
+	r := run(t, l, `
+		flow: top
+		hooks:
+		  see:
+		    before: ./see.js
+		    when: "${job.name == 'own' || job.name == 'theirs'}"
+		stages:
+		  own: { job: { script: ./one.js, meta: { team: mine } } }
+		  make: { job: ./make.js }
+		  go: { job: { machine: "${stages.make.output}" } }
+		output: ${stages.go.output}
+	`, map[string]string{
+		"one.js": "return 1",
+		"see.js": `
+			const held = input.job
+			const fits = held.name === "own" ? held.meta.team === "mine" : !("meta" in held)
+			return { ok: fits, note: "the hook read the meta " + JSON.stringify(held.meta) }`,
+		"make.js": `
+			return machines.define(
+				"flow: made\nstages:\n  theirs: { job: { script: ./step.js, meta: { team: mine } } }\noutput: ${stages.theirs.output}\n",
+				{ files: { "./step.js": "return 7" } })`,
+	}, nil)
+	check(t, r.Status, r.Output, "done", `7`)
+}

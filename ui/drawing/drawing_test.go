@@ -101,7 +101,7 @@ const helper = `agent: helper
 model: { name: claude-sonnet-5-5, secret: KEY }
 prompt: hello
 limits: { turns: 7 }
-ask: { machine: ./approval.yaml }
+hooks: { approval: { before: { machine: ./approval.yaml }, when: "${job.approve}" } }
 tools:
   look: { description: looks at a thing, job: ./w.js }
   idle: { description: idles, job: ./w.js }
@@ -153,7 +153,7 @@ tools:
 `
 
 const deploy = `flow: deploy
-ask: { machine: ./approval.yaml }
+hooks: { approval: { before: { machine: ./approval.yaml }, when: "${job.approve}" } }
 stages:
   plan: { job: ./w.js }
   ship: { job: { script: ./w.js, approve: true }, follows: [plan] }
@@ -292,9 +292,9 @@ states:
 	add("librarian-failed", def(librarian), &Run{Steps: []Step{{Shown: machine.Shown{Turn: 1}, Asked: []string{"turn"}, Failed: []string{"turn"}}}, Ended: true, Failed: true})
 	add("helper", def(helper), nil)
 	add("helper-asking", def(helper), &Run{
-		Steps: []Step{{Asked: []string{"look"}}, {Shown: machine.Shown{Turn: 2}, Asked: []string{"ask"}}},
-		Going: []string{"tell", "ask"}, Held: []string{"tell"},
-		Children: map[string]Child{"ask": {ID: "a-client/2", Machine: "approval", Type: "flow"}},
+		Steps: []Step{{Asked: []string{"look"}}, {Shown: machine.Shown{Turn: 2}, Asked: []string{HookJob("approval")}}},
+		Going: []string{"tell", HookJob("approval")}, Held: []string{"tell"},
+		Children: map[string]Child{HookJob("approval"): {ID: "a-client/2", Machine: "approval", Type: "flow"}},
 	})
 	add("helper-corbie-tool", def(helper), &Run{Steps: []Step{{Shown: machine.Shown{Turn: 1}, Asked: []string{"blob_read"}}}, Going: []string{"blob_read"}})
 	add("helper-included", def(`agent: helper
@@ -310,7 +310,7 @@ toolkits:
 	add("conditions-folded", def(conditions), &Run{Steps: []Step{{Asked: []string{"jot"}}}})
 	add("deploy-running", def(deploy), &Run{Steps: []Step{{Shown: machine.Shown{Stages: map[string]string{"plan": "done", "ship": "running", "pipeline": "running"}}}}, Going: []string{"ship", "pipeline"}, Held: []string{"ship"}})
 	add("deploys-held", def(`statechart: deploys
-ask: { machine: ./approval.yaml }
+hooks: { approval: { before: { machine: ./approval.yaml }, when: "${job.approve}" } }
 initial: shipping
 states:
   shipping:
@@ -527,7 +527,7 @@ stages:
 `
 
 // A card gives where its file writes it, as file:line: a stage, a state,
-// a state inside another, a tool, a tool of a toolkit, the ask and the
+// a state inside another, a tool, a tool of a toolkit, a hook and the
 // model.
 func Test_drawing_card_gives_its_line(t *testing.T) {
 	flow := scene(t, definition(t, limited, given), nil)
@@ -556,13 +556,13 @@ func Test_drawing_card_gives_its_line(t *testing.T) {
 		t.Errorf("the states are written at %v, not %v", lines, want)
 	}
 	agent := scene(t, definition(t, helper, given), nil)
-	lines = map[string]string{"model": agent.Agent.ModelLine, "ask": agent.Agent.Ask.Line}
+	lines = map[string]string{"model": agent.Agent.ModelLine, "approval": agent.Agent.Hooks[0].Card.Line}
 	for _, g := range agent.Agent.Toolkits {
 		for _, tool := range g.Tools {
 			lines[tool.Card.Name] = tool.Card.Line
 		}
 	}
-	if want := map[string]string{"model": "2", "ask": "5", "look": "7", "idle": "8", "tell": "13"}; !maps.Equal(lines, want) {
+	if want := map[string]string{"model": "2", "approval": "5", "look": "7", "idle": "8", "tell": "13"}; !maps.Equal(lines, want) {
 		t.Errorf("the agent's cards are written at %v, not %v", lines, want)
 	}
 }

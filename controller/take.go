@@ -1274,7 +1274,8 @@ func (b *build) send(s *machine.Send) {
 	}
 	event.From = machine.Parent
 	job, ok := b.st.Jobs[s.To]
-	if !ok || job.Child == "" {
+	// A hook's machine takes no event from the machine whose job it runs for.
+	if !ok || job.Child == "" || job.Hook != "" {
 		b.ask(instance.Ask{Kind: instance.AskEvent, Name: s.To, Event: event, Undelivered: true})
 		return
 	}

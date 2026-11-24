@@ -97,6 +97,14 @@ func lying(kind string, args []string) {
 		ask(instance.Ask{Kind: instance.AskScript, Name: "x", Attempt: 1, Runner: "r1", Message: store.JobMessage(in.Instance, "x"), At: soon, What: "due.x~1", Job: job})
 		out.Requests = []machine.Request{{Job: &machine.Job{Name: "x", Script: "./step.js", Hook: "ok", Above: true, Allow: []string{"net:*"}}}}
 
+	case "hooked":
+		// A job marked for approval, and an event for the machine its hook
+		// starts.
+		out.Requests = []machine.Request{
+			{Job: &machine.Job{Name: "x", Script: "./step.js", Approve: true}},
+			{Send: &machine.Send{To: "x.ok", Event: "e"}},
+		}
+
 	case "to":
 		ref := in.State.Definition.Value()
 		ask(instance.Ask{Kind: instance.AskEvent, To: args[0], Event: &machine.Event{Name: "e", Data: ref}, Message: "m.event"})
@@ -649,6 +657,43 @@ const asksFirst = `
 	  make: { job: ./make.js }
 	  go: { job: { machine: "${stages.make.output}" } }
 `
+
+const asksAPerson = `
+	flow: maker
+	hooks:
+	  ok:
+	    when: "${job.approve}"
+	    before:
+	      machine:
+	        statechart: waits
+	        initial: asking
+	        states:
+	          asking: { on: { e: said } }
+	          said: { end: done, output: { ok: true } }
+	stages:
+	  make: { job: ./make.js }
+	  go: { job: { machine: "${stages.make.output}" } }
+`
+
+// A hook's machine takes no event from the machine whose job it runs for: a
+// step taken over cannot answer the hook that holds its own job.
+func Test_ctl_answer_cannot_send_to_the_hook_of_its_own_job(t *testing.T) {
+	w := newWorld(t)
+	run, r1 := w.madeUnder(asksAPerson, plain, asked, "hooked")
+	w.settle()
+	st := w.latest(w.child(run)).State
+	if job := st.Jobs["x"]; job == nil || !job.Held || job.Runner != "" {
+		t.Fatalf("the job is %+v", job)
+	}
+	if hook := st.Jobs["x.ok"]; hook == nil || hook.Child == "" || w.head(hook.Child).Status != instance.Running {
+		t.Fatalf("the hook's job is %+v", hook)
+	}
+	for name := range w.inboxOf(r1) {
+		if strings.HasSuffix(name, ".x") {
+			t.Fatalf("%s went to the runner before its hook", name)
+		}
+	}
+}
 
 // A job that declares what an approve: list above it lists stays marked, and
 // is held for the hook, whatever the answer says of the list.

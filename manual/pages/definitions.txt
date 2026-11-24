@@ -419,7 +419,7 @@ it, and `job`. After a job they read `output`, the job's output.
 - A hook with no `input:` is given `{ job }`, and after a job `{ job, output }`.
 - A hook's `allow:` scopes read `input` and `values`, and never `job`.
 - A hook's job has its own `allow:` and `deny:`, and those of the definition that writes it.
-- A hook is not named `cancel`.
+- A hook is not named `cancel`, and its `machine:` is a file, not an expression.
 - A hook's job is named for the job and the hook, as `refund.0.small`.
 
 Which hooks run for a job:
@@ -466,6 +466,8 @@ A machine made while running, which a script or a model wrote, and the tools a
   jobs, and its jobs give them no `meta`.
 - A machine made while running sends only to its parent and its children. A
   send to an address or a call fails it.
+- A machine made while running writes the names of its jobs and tools. Write a
+  hook for its jobs with `when: "${job.approve}"`, and not with a name.
 - A tool from a `list:` runs the entry's `job:`, which the definition writes,
   and takes the agent's hooks as any tool does.
 

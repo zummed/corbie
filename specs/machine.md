@@ -523,7 +523,8 @@ A hook's `allow:` scopes are filled from the declaring machine's input and value
 - A hook with no `when:` is for every job, an agent's `turn` among them. A hook's own job takes no hook.
 - Every hook whose `when:` holds runs for a job: its own machine's, in the order of their names, then those of each machine above, the nearest first. A machine adds hooks and takes none away.
 - A hook runs once for one job.
-- A machine run as a hook takes no hook from above it.
+- A machine run as a hook takes no hook from above it, and no event from the machine whose job it runs for.
+- A hook's `machine:` is named by its file. An expression there is refused: it would give a machine made while running.
 - A run started by a send or a call takes no hook from its sender, so no run changes a job in another tree.
 - A machine made while running writes no hooks: one that does fails as it starts. The hooks above it are for its jobs (see [Words from outside](#words-from-outside)).
 - A hook that is a machine uses a level, as any child does. A hook's job is not counted against `limits: { jobs: }`.
@@ -592,7 +593,7 @@ hooks:
 
 A definition made while running, which a script or a model wrote, and the tools a `list:` job gives an agent are words from outside: no owner wrote them. Words from outside name no hook and no address. A step that reads them is taken in a process of its own (see Controller).
 
-- A machine made while running may address only its parent and its children. The hooks above it that were not made while running are for its jobs, and it gives hooks no `meta`. One that writes `hooks:` fails as it starts, and one that sends to an address or calls a location fails then.
+- A machine made while running may address only its parent and its children. The hooks above it that were not made while running are for its jobs, and it gives hooks no `meta`. It writes the names of its jobs and tools, so a hook whose `when:` reads `job.name` or `job.tool` may not run for them, and one whose `when:` reads `job.approve`, which the controller works out, does. One that writes `hooks:` fails as it starts, and one that sends to an address or calls a location fails then.
 - A tool a `list:` gives runs the entry's `job:`, which takes the agent's hooks as any tool's job does, with the entry's `approve:` and `meta:`, and which addresses what that job names. A list gives each tool a name, a description and the shape of its arguments, and nothing else is read from it.
 
 ## Failure

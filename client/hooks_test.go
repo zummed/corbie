@@ -189,6 +189,7 @@ func Test_mach_a_hook_writes_before_or_after(t *testing.T) {
 		`{ neither: { when: "${job.approve}" } }`:                                                            "hooks.neither: a hook writes one of before: and after:",
 		`{ "two words": { before: ./add.js } }`:                                                              `"two words" is not a name`,
 		`{ cancel: { before: ./add.js } }`:                                                                   "hooks.cancel: a hook cannot be named cancel",
+		`{ made: { before: { machine: "${input.m}" } } }`:                                                    "hooks.made: a hook's machine is named by its file, with no expression",
 		`{ reads: { before: ./add.js, when: "${output}" } }`:                                                 `reads "output"`,
 		`{ fine: { after: { script: ./add.js, input: { n: "${output.n}" } }, when: "${job.name == 'a'}" } }`: "",
 	} {

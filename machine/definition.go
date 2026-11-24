@@ -686,6 +686,13 @@ func check(def *Definition) *Checker {
 		if (h.Before == nil) == (h.After == nil) {
 			c.Problem(place, "a hook writes one of before: and after:")
 		}
+		for _, job := range []*JobSpec{h.Before, h.After} {
+			// An expression gives a machine made while running, and a machine
+			// run as a hook takes no hook and no approve: list from above.
+			if job != nil && HasExpr(job.Machine) {
+				c.Problem(place, "a hook's machine is named by its file, with no expression")
+			}
+		}
 		names := []string{"input", "job"}
 		if h.After != nil {
 			names = append(names, "output")

@@ -332,7 +332,7 @@ Uses:
 - **Secrets.** `corbie test` sets secrets and values at `/` of the controller in its process; `client secret` and `client value` send the controller sets, removes and lists (R-sec-64).
 - **Controller.** Takes the client's submits, starts, cancels, events, answers and sets of secrets and values, and writes their receipts, the results of calls, heads and records. Nothing passes between them except through the store.
 - **Roles, Runner.** `corbie start` starts the roles named, and `corbie test` runs them all in one process.
-- **Plugins.** The extensions the binary holds, for `corbie version`.
+- **Plugins.** The extensions the binary holds, for `corbie version`, and the most that is handed over whole, for `?files`.
 - **Manual.** The pages `corbie manual` and the model server's manual tool give (R-man-18, R-man-21).
 
 Used by:

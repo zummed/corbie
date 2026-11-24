@@ -126,6 +126,7 @@ a value stays open until a controller reads the message. `life` is how long the 
   403   more of a call than its result, as its definition or a cancel
   404   the ID is not a run, or one in a tree of another client, the path is not a file of the run, the record has no such step, or there is no such route
   409   the definition or a file of a run that is still `waiting`
+  413   with `?files`, the blobs of the output are more than 64 MiB
   500   any other failure, such as a store that cannot be read
   504   no controller read the message within `life`
 

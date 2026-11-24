@@ -681,7 +681,7 @@ func Test_client_gateway_start_waits_and_gives_files(t *testing.T) {
 	// On a start past the size, the error names the run that was started.
 	status, run, text = caller{t: t, url: small.URL, token: "the-token"}.send("POST", "/runs?wait&files", "application/json", strings.NewReader(`{"at": "`+mixed+`"}`))
 	startedID, _ := run["id"].(string)
-	if status != 413 || startedID == "" || startedID == mixedID {
+	if status != 413 || startedID == "" || startedID == mixedID || !strings.Contains(text, "/runs/"+startedID+"/files/") {
 		t.Errorf("a start with files past the size was answered %d %s", status, text)
 	}
 	if status, run, text := c.do("GET", "/runs/"+startedID, ""); status != 200 || run["status"] != "done" {

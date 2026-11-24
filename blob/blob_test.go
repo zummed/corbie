@@ -444,6 +444,18 @@ func TestReferencesWrittenInAText(t *testing.T) {
 	if refs := Refs(value); len(refs) != 0 {
 		t.Fatalf("references were taken from inside texts: %v", refs)
 	}
+	// A text of many openings that close nowhere is read once, not again
+	// from each opening.
+	began := time.Now()
+	for _, opening := range []string{`{"$blob":[`, `{"$blob":{"a":`, `{"$blob":"x","type":"t","size":1,"key":"k","more":`} {
+		many := strings.Repeat(opening, 20000)
+		if back := Show(many); back != many {
+			t.Errorf("a text of %q repeated is shown changed", opening)
+		}
+	}
+	if took := time.Since(began); took > 2*time.Second {
+		t.Errorf("texts of openings that close nowhere took %s to show", took)
+	}
 }
 
 // A stored definition is text a job may have written. Definitions that each

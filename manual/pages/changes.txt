@@ -5,7 +5,7 @@ Each section lists what changed after one release, the newest first.
 compatible before version 1: a file or a command written the old way is
 refused.
 
-After 0.32.0
+After 0.34.0
 ------------
 
 Change `ask:` to a hook, as `corbie manual hooks` says.
@@ -18,8 +18,11 @@ Change `ask:` to a hook, as `corbie manual hooks` says.
   the nearest ask above a job             every hook above a job runs, the job's own machine's first
   a stage, state or tool named ask        allowed
 
-`approve: true` and `approve: [exec]` mark a job as before. A marked job that
+`approve: true` and `approve: [exec]` mark a job, as before. A marked job that
 no `before` hook is for fails with status `denied`.
+
+After 0.32.0
+------------
 
 Change the path of a run's output or input that is itself a blob.
 

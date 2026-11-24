@@ -252,6 +252,7 @@ corbie up --store s3://…           a bucket as the store, when .corbie is set 
 - Every command run in the same directory, or below it, finds `.corbie` and uses it, as it uses any config.
 - `.corbie` stays when `corbie up` stops, and `corbie up` run again continues with its runs, secrets and values. Removing `.corbie` removes all of it.
 - `.corbie` holds a `.gitignore` that lists everything in it.
+- On a serverless host the config is `.corbie` in the copy's temporary directory, since a function's own directory is read-only (see Roles).
 - A file with a problem is reported before anything starts, and nothing is started.
 - The gateway listens at a free port, and `gateway --listen` names another. A program is given `CORBIE_CONFIG`, `CORBIE_GATEWAY` and `CORBIE_GATEWAY_TOKEN`.
 - `--value`, `--value-env`, `--secret` and `--secret-env` set values and secrets at `/` as it starts, as `corbie test` takes them.
@@ -453,6 +454,22 @@ client     editor
 principal  "alice@example.com"
 ```
 
+One request starts a run and is answered with the run:
+
+- `POST /runs?wait` starts the run and answers when it has ended, with the run, as `GET /runs/<id>?wait` does. `?wait=30s` answers after 30 s at most.
+- A `wait` that is no length of time is answered 400, and no run is started.
+- An error after the run has started is answered with the run's ID, as `id` beside `error`.
+
+`?files` puts the bytes of each blob of the run's output in the answer:
+
+- A blob is then `{ "$blob": "<path>", "type", "size", "data": "<base64>" }`. Without `?files` it has no `data`, and `GET /runs/<id>/files/<path>` gives its bytes.
+- `POST /runs?wait&files` and `GET /runs/<id>?files` take it. On a start `?files` needs `?wait`: alone it is answered 400, and no run is started.
+- A blob written out inside a text has its `data` there too.
+- A value that has a `$blob` key and is not a blob gets no `data`. A blob inside it gets `data`.
+- The gateway gives at most 64 MiB of blobs in one answer, each counted at every place the output names it. Past that it reads no more and answers 413, with the run's ID and where each blob is read.
+- A blob that cannot be read is answered 500, with the run's ID and the blob's path.
+- While it answers, the gateway uses about six times the blobs' bytes in memory.
+
 A page in a browser calls the gateway from any origin:
 
 - The gateway answers the `OPTIONS` request a browser sends before a page's call, with no token.
@@ -471,7 +488,8 @@ It keeps nothing itself, so it runs as a process that listens, or on a serverles
 - A request's time ends ten seconds before the host's limit for a call. `?wait` then answers with the run as it stands, a stream closes, and a request that waits for the controller is answered 504, saying its time ended.
 - On a serverless host a stream goes on until its run ends or the request's time does, also after its caller has left.
 - The gateway takes its tokens from `--token-file` or from an issuer. With neither it does not start there: each copy of the function would make a token of its own.
-- It is started beside no controller and no runner there: the host calls those for a pass, and the gateway for a request.
+- `corbie start` starts it beside no controller and no runner there: the host calls those for a pass, and the gateway for a request.
+- `corbie up` there runs the gateway in one function with the controller and the runner (see Roles).
 - The host limits the size of a request, and so of the tree a submit uploads.
 
 ## Through a gateway

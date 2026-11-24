@@ -44,7 +44,7 @@ The detailed rules behind the [Roles overview](../role.md).
 
 **C-role-12** The controller's call once a minute takes the messages that are waiting as well as the wakes that are due. A bucket's notice of a write can be lost, and one newly set up takes minutes to come into force. *Test:* `role_minute_call_takes_waiting_messages`
 
-**C-role-14** On a serverless host a role refuses a store that is a directory or memory. Copies on such a host share no disk and no memory, so each would see a store of its own. *Test:* `role_serverless_host_refuses_directory_and_memory`
+**C-role-14** On a serverless host a role that `corbie start` runs refuses a store that is a directory or memory. Copies on such a host share no disk and no memory, so each would see a store of its own. *Test:* `role_serverless_host_refuses_directory_and_memory`
 
 **C-role-15** On a host that unpacks its package read-only and readable by everyone, a role copies its config to a place of its own and makes it its owner's alone before using it. An identity that others can read is not accepted, and the role would otherwise not start. *Test:* `role_host_package_readable_by_all_still_starts`
 
@@ -81,6 +81,9 @@ The detailed rules behind the [Roles overview](../role.md).
 **R-role-38** On a serverless host an HTTP server is called once for each request. It is given the request's method, path, query, headers and body, what it writes is sent to the host as it is written, with the status and the headers first, and its time ends before the host's limit. A call that is no HTTP request is answered 400 and told to the owner.
 *Accept:* under the stand-in for a serverless host, a `POST /things/one?a=1&b=two` with a body of bytes reaches the handler whole, and its answer of 201 with a header and a body is what the host is given. A handler that writes a second part only once the host has the first writes both. A handler that waits out a call of 600 ms is ended before that, and its answer is given. A call that holds a bucket's notice is answered 400, and the owner is told it is not an HTTP request. *Test:* `Test_role_serverless_host_calls_an_http_server_for_each_request`
 
+**R-role-40** On a serverless host `corbie up` runs the controller, the runner and the gateway in the function's one process, with the config and the store in the copy's temporary directory by default, and refuses `--store` and `CORBIE_STORE`. The host calls the function for each request of the gateway, and the roles run while a request is being answered. No copy reads what another recorded.
+*Accept:* under the stand-in for a serverless host, `corbie up --in <directory> gateway --token-file <file>` prints the directory's locations and says the gateway answers the requests to the function's URL; a `POST /runs?wait` of a flow there is answered 200 with the run `done` and its output, a second with `?files` is answered with the blob's bytes, a `GET /runs?all` after them lists both runs, and the store is in the copy's temporary directory. With `--store`, or with `CORBIE_STORE` set, it ends 1 and says that each copy has a store of its own. *Test:* `Test_role_serverless_host_runs_a_whole_corbie`
+
 ## Interfaces
 
 Uses:
@@ -94,6 +97,6 @@ Uses:
 
 Used by:
 
-- **Client**: `corbie start` starts the loop for the roles named, and `corbie test` starts it with every role in one process on a store in memory. On a serverless host `corbie start gateway` has the host's HTTP requests given to the gateway.
+- **Client**: `corbie start` starts the loop for the roles named, and `corbie test` starts it with every role in one process on a store in memory. On a serverless host `corbie start gateway` and `corbie up` have the host's HTTP requests given to the gateway.
 - **Controller** and **Runner**: each does its work only inside a pass, and relies on the three rules for what happens when a pass is killed or doubled.
 - **Machines**: a step is taken once however many copies take it (R-mach-04), and a timer is as punctual as its host allows (R-role-37).

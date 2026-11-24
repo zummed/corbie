@@ -118,6 +118,9 @@ type Env struct {
 	// answers is the gateway, on a serverless host, where the host calls
 	// it for each request and nothing listens.
 	answers http.Handler
+	// whole says that this process is a whole Corbie on a serverless host:
+	// corbie up, with every role and a store of the copy's own.
+	whole bool
 }
 
 // usage is a mistake in how a command was written.
@@ -526,8 +529,10 @@ func (e *Env) Open(recorded string, as *identity.Identity, ctl identity.Card) (s
 	if err != nil {
 		return nil, err
 	}
-	if err := role.StoreFits(address); err != nil {
-		return nil, err
+	if !e.whole {
+		if err := role.StoreFits(address); err != nil {
+			return nil, err
+		}
 	}
 	var s store.Store
 	switch {

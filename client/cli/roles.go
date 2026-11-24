@@ -245,7 +245,7 @@ func (e *Env) start(cfg identity.Config, named []item, before func() error) erro
 			if sets[i], err = settings(it); err != nil {
 				return err
 			}
-			if it.name == "gateway" && role.Serverless() && len(named) > 1 {
+			if it.name == "gateway" && role.Serverless() && len(named) > 1 && !e.whole {
 				return fmt.Errorf("on a serverless host a gateway is a function of its own: the host calls it for each request, and a controller or a runner for each pass")
 			}
 			continue
@@ -261,14 +261,17 @@ func (e *Env) start(cfg identity.Config, named []item, before func() error) erro
 	}
 	// On a serverless host the roles use a copy of the config that is
 	// theirs alone.
-	own, err := role.OwnConfig(cfg.Dir)
-	if err != nil {
-		return err
+	// The config of corbie up there is the copy's own already.
+	if !e.whole {
+		own, err := role.OwnConfig(cfg.Dir)
+		if err != nil {
+			return err
+		}
+		if own != cfg.Dir {
+			defer os.RemoveAll(own)
+		}
+		cfg.Dir, e.config = own, own
 	}
-	if own != cfg.Dir {
-		defer os.RemoveAll(own)
-	}
-	cfg.Dir, e.config = own, own
 	var running []role.Role
 	var programs []program
 	for i, it := range named {
@@ -354,11 +357,11 @@ func (e *Env) start(cfg identity.Config, named []item, before func() error) erro
 		}
 	}
 	report := func(name string, err error) { e.Say("%s: %s", name, e.clean(err.Error())) }
-	if role.Serverless() && e.answers != nil {
+	if role.Serverless() && e.answers != nil && !e.whole {
 		// The host calls for each request: nothing listens.
 		return role.Answer(e.ctx, func(err error) { report("gateway", err) }, e.answers)
 	}
-	if role.Serverless() {
+	if role.Serverless() && !e.whole {
 		// The host calls for each pass: there is no loop.
 		return role.Serve(e.ctx, report, running...)
 	}
@@ -375,6 +378,11 @@ func (e *Env) start(cfg identity.Config, named []item, before func() error) erro
 		if err := before(); err != nil {
 			return err
 		}
+	}
+	if e.whole && e.answers != nil {
+		// The host calls for each request of the gateway, and the roles
+		// run beside it for as long as the host lets the process run.
+		return role.Answer(ctx, func(err error) { report("gateway", err) }, e.answers)
 	}
 	stopped := make(chan error, len(programs))
 	for _, p := range programs {

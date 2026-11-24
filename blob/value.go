@@ -145,12 +145,29 @@ func enclosing(text string, i int) (open, end int, ref Ref) {
 	if open = strings.LastIndexByte(text[:i], '{'); open < 0 {
 		return -1, -1, Ref{}
 	}
-	raw, err := jsontext.NewDecoder(strings.NewReader(text[open:])).ReadValue()
-	if err != nil {
+	// A reference is an object of four members that are texts and a
+	// number, so no more than its ten tokens are read: a text of many
+	// openings is not read again from each.
+	dec := jsontext.NewDecoder(strings.NewReader(text[open:]))
+	closed := false
+	for n := 0; n < 10 && !closed; n++ {
+		token, err := dec.ReadToken()
+		if err != nil {
+			return -1, -1, Ref{}
+		}
+		switch kind := token.Kind(); {
+		case n == 0 && kind != '{', n > 0 && (kind == '{' || kind == '['):
+			return -1, -1, Ref{}
+		case kind == '}':
+			closed = true
+		}
+	}
+	if !closed {
 		return -1, -1, Ref{}
 	}
+	raw := text[open : open+int(dec.InputOffset())]
 	var v any
-	if json.Unmarshal(raw, &v) != nil {
+	if json.Unmarshal([]byte(raw), &v) != nil {
 		return -1, -1, Ref{}
 	}
 	ref, ok := AsRef(v)

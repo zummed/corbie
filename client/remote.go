@@ -53,7 +53,7 @@ func (r *refused) Unwrap() error { return r.is }
 
 // known are the package's errors a gateway's refusal may be, the narrower
 // before the wider.
-var known = []error{ErrNeverTaken, ErrOthers, ErrNoRun, ErrNoFile, ErrNoStep, ErrCalled, ErrNoRecord, ErrNotTaken, ErrStart}
+var known = []error{ErrNeverTaken, ErrOthers, ErrNoRun, ErrNoFile, ErrFilesTooLarge, ErrNoStep, ErrCalled, ErrNoRecord, ErrNotTaken, ErrStart}
 
 // do sends one request and gives its answer, which the caller closes. A
 // refusal is given as the error the package gives for it.

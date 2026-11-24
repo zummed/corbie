@@ -3,7 +3,10 @@ package gateway_test
 import (
 	"bufio"
 	"context"
+	"encoding/base64"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -581,5 +584,181 @@ func TestStreamSaysWhyItStopped(t *testing.T) {
 	rest, _ := io.ReadAll(lines)
 	if !strings.Contains(string(rest), "event: error\ndata: {\"error\":") || !strings.Contains(string(rest), io.ErrUnexpectedEOF.Error()) {
 		t.Fatalf("the stream ended %q", rest)
+	}
+}
+
+// A start with ?wait is answered with the run when it has ended. A blob of
+// its output is read by its path, as for any run, or with ?files has its
+// bytes in the answer.
+func Test_client_gateway_start_waits_and_gives_files(t *testing.T) {
+	local, err := client.NewLocal(context.Background(), permission.Layer{}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer local.Close()
+	server := httptest.NewServer(&gateway.Gateway{Callers: map[string]*client.Client{"the-token": local.Client}})
+	defer server.Close()
+	c := caller{t: t, url: server.URL, token: "the-token", client: local.Client}
+	at := c.place("flow: file\nstages:\n  make: { job: { script: ./make.js } }\noutput: ${stages.make.output}\n",
+		map[string]string{"make.js": `return { n: 1, file: blobs.make("zebra", { type: "text/plain" }) }`})
+	slow := c.place("statechart: slow\ninitial: waiting\nstates:\n  waiting: { ticket: word }\n", nil)
+	start := func(query, at string) (int, map[string]any, string) {
+		return c.send("POST", "/runs"+query, "application/json", strings.NewReader(`{"at": "`+at+`"}`))
+	}
+
+	status, run, text := start("?wait", at)
+	output, _ := run["output"].(map[string]any)
+	file, _ := output["file"].(map[string]any)
+	if status != 200 || run["status"] != "done" || output["n"] != float64(1) || file["$blob"] == nil {
+		t.Fatalf("a start with wait was answered %d %s", status, text)
+	}
+	id, _ := run["id"].(string)
+	if status, _, text := c.do("GET", "/runs/"+id+"/files/"+file["$blob"].(string), ""); status != 200 || text != "zebra" {
+		t.Errorf("the blob read by its path was answered %d %q", status, text)
+	}
+	// With files, each blob of the output has its bytes, and the rest of the output is as it was.
+	b64 := func(text string) string { return base64.StdEncoding.EncodeToString([]byte(text)) }
+	status, run, text = start("?wait&files", at)
+	output, _ = run["output"].(map[string]any)
+	file, _ = output["file"].(map[string]any)
+	if status != 200 || run["status"] != "done" || output["n"] != float64(1) || file["data"] != b64("zebra") || file["type"] != "text/plain" || file["size"] != float64(5) || file["$blob"] != "file" {
+		t.Fatalf("a start with wait and files was answered %d %s", status, text)
+	}
+	if _, run, text := c.do("GET", "/runs/"+id+"?files", ""); !strings.Contains(text, b64("zebra")) || run["status"] != "done" {
+		t.Errorf("GET with files was answered %s", text)
+	}
+	// An output that is itself a blob.
+	whole := c.place("flow: whole\nstages:\n  make: { job: { script: ./whole.js } }\noutput: ${stages.make.output}\n",
+		map[string]string{"whole.js": `return blobs.make("zebra")`})
+	if _, run, text := start("?wait&files", whole); fmt.Sprint(run["output"].(map[string]any)["data"]) != b64("zebra") {
+		t.Errorf("a run whose output is a blob was answered %s", text)
+	}
+	// A blob in a list, the same blob at two places, a blob written out
+	// inside a text, and values that only look like blobs: one that names a
+	// blob's path, one with data of its own, and one that holds a blob.
+	mixed := c.place("flow: mixed\nstages:\n  make: { job: { script: ./mixed.js } }\noutput:\n  made: ${stages.make.output}\n  text: \"see ${stages.make.output.file} end\"\n",
+		map[string]string{"mixed.js": `const b = blobs.make("ab")
+			return { file: blobs.make("zebra"), list: [b, { again: b }],
+				looks: { "$blob": "made.file" }, more: { "$blob": "made.file", type: "x", size: 1, data: "mine" }, holds: { "$blob": "x", inner: blobs.make("cd") } }`})
+	status, run, text = start("?wait&files", mixed)
+	output, _ = run["output"].(map[string]any)
+	made, _ := output["made"].(map[string]any)
+	at2 := func(v any, keys ...any) any {
+		for _, k := range keys {
+			switch k := k.(type) {
+			case string:
+				m, _ := v.(map[string]any)
+				v = m[k]
+			case int:
+				l, _ := v.([]any)
+				if k >= len(l) {
+					return nil
+				}
+				v = l[k]
+			}
+		}
+		return v
+	}
+	if status != 200 || run["status"] != "done" || at2(made, "file", "data") != b64("zebra") || at2(made, "list", 0, "data") != b64("ab") || at2(made, "list", 1, "again", "data") != b64("ab") ||
+		at2(made, "looks", "data") != nil || at2(made, "looks", "$blob") != "made.file" || at2(made, "more", "data") != "mine" || at2(made, "holds", "inner", "data") != b64("cd") || at2(made, "holds", "$blob") != "x" ||
+		!strings.Contains(fmt.Sprint(output["text"]), b64("zebra")) || !strings.HasPrefix(fmt.Sprint(output["text"]), "see ") {
+		t.Errorf("a run with blobs and values like blobs was answered %d %s", status, text)
+	}
+	// The blobs are given up to a size together: 5 + 2 + 2 + 2 + 5 bytes here.
+	// Past it the answer is an error that names the run and how each blob is read.
+	mixedID, _ := run["id"].(string)
+	small := httptest.NewServer(&gateway.Gateway{Callers: map[string]*client.Client{"the-token": local.Client}, MaxFiles: 15})
+	defer small.Close()
+	exact := httptest.NewServer(&gateway.Gateway{Callers: map[string]*client.Client{"the-token": local.Client}, MaxFiles: 16})
+	defer exact.Close()
+	status, run, text = caller{t: t, url: small.URL, token: "the-token"}.do("GET", "/runs/"+mixedID+"?files", "")
+	if status != 413 || run["id"] != mixedID || !strings.Contains(text, "at most 15 bytes") || !strings.Contains(text, "/runs/"+mixedID+"/files/") || strings.Contains(text, b64("zebra")) {
+		t.Errorf("blobs of 16 bytes, with at most 15 given, were answered %d %s", status, text)
+	}
+	if status, _, text := (caller{t: t, url: exact.URL, token: "the-token"}).do("GET", "/runs/"+mixedID+"?files", ""); status != 200 || !strings.Contains(text, b64("zebra")) {
+		t.Errorf("blobs of 16 bytes, with at most 16 given, were answered %d %s", status, text)
+	}
+	// On a start past the size, the error names the run that was started.
+	status, run, text = caller{t: t, url: small.URL, token: "the-token"}.send("POST", "/runs?wait&files", "application/json", strings.NewReader(`{"at": "`+mixed+`"}`))
+	startedID, _ := run["id"].(string)
+	if status != 413 || startedID == "" || startedID == mixedID || !strings.Contains(text, "/runs/"+startedID+"/files/") {
+		t.Errorf("a start with files past the size was answered %d %s", status, text)
+	}
+	if status, run, text := c.do("GET", "/runs/"+startedID, ""); status != 200 || run["status"] != "done" {
+		t.Errorf("the run a start past the size named was answered %d %s", status, text)
+	}
+	// A size no sum can hold is past the limit like any other: here a text
+	// names one blob twice with a size of 2^62, and the real blob is not read.
+	key := strings.Repeat("A", 43)
+	huge := c.place("flow: huge\nstages:\n  make: { job: { script: ./huge.js } }\noutput: ${stages.make.output}\n",
+		map[string]string{"huge.js": `const big = JSON.stringify({ "$blob": "controller/nope", type: "t", size: 4611686018427387904, key: "` + key + `" })
+			return { a: blobs.make("zebra"), y: big, z: big }`})
+	if status, run, text := (caller{t: t, url: exact.URL, token: "the-token"}).send("POST", "/runs?wait&files", "application/json", strings.NewReader(`{"at": "`+huge+`"}`)); status != 413 || run["id"] == nil || strings.Contains(text, b64("zebra")) {
+		t.Errorf("an output that names blobs of 2^62 bytes twice was answered %d %s", status, text)
+	}
+	// A blob that cannot be read is an error that names the run and the
+	// blob's path: here a text names a blob the store does not have.
+	gone := c.place("flow: gone\nstages:\n  make: { job: { script: ./gone.js } }\noutput: ${stages.make.output}\n",
+		map[string]string{"gone.js": `return { note: JSON.stringify({ "$blob": "controller/nope", type: "t", size: 3, key: "` + key + `" }), file: blobs.make("zebra") }`})
+	status, run, text = start("?wait&files", gone)
+	if status != 500 || run["id"] == nil || !strings.Contains(text, "note#1") || strings.Contains(text, b64("zebra")) {
+		t.Errorf("a run with a blob that is not in the store was answered %d %s", status, text)
+	}
+	if status, run, text := c.do("GET", "/runs/"+run["id"].(string), ""); status != 200 || run["status"] != "done" {
+		t.Errorf("the run with a blob that is not in the store was answered %d %s", status, text)
+	}
+	// Through another gateway, the limit and the error are that gateway's.
+	far := client.Remote(small.URL, "the-token")
+	if output, err := far.OutputWithBytes(context.Background(), mixedID, 1<<30); !errors.Is(err, client.ErrFilesTooLarge) || output != nil {
+		t.Errorf("through a gateway that gives 15 bytes, the client was given %v, %v", output, err)
+	}
+	far = client.Remote(exact.URL, "the-token")
+	if output, err := far.OutputWithBytes(context.Background(), mixedID, 1); err != nil || !strings.Contains(fmt.Sprint(output), b64("zebra")) {
+		t.Errorf("through a gateway that gives 16 bytes, the client was given %v, %v", output, err)
+	}
+	// files needs wait on a start: alone it is answered 400, and starts no run.
+	_, _, listedBefore := c.do("GET", "/runs?all", "")
+	if status, _, text := start("?files", at); status != 400 || !strings.Contains(text, "wait") {
+		t.Errorf("a start with files and no wait was answered %d %s", status, text)
+	}
+	if _, _, after := c.do("GET", "/runs?all", ""); strings.Count(after, `"id"`) != strings.Count(listedBefore, `"id"`) {
+		t.Errorf("a start with files and no wait started a run")
+	}
+	// A wait's own limit answers with the run as it stands, with files too.
+	if status, run, text := start("?wait=200ms&files", slow); status != 200 || run["status"] != "running" {
+		t.Errorf("a start with a wait of 200ms and files was answered %d %s", status, text)
+	}
+	began := time.Now()
+	if status, run, text := start("?wait=200ms", slow); status != 200 || run["status"] != "running" || time.Since(began) > 5*time.Second {
+		t.Errorf("a start with a wait of 200ms was answered %d %s after %s", status, text, time.Since(began))
+	}
+	// A wait that cannot be read is refused, and nothing is started.
+	_, _, listed := c.do("GET", "/runs?all", "")
+	if status, _, text := start("?wait=abc", at); status != 400 || !strings.Contains(text, "wait") {
+		t.Errorf("a start with a wait that is no length of time was answered %d %s", status, text)
+	}
+	if status, _, text := c.do("GET", "/runs/"+id+"?wait=abc", ""); status != 400 || !strings.Contains(text, "wait") {
+		t.Errorf("a wait that is no length of time was answered %d %s", status, text)
+	}
+	time.Sleep(300 * time.Millisecond)
+	if _, _, after := c.do("GET", "/runs?all", ""); strings.Count(after, `"id"`) != strings.Count(listed, `"id"`) {
+		t.Errorf("a start that was refused started a run: the list went from %s to %s", listed, after)
+	}
+	// A wait of no time answers at once with the run as it stands.
+	began = time.Now()
+	status, run, text = start("?wait=0s", slow)
+	if status != 200 || run["status"] == "done" || time.Since(began) > 5*time.Second {
+		t.Errorf("a start with a wait of 0s was answered %d %s after %s", status, text, time.Since(began))
+	}
+	began = time.Now()
+	if status, run, text := c.do("GET", "/runs/"+run["id"].(string)+"?wait=0s", ""); status != 200 || run["status"] == "done" || time.Since(began) > 5*time.Second {
+		t.Errorf("a wait of 0s was answered %d %s after %s", status, text, time.Since(began))
+	}
+	// With no wait, a start is answered with the run's ID alone.
+	if status, run, text := start("", at); status != 200 || run["id"] == nil || run["status"] != nil {
+		t.Errorf("a start was answered %d %s", status, text)
+	}
+	if status, _, text := start("?watch", at); status != 400 || !strings.Contains(text, "watch") {
+		t.Errorf("a start with a parameter it does not take was answered %d %s", status, text)
 	}
 }

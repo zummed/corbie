@@ -28,6 +28,7 @@ import (
 	"github.com/zummed/corbie/instance"
 	"github.com/zummed/corbie/machine"
 	"github.com/zummed/corbie/permission"
+	"github.com/zummed/corbie/plugin"
 	"github.com/zummed/corbie/store"
 )
 
@@ -43,6 +44,9 @@ type Gateway struct {
 	// Interval is how often a stream looks again at a store that cannot
 	// tell it when something was written.
 	Interval time.Duration
+	// MaxFiles is the most bytes the blobs of one run's output are given
+	// with the run, together; zero is plugin.MaxWhole.
+	MaxFiles int64
 }
 
 // start is what the part named start of a request to start a run holds,
@@ -136,7 +140,7 @@ func (g *Gateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	switch {
 	case len(parts) == 1 && r.Method == http.MethodPost:
-		if takes(w, query) {
+		if takes(w, query, "wait", "files") {
 			g.start(w, r, c)
 		}
 	case len(parts) == 1 && r.Method == http.MethodGet:
@@ -346,9 +350,75 @@ func (g *Gateway) start(w http.ResponseWriter, r *http.Request, c *client.Client
 		}
 		st.Allow = &permission.Layer{Allow: s.Allow, Deny: s.Deny}
 	}
+	// A wait that cannot be read is refused before anything starts, and so
+	// is files with no wait: a start alone is answered with no run.
+	limit, err := waitLimit(r.URL.Query())
+	if err == nil && r.URL.Query().Has("files") && !r.URL.Query().Has("wait") {
+		err = errors.New("files gives the blobs of the run a start waited for, and needs wait")
+	}
+	if err != nil {
+		fail(w, http.StatusBadRequest, err)
+		return
+	}
 	id, err := c.Start(r.Context(), st)
+	if err == nil && r.URL.Query().Has("wait") {
+		// The start and the wait are one request: its answer is the run.
+		g.shown(w, r, c, id, limit, nil)
+		return
+	}
 	reply(w, map[string]any{"id": id}, err)
 }
+
+// waitLimit is the limit a wait gives itself, as ?wait=30s, or none.
+func waitLimit(query url.Values) (time.Duration, error) {
+	limit := query.Get("wait")
+	if limit == "" {
+		return 0, nil
+	}
+	d, err := machine.ParseDuration(limit)
+	if err != nil {
+		return 0, fmt.Errorf("wait: %v", err)
+	}
+	return time.Duration(d), nil
+}
+
+// shown answers with a run: the one given, or with wait the run when it has
+// ended. A wait cut short, by its own limit or by the caller going away,
+// answers with the run as it stands. With files each file of the output has
+// its bytes. An error is answered with the run's ID.
+func (g *Gateway) shown(w http.ResponseWriter, r *http.Request, c *client.Client, id string, limit time.Duration, shown *client.Run) {
+	ctx, query := r.Context(), r.URL.Query()
+	var err error
+	if query.Has("wait") {
+		if query.Get("wait") != "" {
+			var cancel context.CancelFunc
+			ctx, cancel = context.WithTimeout(ctx, limit)
+			defer cancel()
+		}
+		shown, err = c.Wait(ctx, id, g.interval())
+	}
+	// The request's own time, not the wait's: a wait cut short is answered
+	// too.
+	if err == nil && query.Has("files") && shown.Output != nil {
+		most := g.MaxFiles
+		if most == 0 {
+			most = plugin.MaxWhole
+		}
+		shown.Output, err = c.OutputWithBytes(r.Context(), id, most)
+	}
+	if err != nil {
+		err = ofRun{id, err}
+	}
+	reply(w, shown, err)
+}
+
+// ofRun is an error about a run, which its answer names.
+type ofRun struct {
+	id string
+	error
+}
+
+func (e ofRun) Unwrap() error { return e.error }
 
 // submit is what the part named submit of a request to submit a tree holds,
 // as JSON: the prefix the tree is recorded at, the directory it came from,
@@ -600,7 +670,7 @@ func (g *Gateway) run(w http.ResponseWriter, r *http.Request, c *client.Client, 
 	case len(rest) > 0:
 		what = rest[0]
 	case r.Method == http.MethodGet:
-		asks = []string{"wait"}
+		asks = []string{"wait", "files"}
 	}
 	if !takes(w, r.URL.Query(), asks...) {
 		return
@@ -614,22 +684,12 @@ func (g *Gateway) run(w http.ResponseWriter, r *http.Request, c *client.Client, 
 	}
 	switch {
 	case what == "" && r.Method == http.MethodGet:
-		if query := r.URL.Query(); query.Has("wait") {
-			// A wait may give its own limit. Cut short, by its limit or by
-			// the caller going away, it answers with the run as it stands.
-			if limit := query.Get("wait"); limit != "" {
-				d, err := machine.ParseDuration(limit)
-				if err != nil {
-					fail(w, http.StatusBadRequest, fmt.Errorf("wait: %v", err))
-					return
-				}
-				var cancel context.CancelFunc
-				ctx, cancel = context.WithTimeout(ctx, time.Duration(d))
-				defer cancel()
-			}
-			shown, err = c.Wait(ctx, id, g.interval())
+		limit, err := waitLimit(r.URL.Query())
+		if err != nil {
+			fail(w, http.StatusBadRequest, err)
+			return
 		}
-		reply(w, shown, err)
+		g.shown(w, r, c, id, limit, shown)
 	case what == "record" && r.Method == http.MethodGet && !r.URL.Query().Has("watch"):
 		// The record so far, and the run as it stands: what the stream
 		// gives, without staying.
@@ -728,7 +788,11 @@ func reply(w http.ResponseWriter, v any, err error) {
 	if err != nil {
 		status := http.StatusInternalServerError
 		var problems machine.Problems
+		var run ofRun
+		errors.As(err, &run)
 		switch {
+		case errors.Is(err, client.ErrFilesTooLarge):
+			status = http.StatusRequestEntityTooLarge
 		case errors.Is(err, client.ErrNoRun), errors.Is(err, client.ErrNoFile), errors.Is(err, client.ErrNoStep):
 			status = http.StatusNotFound
 		case errors.Is(err, client.ErrCalled):
@@ -747,6 +811,9 @@ func reply(w http.ResponseWriter, v any, err error) {
 		case errors.Is(err, context.Canceled):
 			return
 		}
+		if run.id != "" {
+			err = ofRun{run.id, err}
+		}
 		fail(w, status, err)
 		return
 	}
@@ -760,7 +827,12 @@ func reply(w http.ResponseWriter, v any, err error) {
 }
 
 func fail(w http.ResponseWriter, status int, err error) {
-	data, _ := json.Marshal(map[string]any{"error": err.Error()})
+	said := map[string]any{"error": err.Error()}
+	var run ofRun
+	if errors.As(err, &run) {
+		said["id"] = run.id
+	}
+	data, _ := json.Marshal(said)
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 	w.Write(append(data, '\n'))

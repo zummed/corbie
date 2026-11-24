@@ -185,6 +185,44 @@ The first command prints the URL, which is `https`. Check it with the token.
 - With no token file and no OIDC issuer the function does not start. Its log
   says why.
 
+One function with every role
+----------------------------
+
+`corbie up` in a function runs the controller, the runner and the gateway in
+that one process, with the store in the function's temporary directory. It
+needs no bucket and no `corbie init`.
+
+  package/bootstrap    the start script below
+  package/corbie       the binary
+  package/project/…    the directory of machines
+  package/tokens       the token file
+
+  #!/bin/sh
+  cd "$LAMBDA_TASK_ROOT" && exec ./corbie up --in project gateway --token-file tokens
+
+Give the function a URL as for a gateway. `POST /runs?wait&files` starts a
+run and is answered with it and with the bytes of its blobs
+(`corbie manual routes`).
+
+- Lambda can give a later request to another copy, which answers 404 for the
+  run's blob. `?files` puts the blob's bytes in the first answer.
+- `?files` gives at most 64 MiB of blobs, and past that answers 413. Give the
+  function memory of about six times the blobs one run gives.
+- Each copy of the function has its own store. A request for a run that
+  another copy recorded is answered 404.
+- A tree sent to `POST /trees` is recorded in one copy. A run started at it
+  in another copy fails with `nothing is recorded at`.
+- A caller with a token submits and runs any script within `--ceiling`, which
+  is `all` by default. Such a script reads the function's AWS credentials, so
+  give `--ceiling` only what the project's jobs need.
+- The process runs only while a request is being answered.
+- A copy's store is deleted when Lambda discards the copy.
+- `--store` and `CORBIE_STORE` are refused: a bucket is used with the
+  functions above.
+
+Use it for a run that ends within the request that started it. A run that
+goes on after its request needs the bucket and the functions above.
+
 Computers beside functions
 --------------------------
 

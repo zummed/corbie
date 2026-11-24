@@ -18,7 +18,8 @@ import (
 // cmdUp is corbie up: a controller, a runner, a client and a gateway in one
 // process, set up as corbie init sets them up, in the config .corbie of the
 // current directory with the store in it, and a directory submitted. A
-// command run in the current directory uses that config.
+// command run in the current directory uses that config. On a serverless
+// host the config is in the copy's temporary directory.
 func cmdUp(e *Env, args []string) error {
 	var s starting
 	var in, at, ceilingText string
@@ -37,8 +38,11 @@ func cmdUp(e *Env, args []string) error {
 	if _, err := e.Parse(mine); err != nil {
 		return err
 	}
-	if role.Serverless() {
-		return fmt.Errorf("corbie up needs a process that stays up, and this is a serverless host")
+	// On a serverless host each copy of the function has its config and
+	// its store in a directory of the copy's own.
+	e.whole = role.Serverless()
+	if e.whole && (e.Given("store") || os.Getenv("CORBIE_STORE") != "") {
+		return fmt.Errorf("on a serverless host corbie up gives each copy of the function a store of its own, and takes no --store and no CORBIE_STORE: corbie start runs a function on a bucket")
 	}
 	if e.Given("at") && at == "" {
 		return Mistake("--at is empty: a prefix is / and the names of one or more directories, as /home")
@@ -73,6 +77,9 @@ func cmdUp(e *Env, args []string) error {
 	if err != nil {
 		return err
 	}
+	if e.config == "" && e.whole {
+		e.config = filepath.Join(os.TempDir(), client.ConfigName)
+	}
 	if e.config == "" {
 		if e.config, err = filepath.Abs(client.ConfigName); err != nil {
 			return err
@@ -104,6 +111,9 @@ func cmdUp(e *Env, args []string) error {
 		}
 	} else if e.Given("ceiling") {
 		return Mistake("--ceiling sets up a new config, and %s is set up: corbie init --ceiling changes it", cfg.Dir)
+	}
+	if e.whole {
+		e.Say("config and store in %s, which is gone when the host discards this copy of the function", cfg.Dir)
 	}
 	// The secrets are typed after every mistake on the line is found.
 	secrets, err := s.testSecrets(e)

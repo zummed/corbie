@@ -95,7 +95,7 @@ func (b *build) hooksFor(job *instance.Going, after bool) ([]instance.HookRef, e
 	}
 	scope := machine.Scope{"job": b.seen(job)}
 	if after {
-		scope["result"] = resultOf(job.Outcome)
+		scope["result"], scope["output"] = resultOf(job.Outcome), job.Outcome.Data
 	}
 	var refs []instance.HookRef
 	sets, inputs, levels := b.hookSets()
@@ -173,8 +173,8 @@ func (b *build) fillHook(job *instance.Going, ref instance.HookRef) (*machine.Jo
 	given := map[string]any{"job": scope["job"]}
 	if ref.After {
 		spec, place = hooks[ref.Name].After, "hooks."+ref.Name+".after"
-		scope["result"] = resultOf(job.Outcome)
-		given["result"] = scope["result"]
+		scope["result"], scope["output"] = resultOf(job.Outcome), job.Outcome.Data
+		given["result"], given["output"] = scope["result"], job.Outcome.Data
 	}
 	name := job.Name + "." + ref.Name
 	eval := machine.NewEvaluator(b.time, b.seed("hook", fmt.Sprint(b.step.Number), job.Full(), ref.Name), b.run())

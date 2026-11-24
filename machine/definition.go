@@ -675,9 +675,9 @@ func check(def *Definition) *Checker {
 			c.Problem(place, "a hook writes one of before: and after:")
 		}
 		c.Job(place+".before", h.Before, "input", "job")
-		c.Job(place+".after", h.After, "input", "job", "result")
+		c.Job(place+".after", h.After, "input", "job", "result", "output")
 		if h.When != "" {
-			c.Cond(place+".when", h.When, "input", "job", "result")
+			c.Cond(place+".when", h.When, "input", "job", "result", "output")
 		}
 	}
 	c.approves = false // the ask's own job is never itself held by this definition's marks

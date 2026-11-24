@@ -576,7 +576,7 @@ func (b *build) settle(job *instance.Going, event machine.Event, a *arrival) {
 		b.askEnded(job, event, a)
 		return
 	}
-	if b.hooked() && !job.Began.IsZero() {
+	if b.hooked() && !job.Began.IsZero() && event.Name == machine.Done {
 		// The hooks after a job that started run before the machine is given
 		// its outcome.
 		job.Outcome = &event

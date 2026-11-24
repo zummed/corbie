@@ -188,6 +188,7 @@ func Test_mach_a_hook_writes_before_or_after(t *testing.T) {
 		`{ both: { before: ./add.js, after: ./add.js } }`:                                                    "hooks.both: a hook writes one of before: and after:",
 		`{ neither: { when: "${job.approve}" } }`:                                                            "hooks.neither: a hook writes one of before: and after:",
 		`{ "two words": { before: ./add.js } }`:                                                              `"two words" is not a name`,
+		`{ cancel: { before: ./add.js } }`:                                                                   "hooks.cancel: a hook cannot be named cancel",
 		`{ reads: { before: ./add.js, when: "${output}" } }`:                                                 `reads "output"`,
 		`{ fine: { after: { script: ./add.js, input: { n: "${output.n}" } }, when: "${job.name == 'a'}" } }`: "",
 	} {
@@ -228,4 +229,69 @@ func Test_mach_made_machine_gives_hooks_no_meta(t *testing.T) {
 				{ files: { "./step.js": "return 7" } })`,
 	}, nil)
 	check(t, r.Status, r.Output, "done", `7`)
+}
+
+// A hook a machine below takes from above is a job of the definition that
+// declares it: it has the allow list written for the whole of that
+// definition, and its expressions read the run of that machine.
+func Test_mach_hook_from_above_is_a_job_of_the_declaring_definition(t *testing.T) {
+	r := run(t, local(t, "all"), `
+		flow: declares
+		allow: ["env:HOME"]
+		hooks:
+		  check:
+		    before: { script: ./check.js, input: { own: "${run.id}", held: "${job.run.id}" } }
+		    when: "${job.name == 'work'}"
+		stages:
+		  below:
+		    job:
+		      machine:
+		        flow: inherits
+		        stages:
+		          work: { job: { script: ./add.js, input: { n: 1 } } }
+		        output: ${stages.work.output}
+		output: ${stages.below.output}
+	`, map[string]string{
+		"add.js": scripts["add.js"],
+		"check.js": `
+			env.get("HOME")
+			return { ok: input.own !== input.held, note: "run.id is the ID of the held job's run" }
+		`,
+	}, nil)
+	check(t, r.Status, r.Output, "done", `{"n": 2}`)
+}
+
+// A job that restarts after it ended well has again the input it was first
+// given, and its hooks run for that input.
+func Test_mach_restarted_job_has_the_input_first_given(t *testing.T) {
+	r := run(t, local(t), `
+		flow: again
+		hooks:
+		  more:
+		    before: ./more.js
+		stages:
+		  work: { job: { script: ./same.js, input: { n: 1 }, restart: { after: always, limit: 2, delay: 1ms } } }
+		output: ${stages.work.output}
+	`, map[string]string{
+		"same.js": `return input`,
+		"more.js": `return { ok: true, input: { n: input.job.input.n + 10 } }`,
+	}, nil)
+	check(t, r.Status, r.Output, "done", `{"n": 11}`)
+}
+
+// A hook whose when: cannot be evaluated refuses the job, as one that cannot
+// be filled in does.
+func Test_mach_hook_whose_when_cannot_be_evaluated_denies(t *testing.T) {
+	r := run(t, local(t), `
+		flow: guarded
+		hooks:
+		  team:
+		    before: ./yes.js
+		    when: "${job.meta.team == 'a'}"
+		stages:
+		  work: { job: ./one.js }
+	`, map[string]string{"one.js": "return 1", "yes.js": "return { ok: true }"}, nil)
+	if r.Failure != "denied" || !strings.Contains(r.Error, "the hook team could not be started: hooks.team.when") {
+		t.Fatalf("a job whose hook's when: cannot be evaluated: %s/%s: %s", r.Status, r.Failure, r.Error)
+	}
 }

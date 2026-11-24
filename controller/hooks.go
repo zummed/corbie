@@ -80,6 +80,17 @@ func (b *build) seen(job *instance.Going) map[string]any {
 	return what
 }
 
+// hookRun is what a hook's expressions read as run: the run of the machine
+// that declares the hook.
+func (b *build) hookRun(level int) machine.Run {
+	run := b.run()
+	if level >= 0 {
+		above := b.st.Above.Hooks[level]
+		run.ID, run.Key, run.Principal = above.Run, above.Key, above.Principal
+	}
+	return run
+}
+
 // hookScope is what the expressions of a hook read: the input of the
 // machine that declares it, the job, and after a job its output.
 func (b *build) hookScope(job *instance.Going, input any, after bool) machine.Scope {
@@ -92,7 +103,8 @@ func (b *build) hookScope(job *instance.Going, input any, after bool) machine.Sc
 
 // hooksFor gives the hooks that run for a job, before it or after it, in
 // the order they run: the machine's own in the order of their names, then
-// those of each machine above. A hook's own job takes no hook.
+// those of each machine above. A hook's own job takes no hook. A when: that
+// cannot be evaluated is an error that names its hook.
 func (b *build) hooksFor(job *instance.Going, after bool) ([]instance.HookRef, error) {
 	if job.Hook != "" {
 		return nil, nil
@@ -106,10 +118,10 @@ func (b *build) hooksFor(job *instance.Going, after bool) ([]instance.HookRef, e
 				continue
 			}
 			if h.When != "" {
-				eval := machine.NewEvaluator(b.time, b.seed("hook-when", fmt.Sprint(b.step.Number), job.Full(), name), b.run())
+				eval := machine.NewEvaluator(b.time, b.seed("hook-when", fmt.Sprint(b.step.Number), job.Full(), name), b.hookRun(levels[i]))
 				holds, err := eval.Cond(h.When, b.hookScope(job, inputs[i], after), "hooks."+name+".when")
 				if err != nil {
-					return nil, err
+					return nil, fmt.Errorf("the hook %s could not be started: %v", name, err)
 				}
 				if !holds {
 					continue
@@ -150,9 +162,15 @@ func (b *build) startHook(job *instance.Going, a *arrival) {
 
 // fillHook fills a hook's job in, from the input of the machine that
 // declares it and from the job it runs for. Its script or machine is in the
-// definition that declares it, and its job has the layers of that machine.
+// definition that declares it, and its job has the layers of that machine
+// and, as a job of that definition does, the lists written for the whole of
+// it.
 func (b *build) fillHook(job *instance.Going, ref instance.HookRef) (*machine.Job, error) {
-	hooks, input, def, beside := b.st.Hooks, b.st.Input, b.def, b.st.Definition
+	hooks, input, def, beside, run := b.st.Hooks, b.st.Input, b.def, b.st.Definition, b.hookRun(ref.Level)
+	// The lists written for the whole definition, and why they could not be
+	// filled in where they could not.
+	var allow []string
+	var unfilled error
 	var err error
 	if ref.Level >= 0 {
 		above := b.st.Above.Hooks[ref.Level]
@@ -163,11 +181,14 @@ func (b *build) fillHook(job *instance.Going, ref instance.HookRef) (*machine.Jo
 			}
 			return nil, err
 		}
+		allow, unfilled = b.allowOf(def, input, run, b.seed("hook-allow", fmt.Sprint(ref.Level)))
 	} else {
 		if err = b.ownDefinition(); err != nil {
 			return nil, err
 		}
-		def = b.def
+		if def, allow = b.def, b.read.Allow; b.read.Unfilled != "" {
+			unfilled = errors.New(b.read.Unfilled)
+		}
 	}
 	spec, place := hooks[ref.Name].Before, "hooks."+ref.Name+".before"
 	if ref.After {
@@ -175,7 +196,7 @@ func (b *build) fillHook(job *instance.Going, ref instance.HookRef) (*machine.Jo
 	}
 	scope := b.hookScope(job, input, ref.After)
 	name := job.Name + "." + ref.Name
-	eval := machine.NewEvaluator(b.time, b.seed("hook", fmt.Sprint(b.step.Number), job.Full(), ref.Name), b.run())
+	eval := machine.NewEvaluator(b.time, b.seed("hook", fmt.Sprint(b.step.Number), job.Full(), ref.Name), run)
 	filled, err := spec.Fill(eval, scope, place, name)
 	if err != nil {
 		return nil, err
@@ -189,13 +210,13 @@ func (b *build) fillHook(job *instance.Going, ref instance.HookRef) (*machine.Jo
 		filled.Input = given
 	}
 	filled.Name, filled.Hook, filled.Above, filled.Level = name, ref.Name, ref.Level >= 0, max(ref.Level, 0)
-	if ref.Level < 0 && !filled.IsMachine() {
+	if !filled.IsMachine() {
 		// A script, a call or a send of the definition has the lists written
 		// for the whole of it.
-		if b.read.Unfilled != "" {
-			return nil, errors.New(b.read.Unfilled)
+		if unfilled != nil {
+			return nil, unfilled
 		}
-		filled.Allow = append(slices.Clone(b.read.Allow), filled.Allow...)
+		filled.Allow = append(slices.Clone(allow), filled.Allow...)
 		filled.Deny = append(slices.Clone(def.Deny), filled.Deny...)
 	}
 	if !filled.IsCall() && !filled.IsSend() {
@@ -308,6 +329,9 @@ func (b *build) hookSaid(job *instance.Going, ref instance.HookRef, yes bool, no
 			b.outcome(job, &machine.Error{Status: machine.StatusDenied, Error: note}, a)
 			return
 		case has:
+			if !job.Changed {
+				job.Changed, job.Given = true, job.Input
+			}
 			job.Input = replace
 		}
 		if len(job.Hooks) > 0 {

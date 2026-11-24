@@ -250,13 +250,18 @@ type Heard struct {
 }
 
 // HooksAbove are the hooks a machine takes from one machine above: the
-// hooks as written, the definition that declares them and the input their
-// values are filled from.
+// hooks as written, the definition that declares them, and the input and the
+// run their values are filled from.
 type HooksAbove struct {
 	Hooks      map[string]*machine.HookSpec `json:"hooks"`
 	Definition blob.Ref                     `json:"definition"`
 	Input      any                          `json:"input,omitzero"`
 	Layers     []permission.Layer           `json:"layers,omitzero"`
+	// Run, Key and Principal are what an expression reads of the instance
+	// that declares the hooks.
+	Run       string  `json:"run"`
+	Key       *string `json:"key,omitzero"`
+	Principal string  `json:"principal,omitzero"`
 }
 
 // A HookRef names one hook that is to run for a job: the machine that
@@ -305,6 +310,11 @@ type Going struct {
 	For string `json:"for,omitzero"`
 	// Outcome is how the job ended, kept while the hooks after it run.
 	Outcome *machine.Event `json:"outcome,omitzero"`
+	// Changed says a hook gave the job another input, and Given is the input
+	// it was first given, which the job has again when it restarts as a new
+	// job.
+	Changed bool `json:"changed,omitzero"`
+	Given   any  `json:"given,omitzero"`
 }
 
 // Key is the name a job is kept under among those still going: its own

@@ -432,7 +432,7 @@ Larger machines are built from smaller ones. A child is started by a job and its
 
 A definition can be made while a machine runs, by a script or by an agent, and run as a child. It is filled out, checked and stored exactly as one sent by a client is, in the process of the job that defines it (see Runner). It is checked again when a job starts it, as any definition is, and whether its marked jobs have a `before` hook, since that depends on what is above it. Each of its steps is taken in a process of its own (see Controller).
 
-A root may have sixteen levels of machines below it unless it says otherwise, and a hook that is a machine uses a level like any child. A definition may also limit how many jobs an instance starts. A job past either limit fails and is not restarted.
+By default a root may have sixteen levels of machines below it, and a hook that is a machine uses a level like any child. A definition may also limit how many jobs an instance starts. A job past either limit fails and is not restarted.
 
 ## Waiting on the outside
 
@@ -483,7 +483,7 @@ output: [{"item":20,"output":"refunded 20"},{"error":"the hook small refused it:
 | `after:` | a job, which runs after a job has ended `done` |
 | `when:` | a condition on the job: the hook runs for the jobs it holds for, and for every job by default |
 
-A hook writes one of `before:` and `after:`. Its job is a script, a machine, a call or a send, as any job is.
+A hook writes one of `before:` and `after:`. Its job is a script, a machine, a call or a send, as any job is. A hook's name is a name, and not `cancel`.
 
 ### What a hook returns
 
@@ -495,6 +495,7 @@ A hook writes one of `before:` and `after:`. Its job is a script, a machine, a c
 | `{ ok: false, note }`, any other result, or a failure | the job never starts, and fails as `denied` | the job fails |
 
 - A refused job's error holds the hook's name and its `note`. Its machine may handle it like any other failure.
+- A hook whose `when:` cannot be evaluated, or whose job cannot be filled in or started, refuses the job as one that returned `{ ok: false }` does.
 - A send returns nothing, so a hook that is a send refuses nothing.
 - A changed input changes no permission: a job's `allow:` is filled before its hooks run.
 - The record holds each hook's result, so it shows a changed input and a changed output. The machine is not told of a changed input: a stage's own values, and an agent's conversation, hold what was first asked for.
@@ -515,7 +516,7 @@ A hook's expressions read the `input`, `values` and `run` of the machine that de
 | `script`, `machine`, `call` or `send` | what the job runs |
 | `tool` | for an agent's tool call, `{ name, entry, toolkit, description, args, said }` (see agent.md) |
 
-A hook's `allow:` scopes are filled from the declaring machine's input and values, and never from `job`. A hook's job runs with the layers of the machine that declares it, and its permissions are its own.
+A hook's `allow:` scopes are filled from the declaring machine's input and values, and never from `job`. A hook's job is a job of the definition that declares it, for every job it runs for: a script, a call or a send has that definition's `allow:` and `deny:` with its own, and it runs with the layers of that machine.
 
 ### Which jobs
 
@@ -614,7 +615,7 @@ job:
 | `limit` | how many restarts: a number, or a number in a length of time | no limit |
 | `delay` | the wait: `1s to 5m` doubles from the first to the second, and `30s` is the same each time | `1s to 5m` |
 
-- The controller restarts a job with the input it was first given. A machine job restarts as a new child run, from its start.
+- The controller restarts a job with the input it was first given, and not the input a hook gave in its place. A machine job restarts as a new child run, from its start.
 - A denial and a cancel are never restarted, so a job cancelled by hand stays stopped.
 - A delay that doubles starts again once an attempt has stayed up for twice its longest wait.
 - The machine sees only the final outcome, which is the last attempt's once the limit is passed. The record shows each attempt.

@@ -552,6 +552,11 @@ func (b *build) renew(job *instance.Going) {
 			}
 		}
 	}
+	// A job restarts with the input it was first given, and its hooks run
+	// for that input.
+	if job.Changed {
+		job.Input = job.Given
+	}
 	if err = b.begin(&job.Job, job); err != nil {
 		b.err = err
 	}
@@ -1072,7 +1077,9 @@ func (b *build) begin(req *machine.Job, earlier *instance.Going) error {
 		refs, err := b.hooksFor(job, false)
 		switch {
 		case err != nil:
-			b.fail(job, "%v", err)
+			// A hook whose when: cannot be evaluated refuses the job.
+			b.ask(instance.Ask{Kind: instance.AskFail, Name: job.Full(), Message: b.message("fail"),
+				Error: &machine.Error{Status: machine.StatusDenied, Error: err.Error()}})
 		case len(refs) > 0:
 			job.Held, job.Hooks = true, refs
 			b.ask(instance.Ask{Kind: instance.AskHold, Name: job.Full(), Job: &job.Job})
@@ -1124,10 +1131,16 @@ func found(job *machine.Job, def *machine.Definition, beside blob.Ref) (*machine
 // definitionAllow gives the allow list written for the whole definition,
 // its scopes filled from the instance's input.
 func (b *build) definitionAllow() ([]string, error) {
+	return b.allowOf(b.def, b.st.Input, b.run(), b.seed("allow"))
+}
+
+// allowOf gives the allow list written for the whole of a definition, its
+// scopes filled from the input and the run of an instance of it.
+func (b *build) allowOf(def *machine.Definition, input any, run machine.Run, seed []byte) ([]string, error) {
 	var allow []string
-	eval := machine.NewEvaluator(b.time, b.seed("allow"), b.run())
-	for i, entry := range b.def.Allow {
-		filled, err := eval.Entry(entry, machine.Scope{"input": b.st.Input}, fmt.Sprintf("allow[%d]", i))
+	eval := machine.NewEvaluator(b.time, seed, run)
+	for i, entry := range def.Allow {
+		filled, err := eval.Entry(entry, machine.Scope{"input": input}, fmt.Sprintf("allow[%d]", i))
 		if err != nil {
 			return nil, err
 		}

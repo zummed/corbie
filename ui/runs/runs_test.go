@@ -568,6 +568,34 @@ func Test_runs_own_run_shown_in_full(t *testing.T) {
 		t.Errorf("the held tool does not name its toolkit: %+v", held)
 	}
 
+	// A hook's result is a row of the hook, on the hook's card, and the
+	// result of the tool it ran for is the one the model was given.
+	ended := append(slices.Clone(entries),
+		client.Entry{ID: "a-client/1", Step: 2,
+			Events: []instance.Arrived{{Event: machine.Event{Name: "done", From: "restart.approval", Data: map[string]any{"ok": true}}, Own: true}}},
+		client.Entry{ID: "a-client/1", Step: 3,
+			Events: []instance.Arrived{
+				{Event: machine.Event{Name: "done", From: "restart", Data: "restarted"}},
+				{Event: machine.Event{Name: "failed", From: "restart.approval@2"}, Own: true},
+			}})
+	helper := map[string]*client.Run{"a-client/1": {ID: "a-client/1", Machine: "helper", Type: "agent"}, "a-client/2": byID["a-client/2"]}
+	var hookRows, cards []string
+	for _, r := range rowsOf("a-client/1", ended, helper, nil, at, at) {
+		hookRows, cards = append(hookRows, r.Said()), append(cards, strings.Join(r.Cards, " "))
+		if r.Said() == "hook approval started approval" && fmt.Sprint(r.Out) != "map[ok:true]" {
+			t.Errorf("the hook's row gives the result %v", r.Out)
+		}
+	}
+	if i := slices.Index(hookRows, "hook approval done"); i < 0 || cards[i] != drawing.HookJob("approval") || !slices.Contains(hookRows, "hook approval failed") {
+		t.Errorf("the hook's rows are %q on the cards %q", hookRows, cards)
+	}
+	if n := len(slices.DeleteFunc(slices.Clone(hookRows), func(r string) bool { return r != "restart done" })); n != 1 || slices.Contains(hookRows, "restart failed") {
+		t.Errorf("a hook's result is shown as its job's: %q", hookRows)
+	}
+	if got := marksOf("a-client/1", ended, "running", nil, byID).Steps[2].Failed; strings.Join(got, ", ") != "hook approval" {
+		t.Errorf("a failed hook marks %q", got)
+	}
+
 	// A flow's and a statechart's hook is no stage or state: its row says the
 	// hook started its run.
 	for _, kind := range []string{"flow", "statechart"} {

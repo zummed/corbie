@@ -981,6 +981,14 @@ func waitsOf(run *client.Run, st *instance.State, kids []*client.Run, at time.Ti
 // the jobs going after it.
 func marksOf(id string, entries []client.Entry, status string, st *instance.State, byID map[string]*client.Run) *drawing.Run {
 	m := &drawing.Run{Ended: status != instance.Running && status != instance.Waiting, Failed: status == instance.Failed, Children: map[string]drawing.Child{}}
+	hooks := map[string]string{} // the hook of each hook's job the run asked for, by the job's name
+	for _, e := range entries {
+		for _, a := range e.Asks {
+			if e.ID == id && a.Job != nil && a.Job.Hook != "" {
+				hooks[named(a.Name)] = a.Job.Hook
+			}
+		}
+	}
 	for _, e := range entries {
 		if e.ID != id || e.Step == 0 {
 			continue
@@ -989,7 +997,11 @@ func marksOf(id string, entries []client.Entry, status string, st *instance.Stat
 		for _, event := range e.Events {
 			s.Events = append(s.Events, event.Name)
 			if event.Name == machine.Failed && event.From != "" {
-				s.Failed = append(s.Failed, jobOf(event.From))
+				name := jobOf(event.From)
+				if hook := hooks[named(event.From)]; hook != "" {
+					name = drawing.HookJob(hook)
+				}
+				s.Failed = append(s.Failed, name)
 			}
 		}
 		for _, a := range e.Asks {

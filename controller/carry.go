@@ -544,7 +544,9 @@ func (p *pass) child(inst string, step *instance.Step, ask *instance.Ask) *insta
 	// down those above it.
 	above.Hooks = st.Above.Hooks
 	if len(st.Hooks) > 0 {
-		above.Hooks = append([]instance.HooksAbove{{Hooks: st.Hooks, Definition: st.Definition, Input: st.Input, Layers: st.Above.Layers}}, st.Above.Hooks...)
+		run := runOf(inst, st)
+		above.Hooks = append([]instance.HooksAbove{{Hooks: st.Hooks, Definition: st.Definition, Input: st.Input, Layers: st.Above.Layers,
+			Run: run.ID, Key: run.Key, Principal: run.Principal}}, st.Above.Hooks...)
 	}
 	if above.IsHook {
 		// A machine run as a hook takes no hook from above it, and the

@@ -678,6 +678,11 @@ func check(def *Definition) *Checker {
 	for _, name := range sortedKeys(def.Hooks) {
 		h, place := def.Hooks[name], "hooks."+name
 		c.Name(place, name)
+		if name == "cancel" {
+			// A hook's job is named <job>.<hook>, and <job>.cancel is the
+			// name of the message that cancels the job.
+			c.Problem(place, "a hook cannot be named cancel: give it another name")
+		}
 		if (h.Before == nil) == (h.After == nil) {
 			c.Problem(place, "a hook writes one of before: and after:")
 		}

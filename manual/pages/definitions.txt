@@ -395,7 +395,7 @@ call or a send.
   { ok: false, note }    before a job: it fails with status `denied`. After a job: it fails
   any other result       as `{ ok: false }`
 
-- A hook that fails, or whose values cannot be filled in, refuses the job.
+- A hook that fails, or whose `when:` or values cannot be filled in, refuses the job.
 - A hook that is a send returns nothing, and refuses nothing.
 - A refused job's error holds the hook's name and its note.
 - A changed input changes no permission: the job's `allow:` is filled first.
@@ -418,7 +418,8 @@ it, and `job`. After a job they read `output`, the job's output.
 
 - A hook with no `input:` is given `{ job }`, and after a job `{ job, output }`.
 - A hook's `allow:` scopes read `input` and `values`, and never `job`.
-- A hook's job has its own permissions, and those of the machine that names it.
+- A hook's job has its own `allow:` and `deny:`, and those of the definition that writes it.
+- A hook is not named `cancel`.
 - A hook's job is named for the job and the hook, as `refund.0.small`.
 
 Which hooks run for a job:

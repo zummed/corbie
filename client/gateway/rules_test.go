@@ -682,6 +682,20 @@ func Test_client_gateway_start_waits_and_gives_files(t *testing.T) {
 	if status, run, text := (caller{t: t, url: small.URL, token: "the-token"}).send("POST", "/runs?wait&files", "application/json", strings.NewReader(`{"at": "`+mixed+`"}`)); status != 200 || run["id"] == nil || run["status"] != "done" || run["withheld"] == nil {
 		t.Errorf("a start with files past the size was answered %d %s", status, text)
 	}
+	// A blob that cannot be read keeps the bytes back and not the run: here a
+	// text names a blob the store does not have.
+	gone := c.place("flow: gone\nstages:\n  make: { job: { script: ./gone.js } }\noutput: ${stages.make.output}\n",
+		map[string]string{"gone.js": `return { note: JSON.stringify({ "$blob": "controller/nope", type: "t", size: 3, key: "` + strings.Repeat("A", 43) + `" }), file: blobs.make("zebra") }`})
+	status, run, text = start("?wait&files", gone)
+	withheld, _ = run["withheld"].(string)
+	if status != 200 || run["id"] == nil || run["status"] != "done" || !strings.Contains(withheld, "note#1") || !strings.Contains(withheld, "could not be read") || strings.Contains(text, b64("zebra")) {
+		t.Errorf("a run with a blob that is not in the store was answered %d %s", status, text)
+	}
+	// Through another gateway, the limit and the reason are that gateway's.
+	far := client.Remote(small.URL, "the-token")
+	if output, withheld, err := far.OutputWithBytes(context.Background(), mixedID, 1<<30); err != nil || !strings.Contains(withheld, "16 bytes") || strings.Contains(fmt.Sprint(output), b64("zebra")) {
+		t.Errorf("through a gateway that gives 15 bytes, the client was given %v, %q, %v", output, withheld, err)
+	}
 	// files needs wait on a start: alone it is answered 400, and starts no run.
 	_, _, listedBefore := c.do("GET", "/runs?all", "")
 	if status, _, text := start("?files", at); status != 400 || !strings.Contains(text, "wait") {

@@ -464,8 +464,9 @@ One request starts a run and is answered with the run:
 - A blob is then `{ "$blob": "<path>", "type", "size", "data": "<base64>" }`. Without `?files` it has no `data`, and `GET /runs/<id>/files/<path>` gives its bytes.
 - `POST /runs?wait&files` and `GET /runs/<id>?files` take it. On a start `?files` needs `?wait`: alone it is answered 400, and no run is started.
 - A blob written out inside a text has its `data` there too.
-- A value that has a `$blob` key and is not a blob is unchanged.
+- A value that has a `$blob` key and is not a blob gets no `data`. A blob inside it gets `data`.
 - The gateway gives at most 64 MiB of blobs in one answer, counted together. Past that the run is answered with no `data`, and its `withheld` says why and where each blob is read.
+- A blob that cannot be read is answered the same way: the run, no `data`, and `withheld` naming the blob's path.
 
 A page in a browser calls the gateway from any origin:
 

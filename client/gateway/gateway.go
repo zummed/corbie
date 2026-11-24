@@ -397,17 +397,15 @@ func (g *Gateway) shown(w http.ResponseWriter, r *http.Request, c *client.Client
 		}
 		shown, err = c.Wait(ctx, id, g.interval())
 	}
-	// The request's own time, not the wait's: a wait cut short is answered too.
+	// The request's own time, not the wait's: a wait cut short is answered
+	// too. Whatever keeps the blobs back, the run is answered.
 	if err == nil && query.Has("files") && shown.Output != nil {
 		most := g.MaxFiles
 		if most == 0 {
 			most = 64 << 20
 		}
 		var output any
-		var size int64
-		if output, size, err = c.OutputWithBytes(r.Context(), id, most); err == nil && size > most {
-			shown.Withheld = fmt.Sprintf("the blobs of the output are %d bytes together, and at most %d are given with a run: read each at /runs/%s/files/<its path>", size, most, id)
-		} else if err == nil {
+		if output, shown.Withheld, err = c.OutputWithBytes(r.Context(), id, most); err == nil && shown.Withheld == "" {
 			shown.Output = output
 		}
 	}

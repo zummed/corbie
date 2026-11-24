@@ -878,37 +878,50 @@ func (c *Client) output(ctx context.Context, id string) (any, error) {
 // OutputWithBytes gives a run's output as Show gives it, with the bytes of
 // each blob beside its path, type and size, as base64 in data. The blobs
 // are named where the shown output is made, so each is the one its path
-// fetches. size is how many bytes the blobs are together: when that is
-// more than most, no blob is read and no output is given.
-func (c *Client) OutputWithBytes(ctx context.Context, id string, most int64) (output any, size int64, err error) {
+// fetches.
+//
+// withheld says why no output is given: the blobs are more than most bytes
+// together, in which case none is read, or one of them could not be read.
+// The run is still there to show, and each blob is still read by its path.
+// Through a gateway, the limit is that gateway's.
+func (c *Client) OutputWithBytes(ctx context.Context, id string, most int64) (output any, withheld string, err error) {
 	if c.remote != nil {
 		var run Run
-		return run.Output, 0, c.remote.get(ctx, "/runs/"+id+"?files", &run)
+		err := c.remote.get(ctx, "/runs/"+id+"?files", &run)
+		return run.Output, run.Withheld, err
 	}
 	stored, err := c.output(ctx, id)
 	if err != nil {
-		return nil, 0, err
+		return nil, "", err
 	}
 	// Counted as they are shown, a blob written out inside a text too.
+	var size int64
 	blob.Shown(stored, func(_ string, ref blob.Ref) (any, error) {
 		size += ref.Size
 		return nil, nil
 	})
+	const how = "each blob is read by its path, at /runs/%s/files/<path>"
 	if size > most {
-		return nil, size, nil
+		return nil, fmt.Sprintf("the blobs of the output are %d bytes together, and at most %d are given with a run: "+how, size, most, id), nil
 	}
+	var failed string
 	output, err = blob.Shown(stored, func(path string, ref blob.Ref) (any, error) {
 		reader, err := blob.Open(ctx, c.Store, ref)
 		if err != nil {
+			failed = path
 			return nil, err
 		}
 		data, err := io.ReadAll(reader)
 		if err != nil {
+			failed = path
 			return nil, err
 		}
 		return map[string]any{"$blob": path, "type": ref.Type, "size": float64(ref.Size), "data": base64.StdEncoding.EncodeToString(data)}, nil
 	})
-	return output, size, err
+	if failed != "" {
+		return nil, fmt.Sprintf("the blob at %q could not be read: %v: "+how, failed, err, id), nil
+	}
+	return output, "", err
 }
 
 // calledOutput gives the output of a call into another client's tree, from

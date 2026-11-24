@@ -206,6 +206,8 @@ run and is answered with it and with the bytes of its blobs
 
 - Lambda can give a later request to another copy, which answers 404 for the
   run's blob. `?files` puts the blob's bytes in the first answer.
+- `?files` gives at most 64 MiB of blobs. A run with more must give less: the
+  later request for a blob is not answered there.
 - Each copy of the function has its own store. A request for a run that
   another copy recorded is answered 404, and a run started at a tree that
   another copy recorded fails with `nothing is recorded at`.

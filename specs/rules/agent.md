@@ -1,6 +1,6 @@
 # Agent
 
-The detailed rules behind the [Agent overview](../agent.md). Area code: `agent`. What an agent shares with every machine type (values, jobs and their names, events, children, approval, attempts, limits) is under Machines and is not repeated here. The parity cases for agents replace the model with a script of the definition's own, so none of them reaches a model.
+The detailed rules behind the [Agent overview](../agent.md). Area code: `agent`. What an agent shares with every machine type (values, jobs and their names, events, children, hooks, attempts, limits) is under Machines and is not repeated here. The parity cases for agents replace the model with a script of the definition's own, so none of them reaches a model.
 
 ## The loop
 
@@ -34,7 +34,7 @@ The detailed rules behind the [Agent overview](../agent.md). Area code: `agent`.
 **R-agent-20** A turn that fails fails the agent, as a failure a machine has no rule for does (see Machines).
 *Accept:* parity case 86: the second agent's first turn fails, and the agent fails with an error that names the turn.
 
-**C-agent-01** The next turn waits for the ask as well as for the tools. A turn started while an approval is open shows the model a conversation with a call unanswered. *Test:* `agent_next_turn_waits_for_open_approval`
+**C-agent-01** The next turn waits for the calls held for a hook as well as for the others. A turn started while a call is held shows the model a conversation with a call unanswered. *Test:* `agent_next_turn_waits_for_open_approval`
 
 **C-agent-02** A last reply that is data may be wrapped in one fenced block, and data followed by anything else does not fit the shape. Models wrap data in fences, and prose after the data must not be dropped without a word. *Test:* `agent_shaped_reply_accepts_one_fence_and_refuses_trailing_text`
 
@@ -55,7 +55,7 @@ The detailed rules behind the [Agent overview](../agent.md). Area code: `agent`.
 *Accept:* `TestAgentToolCallsAMachineOfTheTree`: the model is offered `read_file` with the flow's description and its input without `project`, and the flow is given `project` with the model's `path`. `TestAgentCallToolIsRefused`: each of the refusals names the tool's place. `TestAgentToolCallsAnAgent`: a machine that is an agent is shown as its reply.
 
 **R-agent-66** A tool written `call:` has `send:` for its location and nothing else is written for it; it has no `description:`, `args:` or `job:`. It is refused in a machine made while running, and one with a location in the same tree is refused in a file read alone, which has no tree.
-*Accept:* `TestAgentToolCallsAMachineOfTheTree`: an agent with no `allow:` calls both machines, and the call marked `approve: true` goes to the agent's ask, which is shown the machine's description, the model's arguments and the toolkit. `Test_agent_call_tool_needs_its_tree`: both forms are refused in a machine made while running; a file read alone is refused its tool in the same tree and not its tool with a location in full; and `corbie test` names a location in full in the tree where nothing is.
+*Accept:* `TestAgentToolCallsAMachineOfTheTree`: an agent with no `allow:` calls both machines, and the call marked `approve: true` waits for the agent's hook, which reads the machine's description, the model's arguments and the toolkit. `Test_agent_call_tool_needs_its_tree`: both forms are refused in a machine made while running; a file read alone is refused its tool in the same tree and not its tool with a location in full; and `corbie test` names a location in full in the tree where nothing is.
 
 **R-agent-92** A tool written `call:` with a location in full, from `/`, takes its description and its arguments, as R-agent-65 gives them, from the machine recorded at that location when the run starts, and the run keeps them. They are given only where a call from the run would pass: every layer of the agent, its tree's client's ceiling included, holds `send:` for the location, and its `receive:` accepts the agent's location. A tool that is offered and cannot be read fails the agent at its start, naming the tool's place and the reason: nothing recorded there, the refusal a call would get, or what R-agent-65 refuses when the tree is read. A tool that is not offered fails nothing.
 *Accept:* `TestAgentToolCallsAMachineOfAnotherTree`: with a second client's tree at `/netops`, the model is offered its machine's description and its input without the fixed `device`, and the call runs there with `device` given; the machine changed and submitted again is offered changed to the next run and unchanged to a run already started. `TestAgentToolOfAnotherTreeThatCannotBeRead`: a `receive:` that does not list the agent, a ceiling without `send:`, nothing recorded and a fixed name the input does not give each fail the agent at its start with the reason; a tool whose `when:` does not hold names a location with nothing recorded, and the agent ends `done`.
@@ -65,11 +65,11 @@ The detailed rules behind the [Agent overview](../agent.md). Area code: `agent`.
 **R-agent-27** A tool that fails goes back to the model as an error, with whatever output it still gave, and the agent carries on.
 *Accept:* parity case 85: the third turn is shown both errors, and the agent ends well; in the result for the chart's call the model sees `reached gave_up` and the failed final state's output.
 
-**R-agent-29** A tool that needs approval goes to the agent's ask like any job; the calls from one turn that need it go together, the ask is shown the tool's own name as `tool`, the arguments, the tool's description and what the model said, and for a listed tool the entry's name as `entry`; a call that is not approved goes back to the model as denied, with the ask's note.
-*Accept:* parity case 89: the ask is run once, with both calls, is shown each call's tool, arguments, description and the model's words, and the refused call reaches the model as denied with the note. `TestAgentAskIsShownTheToolOfEachCall`: an entry `github` lists `create_issue`; the ask for a call of `github_create_issue` is shown `entry: github` and `tool: create_issue`, and the ask for a call of the definition's own tool `add` is shown `tool: add` and no entry.
+**R-agent-29** A tool's call takes the agent's hooks like any job, and a hook runs once for each call. A hook reads the call as `job.tool`: the tool's own name as `name`, the arguments as `args`, the tool's `description` and what the model `said`, and for a listed tool the entry's name as `entry`. A call a hook refuses goes back to the model as denied, with the hook's note.
+*Accept:* parity case 89: the hook runs once for each of the two calls, reads each call's tool, arguments, description and the model's words, and the refused call reaches the model as denied with the note. `TestAgentHookReadsTheToolOfEachCall`: an entry `github` lists `create_issue`; the hook for a call of `github_create_issue` reads `entry: github` and `name: create_issue`, and the hook for a call of the definition's own tool `add` reads `name: add` and no entry.
 
-**R-agent-33** A call that needs no approval is not held by one in the same turn that does.
-*Accept:* a turn asks for one tool that is marked for approval and one that is not; the second's job is asked for in the same step as the ask.
+**R-agent-33** A call no hook holds is not held by one in the same turn that is.
+*Accept:* a turn asks for one tool that is marked for approval and one that is not; the second's job is asked for in the same step as the hook's job for the first.
 
 **R-agent-34** A call to a tool the agent does not have, or with arguments that do not fit the tool's shape, runs nothing and goes back to the model as an error.
 *Accept:* a scripted model calls `shelf` with a number for the shelf and calls a tool named `burn`; no job is sent for either, and the next turn is shown an error for each.
@@ -96,11 +96,11 @@ The detailed rules behind the [Agent overview](../agent.md). Area code: `agent`.
 **R-agent-60** A tool of a toolkit that takes the name of another tool of the agent, of its own or of another toolkit, is refused.
 *Accept:* an agent includes `toolkits/net/net.yaml` as a toolkit, whose tool names `./show.js`; its stored definition holds the tool written out, naming `./toolkits/net/show.js`. A toolkit whose tool is named as the agent's own `add`, and two toolkits with a tool `show` each, are each refused, naming the toolkit's tool. A toolkit with no `description:`, and a toolkit with a field it does not take, are refused.
 
-**R-agent-62** A toolkit marked `approve: true` holds its `open` job for the ask, which is shown the toolkit's name as `toolkit` and its `description:`; an open not approved goes back to the model as denied, with the ask's note, and opens nothing. The ask for a call of a toolkit's tool, and for the list of an entry in a toolkit, is shown the toolkit's name as `toolkit`. A toolkit marked for approval needs an ask, as a job marked for it does, and is opened only by an open its ask approves.
-*Accept:* the ask approves the open of `net` only when shown `toolkit: net` and `net`'s `description:`, and a call of `payments`' tool `pay`, marked for approval, only when shown `toolkit: payments`; the model is shown neither as denied. An ask that approves nothing: the open goes back to the model as denied with the ask's note, and the next turn is not offered `net`'s tools. The same agent with no ask is refused when checked. `TestAgentToolkitListIsShownItsToolkit`: the list of `net`'s entry `files`, marked for approval, goes to the agent's ask and is shown `toolkit: net`.
+**R-agent-62** A toolkit marked `approve: true` marks its `open` job for approval, and a hook reads the toolkit's name as `job.tool.toolkit` and its `description:` as `job.tool.description`; an open a hook refuses goes back to the model as denied, with the hook's note, and opens nothing. For a call of a toolkit's tool, and for the list of an entry in a toolkit, a hook reads the toolkit's name as `job.tool.toolkit`. A toolkit marked for approval needs a `before` hook, as a job marked for it does, and is opened only by an open its hooks say yes to.
+*Accept:* the hook says yes to the open of `net` only when it reads `toolkit: net` and `net`'s `description:`, and to a call of `payments`' tool `pay`, marked for approval, only when it reads `toolkit: payments`; the model is shown neither as denied. A hook that says no: the open goes back to the model as denied with the hook's note, and the next turn is not offered `net`'s tools. The same agent with no hook is refused when checked. `TestAgentToolkitListIsShownItsToolkit`: the list of `net`'s entry `files`, marked for approval, waits for the agent's hook, which reads `toolkit: net`.
 
-**R-agent-69** A toolkit has no ask: its `open`, the calls of its tools and their lists go to the agent's ask like any job. A toolkit that writes `ask:` is refused, with that reason.
-*Accept:* `TestAgentToolkitHasNoAsk`: a toolkit whose file writes `ask:` is refused at `toolkits.net.ask`, saying its held jobs go to the agent's ask.
+**R-agent-69** A toolkit has no hooks: the agent's hooks run for its `open`, the calls of its tools and their lists like any job. A toolkit that writes `hooks:` is refused, with that reason.
+*Accept:* `TestAgentToolkitHasNoHooks`: a toolkit whose file writes `hooks:` is refused at `toolkits.net.hooks`, saying the agent's hooks run for its tools' jobs.
 
 **C-agent-30** A carried conversation opens only what one call of `open` would open: a toolkit the agent has, whose `when:` holds and that is not marked `approve: true`. The conversation is input, written by whoever starts the run. *Test:* `agent_conversation_opens_only_what_open_would`
 
@@ -110,7 +110,7 @@ The detailed rules behind the [Agent overview](../agent.md). Area code: `agent`.
 *Accept:* an agent started with input whose scopes lack `payments` offers `open` naming `net` and not `payments`, and an open of `payments` goes back as an error; given the scope, `open` names both. With `when:` on `net`, the record holds no job for the list of `net`'s entry `files`. A tool of the agent's own, or `show` of the opened `net`, whose `when:` does not hold is not offered, and a call of it is answered `there is no tool named`. A `when:` that reads a field the input lacks fails the agent before its first turn, naming the place of the `when:`. A run started with the conversation of one that opened `payments`, with input lacking the scope, does not have it open and is not offered it.
 
 **R-agent-68** A toolkit's `instructions:` are filled from the agent's input when it is opened, and are the result of `open`, shown to the model whole. With none, the result says the toolkit was opened. A toolkit that a carried conversation opens is not given them again; one whose filled instructions differ from those the model was given stays closed.
-*Accept:* the toolkit `net` has instructions that read `${input.question}`; the model opens `net` and the next turn is shown the filled instructions as the result of `open`. Instructions of 40 KiB are shown as text and not as a blob's handle. `payments`, with none, gives `Opened payments.`. A second run started with the conversation and the same input has `net` open, its first turn holds the instructions once, and its `opened` gives `net` the same hash. A run with another input, and a run whose `net.yaml` changed the instructions' text, each have `net` closed, `open` names it, and opening it shows the instructions as that run fills them. With `net` marked `approve: true`, the second run's `open` names `net`, the open goes to the ask, and the model is shown the instructions filled from the second run's input. `TestAgentOpenGivesTheInstructions`.
+*Accept:* the toolkit `net` has instructions that read `${input.question}`; the model opens `net` and the next turn is shown the filled instructions as the result of `open`. Instructions of 40 KiB are shown as text and not as a blob's handle. `payments`, with none, gives `Opened payments.`. A second run started with the conversation and the same input has `net` open, its first turn holds the instructions once, and its `opened` gives `net` the same hash. A run with another input, and a run whose `net.yaml` changed the instructions' text, each have `net` closed, `open` names it, and opening it shows the instructions as that run fills them. With `net` marked `approve: true`, the second run's `open` names `net`, the open waits for the hook, and the model is shown the instructions filled from the second run's input. `TestAgentOpenGivesTheInstructions`.
 
 ## Shapes
 
@@ -130,7 +130,7 @@ The detailed rules behind the [Agent overview](../agent.md). Area code: `agent`.
 ## The conversation
 
 **R-agent-40** The conversation is everything the model has been shown and has said: the prompt, each reply and tool call, and each call's result, error or denial.
-*Accept:* parity case 89: the conversation in the agent's result holds the prompt, the reply with its two calls, the first call's result, the second call's denial with the ask's note, and the last reply.
+*Accept:* parity case 89: the conversation in the agent's result holds the prompt, the reply with its two calls, the first call's result, the second call's denial with the hook's note, and the last reply.
 
 **R-agent-41** The conversation is kept as its turns, each written once as the turn ends, and nothing is rewritten as it grows.
 *Accept:* after an agent's third turn its record holds three pieces of conversation, one for each turn, and a watcher that has read the first two reads only the third. After turn ten, the pieces for turns one and two are byte for byte what they were when written.
@@ -169,8 +169,8 @@ The detailed rules behind the [Agent overview](../agent.md). Area code: `agent`.
 
 ## Events
 
-**R-agent-52** An agent acts on the results of its turns, its tools and its ask, and on nothing else: events sent down to it, and events its tools send up while they run, are ignored, and a watcher still sees them in the record.
-*Accept:* an agent's record shows a step asking for a new job only after a result from a turn, a tool or the ask. Parity case 87 (sent down) and parity case 103 (sent up): the event is in the agent's record, from its sender, and the agent did nothing with it.
+**R-agent-52** An agent acts on the results of its turns and its tools, and on nothing else: events sent down to it, and events its tools send up while they run, are ignored, and a watcher still sees them in the record.
+*Accept:* an agent's record shows a step asking for a new job only after a result from a turn or a tool. Parity case 87 (sent down) and parity case 103 (sent up): the event is in the agent's record, from its sender, and the agent did nothing with it.
 
 ## The record
 
@@ -192,9 +192,9 @@ The detailed rules behind the [Agent overview](../agent.md). Area code: `agent`.
 
 Uses:
 
-- **Machines.** Values and expressions, jobs and their names, events, children, approval, failure and attempts, and limits. An agent adds `args` to what an expression in a tool's job reads, and `tool` in the job of an entry with a list.
+- **Machines.** Values and expressions, jobs and their names, events, children, hooks, failure and attempts, and limits. An agent adds `args` to what an expression in a tool's job reads, and `tool` in the job of an entry with a list.
 - **Models.** A turn is a call to a model through the `llm` plugin: the conversation, the tools on offer and the shape wanted go in, every shape in full form; what the model said, the tools it asked for, why it stopped and the tokens used come back. Why it stopped is how a reply cut short is told from one that was finished. What a turn is permitted, the connection and the key, is written by the client when the definition is submitted (R-model-15).
-- **Controller.** Takes the agent's steps, starts each turn and each tool as a job, a tool's send and call included, and holds the tool calls that need approval for their ask.
+- **Controller.** Takes the agent's steps, starts each turn and each tool as a job, a tool's send and call included, and runs the hooks before and after each tool's call.
 - **Runner.** Executes the jobs of turns, lists, tools, the blob tools and previews.
 - **Blobs.** A reference stands for a blob everywhere but in front of the model, where a handle stands for it; a large result is a blob in the agent's record, and a preview is in the turn that first shows its handle.
 - **Plugins.** The supplied turn script and the blob tools are libraries that come with Corbie.

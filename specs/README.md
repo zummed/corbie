@@ -41,7 +41,7 @@ house/shared/base.yaml           listed in .corbieignore: no location
 
 - A tree belongs to the client that first submitted it. Only that client submits there and cancels the runs at its locations. It and the clients a file's `read:` lists read the runs there.
 - Trees do not nest. A client submits only at prefixes its ceiling's `at:` entries match.
-- A run's authority comes from its location: its file's `allow:` and `ask:`, its tree client's ceiling, and the secrets and values set at its location or above.
+- A run's authority comes from its location: its file's `allow:` and `hooks:`, its tree client's ceiling, and the secrets and values set at its location or above.
 - A sender or a caller, machine or client, adds nothing to the run's authority and takes nothing away. Its input may fill an allow scope, within the run's own patterns and every ceiling.
 
 ## How runs start

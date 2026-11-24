@@ -29,7 +29,7 @@ A runner's job, and a controller's step taken apart from it (see Controller), ea
   on every system   the role kills the process at its time limit
 ```
 
-A serverless host runs a process as a computer does. A made step there costs a pass about 15 ms for the process and, beside what any step costs, two or three reads and one write of the store. It reads its definition, its note and, when a job goes to an ask above, the definition that declares that ask, and it writes its note. The list of runners is read once in a pass, for a pass that sends a job. A host can stop a whole copy for its memory. The step is then taken once more, and its machine fails (see Controller).
+A serverless host runs a process as a computer does. A made step there costs a pass about 15 ms for the process and, beside what any step costs, two or three reads and one write of the store. It reads its definition, its note and, when a hook from above runs for a job, the definition that declares that hook, and it writes its note. The list of runners is read once in a pass, for a pass that sends a job. A host can stop a whole copy for its memory. The step is then taken once more, and its machine fails (see Controller).
 
 ## Several copies
 

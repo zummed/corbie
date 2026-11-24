@@ -1,6 +1,6 @@
 # Statechart
 
-The detailed rules behind the [Statechart overview](../statechart.md). Area code: `chart`. What a chart shares with every machine type (values, jobs and their names, events and their order, children, tickets and their answers, approval, attempts, limits) is under Machines and is not repeated here.
+The detailed rules behind the [Statechart overview](../statechart.md). Area code: `chart`. What a chart shares with every machine type (values, jobs and their names, events and their order, children, tickets and their answers, hooks, attempts, limits) is under Machines and is not repeated here.
 
 ## States
 
@@ -169,7 +169,7 @@ The detailed rules behind the [Statechart overview](../statechart.md). Area code
 
 Uses:
 
-- **Machines.** Values and expressions, jobs and their names, events and their order, children, tickets and their answers, approval, failure and attempts, and limits. A chart adds `states`, `event` and `tickets` to what an expression reads.
+- **Machines.** Values and expressions, jobs and their names, events and their order, children, tickets and their answers, hooks, failure and attempts, and limits. A chart adds `states`, `event` and `tickets` to what an expression reads.
 - **Controller.** Takes the chart's steps, keeps and delivers its timers (R-ctl-69), makes its tickets and takes their answers, starts and cancels its children, and carries its sends to its parent, its children and runs by their address.
 - **Instances.** The head counts the chart's timers and names the tickets it waits on; a root's sends to its parent, and each send to an address that was not delivered, are written in its record; a client's event is answered by a receipt saying whether the chart acted on it.
 - **Client.** Sends a chart events by its address and answers its tickets.
@@ -178,4 +178,4 @@ Used by:
 
 - **Machines.** A statechart is one of the four types, and supplies the filling-out of its short forms, its check, its step, the state a watcher is shown (R-inst-72), and its manual page.
 - **Flow, Agent.** Either may run a chart as a child, and a chart may run either.
-- **Machines, for approval.** An ask that waits for a person is typically a chart that hands out a ticket and ends with the jobs it approves.
+- **Machines, for hooks.** A hook that waits for a person is typically a chart that hands out a ticket and ends with `{ ok }`.

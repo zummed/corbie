@@ -451,7 +451,7 @@ Services that carry questions to people, such as a chat program, are clients at 
 
 A hook is a job that runs before another job starts, or after it has ended. A definition names its hooks under `hooks:`, and they are for the jobs of its machine and of the machines below it.
 
-1. A stage, a state or a tool asks for a job. The controller holds it, and runs each `before` hook whose `when:` holds, one at a time.
+1. A machine asks for a job. The controller holds it, and runs each `before` hook whose `when:` holds, one at a time.
 2. A hook that returns `{ ok: true }` lets the job go on to the next. Any other result, or a failure, denies the job.
 3. The job starts once every one of them has returned `{ ok: true }`.
 4. When the job ends `done`, each `after` hook whose `when:` holds runs, and then the machine is given the outcome.
@@ -519,12 +519,12 @@ A hook's `allow:` scopes are filled from the declaring machine's input and value
 
 ### Which jobs
 
-- A hook is for the jobs a stage, a state or a tool asks for. A type's own jobs, such as an agent's `turn`, and a hook's own job take no hook.
+- A hook with no `when:` is for every job, an agent's `turn` among them. A hook's own job takes no hook.
 - Every hook whose `when:` holds runs for a job: its own machine's, in the order of their names, then those of each machine above, the nearest first. A machine adds hooks and takes none away.
 - A hook runs once for one job.
 - A machine run as a hook takes no hook from above it.
 - A run started by a send or a call takes no hook from its sender, so no run changes a job in another tree.
-- A machine made while running writes no hooks: one that does fails as it starts. The hooks above it are for its jobs.
+- A machine made while running writes no hooks: one that does fails as it starts. The hooks above it are for its jobs (see [Words from outside](#words-from-outside)).
 - A hook that is a machine uses a level, as any child does. A hook's job is not counted against `limits: { jobs: }`.
 - A job that is no longer wanted while a hook runs for it is dropped, and the hook's job is cancelled.
 - A hook has no time limit of its own: its job's `timeout:` is how long it may take.

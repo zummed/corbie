@@ -1,6 +1,6 @@
 # Machines
 
-The detailed rules behind the [Machines overview](../machine.md). Area code: `mach`. What is shared by every machine type is stated here once and is not repeated under Flow, Statechart or Agent. Counting attempts, keeping timers and ending a machine whose timeout has passed are the controller's, under Controller; what a job may be held for is under Permissions.
+The detailed rules behind the [Machines overview](../machine.md). Area code: `mach`. What is shared by every machine type is stated here once and is not repeated under Flow, Statechart or Agent. Counting attempts, keeping timers and ending a machine whose timeout has passed are the controller's, under Controller; which permissions mark a job for approval is under Permissions.
 
 ## Steps
 
@@ -119,8 +119,8 @@ The detailed rules behind the [Machines overview](../machine.md). Area code: `ma
 **R-mach-36** A job may be written where it is used or kept in its own file; a script is a file named by its path, its job lists the files the script loads, and a client sends them along with the definition. A path in a definition reads from the context, or from the directory of the file it is written in when it starts `./`. A definition keeps every path from the context.
 *Accept:* a stage whose child flow is written in place, and one that names the same flow in a file, produce records of the same shape and the same output. A job names `./fetch.js` and lists `./lib.js`: both are in the run's record before the first step is taken, and the script loads `./lib.js` and runs. A flow names the child `./kids/kid.yaml`, whose stage names `./kid.js`: the child runs `kids/kid.js`. A machine in `deep/down/` that names `lib/s.js` reads the file at the top of the context, and one that names `../s.js`, or a path from the top of the disk, is refused. *Test:* `TestPathsReadFromTheContext`, `TestRequireFindsWhatAJobNames`
 
-**R-mach-39** Every job has a name that says what asked for it: a stage, a state, a tool, an agent's `turn`, or the `ask`. Jobs asked for in one step under one name add `.` and a number: an item of a list its position from 0, and an agent's second call of one tool in a turn, or its second preview, `.1`. A name that asks again in the run adds `#` and the count of times it has asked, and a later attempt adds `@` and its number.
-*Accept:* parity cases 01, 16, 85, 84 and 63, one for each: the record names the job after the stage, the state, the tool, `turn` and `ask`. `each:` over three items gives three jobs named for the stage and the positions 0, 1 and 2, and parity case 10's error names the second item as item 1. A stage with `restart: { limit: 1 }` whose first fails has its second attempt's job named with `@2`. Parity case 89 calls `guarded_add` twice in one turn and names the jobs `guarded_add` and `guarded_add.1`. Parity case 16 enters the state `working` four times and names its jobs `working`, `working#2`, `working#3` and `working#4`, and parity case 90 names an agent's second turn `turn#2`.
+**R-mach-39** Every job has a name that says what asked for it: a stage, a state, a tool or an agent's `turn`. A hook's job has the name of the job it runs for, `.` and the hook's name. Jobs asked for in one step under one name add `.` and a number: an item of a list its position from 0, and an agent's second call of one tool in a turn, or its second preview, `.1`. A name that asks again in the run adds `#` and the count of times it has asked, and a later attempt adds `@` and its number.
+*Accept:* parity cases 01, 16, 85 and 84, one for each: the record names the job after the stage, the state, the tool and `turn`. Parity case 63 names the hook's job `guarded.approval`, and parity case 66 `guarded.0.approval`. `each:` over three items gives three jobs named for the stage and the positions 0, 1 and 2, and parity case 10's error names the second item as item 1. A stage with `restart: { limit: 1 }` whose first fails has its second attempt's job named with `@2`. Parity case 89 calls `guarded_add` twice in one turn and names the jobs `guarded_add` and `guarded_add.1`. Parity case 16 enters the state `working` four times and names its jobs `working`, `working#2`, `working#3` and `working#4`, and parity case 90 names an agent's second turn `turn#2`.
 
 ## Events
 
@@ -190,8 +190,8 @@ The detailed rules behind the [Machines overview](../machine.md). Area code: `ma
 **R-mach-158** An expression and an allow entry's scope read the values set at the run's location or above as `values.NAME`. A value is read by its name: `values[expr]` and `values` alone are refused when checked, and the names a definition, a draft with its children and a job read can be listed. An expression that reads a value not set fails, naming the value and the run's location.
 *Accept:* a definition reading `values.GREETING`, `values['ROOM']` and `net:${values.HUB}:443` lists those three; with them set its job is filled as `kitchen` and `net:hub.lan:443`; with `HUB` not set it fails with `the value HUB is not set at /home/devices/boiler or above`. `${values[input.name]}` and `${Object.keys(values)}` are refused. *Test:* `mach_values_are_read_by_name`
 
-**R-mach-159** A send, written `send: { to, event, data }` inside `job:`, delivers an event to a run by its address and returns nothing (R-mach-33). Beside `send:` it takes `approve:`, `allow:` and `deny:`, and no other field of a job. A job writes exactly one of `script:`, `machine:`, `call:` and `send:`, and a sent event's name is written out and none that Corbie gives a machine itself.
-*Accept:* a send with `approve:` and `allow:` passes; a send with `input:` and `timeout:`, a send with a script, a send of `done` and a send whose event is an expression are each refused at their place. *Test:* `mach_a_job_sends`
+**R-mach-159** A send, written `send: { to, event, data }` inside `job:`, delivers an event to a run by its address and returns nothing (R-mach-33). Beside `send:` it takes `approve:`, `meta:`, `allow:` and `deny:`, and no other field of a job. A job writes exactly one of `script:`, `machine:`, `call:` and `send:`, and a sent event's name is written out and none that Corbie gives a machine itself.
+*Accept:* a send with `approve:`, `meta:` and `allow:` passes; a send with `input:` and `timeout:`, a send with a script, a send of `done` and a send whose event is an expression are each refused at their place. *Test:* `mach_a_job_sends`
 
 **R-mach-160** A job may be `call: { at }` with an input: it starts a run of that location and waits, and its output is that run's result. A call names its location with `at` alone, and takes no memory, tags, files or key.
 *Accept:* a call filled from the input names `services/weather` with its input and is no machine; a call with `tags:` and one at `x/../y` are refused. *Test:* `mach_a_job_calls`
@@ -204,7 +204,7 @@ The detailed rules behind the [Machines overview](../machine.md). Area code: `ma
 *Accept:* `stages:` includes `./first.yaml` and `./second.yaml` and writes `own`; `first.yaml` writes `a` and `own` and includes `./inner.yaml`, which writes `a` and `b`; `second.yaml` writes `b` and `c`. The flow runs its own `own`, `first.yaml`'s `a`, `inner.yaml`'s `b` and `second.yaml`'s `c`. An agent writes `model: { effort: high }` and includes a file whose `model:` gives `name` and `secret`: its model has all three. A tool it writes with `description:` keeps the `job:` the included tool of that name gives. `tools: { read: { include: ./tools.yaml#read } }` takes `read` and no other tool of `tools.yaml`. A flow, a chart, an agent, a toolkit and an agent written in place each take fields from a file, and a definition and a machine written in place each take their type from a file they include. `include:` under a job's `input:`, in `meta:` and as a field of an input's shape stays as written. *Test:* `mach_include_merges_at_every_depth` and `mach_type_is_one_field_anywhere`
 
 **R-mach-145** A path in an included file is read from that file's directory, and only a field a shape gives as a path is a path.
-*Accept:* an agent in the top directory includes `./kit/base.yaml` and `./kit/tools.yaml`. Its stored definition names `./kit/ask.js`, `./kit/turn.js`, each tool's script, list and files, `./top.js` for a tool's `top.js`, and `./kit/lib/child.yaml`, whether written as a job's `machine:` or below a machine written in place. A chart's states included through two files name their script, a named job and a job's `machine:` from the last file's directory. Under `input:`, `script: ./x.js`, `files: [./y.js]` and `machine: ./z.yaml` stay as written, and a tool named `script` keeps its job's path right.
+*Accept:* an agent in the top directory includes `./kit/base.yaml` and `./kit/tools.yaml`. Its stored definition names `./kit/ask.js`, a hook's script, `./kit/turn.js`, each tool's script, list and files, `./top.js` for a tool's `top.js`, and `./kit/lib/child.yaml`, whether written as a job's `machine:` or below a machine written in place. A chart's states included through two files name their script, a named job and a job's `machine:` from the last file's directory. Under `input:`, `script: ./x.js`, `files: [./y.js]` and `machine: ./z.yaml` stay as written, and a tool named `script` keeps its job's path right.
 
 **R-mach-148** Inside a list that is not data, an item `{ include: <file> }` is replaced by that file's list, item by item, or by its value as one item, and `{ include: <file>#<path> }` by the value at that path. A path with nothing at it is refused at the include.
 *Accept:* `allow:` holds `{ include: ./perms.yaml }`, whose list holds `{ include: ./more.yaml }`, then a written entry, then `{ include: ./base.yaml#extra.allow }`: the stored `allow:` holds the four entries in that order. `{ include: ./base.yaml#nothing }` is refused naming the file and the path, and an item `{ include: … }` in a job's `input:` list or in `meta:` stays as written. *Test:* `mach_include_splices_into_a_list`
@@ -253,10 +253,10 @@ The detailed rules behind the [Machines overview](../machine.md). Area code: `ma
 **R-mach-73** A definition made while a machine runs, by a script or by an agent, is filled out, checked and stored exactly as one sent by a client is, and can be run as a child.
 *Accept:* a script defines a machine written with short forms and two mistakes, and is refused with both problems, worded as the client's check words them; with the mistakes mended, the same call gives back a stored definition in full form. A flow's first stage defines a machine and returns it; the second stage's job names it by exactly one expression, and the child runs to its end.
 
-**R-mach-75** Whether a child's approvals have an ask to go to is checked when the child is started.
-*Accept:* a definition made at run time marks a job for approval and has no ask; started under a machine with no ask anywhere above it, it fails at its start saying that no ask applies, and starts nothing; started under a machine with an ask, it runs.
+**R-mach-75** Whether a child's marked jobs have a `before` hook is settled where the child is started.
+*Accept:* a definition made at run time marks a job for approval and writes no hook; started under a machine with no hook anywhere above it, its job is denied, saying that no hook runs before it, and nothing is sent to a runner for it; started under a machine with a `before` hook for it, it runs. *Test:* `TestMadeDefinitionsApprovalsAreCheckedWhereItIsStarted`
 
-**R-mach-76** A root may have sixteen levels of machines below it unless it says otherwise, an ask that is a machine uses a level like any child, and a job that would go deeper fails.
+**R-mach-76** A root may have sixteen levels of machines below it unless it says otherwise, a hook that is a machine uses a level like any child, and a job that would go deeper fails.
 *Accept:* parity cases 79, 78 and 100.
 
 **R-mach-79** A definition may limit how many jobs its instance starts, and a job past the limit fails. The limit counts the jobs the instance itself starts, not the tree below it.
@@ -281,54 +281,53 @@ The detailed rules behind the [Machines overview](../machine.md). Area code: `ma
 
 **C-mach-20** A ticket cannot be worked out from anything outside the instance's record: not from the head, which names what is being waited on, and not from the names of the jobs, wakes or blobs the same step made, which whoever runs the store can list. The ticket is the whole right to answer. *Test:* `mach_ticket_not_derivable_from_public_names`
 
-## Approval
+## Hooks
 
-**R-mach-91** A job marked for approval does not start until its machine's ask has approved it; a job that declares a permission its machine lists in `approve:` is held the same way (see Permissions, R-perm-42).
-*Accept:* parity case 63.
+**R-mach-166** A definition names its hooks under `hooks:`. A hook writes one of `before:` and `after:`, each a job, and may write `when:`, a condition on the job. It runs once for each job its `when:` holds for, in its machine and in the machines below it, and for every job where it writes no `when:`. A hook's own job takes no hook.
+*Accept:* parity case 142: the hook runs once for each of the two items. Parity case 145: the root's hooks run for the jobs of an agent it names and of a machine made while running. A hook that writes both `before:` and `after:`, one that writes neither, and one whose name is no name are each refused when checked. *Test:* `mach_a_hook_writes_before_or_after` and `mach_a_hook_runs_once_for_each_job`
 
-**R-mach-95** What gives the yes is the machine's ask: a job of its own, named at the top of the definition. That job is called `ask`, and nothing else in a definition may take the name.
-*Accept:* parity case 63 (a script) and parity case 74 (a machine). A flow with a stage named `ask`, a chart with a state named `ask` and an agent with a tool named `ask` are each refused when checked.
+**R-mach-167** Before a job starts, the controller holds it and runs its `before` hooks one at a time. A hook that returns `{ ok: true }` lets the job go on, with the `input` the hook gives in place of the job's own where it gives one, and the job starts once every one has returned it. A job a hook refuses never starts: its machine sees a failed job with the status denied, the hook's name and its note.
+*Accept:* parity case 66: the two items the hook says yes to run, the other two appear with an error, and nothing was ever sent to a runner for them. Parity case 65: the note is in the error. Parity case 146: the hook gives the input 100 for the item 900, and the job runs with 100. Parity case 151: a root's hook gives the input of a job two machines below it.
 
-**R-mach-97** A machine with an ask of its own uses it; a machine with none uses the nearest one above it. A machine made while running has none of its own (R-mach-163).
-*Accept:* parity case 73 (own ask wins); parity case 70 (one level up, approved), parity case 71 (one level up, refused) and parity case 72 (two levels up, through a machine that marks nothing).
+**R-mach-168** After a job ends `done`, its `after` hooks run one at a time, and then the machine is given the outcome. A hook that returns `{ ok: true }` gives the machine the job's output, or the `output` the hook gives in its place. A job a hook refuses fails, with the hook's name and its note. No `after` hook runs for a job that failed or never started.
+*Accept:* parity case 144: one tool's result reaches the model as the hook gave it, and the other as a failure with the hook's note. Parity case 150: a hook gives the output of a job that is a child machine. Parity case 147: the hook after `refund` runs for the job that ran, and not for the one a hook denied.
 
-**R-mach-99** The jobs from one step that need approval go to their ask together, and the ask is filled in and started once for them.
-*Accept:* parity case 66.
+**R-mach-106** A hook that cannot be filled in or started, that fails, or whose result is neither `{ ok: true }` nor `{ ok: false }` refuses the job. A hook that is a send returns nothing, and refuses nothing.
+*Accept:* parity case 76: the first child's hook fails, the second's result holds no `ok`, and neither held job starts. An agent whose hook's input reads a field its input does not have: the held call is denied with an error naming `hooks.check.before.input`, and the agent carries on (`TestAgentHookThatCannotBeFilledDenies`). Parity case 147: a hook that sends to `log` refuses nothing. *Test:* `mach_denial_says_why_a_hook_refused`
 
-**C-mach-24** The held jobs of one step go to one run of their ask, filled in once, never one run for each value filling it in gave. An expression in an ask's values need not give the same value twice, as `${Math.random()}` does not, and one ask would otherwise start as several. *Test:* `mach_one_run_of_the_ask_for_a_step`
+**R-mach-97** Every hook whose `when:` holds runs for a job: its own machine's in the order of their names, then those of each machine above it, the nearest first. A machine adds hooks and takes none away.
+*Accept:* parity case 73: the child's own hook says yes and the root's says no, and the job is denied. Parity case 70 (one level up, yes), parity case 71 (one level up, no) and parity case 72 (two levels up, through a machine that writes no hook). Parity case 152: `finance` runs before `team` for a refund over 100, and its no denies the call.
 
-**R-mach-100** The ask is told which machine is asking and, for each job, what it is and what input it would get.
-*Accept:* parity case 70: each child is named as the machine asking. Parity case 63: the ask is given the job and its input.
+**R-mach-169** A hook's expressions read the `input`, `values` and `run` of the machine that declares it, and `job`: its `name`, `run: { id, machine }`, `input`, `allow`, `approve`, `meta`, what it runs and, for an agent's tool call, `tool`. An `after` hook's read `output`, the job's output. A hook that writes no `input:` is given `{ job }`, and after a job `{ job, output }`.
+*Accept:* parity case 63: the hook is given the job, its input and its script. Parity case 70: `job.run.machine` names each child. Parity case 89: `job.tool` holds the tool's name, the model's arguments, the tool's description and what the model said. A held call job is read as `call: { at }` and a held send job as `send: { to, event, data }` (`Test_ctl_hook_reads_a_held_call_or_send`).
 
-**R-mach-102** The ask's result, `{ approved: [names of jobs], note }`, names the jobs it approves and may add a note. Approved jobs start; a job not approved never starts, and its machine sees it as a failed job with the status denied and the note.
-*Accept:* parity case 66: the two approved items run, the other two appear with an error, and nothing was ever sent to a runner for them. Parity case 65: the note is in the error.
+**R-mach-170** A job may write `meta:`, data of any kind, which hooks read as `job.meta` and nothing else reads. A job of a machine made while running gives hooks no `meta`.
+*Accept:* parity case 152: each tool says in `meta:` where it is approved, one hook asks there, and a marked tool with no `meta:` is denied, since the hook cannot be filled in. *Test:* `mach_made_machine_gives_hooks_no_meta`
 
-**R-mach-106** An ask that cannot be filled in, that fails, or whose result has no `approved:` list, approves nothing.
-*Accept:* parity case 76: the first child's ask fails, the second's result has no `approved:` list, and neither held job starts. An agent whose ask's input reads a field its input does not have: the held call is denied with an error naming `ask.input`, and the agent carries on.
+**R-mach-91** A job marked for approval, by `approve: true` or by a permission its machine or a machine above it lists in `approve:` (see Permissions, R-perm-42), starts only after a `before` hook. With no `before` hook for it, it is denied.
+*Accept:* parity case 63. Parity case 148: the one hook's `when:` does not hold for the marked job, which is denied.
 
-**R-mach-109** An approval has no time limit of its own; the ask's timeout is how long it may take.
-*Accept:* an ask that is a chart with a timeout of one second waits on a ticket nobody answers; it fails as out of time and the held job is denied. The same ask with no timeout holds the job for as long as the test waits.
+**R-mach-109** A hook has no time limit of its own; its job's timeout is how long it may take.
+*Accept:* a hook that is a chart with a timeout of one second waits on a ticket nobody answers; it fails as out of time and the held job is denied. The same hook with no timeout holds the job for as long as the test waits.
 
-**R-mach-112** A held job that is no longer wanted is dropped without starting, and an ask left with no held job is cancelled.
-*Accept:* parity case 69.
+**R-mach-112** A job that is no longer wanted while a hook runs for it is dropped, and the hook's job is cancelled.
+*Accept:* parity case 69: the state is left while its job is held. Parity case 149: the state is left while the hook after its job runs.
 
 **R-mach-113** A job that starts a child is held like any other, before the child exists.
 *Accept:* parity case 96.
 
-**R-mach-114** A definition submitted by a client whose approvals have no ask to go to is refused when checked as it starts. A file in a tree is recorded all the same, since it may run as another machine's child, under that machine's ask.
-*Accept:* a root flow that marks a stage for approval and has no ask is refused when started, and nothing is started; submitted in a tree, it is recorded at its location.
+**R-mach-114** A definition a client starts that marks a job for approval and has no `before` hook is refused when checked as it starts. A file in a tree is recorded all the same, since it may run as another machine's child, under that machine's hooks.
+*Accept:* a root flow that marks a stage for approval and writes no hook is refused when started, and nothing is started; submitted in a tree, it is recorded at its location.
 
-**R-mach-115** A machine run as an ask takes no ask from above it: one that needs approval and has no ask of its own is refused.
+**R-mach-115** A machine run as a hook takes no hook from above it, and the `approve:` lists above it mark none of its jobs: one that marks a job and has no `before` hook of its own is refused.
 *Accept:* parity case 77.
 
-**C-mach-21** An ask's input and permissions are filled from the input of the machine that declares the ask, never from the input of a machine that inherits it, and the permissions and secrets of an inherited ask go into the ask's own job and into no other job of that machine. A child's input could otherwise widen what the ask may reach, and any job in a child could name the secrets its parent gave the ask. *Test:* `mach_inherited_ask_filled_from_declaring_machine`
-
-**C-mach-22** When an ask, started once, refuses several jobs, every one of them is given to its machine as denied and written in the record, including those that arrive after the first has failed the machine. Telling only the first leaves the rest held for an ask that has already ended, and whoever reads the record must see every job that was turned down. *Test:* `mach_every_refusal_is_recorded`
+**C-mach-21** A hook's input and permissions are filled from the input of the machine that declares it and from the job, its `allow:` scopes from that machine's input alone, and its job runs with the layers of that machine. The permissions and secrets of a hook from above go into the hook's own job and into no other job of the machine below. A job's input could otherwise widen what the hook may reach, and any job in a child could name the secrets its parent gave the hook. *Test:* `mach_hook_from_above_filled_from_declaring_machine`
 
 ## Words from outside
 
-**R-mach-163** Words from outside, a definition made while running and the tools a `list:` gives, name no ask and no address. A made machine's held jobs go to the nearest ask above it that was not made while running, and are denied with none; a made machine that writes `ask:`, sends to an address or calls fails. A listed tool's call runs the entry's `job:`, held for the agent's ask and addressing what that job names.
-*Accept:* for a made machine, the tests of C-ctl-64 and C-ctl-76; a made machine whose layers allow `send:/home/**` has a send to `/home/devices/boiler` refused, and its send to its parent is delivered (parity case 133). For a listed tool, `TestAgentAskIsShownTheToolOfEachCall`: the call of `github_create_issue`, marked for approval through its entry, goes to the agent's ask; and `ctl_answer_cannot_write_a_listed_agents_ask`.
+**R-mach-163** Words from outside, a definition made while running and the tools a `list:` gives, name no hook and no address. The hooks above a made machine that were not made while running run for its jobs, and with no `before` hook for it a marked job of it is denied; a made machine that writes `hooks:`, sends to an address or calls fails. A listed tool's call runs the entry's `job:`, takes the agent's hooks and addresses what that job names.
+*Accept:* for a made machine, the tests of C-ctl-64 and C-ctl-76; a made machine whose layers allow `send:/home/**` has a send to `/home/devices/boiler` refused, and its send to its parent is delivered (parity case 133). For a listed tool, `TestAgentHookReadsTheToolOfEachCall`: the call of `github_create_issue`, marked for approval through its entry, waits for the agent's hook; and `ctl_answer_cannot_write_a_listed_agents_hook`.
 
 ## Failure
 
@@ -344,16 +343,16 @@ The detailed rules behind the [Machines overview](../machine.md). Area code: `ma
 ## Machine types
 
 **R-mach-131** A type is an extension that supplies six things, the shape of its definitions, the filling-out of its short forms, the check of its definitions, its step, the state of its run a watcher is shown (R-inst-72), and its page of the manual; everything in this area is supplied by Corbie, the same for every type.
-*Accept:* a binary is built with a test extension that adds a fourth type; a definition of that type is submitted, checked, run to its end and watched, and `corbie manual` lists and prints its page. The checks of this area for values, jobs, events, tickets, approval and limits pass unchanged with a flow, a statechart, an agent and the test extension's type as the machine.
+*Accept:* a binary is built with a test extension that adds a fourth type; a definition of that type is submitted, checked, run to its end and watched, and `corbie manual` lists and prints its page. The checks of this area for values, jobs, events, tickets, hooks and limits pass unchanged with a flow, a statechart, an agent and the test extension's type as the machine.
 
 ## Interfaces
 
 Uses:
 
-- **Controller.** Takes every step and carries out what it asks for. It gives a machine its definition, its state and its events, and takes back the new state and the requests. It makes attempts and gives the machine only the final outcome (R-ctl-53 to R-ctl-58), keeps timers and ends a machine at its timeout (R-ctl-69 to R-ctl-71), and carries out what this area states about children, tickets, limits and approval.
+- **Controller.** Takes every step and carries out what it asks for. It gives a machine its definition, its state and its events, and takes back the new state and the requests. It makes attempts and gives the machine only the final outcome (R-ctl-53 to R-ctl-58), keeps timers and ends a machine at its timeout (R-ctl-69 to R-ctl-71), and carries out what this area states about children, tickets, limits and hooks.
 - **Instances.** A step is written as a step entry in the instance's record; the head says what the instance waits for; a client's message is answered by a receipt.
 - **Runner.** A job that is a script is sent to a runner; what the script emits comes back as events, and its result as `done` or `failed`.
-- **Permissions.** A job names the permissions it may use, and a definition's `approve:` names those that need a yes; which jobs that holds is R-perm-42 to R-perm-47; a refusal comes back as a denial with its three parts, and passes up unchanged (R-perm-37 to R-perm-41).
+- **Permissions.** A job names the permissions it may use, and a definition's `approve:` names those that mark a job for approval; which jobs that marks is R-perm-42 to R-perm-47; a refusal comes back as a denial with its three parts, and passes up unchanged (R-perm-37 to R-perm-41).
 - **Secrets.** A definition names the secrets a job uses; a machine holds only the names.
 - **Blobs.** A value may hold a reference to a blob; a value handed up from a child is copied into the parent's record before the parent sees it.
 - **Plugins.** A script defines a machine at run time through the `machines` plugin; a machine type is added as an extension.
@@ -361,7 +360,7 @@ Uses:
 
 Used by:
 
-- **Flow, Statechart, Agent.** Each supplies the six things a type supplies, and takes from this area values and expressions, jobs and their names, events, children, tickets, approval, failure and limits.
+- **Flow, Statechart, Agent.** Each supplies the six things a type supplies, and takes from this area values and expressions, jobs and their names, events, children, tickets, hooks, failure and limits.
 - **Client.** Writes out each file's includes, fills out and checks the definition with this area's code before submitting it, and prints it written out with each value's file and line; sends events and answers to tickets.
 - **Controller.** Checks a definition with this area's code before starting it, and calls a type's step. It gives a run its location, its values and what it read of the machines recorded at the locations a type names, reads a location in an address from the tree's prefix, and carries out a send and a call.
 - **Plugins.** The `time` plugin takes the zone names and the rule timers use.

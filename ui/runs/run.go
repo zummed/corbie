@@ -1033,7 +1033,7 @@ func jobOf(name string) string {
 	return name
 }
 
-// callee gives the run a call job started, where the ask is a call's.
+// callee gives the run a call job started, where what the step asked for is a call.
 func callee(a instance.Ask) string {
 	if a.Kind == instance.AskCall {
 		return a.Run

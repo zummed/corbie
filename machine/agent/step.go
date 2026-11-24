@@ -148,7 +148,7 @@ func (agentType) Step(in *machine.StepIn) (*machine.StepOut, error) {
 func (s *stepper) request(r machine.Request) { s.out.Requests = append(s.out.Requests, r) }
 
 // arrive takes one event. An agent acts on the results of its turns, its
-// tools and its ask, and on nothing else.
+// tools, and on nothing else.
 func (s *stepper) arrive(event machine.Event) (bool, error) {
 	switch {
 	case event.Name == machine.Start:
@@ -433,7 +433,7 @@ func (s *stepper) begin() error {
 			return err
 		}
 		if tool.Toolkit != "" {
-			job.Shown = map[string]any{"toolkit": tool.Toolkit}
+			job.Tool = map[string]any{"toolkit": tool.Toolkit}
 		}
 		s.st.Lists = append(s.st.Lists, &listing{Entry: name})
 		s.request(machine.Request{Job: job})
@@ -555,7 +555,7 @@ func digest(gave any) string {
 
 // reopen opens the toolkits a conversation carried on had open. The
 // conversation is input, so it opens only what one call of open would: a
-// toolkit the agent has, whose when: held, and whose open waits for no ask.
+// toolkit the agent has, whose when: held, and whose open is not marked for approval.
 // It opens one only where an open now would give what the model was given,
 // so that the model is given instructions that changed.
 func (s *stepper) reopen(opened any) {
@@ -824,17 +824,17 @@ func (s *stepper) replied(data any) error {
 		if seen[one.Tool] > 1 {
 			one.Job = fmt.Sprintf("%s.%d", one.Tool, seen[one.Tool]-1)
 		}
-		// The ask is shown the tool, the arguments, the tool's description
+		// A hook reads the tool's name, the arguments, the tool's description
 		// and what the model said, and for a listed tool its entry and its
 		// own name.
-		shown := map[string]any{"tool": one.Tool, "description": tool.Description, "args": one.Args, "said": text}
+		shown := map[string]any{"name": one.Tool, "description": tool.Description, "args": one.Args, "said": text}
 		scope["args"] = args
 		entry := one.Tool
 		delete(scope, "tool")
 		if listedAs != "" {
 			entry = s.st.Listed[one.Tool].Entry
 			scope["tool"] = listedAs
-			shown["entry"], shown["tool"] = entry, listedAs
+			shown["entry"], shown["name"] = entry, listedAs
 		}
 		place := s.a.Tools[entry].place(entry) + ".job"
 		if tool.Call != "" {
@@ -853,8 +853,8 @@ func (s *stepper) replied(data any) error {
 			maps.Copy(input, fixed)
 			job.Input = input
 		}
-		// Opening a toolkit marked for approval waits for the ask, which is
-		// shown the toolkit's name and description. The open job's input is
+		// Opening a toolkit marked for approval waits for a hook, which reads
+		// the toolkit's name and description. The open job's input is
 		// the toolkit's name and its instructions, filled in now, to give back.
 		in := tool.Toolkit
 		if one.Tool == openTool {
@@ -871,7 +871,7 @@ func (s *stepper) replied(data any) error {
 		if in != "" {
 			shown["toolkit"] = in
 		}
-		job.Shown = shown
+		job.Tool = shown
 		s.request(machine.Request{Job: job})
 	}
 	return s.settled()

@@ -92,7 +92,7 @@ Which stage waits for which is the flow package's rule, which it keeps to itself
 An agent is three things, one below another, joined by two arrows.
 
 1. The model is a card, holding the model's name.
-2. Its tools are in one holder. Each toolkit is a holder inside it, with its name and its tools. Its tooltip gives its `when:` and the file its tools are written in, or its `description:` where it has no tools, as the definition written out gives each value's file, where that is not the agent's own file. Tools in no toolkit are cards beside the toolkits, and the agent's ask is a card below them. The chip on the arrow into the holder gives how many turns the agent has.
+2. Its tools are in one holder. Each toolkit is a holder inside it, with its name and its tools. Its tooltip gives its `when:` and the file its tools are written in, or its `description:` where it has no tools, as the definition written out gives each value's file, where that is not the agent's own file. Tools in no toolkit are cards beside the toolkits, and each of the agent's hooks is a card below them, named as the hook is, with a dashed border where it has a `when:`. The chip on the arrow into the holder gives how many turns the agent has.
 3. `reply` is a narrow card.
 
 - A toolkit or a tool with `when:` has a dashed border, and its tooltip gives the condition: `when: input.asker.scopes.includes('orders:read')`.
@@ -119,10 +119,10 @@ Each step of the record gives the run's state after it, in one shape for every t
 A run is drawn as of one step: the step selected in Steps. Its marks come from its record up to that step, and the jobs going and how the run stood come from the state that step left, so a later step changes nothing on it.
 
 ```
-flow         each stage's status: waiting, running, held for the ask, done, failed or skipped
-statechart   the states it is in, and whether a state's job is held for the ask; states it was in before are outlined in moss, and states never entered faintly
+flow         each stage's status: waiting, running, held for a hook, done, failed or skipped
+statechart   the states it is in, and whether a state's job is held for a hook; states it was in before are outlined in moss, and states never entered faintly
 decision     the model going now while its job runs
-agent        the turn it is on; the model going now while its turn runs; each tool and the ask going now, held for the ask, used at an earlier step, or never used
+agent        the turn it is on; the model going now while its turn runs; each tool and each hook going now, a tool held for a hook, used at an earlier step, or never used
 ```
 
 A run that ended is marked by how it ended. A stage still running when it ended is outlined in rowan where the run failed, and grey where it was cancelled. In a failed run, the states it ended in are outlined in rowan, and so is the card of the job whose failure ended it, such as the model of an agent whose turn failed.
@@ -133,4 +133,4 @@ The transition the step drawn took is drawn in petrol, its chip's words too, hea
 
 A toolkit of an agent is folded where the run has not asked for its tools by the step drawn. A folded toolkit is a small holder with its name and how many tools it has, `2 tools`, and its tooltip names them. The folded toolkits are one below another, in one column after the others, so the toolkits the run uses are drawn side by side and in view together.
 
-A flow's stage and a statechart's state whose job waits for approval are outlined in amber, as held. An agent's ask is going while a tool waits for its approval: the tool is outlined in amber, as held, and the ask as going now. The run the ask started is linked from the ask's card.
+A flow's stage and a statechart's state whose job waits for a hook are outlined in amber, as held. An agent's hook is going while a tool waits for it: the tool is outlined in amber, as held, and the hook as going now. The run a hook's job started is linked from the hook's card.

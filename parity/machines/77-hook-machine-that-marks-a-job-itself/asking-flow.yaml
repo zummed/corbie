@@ -1,0 +1,8 @@
+# asking-flow.yaml: a machine run as a hook that marks its own job for
+# approval and has no hook before it.
+flow: asking-flow
+input: { job: any }
+stages:
+  think:
+    job: { script: ./yes.js, approve: true }
+output: ${stages.think.output}

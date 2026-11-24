@@ -1,0 +1,9 @@
+{
+  "status": "failed",
+  "failure": "denied",
+  "error_contains": [
+    "kid: guarded: ",
+    "no to all"
+  ],
+  "note": "R-mach-97: every hook above a job runs for it. The child's own hook says yes and the root's says no, so the job is denied."
+}

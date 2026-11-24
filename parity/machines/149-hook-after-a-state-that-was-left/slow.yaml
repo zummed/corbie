@@ -1,0 +1,5 @@
+statechart: slow
+initial: waiting
+states:
+  waiting: { timers: { t: 5s }, on: { t: over } }
+  over: { end: done, output: { ok: true } }

@@ -60,7 +60,7 @@ func (b *build) callTo(job *instance.Going) (string, *machine.Error, error) {
 	}
 	own := permission.Layer{Name: fmt.Sprintf("the job %q in the definition of %q", job.Name, b.def.Name), Allow: job.Allow, Deny: job.Deny}
 	own.Fix = "add the line %s to the allow list of " + own.Name
-	refused, err := b.refusedSend(at, own)
+	refused, err := b.refusedSend(at, own, b.st.Above.Layers)
 	return at, refused, err
 }
 
@@ -74,7 +74,7 @@ func (b *build) sendJobTo(job *instance.Going) (*machine.Error, error) {
 	}
 	own := permission.Layer{Name: fmt.Sprintf("the job %q in the definition of %q", job.Name, b.def.Name), Allow: job.Allow, Deny: job.Deny}
 	own.Fix = "add the line %s to the allow list of " + own.Name
-	refused, err := b.refusedSend(at, own)
+	refused, err := b.refusedSend(at, own, b.st.Above.Layers)
 	if refused == nil && err == nil {
 		to := *job.Send.At
 		to.At = at
@@ -283,7 +283,7 @@ func (b *build) recorded(def *machine.Definition) error {
 // to it is: against every layer of the run and the receiver's receive:.
 func (b *build) recordedAt(def *machine.Definition, at string) (machine.Recorded, error) {
 	own := fmt.Sprintf("the definition of %q", def.Name)
-	refused, err := b.refusedSend(at, permission.Layer{Name: own, Allow: []string{"send:" + at}, Deny: def.Deny, Fix: "add the line %s to the allow list of " + own})
+	refused, err := b.refusedSend(at, permission.Layer{Name: own, Allow: []string{"send:" + at}, Deny: def.Deny, Fix: "add the line %s to the allow list of " + own}, b.st.Above.Layers)
 	if err != nil {
 		return machine.Recorded{}, err
 	}

@@ -1,0 +1,11 @@
+# The hook says no and no stage handles the refusal.
+flow: asks
+hooks:
+  approval: { before: { script: ./no.js }, when: "${job.approve}" }
+stages:
+  slow:
+    job: { machine: ./sleeper.yaml }
+  guarded:
+    job: { script: ./add.js, input: { n: 1 }, approve: true }
+output:
+  guarded: ${stages.guarded.output}

@@ -504,12 +504,12 @@ func refusedSecret(layers []permission.Layer, allow []string, name string) *perm
 	return nil
 }
 
-// layersAbove gives the layers above a job: the instance's own or, for an ask
-// taken from above, those of the machine that declares it, so that a machine
-// which inherits an ask cannot widen what the ask may reach.
+// layersAbove gives the layers above a job: the instance's own or, for a
+// hook taken from above, those of the machine that declares it, so that a
+// machine below cannot widen what the hook may do.
 func layersAbove(st *instance.State, job *machine.Job) []permission.Layer {
 	if job.Above {
-		return st.Above.Ask.Layers
+		return st.Above.Hooks[job.Level].Layers
 	}
 	return st.Above.Layers
 }
@@ -536,18 +536,22 @@ func (p *pass) child(inst string, step *instance.Step, ask *instance.Ask) *insta
 	}
 	above := &instance.Above{Parent: inst, Job: ask.Name, Depth: st.Above.Depth + 1, MaxDepth: st.Above.MaxDepth,
 		Layers:  layers,
-		Approve: st.Above.Approve, Ask: st.Above.Ask, Context: st.Above.Context, Values: st.Above.Values,
-		IsAsk: job.Name == instance.AskName,
-		Made:  made || st.Above.Made && !job.Above, Keep: st.Keep, Readers: st.Above.Readers}
-	// The nearest ask above the child is its machine's own. A machine made
-	// while running keeps none, so it hands down the one above it.
-	if st.Ask != nil {
-		above.Ask = &instance.AskAbove{Spec: st.Ask, Definition: st.Definition, Input: st.Input, Layers: st.Above.Layers}
+		Approve: st.Above.Approve, Context: st.Above.Context, Values: st.Above.Values,
+		IsHook: job.Hook != "",
+		Made:   made || st.Above.Made && !job.Above, Keep: st.Keep, Readers: st.Above.Readers}
+	// The hooks above the child are its machine's own and then those above
+	// that. A machine made while running keeps none of its own, so it hands
+	// down those above it.
+	above.Hooks = st.Above.Hooks
+	if len(st.Hooks) > 0 {
+		run := runOf(inst, st)
+		above.Hooks = append([]instance.HooksAbove{{Hooks: st.Hooks, Definition: st.Definition, Input: st.Input, Layers: st.Above.Layers,
+			Run: run.ID, Key: run.Key, Principal: run.Principal}}, st.Above.Hooks...)
 	}
-	if above.IsAsk {
-		// A machine run as an ask takes no ask from above it, and is not
-		// held to the approve: lists above it.
-		above.Ask, above.Approve = nil, nil
+	if above.IsHook {
+		// A machine run as a hook takes no hook from above it, and the
+		// approve: lists above it mark none of its jobs.
+		above.Approve, above.Hooks = nil, nil
 	}
 	mac := hmac.New(sha256.New, st.Seed)
 	mac.Write([]byte("child\x00" + ask.Name))

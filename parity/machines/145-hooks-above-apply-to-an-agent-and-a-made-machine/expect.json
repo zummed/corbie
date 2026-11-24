@@ -1,0 +1,7 @@
+{
+  "status": "failed",
+  "failure": "denied",
+  "error_contains": [
+    "made: deploy: the hook exec refused it: no deploy from a machine made while running"
+  ]
+}

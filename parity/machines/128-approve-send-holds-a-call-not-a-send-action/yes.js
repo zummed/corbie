@@ -1,1 +1,1 @@
-return { approved: input.jobs.map(j => j.name) }
+return { ok: true, note: "yes to all" }

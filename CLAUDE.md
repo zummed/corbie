@@ -53,7 +53,8 @@ Words:
 - One word for one thing, the same in the specs, the code, the manual and what is printed. A word with two meanings is a fault, and so is a second word for the same thing. A word is changed everywhere or not at all.
 - These words are settled:
   - **machine**: a YAML definition of type flow, statechart, agent or decision. Never a computer.
-  - **job**: the `job:` block of a stage, a state, a tool or an ask. A job is a script, a machine, or a send. A machine is named by its file (`machine:`) or by its location (`call:`), and a send delivers an event and returns nothing. A runner executes a script; a machine named by its file runs as a child run, and one named by its location as a run of its own whose result is the job's output.
+  - **job**: the `job:` block of a stage, a state or a tool, and the `before:` or `after:` of a hook. A job is a script, a machine, or a send. A machine is named by its file (`machine:`) or by its location (`call:`), and a send delivers an event and returns nothing. A runner executes a script; a machine named by its file runs as a child run, and one named by its location as a run of its own whose result is the job's output.
+  - **hook**: a job a definition names under `hooks:`, which runs before or after other jobs.
   - **run**: one execution of a machine, which a client starts, lists and shows.
   - **tree**: a directory a client submitted at a prefix. It belongs to that client.
   - **location**: where a machine lives: its file's path under its tree's prefix, without `.yaml`.

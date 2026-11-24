@@ -13,6 +13,7 @@ import (
 	"github.com/zummed/corbie/client"
 	"github.com/zummed/corbie/instance"
 	"github.com/zummed/corbie/machine"
+	"github.com/zummed/corbie/ui/drawing"
 	"github.com/zummed/corbie/ui/page"
 )
 
@@ -99,7 +100,7 @@ func lines(e client.Entry, name string, day time.Time) []line {
 				text = fmt.Sprintf("%s fails, denied: %s", ask.Name, ask.Error.Refused)
 			}
 		case instance.AskHold:
-			text = fmt.Sprintf("hold %s for the ask", ask.Name)
+			text = fmt.Sprintf("hold %s for its hooks", ask.Name)
 		case instance.AskNote:
 			text = ask.Text
 		default:
@@ -360,6 +361,22 @@ func (b *rowBuilder) rows(id string, depth int, in string) []stepRow {
 			r.Took = took(e.Time.Sub(at))
 		}
 	}
+	// ending gives the row of a job that ended at step e: a hook's job by
+	// the hook's name and on the hook's card, and any other by its own.
+	ending := func(e client.Entry, ev instance.Arrived, how string) stepRow {
+		a := jobs[named(ev.From)]
+		name, r := jobOf(ev.From), stepRow{Out: ev.Data, Facts: jobFacts(a, b.byID)}
+		if a != nil && a.Job != nil {
+			r.In = a.Job.Input
+		}
+		if a != nil && a.Job != nil && a.Job.Hook != "" {
+			r.What, r.Cards = say("hook ", bold(a.Job.Hook), " "+how), []string{drawing.HookJob(a.Job.Hook)}
+		} else {
+			r.What, r.Cards = say(bold(name), " "+how), []string{name}
+		}
+		ended(&r, e, ev.From)
+		return r
+	}
 	for i, e := range own {
 		n := 0
 		add := func(r stepRow) *stepRow {
@@ -411,12 +428,8 @@ func (b *rowBuilder) rows(id string, depth int, in string) []stepRow {
 			case ev.Answer:
 				add(stepRow{What: say("⇠ ", bold(ev.Name), " answered"), Kind: "got", In: ev.Data, Facts: []fact{{Name: "ticket", Text: ev.Name}}})
 			case ev.Name == machine.Failed && run.Type != "flow":
-				r := stepRow{What: say(bold(jobOf(ev.From)), " failed"), Kind: "failed", Out: ev.Data, Facts: jobFacts(jobs[named(ev.From)], b.byID), Cards: []string{jobOf(ev.From)}}
-				if a := jobs[named(ev.From)]; a != nil && a.Job != nil {
-					r.In = a.Job.Input
-				}
-				r.Facts = append(r.Facts, failed(ev.Data)...)
-				ended(&r, e, ev.From)
+				r := ending(e, ev, "failed")
+				r.Kind, r.Facts = "failed", append(r.Facts, failed(ev.Data)...)
 				add(r)
 			case run.Type == "agent" && ev.Name == machine.Done && isTurn(ev.From):
 				turn := prev.Turn
@@ -425,7 +438,7 @@ func (b *rowBuilder) rows(id string, depth int, in string) []stepRow {
 				for _, c := range calls {
 					call, _ := c.(map[string]any)
 					name, _ := call["name"].(string)
-					add(stepRow{What: say("turn "+strconv.Itoa(turn)+" called ", bold(name), "("+argsOf(call["args"])+")"), In: call["args"], Out: b.resultOf(own[i+1:], name), Cards: []string{name},
+					add(stepRow{What: say("turn "+strconv.Itoa(turn)+" called ", bold(name), "("+argsOf(call["args"])+")"), In: call["args"], Out: b.resultOf(own[i+1:], name, false), Cards: []string{name},
 						Facts: []fact{{Name: "tool", Text: name}, {Name: "args", Text: compact(call["args"])}, {Name: "turn " + strconv.Itoa(turn), Text: turnFacts(data)}}})
 				}
 				if len(calls) == 0 {
@@ -434,12 +447,7 @@ func (b *rowBuilder) rows(id string, depth int, in string) []stepRow {
 						Facts: []fact{{Name: "turn " + strconv.Itoa(turn), Text: turnFacts(data)}}})
 				}
 			case run.Type == "agent" && ev.Name == machine.Done:
-				r := stepRow{What: say(bold(jobOf(ev.From)), " done"), Out: ev.Data, Facts: jobFacts(jobs[named(ev.From)], b.byID), Cards: []string{jobOf(ev.From)}}
-				if a := jobs[named(ev.From)]; a != nil && a.Job != nil {
-					r.In = a.Job.Input
-				}
-				ended(&r, e, ev.From)
-				add(r)
+				add(ending(e, ev, "done"))
 			}
 		}
 		switch run.Type {
@@ -510,11 +518,11 @@ func (b *rowBuilder) rows(id string, depth int, in string) []stepRow {
 			switch a.Kind {
 			case instance.AskChild:
 				child := linkOf(a.Child, b.byID)
-				name := jobOf(a.Name)
+				name, card := jobOf(a.Name), jobOf(a.Name)
 				var w []word
 				switch {
-				case name == instance.AskName:
-					w = say("ask started ", bold(child.Machine))
+				case a.Job != nil && a.Job.Hook != "":
+					w, card = say("hook ", bold(a.Job.Hook), " started ", bold(child.Machine)), drawing.HookJob(a.Job.Hook)
 				case run.Type == "flow":
 					w = say("stage ", bold(name), " started ", bold(child.Machine))
 				case run.Type == "statechart":
@@ -522,11 +530,11 @@ func (b *rowBuilder) rows(id string, depth int, in string) []stepRow {
 				default:
 					w = say(bold(name), " started ", bold(child.Machine))
 				}
-				r := stepRow{What: w, Facts: jobFacts(a, b.byID), Out: b.resultOf(own[i+1:], a.Name), Job: name, Full: a.Name, Cards: []string{name}}
+				r := stepRow{What: w, Facts: jobFacts(a, b.byID), Out: b.resultOf(own[i+1:], a.Name, card != name), Job: name, Full: a.Name, Cards: []string{card}}
 				if a.Job != nil {
 					r.In = a.Job.Input
 				}
-				g := &group{Run: child, Steps: b.steps(a.Child), Rows: b.rows(a.Child, depth+1, cardPath(in, name))}
+				g := &group{Run: child, Steps: b.steps(a.Child), Rows: b.rows(a.Child, depth+1, cardPath(in, card))}
 				if h := b.byID[a.Child]; h != nil {
 					g.Status, g.Failure, g.Ended = h.Status, h.Failure, h.HasEnded()
 					if g.Ended {
@@ -538,7 +546,7 @@ func (b *rowBuilder) rows(id string, depth int, in string) []stepRow {
 			case instance.AskCall:
 				called := linkOf(a.Run, b.byID)
 				r := stepRow{Kind: "send", What: say("⇢ called ", bold(a.Location), " · ", linked(&called)),
-					Facts: append(jobFacts(a, b.byID), fact{Name: "location", Text: a.Location}), Out: b.resultOf(own[i+1:], a.Name), Job: jobOf(a.Name), Full: a.Name, Cards: []string{jobOf(a.Name)}}
+					Facts: append(jobFacts(a, b.byID), fact{Name: "location", Text: a.Location}), Out: b.resultOf(own[i+1:], a.Name, false), Job: jobOf(a.Name), Full: a.Name, Cards: []string{jobOf(a.Name)}}
 				if a.Job != nil {
 					r.In = a.Job.Input
 				}
@@ -561,14 +569,21 @@ func (b *rowBuilder) rows(id string, depth int, in string) []stepRow {
 				}
 				add(r)
 			case instance.AskHold:
-				r := stepRow{What: say("held ", bold(jobOf(a.Name)), " for approval"), Kind: "held", Facts: jobFacts(a, b.byID), Cards: []string{jobOf(a.Name)}}
+				// The hook the job is held for is the one the same step started
+				// for it.
+				r := stepRow{What: say("held ", bold(jobOf(a.Name))), Kind: "held", Facts: jobFacts(a, b.byID), Cards: []string{jobOf(a.Name)}}
 				if a.Job != nil {
 					r.In = a.Job.Input
 				}
 				for _, c := range e.Asks {
-					if c.Kind == instance.AskChild && jobOf(c.Name) == instance.AskName {
-						ask := linkOf(c.Child, b.byID)
-						r.Facts = append(r.Facts, fact{Name: "held for", Text: c.Child + statusOf(b.byID[c.Child]), Run: &ask})
+					if a.Job == nil || c.Job == nil || c.Job.Hook == "" || c.Job.Name != a.Job.Name+"."+c.Job.Hook {
+						continue
+					}
+					r.What = say("held ", bold(jobOf(a.Name)), " for ", bold(c.Job.Hook))
+					r.Facts = append(r.Facts, fact{Name: "hook", Text: c.Job.Hook})
+					if c.Kind == instance.AskChild {
+						hook := linkOf(c.Child, b.byID)
+						r.Facts = append(r.Facts, fact{Name: "held for", Text: c.Child + statusOf(b.byID[c.Child]), Run: &hook})
 					}
 				}
 				add(r)
@@ -789,11 +804,12 @@ func causedBy(cause instance.Cause, id string, entries []client.Entry, byID map[
 }
 
 // resultOf gives what a job gave, from the first of entries that took its
-// end: its output, or its error.
-func (b *rowBuilder) resultOf(entries []client.Entry, job string) any {
+// end: its output, or its error. A hook's result is the controller's own to
+// act on, and any other job's is the one its machine was given.
+func (b *rowBuilder) resultOf(entries []client.Entry, job string, hook bool) any {
 	for _, e := range entries {
 		for _, ev := range e.Events {
-			if (ev.Name == machine.Done || ev.Name == machine.Failed) && (named(ev.From) == named(job) || jobOf(ev.From) == job) {
+			if ev.Own == hook && (ev.Name == machine.Done || ev.Name == machine.Failed) && (named(ev.From) == named(job) || jobOf(ev.From) == job) {
 				return ev.Data
 			}
 		}
@@ -820,7 +836,7 @@ func jobFacts(a *instance.Ask, byID map[string]*client.Run) []fact {
 		if j.Approve {
 			facts = append(facts, fact{Name: "approve", Text: "true"})
 		}
-		if shown, _ := j.Shown.(map[string]any); shown != nil {
+		if shown, _ := j.Tool.(map[string]any); shown != nil {
 			if toolkit, _ := shown["toolkit"].(string); toolkit != "" {
 				facts = append(facts, fact{Name: "toolkit", Text: toolkit})
 			}

@@ -1,0 +1,4 @@
+flow: child
+stages:
+  one: { job: ./one.js }
+output: { secret: 42, n: "${stages.one.output}" }

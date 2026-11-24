@@ -1,6 +1,6 @@
 # Machines
 
-A machine is a definition that Corbie runs. There are four types: flow, statechart, agent and decision. Flow and statechart each have an area, and agent and decision, which call a model, share one. This area is what they all share: how a machine runs, how a definition is written, where it lives, and what a machine can receive and ask for.
+A machine is a definition that Corbie runs. There are four types: flow, statechart, agent and decision. Flow and statechart each have an area, and agent and decision, which call a model, share one. This area is what they all share: how a machine runs, how a definition is written, where it lives, what a machine can receive, and the hooks that run before and after its jobs.
 
 ## Steps
 
@@ -135,7 +135,7 @@ $ corbie run submit house --at /home
 
 The submit starts the boiler's run. The thermostat starts a run for each room a send names, and the weather service one for each call or send. `house/.corbieignore` lists `shared/`, so `house/shared/base.yaml` has no location and is not printed.
 
-Every run has a location, and its authority comes from it: its file's `allow:` and `ask:`, its tree client's ceiling, and the secrets and values set at its location or above (see permission.md and secret.md).
+Every run has a location, and its authority comes from it: its file's `allow:` and `hooks:`, its tree client's ceiling, and the secrets and values set at its location or above (see permission.md and secret.md).
 
 - A child started by `machine:` runs at its parent's location.
 - A machine made while running has no file of its own. It runs at the location of the job that starts it, narrowed by that job's list.
@@ -316,7 +316,7 @@ A machine as it is stored is at most 4 MiB, as much as a step may read of one st
 
 A YAML alias may not contain itself, and a file whose aliases make more than about 100 times what it writes, past 1000 values, is refused. That is the YAML reader's own check. Nothing else counts what a definition reads: what reading one costs falls on the process that reads it (see Permissions).
 
-Every job has a name that says what asked for it: a stage, a state, a tool, an agent's `turn`, the `ask`. A job's name has a suffix when other jobs have the same name:
+Every job has a name that says what asked for it: a stage, a state, a tool, an agent's `turn`. A hook's job has the name of the job it runs for and its own, as `refund.small`. A job's name has a suffix when other jobs have the same name:
 
 ```
 get_title.0   one of several jobs asked for in one step
@@ -364,7 +364,7 @@ job: { call: { at: services/weather }, input: { days: 2 } }
 ```
 
 - A location in an address, a `send:` entry or a `receive:` entry is read from the tree's prefix, unless it starts with `/`, which is a full path into any tree. A name in it is not empty, `.`, `..` or `+`, and holds no `#`, backslash or control character.
-- `job: { send: … }` ends `done`, with no output, once the message is written. An event too large to write, past 256 KiB, fails the job, as any job's message does. Beside `send:` it takes `approve:`, `allow:` and `deny:`, and no other field of a job.
+- `job: { send: … }` ends `done`, with no output, once the message is written. An event too large to write, past 256 KiB, fails the job, as any job's message does. Beside `send:` it takes `approve:`, `meta:`, `allow:` and `deny:`, and no other field of a job.
 - `at`, `key` and `run` may hold expressions, and `to` may be one expression that gives an address. An address is checked once it is filled in.
 - `job: { call: { at }, input }` starts a run of a `transient` location and waits. The job's output is that run's result. The job fails if the receiver refuses it, if the location is not `transient` or is at its `limits: { runs }`, or if the run fails.
 - A key is any text of 1 to 256 characters. It is written in the run's head, as a label is, so anyone who can list runs can read it, and it holds no secret.
@@ -421,7 +421,7 @@ A run started by a send or a call:
 - It is a root of its own tree's client and no child of its sender. Ending the sender does not cancel it, but cancelling a calling job cancels the run it called.
 - It counts one level below its sender, and fails as it starts if that passes its own file's depth limit. A run that fails as it starts, such as one given data that does not fit its input, adds the reason to the sender's record.
 - Its authority is its location's. The sender adds nothing to it and takes nothing away, but the input it gives may fill an allow scope within the receiver's own patterns and every ceiling.
-- Its held jobs go only to its own file's `ask:` (see Approval).
+- Its jobs take only its own file's hooks (see Hooks).
 - It holds a copy of the blobs the event names, so it needs nothing of the sender's record.
 
 For what a machine made while running may address, see [Words from outside](#words-from-outside).
@@ -430,9 +430,9 @@ For what a machine made while running may address, see [Words from outside](#wor
 
 Larger machines are built from smaller ones. A child is started by a job and its ending is one event to its parent. A child never outlives its parent: when a machine ends or is cancelled, every script job and every machine below it is cancelled too. A run started by a send or a call is a root and no child of its sender.
 
-A definition can be made while a machine runs, by a script or by an agent, and run as a child. It is filled out, checked and stored exactly as one sent by a client is, in the process of the job that defines it (see Runner). It is checked again when a job starts it, as any definition is, and whether its approvals have an ask to go to, since that depends on what is above it. Each of its steps is taken in a process of its own (see Controller).
+A definition can be made while a machine runs, by a script or by an agent, and run as a child. It is filled out, checked and stored exactly as one sent by a client is, in the process of the job that defines it (see Runner). It is checked again when a job starts it, as any definition is, and whether its marked jobs have a `before` hook, since that depends on what is above it. Each of its steps is taken in a process of its own (see Controller).
 
-A root may have sixteen levels of machines below it unless it says otherwise, and an ask that is a machine uses a level like any child. A definition may also limit how many jobs an instance starts. A job past either limit fails and is not restarted.
+By default a root may have sixteen levels of machines below it, and a hook that is a machine uses a level like any child. A definition may also limit how many jobs an instance starts. A job past either limit fails and is not restarted.
 
 ## Waiting on the outside
 
@@ -447,24 +447,154 @@ The ticket is the authority: any client that holds it may answer, and Corbie doe
 
 Services that carry questions to people, such as a chat program, are clients at the edge and no part of Corbie.
 
-## Approval
+## Hooks
 
-A job can be made to wait for a yes before it starts. A job is held if it is marked for approval, or if a permission it asks for is one its machine, or a machine above it, has listed in `approve:`. Being approved gives a job nothing it was not already allowed; approval only ever holds. What gives the yes is the machine's ask: a job of its own, named at the top of the definition. That job is called `ask`, and nothing else in a definition may take the name. A machine with no ask uses the nearest one above it. For a machine made while running, see [Words from outside](#words-from-outside).
+A hook is a job that runs before another job starts, or after it has ended. A definition names its hooks under `hooks:`, and they are for the jobs of its machine and of the machines below it.
 
-A run started by a send or a call has no machine above it, so its held jobs go only to its own file's `ask:`, and are denied if it has none. A call or a `job: { send }` is a job, and declares only `send:` to the location it names, so the sender's `approve: [send:…]` holds it when the list names that location. A statechart's send action is never held.
+1. A machine asks for a job. The controller holds it, and runs each `before` hook whose `when:` holds, one at a time.
+2. A hook that returns `{ ok: true }` lets the job go on to the next. Any other result, or a failure, denies the job.
+3. The job starts once every one of them has returned `{ ok: true }`.
+4. When the job ends `done`, each `after` hook whose `when:` holds runs, and then the machine is given the outcome.
 
-The controller does the holding. It gathers the jobs from one step that need approval, fills in their ask once, and starts it once with them. The ask is told which machine is asking and, for each job, what it is and what input it would get. Its result, `{ approved: [names of jobs], note }`, names the jobs it approves and may add a note. Approved jobs start. A job not approved never starts, and its machine sees it as a failed job with the status denied, which it may handle like any other failure. An ask that cannot be filled in, that fails, or whose result does not list the jobs it approves, approves nothing, and the error of each job it denies says why.
+```yaml
+# refunds.yaml
+flow: refunds
+hooks:
+  small: { before: { script: ./small.js } }
+stages:
+  refund:
+    each: [20, 900]
+    job: { script: ./refund.js, input: { amount: "${item}" } }
+output: ${stages.refund.output}
+```
 
-Waiting for a person happens inside the ask, typically a statechart that issues a ticket and ends with the jobs it approves. An ask that waits for nobody, such as a model reviewing the jobs, is an ask all the same. An approval has no time limit of its own; the ask's timeout is how long it may take.
+```js
+// small.js
+return { ok: input.job.input.amount <= 100, note: "over 100" }
+```
 
-An ask's job takes input like any other. The permissions an ask needs are its own, used by the ask's job and by nothing else in a machine that inherits it.
+```
+output: [{"item":20,"output":"refunded 20"},{"error":"the hook small refused it: over 100","item":900}]
+```
+
+| Field of a hook | What it says |
+|---|---|
+| `before:` | a job, which runs before a job starts |
+| `after:` | a job, which runs after a job has ended `done` |
+| `when:` | a condition on the job: the hook runs for the jobs it holds for, and for every job by default |
+
+A hook writes one of `before:` and `after:`. Its job is a script, a machine, a call or a send, as any job is. A hook's name is a name, and not `cancel`.
+
+### What a hook returns
+
+| A hook returns | Before a job | After a job |
+|---|---|---|
+| `{ ok: true }` | the job goes on | the machine is given the job's output |
+| `{ ok: true, input }` | the job goes on, with that input | |
+| `{ ok: true, output }` | | the machine is given that output |
+| `{ ok: false, note }`, any other result, or a failure | the job never starts, and fails as `denied` | the job fails |
+
+- A refused job's error holds the hook's name and its `note`. Its machine may handle it like any other failure.
+- A hook whose `when:` cannot be evaluated, or whose job cannot be filled in or started, refuses the job as one that returned `{ ok: false }` does.
+- A send returns nothing, so a hook that is a send refuses nothing.
+- A changed input changes no permission: a job's `allow:` is filled before its hooks run.
+- The record holds each hook's result, so it shows a changed input and a changed output. The machine is not told of a changed input: a stage's own values, and an agent's conversation, hold what was first asked for.
+- An `after` hook changes what the machine is given. The record still holds the job's own output.
+
+### What a hook reads
+
+A hook's expressions read the `input`, `values` and `run` of the machine that declares it, and `job`. An `after` hook's read `output`, the job's output. A hook that writes no `input:` is given `{ job }`, and after a job `{ job, output }`.
+
+| `job.` | What it is |
+|---|---|
+| `name` | the stage, state or tool that asked for the job |
+| `run` | the run the job is a job of: `{ id, machine }` |
+| `input` | the input the job is given |
+| `allow` | the permissions the job declares |
+| `approve` | true when the job is marked for approval |
+| `meta` | the job's `meta:` |
+| `script`, `machine`, `call` or `send` | what the job runs |
+| `tool` | for an agent's tool call, `{ name, entry, toolkit, description, args, said }` (see agent.md) |
+
+A hook's `allow:` scopes are filled from the declaring machine's input and values, and never from `job`. A hook's job is a job of the definition that declares it, for every job it runs for: a script, a call or a send has that definition's `allow:` and `deny:` with its own, and it runs with the layers of that machine.
+
+### Which jobs
+
+- A hook with no `when:` is for every job, an agent's `turn` among them. A hook's own job takes no hook.
+- Every hook whose `when:` holds runs for a job: its own machine's, in the order of their names, then those of each machine above, the nearest first. A machine adds hooks and takes none away.
+- A hook runs once for one job.
+- A machine run as a hook takes no hook from above it, and no event from the machine whose job it runs for.
+- A hook's `machine:` is named by its file. An expression there is refused: it would give a machine made while running.
+- A run started by a send or a call takes no hook from its sender, so no run changes a job in another tree.
+- A machine made while running writes no hooks: one that does fails as it starts. The hooks above it are for its jobs (see [Words from outside](#words-from-outside)).
+- A hook that is a machine uses a level, as any child does. A hook's job is not counted against `limits: { jobs: }`.
+- A job that is no longer wanted while a hook runs for it is dropped, and the hook's job is cancelled.
+- A hook has no time limit of its own: its job's `timeout:` is how long it may take.
+
+A hook from above is how a machine changes a job in a machine it runs and did not write:
+
+```yaml
+# mine.yaml
+flow: mine
+hooks:
+  quiet:
+    before: { script: ./quiet.js }
+    when: "${job.name == 'post'}"
+stages:
+  report: { job: { machine: ./vendor/report.yaml, input: { customer: acme } } }
+output: ${stages.report.output}
+```
+
+```js
+// quiet.js
+return { ok: true, input: { ...input.job.input, channel: "#test" } }
+```
+
+`post` is a stage of a machine that `vendor/report.yaml` runs. It posts in `#test`.
+
+### Approval
+
+A job can be made to wait for a yes before it starts. A job is marked for approval by `approve: true`, or when it declares a permission that its machine, or a machine above it, lists in `approve:` (see permission.md). Being approved gives a job nothing it was not already allowed.
+
+- `job.approve` is true for a marked job, so a hook with `when: "${job.approve}"` is for the jobs that wait for a yes.
+- A marked job that no `before` hook is for is denied.
+- A definition a client starts, which marks a job and has no `before` hook, is refused. A file in a tree is recorded all the same, since it may run as a child under another machine's hooks.
+- A call or a `job: { send }` is a job, and declares only `send:` to the location it names, so `approve: [send:…]` marks it when the list names that location. A statechart's send action is no job, and takes no hook.
+
+Waiting for a person happens inside the hook, typically a statechart that issues a ticket and ends with `{ ok }`.
+
+### Meta
+
+A job may write `meta:`, data of any kind. Hooks read it as `job.meta`, and Corbie gives it no meaning. A tool says where it is approved, and one hook asks there:
+
+```yaml
+# toolkits/orders/toolkit.yaml
+tools:
+  refund:
+    description: Refund an order
+    args: { order: number, amount: number }
+    job: { script: ./tool.js, input: { args: "${args}" }, approve: true, meta: { channel: "#orders-team", approvers: "orders:approve" } }
+
+# helper.yaml
+hooks:
+  team:
+    when: "${job.approve}"
+    before: { script: ./ask-in.js, input: { channel: "${job.meta.channel}", approvers: "${job.meta.approvers}", tool: "${job.tool.name}", args: "${job.tool.args}" } }
+  finance:
+    when: "${job.approve && job.tool.name == 'refund' && job.tool.args.amount > 100}"
+    before: { script: ./ask-in.js, input: { channel: "#finance", approvers: finance, tool: "${job.tool.name}", args: "${job.tool.args}" } }
+```
+
+- A refund of 20 is asked about in `#orders-team`. A refund of 900 is asked about in `#finance` too, and starts only when both return `{ ok: true }`.
+- A marked tool whose `meta:` lacks what a hook reads is denied: the hook cannot be filled in.
+- A job of a machine made while running gives hooks no `meta`, since a script or a model wrote it.
 
 ## Words from outside
 
-A definition made while running, which a script or a model wrote, and the tools a `list:` job gives an agent are words from outside: no owner wrote them. Words from outside name no ask and no address. A step that reads them is taken in a process of its own (see Controller).
+A definition made while running, which a script or a model wrote, and the tools a `list:` job gives an agent are words from outside: no owner wrote them. Words from outside name no hook and no address. A step that reads them is taken in a process of its own (see Controller).
 
-- A machine made while running may address only its parent and its children. Its held jobs go to the nearest ask above it that was not made while running, and with none they are denied. One that writes `ask:` fails as it starts, and one that sends to an address or calls a location fails then.
-- A tool a `list:` gives runs the entry's `job:`, whose held jobs go to the agent's ask as any tool's do, and which addresses what that job names. A list gives each tool a name, a description and the shape of its arguments, and nothing else is read from it.
+- A machine made while running may address only its parent and its children. The hooks above it that were not made while running are for its jobs, and it gives hooks no `meta`. It writes the names of its jobs and tools, so a hook whose `when:` reads `job.name` or `job.tool` may not run for them, and one whose `when:` reads `job.approve`, which the controller works out, does. One that writes `hooks:` fails as it starts, and one that sends to an address or calls a location fails then.
+- A tool a `list:` gives runs the entry's `job:`, which takes the agent's hooks as any tool's job does, with the entry's `approve:` and `meta:`, and which addresses what that job names. A list gives each tool a name, a description and the shape of its arguments, and nothing else is read from it.
 
 ## Failure
 
@@ -486,15 +616,15 @@ job:
 | `limit` | how many restarts: a number, or a number in a length of time | no limit |
 | `delay` | the wait: `1s to 5m` doubles from the first to the second, and `30s` is the same each time | `1s to 5m` |
 
-- The controller restarts a job with the input it was first given. A machine job restarts as a new child run, from its start.
+- The controller restarts a job with the input it was first given, and not the input a hook gave in its place. A machine job restarts as a new child run, from its start.
 - A denial and a cancel are never restarted, so a job cancelled by hand stays stopped.
 - A delay that doubles starts again once an attempt has stayed up for twice its longest wait.
 - The machine sees only the final outcome, which is the last attempt's once the limit is passed. The record shows each attempt.
 - Every value an attempt emits is delivered, so a job that repeats itself delivers its values again.
 - A job with `after: always` and no limit gives its machine no outcome, so a stage that waits for it never ends.
-- A restart after a failure is the same job, under a yes it was already given, and is not counted against `limits: { jobs: }`.
-- A restart after a job ended well is a new job. It is held again if it needs approval, has a new request name, and counts against `limits: { jobs: }`.
-- An ask that ends well is final, whatever its policy says.
+- A restart after a failure is the same job. Its `before` hooks do not run again, and it is not counted against `limits: { jobs: }`.
+- A restart after a job ended well is a new job. Its `before` hooks run again, it has a new request name, and it counts against `limits: { jobs: }`.
+- A hook's job that ends well is final, whatever its policy says.
 
 A machine reacts to a failure as to any event. A failure it has no rule for fails the machine, and its own failure is the event its parent receives. If a step itself fails, the instance fails.
 

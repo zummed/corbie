@@ -1,0 +1,6 @@
+# A marked job that no before hook is for.
+flow: unmatched
+hooks:
+  other: { before: ./one.js, when: "${job.name == 'nothing'}" }
+stages:
+  marked: { job: { script: ./one.js, approve: true } }

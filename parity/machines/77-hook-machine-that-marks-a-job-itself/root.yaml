@@ -1,0 +1,11 @@
+# The hook is a machine, and that machine marks a job of its own for
+# approval with no hook before it. A machine run as a hook takes no hook from
+# above it, so the definition is refused.
+flow: parent
+hooks:
+  approval: { before: { machine: ./asking-flow.yaml }, when: "${job.approve}" }
+stages:
+  guarded:
+    job: { script: ./add.js, input: { n: 1 }, approve: true }
+output:
+  guarded: ${stages.guarded.output}

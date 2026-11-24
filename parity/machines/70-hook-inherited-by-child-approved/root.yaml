@@ -1,0 +1,14 @@
+# The root flow has the hook (it says yes to everything) and marks nothing
+# itself. Its two children, a flow and a chart, each mark a job approve:
+# true and have no hooks: of their own.
+flow: parent
+hooks:
+  approval: { before: { script: ./yes.js }, when: "${job.approve}" }
+stages:
+  flow_kid:
+    job: { machine: ./guarded-flow.yaml, input: { n: 1 } }
+  chart_kid:
+    job: { machine: ./guarded-chart.yaml, input: { n: 10 } }
+output:
+  flow_kid: ${stages.flow_kid.output}
+  chart_kid: ${stages.chart_kid.output}

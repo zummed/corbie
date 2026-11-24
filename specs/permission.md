@@ -67,7 +67,7 @@ parent                       the child's job may
 
 A machine made while running is not its parent's author's words: a script or a model wrote it. It is always narrowed by the job that starts it, and with no list it is allowed nothing. Everything below it is made while running too, and its steps are taken in a process of their own (see Controller).
 
-Where a made machine's held jobs go, and what it may address, is under Words from outside (see [Machines](machine.md#words-from-outside)).
+Which hooks run for a made machine's jobs, and what it may address, is under Words from outside (see [Machines](machine.md#words-from-outside)).
 
 The scope of a definition's allow entry may be filled from the machine's input, as in `fs.read:${input.dir}/**`. It reads nothing but the input, and since every layer above still applies, an input can choose a place within a limit and never move the limit. A value set at the run's location fills a scope the same way, as in `net:${values.HUB}` (see secret.md).
 
@@ -76,7 +76,7 @@ The scope of a definition's allow entry may be filled from the machine's input, 
 A run's authority comes from its location, the path of its file under its tree's prefix:
 
 ```
-its file's allow: and ask:        what its jobs may do, and where held jobs go
+its file's allow: and hooks:      what its jobs may do, and the hooks that run for them
 its tree's client's ceiling       the most any run in that tree may do
 secrets and values                those set at its location or above; the nearest wins (see secret.md)
 ```
@@ -176,13 +176,13 @@ A connection is checked by the name asked for and again by the address it resolv
 
 A refused call stops the job with the status denied. Every refusal says three things: what was tried, which layer refused it, and what would fix it, down to the line to add or the command to run. The fix for a ceiling names the command and the one line, and never shows the rest of the ceiling. A denial passes up through parent machines unchanged, so the fix reaches whoever can make it.
 
-## Asking
+## Approval
 
-A definition may list in `approve:` permissions a job may use only after a yes. Before any job in that machine, or in a machine below it, starts, the permissions it declares are read against the list. A job that declares one of them, or a group that contains one, is held for the ask, exactly as a job marked for approval is (see Machines). Whether a job is held depends on what it declares alone, before anything is sent for it.
+A definition may list in `approve:` permissions a job may use only after a yes. Before any job in that machine, or in a machine below it, starts, the permissions it declares are read against the list. A job that declares one of them, or a group that contains one, is marked for approval, exactly as a job with `approve: true` is: it starts only after a `before` hook (see Machines). Whether a job is marked depends on what it declares alone, before anything is sent for it.
 
-A called run's held jobs go only to its own file's `ask:`, and are denied if it has none. A call and a `job: { send: … }` are jobs, so the caller's `approve: [send:…]` holds them. Each declares only `send:` to the location it names, so `approve: [send:a]` holds a call to `a` and not one to `b` in the same machine. A statechart's send action is never held.
+A called run takes only its own file's hooks, and its marked jobs are denied if it has no `before` hook for them. A call and a `job: { send: … }` are jobs, so the caller's `approve: [send:…]` marks them. Each declares only `send:` to the location it names, so `approve: [send:a]` marks a call to `a` and not one to `b` in the same machine. A statechart's send action is no job, and is never held.
 
-Asking only ever holds. An approved job gets exactly what its layers already allowed, and nothing can be had by asking that a layer refuses. A job never stops halfway to wait for a person.
+Approval only ever holds. An approved job gets exactly what its layers already allowed, and no hook gives a job what a layer refuses. A job never stops halfway to wait for a person.
 
 ## What a job used
 
@@ -220,7 +220,7 @@ A script cannot reach outside itself except through the kinds above, and those a
 - A job cannot listen for connections. Nothing a job opens outlives the job.
 - A served directory's wire is private to the two computers. Someone on the network between them can see that they talk and how much, and can hold work up or cut it off, and nothing else (see Store).
 - A runner or a client that a served directory's controller trusts can fill the serving computer's disk with values. A client's listing of the records reads every file in them, so many listings at once slow every run. Corbie limits neither (see Store).
-- A step of an agent with a `list:` tool runs in a process of its own and its answer is the agent's word, so a bug in what that process runs can ask for any job of the agent's definition, with any lists and no approval the definition's jobs would have marked. A permission the layers above refuse stays refused, `approve:` still holds what it lists, and an ask stays the definition's.
+- A step of an agent with a `list:` tool runs in a process of its own and its answer is the agent's word, so a bug in what that process runs can ask for any job of the agent's definition, with any lists and no approval the definition's jobs would have marked. A permission the layers above refuse stays refused, `approve:` still marks what it lists, and a hook stays the definition's.
 - An owner's expression runs in the controller's own process. Nothing limits its memory, and its one second stops its own code and not a call to something built in, so `'a'.repeat(2**40)` ends the controller and a regular expression that backtracks holds a step without end. An owner can do this to a controller that takes their definitions. Only a definition a client submitted has its expressions run in the controller's own process; a definition a job stored runs in a process of its own (see Controller).
 - An owner's expression is read and compiled in the controller's own process, and nothing stops that. Reading `=>` nested in what stands before another takes twice as long with each, and so does compiling a chain of `&&`, `||` or `??` whose left sides are fixed, so forty of either never finish. 4 MB of brackets ended a client for want of stack in 2.4 seconds, and the controller reads an expression with the same code.
 - Nothing limits what reading a definition costs the process that reads it. An owner's definition costs this to their own client and controller. A job's costs that job, and past its limits the job fails and the runner goes on: 4 MB of brackets in a define ended the job's process, and 20 levels of files that each name the next twice ran to its time limit. These were measured reading and checking each:

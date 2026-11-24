@@ -1,9 +1,0 @@
-flow: child
-input: { n: any }
-ask:
-  script: ./yes.js
-stages:
-  guarded:
-    job: { script: ./add.js, input: { n: "${input.n}" }, approve: true }
-output:
-  n: ${stages.guarded.output.n}

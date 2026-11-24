@@ -105,7 +105,8 @@ Tools
   call         a location, in place of `description:`, `args:` and `job:`:
                the tool calls the machine there
   input        with `call:`, the names of that machine's input the tool fixes
-  approve      with `call:`, `true` holds the call for the ask
+  approve      with `call:`, `true` marks the call for approval
+  meta         with `call:`, data hooks read as `job.meta`
   when         a condition on the agent's input, checked when the run
                starts: the tool is offered only if it holds
 
@@ -117,10 +118,11 @@ A shape written with `type: object` is JSON Schema, which can give an argument
 a `description`, an `enum` or fields of its own. `format: blob` marks a blob at
 any depth.
 
-- A tool whose job has `approve: true` waits for the definition's `ask:`,
-  which gets `asked: { tool, description, args, said }`: the tool's name and
-  `description:`, the model's arguments and the model's text. A call that is
-  not approved is returned to the model as denied, with the ask's note.
+- A tool whose job has `approve: true` starts only after a `before` hook, as
+  `corbie manual hooks` says. A hook reads the call as
+  `job.tool: { name, description, args, said }`: the tool's name and
+  `description:`, the model's arguments and the model's text. A call a hook
+  refuses is returned to the model as denied, with the hook's note.
 - A tool whose job fails is returned to the model as an error.
 - A tool whose job is an agent is a sub-agent. The model gets the sub-agent's
   reply, and the sub-agent's conversation stays in its own record.
@@ -181,7 +183,7 @@ changing.
 - `job:` reads `${args}` only whole, and `${tool}` is the tool's name as the
   list gave it.
 - Every listed tool has the permissions of `job:`.
-- The ask gets `entry` and `tool` in `asked`: `github` and `create_issue`.
+- A hook reads `job.tool.entry` and `job.tool.name`: `github` and `create_issue`.
 - A list is words from outside, as `corbie manual definitions` says.
 - The agent fails if the list fails, or gives a tool with no name, args that
   are not JSON Schema with type: object, args that mark a blob, or a name
@@ -208,7 +210,7 @@ its tools call. In a tree, `.corbieignore` lists the toolkit's file.
 
   toolkits:
     net: { include: toolkits/net/toolkit.yaml }
-    pay: { include: toolkits/pay/toolkit.yaml, approve: true }    its open waits for the ask
+    pay: { include: toolkits/pay/toolkit.yaml, approve: true }    its open is marked for approval
     orders:
       include: toolkits/orders/toolkit.yaml
       when: ${input.asker.scopes.includes('orders')}
@@ -218,7 +220,7 @@ A toolkit has these fields.
   description   what the toolkit is for, in plain text with no expression, which
                 the model reads before it opens it
   instructions  what `open` returns, written as `system:` is; it may hold `${input...}`
-  approve       `true` holds the toolkit's open for the ask
+  approve       `true` marks the toolkit's open for approval
   when          a condition on the agent's input: the toolkit is offered only if it holds
   tools         the toolkit's tools, written as under Tools
   meta          data Corbie keeps and never reads
@@ -227,19 +229,18 @@ A toolkit has these fields.
 - No tool of a toolkit has the name of another tool of the agent.
 - The list of an entry with `list:` in a toolkit runs before the first turn.
   An error names it as `toolkits.net.tools.files.list`.
-- A toolkit has no `ask:`. Its `open`, its tools' calls and their lists wait
-  for the agent's `ask:`, which gets the toolkit's name as `toolkit` in
-  `asked`. A toolkit that writes `ask:` is refused.
-- The ask for `open` gets `asked: { tool, toolkit, description, args, said }`,
-  where `description` is the toolkit's. An open that is not approved opens
-  nothing.
+- A toolkit has no `hooks:`, and one that writes it is refused. The agent's
+  hooks run for its `open`, its tools' calls and their lists, and read the
+  toolkit's name as `job.tool.toolkit`.
+- For `open`, a hook reads `job.tool: { name, toolkit, description, args, said }`,
+  where `description` is the toolkit's. An open a hook refuses opens nothing.
 - An agent given a `conversation` opens each toolkit its `opened` names, when
   the toolkit's `when:` holds, it has no `approve: true`, and its
   instructions, filled from this run's input, are those the model was given.
   The model is shown the toolkit's tools from the first turn, and not its
   instructions again. A toolkit whose instructions changed stays closed.
-- A toolkit marked `approve: true` stays closed, and its open waits for the
-  ask again.
+- A toolkit marked `approve: true` stays closed, and its open waits for its
+  hook again.
 
 Who is offered what
 -------------------

@@ -377,6 +377,12 @@ export interface Toolkit {
   Tools: Tool[];
 }
 
+export interface Hook {
+  Card: Card;
+  When: boolean;
+  Mark: string;
+}
+
 export interface Agent {
   Model: string;
   Mark: string;
@@ -384,8 +390,7 @@ export interface Agent {
   Turn: number;
   Turns: number;
   Toolkits: Toolkit[];
-  Ask?: Card | null;
-  AskMark: string;
+  Hooks: Hook[];
 }
 
 export interface Decision {

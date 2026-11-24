@@ -140,8 +140,8 @@ type State struct {
 	Seed []byte `json:"seed"`
 	// Keep is how long the instance is kept after it ends.
 	Keep machine.Duration `json:"keep,omitzero"`
-	// Ask is the ask its definition names, for what it starts.
-	Ask *machine.JobSpec `json:"ask,omitzero"`
+	// Hooks are the hooks its definition names, for what it starts.
+	Hooks map[string]*machine.HookSpec `json:"hooks,omitzero"`
 	// Recorded is what the instance read at its first step of the machine
 	// recorded at each location its definition calls in full, by location.
 	Recorded map[string]machine.Recorded `json:"recorded,omitzero"`
@@ -199,13 +199,14 @@ type Above struct {
 	// Layers are the permissions that narrow it: the start's own list, and
 	// the job of each parent that led to it.
 	Layers []permission.Layer `json:"layers,omitzero"`
-	// Approve are the lists, from the machines above, of permissions a job
-	// may use only after a yes.
+	// Approve are the lists, from the machines above, of permissions that
+	// mark a job for approval.
 	Approve []string `json:"approve,omitzero"`
-	// Ask is the nearest ask above, for a machine that has none of its own.
-	Ask *AskAbove `json:"ask,omitzero"`
-	// IsAsk says the instance is itself run as an ask.
-	IsAsk bool `json:"is_ask,omitzero"`
+	// Hooks are the hooks of each machine above that has some, the nearest
+	// first.
+	Hooks []HooksAbove `json:"hooks,omitzero"`
+	// IsHook says the instance is itself run as a hook.
+	IsHook bool `json:"is_hook,omitzero"`
 	// Made says a machine above it, or the instance itself, was made while
 	// running: its job gave a stored definition. The controller sets it when
 	// it starts a child, and a definition has no say in it.
@@ -248,14 +249,28 @@ type Heard struct {
 	Message string `json:"message"`
 }
 
-// AskAbove is an ask a machine takes from above: the ask as written, the
-// definition that declares it and the input its values are filled from. No
-// machine made while running declares one.
-type AskAbove struct {
-	Spec       *machine.JobSpec   `json:"spec"`
-	Definition blob.Ref           `json:"definition"`
-	Input      any                `json:"input,omitzero"`
-	Layers     []permission.Layer `json:"layers,omitzero"`
+// HooksAbove are the hooks a machine takes from one machine above: the
+// hooks as written, the definition that declares them, and the input and the
+// run their values are filled from.
+type HooksAbove struct {
+	Hooks      map[string]*machine.HookSpec `json:"hooks"`
+	Definition blob.Ref                     `json:"definition"`
+	Input      any                          `json:"input,omitzero"`
+	Layers     []permission.Layer           `json:"layers,omitzero"`
+	// Run, Key and Principal are what an expression reads of the instance
+	// that declares the hooks.
+	Run       string  `json:"run"`
+	Key       *string `json:"key,omitzero"`
+	Principal string  `json:"principal,omitzero"`
+}
+
+// A HookRef names one hook that is to run for a job: the machine that
+// declares it, -1 for the job's own and otherwise its place in the hooks
+// from above, and the hook's name there.
+type HookRef struct {
+	Level int    `json:"level"`
+	Name  string `json:"name"`
+	After bool   `json:"after,omitzero"`
 }
 
 // A Going is a job still going.
@@ -286,25 +301,25 @@ type Going struct {
 	// Wake is what the job's wake, for its due time or its next attempt,
 	// is called.
 	Wake string `json:"wake,omitzero"`
-	// Held says the job waits for the ask before it starts.
+	// Held says the job waits for the hooks before it, and has not started.
 	Held bool `json:"held,omitzero"`
-	// ForAsk lists the held jobs this job of the ask is deciding.
-	ForAsk []string `json:"for_ask,omitzero"`
+	// Hooks are the hooks still to run for the job: before it starts,
+	// while it is held, and after it, once it has ended.
+	Hooks []HookRef `json:"hooks,omitzero"`
+	// For is the job a hook's job runs for.
+	For string `json:"for,omitzero"`
+	// Outcome is how the job ended, kept while the hooks after it run.
+	Outcome *machine.Event `json:"outcome,omitzero"`
+	// Changed says a hook gave the job another input, and Given is the input
+	// it was first given, which the job has again when it restarts as a new
+	// job.
+	Changed bool `json:"changed,omitzero"`
+	Given   any  `json:"given,omitzero"`
 }
-
-// AskName is the name of the job that gives the yes when a job needs
-// approval. Nothing else in a definition may take it.
-const AskName = "ask"
 
 // Key is the name a job is kept under among those still going: its own
-// name, of which one is going at a time; or for a job of the ask, of which
-// several may be, its name with which time it was asked for.
-func (r *Going) Key() string {
-	if r.Name == AskName {
-		return machine.JobName(r.Name, r.Asked, 1)
-	}
-	return r.Name
-}
+// name, of which one is going at a time.
+func (r *Going) Key() string { return r.Name }
 
 // Full is the job's name with what tells it apart from the others its name
 // asked for.
@@ -337,7 +352,7 @@ const (
 	AskResult  = "result"  // write what became of a run a client called, beside the call's receipt
 	AskEnd     = "end"     // tell the parent the instance has ended
 	AskFail    = "fail"    // a job failed before anything was sent
-	AskHold    = "hold"    // a job is held for the ask
+	AskHold    = "hold"    // a job is held for the hooks before it
 	AskNote    = "note"    // something to be seen in the record
 	AskTell    = "tell"    // a note for the record of the run that started this one
 )

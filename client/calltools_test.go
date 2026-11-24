@@ -21,7 +21,7 @@ func orders(address string) map[string]string {
 			input: { question: any, team: string }
 			model: { name: test-model, service: anthropic, address: ADDRESS, secret: TEST_KEY }
 			prompt: ${input.question}
-			ask: toolkits/ask.js
+			hooks: { check: { before: toolkits/check.js, when: "${job.approve}" } }
 			toolkits:
 			  orders: { include: toolkits/orders.yaml }
 			  infra: { include: toolkits/infra.yaml }
@@ -44,10 +44,10 @@ func orders(address string) map[string]string {
 			  read_file: { call: gitlab/files/read, input: { project: group/orders } }
 			  change_file: { call: gitlab/commits/create, input: { project: "${input.team}" }, approve: true }
 		`,
-		"toolkits/ask.js": `
-			const fits = input.jobs.filter((j) => j.asked.toolkit === "orders" && j.asked.description === "Change one file." &&
-				j.asked.args.path === "a.txt" && !("project" in j.asked.args))
-			return { approved: fits.map((j) => j.name), note: "shown " + JSON.stringify(input.jobs.map((j) => j.asked)) }`,
+		"toolkits/check.js": `
+			const tool = input.job.tool
+			const fits = tool.toolkit === "orders" && tool.description === "Change one file." && tool.args.path === "a.txt" && !("project" in tool.args)
+			return { ok: fits, note: "read " + JSON.stringify(tool) }`,
 		"gitlab/files/read.yaml": `
 			flow: read
 			description: Read one file of a project.
@@ -79,8 +79,8 @@ func offeredTool(tools []any, name string) map[string]any {
 // A tool written call: <location> is offered with the description and the
 // input of the machine at the location, without the names it fixes. The
 // machine is given the fixed input with the model's arguments, and an
-// optional argument left out is absent. A call marked approve: true goes to
-// the agent's ask, which is shown the machine's description, the model's
+// optional argument left out is absent. A call marked approve: true waits for
+// the agent's hook, which reads the machine's description, the model's
 // arguments and the toolkit.
 func TestAgentToolCallsAMachineOfTheTree(t *testing.T) {
 	m := newModel(t,

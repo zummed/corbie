@@ -156,7 +156,7 @@ func tags(s *statechart.State) []string {
 }
 
 // chartMarks are a run's states, as the drawing marks them: a state the run
-// is in whose job is held for the ask is marked held.
+// is in whose job is held for a hook is marked held.
 type chartMarks struct {
 	run      *Run
 	now, was map[string]bool // in now, and in at any step

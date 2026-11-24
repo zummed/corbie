@@ -274,9 +274,6 @@ func secretsOf(d *machine.Draft) []string {
 		for _, job := range machine.Jobs(d.Definition) {
 			allow = append(allow, job.Job.Allow...)
 		}
-		if d.Definition.Ask != nil {
-			allow = append(allow, d.Definition.Ask.Allow...)
-		}
 		for _, name := range secret.Named(allow) {
 			all[name] = true
 		}

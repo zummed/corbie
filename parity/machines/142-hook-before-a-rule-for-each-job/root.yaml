@@ -1,0 +1,13 @@
+# The manual's approval example as a hook: the rule runs once before each job.
+flow: refunds
+hooks:
+  small: { before: { script: ./small.js } }
+
+stages:
+  refund:
+    each: [20, 900]
+    job:
+      script: ./refund.js
+      input: { amount: "${item}" }
+
+output: ${stages.refund.output}

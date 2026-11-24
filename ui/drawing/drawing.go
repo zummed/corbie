@@ -40,8 +40,8 @@ type Run struct {
 	// drawn as of: the latest.
 	Steps []Step
 	// Going are the jobs going after the latest step, and Held those of
-	// them held for the ask. A job is named as the definition names what
-	// asked for it, and the ask as `ask`.
+	// them held for a hook. A job is named as the definition names what
+	// asked for it, and a hook's job as HookJob names it.
 	Going, Held []string
 	// Children are the runs its jobs started, by the job's name.
 	Children map[string]Child
@@ -168,16 +168,25 @@ type Rule struct {
 }
 
 // An Agent is its model with its mark and the turn it is on, how many turns
-// it has, what it can call, its ask with the ask's mark, and where its file
-// writes the model.
+// it has, what it can call, its hooks, and where its file writes the model.
 type Agent struct {
 	Model, Mark string
 	ModelLine   string
 	Turn, Turns int
 	Toolkits    []Toolkit
-	Ask         *Card `json:",omitzero"`
-	AskMark     string
+	Hooks       []Hook
 }
+
+// A Hook is a hook's card with its mark. When says it has a condition.
+type Hook struct {
+	Card Card
+	When bool
+	Mark string
+}
+
+// HookJob is the name a run's marks give the jobs of a hook: one no job of
+// a definition has.
+func HookJob(hook string) string { return "hook " + hook }
 
 // A Toolkit is one group of what the model can call: a toolkit, or the
 // tools in no toolkit, which has no name. File is the file the toolkit is

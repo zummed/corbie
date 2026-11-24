@@ -86,10 +86,10 @@ test("drawing_run_is_marked_on_the_drawing", async () => {
   v = await draw("review-passed");
   equal(classes(card(v, "drafting")), "state done", "the state the run started in and left in its first step");
   v = await draw("helper-asking");
-  equal(["tell", "look", "idle"].map(n => classes(card(v, n))), ["state tool held", "state tool done", "state tool never"], "the tools of an agent waiting on its ask");
-  const ask = card(v, "ask");
-  equal([classes(ask), text(ask.querySelector("text.sub"))], ["state ask now", "flow: approval"], "the ask");
-  equal(all(v, 'a[href="/run/a-client/2"]').length, 1, "the links to the run the ask started");
+  equal(["tell", "look", "idle"].map(n => classes(card(v, n))), ["state tool held", "state tool done", "state tool never"], "the tools of an agent waiting on a hook");
+  const hook = card(v, "approval");
+  equal([classes(hook), text(hook.querySelector("text.sub"))], ["state hook when now", "flow: approval"], "the hook");
+  equal(all(v, 'a[href="/run/a-client/2"]').length, 1, "the links to the run the hook started");
   v = await draw("flow-cancelled");
   equal(classes(card(v, "b")), "state stage cancelled", "the stage running when its run was cancelled");
   v = await draw("librarian-failed");

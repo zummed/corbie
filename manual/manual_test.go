@@ -677,7 +677,7 @@ func Test_man_every_field_is_on_its_page(t *testing.T) {
 		d, _ := machine.Describe(kind)
 		for name, shape := range d.Shapes {
 			on := page
-			if name == "definition" || name == "limits" || name == "job" || name == "restart" || name == "address" || name == "call" || name == "sent" {
+			if name == "definition" || name == "limits" || name == "job" || name == "restart" || name == "address" || name == "call" || name == "sent" || name == "hook" {
 				on = shared
 			}
 			for _, f := range shape.Fields {

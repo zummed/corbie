@@ -1,0 +1,25 @@
+{
+  "status": "done",
+  "record": [
+    {
+      "machine": "reader",
+      "emit": {
+        "job": "turn#2",
+        "name": "log",
+        "data": {
+          "<contains>": "Contact (an address) about order 7."
+        }
+      }
+    },
+    {
+      "machine": "reader",
+      "emit": {
+        "job": "turn#2",
+        "name": "log",
+        "data": {
+          "<contains>": "the hook mask refused it: the page gives instructions"
+        }
+      }
+    }
+  ]
+}

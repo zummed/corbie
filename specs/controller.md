@@ -30,7 +30,7 @@ A controller stopped at any point leaves the same messages and wakes waiting. Th
 
 A step may ask for more than one pass can carry out, such as a thousand jobs on a host that gives a pass a few seconds. The controller notes in the record how far it has got, a batch at a time, and the next pass goes on from there.
 
-Some steps are the controller's own and the machine is not consulted: an attempt failed and another is due, a job is being held for approval, a result did not come in time, the run was cancelled or its timeout passed, a step of a machine made while running passed a limit. They are written in the record like any step, so the record shows them and nothing about an instance is remembered anywhere else.
+Some steps are the controller's own and the machine is not consulted: an attempt failed and another is due, a job is being held for a hook, a hook's job has ended, a result did not come in time, the run was cancelled or its timeout passed, a step of a machine made while running passed a limit. They are written in the record like any step, so the record shows them and nothing about an instance is remembered anywhere else.
 
 When a machine's last step both sends events and ends the machine, the events are sent first, so a parent sees a child's last words before its result.
 
@@ -40,7 +40,7 @@ Two kinds of step are taken in a process of their own: every step of a machine m
 
 ## A machine made while running
 
-A machine is made while running when the job that starts it gave a stored definition by an expression, as `machine: ${…}` does. Everything below it is made while running too, in place or by name, however deep. A machine run as an ask for it is not, since the ask it goes to was written by a machine not made while running, unless that ask itself gave a stored definition. The controller notes this in the record when it starts the child, and nothing a definition says changes it.
+A machine is made while running when the job that starts it gave a stored definition by an expression, as `machine: ${…}` does. Everything below it is made while running too, in place or by name, however deep. A machine run as a hook for one of its jobs is not, since the hook was written by a machine not made while running, unless that hook itself gave a stored definition. The controller notes this in the record when it starts the child, and nothing a definition says changes it.
 
 A step of such a machine reads its definition in a process of its own, with a limit on its memory and its time, and a step that passes either fails that machine and nothing else.
 
@@ -65,11 +65,10 @@ A bug in what the process runs gives a made definition that process, so its answ
 ```
 
 - A made machine's `keep` is no longer than its parent's, and its time limit no longer than the job that starts it allows.
-- Whether a job is held is worked out by the controller, from the lists above the machine.
-- Where a made machine's held jobs go is under Words from outside (see Machines). Nothing a made machine wrote of an ask is kept, so a process that skips the check of its `ask:` gains nothing.
-- Every ask is an owner's words, and the controller fills it in from the input of the machine that declares it, in its own process. No process fills in an ask, and an answer cannot name one.
+- Whether a job is marked for approval, and which hooks run for it, is worked out by the controller, from the lists and the hooks above the machine.
+- Which hooks run for a made machine's jobs is under Words from outside (see Machines). Nothing a made machine wrote of a hook is kept, so a process that skips the check of its `hooks:` gains nothing, and its jobs give hooks no `meta`.
+- Every hook is an owner's words, and the controller fills it in from the input of the machine that declares it and from the job, in its own process. No process fills in a hook, and an answer cannot name one.
 - A name in an answer goes into names in the store, so it is one a definition could hold, of at most 100 characters. Any other fails the machine.
-- A job named `ask` in an answer fails the machine too.
 - The controller knows which machines are made while running from its own record, and fails one whose answer sends to an address or calls.
 
 An answer is data of at most 4 MiB, nested at most 1000 deep, of at most 1024 sends, and with the state it adds to at most 4 MiB. Past any of these the machine fails, since a step is read on every later pass. The controller compiles and evaluates none of it, and no step an answer leads to can end the controller or stop its passes.
@@ -83,7 +82,7 @@ A controller that stops ends the step's process too, and leaves the note. A pass
 A `list:` job gives shapes from outside the definition, which the agent's steps compile and check values against. So every step after the agent's first is taken as a made machine's is, with the same limits and the same bounds on its answer. Its first step holds nothing from outside, and is taken in the controller.
 
 - The controller notes this in the state at the first step, from the definition read as plain JSON. An answer has no say in it.
-- The agent stays the owner's: nothing narrows it, and its ask is its definition's. An answer cannot name an ask, as no answer can.
+- The agent stays the owner's: nothing narrows it, and its hooks are its definition's. An answer cannot name a hook, as no answer can.
 - A step takes about 16 ms where it took 5 ms, with 20 listed tools, and one more write to the store.
 - The step's whole time and 5 seconds must fit in what the host leaves of a call, so a host whose calls are shorter than 15 seconds fails such an agent and says so.
 
@@ -114,7 +113,7 @@ Some things are the same whatever the machine's type, and the controller does th
 - **Time.** It keeps timers and delivers them, and ends a machine whose timeout has passed. That machine fails as out of time and everything below it is cancelled.
 - **Tickets.** It makes tickets and takes their answers.
 - **Limits.** It counts depth and jobs against their limits, and a keyed or transient location's running runs against `limits: { runs }`.
-- **Approval.** It holds the jobs that need approval, starts each ask once for the jobs of a step that go to it, and releases or refuses them when the ask has ended.
+- **Hooks.** It holds a job while the hooks before it run, each once for the job, and starts or refuses it as they end. It keeps a job's outcome while the hooks after it run, and then gives the machine the outcome.
 
 ## Trees and locations
 
@@ -178,7 +177,7 @@ The controller carries out a set or a remove only where the client may set there
 | `transient` (default) | at a call, at a send to `{ at }` with the event's data as input, or at `corbie run start <location>` from the tree's client |
 
 - Every run keeps the definition it started with, in its own record.
-- A run's authority comes from its location: its file's `allow:` and `ask:`, its tree client's ceiling, and the secrets and values set at its location or above (see permission.md).
+- A run's authority comes from its location: its file's `allow:` and `hooks:`, its tree client's ceiling, and the secrets and values set at its location or above (see permission.md).
 - The controller reads the values at a run's first step and keeps them in its record.
 - At the same step it reads the machine recorded at each location an agent's tool calls in full: its description, the shape of its input, its type and its lifetime, given only where a call from the run would pass, and otherwise the refusal a call would get. It keeps what it read in the run's record (see Agent). A machine made while running reads none.
 - A child started by `machine:` runs at its parent's location.
@@ -237,7 +236,7 @@ job:
 
 - The caller's record names the run it called, and that run's head names the caller's step as its cause.
 - A call is checked against a `receive:` list. A mapping names events, and takes a call only from the tree's client.
-- A called run's held jobs go only to its own file's `ask:`, and are denied when it has none.
+- A called run takes only its own file's hooks, and its marked jobs are denied when it has no `before` hook for them.
 
 ## Keyed runs
 

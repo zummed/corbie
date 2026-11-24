@@ -410,7 +410,6 @@ func TestChartsRefused(t *testing.T) {
 	refused(t, head+"initial: a\nstates:\n\ta: { entry: { send: { to: sibling, event: x } } }\n", "is not the parent or a child")
 	refused(t, head+"initial: a\nstates:\n\ta: { job: ./w.js, entry: { send: { to: a, event: x } } }\n", "runs a script")
 	refused(t, head+"initial: a\nstates:\n\ta: { job: { machine: { statechart: kid, states: { k: { end: done } } } }, exit: { send: { to: a, event: bye } } }\n", "on leaving a state cannot go to that state's own child")
-	refused(t, head+"initial: ask\nstates:\n\task: { end: done }\n", "taken by the definition's ask")
 	refused(t, head+"initial: a\nstates:\n\ta: { on: { next: { go: a, when: '${nothing.here}' } } }\n", `reads "nothing"`)
 	refused(t, head+"initial: a\nstates:\n\ta: { end: finished }\n", "ends as done or as failed")
 	refused(t, head+"initial: a\nstates:\n\ta: { end: done, on: { x: a } }\n", "a final state only ends")

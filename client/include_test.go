@@ -62,7 +62,7 @@ func TestIncludeWorksInEveryMapping(t *testing.T) {
 
 // Everything a job names is read from the directory of the file it is written
 // in: a script, its files, a machine, a machine written in place and what it
-// names, a job written as a path, an ask, a list and a turn.
+// names, a job written as a path, a hook, a list and a turn.
 func TestIncludedPathsAreReadFromTheFilesDirectory(t *testing.T) {
 	d := draft(t, `
 		agent: a
@@ -72,7 +72,7 @@ func TestIncludedPathsAreReadFromTheFilesDirectory(t *testing.T) {
 		"kit/base.yaml": `
 			model: { name: m, service: anthropic, address: "http://127.0.0.1:1", secret: KEY }
 			prompt: hi
-			ask: ./ask.js
+			hooks: { check: { before: ./ask.js } }
 			turn: ./turn.js
 		`,
 		"kit/tools.yaml": `

@@ -464,19 +464,19 @@ func Test_ctl_a_restart_after_a_failure_is_the_same_job(t *testing.T) {
 	}
 }
 
-// A yes covers a job until it ends well: a failure is not asked about again, and
-// a job that ended well is.
+// A yes covers a job until it ends well: the hooks before it do not run again
+// after a failure, and do after it ended well.
 func Test_ctl_a_restart_is_held_only_after_a_job_ended_well(t *testing.T) {
 	l := local(t)
 	askFile := `flow: ask
 stages:
-  yes: { job: { script: ./yes.js, input: { jobs: "${input.jobs}" } } }
+  yes: { job: ./yes.js }
 output: ${stages.yes.output}
 `
-	yes := `return { approved: input.jobs.map((j) => j.name) }`
+	yes := `return { ok: true }`
 	failing := run(t, l, `
 		flow: held
-		ask: { machine: ./ask.yaml }
+		hooks: { ask: { before: { machine: ./ask.yaml } } }
 		stages:
 		  flaky:
 		    job: { script: ./flaky.js, approve: true, restart: { limit: 2, delay: 1ms } }
@@ -485,11 +485,11 @@ output: ${stages.yes.output}
 		t.Fatalf("the run ended %s: %s", failing.Status, failing.Error)
 	}
 	if got := countAsks(t, l, failing.ID); got != 1 {
-		t.Fatalf("a failure was asked about again: %d asks", got)
+		t.Fatalf("the hook ran again after a failure: %d runs", got)
 	}
 	well := run(t, l, `
 		flow: held
-		ask: { machine: ./ask.yaml }
+		hooks: { ask: { before: { machine: ./ask.yaml } } }
 		stages:
 		  count:
 		    job: { script: ./one.js, approve: true, restart: { after: always, limit: 2, delay: 1ms } }
@@ -498,11 +498,11 @@ output: ${stages.yes.output}
 		t.Fatalf("the run ended %s: %s", well.Status, well.Error)
 	}
 	if got := countAsks(t, l, well.ID); got != 3 {
-		t.Fatalf("a job that ended well was asked about %d times", got)
+		t.Fatalf("for a job that ended well the hook ran %d times", got)
 	}
 }
 
-// countAsks gives how many times a run's ask was started.
+// countAsks gives how many times a run's hook, the machine ask, was started.
 func countAsks(t *testing.T, l *client.Local, id string) int {
 	t.Helper()
 	runs, err := l.List(ctx, client.Filter{Finished: true, Parent: id})
@@ -564,17 +564,17 @@ func Test_ctl_a_cancelled_job_is_not_restarted(t *testing.T) {
 	}
 }
 
-// An ask that ends well is final, whatever its policy says, so a job held for it
-// is not left waiting.
-func Test_ctl_an_ask_ends_when_it_ends_well(t *testing.T) {
+// A hook's job that ends well is final, whatever its policy says, so a job
+// held for it is not left waiting.
+func Test_ctl_a_hooks_job_ends_when_it_ends_well(t *testing.T) {
 	l := local(t)
 	r := run(t, l, `
 		flow: asked
-		ask: { script: ./yes.js, restart: { after: always, delay: 1ms } }
+		hooks: { yes: { before: { script: ./yes.js, restart: { after: always, delay: 1ms } } } }
 		stages:
 		  held: { job: { script: ./one.js, approve: true } }
 		output: ${stages.held.output}
-	`, map[string]string{"yes.js": `return { approved: input.jobs.map((j) => j.name) }`, "one.js": "return 1"}, nil)
+	`, map[string]string{"yes.js": `return { ok: true }`, "one.js": "return 1"}, nil)
 	if r.Status != "done" || r.Output != 1.0 {
 		t.Fatalf("the run ended %s with %v: %s", r.Status, r.Output, r.Error)
 	}

@@ -934,7 +934,7 @@ func Test_ctl_keyed_root_outlives_its_sender(t *testing.T) {
 		statechart: keeper
 		lifetime: keyed
 		update: drain
-		ask: ./ok.js
+		hooks: { ok: { before: ./ok.js, when: "${job.approve}" } }
 		initial: open
 		states:
 		  open: { on: { go: reading } }
@@ -953,7 +953,7 @@ func Test_ctl_keyed_root_outlives_its_sender(t *testing.T) {
 		      go: { go: gone, send: { to: { at: keeper, key: k }, event: hello, data: { doc: "${input.doc}" } } }
 		  gone: { end: done }
 	`
-	scripts := map[string]string{"read.js": "return input", "ok.js": "return { approved: input.jobs.map(j => j.name) }"}
+	scripts := map[string]string{"read.js": "return input", "ok.js": "return { ok: true }"}
 	tree := func() *client.Tree {
 		return w.tree("/k", "/srv/k", map[string]string{"/k/keeper": keeper, "/k/sender": sender}, scripts)
 	}
@@ -970,8 +970,8 @@ func Test_ctl_keyed_root_outlives_its_sender(t *testing.T) {
 	}
 	run := runs[0]
 	st := w.latest(run).State
-	if st.Definition.Instance() != run || st.Keep != machine.DefaultKeep || st.Above.Ask != nil {
-		t.Fatalf("the run's definition is in the record of %s, it is kept %s, and the ask above is %+v", st.Definition.Instance(), st.Keep, st.Above.Ask)
+	if st.Definition.Instance() != run || st.Keep != machine.DefaultKeep || st.Above.Hooks != nil {
+		t.Fatalf("the run's definition is in the record of %s, it is kept %s, and the hooks above are %+v", st.Definition.Instance(), st.Keep, st.Above.Hooks)
 	}
 
 	// The sender goes, record and all, and its file is submitted again.
@@ -988,12 +988,12 @@ func Test_ctl_keyed_root_outlives_its_sender(t *testing.T) {
 	w.settle()
 	var job *instance.Job
 	for _, msg := range w.inboxOf(r1) {
-		if msg.Job != nil && msg.Job.Instance == run && strings.HasPrefix(msg.Job.Name, instance.AskName) {
+		if msg.Job != nil && msg.Job.Instance == run && msg.Job.Name == "reading.ok" {
 			job = msg.Job
 		}
 	}
 	if job == nil || job.Script.Instance() != run {
-		t.Fatalf("its own ask was not sent: %+v", w.latest(run).Asks)
+		t.Fatalf("its own hook's job was not sent: %+v", w.latest(run).Asks)
 	}
 	in, _ := w.latest(run).State.Input.(map[string]any)
 	ref, ok := blob.AsRef(in["doc"])
@@ -1212,8 +1212,8 @@ func Test_ctl_keyed_runs_of_one_sender_share_no_ticket(t *testing.T) {
 }
 
 // A run a send starts takes nothing from its sender: no layer, no label, no
-// ask, and the values of its own location. Its held job goes to its own ask,
-// and with none it is denied.
+// hook, and the values of its own location. Its marked job waits for its own
+// file's hooks, and with none it is denied.
 func Test_ctl_sent_root_takes_nothing_from_its_sender(t *testing.T) {
 	w := newWorld(t)
 	w.newRunner()
@@ -1238,18 +1238,18 @@ func Test_ctl_sent_root_takes_nothing_from_its_sender(t *testing.T) {
 	run := w.runsOf("talk")[0]
 	st := w.latest(run).State
 	if len(st.Above.Layers) != 0 || len(st.Labels) != 0 || st.Above.Made || st.Above.Parent != "" || st.Above.Cause.Run != from ||
-		st.Above.Ask != nil || st.Above.Values["WHERE"] != "room" {
+		st.Above.Hooks != nil || st.Above.Values["WHERE"] != "room" {
 		t.Fatalf("it runs under %+v with labels %v", st.Above, st.Labels)
 	}
-	failed := st.Error != nil && strings.Contains(st.Error.Error, "no ask applies")
+	failed := st.Error != nil && strings.Contains(st.Error.Error, "no hook runs before it")
 	for _, step := range w.steps(run) {
 		for _, e := range step.Events {
-			if e.Name == machine.Failed && strings.Contains(fmt.Sprint(e.Data), "no ask applies") {
+			if e.Name == machine.Failed && strings.Contains(fmt.Sprint(e.Data), "no hook runs before it") {
 				failed = true
 			}
 		}
 		for _, ask := range step.Asks {
-			if ask.Kind == instance.AskFail && strings.Contains(ask.Error.Error, "no ask applies") {
+			if ask.Kind == instance.AskFail && strings.Contains(ask.Error.Error, "no hook runs before it") {
 				failed = true
 			}
 		}

@@ -44,7 +44,7 @@ type Parser struct {
 
 // Parse reads a written definition, fills it out, and checks it. load gives
 // the contents of a file the definition names, by its path. A definition
-// that holds a job for approval and has no ask for it to go to is refused.
+// that marks a job for approval and has no hook before a job is refused.
 func Parse(src []byte, load func(path string) ([]byte, error)) (*Draft, error) {
 	return parse(src, "", load, nil, true, false)
 }
@@ -55,9 +55,9 @@ func ParseIn(file string, src []byte, load func(path string) ([]byte, error)) (*
 	return parse(src, file, load, nil, true, false)
 }
 
-// ParseAt is ParseIn for a file at a location in a tree. Whether its
-// approvals have an ask to go to is settled when a run starts there: the
-// file may run only as another machine's child, under that machine's ask.
+// ParseAt is ParseIn for a file at a location in a tree. Whether its marked
+// jobs have a hook before them is settled when a run starts there: the file
+// may run only as another machine's child, under that machine's hooks.
 // located says whether a file of the context, by its path from it, is a
 // machine at a location of the tree; it is nil for a file read alone, as a
 // tree of its own.
@@ -66,14 +66,14 @@ func ParseAt(file string, src []byte, load func(path string) ([]byte, error), lo
 }
 
 // ParseMade is Parse for a definition made while a machine runs. Whether
-// its approvals have an ask to go to is left open: that is settled by what
-// is above it when a job is held.
+// its marked jobs have a hook before them is left open: that is settled by
+// what is above it when a job is asked for.
 func ParseMade(src []byte, load func(path string) ([]byte, error)) (*Draft, error) {
 	return parse(src, "", load, nil, false, true)
 }
 
-// parse reads a definition. root says one whose approvals have no ask to go
-// to is refused, and made that it was made while a machine runs.
+// parse reads a definition. root says one whose marked jobs have no hook
+// before them is refused, and made that it was made while a machine runs.
 func parse(src []byte, file string, load func(path string) ([]byte, error), located func(string) bool, root, made bool) (*Draft, error) {
 	p := &Parser{load: load, dir: path.Dir(file), top: file, source: file, noted: map[Problem]bool{}, includes: new(int), reads: map[string]*read{}, located: located, made: made}
 	if file == "" {
@@ -81,9 +81,9 @@ func parse(src []byte, file string, load func(path string) ([]byte, error), loca
 	} else {
 		p.chain = []string{file}
 	}
-	draft, needsAsk := p.parse(src, "")
-	if draft != nil && needsAsk && root {
-		p.Problem("", "a job is marked for approval, or a permission is listed in approve:, and there is no ask for it to go to: give the definition an ask")
+	draft, needsHook := p.parse(src, "")
+	if draft != nil && needsHook && root {
+		p.Problem("", "a job is marked for approval, or a permission is listed in approve:, and no hook runs before it: give the definition a hook with before:")
 	}
 	if len(p.problems) > 0 {
 		return nil, p.problems
@@ -119,9 +119,10 @@ func (p *Parser) note(problem Problem) {
 	}
 }
 
-// parse reads one written definition. needsAsk says whether it, or a child
-// that takes its ask from it, holds a job for approval with no ask to go to.
-func (p *Parser) parse(src []byte, place string) (draft *Draft, needsAsk bool) {
+// parse reads one written definition. needsHook says whether it, or a child
+// that takes its hooks from it, marks a job for approval with no hook before
+// a job.
+func (p *Parser) parse(src []byte, place string) (draft *Draft, needsHook bool) {
 	n, err := readYAML(src, p.source, p.noMachine())
 	if err != nil {
 		p.Problem(place, "%v", err)
@@ -147,7 +148,7 @@ func (p *Parser) parse(src []byte, place string) (draft *Draft, needsAsk bool) {
 }
 
 // fill fills out one definition of a type, read into plain values.
-func (p *Parser) fill(written map[string]any, t Type, place string) (draft *Draft, needsAsk bool) {
+func (p *Parser) fill(written map[string]any, t Type, place string) (draft *Draft, needsHook bool) {
 	outer := p.draft
 	p.draft = &Draft{Definition: &Definition{Type: t.Name(), Scripts: map[string]blob.Ref{}, Machines: map[string]blob.Ref{}},
 		Files: map[string][]byte{}, Children: map[string]*Draft{}}
@@ -182,9 +183,27 @@ func (p *Parser) fill(written map[string]any, t Type, place string) (draft *Draf
 		def.Approve = f.Strings("approve")
 	}
 	def.Description = f.Text("description")
-	if ask, ok := f.Value("ask"); ok {
-		def.Ask = p.Job("ask", ask)
-		p.draft.ask = def.Ask.Machine
+	hooks, names := f.Map("hooks")
+	for _, name := range names {
+		place := "hooks." + name
+		hf := p.Fields(place, hooks[name], hookShape)
+		if hf == nil {
+			continue
+		}
+		h := &HookSpec{When: hf.Cond("when")}
+		if v, ok := hf.Value("before"); ok {
+			h.Before = p.Job(place+".before", v)
+			p.hookMachine(h.Before)
+		}
+		if v, ok := hf.Value("after"); ok {
+			h.After = p.Job(place+".after", v)
+			p.hookMachine(h.After)
+		}
+		hf.Done()
+		if def.Hooks == nil {
+			def.Hooks = map[string]*HookSpec{}
+		}
+		def.Hooks[name] = h
 	}
 	def.Title = f.Text("title")
 	def.Meta, _ = f.Value("meta")
@@ -222,19 +241,31 @@ func (p *Parser) fill(written map[string]any, t Type, place string) (draft *Draf
 	for _, problem := range problems {
 		p.Problem(problem.Place, "%s", problem.Text)
 	}
-	// A child with no ask of its own takes its parent's. A machine run as
-	// an ask takes none from above it.
-	for name, child := range p.draft.Children {
-		if name != "" && name == p.draft.ask {
-			if child.needsAsk {
-				p.Problem("ask", "the machine run as the ask marks a job for approval, or lists permissions in approve:, and has no ask of its own: a machine run as an ask takes no ask from above it")
+	// A child takes its parent's hooks. A machine run as a hook takes none
+	// from above it.
+	for _, name := range sortedKeys(p.draft.Children) {
+		child := p.draft.Children[name]
+		if p.draft.hooks[name] {
+			if child.needsHook {
+				p.Problem("hooks", "a machine run as a hook marks a job for approval, or lists permissions in approve:, and has no hook before a job: a machine run as a hook takes no hook from above it")
 			}
 			continue
 		}
-		approves = approves || child.needsAsk
+		approves = approves || child.needsHook
 	}
-	p.draft.needsAsk = approves && def.Ask == nil
-	return p.draft, p.draft.needsAsk
+	p.draft.needsHook = approves && !HasBefore(def.Hooks)
+	return p.draft, p.draft.needsHook
+}
+
+// hookMachine notes the machine a hook runs, which takes no hook from above.
+func (p *Parser) hookMachine(job *JobSpec) {
+	if job.Machine == "" {
+		return
+	}
+	if p.draft.hooks == nil {
+		p.draft.hooks = map[string]bool{}
+	}
+	p.draft.hooks[job.Machine] = true
 }
 
 // location reads what a file says of the runs at its location. A machine
@@ -369,6 +400,7 @@ func (p *Parser) Job(place string, written any) *JobSpec {
 	s.Restart = p.restart(f.at("restart"), f.Fields("restart"))
 	s.Memory = f.Size("memory")
 	s.Tags = f.Strings("tags")
+	s.Meta, _ = f.Value("meta")
 	if _, isList := f.m["approve"].([]any); isList {
 		f.take("approve", KindFlag)
 		p.Problem(f.at("approve"), "in a job, this is true or false; the permissions a job may use only after a yes are listed in approve: at the top of the definition")

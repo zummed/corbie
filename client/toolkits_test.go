@@ -196,21 +196,22 @@ func TestAgentToolkitToolNamesAreTheirOwn(t *testing.T) {
 	}
 }
 
-// A toolkit marked approve: true holds its open for the ask, which is shown
-// the toolkit's name and what it is for, and the ask for a call of a toolkit's
-// tool is shown the toolkit's name. An open not approved goes back to the
-// model as denied, with the ask's note, and opens nothing.
-func TestAgentToolkitOpenWaitsForTheAsk(t *testing.T) {
+// A toolkit marked approve: true marks its open for approval. A hook reads
+// the toolkit's name and what it is for, and for a call of a toolkit's tool
+// the toolkit's name. An open a hook refuses goes back to the model as
+// denied, with the hook's note, and opens nothing.
+func TestAgentToolkitOpenWaitsForAHook(t *testing.T) {
 	def := strings.Replace(helper("ADDR", ""), "net: { include: toolkits/net/net.yaml }", "net: { include: toolkits/net/net.yaml, approve: true }", 1)
-	def = strings.Replace(def, "\t\ttools:\n", "\t\task: ./ask.js\n\t\ttools:\n", 1)
+	def = strings.Replace(def, "\t\ttools:\n", "\t\thooks: { check: { before: ./ask.js, when: \"${job.approve}\" } }\n\t\ttools:\n", 1)
 	files := map[string]string{}
 	for k, v := range toolkits {
 		files[k] = v
 	}
 	files["toolkits/payments/payments.yaml"] = strings.Replace(toolkits["toolkits/payments/payments.yaml"], `input: { to: "${args.to}" } }`, `input: { to: "${args.to}" }, approve: true }`, 1)
 	files["ask.js"] = `
-		const fits = input.jobs.filter((j) => j.name === "open" ? j.asked.toolkit === "net" && j.asked.description === "The firewall and the switch." : j.asked.toolkit === "payments")
-		return { approved: fits.map((j) => j.name), note: "the ask was shown " + JSON.stringify(input.jobs.map((j) => j.asked)) }`
+		const tool = input.job.tool
+		const fits = input.job.name === "open" ? tool.toolkit === "net" && tool.description === "The firewall and the switch." : tool.toolkit === "payments"
+		return { ok: fits, note: "the hook read " + JSON.stringify(tool) }`
 	m := newModel(t, calls("c1", "open", `{"toolkit": "net"}`), calls("c2", "open", `{"toolkit": "payments"}`), calls("c3", "pay", `{"to": "me"}`), says("done"))
 	l := local(t, "all")
 	setSecret(t, l, "TEST_KEY", "sk-test-key")
@@ -227,8 +228,8 @@ func TestAgentToolkitOpenWaitsForTheAsk(t *testing.T) {
 			t.Errorf("turn %d was shown: %s", i+2, shown)
 		}
 	}
-	// An ask that approves nothing leaves the toolkit closed.
-	files["ask.js"] = `return { approved: [], note: "not today" }`
+	// A hook that says no leaves the toolkit closed.
+	files["ask.js"] = `return { ok: false, note: "not today" }`
 	m = newModel(t, calls("c1", "open", `{"toolkit": "net"}`), says("done"))
 	setSecret(t, l, "TEST_KEY", "sk-test-key")
 	id, err = l.Run(ctx, draft(t, strings.Replace(def, "ADDR", m.URL, 1), files), client.Start{
@@ -241,23 +242,23 @@ func TestAgentToolkitOpenWaitsForTheAsk(t *testing.T) {
 		t.Errorf("the agent ended %s, and the open was shown as: %s", r.Status, shown)
 	}
 	if got := offeredNames(m.Calls[1].Tools); strings.Contains(got, "show") {
-		t.Errorf("an open not approved opened the toolkit: %s", got)
+		t.Errorf("an open a hook refused opened the toolkit: %s", got)
 	}
-	// A toolkit marked for approval needs an ask.
-	if _, err := machineParse(strings.Replace(strings.Replace(def, "\t\task: ./ask.js\n", "", 1), "ADDR", "http://127.0.0.1:1", 1), toolkits); err == nil ||
-		!strings.Contains(err.Error(), "there is no ask for it to go to") {
-		t.Errorf("a toolkit marked for approval with no ask: %v", err)
+	// A toolkit marked for approval needs a hook before its open.
+	if _, err := machineParse(strings.Replace(strings.Replace(def, "\t\thooks: { check: { before: ./ask.js, when: \"${job.approve}\" } }\n", "", 1), "ADDR", "http://127.0.0.1:1", 1), toolkits); err == nil ||
+		!strings.Contains(err.Error(), "no hook runs before it") {
+		t.Errorf("a toolkit marked for approval with no hook: %v", err)
 	}
 }
 
-// A toolkit has no ask: one that writes ask: is refused, saying where its
-// held jobs go.
-func TestAgentToolkitHasNoAsk(t *testing.T) {
+// A toolkit has no hooks: one that writes hooks: is refused, saying where
+// the hooks for its tools are written.
+func TestAgentToolkitHasNoHooks(t *testing.T) {
 	files := maps.Clone(toolkits)
-	files["toolkits/net/net.yaml"] = strings.Replace(toolkits["toolkits/net/net.yaml"], "tools:\n", "ask: ./ask.js\n\t\ttools:\n", 1)
+	files["toolkits/net/net.yaml"] = strings.Replace(toolkits["toolkits/net/net.yaml"], "tools:\n", "hooks: { check: { before: ./ask.js } }\n\t\ttools:\n", 1)
 	_, err := machineParse(helper("http://127.0.0.1:1", ""), files)
-	if err == nil || !strings.Contains(err.Error(), "toolkits.net.ask: a toolkit has no ask: its held jobs go to the agent's ask") {
-		t.Errorf("a toolkit with an ask: %v", err)
+	if err == nil || !strings.Contains(err.Error(), "toolkits.net.hooks: a toolkit has no hooks: the agent's hooks run for its tools' jobs") {
+		t.Errorf("a toolkit with hooks: %v", err)
 	}
 }
 
@@ -432,13 +433,13 @@ func TestAgentOpenGivesTheInstructions(t *testing.T) {
 		}
 	}
 	// A toolkit marked for approval stays closed, and its open waits for the
-	// ask again.
-	asked := strings.Replace(helper("ADDR", "conversation: ${input.so}\n\t\task: ./ask.js"), "net: { include: toolkits/net/net.yaml }", "net: { include: toolkits/net/net.yaml, approve: true }", 1)
-	files["ask.js"] = `return { approved: input.jobs.map((j) => j.name) }`
+	// hook again.
+	asked := strings.Replace(helper("ADDR", "conversation: ${input.so}\n\t\thooks: { check: { before: ./ask.js, when: \"${job.approve}\" } }"), "net: { include: toolkits/net/net.yaml }", "net: { include: toolkits/net/net.yaml, approve: true }", 1)
+	files["ask.js"] = `return { ok: true }`
 	m3 := newModel(t, calls("c3", "open", `{"toolkit": "net"}`), says("again"))
 	f := follow(t, l, startWith(t, l, strings.Replace(asked, "ADDR", m3.URL, 1), files, map[string]any{"question": "Bo", "so": carried(conversation, r.ID)}))
-	if got := strings.Join(f.held, " ") + " / " + strings.Join(f.asks, " "); got != "open / ask" {
-		t.Errorf("with net marked for approval, the jobs held, and the asks: %s", got)
+	if got := strings.Join(f.held, " ") + " / " + strings.Join(f.asks, " "); got != "open / open.check" {
+		t.Errorf("with net marked for approval, the jobs held, and the hooks' jobs: %s", got)
 	}
 	if got := offeredNames(m3.Calls[0].Tools); strings.Contains(got, "show") || !strings.Contains(openDescription(m3.Calls[0].Tools), "- net:") {
 		t.Errorf("with net marked for approval, the run that carried on was offered: %s", got)
@@ -459,7 +460,7 @@ func Test_agent_conversation_opens_only_what_open_would(t *testing.T) {
 		m := newModel(t, says("done"))
 		so := map[string]any{"turns": []any{}, "blobs": map[string]any{}, "opened": opened}
 		files := maps.Clone(toolkits)
-		files["ask.js"] = `return { approved: [] }`
+		files["ask.js"] = `return { ok: false }`
 		r := wait(t, l, startWith(t, l, strings.Replace(def, "ADDR", m.URL, 1), files, map[string]any{"question": "q", "so": so}))
 		if r.Status != "done" {
 			t.Fatalf("the agent ended %s: %s", r.Status, r.Error)
@@ -480,7 +481,7 @@ func Test_agent_conversation_opens_only_what_open_would(t *testing.T) {
 	if got := offeredNames(call.Tools); strings.Contains(got, "pay") || strings.Contains(openDescription(call.Tools), "payments") {
 		t.Errorf("with payments not offered, the first turn was offered: %s", got)
 	}
-	held := strings.Replace(strings.Replace(def, "net: { include: toolkits/net/net.yaml }", "net: { include: toolkits/net/net.yaml, approve: true }", 1), "\t\ttools:\n", "\t\task: ./ask.js\n\t\ttools:\n", 1)
+	held := strings.Replace(strings.Replace(def, "net: { include: toolkits/net/net.yaml }", "net: { include: toolkits/net/net.yaml, approve: true }", 1), "\t\ttools:\n", "\t\thooks: { check: { before: ./ask.js, when: \"${job.approve}\" } }\n\t\ttools:\n", 1)
 	call = first(held, map[string]any{"net": net})
 	if got := offeredNames(call.Tools); strings.Contains(got, "show") || !strings.Contains(openDescription(call.Tools), "- net:") {
 		t.Errorf("with net marked for approval, the first turn was offered: %s", got)
@@ -491,18 +492,18 @@ func Test_agent_conversation_opens_only_what_open_would(t *testing.T) {
 	}
 }
 
-// asking gives the helper's ask, whose input is the value given, and its
+// asking gives the helper's hook, whose input is the value given, and its
 // files, with net's tool show marked for approval.
 func asking(askInput string) (extra string, files map[string]string) {
 	files = maps.Clone(toolkits)
 	files["toolkits/net/net.yaml"] = strings.Replace(toolkits["toolkits/net/net.yaml"], `input: { command: "${args.command}" } }`, `input: { command: "${args.command}" }, approve: true }`, 1)
-	files["ask.js"] = `return { approved: input.jobs.map((j) => j.name), note: "the agent's ask" }`
-	return "ask: { script: ./ask.js, input: " + askInput + " }", files
+	files["ask.js"] = `return { ok: true, note: "the agent's hook" }`
+	return "hooks: { check: { before: { script: ./ask.js, input: " + askInput + " }, when: \"${job.approve}\" } }", files
 }
 
-// The held jobs of one step start the ask once, though filling its values
-// in twice would give two different values.
-func Test_mach_one_run_of_the_ask_for_a_step(t *testing.T) {
+// A hook runs once for each job: two held calls of one turn start its job
+// twice, each named for the call and the hook.
+func Test_mach_a_hook_runs_once_for_each_job(t *testing.T) {
 	extra, files := asking(`{ r: "${Math.random()}" }`)
 	twice := llmstandin.Reply{Calls: []llmstandin.ToolCall{{ID: "c1", Name: "show", Args: `{"command": "a"}`}, {ID: "c2", Name: "show", Args: `{"command": "b"}`}}}
 	m := newModel(t, calls("c0", "open", `{"toolkit": "net"}`), twice, says("done"))
@@ -511,7 +512,7 @@ func Test_mach_one_run_of_the_ask_for_a_step(t *testing.T) {
 	var asks []string
 	r, err := l.Follow(ctx, id, 20*time.Millisecond, func(e client.Entry) {
 		for _, ask := range e.Asks {
-			if ask.Kind == "script" && strings.HasPrefix(ask.Name, "ask") {
+			if ask.Kind == "script" && strings.HasSuffix(ask.Name, ".check") {
 				asks = append(asks, ask.Name)
 			}
 		}
@@ -519,17 +520,17 @@ func Test_mach_one_run_of_the_ask_for_a_step(t *testing.T) {
 	if err != nil || r.Status != "done" {
 		t.Fatalf("the agent ended %+v, %v", r, err)
 	}
-	if got := strings.Join(asks, " "); got != "ask" {
-		t.Errorf("the asks were: %s", got)
+	if got := strings.Join(asks, " "); got != "show.check show.1.check" {
+		t.Errorf("the hook's jobs were: %s", got)
 	}
 	if shown := lastShown(m.Calls[2]); strings.Contains(shown, "denied") || !strings.Contains(shown, "shown: a") || !strings.Contains(shown, "shown: b") {
 		t.Errorf("the last turn was shown: %s", shown)
 	}
 }
 
-// An ask whose values cannot be filled in denies the jobs held for it, with
-// a note that names the fault, and the agent carries on.
-func TestAgentAskThatCannotBeFilledDenies(t *testing.T) {
+// A hook whose values cannot be filled in denies the job held for it, with a
+// note that names the fault, and the agent carries on.
+func TestAgentHookThatCannotBeFilledDenies(t *testing.T) {
 	extra, files := asking(`{ who: "${input.question.nothing.here}" }`)
 	m := newModel(t, calls("c0", "open", `{"toolkit": "net"}`), calls("c1", "show", `{"command": "a"}`), says("done"))
 	l := local(t, "all")
@@ -537,13 +538,13 @@ func TestAgentAskThatCannotBeFilledDenies(t *testing.T) {
 	if r.Status != "done" {
 		t.Fatalf("the agent ended %s: %s", r.Status, r.Error)
 	}
-	if shown := lastShown(m.Calls[2]); !strings.Contains(shown, "denied: the ask could not be started: ask.input") || strings.Contains(shown, "shown: a") {
+	if shown := lastShown(m.Calls[2]); !strings.Contains(shown, "denied: the hook check could not be started: hooks.check.before.input") || strings.Contains(shown, "shown: a") {
 		t.Errorf("the call was shown as: %s", shown)
 	}
 }
 
-// A tool's job in an agent made while running goes to the ask above the agent.
-func Test_agent_made_while_running_has_no_ask_of_its_own(t *testing.T) {
+// The hook above an agent made while running runs for the agent's marked tool.
+func Test_agent_made_while_running_takes_the_hooks_above_it(t *testing.T) {
 	m := newModel(t, calls("c1", "act", `{}`), says("done"))
 	made := strings.ReplaceAll(`agent: made
 model: { name: test-model, service: anthropic, address: "ADDRESS", secret: TEST_KEY }
@@ -553,13 +554,13 @@ tools:
 `, "ADDRESS", m.URL)
 	def := `
 		flow: top
-		ask: ./human.js
+		hooks: { human: { before: ./human.js, when: "${job.approve}" } }
 		stages:
 		  make: { job: ./make.js }
 		  go: { job: { machine: "${stages.make.output}", allow: [ all ] } }
 	`
 	files := map[string]string{
-		"human.js": `return { approved: [], note: "the owner's ask, for " + input.asking.machine }`,
+		"human.js": `return { ok: false, note: "the owner's hook, for " + input.job.run.machine }`,
 		"make.js": "return machines.define(`" + made + "`, " +
 			`{ files: { "./step.js": "return 7" } })`,
 	}
@@ -568,28 +569,27 @@ tools:
 	if r.Status != "done" {
 		t.Fatalf("the run ended %s: %s", r.Status, r.Error)
 	}
-	if shown := lastShown(m.Calls[1]); !strings.Contains(shown, "the owner's ask, for made") {
+	if shown := lastShown(m.Calls[1]); !strings.Contains(shown, "the owner's hook, for made") {
 		t.Errorf("the call was shown as: %s", shown)
 	}
 }
 
-// The list of an entry in a toolkit, when it is held, goes to the agent's
-// ask, which is shown the toolkit's name, as for a call of the toolkit's
-// tools.
+// The list of an entry in a toolkit, when it is marked, waits for the agent's
+// hook, which reads the toolkit's name, as for a call of the toolkit's tools.
 func TestAgentToolkitListIsShownItsToolkit(t *testing.T) {
 	files := maps.Clone(toolkits)
 	files["toolkits/net/net.yaml"] = strings.Replace(toolkits["toolkits/net/net.yaml"], "list: { script: ./list.js }", "list: { script: ./list.js, approve: true }", 1)
-	files["ask.js"] = `return { approved: input.jobs.filter((j) => j.name === "files" && j.asked.toolkit === "net").map((j) => j.name) }`
+	files["ask.js"] = `return { ok: input.job.name === "files" && input.job.tool.toolkit === "net" }`
 	m := newModel(t, calls("c1", "open", `{"toolkit": "net"}`), calls("c2", "files_read", `{}`), says("done"))
 	l := local(t, "all")
-	id := startWith(t, l, helper(m.URL, "ask: ./ask.js"), files, map[string]any{"question": "q"})
+	id := startWith(t, l, helper(m.URL, "hooks: { check: { before: ./ask.js, when: \"${job.approve}\" } }"), files, map[string]any{"question": "q"})
 	var held, asks []string
 	r, err := l.Follow(ctx, id, 20*time.Millisecond, func(e client.Entry) {
 		for _, ask := range e.Asks {
 			switch {
 			case ask.Kind == "hold":
 				held = append(held, ask.Name)
-			case ask.Kind == "script" && strings.HasPrefix(ask.Name, "ask"):
+			case ask.Kind == "script" && strings.HasSuffix(ask.Name, ".check"):
 				asks = append(asks, ask.Name)
 			}
 		}
@@ -597,8 +597,8 @@ func TestAgentToolkitListIsShownItsToolkit(t *testing.T) {
 	if err != nil || r.Status != "done" {
 		t.Fatalf("the agent ended %+v, %v", r, err)
 	}
-	if got := strings.Join(held, " ") + " / " + strings.Join(asks, " "); got != "files / ask" {
-		t.Errorf("the jobs held, and the asks: %s", got)
+	if got := strings.Join(held, " ") + " / " + strings.Join(asks, " "); got != "files / files.check" {
+		t.Errorf("the jobs held, and the hooks' jobs: %s", got)
 	}
 	if shown := lastShown(m.Calls[2]); !strings.Contains(shown, "ran read") {
 		t.Errorf("the listed tool's call was shown as: %s", shown)
@@ -627,7 +627,7 @@ func Test_agent_list_is_named_by_its_place(t *testing.T) {
 }
 
 // following is what a run did: the script jobs it started, the jobs it
-// held, and its asks, each ask with the step that started it.
+// held, and its hooks' jobs, each with the step that started it.
 type following struct {
 	run         *client.Run
 	jobs, held  []string
@@ -642,7 +642,7 @@ func follow(t *testing.T, l *client.Local, id string) following {
 			switch {
 			case ask.Kind == "hold":
 				f.held = append(f.held, ask.Name)
-			case ask.Kind == "script" && strings.HasPrefix(ask.Name, "ask"):
+			case ask.Kind == "script" && strings.HasSuffix(ask.Name, ".check"):
 				f.asks = append(f.asks, ask.Name)
 				f.steps = append(f.steps, fmt.Sprint(e.Step))
 			case ask.Kind == "script":

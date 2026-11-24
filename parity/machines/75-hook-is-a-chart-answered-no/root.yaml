@@ -1,0 +1,10 @@
+# The hook is a statechart that waits for a client's reply; the job that
+# waits is in a child chart, below the hook. The client says no.
+flow: asks
+hooks:
+  approval: { before: { machine: ./ask-person.yaml }, when: "${job.approve}" }
+stages:
+  kid:
+    job: { machine: ./guarded-chart.yaml, input: { n: 1 } }
+output:
+  kid: ${stages.kid.output}

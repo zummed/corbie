@@ -240,8 +240,8 @@ func Test_machines_toolkits_are_one_by_their_file(t *testing.T) {
 	dir := t.TempDir()
 	write(t, dir, map[string]string{
 		".corbieignore":             "toolkits/\n",
-		"a.yaml":                    "agent: a\n" + agentHead + "ask: { machine: ./say.yaml, input: { toolkit: net } }\ntoolkits:\n  network: { include: ./toolkits/net/toolkit.yaml }\n",
-		"b.yaml":                    "agent: b\n" + agentHead + "ask: { machine: ./say.yaml, input: { toolkit: net } }\ntoolkits:\n  net: { include: ./toolkits/net/toolkit.yaml }\n",
+		"a.yaml":                    "agent: a\n" + agentHead + "hooks: { say: { before: { machine: ./say.yaml, input: { toolkit: net } }, when: \"${job.approve}\" } }\ntoolkits:\n  network: { include: ./toolkits/net/toolkit.yaml }\n",
+		"b.yaml":                    "agent: b\n" + agentHead + "hooks: { say: { before: { machine: ./say.yaml, input: { toolkit: net } }, when: \"${job.approve}\" } }\ntoolkits:\n  net: { include: ./toolkits/net/toolkit.yaml }\n",
 		"say.yaml":                  "flow: say\nstages:\n  a: { job: { script: ./r.js } }\n",
 		"r.js":                      "return 1",
 		"toolkits/net/toolkit.yaml": "description: the network\ntools:\n  r: { description: r, job: { script: r.js, approve: true } }\n",
@@ -260,7 +260,7 @@ func Test_machines_toolkits_file_by_default(t *testing.T) {
 	dir := t.TempDir()
 	write(t, dir, map[string]string{
 		".corbieignore":   "toolkits/\n",
-		"a.yaml":          "agent: a\n" + agentHead + "ask: { machine: ./say.yaml, input: { toolkit: \"${input.name}\" } }\ntoolkits:\n  p: { include: ./toolkits/x.yaml, description: changed here }\n",
+		"a.yaml":          "agent: a\n" + agentHead + "hooks: { say: { before: { machine: ./say.yaml, input: { toolkit: \"${input.name}\" } }, when: \"${job.approve}\" } }\ntoolkits:\n  p: { include: ./toolkits/x.yaml, description: changed here }\n",
 		"say.yaml":        "flow: say\nstages:\n  a: { job: { script: ./r.js } }\n",
 		"r.js":            "return 1",
 		"toolkits/x.yaml": "description: as written\ntools:\n  r: { description: r, job: { script: r.js, approve: true } }\n",
@@ -354,9 +354,9 @@ func Test_machines_toolkits_add_what_each_agent_writes(t *testing.T) {
 	dir := t.TempDir()
 	write(t, dir, map[string]string{
 		".corbieignore":   "toolkits/\n",
-		"a.yaml":          "agent: a\n" + agentHead + "ask: { machine: ./say.yaml, input: { toolkit: x } }\ntoolkits:\n  p: { include: ./toolkits/x.yaml }\n",
-		"b.yaml":          "agent: b\n" + agentHead + "ask: { machine: ./say.yaml, input: { toolkit: x } }\ntoolkits:\n  p: { include: ./toolkits/x.yaml, approve: true }\n",
-		"c.yaml":          "agent: c\n" + agentHead + "ask: { machine: ./say.yaml, input: { toolkit: x } }\ntoolkits:\n  p: { include: ./toolkits/x.yaml, when: \"${input.go}\" }\n",
+		"a.yaml":          "agent: a\n" + agentHead + "hooks: { say: { before: { machine: ./say.yaml, input: { toolkit: x } }, when: \"${job.approve}\" } }\ntoolkits:\n  p: { include: ./toolkits/x.yaml }\n",
+		"b.yaml":          "agent: b\n" + agentHead + "hooks: { say: { before: { machine: ./say.yaml, input: { toolkit: x } }, when: \"${job.approve}\" } }\ntoolkits:\n  p: { include: ./toolkits/x.yaml, approve: true }\n",
+		"c.yaml":          "agent: c\n" + agentHead + "hooks: { say: { before: { machine: ./say.yaml, input: { toolkit: x } }, when: \"${job.approve}\" } }\ntoolkits:\n  p: { include: ./toolkits/x.yaml, when: \"${input.go}\" }\n",
 		"say.yaml":        "flow: say\nstages:\n  a: { job: { script: ./r.js } }\n",
 		"r.js":            "return 1",
 		"toolkits/x.yaml": "description: x\ntools:\n  r: { description: r, job: { script: r.js, approve: true } }\n",

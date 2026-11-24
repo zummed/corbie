@@ -288,11 +288,11 @@ func sendsTo(r machine.Request) bool { return r.Send != nil && r.Send.At != nil 
 // under, read from the tree's prefix, and then its tree client's ceiling,
 // which is written in full. The runner's ceiling takes no part: no runner
 // carries a send.
-func (b *build) refusedSend(at string, own permission.Layer) (*machine.Error, error) {
+func (b *build) refusedSend(at string, own permission.Layer, above []permission.Layer) (*machine.Error, error) {
 	denied := func(r *permission.Refusal) *machine.Error {
 		return &machine.Error{Status: machine.StatusDenied, Error: r.Error(), Refused: r.What, Layer: r.Layer, Fix: r.Fix}
 	}
-	layers := append([]permission.Layer{own}, b.st.Above.Layers...)
+	layers := append([]permission.Layer{own}, above...)
 	if r := (&permission.Set{Layers: layers, Prefix: b.st.Tree}).Check(permission.Send, at); r != nil {
 		return denied(r), nil
 	}
@@ -331,7 +331,7 @@ func (b *build) sendTo(s *machine.Send) (denied bool) {
 			return true
 		}
 		own := fmt.Sprintf("the definition of %q", b.def.Name)
-		refused, err := b.refusedSend(at, permission.Layer{Name: own, Allow: b.read.Allow, Deny: b.def.Deny, Fix: "add the line %s to the allow list of " + own})
+		refused, err := b.refusedSend(at, permission.Layer{Name: own, Allow: b.read.Allow, Deny: b.def.Deny, Fix: "add the line %s to the allow list of " + own}, b.st.Above.Layers)
 		if err != nil {
 			b.err = err
 			return true

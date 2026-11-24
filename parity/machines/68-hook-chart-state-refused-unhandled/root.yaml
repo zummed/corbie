@@ -1,0 +1,12 @@
+# A statechart state marked approve: true, a hook that says no,
+# and no rule for failed.
+statechart: asks
+hooks:
+  approval: { before: { script: ./no.js }, when: "${job.approve}" }
+initial: guarded
+states:
+  guarded:
+    job: { script: ./add.js, input: { n: 1 }, approve: true }
+    on: { done: finished }
+  finished:
+    end: done

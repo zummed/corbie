@@ -1,0 +1,39 @@
+{
+  "status": "done",
+  "output": {
+    "guarded": {
+      "n": 3
+    }
+  },
+  "record": [
+    {
+      "machine": "asks",
+      "ask": {
+        "kind": "script",
+        "name": "guarded.approval",
+        "job": {
+          "input": {
+            "job": {
+              "name": "guarded",
+              "run": {
+                "machine": "asks"
+              },
+              "approve": true,
+              "input": {
+                "n": 2
+              },
+              "script": "./add.js"
+            }
+          }
+        }
+      }
+    },
+    {
+      "machine": "asks",
+      "ask": {
+        "kind": "hold",
+        "name": "guarded"
+      }
+    }
+  ]
+}

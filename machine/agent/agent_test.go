@@ -40,7 +40,7 @@ func TestUnknownFieldNamesTheFieldsTaken(t *testing.T) {
 	_, err := machine.Parse([]byte(src), func(string) ([]byte, error) { return []byte("return 1"), nil })
 	for _, want := range []string{
 		`model.colour: "colour" is not a field that belongs here: a model with service: a-program takes name, secret, service, effort, own`,
-		`tools.tell.does: "does" is not a field that belongs here: a tool takes description, args, job, list, call, input, approve, when`,
+		`tools.tell.does: "does" is not a field that belongs here: a tool takes description, args, job, list, call, input, approve, meta, when`,
 	} {
 		if err == nil || !strings.Contains(err.Error(), want) {
 			t.Errorf("read: %v\nwant: %s", err, want)

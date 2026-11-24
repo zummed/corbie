@@ -58,7 +58,7 @@ approve    send:devices/boiler
 | update | `restart` or `drain`, and what a changed file does to its runs |
 | receives | who `receive:` lets send to it and call it, by event, `none` for an empty list; with no `receive:`, its own tree and its tree's client |
 | sends to | the `send:` entries of its `allow:`, with `**` read as every location in its tree, `/**` and `all` as every location; for an agent, the location each tool written `call:` calls, `people/find (by the tool who)`, a location `allow:` also names given once, with its tools; `none` where there are none |
-| approve | the permissions its `approve:` lists, which a job uses only after the ask approves it; no row where there are none |
+| approve | the permissions its `approve:` lists, which mark a job for approval; no row where there are none |
 
 A machine with no `description:` shows no line above the rows.
 

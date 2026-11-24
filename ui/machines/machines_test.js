@@ -44,7 +44,7 @@ test("machines_drawing_is_shown", () => {
   equal($(".view nav.tabs a[aria-current]") && text($(".view nav.tabs a[aria-current]")), "Drawing", "the tab chosen");
   const svg = $("#drawing svg.machine");
   assert(svg, "the machine is not drawn");
-  for (const name of ["tell", "ask"]) assert(text(svg).includes(name), `the drawing has no card ${name}`);
+  for (const name of ["tell", "approval"]) assert(text(svg).includes(name), `the drawing has no card ${name}`);
 });
 
 test("machines_pages_only_read", () => {

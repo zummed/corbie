@@ -87,7 +87,7 @@ type Toolkit struct {
 	// Instructions are the text the model is given when it opens the
 	// toolkit, filled from the agent's input then.
 	Instructions string `json:"instructions,omitzero"`
-	// Approve holds the toolkit's opening for the ask.
+	// Approve marks the toolkit's opening for approval.
 	Approve bool `json:"approve,omitzero"`
 	// When is a condition on the agent's input, checked when the run
 	// starts: the toolkit is offered only if it holds.
@@ -327,14 +327,15 @@ func (agentType) Shape() *machine.Shape {
 			Description: "a location whose machine the tool calls, in place of description, args and job: the description and the arguments are that machine's. One in the same tree is written from its prefix and read with the tree; one written in full from / is read when the run starts"},
 		{Name: "input", Kind: machine.KindValue,
 			Description: "of a tool with call: the names of the machine's input the tool fixes, which the model is not given; it reads the agent's input"},
-		{Name: "approve", Kind: machine.KindFlag, Description: "of a tool with call: the call waits for the ask to approve it"},
+		{Name: "approve", Kind: machine.KindFlag, Description: "of a tool with call: marks the call for approval, so it starts only after a hook before it"},
+		{Name: "meta", Kind: machine.KindValue, Description: "of a tool with call: data of any kind, which hooks read as job.meta and nothing else reads"},
 		when,
 	}}
 	toolkit := &machine.Shape{Name: "toolkit", What: "a toolkit", Fields: []machine.Field{
 		{Name: "description", Kind: machine.KindText, Description: "what the toolkit is for, which the model reads before it opens it"},
 		{Name: "instructions", Kind: machine.KindText,
 			Description: "the text the model is given when it opens the toolkit; it reads the agent's input"},
-		{Name: "approve", Kind: machine.KindFlag, Description: "opening the toolkit waits for the ask to approve it"},
+		{Name: "approve", Kind: machine.KindFlag, Description: "marks opening the toolkit for approval, so it opens only after a hook before it"},
 		when,
 		{Name: "tools", Kind: machine.KindNamed, Of: tool, Description: "the toolkit's tools, each a named job"},
 		{Name: "meta", Kind: machine.KindValue, Description: "data of any kind, which Corbie keeps and never reads"},
@@ -364,7 +365,7 @@ func fillToolkit(p *machine.Parser, a *Agent, shape *machine.Shape, name string,
 		Approve: ff.Bool("approve"), When: ff.Cond("when")}
 	a.Toolkits[name] = toolkit
 	toolkit.Meta, _ = ff.Value("meta")
-	ff.Refuse("ask", "a toolkit has no ask: its held jobs go to the agent's ask, which is shown the toolkit's name as toolkit; write ask: in the agent")
+	ff.Refuse("hooks", "a toolkit has no hooks: the agent's hooks run for its tools' jobs, and read the toolkit's name as job.tool.toolkit; write hooks: in the agent")
 	tools, order := ff.Map("tools")
 	for _, toolName := range order {
 		if _, taken := a.Tools[toolName]; taken {
@@ -390,13 +391,14 @@ func fillTool(p *machine.Parser, a *Agent, shape *machine.Shape, place, name str
 		a.Tools[name] = tool
 		return tool
 	}
-	for _, field := range []string{"input", "approve"} {
+	for _, field := range []string{"input", "approve", "meta"} {
 		if tf.Has(field) {
 			p.Problem(place+"."+field, "%s: belongs to a tool with call:; a tool with job: writes it in the job", field)
 		}
 	}
 	tf.Value("input")
 	tf.Bool("approve")
+	tf.Value("meta")
 	tool := &Tool{Description: tf.Text("description"), When: tf.Cond("when")}
 	if list, ok := tf.Value("list"); ok {
 		tool.List = p.Job(place+".list", list)
@@ -429,6 +431,7 @@ func fillCall(p *machine.Parser, tf *machine.Fields, place string) *Tool {
 	at := tf.Text("call")
 	tool := &Tool{Call: at, When: tf.Cond("when"),
 		Job: &machine.JobSpec{Call: &machine.AddressSpec{At: at}, Approve: tf.Bool("approve")}}
+	tool.Job.Meta, _ = tf.Value("meta")
 	fixed := map[string]any{}
 	if written, ok := tf.Value("input"); ok {
 		if fixed, ok = written.(map[string]any); !ok {

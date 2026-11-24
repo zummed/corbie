@@ -134,7 +134,7 @@ test("drawing_statechart_send_is_a_card", async () => {
 test("drawing_agent_is_a_loop_of_model_and_tools", async () => {
   const c = cards(await laid("helper"));
   const y = n => c.get(n).y;
-  assert(y("claude-sonnet-5-5") < y("tell") && y("claude-sonnet-5-5") < y("look") && y("tell") < y("ask") && y("ask") < y("reply") && y("look") < y("reply"), "the model, the tools, the ask and the reply are not drawn top to bottom");
+  assert(y("claude-sonnet-5-5") < y("tell") && y("claude-sonnet-5-5") < y("look") && y("tell") < y("approval") && y("approval") < y("reply") && y("look") < y("reply"), "the model, the tools, the hook and the reply are not drawn top to bottom");
   assert(mid(c.get("tell")).x !== mid(c.get("look")).x, "the toolkit and the tools are not side by side");
 });
 

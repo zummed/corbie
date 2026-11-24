@@ -1070,7 +1070,7 @@ func (e *Env) entry(entry client.Entry) {
 				line = fmt.Sprintf("%s fails, denied: %s", ask.Name, ask.Error.Refused)
 			}
 		case instance.AskHold:
-			line = fmt.Sprintf("hold %s for the ask", ask.Name)
+			line = fmt.Sprintf("hold %s for its hooks", ask.Name)
 		case instance.AskNote:
 			line = ask.Text
 		default:

@@ -1,0 +1,8 @@
+flow: refunds
+hooks:
+  cap: { before: { script: ./cap.js } }
+stages:
+  refund:
+    each: [20, 900]
+    job: { script: ./refund.js, input: { amount: "${item}" } }
+output: ${stages.refund.output}

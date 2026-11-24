@@ -13,7 +13,7 @@ import (
 
 func Test_agent_next_turn_waits_for_open_approval(t *testing.T) {
 	// One turn asks for a tool that is held for a yes, and for one that is
-	// not. The ask is a person, who takes their time.
+	// not. The hook is a person, who takes their time.
 	both := llmstandin.Reply{Calls: []llmstandin.ToolCall{{ID: "held", Name: "deploy", Args: `{"n":10}`}, {ID: "free", Name: "add", Args: `{"n":1}`}}}
 	m := newModel(t, both, says("done"))
 	l := local(t, "all")
@@ -22,15 +22,18 @@ func Test_agent_next_turn_waits_for_open_approval(t *testing.T) {
 		agent: careful
 		model: { name: test-model, service: anthropic, address: ADDRESS, secret: TEST_KEY }
 		prompt: Add, and put it out.
-		ask:
-		  machine:
-		    statechart: person
-		    initial: asking
-		    states:
-		      asking:
-		        ticket: verdict
-		        on: { verdict: decided }
-		      decided: { end: done, output: { approved: "${input.jobs.map(r => r.name)}" } }
+		hooks:
+		  person:
+		    when: "${job.approve}"
+		    before:
+		      machine:
+		        statechart: person
+		        initial: asking
+		        states:
+		          asking:
+		            ticket: verdict
+		            on: { verdict: answered }
+		          answered: { end: done, output: { ok: true } }
 		tools:
 		  add:
 		    description: Add one to a number
@@ -57,7 +60,7 @@ func Test_agent_next_turn_waits_for_open_approval(t *testing.T) {
 		})
 		ended <- r
 	}()
-	// The ask is open, and the tool that needed no yes has settled: the
+	// The hook is waiting, and the tool that needed no yes has settled: the
 	// step that took its result asks for no turn.
 	child, ticket := waitForTicket(t, l, id)
 	var settled *client.Entry
@@ -80,7 +83,7 @@ func Test_agent_next_turn_waits_for_open_approval(t *testing.T) {
 			t.Fatalf("with the approval still open, the agent asked for %s", ask.Name)
 		}
 	}
-	// Once the ask has said yes and the held tool has run, the next turn
+	// Once the hook has said yes and the held tool has run, the next turn
 	// shows the model both results.
 	if _, err := l.Reply(ctx, child, ticket, nil, 0); err != nil {
 		t.Fatal(err)

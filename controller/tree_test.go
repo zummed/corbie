@@ -387,7 +387,7 @@ func Test_ctl_client_starts_its_own_transient_locations(t *testing.T) {
 	done := w.submitTree(w.client, w.tree("/t", "", map[string]string{"/t/a": transient, "/t/s": waiting, "/t/k": keyed, "/t/held": held},
 		map[string]string{"work.js": "return 1"})).Tree
 	if done.Locations[1] != (instance.Recorded{Location: "/t/held", Lifetime: "transient", What: "recorded"}) {
-		t.Fatalf("a file whose approvals have no ask: %+v", done.Locations)
+		t.Fatalf("a file whose marked job has no hook before it: %+v", done.Locations)
 	}
 	start := func(c *client.Client, at string) string {
 		run, err := c.Start(ctx, client.Start{At: at})

@@ -94,7 +94,7 @@ What a run waits on is written as:
 ticket <name>               a ticket
 timer <name> due <time>     a timer; a run in another client's tree shows the number of timers
 job <name>                  a job on a runner; a run in another client's tree shows the number of jobs
-held <name>                 a job held for the ask
+held <name>                 a job held for a hook
 child <machine>             a running child
 ```
 
@@ -164,8 +164,8 @@ Steps lists what happened in the run and in every run under it, one row each, re
 ```
 statechart   entered answering · left asking, entered open and waiting · timer unanswered set, due 10 Nov 20:29 · timer unanswered fired · state answering started turn
 flow         stage asker done · stage files skipped · stage answer failed
-agent        turn 2 to claude-sonnet-5-5 · turn 2 called restart(vm: “web-1”) · open done
-any run      started · started by /acme/grouse/slack/grouse · held restart for approval · ask started approval · done · failed (denied) · cancelled
+agent        turn 2 to claude-sonnet-5-5 · turn 2 called restart(vm: “web-1”) · open done · hook approval done
+any run      started · started by /acme/grouse/slack/grouse · held restart for approval · hook approval started approval · done · failed (denied) · cancelled
 ```
 
 Sends and calls between runs read:
@@ -273,7 +273,7 @@ a child                     its root's machine, unfolded down the cards of the j
 The details of a row have four tabs, and Open opens the row's run's page:
 
 ```
-What happened   the row's facts: the job and its machine or script, the toolkit a tool is from (the `toolkit` Corbie shows on the job), a tool's arguments, the run a tool is held for, the turn, the error, the address sent to and the run that took it
+What happened   the row's facts: the job and its machine or script, the toolkit a tool is from (the `toolkit` of the job's `tool`), a tool's arguments, the hook a job is held for and the run it started, the turn, the error, the address sent to and the run that took it
 Input           what the row's job, call or event was given
 Output          what it gave back, and what the row's job logged in that attempt, each value with its time
 Record          the values the run's jobs emitted since the step before, and the row's step, in the words corbie run show --record prints, each named by its run's machine

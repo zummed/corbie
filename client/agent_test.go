@@ -325,7 +325,6 @@ func Test_agent_tool_cannot_take_an_agents_own_job_name(t *testing.T) {
 	for name, want := range map[string]string{
 		"turn":      `the tool "turn" has the name of a job the agent itself makes`,
 		"blob_read": `the tool "blob_read" has the name of one of the tools every agent has for blobs`,
-		"ask":       `the name "ask" is taken by the definition's ask`,
 		"open":      `the tool "open" has the name of the tool every agent with toolkits has for opening them`,
 	} {
 		agentRefused(t, strings.Replace(agentDef("http://127.0.0.1:1", ""), "  add:\n", "  "+name+":\n", 1), want)
@@ -863,22 +862,22 @@ func TestAgentListedTools(t *testing.T) {
 	}
 }
 
-// The ask is shown each call's tool by name: for a listed call, the entry
-// and the tool's own name, and for any other tool its name and no entry.
-func TestAgentAskIsShownTheToolOfEachCall(t *testing.T) {
+// A hook reads each call's tool by name: for a listed call, the entry and
+// the tool's own name, and for any other tool its name and no entry.
+func TestAgentHookReadsTheToolOfEachCall(t *testing.T) {
 	both := llmstandin.Reply{Text: "let me see", Calls: []llmstandin.ToolCall{{ID: "issue", Name: "github_create_issue", Args: `{"title":"Broken"}`}, {ID: "sum", Name: "add", Args: `{"n":1}`}}}
 	m := newModel(t, both, says("done"))
 	def := listed(m.URL, `[ { name: create_issue, description: Open an issue, args: { type: object } } ]`)
 	def = strings.Replace(def, "  files:\n", "  github:\n", 1)
-	def = strings.Replace(def, "\t\ttools:\n", "\t\task: ./ask.js\n\t\ttools:\n", 1)
+	def = strings.Replace(def, "\t\ttools:\n", "\t\thooks: { check: { before: ./check.js, when: \"${job.approve}\" } }\n\t\ttools:\n", 1)
 	def = strings.Replace(def, `args: "${args}" } }`, `args: "${args}" }, approve: true }`, 1)
 	def = strings.Replace(def, `input: { n: "${args.n}" } }`, `input: { n: "${args.n}" }, approve: true }`, 1)
 	files := maps.Clone(listedScripts)
-	files["ask.js"] = `
-		const listed = (a) => a.entry === "github" && a.tool === "create_issue" && a.args.title === "Broken" && a.description === "Open an issue" && a.said === "let me see"
-		const own = (a) => !("entry" in a) && a.tool === "add" && a.args.n === 1 && a.description === "Add one to a number"
-		const fits = input.jobs.filter((j) => j.name.startsWith("github_") ? listed(j.asked) : own(j.asked))
-		return { approved: fits.map((j) => j.name), note: "the ask was shown " + JSON.stringify(input.jobs.map((j) => j.asked)) }`
+	files["check.js"] = `
+		const listed = (a) => a.entry === "github" && a.name === "create_issue" && a.args.title === "Broken" && a.description === "Open an issue" && a.said === "let me see"
+		const own = (a) => !("entry" in a) && a.name === "add" && a.args.n === 1 && a.description === "Add one to a number"
+		const held = input.job
+		return { ok: held.name === "github_create_issue" ? listed(held.tool) : own(held.tool), note: "the hook read " + JSON.stringify(held.tool) }`
 	if r := runAgent(t, local(t, "all"), def, files); r.Status != "done" {
 		t.Fatalf("the agent ended %s: %s", r.Status, r.Error)
 	}

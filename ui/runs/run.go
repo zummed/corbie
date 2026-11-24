@@ -981,6 +981,14 @@ func waitsOf(run *client.Run, st *instance.State, kids []*client.Run, at time.Ti
 // the jobs going after it.
 func marksOf(id string, entries []client.Entry, status string, st *instance.State, byID map[string]*client.Run) *drawing.Run {
 	m := &drawing.Run{Ended: status != instance.Running && status != instance.Waiting, Failed: status == instance.Failed, Children: map[string]drawing.Child{}}
+	hooks := map[string]string{} // the hook of each hook's job the run asked for, by the job's name
+	for _, e := range entries {
+		for _, a := range e.Asks {
+			if e.ID == id && a.Job != nil && a.Job.Hook != "" {
+				hooks[named(a.Name)] = a.Job.Hook
+			}
+		}
+	}
 	for _, e := range entries {
 		if e.ID != id || e.Step == 0 {
 			continue
@@ -989,7 +997,11 @@ func marksOf(id string, entries []client.Entry, status string, st *instance.Stat
 		for _, event := range e.Events {
 			s.Events = append(s.Events, event.Name)
 			if event.Name == machine.Failed && event.From != "" {
-				s.Failed = append(s.Failed, jobOf(event.From))
+				name := jobOf(event.From)
+				if hook := hooks[named(event.From)]; hook != "" {
+					name = drawing.HookJob(hook)
+				}
+				s.Failed = append(s.Failed, name)
 			}
 		}
 		for _, a := range e.Asks {
@@ -997,6 +1009,9 @@ func marksOf(id string, entries []client.Entry, status string, st *instance.Stat
 				continue
 			}
 			name := jobOf(a.Name)
+			if a.Job != nil && a.Job.Hook != "" {
+				name = drawing.HookJob(a.Job.Hook)
+			}
 			s.Asked = append(s.Asked, name)
 			if r := byID[cmp.Or(a.Child, callee(a))]; r != nil {
 				m.Children[name] = drawing.Child{ID: r.ID, Machine: r.Machine, Type: r.Type}
@@ -1008,6 +1023,9 @@ func marksOf(id string, entries []client.Entry, status string, st *instance.Stat
 		for _, key := range slices.Sorted(maps.Keys(st.Jobs)) {
 			j := st.Jobs[key]
 			name := jobOf(j.Name)
+			if j.Hook != "" {
+				name = drawing.HookJob(j.Hook)
+			}
 			m.Going = append(m.Going, name)
 			if j.Held {
 				m.Held = append(m.Held, name)
@@ -1027,7 +1045,7 @@ func jobOf(name string) string {
 	return name
 }
 
-// callee gives the run a call job started, where the ask is a call's.
+// callee gives the run a call job started, where what the step asked for is a call.
 func callee(a instance.Ask) string {
 	if a.Kind == instance.AskCall {
 		return a.Run

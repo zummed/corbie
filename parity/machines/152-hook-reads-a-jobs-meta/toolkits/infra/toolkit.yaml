@@ -1,0 +1,11 @@
+# The infra team's toolkit. restart says where it is approved, and wipe does not.
+description: Servers.
+tools:
+  restart:
+    description: Restart a server
+    args: { vm: string }
+    job: { script: ./tool.js, input: { did: restart, args: "${args}" }, approve: true, meta: { channel: "#infra", approvers: "infra:approve" } }
+  wipe:
+    description: Wipe a server
+    args: { vm: string }
+    job: { script: ./tool.js, input: { did: wipe, args: "${args}" }, approve: true }

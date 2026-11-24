@@ -1,0 +1,21 @@
+agent: helper
+model: { name: scripted, service: anthropic }
+turn: ./turn.js
+prompt: Refund order 7 and tell the team.
+hooks:
+  orders-team:
+    before: { script: ./approver.js, input: { who: orders-team, limit: 100, tool: "${job.tool.name}", args: "${job.tool.args}" } }
+    when: "${job.approve && job.tool.toolkit == 'orders'}"
+  comms:
+    before: { script: ./approver.js, input: { who: comms, tool: "${job.tool.name}", args: "${job.tool.args}" } }
+    when: "${job.approve && job.tool.toolkit == 'messages'}"
+toolkits:
+  orders:
+    description: Orders and refunds.
+    tools:
+      read: { description: Read an order, args: { order: number }, job: { script: ./tool.js, input: { did: read, args: "${args}" } } }
+      refund: { description: Refund an order, args: { order: number, amount: number }, job: { script: ./tool.js, input: { did: refund, args: "${args}" }, approve: true } }
+  messages:
+    description: Messages to the team.
+    tools:
+      tell: { description: Post a message, args: { text: string }, job: { script: ./tool.js, input: { did: tell, args: "${args}" }, approve: true } }

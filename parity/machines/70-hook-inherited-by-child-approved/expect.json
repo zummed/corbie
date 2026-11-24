@@ -1,0 +1,45 @@
+{
+  "status": "done",
+  "output": {
+    "chart_kid": {
+      "n": 11
+    },
+    "flow_kid": {
+      "n": 2
+    }
+  },
+  "record": [
+    {
+      "machine": "guarded-flow",
+      "ask": {
+        "kind": "script",
+        "name": "guarded.approval",
+        "job": {
+          "input": {
+            "job": {
+              "run": {
+                "machine": "guarded-flow"
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "machine": "guarded-chart",
+      "ask": {
+        "kind": "script",
+        "name": "guarded.approval",
+        "job": {
+          "input": {
+            "job": {
+              "run": {
+                "machine": "guarded-chart"
+              }
+            }
+          }
+        }
+      }
+    }
+  ]
+}

@@ -1,0 +1,10 @@
+# A flow has the hook; its agent child has a tool marked approve: true. The
+# model makes two calls in one turn, and the hook runs once for each.
+flow: parent
+hooks:
+  approval: { before: { script: ./odd-args.js }, when: "${job.approve}" }
+stages:
+  agent:
+    job: { machine: ./agent.yaml }
+output:
+  text: ${stages.agent.output.reply}

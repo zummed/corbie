@@ -95,6 +95,10 @@ The record
                     a statechart's `states`, an agent's `turn`
   job, name, data   an emitted value: its job, its name (`log` for a log line) and the value
 
+`corbie run show <id> --step <n>` prints one step, and its `state` has
+`outputs` as well: the output so far of each stage of a flow, or of each state
+of a statechart, by name. The run's `step` is the number of its latest.
+
 Events and tickets
 ------------------
 

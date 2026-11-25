@@ -635,6 +635,9 @@ func (c *Client) give(name string, step *instance.Step, all map[string]*followed
 	if err != nil {
 		return err
 	}
+	// The outputs so far are shown with a step read by its number. Here
+	// every step would hold them again.
+	entry.Shown.Outputs = nil
 	f.read, f.ended = true, step.State.Status != instance.Running
 	tell(entry)
 	return nil
@@ -997,7 +1000,8 @@ func (c *Client) Definition(ctx context.Context, id string) (*machine.Definition
 // ErrNoStep is a step's number that a run's record does not hold.
 var ErrNoStep = errors.New("the run has no step")
 
-// Step gives one step entry of a run's record, as it is shown.
+// Step gives one step entry of a run's record, as it is shown, with the
+// outputs so far of the run's stages or states after it.
 func (c *Client) Step(ctx context.Context, id string, number int) (*Entry, error) {
 	if c.remote != nil {
 		var entry Entry

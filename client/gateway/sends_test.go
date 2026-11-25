@@ -285,6 +285,14 @@ states:
 	if got, _ := json.Marshal(step); status != 200 || first == nil || string(got) != string(want) {
 		t.Errorf("step 1 was answered %d %s, and the record has %s", status, text, want)
 	}
+	// A step read by its number has the outputs so far as well.
+	_, step, text = c.do("GET", "/runs/"+id+"/steps/2", "")
+	state, _ := step["state"].(map[string]any)
+	outputs, _ := state["outputs"].(map[string]any)
+	made, _ := outputs["making"].(map[string]any)
+	if report, _ := made["report"].(map[string]any); report["$blob"] == nil {
+		t.Errorf("step 2 was answered %s", text)
+	}
 	for _, none := range []string{"/steps/99", "/steps/0", "/steps/one", "/steps"} {
 		if status, _, text := c.do("GET", "/runs/"+id+none, ""); status != 404 {
 			t.Errorf("%s was answered %d %s", none, status, text)

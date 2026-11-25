@@ -587,13 +587,14 @@ func (s *stepper) taken(name string) bool {
 	return false
 }
 
-// Show gives a chart's state as a watcher is shown it: the states it is in.
+// Show gives a chart's state as a watcher is shown it: the states it is
+// in, and the output of each state that has one.
 func (chartType) Show(raw jsontext.Value) machine.Shown {
 	var st state
 	if raw == nil || json.Unmarshal(raw, &st) != nil {
 		return machine.Shown{}
 	}
-	return machine.Shown{States: st.Active}
+	return machine.Shown{States: st.Active, Outputs: st.Outputs}
 }
 
 // Kept gives the events a chart's state keeps under defer:, in the order

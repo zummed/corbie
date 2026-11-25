@@ -417,13 +417,39 @@ func shape(c *llm.Call) map[string]any {
 	if len(c.Tools) == 0 {
 		return defs(object([]any{"text"}, with(map[string]any{"text": text})), c)
 	}
-	var names []any
+	// Each call is held to its tool's own arguments, so the program gives
+	// booleans, numbers and objects as they are, and not as text. Arguments
+	// that hold a $ref are left open: inside this shape the $ref would
+	// name nothing.
+	var calls []any
 	for _, tool := range c.Tools {
-		names = append(names, field(tool, "name"))
+		input := llm.Schema(field(tool, "args"))
+		if refers(input) {
+			input = map[string]any{"type": "object"}
+		}
+		calls = append(calls, object([]any{"name", "input"}, map[string]any{
+			"name": map[string]any{"type": "string", "const": field(tool, "name")}, "input": input}))
 	}
-	call := object([]any{"name", "input"}, map[string]any{
-		"name": map[string]any{"type": "string", "enum": names}, "input": map[string]any{"type": "object"}})
+	call := map[string]any{"anyOf": calls}
 	return defs(object([]any{"text", "tool_calls"}, with(map[string]any{"text": text, "tool_calls": map[string]any{"type": "array", "items": call}})), c)
+}
+
+// refers is whether a shape holds a $ref.
+func refers(v any) bool {
+	switch v := v.(type) {
+	case map[string]any:
+		if _, ok := v["$ref"]; ok {
+			return true
+		}
+		for _, item := range v {
+			if refers(item) {
+				return true
+			}
+		}
+	case []any:
+		return slices.ContainsFunc(v, refers)
+	}
+	return false
 }
 
 // defs gives the shape the program answers in the $defs of the shape of

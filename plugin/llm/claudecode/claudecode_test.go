@@ -212,6 +212,67 @@ cat "$here/reply"
 	}
 }
 
+// Each tool call the program answers with is held to its tool's name and
+// arguments. Arguments that hold a $ref are left open.
+func TestProgramAnswersInEachToolsArguments(t *testing.T) {
+	if _, err := os.Stat("/bin/sh"); err != nil {
+		t.Skip("no shell on this machine")
+	}
+	dir := t.TempDir()
+	os.WriteFile(filepath.Join(dir, "claude"), []byte(`#!/bin/sh
+cat > /dev/null
+here=$(dirname "$0")
+while [ $# -gt 0 ]; do
+  if [ "$1" = --json-schema ]; then printf '%s' "$2" > "$here/schema"; fi
+  shift
+done
+cat "$here/reply"
+`), 0o755)
+	os.WriteFile(filepath.Join(dir, "reply"), []byte(`{"type":"result","subtype":"success","is_error":false,"result":"","stop_reason":"end_turn","structured_output":{"text":"Hello.","tool_calls":[]},"usage":{"input_tokens":10,"output_tokens":5}}`+"\n"), 0o600)
+	job := &plugin.Job{Context: context.Background(), Scratch: t.TempDir(), SearchPath: dir + ":/usr/bin:/bin", Channel: channel{},
+		Perms: &permission.Set{Layers: []permission.Layer{{Name: "test", Allow: []string{"exec:claude", "env:HOME"}}}}}
+	t.Cleanup(job.End)
+	module, _ := plugin.Find("llm")
+	tools := []any{
+		map[string]any{"name": "look", "description": "Look at a thing", "args": map[string]any{"type": "object",
+			"properties": map[string]any{"wide": map[string]any{"type": "boolean"}}}},
+		map[string]any{"name": "go", "description": "Go to a place", "args": map[string]any{"type": "object",
+			"$defs":      map[string]any{"place": map[string]any{"type": "string"}},
+			"properties": map[string]any{"at": map[string]any{"$ref": "#/$defs/place"}}}}}
+	if _, err := module.Calls["chat"].Invoke(job, "llm", "chat", []any{map[string]any{"role": "user", "content": "Hello"}},
+		plugin.Options{"service": "claude-code", "model": "sonnet", "tools": tools}); err != nil {
+		t.Fatal(err)
+	}
+	var schema struct {
+		Properties struct {
+			Calls struct {
+				Items struct {
+					AnyOf []struct {
+						Properties struct {
+							Name  struct{ Const string }
+							Input map[string]any
+						}
+					}
+				}
+			} `json:"tool_calls"`
+		}
+	}
+	data, _ := os.ReadFile(filepath.Join(dir, "schema"))
+	if err := json.Unmarshal(data, &schema, json.MatchCaseInsensitiveNames(true)); err != nil {
+		t.Fatalf("the program was given %q: %v", data, err)
+	}
+	calls := schema.Properties.Calls.Items.AnyOf
+	if len(calls) != 2 || calls[0].Properties.Name.Const != "look" || calls[1].Properties.Name.Const != "go" {
+		t.Fatalf("the program answers in %s", data)
+	}
+	if wide, _ := calls[0].Properties.Input["properties"].(map[string]any)["wide"].(map[string]any); wide["type"] != "boolean" {
+		t.Errorf("look's arguments are held to %v", calls[0].Properties.Input)
+	}
+	if input := calls[1].Properties.Input; len(input) != 1 || input["type"] != "object" {
+		t.Errorf("go's arguments, which hold a $ref, are held to %v", input)
+	}
+}
+
 // event is one stream event the program prints.
 func event(data string) string { return `{"type":"stream_event","event":` + data + `}` }
 

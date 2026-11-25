@@ -130,13 +130,29 @@ The server closes a connection that sends nothing for a minute, between two requ
 
 A party the controller trusts can fill the serving computer's disk with values, and a client's listing of the records reads every file in them. Corbie limits neither.
 
-A party waiting on its inbox is told the moment something is written there, as roles in one process are, and is told nothing of names it may not read.
+A party waiting on its inbox is told the moment something is written there, as a process on the serving computer is, and is told nothing of names it may not read.
 
 The serving computer is the store. While it is off nothing moves, and what was waiting waits. Its process can be stopped and started again, as it is to update it, with work in flight on the other computers: they wait about ten seconds for it and carry on. Off for longer, a job that finished meanwhile cannot say so, and is a timeout when its time is up. Corbie offers no second computer to take over and no copies kept in step: two computers that each believe they hold the store break only-if-new, on which everything rests. A store that must outlive a computer is a bucket, and a served directory copies into one unchanged. Only the controller's computer serves, and only a directory. Someone with no identity is not shown a served directory's heads; a watcher there is a client.
 
 A **bucket** is for several computers and for serverless hosts. It needs a service that offers the three ways of writing, ordered listing with each value's ETag, reading part of a value, and copying a value within the store. Corbie names the services it is tested against, says which of them can enforce the table above, and claims nothing more. In a bucket each party holds its own key, and the bucket's policy limits that key to its row of the table. Corbie prints the policy for each party. A policy cannot hold a name to one part, so it lets a runner or a client add names deeper in a record than the layout draws; it never lets one replace or remove anything.
 
 **Memory** is for `corbie test` and Corbie's own tests. It enforces the table as a bucket does, so access rules can be tried without a bucket.
+
+A process that waits on a path of a store is told when a name under it is written or deleted. Which writes it is told of depends on the kind of store:
+
+```
+  a directory          its own process's writes; from any process on the computer, a message in an inbox and a running head
+  a served directory   as a directory; on another computer, each write of a name the party may read
+  a bucket, memory     its own process's writes
+```
+
+A process that is not told looks again at its interval.
+
+- The operating system reports the writes of other processes to a directory. Corbie writes nothing for it.
+- A directory watches the inboxes and the running heads alone. They hold only what is in flight, so the watch costs the same however many runs the store has kept.
+- A controller takes a message from its inbox once it has acted on it, so a client that waits for a receipt or for a run is told when its message is taken, and when the run's head is written or removed.
+- An emit of a job still running, written by another process, is found at the interval.
+- Where the operating system refuses the watch, a write by another process is found at the interval.
 
 ## What the store is trusted with
 

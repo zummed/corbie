@@ -332,9 +332,8 @@ func TestNotice(t *testing.T) {
 					return false
 				}
 			}
-			// A bucket does not tell what was written to it.
-			if told := got(in); told != (kind != "bucket") {
-				t.Fatalf("a write under the path: notice given is %v", told)
+			if !got(in) {
+				t.Fatal("a write under the path gave no notice")
 			}
 			if got(other) {
 				t.Fatal("a write elsewhere gave notice")

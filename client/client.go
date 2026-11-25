@@ -74,8 +74,8 @@ func (c *Client) As(principal string) *Client {
 
 func (c *Client) ctl() string { return c.Controller.Name }
 
-// notice tells when this process writes under a name of the store. A client
-// that sends to a gateway has no store, and looks again at its interval.
+// notice tells when the store reports a write under a name. A client that
+// sends to a gateway has no store, and looks again at its interval.
 func (c *Client) notice(under string) (<-chan struct{}, func()) {
 	if c.remote != nil {
 		return nil, func() {}
@@ -616,7 +616,7 @@ var ErrNotTaken = errors.New("the message was not taken up: it is no longer good
 // client has just sent, and gives the receipt. life is the life the message
 // was sent with. Once no controller may take the message and no receipt has
 // come, the wait ends, saying the message was not taken up. It looks again
-// when this process writes to the store, and otherwise at the interval.
+// when the store reports a write, and otherwise at the interval.
 func (c *Client) WaitReceipt(ctx context.Context, message string, life, interval time.Duration) (*instance.Receipt, error) {
 	if c.remote != nil {
 		return c.remote.receipt(message)

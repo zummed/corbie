@@ -6,6 +6,7 @@ require (
 	github.com/chromedp/chromedp v0.24.0
 	github.com/coder/websocket v1.8.15
 	github.com/dop251/goja v0.0.0-20261004200024-481fdb442bb4
+	github.com/fsnotify/fsnotify v1.10.1
 	github.com/santhosh-tekuri/jsonschema/v6 v6.0.2
 	go.yaml.in/yaml/v3 v3.0.5
 	golang.org/x/crypto v0.57.0

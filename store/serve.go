@@ -309,7 +309,7 @@ func (s *Server) wait(ctx context.Context, p Party, under string) (bool, error) 
 	if !ok {
 		return false, fmt.Errorf("store: only a directory is served")
 	}
-	written, stop := f.noticeIf(func(name string) bool { return within(name, under) && p.Allows(ActRead, name) })
+	written, stop := f.noticeIf(under, func(name string) bool { return p.Allows(ActRead, name) })
 	defer stop()
 	select {
 	case <-written:

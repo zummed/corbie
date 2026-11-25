@@ -41,6 +41,14 @@ func helper(dir, what string) {
 				}
 			}
 		}
+	case "write", "delete":
+		// Write or delete the one name given.
+		name := os.Getenv("CORBIE_STORE_HELPER_NAME")
+		if what == "write" {
+			s.Write(ctx, name, []byte("written"), Overwrite)
+		} else {
+			s.Delete(ctx, name, Overwrite)
+		}
 	case "hold":
 		// Take the directory's lock alone, say so, and wait to be killed.
 		s.(*directory).lock(ctx, true)

@@ -57,8 +57,9 @@ type Store interface {
 	First(ctx context.Context, under string, n int) ([]Listed, error)
 
 	// Notice gives a channel that is sent to when this process writes or
-	// deletes a name under the path, and a func that ends it. A store that
-	// cannot tell gives a channel that is never sent to.
+	// deletes a name under the path, and a func that ends it. A directory
+	// sends to it as well when another process on the computer writes or
+	// deletes a message in an inbox or a running head under the path.
 	Notice(under string) (<-chan struct{}, func())
 }
 
@@ -183,23 +184,32 @@ func within(name, under string) bool {
 type notices struct {
 	mu   sync.Mutex
 	subs map[chan struct{}]func(name string) bool
+
+	// watch, where the store has one, has what other processes write under
+	// a path reported as well, and gives a func that ends it.
+	watch func(under string) func()
 }
 
 func (n *notices) notice(under string) (<-chan struct{}, func()) {
-	return n.noticeIf(func(name string) bool { return within(name, under) })
+	return n.noticeIf(under, func(name string) bool { return true })
 }
 
-// noticeIf gives a channel that is sent to when a name the func picks out
-// is written or deleted, and a func that ends it.
-func (n *notices) noticeIf(picks func(name string) bool) (<-chan struct{}, func()) {
+// noticeIf gives a channel that is sent to when a name under the path that
+// the func picks out is written or deleted, and a func that ends it.
+func (n *notices) noticeIf(under string, picks func(name string) bool) (<-chan struct{}, func()) {
 	ch := make(chan struct{}, 1)
 	n.mu.Lock()
 	if n.subs == nil {
 		n.subs = map[chan struct{}]func(string) bool{}
 	}
-	n.subs[ch] = picks
+	n.subs[ch] = func(name string) bool { return within(name, under) && picks(name) }
 	n.mu.Unlock()
+	unwatch := func() {}
+	if n.watch != nil {
+		unwatch = n.watch(under)
+	}
 	return ch, func() {
+		unwatch()
 		n.mu.Lock()
 		delete(n.subs, ch)
 		n.mu.Unlock()

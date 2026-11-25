@@ -105,8 +105,8 @@ The detailed rules behind the [Instances overview](../instance.md).
 **R-inst-53** Watching writes nothing to the store and asks nothing of the controller.
 *Accept:* on a memory store that notes every write, a heads-only viewer and a client each watch a run from start to end and make no write and no delete. With the controller stopped, both still list and follow everything already written.
 
-**R-inst-54** In a directory or in memory, a watcher in the same process as the writer is told at once that something was written; any other watcher looks again at an interval, and that interval is the one setting watching has.
-*Accept:* under `corbie test`, with the watching interval set to an hour, a follower is shown each entry within a moment of its being written. A watcher in another process, with its interval set to two seconds, is shown a new entry no later than about two seconds after it was written. Watching offers no other setting.
+**R-inst-54** A watcher in the same process as the writer is told at once that something was written. In a directory, a watcher in another process on the computer is told when the controller takes a message and when a running head is written or removed. Any other watcher looks again at an interval, and that interval is the one setting watching has.
+*Accept:* under `corbie test`, with the watching interval set to an hour, a follower is shown each entry within a moment of its being written. On a directory, `corbie run start <location> --watch` in a process of its own, with the roles in another, shows each step and the run's end within a moment. A watcher in another process, with its interval set to two seconds, is shown an emit of a job still running no later than about two seconds after it was written. Watching offers no other setting.
 
 **C-inst-09** A look that cannot reach the store is made again at the next interval, and nothing is reported as changed or gone on its account. A listing turned away for load would otherwise read as every run having vanished. *Test:* `inst_watch_store_unreachable_reports_nothing`
 
@@ -151,7 +151,7 @@ The detailed rules behind the [Instances overview](../instance.md).
 
 Uses:
 
-- **Store**: heads under `running/` and `finished/`, records under `records/`, receipts and the results of calls under `receipts/`, the files sent with a message under `uploads/`, each within the table of who may touch what; ordered listing, each name with what a read of it gives; the notice a directory or memory store gives a watcher in the same process.
+- **Store**: heads under `running/` and `finished/`, records under `records/`, receipts and the results of calls under `receipts/`, the files sent with a message under `uploads/`, each within the table of who may touch what; ordered listing, each name with what a read of it gives; the notice a store gives a watcher (R-store-67).
 - **Identity**: the controller's signature on a head; the sealing of record entries to the controller, the root's client and the clients `read:` lists, and of a receipt and a call's result to the client that sent the message; the signature of a runner on what it emits.
 - **Blobs**: the larger values a record's entries refer to, where they live in the record, and the rules for when a blob in a record goes.
 

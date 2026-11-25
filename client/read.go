@@ -243,8 +243,8 @@ func (c *Client) unstarted(ctx context.Context, id string) (*Run, error) {
 	return &Run{ID: id, Status: instance.Waiting}, nil
 }
 
-// Wait stays until a run has ended and gives it. It looks again when this
-// process writes to the store, and otherwise at the interval; a look that
+// Wait stays until a run has ended and gives it. It looks again when the
+// store reports a write, and otherwise at the interval; a look that
 // cannot reach the store is made again. A wait that is cut short, by the
 // context's limit or by its caller going away, gives the run as it stands.
 func (c *Client) Wait(ctx context.Context, id string, interval time.Duration) (*Run, error) {

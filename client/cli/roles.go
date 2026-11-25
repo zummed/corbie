@@ -10,9 +10,11 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"runtime"
 	"slices"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 
 	"github.com/zummed/corbie/controller"
@@ -286,6 +288,7 @@ func (e *Env) start(cfg identity.Config, named []item, before func() error) erro
 			defer stop()
 			running = append(running, role.Role{Name: name, Pass: controller.New(id, s).Pass, Interval: set.interval, Notice: notice})
 			e.Say("controller %s  (%s)", id.Name, id.Fingerprint())
+			e.unreported(name, s, set.interval)
 		case "runner":
 			id, err := cfg.Load(e.ctx, identity.Runner)
 			if err != nil {
@@ -338,6 +341,9 @@ func (e *Env) start(cfg identity.Config, named []item, before func() error) erro
 			r.Wrapper = strings.Fields(set.wrapper)
 			running = append(running, role.Role{Name: name, Pass: r.Pass, Interval: set.interval, Notice: woken})
 			e.Say("runner %s  (%s), serving %d controller(s), %d jobs at once", id.Name, id.Fingerprint(), len(serves), set.jobs)
+			for _, s := range stores {
+				e.unreported(name, s, set.interval)
+			}
 		case "gateway":
 			e.listen, e.tokenFile, e.clients = set.listen, set.tokenFile, set.clients
 			e.oidc = set.oidc
@@ -415,6 +421,20 @@ func (e *Env) start(cfg identity.Config, named []item, before func() error) erro
 	default:
 		return nil
 	}
+}
+
+// unreported warns, as a role starts, that the operating system does not
+// report what other processes write into the role's store, and says why.
+func (e *Env) unreported(name string, s store.Store, interval time.Duration) {
+	err := store.Unreported(s)
+	if err == nil {
+		return
+	}
+	limits := ""
+	if runtime.GOOS == "linux" && (errors.Is(err, syscall.EMFILE) || errors.Is(err, syscall.ENOSPC)) {
+		limits = " On Linux the limits are fs.inotify.max_user_instances and fs.inotify.max_user_watches."
+	}
+	e.Say("%s: warning: the operating system does not report writes to the store's directory (%s). A message another process writes is taken at the next poll, every %s.%s", name, e.clean(err.Error()), interval, limits)
 }
 
 // programEnv is the environment a program corbie starts is given: this

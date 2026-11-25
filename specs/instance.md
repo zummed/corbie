@@ -68,7 +68,7 @@ For an instance whose record the watcher may read, it then reads the entries it 
 
 What a watcher sees depends only on what the store lets it read, and there are three levels. With no access it sees nothing. With access to heads it sees where every instance stands and nothing inside any of them, which is what a dashboard or a metrics exporter needs. A client sees where the runs of its trees, and of files whose `read:` lists it, stand and everything inside them.
 
-Watching holds no state anywhere and asks nothing of the controller. In a directory or in memory, a watcher in the same process as the writer is told at once that something was written. Any other watcher looks again at an interval, which is the one setting watching has.
+Watching holds no state anywhere and asks nothing of the controller. A watcher in the same process as the writer is told at once that something was written. In a directory, a watcher in another process on the computer is told when the controller takes a message and when a running head is written or removed, so it is shown each step as it is taken (see Store). Any other watcher looks again at an interval, which is the one setting watching has.
 
 ## Sending
 

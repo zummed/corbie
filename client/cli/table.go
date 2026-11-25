@@ -133,8 +133,11 @@ corbie <name> ….
   store --timeout <time>           closes a connection that sends nothing for
                                    this long; default 60s
 
-A controller and a runner in one process notify each other, and do not wait
-for the interval.
+In a directory, a controller or a runner starts work when a message is
+written to its inbox by any process on the computer, and does not wait for
+the interval. Where the operating system does not report those writes,
+corbie start prints a warning that says why, and polls. In a bucket, only a
+controller and a runner in one process notify each other.
 
 The wrapper is started with these environment variables and with none that a
 script set. The variables a script gives a program are passed to it by the

@@ -322,7 +322,7 @@ The detailed rules behind [the Client overview](../client.md).
 
 Uses:
 
-- **Store.** Reads heads, records, its own receipts and the results of its calls; writes messages into the controller's inbox, a submit's files under `uploads/` and a start's input into the record of the run it names, a bounded number at a time; is told at once of a write made in the same process, and otherwise looks again at the one interval (R-inst-54).
+- **Store.** Reads heads, records, its own receipts and the results of its calls; writes messages into the controller's inbox, a submit's files under `uploads/` and a start's input into the record of the run it names, a bounded number at a time; is told of a write as R-inst-54 says, and otherwise looks again at the one interval.
 - **Instances.** The head and the entries of a record are what it reads, by the one way of watching, with its narrowings (R-inst-43 to R-inst-49); a receipt is what it gets back for a message; the three levels of watching set what it shows, and a head that is not the controller's is not shown (R-inst-01); the run's name is chosen, and its input written into its record, before the start is sent (R-inst-65); a call's result is read beside its receipt.
 - **Blobs.** Makes a blob for each uploaded file, reads a blob through its reference, copies a blob from one record to another (R-blob-25), and shows a blob as its type, size and path with no key (R-blob-06).
 - **Identity.** The client's own identity and its controller's card: it signs and seals each message, opens receipts and records sealed to it, and checks the controller's signature on a head. `corbie init` and the `controller`, `runner` and `client` commands that enrol and trust are Identity's (R-id-12 to R-id-22).

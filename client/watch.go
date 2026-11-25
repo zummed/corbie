@@ -362,7 +362,7 @@ func (c *Client) Follow(ctx context.Context, id string, interval time.Duration, 
 	if err := c.readable(ctx, id); err != nil {
 		return nil, err
 	}
-	notice, stop := c.Store.Notice(store.Records(c.ctl()))
+	notice, stop := c.Store.Notice(c.ctl())
 	defer stop()
 	all := map[string]*followed{id: {jobs: map[int]sent{}, emits: map[string]bool{}}}
 	ended := false

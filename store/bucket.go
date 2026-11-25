@@ -13,6 +13,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -35,7 +36,13 @@ type bucket struct {
 
 	wait time.Duration // before a second try, and twice as long before each one after
 	part int64         // a value this long or longer is sent in parts of this size
+
+	*notices
 }
+
+// bucketNotices holds, by where its keys are, what the stores this process
+// opened on a bucket share.
+var bucketNotices sync.Map
 
 const (
 	// Tries at one request go on for a little over six seconds: seven of
@@ -122,6 +129,8 @@ func newBucket(address string, key bucketKey) (*bucket, error) {
 		// The bucket's answer is taken as it comes, never followed elsewhere.
 		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
 	}
+	n, _ := bucketNotices.LoadOrStore(b.origin+b.base+"/"+b.prefix, &notices{})
+	b.notices = n.(*notices)
 	return b, nil
 }
 
@@ -226,6 +235,7 @@ func (b *bucket) change(ctx context.Context, r request, how How) (bool, error) {
 	// A bucket can answer that all is well and then say in the answer's
 	// body that it is not.
 	case a.status/100 == 2 && errorCode(a.body) == "":
+		b.wrote(r.name)
 		return true, nil
 	}
 	return false, a.unexpected()
@@ -370,7 +380,7 @@ func (b *bucket) list(ctx context.Context, under string, pages int) ([]Listed, e
 	}
 }
 
-// Notice gives a channel that is never sent to: a bucket does not tell.
-func (b *bucket) Notice(string) (<-chan struct{}, func()) {
-	return make(chan struct{}), func() {}
+// Notice tells of what this process writes: a bucket tells no other.
+func (b *bucket) Notice(under string) (<-chan struct{}, func()) {
+	return b.notice(under)
 }

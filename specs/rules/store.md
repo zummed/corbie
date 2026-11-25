@@ -105,6 +105,11 @@ Each rule here is checked on the memory store opened as the party named, and on 
 **R-store-50** Corbie says that a directory keeps no party out of anything.
 *Accept:* `corbie init` with a directory store prints, among what it did, that a directory keeps no party out. The manual's page on the store says the same.
 
+**R-store-67** A process waiting on a path of a store is told at once of each name its own process writes or deletes under the path. In a directory it is told as well of a message in an inbox and of a running head that any other process on the computer writes or deletes under the path; the operating system reports them, and Corbie writes nothing for it. Any other write is found at the process's interval. Where the system refuses to report them, `corbie start` prints a warning that says why.
+*Accept:* a process waits on a controller's inbox, on the controller's area and on its records, in a directory that holds nothing yet. Another process writes a message, deletes it, writes a second, and writes a running head twice: the first process is told each time, within a moment. The other process writes a step and a finished head: the first is told nothing. Two stores opened on one bucket by one process: a write through one is told to a wait on the other, and a write the bucket answers "already there" is not. On Linux with `fs.inotify.max_user_watches` at 0, `corbie start controller` prints a warning with the system's error and the names of the two limits, and takes a message another process writes at its interval.
+
+**C-store-53** A directory has the operating system watch the inboxes and the running heads alone, and makes the watch again each time a delete has removed a directory and a write has made it anew. Those two hold only what is in flight. A watch on the records, the receipts or the finished heads costs one for each directory of every run the store has kept, and on macOS an open file for each name, until the system refuses more. *Test:* `store_directory_tells_of_another_processs_write`, `store_directory_says_why_it_is_not_watched`, `store_bucket_tells_the_process_that_wrote`
+
 **R-store-51** In a bucket Corbie uses only what the overview names: reading a value or a part of one, ordered listing with each value's ETag, the three ways of writing, the two ways of deleting, and the bucket's own copy for a blob (see Blobs).
 *Accept:* run the whole of Corbie's tests against a bucket stand-in that refuses every other kind of request, and whose listing gives each name's ETag as S3's does. Nothing fails.
 
@@ -211,9 +216,9 @@ Uses:
 Used by:
 
 - **Identity**: keeps the controller's trust entries under `trust/`; every message in an inbox is signed and sealed by it; each end of a served directory's wire is known by its identity key; enrolment hands out the store's address with the controller's card.
-- **Instances**: heads under `running/` and `finished/`, records under `records/`, receipts, the results of calls and their blobs under `receipts/`; watching is listing and reading these, and a directory or memory store tells a watcher in the same process at once that something was written.
+- **Instances**: heads under `running/` and `finished/`, records under `records/`, receipts, the results of calls and their blobs under `receipts/`; watching is listing and reading these, and a store tells a watcher of what was written as R-store-67 says.
 - **Blobs**: each blob is one value under the `blobs/` of a record, a location or a receipt, or under a message's `uploads/`, of which a reader may fetch a part; a copy is a link in a directory and the bucket's own copy in a bucket; the right to read a blob's bytes gives nothing without its reference (R-blob-03).
-- **Roles**: a pass lists an inbox and the due wakes and does all its work through the three ways of writing; a store in the same process wakes a role when another role writes what it reads.
+- **Roles**: a pass lists an inbox and the due wakes and does all its work through the three ways of writing; a store wakes a role when its inbox is written (R-store-67).
 - **Controller**: owns every name in its area, trees, locations, keys and uploads among them; writes jobs and cancels into runners' inboxes.
 - **Runner**: reads its inbox, writes marks, emits, blobs and results, each within its row of the table.
 - **Client**: writes messages, a submit's files under `uploads/` and a start's input into the record of the run it names, and reads its receipts, the results of its calls, heads and records.

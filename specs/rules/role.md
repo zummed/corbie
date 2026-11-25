@@ -30,10 +30,10 @@ The detailed rules behind the [Roles overview](../role.md).
 *Accept:* under a stand-in host that kills a copy at thirty seconds, a controller's pass is given more messages than fit. The pass returns before thirty seconds, the host kills nothing, the messages not reached are in the inbox untouched, the passes that follow take them, and every run ends as it would have with one long pass.
 
 **R-role-17** On a computer `corbie start` runs passes in a loop, sleeping until the next thing is due or for a short interval, whichever is sooner.
-*Accept:* with the interval set to two seconds, a message written by another process is taken within about two seconds, and a wake due in a fifth of a second is delivered then and not at two seconds.
+*Accept:* with the interval set to two seconds, a message written to a bucket by another process is taken within about two seconds, and a wake due in a fifth of a second is delivered then and not at two seconds.
 
-**R-role-18** When one role in a process writes something that another role in the same process reads, the second is woken at once; that shortcut changes when a pass happens and never what a pass does, and it is the only thing a computer adds.
-*Accept:* `corbie start controller runner` with the interval set to a minute: once the controller has taken a start, the job it sends is run and its result is taken without any wait for the interval. Run one workload with both roles in one process and again with each role in a process of its own: everything written is the same, and only the times differ.
+**R-role-18** A write to a role's inbox wakes the role at once: in a directory a write by any process on the computer, and in a bucket or in memory a write by the role's own process. That shortcut changes when a pass happens and never what a pass does, and it is the only thing a computer adds.
+*Accept:* `corbie start controller runner` with the interval set to a minute: once the controller has taken a start, the job it sends is run and its result is taken without any wait for the interval. `corbie start controller` and `corbie start runner`, each a process of its own on one directory with the interval set to a minute: `corbie run start <location> --wait` in a third process ends `done` within a second. Run one workload with both roles in one process and again with each role in a process of its own: everything written is the same, and only the times differ.
 
 **R-role-20** `corbie test` is the same loop, with every role in one process and the store in memory.
 *Accept:* a definition run by `corbie test`, and the same definition submitted with the same input to `corbie start controller runner` on a directory store, go through the same steps to the same result. `corbie test` needs nothing set up beforehand.
@@ -88,7 +88,7 @@ The detailed rules behind the [Roles overview](../role.md).
 
 Uses:
 
-- **Store**: a pass lists an inbox and the due wakes and works only through the three ways of writing; a store in the same process wakes a role when another role writes what it reads.
+- **Store**: a pass lists an inbox and the due wakes and works only through the three ways of writing; a store wakes a role when its inbox is written, by the role's own process, and in a directory by any process on the computer (R-store-67).
 - **Controller**: what a controller's pass does with a message or a wake: the five things done for each instance, in their order, and what a controller stopped at any point leaves (R-ctl-31).
 - **Runner**: what a runner's pass does with a job: the mark that makes a job run once (R-run-04), the script's own process, the result, the number of jobs at once, which jobs it leaves for want of time (C-run-06), and how a cancel reaches the copy that runs a job.
 - **Identity**: the role's key, and who it trusts, read afresh in every pass (C-id-14).

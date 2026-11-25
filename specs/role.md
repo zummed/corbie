@@ -24,7 +24,15 @@ On a **serverless host**, for a role that `corbie start` runs, the host calls fo
 
 Use it for a run that ends within the request that started it. A run that goes on after its request needs a store in a bucket, with a function for each role.
 
-On a **computer** `corbie start` runs passes in a loop, sleeping until the next thing is due or for a short interval, whichever is sooner. When one role in the process writes something that another role in the same process reads, the second is woken at once. A served directory does the same for a role on another computer: it tells the role when its inbox is written. That shortcut is the only thing a computer adds. It changes when a pass happens and never what a pass does.
+On a **computer** `corbie start` runs passes in a loop, sleeping until the next thing is due or for a short interval, whichever is sooner. A write to a role's inbox wakes the role at once, when it is made by:
+
+```
+  a directory          any process on the computer
+  a served directory   any process on the serving computer, for a role on another computer too
+  a bucket, memory     the role's own process
+```
+
+That shortcut is the only thing a computer adds. It changes when a pass happens and never what a pass does.
 
 **`corbie test`** is the same loop with every role in one process and the store in memory. It is not a separate way of running a machine.
 

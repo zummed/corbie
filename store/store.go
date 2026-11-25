@@ -185,9 +185,9 @@ type notices struct {
 	mu   sync.Mutex
 	subs map[chan struct{}]func(name string) bool
 
-	// watch, where the store has one, has what other processes write under
-	// a path reported as well, and gives a func that ends it.
-	watch func(under string) func()
+	// os, where the store has one, has what other processes write under a
+	// path reported as well.
+	os *watcher
 }
 
 func (n *notices) notice(under string) (<-chan struct{}, func()) {
@@ -205,8 +205,8 @@ func (n *notices) noticeIf(under string, picks func(name string) bool) (<-chan s
 	n.subs[ch] = func(name string) bool { return within(name, under) && picks(name) }
 	n.mu.Unlock()
 	unwatch := func() {}
-	if n.watch != nil {
-		unwatch = n.watch(under)
+	if n.os != nil {
+		unwatch = n.os.watch(under)
 	}
 	return ch, func() {
 		unwatch()

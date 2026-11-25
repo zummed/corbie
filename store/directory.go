@@ -58,7 +58,7 @@ func OpenDirectory(dir string) (Store, error) {
 		return nil, err
 	}
 	made := &notices{}
-	made.watch = (&watcher{root: root, wrote: made.wrote}).watch
+	made.os = &watcher{root: root, wrote: made.wrote}
 	n, _ := directoryNotices.LoadOrStore(root, made)
 	return &directory{root: root, notices: n.(*notices)}, nil
 }

@@ -152,7 +152,7 @@ A process that is not told looks again at its interval.
 - A directory watches the inboxes and the running heads alone. They hold only what is in flight, so the watch costs the same however many runs the store has kept.
 - A controller takes a message from its inbox once it has acted on it, so a client that waits for a receipt or for a run is told when its message is taken, and when the run's head is written or removed.
 - An emit of a job still running, written by another process, is found at the interval.
-- Where the operating system refuses the watch, a write by another process is found at the interval.
+- Where the operating system refuses the watch, a write by another process is found at the interval, and `corbie start` prints a warning that says why.
 
 ## What the store is trusted with
 

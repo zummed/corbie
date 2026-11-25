@@ -1,6 +1,8 @@
 package store
 
 import (
+	"errors"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"slices"
@@ -20,11 +22,28 @@ type watcher struct {
 	root  string
 	wrote func(name string)
 
-	mu    sync.Mutex
-	fs    *fsnotify.Watcher // nil while nobody waits
-	users int
-	paths []string        // the inboxes and running heads waited on, as names
-	dirs  map[string]bool // the directories watched, as file paths
+	mu      sync.Mutex
+	fs      *fsnotify.Watcher // nil while nobody waits
+	users   int
+	paths   []string        // the inboxes and running heads waited on, as names
+	dirs    map[string]bool // the directories watched, as file paths
+	refused error           // why the system last would not watch
+}
+
+// newWatcher asks the operating system for a watcher. A test has it refuse.
+var newWatcher = fsnotify.NewWatcher
+
+// Unreported says why the operating system does not report to this process
+// what other processes write into a directory store, where a wait on the
+// store asked it to and it refused. Any other store gives nil.
+func Unreported(s Store) error {
+	f, ok := s.(*directory)
+	if !ok {
+		return nil
+	}
+	f.os.mu.Lock()
+	defer f.os.mu.Unlock()
+	return f.os.refused
 }
 
 // inFlight gives the inboxes and the running heads under a path: those of a
@@ -56,12 +75,13 @@ func (w *watcher) watch(under string) func() {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 	if w.fs == nil {
-		fs, err := fsnotify.NewWatcher()
+		made, err := newWatcher()
 		if err != nil {
+			w.refused = err
 			return func() {}
 		}
-		w.fs, w.paths, w.dirs = fs, nil, map[string]bool{}
-		go w.run(fs)
+		w.fs, w.paths, w.dirs, w.refused = made, nil, map[string]bool{}, nil
+		go w.run(made)
 	}
 	w.users++
 	for _, path := range paths {
@@ -84,7 +104,7 @@ func (w *watcher) watch(under string) func() {
 // second goroutine. On Windows a watch is added by the thread that gives the
 // events, and that thread waits for each event to be taken: so an event is
 // always taken at once, also while a watch is being added.
-func (w *watcher) run(fs *fsnotify.Watcher) {
+func (w *watcher) run(from *fsnotify.Watcher) {
 	var mu sync.Mutex
 	var taken []fsnotify.Event
 	more := make(chan struct{}, 1)
@@ -97,7 +117,7 @@ func (w *watcher) run(fs *fsnotify.Watcher) {
 			mu.Unlock()
 			w.mu.Lock()
 			for _, event := range events {
-				if w.fs == fs {
+				if w.fs == from {
 					w.event(event)
 				}
 			}
@@ -106,7 +126,7 @@ func (w *watcher) run(fs *fsnotify.Watcher) {
 	}()
 	for {
 		select {
-		case event, open := <-fs.Events:
+		case event, open := <-from.Events:
 			if !open {
 				return
 			}
@@ -117,7 +137,7 @@ func (w *watcher) run(fs *fsnotify.Watcher) {
 			case more <- struct{}{}:
 			default:
 			}
-		case _, open := <-fs.Errors:
+		case _, open := <-from.Errors:
 			// Events the system dropped are writes not reported.
 			if !open {
 				return
@@ -198,10 +218,14 @@ func (w *watcher) below(dir string, report bool) {
 	}
 }
 
-// add watches a directory, and says whether it is watched.
+// add watches a directory, and says whether it is watched. A directory that
+// is not there is watched once it is made.
 func (w *watcher) add(dir string) bool {
 	if !w.dirs[dir] {
-		if w.fs.Add(dir) != nil {
+		if err := w.fs.Add(dir); err != nil {
+			if !errors.Is(err, fs.ErrNotExist) {
+				w.refused = err
+			}
 			return false
 		}
 		w.dirs[dir] = true

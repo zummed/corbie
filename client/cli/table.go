@@ -135,8 +135,9 @@ corbie <name> ….
 
 In a directory, a controller or a runner starts work when a message is
 written to its inbox by any process on the computer, and does not wait for
-the interval. In a bucket, only a controller and a runner in one process
-notify each other.
+the interval. Where the operating system does not report those writes,
+corbie start prints a warning that says why, and polls. In a bucket, only a
+controller and a runner in one process notify each other.
 
 The wrapper is started with these environment variables and with none that a
 script set. The variables a script gives a program are passed to it by the

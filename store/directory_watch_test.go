@@ -1,8 +1,11 @@
 package store
 
 import (
+	"errors"
 	"testing"
 	"time"
+
+	"github.com/fsnotify/fsnotify"
 )
 
 // otherProcess has another process write or delete one name of a directory.
@@ -144,6 +147,46 @@ func Test_store_bucket_tells_the_process_that_wrote(t *testing.T) {
 	select {
 	case <-other:
 		t.Fatal("a write under one path was told to one waiting on another")
+	default:
+	}
+}
+
+func Test_store_directory_says_why_it_is_not_watched(t *testing.T) {
+	refusal := errors.New("the system has no watcher to give")
+	given := newWatcher
+	newWatcher = func() (*fsnotify.Watcher, error) { return nil, refusal }
+	defer func() { newWatcher = given }()
+
+	s, _ := newDirectory(t)
+	if err := Unreported(s); err != nil {
+		t.Fatalf("a directory nobody waits on says %v", err)
+	}
+	inbox, stop := s.Notice(Inbox("ctl"))
+	defer stop()
+	if err := Unreported(s); !errors.Is(err, refusal) {
+		t.Fatalf("a directory the system would not watch says %v", err)
+	}
+	// A write of this process is told all the same.
+	if _, err := s.Write(ctx, Message("ctl", "client", "m1"), []byte("message"), OnlyIfNew); err != nil {
+		t.Fatal(err)
+	}
+	if !told(inbox) {
+		t.Fatal("a write of this process was not told in a directory the system would not watch")
+	}
+	if err := Unreported(NewMemory().As(Party{Kind: Owner})); err != nil {
+		t.Fatalf("a store in memory says %v", err)
+	}
+
+	// The system gives a watcher again: the next wait is watched.
+	newWatcher = given
+	again, stop := s.Notice(Inbox("ctl"))
+	defer stop()
+	if err := Unreported(s); err != nil {
+		t.Fatalf("a directory the system watches says %v", err)
+	}
+	select {
+	case <-again:
+		t.Fatal("a wait was told of a write made before it began")
 	default:
 	}
 }

@@ -17,7 +17,7 @@ Routes
   GET /runs                     lists the client's runs in progress, as a JSON list
   GET /runs/<id>                one run
   GET /runs/<id>/record         the record so far, child runs included: { "entries": […], "run": {…} }
-  GET /runs/<id>/steps/<n>      step n of the record, as its entry
+  GET /runs/<id>/steps/<n>      step n of the record, as its entry, with `outputs` in its `state`
   GET /runs/<id>/definition     the definition the run was started from, as JSON
   GET /runs/<id>/tickets        the tickets the run waits on: { "<name>": "<the ticket>" }
   GET /runs/<id>/files          the files of the result: { "<path>": { "type", "size" } }

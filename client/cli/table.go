@@ -338,7 +338,8 @@ client's running there. It takes one of these flags at most.
   --wait               wait until the run ends, then print it
   --tickets            print each ticket the run waits on, as its name and
                        its value; corbie run reply takes the value
-  --step n             print step n of the run's record, as JSON
+  --step n             print step n of the run's record, as JSON, with the
+                       outputs so far of the run's stages or states
   --definition         print the definition the run was started from, with
                        every short form written out, as JSON
   --save <directory>   save the files of the run's result into a directory

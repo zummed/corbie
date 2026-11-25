@@ -334,7 +334,8 @@ type Type interface {
 }
 
 // Shown is the state of a run a watcher is shown for each step, beside
-// what its head says. A flow, a statechart and an agent each fill one field.
+// what its head says. A flow, a statechart and an agent each fill one field
+// of the first three.
 type Shown struct {
 	// Stages are a flow's stages, each with its status: waiting, running,
 	// done, failed or skipped.
@@ -343,6 +344,11 @@ type Shown struct {
 	States []string `json:"states,omitzero"`
 	// Turn is how many turns an agent has taken.
 	Turn int `json:"turn,omitzero"`
+	// Outputs are the outputs so far of a flow's stages or of a
+	// statechart's states, each under the name an expression reads it by.
+	// A step read by its number is shown with them; a step given among
+	// the others of a record is not, since each would hold them again.
+	Outputs map[string]any `json:"outputs,omitzero"`
 }
 
 // A Limiter is a type that adds limits of its own to those every type

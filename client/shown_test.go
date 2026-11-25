@@ -2,6 +2,7 @@ package client_test
 
 import (
 	"encoding/json"
+	"io"
 	"slices"
 	"testing"
 	"time"
@@ -92,6 +93,103 @@ func Test_inst_step_shows_the_runs_state(t *testing.T) {
 			}
 		}
 	}
+}
+
+// A step read by its number is shown with the outputs so far of the run's
+// stages or states, each under its name, and a blob in one is fetched by the
+// path it is shown with. A step given among the others of a record has none.
+func Test_inst_step_read_by_number_shows_outputs(t *testing.T) {
+	l := local(t, "all")
+	outputs := func(id string, step int) map[string]any {
+		t.Helper()
+		e, err := l.Step(ctx, id, step)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return e.Shown.Outputs
+	}
+	bare := func(entries []client.Entry) {
+		t.Helper()
+		for _, e := range entries {
+			if e.Shown.Outputs != nil {
+				t.Fatalf("an entry of a followed record holds outputs: %+v", e)
+			}
+		}
+	}
+
+	r, entries := followAll(t, l, `
+		flow: two
+		stages:
+		  first: { job: { script: ./one.js } }
+		  second: { follows: [first], job: { script: ./two.js, input: "${stages.first.output}" } }
+	`, map[string]string{"one.js": "return { n: 1 }", "two.js": "return { n: input.n + 1 }"}, nil)
+	bare(entries)
+	if got := outputs(r.ID, 1); got != nil {
+		t.Fatalf("the flow's first step has the outputs %v", got)
+	}
+	got, _ := json.Marshal(outputs(r.ID, r.Step))
+	if string(got) != `{"first":{"n":1},"second":{"n":2}}` {
+		t.Fatalf("the flow's last step has the outputs %s", got)
+	}
+
+	// A chart that keeps running: its latest step has what its states gave,
+	// whatever event that step took.
+	id, err := l.Run(ctx, draft(t, `
+		statechart: desk
+		initial: making
+		states:
+		  making:
+		    job: { script: ./make.js }
+		    on: { done: open }
+		  open:
+		    on: { note: open, shut: closed }
+		  closed: { end: done }
+	`, map[string]string{"make.js": `return { n: 7, report: blobs.make("the report") }`}), client.Start{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// latest waits for the run's latest step to be one that is wanted.
+	latest := func(what string, wanted func(*client.Entry) bool) *client.Entry {
+		t.Helper()
+		for range 500 {
+			run, err := l.Show(ctx, id)
+			if err != nil {
+				t.Fatal(err)
+			}
+			// The run is waiting to start until its first step is written.
+			if e, _ := l.Step(ctx, id, run.Step); e != nil && wanted(e) {
+				return e
+			}
+			time.Sleep(10 * time.Millisecond)
+		}
+		t.Fatalf("the chart's latest step never was %s", what)
+		return nil
+	}
+	latest("in open", func(e *client.Entry) bool { return slices.Equal(e.Shown.States, []string{"open"}) })
+	if _, err := l.Send(ctx, machine.Address{Run: id}, "note", nil, 0); err != nil {
+		t.Fatal(err)
+	}
+	noted := latest("the one that took note", func(e *client.Entry) bool { return len(e.Events) == 1 && e.Events[0].Name == "note" })
+	made, _ := noted.Shown.Outputs["making"].(map[string]any)
+	report, _ := made["report"].(map[string]any)
+	path, _ := report["$blob"].(string)
+	if made["n"] != 7.0 || path == "" || !slices.Equal(noted.Shown.States, []string{"open"}) {
+		t.Fatalf("the chart's latest step is shown as %+v", noted.Shown)
+	}
+	contents, _, err := l.Fetch(ctx, id, path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if text, _ := io.ReadAll(contents); string(text) != "the report" {
+		t.Fatalf("the blob at %s holds %q", path, text)
+	}
+	if _, err := l.Send(ctx, machine.Address{Run: id}, "shut", nil, 0); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := l.Follow(ctx, id, 20*time.Millisecond, func(e client.Entry) { entries = append(entries, e) }); err != nil {
+		t.Fatal(err)
+	}
+	bare(entries)
 }
 
 // An agent's record holds its turns as jobs named turn, the reply's text

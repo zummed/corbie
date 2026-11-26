@@ -1,6 +1,6 @@
 # Store
 
-The store is the one place Corbie keeps anything. Every party reads and writes it directly. Nothing of Corbie's runs inside it, and nothing of Corbie's stands in front of a directory or a bucket. The one exception is a directory that its computer serves to others, described below, and what serves it keeps nothing of its own.
+The store is the one place Corbie keeps anything. Every party reads and writes it directly. Nothing of Corbie's runs inside it, and nothing of Corbie's stands in front of a directory or a bucket. The one exception is a served directory, described below. Its server keeps nothing of its own with one member, and a log of recent changes with more.
 
 ## Named values
 
@@ -107,7 +107,9 @@ A **directory** is for one computer. Every value is a plain file, so a person ca
 
 On a file system that ignores case, as macOS's and Windows's do by default, `/Work` and `/work` are one directory. A secret or a value set at one of them is refused while the other has that name set, and so is a remove. A removal of a tree at one of them is refused while a secret or a value is set at the other or under it. A tree submitted at one of them is refused while the other is a tree. Listing the secrets or the values reads every file under `locations/`.
 
-A **served directory** is for a few computers of one's own, with nothing rented and nothing else installed. The computer that holds the directory and the controller serves it, and a party on another computer reaches it at `corbie://host:port`. Roles on the serving computer use the directory as it is.
+A **served directory** is for a few computers of one's own, with nothing rented and nothing else installed. A computer that holds the directory and the controller's identity serves it, and is a **member**. A party on another computer reaches it at `corbie://host:port`.
+
+A store has one member by default, and roles on that computer use the directory as it is. A store with more is described under Members.
 
 For example, the computer `desk` holds the directory and runs `corbie start controller runner store`, and a computer with a graphics card runs `corbie start runner` with the store `corbie://desk:8372`. One private connection joins them. On it `desk` proves the controller's key, and the other computer proves its runner's key.
 
@@ -120,19 +122,23 @@ corbie start store --listen :9000            listens there this time; others are
 corbie start store --timeout 5m              closes a connection that sends nothing for five minutes; a minute by default
 ```
 
-The address other computers are given is the one `corbie init store` saved, with this computer's host name where it names every network interface. `corbie start store --listen` never changes it, and `corbie init store --listen ""` serves the directory to no other computer.
+The address other computers are given is the one `corbie init store` saved, with this computer's host name where it names every network interface. `corbie start store --listen` never changes it, `corbie init store` with no `--listen` keeps it, and `corbie init store --listen ""` serves the directory to no other computer.
 
-There are no keys to a served directory: a party uses the identity it already has. A served directory's wire is private to the two computers. When a connection is made each end proves its own identity key: the party speaks only to the computer that holds its controller's key, and the server speaks only to a party whose key is the one in the controller's trust list for the name it gives, read afresh for every request, so a party that is removed is turned away from its next request on. The server holds each party to its row of the table, exactly as the table is drawn.
+There are no keys to a served directory: a party uses the identity it already has. A served directory's wire is private to the two computers. When a connection is made each end proves its own identity key: the party speaks only to a computer that holds its controller's key, and the server speaks only to a party whose key is the one in the controller's trust list for the name it gives, read afresh for every request, so a party that is removed is turned away from its next request on. The server holds each party to its row of the table, exactly as the table is drawn.
 
-Someone on the network between them can see that the two computers talk and how much, and can hold work up or cut it off; they can read nothing, write nothing, change nothing and answer nothing. Nothing of a connection is kept once it ends, and the server keeps nothing of its own.
+Someone on the network between them can see that the two computers talk and how much, and can hold work up or cut it off; they can read nothing, write nothing, change nothing and answer nothing. Nothing of a connection is kept once it ends.
 
 The server closes a connection that sends nothing for a minute, between two requests or in the middle of a value. `corbie start store --timeout 5m` sets another time. A party that keeps sending is not cut off, and a value sent slowly delays no other party's write.
 
-A party the controller trusts can fill the serving computer's disk with values, and a client's listing of the records reads every file in them. Corbie limits neither.
+A party the controller trusts can fill every member's disk with values, and a client's listing of the records reads every file in them. Corbie limits neither.
 
 A party waiting on its inbox is told the moment something is written there, as a process on the serving computer is, and is told nothing of names it may not read.
 
-The serving computer is the store. While it is off nothing moves, and what was waiting waits. Its process can be stopped and started again, as it is to update it, with work in flight on the other computers: they wait about ten seconds for it and carry on. Off for longer, a job that finished meanwhile cannot say so, and is a timeout when its time is up. Corbie offers no second computer to take over and no copies kept in step: two computers that each believe they hold the store break only-if-new, on which everything rests. A store that must outlive a computer is a bucket, and a served directory copies into one unchanged. Only the controller's computer serves, and only a directory. Someone with no identity is not shown a served directory's heads; a watcher there is a client.
+With one member, that computer is the store. While it is off nothing moves, and what was waiting waits. Its process can be stopped and started again, as it is to update it, with work in flight on the other computers: they wait about ten seconds for it and carry on.
+
+Off for longer, a job that finished meanwhile cannot say so, and is a timeout when its time is up. A store that must outlive a computer has three members, or is a bucket. A directory with one member copies into a bucket unchanged.
+
+Only a computer that holds the controller's identity serves, and only a directory. Someone with no identity is not shown a served directory's heads; a watcher there is a client.
 
 A **bucket** is for several computers and for serverless hosts. It needs a service that offers the three ways of writing, ordered listing with each value's ETag, reading part of a value, and copying a value within the store. Corbie names the services it is tested against, says which of them can enforce the table above, and claims nothing more. In a bucket each party holds its own key, and the bucket's policy limits that key to its row of the table. Corbie prints the policy for each party. A policy cannot hold a name to one part, so it lets a runner or a client add names deeper in a record than the layout draws; it never lets one replace or remove anything.
 
@@ -142,7 +148,7 @@ A process that waits on a path of a store is told when a name under it is writte
 
 ```
   a directory          its own process's writes; from any process on the computer, a message in an inbox and a running head
-  a served directory   as a directory; on another computer, each write of a name the party may read
+  a served directory   as a directory; through a server, each write of a name the party may read
   a bucket, memory     its own process's writes
 ```
 
@@ -153,6 +159,68 @@ A process that is not told looks again at its interval.
 - A controller takes a message from its inbox once it has acted on it, so a client that waits for a receipt or for a run is told when its message is taken, and when the run's head is written or removed.
 - An emit of a job still running, written by another process, is found at the interval.
 - Where the operating system refuses the watch, a write by another process is found at the interval, and `corbie start` prints a warning that says why.
+
+## Members
+
+A served directory with three members loses one and carries on. Each member holds a copy of the directory and the controller's identity, and the members keep their copies in step with Raft.
+
+1. The members elect one of themselves leader.
+2. A party sends each request to the leader. Another member answers with the leader's address.
+3. The leader sends a value to the other members, then appends to a log what the change does: put this value under this name, or delete this name.
+4. The leader answers a change once a majority of the members have the value and the entry on disk.
+5. Each member applies the log to its copy, in order.
+
+The log has one order, so of two writes only-if-new to one name, one is done and the other is told "already there". The leader answers a read once a majority has confirmed that it is still the leader, so no member gives an old value in place of a newer one.
+
+For example, three switches share a store. `sw1` is set up as for one member, and a person copies `controller/identity` from its config to the other two.
+
+```
+sw1$   corbie init store
+sw2$   corbie init store --join corbie://sw1:8372
+sw3$   corbie init store --join corbie://sw1:8372
+```
+
+`--join` takes an empty directory: the members' directory is copied into it. `corbie start` on a computer set up with `--join` asks the members to take it, copies the directory and then follows the log. The computer counts as a member once its copy is whole.
+
+Other parties are given `corbie://sw1:8372,sw2:8372,sw3:8372`, and reach the store while one computer of that address is a member and running.
+
+```
+  the leader stops or is cut off     the others elect a leader within seconds; a party waits about ten seconds, as for a restart
+  a member cannot reach a majority   it answers no request, and a party that asks it reports that the store cannot be reached
+  a member comes back                it follows the log from where it stopped, or copies the directory again
+  a majority is off                  nothing moves, and what was waiting waits
+```
+
+The members are changed with `corbie init store`:
+
+```
+  --join <address>       makes this computer a member
+  --remove <host:port>   removes a member; asked of any other member
+  --alone                makes this computer's copy the whole store, with one member
+```
+
+- Members are added and removed one at a time, and the others turn a removed member away. Its copy is not used again.
+- `--remove` of an address that is not a member is refused.
+- A member's address is not changed. `corbie init store --listen` with another address is refused there: the member is removed, and joins again with an empty directory.
+- A store with two members stops when either is off, and `corbie start` prints that.
+- `corbie init store` prints the members, and which of them are joining.
+- `--alone` is for a store that has lost a majority of its members for good. The copy may lack the last changes the store answered, so the store has gone back in time, as the next section describes.
+- `--alone` is refused while a process listens at the address `corbie init store` saved, as `corbie start` does there: a running member writes its log again.
+- A computer that was a member before `--alone` is never started again as one. Two computers that each believe they hold the store break only-if-new, on which everything rests.
+
+On a member:
+
+- Only the member's server writes its copy. A person reads the files with ordinary tools, as in any directory.
+- From the moment a second member joins, a party on a member that opens the directory uses the members' servers in its place. No config changes. A controller there is held to the controller's row of the table.
+- `corbie start` starts the store's server first, and the other roles once a majority of the members reach each other.
+- The log is in `.log` at the top of the copy, with the values sent ahead of their entries.
+- A member that cannot apply an entry stops, and stops again at each start. So a change to a name that can hold no value is refused and stops no member: a name under a value, or a name with names under it.
+- With members, a name is UTF-8 and at most 512 bytes, and each of its parts at most 255 bytes and a file name that Windows takes. A change to any other name is refused before it is in the log.
+- Windows takes no file name that contains one of `< > : " | ? *`, that ends in a dot or a space, or that is a device's name, such as `CON` or `NUL`, alone or before a dot. A member on any computer refuses such a part, so a member on Windows applies every entry that a member on Linux does.
+- A computer is not made a member where its file system takes no file name of 255 bytes, or its directory's path is too long for a name of 512 bytes under it. `corbie start` prints which.
+- A member holds the controller's identity, so it can do everything the controller can.
+
+Members speak to each other on the wire parties use, and each proves the controller's key. A change the store has answered is on the disks of a majority of the members. The members' clocks need not agree for any of this.
 
 ## What the store is trusted with
 

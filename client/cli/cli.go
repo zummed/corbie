@@ -536,6 +536,17 @@ func (e *Env) Open(recorded string, as *identity.Identity, ctl identity.Card) (s
 	}
 	var s store.Store
 	switch {
+	case store.IsDirectory(address) && as != nil && ctl.SignKey() != nil:
+		// A party on the computer that holds a directory uses it as it is
+		// while it has one member, and through the members' servers once
+		// it has more.
+		var dir string
+		var proof tls.Certificate
+		if dir, err = store.DirectoryAt(address); err == nil {
+			if proof, err = as.Proof(); err == nil {
+				s, err = store.OpenLocal(dir, as.Name, proof, ctl.SignKey())
+			}
+		}
 	case !store.IsServed(address):
 		s, err = store.Open(address)
 	case as == nil:

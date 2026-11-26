@@ -1,6 +1,7 @@
 package store
 
 import (
+	"bytes"
 	"context"
 	"crypto/ed25519"
 	"crypto/rand"
@@ -8,12 +9,14 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"net"
 	"net/http"
 	"path/filepath"
 	"runtime"
 	"strconv"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -568,5 +571,79 @@ func TestServedRefusalNamesNoParty(t *testing.T) {
 	}
 	if a, b := said("cli"), said("stranger"); a != b {
 		t.Errorf("a party's name was turned away with %q and a name that is none with %q", a, b)
+	}
+}
+
+// closing is a listener that says when the server has closed a connection.
+type closing struct {
+	net.Listener
+	closed chan struct{}
+}
+
+func (l closing) Accept() (net.Conn, error) {
+	conn, err := l.Listener.Accept()
+	return closingConn{conn, l.closed}, err
+}
+
+type closingConn struct {
+	net.Conn
+	closed chan struct{}
+}
+
+func (c closingConn) Close() error {
+	err := c.Conn.Close()
+	select {
+	case c.closed <- struct{}{}:
+	default:
+	}
+	return err
+}
+
+// locked is a log that a test reads while the server writes it.
+type locked struct {
+	mu   sync.Mutex
+	said bytes.Buffer
+}
+
+func (l *locked) Write(p []byte) (int, error) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.said.Write(p)
+}
+
+// A connection that ends before it proves a key asked nothing of the store,
+// and the server prints nothing of it: corbie init store --alone makes one
+// to find whether the server runs.
+func Test_store_served_a_connection_that_proves_no_key_is_not_logged(t *testing.T) {
+	was, logged := log.Writer(), &locked{}
+	log.SetOutput(logged)
+	t.Cleanup(func() { log.SetOutput(was) })
+	_, keeper, _ := ed25519.GenerateKey(rand.Reader)
+	l, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	listener := closing{l, make(chan struct{}, 1)}
+	directory, err := OpenDirectory(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	server := (&Server{Directory: directory}).HTTP()
+	go server.Serve(ServedListener(listener, proofOf(t, keeper)))
+	t.Cleanup(func() { server.Close() })
+	conn, err := net.Dial("tcp", l.Addr().String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	conn.Close()
+	select {
+	case <-listener.closed:
+	case <-time.After(10 * time.Second):
+		t.Fatal("the server kept a connection that was closed")
+	}
+	logged.mu.Lock()
+	defer logged.mu.Unlock()
+	if logged.said.Len() > 0 {
+		t.Fatalf("the server printed, of a connection that proved no key:\n%s", logged.said.String())
 	}
 }

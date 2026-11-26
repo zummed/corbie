@@ -17,7 +17,7 @@ var ctx = context.Background()
 // kinds gives a fresh store of each kind that needs nothing outside the
 // test. The bucket is a stand-in in this process, and its key is in the
 // environment as a party's would be. The served directory is served in this
-// process and opened as its owner.
+// process and opened as its owner, and so is the one with three members.
 func kinds(t *testing.T) map[string]Store {
 	directory, err := Open(t.TempDir())
 	if err != nil {
@@ -37,7 +37,8 @@ func kinds(t *testing.T) map[string]Store {
 		t.Fatal(err)
 	}
 	served := newServedDirectory(t).as(Party{Kind: Owner, Name: "owner"})
-	return map[string]Store{"directory": directory, "memory": memory, "bucket": bucket, "served": served}
+	members := newMembers(t, 3).owner()
+	return map[string]Store{"directory": directory, "memory": memory, "bucket": bucket, "served": served, "members": members}
 }
 
 func must[T any](t *testing.T) func(T, error) T {
@@ -311,10 +312,11 @@ func TestNotice(t *testing.T) {
 			defer stop()
 			other, stopOther := s.Notice("ctl/running")
 			defer stopOther()
-			// A served directory tells over the wire: the asking has to reach
-			// the server before the write, and the telling takes a moment.
+			// A served directory, with members or without, tells over the
+			// wire: the asking has to reach the server before the write, and
+			// the telling takes a moment.
 			var wait time.Duration
-			if kind == "served" {
+			if kind == "served" || kind == "members" {
 				wait = 300 * time.Millisecond
 				time.Sleep(wait)
 			}

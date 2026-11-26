@@ -1,6 +1,8 @@
 package store
 
 import (
+	"crypto/ed25519"
+	"crypto/rand"
 	"errors"
 	"testing"
 	"time"
@@ -157,7 +159,7 @@ func Test_store_directory_says_why_it_is_not_watched(t *testing.T) {
 	newWatcher = func() (*fsnotify.Watcher, error) { return nil, refusal }
 	defer func() { newWatcher = given }()
 
-	s, _ := newDirectory(t)
+	s, dir := newDirectory(t)
 	if err := Unreported(s); err != nil {
 		t.Fatalf("a directory nobody waits on says %v", err)
 	}
@@ -165,6 +167,15 @@ func Test_store_directory_says_why_it_is_not_watched(t *testing.T) {
 	defer stop()
 	if err := Unreported(s); !errors.Is(err, refusal) {
 		t.Fatalf("a directory the system would not watch says %v", err)
+	}
+	// A party that opens the directory with its identity is told the same.
+	_, key, _ := ed25519.GenerateKey(rand.Reader)
+	here, err := OpenLocal(dir, "here", proofOf(t, key), keyOf(key))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := Unreported(here); !errors.Is(err, refusal) {
+		t.Fatalf("a directory the system would not watch, opened with an identity, says %v", err)
 	}
 	// A write of this process is told all the same.
 	if _, err := s.Write(ctx, Message("ctl", "client", "m1"), []byte("message"), OnlyIfNew); err != nil {

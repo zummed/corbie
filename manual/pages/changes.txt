@@ -5,6 +5,12 @@ Each section lists what changed after one release, the newest first.
 compatible before version 1: a file or a command written the old way is
 refused.
 
+After 0.38.0
+------------
+
+`corbie init store` with no `--listen` keeps the address saved before. Before,
+it saved `:8372` again. Write `corbie init store --listen :8372` for that.
+
 After 0.34.0
 ------------
 

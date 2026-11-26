@@ -26,6 +26,10 @@ import (
 type directory struct {
 	root string
 	*notices
+
+	// member is set on the one directory a member's server opens on its
+	// copy. Once the directory has members, no other changes it.
+	member bool
 }
 
 const (
@@ -222,6 +226,9 @@ func (f *directory) WriteFrom(ctx context.Context, name string, r io.Reader) (bo
 // "changed".
 func (f *directory) place(ctx context.Context, tmp, path string, how How) (bool, error) {
 	defer remove(tmp)
+	if err := f.guard(); err != nil {
+		return false, err
+	}
 	if how.kind == onlyIfNew {
 		err := link(tmp, path)
 		if errors.Is(err, fs.ErrExist) {
@@ -300,6 +307,9 @@ func (f *directory) Copy(ctx context.Context, from, to string) (bool, error) {
 		return false, err
 	}
 	defer end()
+	if err := f.guard(); err != nil {
+		return false, err
+	}
 	src, dst := f.path(from), f.path(to)
 	for i := range directoryTries {
 		if err = mkdirAll(filepath.Dir(dst)); err == nil {
@@ -334,6 +344,9 @@ func (f *directory) Delete(ctx context.Context, name string, how How) (bool, err
 		return false, err
 	}
 	defer end()
+	if err := f.guard(); err != nil {
+		return false, err
+	}
 	path := f.path(name)
 	if how.kind == onlyIfUnchanged {
 		unlock, err := f.lock(ctx, true)
@@ -521,6 +534,99 @@ func writeTemp(dir string, fill func(io.Writer) error) (string, error) {
 		return "", err
 	}
 	return file.Name(), nil
+}
+
+// guard refuses a change to a directory that has members, made by anything
+// but its member's server: a change that is not in the members' log is in
+// one copy and not in the others.
+func (f *directory) guard() error {
+	if !f.member && HasMembers(f.root) {
+		return errMembers
+	}
+	return nil
+}
+
+// markAt gives the mark a read of name gives, without holding its value.
+func (f *directory) markAt(name string) (Mark, error) {
+	file, err := openFile(f.path(name))
+	if err != nil {
+		if gone(err) || errors.Is(err, fs.ErrPermission) {
+			return None, nil
+		}
+		return None, err
+	}
+	defer file.Close()
+	if info, err := file.Stat(); err != nil || info.IsDir() {
+		return None, err
+	}
+	return markFrom(file)
+}
+
+// adopt puts the file at from under name as well, whatever is there, and
+// leaves from where it is. The two are one file on disk.
+func (f *directory) adopt(ctx context.Context, from, name string) error {
+	end, err := startChange(ctx)
+	if err != nil {
+		return err
+	}
+	defer end()
+	path := f.path(name)
+	for i := range directoryTries {
+		if err = mkdirAll(filepath.Dir(path)); err != nil {
+			return err
+		}
+		tmp := adopting(path)
+		if err = link(from, tmp); err == nil {
+			var done bool
+			if done, err = f.place(ctx, tmp, path, Overwrite); done {
+				f.wrote(name)
+			}
+		}
+		// The directory can go between being made and being used.
+		if !gone(err) {
+			return err
+		}
+		if _, serr := os.Lstat(from); gone(serr) {
+			return serr
+		}
+		time.Sleep(time.Duration(i) * directoryPause)
+	}
+	return fmt.Errorf("store: nothing put at %s: %v", name, err)
+}
+
+// adopting gives the temporary file a value is linked to before it is put
+// at path.
+func adopting(path string) string {
+	return filepath.Join(filepath.Dir(path), tmpPrefix+"adopt-"+newID())
+}
+
+// errNoRoom is a change to a name that can hold no value: names are under
+// it, or it is under a name that holds a value.
+var errNoRoom = errors.New("store: the name can hold no value")
+
+// above says whether names are under name.
+func (f *directory) above(name string) bool {
+	info, err := os.Lstat(f.path(name))
+	return err == nil && info.IsDir()
+}
+
+// below gives the name that holds a value and that name is under, where
+// there is one.
+func (f *directory) below(name string) string {
+	for at := 0; ; at++ {
+		next := strings.Index(name[at:], "/")
+		if next < 0 {
+			return ""
+		}
+		at += next
+		info, err := os.Lstat(f.path(name[:at]))
+		if err != nil {
+			return ""
+		}
+		if !info.IsDir() {
+			return name[:at]
+		}
+	}
 }
 
 func notThere(name string) error {

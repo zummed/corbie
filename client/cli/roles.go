@@ -131,6 +131,8 @@ type setting struct {
 	oidc              oidc
 	listened          bool // --listen was written, if empty
 	timeout           time.Duration
+	join, remove      string // corbie init store --join and --remove
+	alone             bool   // corbie init store --alone
 }
 
 // roleFlags gives the flags written after a role, which set what the role
@@ -159,6 +161,9 @@ func roleFlags(role string, set *setting, every *string) *flag.FlagSet {
 	case "store":
 		flags.StringVar(&set.listen, "listen", "", "")
 		flags.DurationVar(&set.timeout, "timeout", time.Minute, "")
+		flags.StringVar(&set.join, "join", "", "")
+		flags.StringVar(&set.remove, "remove", "", "")
+		flags.BoolVar(&set.alone, "alone", false, "")
 	}
 	return flags
 }
@@ -276,6 +281,21 @@ func (e *Env) start(cfg identity.Config, named []item, before func() error) erro
 	}
 	var running []role.Role
 	var programs []program
+	// The store's server starts first: in a directory with members, the
+	// other roles read the store through the members' servers.
+	for i, it := range named {
+		if it.name != "store" {
+			continue
+		}
+		if sets[i].join != "" || sets[i].remove != "" || sets[i].alone {
+			return Mistake("store: --join, --remove and --alone change the store's members, with corbie init store")
+		}
+		stop, err := e.serve(sets[i].listen, sets[i].timeout)
+		if err != nil {
+			return err
+		}
+		defer stop()
+	}
 	for i, it := range named {
 		name, set := it.name, sets[i]
 		switch name {
@@ -353,11 +373,6 @@ func (e *Env) start(cfg identity.Config, named []item, before func() error) erro
 			}
 			defer gateway()
 		case "store":
-			stop, err := e.serve(set.listen, set.timeout)
-			if err != nil {
-				return err
-			}
-			defer stop()
 		default:
 			programs = append(programs, found[i])
 		}

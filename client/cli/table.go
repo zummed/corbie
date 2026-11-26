@@ -49,7 +49,7 @@ a flow of one stage, and these flags set that stage's job. With a definition,
 
 func init() {
 	Commands = []Command{
-		{Name: "init", Usage: "[--store <address>] [--identity <address>] [--ceiling <list>] [--deny <entry>] [--name <name>] | store [--listen host:port]", Summary: "create a controller, a runner and a client on this computer", Run: cmdInit, Help: `
+		{Name: "init", Usage: "[--store <address>] [--identity <address>] [--ceiling <list>] [--deny <entry>] [--name <name>] | store [--listen host:port] [--join <address> | --remove host:port | --alone]", Summary: "create a controller, a runner and a client on this computer", Run: cmdInit, Help: `
 It creates the three in the config directory, makes each trust the others,
 sets up the store and prints what it did. Running it again replaces the
 ceiling with the one then given.
@@ -72,10 +72,22 @@ corbie init store sets up only the store's server, which gives other
 computers this computer's store directory, on a config that holds the
 controller; corbie start then runs it.
 
-  store --listen host:port   where it listens; default :8372, every network
-                             interface, with this computer's host name given
-                             to other computers
+  store --listen host:port   where it listens; default the address saved
+                             before, or else :8372, every network interface,
+                             with this computer's host name given to other
+                             computers
   store --listen ""          serves the directory to no other computer
+  store --join <address>     makes this computer a member of the store whose
+                             members are reached at corbie://host:port: corbie
+                             start then copies their directory into this
+                             computer's, which must be empty
+  store --remove host:port   removes a member of the store, from another
+                             member
+  store --alone              makes this computer's copy the whole store, with
+                             one member, where the other members are lost;
+                             corbie start is stopped on this computer first
+
+corbie init store on a member prints the store's members.
 
 A name that another controller has on the store is refused.
 

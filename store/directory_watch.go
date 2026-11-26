@@ -37,6 +37,9 @@ var newWatcher = fsnotify.NewWatcher
 // what other processes write into a directory store, where a wait on the
 // store asked it to and it refused. Any other store gives nil.
 func Unreported(s Store) error {
+	if l, ok := s.(*local); ok {
+		s = l.directory
+	}
 	f, ok := s.(*directory)
 	if !ok {
 		return nil

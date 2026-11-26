@@ -61,12 +61,60 @@ next request. The computers' clocks must agree within five minutes.
 When the first computer is off
 ------------------------------
 
-  desk is off                every run waits; no other computer takes over
+  desk is off                every run waits
   its process is restarted   safe during jobs: the other computers retry for about ten seconds
   it is off for longer       a finished job cannot write its result, and times out
 
-The store has no second copy. For a store that stays available, copy the
-directory as it is into an S3 bucket (`corbie manual bucket`).
+With one computer the store has no second copy. Three members keep it running
+when one is off.
+
+Three members
+-------------
+
+A member is a computer that holds a copy of the store directory and serves it.
+
+  1. Each member holds the controller's identity and a copy of the directory.
+  2. The members choose one of themselves, which takes every change.
+  3. A change is answered once two of the three members have it on disk.
+  4. A member that was off copies what it missed when it starts again.
+
+On `sw2`, with the file `controller/identity` copied from the config on `desk`
+into the config on `sw2`:
+
+  sw2$   corbie init store --join corbie://desk:8372
+  sw2$   corbie start
+
+`--join` needs an empty directory. Do the same on a third computer.
+`corbie init store` on a member prints the members.
+
+  one member is off       the other two carry on within seconds
+  a member is cut off     it answers nothing until it connects to another member
+  two members are off     every run waits
+
+  corbie init store --remove sw2:8372   on another member, removes sw2
+  corbie init store --alone             makes this computer's copy the whole store
+
+- `corbie controller enrol` on a member prints every member's address, and a
+  runner or a client then uses the store while one of them is on.
+- A store with two members stops when either is off.
+- A member keeps its address. To change it, remove the member and join again.
+- With members, the store refuses a file whose path in the store is not UTF-8,
+  is over 512 bytes, or has a part over 255 bytes.
+- With members, the store refuses a file whose path has a part that is no
+  file name on Windows: it contains one of `< > : " | ? *`, ends in a dot or a
+  space, or is a device's name such as `CON` or `NUL`, alone or before a dot.
+  A member on Linux refuses it too.
+- `corbie start` refuses to make a member of a computer whose file system does
+  not take such a path, and prints why.
+- A member holds the controller's private key. Make a member only of a
+  computer you would run the controller on.
+- A job sent to a runner on a computer that is off waits for the job's
+  timeout. Give each computer's runner a tag, and a job the tag of a runner
+  that is on.
+- `--alone` is for a store that has lost two members for good. Stop
+  `corbie start` on the computer first. The copy may lack the last changes,
+  and no other computer that was a member may run `corbie start` with its
+  copy again.
 
 A network share cannot replace a served directory: it does not reliably
 provide the file locks and hard links that a directory store needs.

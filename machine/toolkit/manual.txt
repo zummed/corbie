@@ -99,9 +99,10 @@ Requests
   request as `input.request`: its `do`, the `state` it gave, and the
   `responses` to its requests.
 - A resume whose job answers `working` again waits and asks again, until the
-  work ends. It waits `working.wait` seconds between two asks, 5 by default and 1 at the least,
-  on a timer, so no runner is in use. After `limits: { resume: 10m }`, ten
-  minutes by default, it ends with `{ working, state }`.
+  work ends. It waits `working.wait` seconds between two asks, 5 by default
+  and 1 at the least, on a timer, so no runner is in use. After
+  `limits: { resume: 10m }`, ten minutes by default, it ends with
+  `{ working, state }`.
 - A hook of the toolkit reads a call's tool as `job.tool`:
   `{ toolkit, name, args }`.
 - A toolkit is transient: each request is a run.

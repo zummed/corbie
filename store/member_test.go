@@ -48,11 +48,11 @@ type testMember struct {
 	held         chan error // what the member was held up by, where a test asks
 }
 
-// quick has a party give up on a store out of reach sooner, for a test.
-// The members' clocks run fast in every test of this package.
+// quick has a party give up on a store out of reach as much sooner as the
+// members' clocks run faster in every test of this package.
 func quick(t *testing.T) {
 	patience := servedPatience
-	servedPatience = 4 * time.Second
+	servedPatience = 200 * memberTick
 	t.Cleanup(func() { servedPatience = patience })
 }
 
@@ -394,7 +394,10 @@ func Test_store_members_minority_answers_nothing(t *testing.T) {
 		return dial(ctx, network, address)
 	}
 	// It does not yet know that it is cut off, and a name its copy holds
-	// may be free by now.
+	// may be free by now. Each call waits for its member to stop leading,
+	// which takes ten ticks, and then for nothing more.
+	patience := servedPatience
+	servedPatience = 40 * memberTick
 	if done, err := cutOff.Write(ctx, "a/one", []byte("again"), OnlyIfNew); !errors.Is(err, ErrUnreachable) {
 		t.Fatalf("a member cut off from the others answered that a name is taken: %v %v", done, err)
 	}
@@ -405,6 +408,7 @@ func Test_store_members_minority_answers_nothing(t *testing.T) {
 	if _, _, err := cutOff.Read(ctx, "a/one"); !errors.Is(err, ErrUnreachable) {
 		t.Fatalf("a member cut off from the others answered a read: %v", err)
 	}
+	servedPatience = patience
 
 	var rest []*testMember
 	for _, tm := range c.all {

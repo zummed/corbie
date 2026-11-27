@@ -23,9 +23,10 @@ func TestMain(m *testing.M) {
 		helper(dir, os.Getenv("CORBIE_STORE_HELPER"))
 		return
 	}
-	// The members' clocks run fast in every test: a leader is elected in a
-	// fifth of a second.
-	memberTick = 20 * time.Millisecond
+	// The members' clocks run at twice their speed in every test: a leader
+	// is elected in half a second. Faster, a leader loses its lead whenever
+	// the disk takes a fifth of a second over a sync, as a loaded one does.
+	memberTick = 50 * time.Millisecond
 	os.Exit(m.Run())
 }
 

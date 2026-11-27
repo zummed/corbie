@@ -2,7 +2,7 @@
 
 A machine is drawn top to bottom from its definition in full form, and a run's state is shown on the drawing.
 
-1. The UI reads the machine's graph, with Corbie's own types for a flow, a statechart, an agent and a decision: each card and what it says, the arrows, and the marks of a run.
+1. The UI reads the machine's graph, with Corbie's own types for a flow, a statechart, an agent, a decision and a toolkit: each card and what it says, the arrows, and the marks of a run.
 2. The page lays the graph out and draws it as SVG, with Solid, at the size it needs.
 
 Each holder, card, arrow and chip is an element of its own, and a card keeps its element while the graph changes. The same drawing is on a run's page and on the Machines page.
@@ -104,6 +104,16 @@ An agent is three things, one below another, joined by two arrows.
 
 A decision is two things, one below the other, joined by one arrow: its model, by its name, and its answers, with the name of each question.
 
+## A toolkit
+
+A toolkit is three things, one below another, joined by two arrows.
+
+1. `request` is a narrow card.
+2. Its tools are in one holder: each tool is a card, in the order of their names, six to a column, and each of the toolkit's hooks is a card below them, as an agent's are. A toolkit with `job:` has one card, `job`.
+3. `answer` is a narrow card.
+
+A tool's tooltip gives its `description:`.
+
 ## A machine inside a machine
 
 On a run's page, a card whose job started or called a run links to that run's page. The page can give the drawing of that run as of a step, which is drawn inside the card with that run's own marks. A run followed into its children is then a camera moving into the card, and out again.
@@ -122,6 +132,7 @@ A run is drawn as of one step: the step selected in Steps. Its marks come from i
 flow         each stage's status: waiting, running, held for a hook, done, failed or skipped
 statechart   the states it is in, and whether a state's job is held for a hook; states it was in before are outlined in moss, and states never entered faintly
 decision     the model going now while its job runs
+toolkit      the tool or the job the request started, going now, held for a hook, or done; each hook going now; the other tools as never used
 agent        the turn it is on; the model going now while its turn runs; each tool and each hook going now, a tool held for a hook, used at an earlier step, or never used
 ```
 

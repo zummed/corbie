@@ -55,7 +55,7 @@ Each area below has an overview here, and the overviews are the authority. Its r
 
 **[Machines](machines.md).** The machines the controller recorded, read only: each tree's list, and each machine's description, location, lifetime, who may send to it, the secrets and values it uses, its drawing and its definition. The toolkits of those machines, and what offers and starts each.
 
-**[Drawing](drawing.md).** How a flow, a statechart, an agent and a decision are drawn, and how a run's state is shown on the drawing.
+**[Drawing](drawing.md).** How a flow, a statechart, an agent, a decision and a toolkit are drawn, and how a run's state is shown on the drawing.
 
 **[Controller](controller.md).** The runners and clients the controller trusts, and the secrets and values set at each location.
 

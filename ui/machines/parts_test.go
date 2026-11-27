@@ -120,6 +120,14 @@ func cards(s *drawing.Scene) []drawing.Card {
 	if s.Decision != nil {
 		add(s.Decision.Answers)
 	}
+	if s.Kit != nil {
+		for _, tool := range s.Kit.Tools {
+			add(tool.Card)
+		}
+		for _, hook := range s.Kit.Hooks {
+			add(hook.Card)
+		}
+	}
 	return out
 }
 

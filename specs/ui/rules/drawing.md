@@ -18,6 +18,10 @@ The rules behind [the Drawing overview](../drawing.md). Area code: `drawing`.
 
 **R-drawing-10** A toolkit or a tool with `when:` is drawn with a dashed border and its condition in its tooltip, and a card whose job has `approve: true` says so, in a machine of any type. *Test:* `drawing_conditions_approvals_and_calls_are_marked`
 
+## A toolkit
+
+**R-drawing-18** A toolkit is drawn as `request`, above a holder of its tools and its hooks, above `answer`, joined by two arrows; a toolkit with `job:` has the one card `job`. On a run, the tool the request started is marked going, held or done, a hook going, and every other tool never used. *Test:* `drawing_toolkit_is_its_request_its_tools_and_its_answer`
+
 ## A decision
 
 **R-drawing-11** A decision is drawn as its model, by its name, above its answers, which name each question, joined by one arrow. *Test:* `drawing_decision_is_its_model_and_its_questions`

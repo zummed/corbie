@@ -58,6 +58,8 @@ function drawOf(scene) {
       return drawAgent(scene.Agent);
     case "decision":
       return drawDecision(scene.Decision);
+    case "toolkit":
+      return drawKit(scene.Kit);
   }
   return new Drawn();
 }
@@ -1339,6 +1341,55 @@ function columnSize(c) {
   return [w, h - 12];
 }
 
+// toolsBox gives the holder of what can be called: columns of groups, with
+// the hooks below them, and how wide the columns are together. Its holder
+// has no height where it holds nothing.
+function toolsBox(columns, hookItems) {
+  let acrossAll = Math.max(columns.length - 1, 0) * sideGap, high = 0;
+  for (const c of columns) {
+    const [w, h] = columnSize(c);
+    acrossAll += w;
+    high = Math.max(high, h);
+  }
+  for (const { item } of hookItems) {
+    acrossAll = Math.max(acrossAll, size(item).w);
+    if (high > 0) high += 12;
+    high += size(item).h;
+  }
+  return { acrossAll, hasTools: high > 0, tools: { x: 0, y: 0, w: Math.max(acrossAll + 2 * inner, cardW), h: innerTop + high + inner } };
+}
+
+// paintTools draws the holder of what can be called, its groups and its
+// hooks, and says whether a tool in it is one the run waits on.
+function paintTools(d, box, columns, hookItems) {
+  const tools = box.tools;
+  let now = false;
+  d.holder("state holder", tools, "tools");
+  d.reach(tools);
+  let x = tools.x + inner + (tools.w - 2 * inner - box.acrossAll) / 2;
+  const ty = tools.y + innerTop;
+  for (const c of columns) {
+    let gy = ty, w = 0;
+    for (const g of c) {
+      g.at.x = x;
+      g.at.y = gy;
+      gy += g.at.h + 12;
+      w = Math.max(w, g.at.w);
+      if (paintGroup(d, g)) now = true;
+    }
+    x += w + sideGap;
+  }
+  let hy = bottom(tools) - inner;
+  for (const { hook, item } of hookItems.toReversed()) {
+    const b = size(item);
+    b.x = cx(tools) - b.w / 2;
+    b.y = hy - b.h;
+    hy = b.y - 12;
+    d.paint(item, b, ("state hook " + (hook.When ? "when " : "") + hook.Mark).trim(), cardR, [], "hook " + hook.Card.Name);
+  }
+  return now;
+}
+
 // drawAgent draws three things, one below another: the model, what it can
 // call, and its reply. Each group of what it can call is a column, and the
 // toolkits folded are one column after the others.
@@ -1354,19 +1405,8 @@ function drawAgent(a) {
   if (folded.length > 0) columns.push(folded);
   const hookItems = (a.Hooks ?? []).map(h => ({ hook: h, item: itemOf(h.Card) }));
 
-  let acrossAll = Math.max(columns.length - 1, 0) * sideGap, high = 0;
-  for (const c of columns) {
-    const [w, h] = columnSize(c);
-    acrossAll += w;
-    high = Math.max(high, h);
-  }
-  for (const { item } of hookItems) {
-    acrossAll = Math.max(acrossAll, size(item).w);
-    if (high > 0) high += 12;
-    high += size(item).h;
-  }
-  const hasTools = high > 0;
-  const tools = { x: 0, y: 0, w: Math.max(acrossAll + 2 * inner, cardW), h: innerTop + high + inner };
+  const box = toolsBox(columns, hookItems);
+  const { tools, hasTools } = box;
   const total = hasTools ? tools.w : cardW;
   const left = margin;
   const model = itemOf({ Icon: "model", Name: a.Model, Line: a.ModelLine });
@@ -1378,33 +1418,10 @@ function drawAgent(a) {
 
   const d = new Drawn();
   let y = bottom(top);
-  let cls = "";
   if (hasTools) {
     tools.x = left;
     tools.y = y + 2 * rowGap;
-    d.holder("state holder", tools, "tools");
-    d.reach(tools);
-    let x = tools.x + inner + (tools.w - 2 * inner - acrossAll) / 2;
-    const ty = tools.y + innerTop;
-    for (const c of columns) {
-      let gy = ty, w = 0;
-      for (const g of c) {
-        g.at.x = x;
-        g.at.y = gy;
-        gy += g.at.h + 12;
-        w = Math.max(w, g.at.w);
-        if (paintGroup(d, g)) cls = "taken";
-      }
-      x += w + sideGap;
-    }
-    let hy = bottom(tools) - inner;
-    for (const { hook, item } of hookItems.toReversed()) {
-      const b = size(item);
-      b.x = cx(tools) - b.w / 2;
-      b.y = hy - b.h;
-      hy = b.y - 12;
-      d.paint(item, b, ("state hook " + (hook.When ? "when " : "") + hook.Mark).trim(), cardR, [], "hook " + hook.Card.Name);
-    }
+    const cls = paintTools(d, box, columns, hookItems) ? "taken" : "";
     d.down(top, tools, cls, `${a.Turns} turns`, { from: "model", to: "holder tools" });
     y = bottom(tools);
   }
@@ -1413,6 +1430,44 @@ function drawAgent(a) {
   d.paint(model, top, ("state model " + a.Mark).trim(), cardR, [], "model");
   if (a.Turn > 0) d.shapes.push({ kind: "tag", key: "tag", x: top.x + 4, y: top.y - 8, text: `turn ${a.Turn}` });
   d.paint(itemOf({ Name: "reply" }), reply, "state reply", cardR, [], "reply");
+  return d;
+}
+
+// A toolkit
+
+// perColumn is how many tools of a toolkit are drawn one below another.
+const perColumn = 6;
+
+// drawKit draws three things, one below another: the request, the tools
+// it can be for, and the answer. The tools are in columns, and the
+// toolkit's hooks are below them.
+function drawKit(k) {
+  const columns = [];
+  const all = k.Tools ?? [];
+  for (let i = 0; i < all.length; i += perColumn) {
+    const Tools = all.slice(i, i + perColumn);
+    const group = { Name: "", Tools, items: Tools.map(t => itemOf(t.Card)) };
+    group.at = { x: 0, y: 0, ...toolkitSize(group) };
+    columns.push([group]);
+  }
+  const hookItems = (k.Hooks ?? []).map(h => ({ hook: h, item: itemOf(h.Card) }));
+  const box = toolsBox(columns, hookItems);
+  const tools = box.tools;
+  const narrow = name => size({ ...itemOf({ Name: name }), narrow: true });
+  const request = narrow("request"), answer = narrow("answer");
+  request.x = margin + (tools.w - request.w) / 2;
+  request.y = margin + 18;
+  tools.x = margin;
+  tools.y = bottom(request) + (2 * rowGap) / 1.5;
+  answer.x = margin + (tools.w - answer.w) / 2;
+  answer.y = bottom(tools) + (2 * rowGap) / 1.5;
+
+  const d = new Drawn();
+  const cls = paintTools(d, box, columns, hookItems) ? "taken" : "";
+  d.down(request, tools, cls, "", { from: "request", to: "holder tools" });
+  d.down(tools, answer, "", "", { from: "holder tools", to: "answer" });
+  d.paint(itemOf({ Name: "request" }), request, "state reply", cardR, [], "request");
+  d.paint(itemOf({ Name: "answer" }), answer, "state reply", cardR, [], "answer");
   return d;
 }
 

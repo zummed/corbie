@@ -329,6 +329,16 @@ questions:
   urgent: { type: noul, instructions: The customer cannot use the product. }
   team: { type: choice, instructions: Who handles it, criteria: { billing: money, support: help } }
 `), nil)
+	orders := `toolkit: orders
+description: Orders, refunds and returns.
+hooks: { team: { before: ./w.js, when: "${job.approve}" } }
+tools:
+  refund: { description: Refund an order., args: { order: number }, job: { script: ./w.js, approve: true } }
+  find: { description: Find an order., args: { order: number }, job: ./w.js }
+`
+	add("orders-kit", def(orders), nil)
+	add("orders-kit-held", def(orders), &Run{Steps: []Step{{Asked: []string{"refund"}}}, Going: []string{"refund", HookJob("team")}, Held: []string{"refund"}})
+	add("server-kit", def("toolkit: server\ndescription: A server of tools.\njob: { script: ./w.js, allow: [net:notes.example.com] }\n"), nil)
 
 	draft, err := machine.Parse([]byte(nested), machine.Given(given))
 	if err != nil {

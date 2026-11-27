@@ -6,6 +6,7 @@ import (
 
 	"github.com/zummed/corbie/machine"
 	"github.com/zummed/corbie/machine/agent"
+	"github.com/zummed/corbie/machine/toolkit"
 )
 
 // agentOf gives an agent's model, what it can call, and its hooks. On a run's
@@ -61,6 +62,13 @@ func agentOf(def *machine.Definition, a *agent.Agent, run *Run, w *walker) *Agen
 		used := slices.ContainsFunc(g.Tools, func(t Tool) bool { return t.Mark != "never" })
 		out.Toolkits[i].Folded = run != nil && g.Toolkit && !used
 	}
+	out.Hooks = hooksOf(def, run, w)
+	return out
+}
+
+// hooksOf gives a definition's hooks, each a card with its mark.
+func hooksOf(def *machine.Definition, run *Run, w *walker) []Hook {
+	var out []Hook
 	for _, name := range sortedKeys(def.Hooks) {
 		h, when, job := def.Hooks[name], "before", def.Hooks[name].Before
 		if job == nil {
@@ -68,7 +76,24 @@ func agentOf(def *machine.Definition, a *agent.Agent, run *Run, w *walker) *Agen
 		}
 		c := Card{Name: name, Title: titleOf(when+" a job", h.When), Line: lineOf(w.lines, "hooks."+name)}
 		w.describe(&c, HookJob(name), job)
-		out.Hooks = append(out.Hooks, Hook{Card: c, When: h.When != "", Mark: jobMark(run, HookJob(name))})
+		out = append(out, Hook{Card: c, When: h.When != "", Mark: jobMark(run, HookJob(name))})
+	}
+	return out
+}
+
+// kitOf gives a toolkit's tools, each a card with its mark, or the one job
+// that answers every request, and its hooks.
+func kitOf(def *machine.Definition, k *toolkit.Toolkit, run *Run, w *walker) *Kit {
+	out := &Kit{Tools: []Tool{}, Hooks: hooksOf(def, run, w)}
+	if k.Job != nil {
+		c := Card{Name: "job", Title: "answers every request", Line: lineOf(w.lines, "job")}
+		w.describe(&c, "job", k.Job)
+		out.Tools = append(out.Tools, Tool{Card: c, Mark: jobMark(run, "job")})
+	}
+	for _, name := range sortedKeys(k.Tools) {
+		c := Card{Name: name, Title: k.Tools[name].Description, Line: lineOf(w.lines, "tools."+name)}
+		w.describe(&c, name, k.Tools[name].Job)
+		out.Tools = append(out.Tools, Tool{Card: c, Mark: jobMark(run, name)})
 	}
 	return out
 }

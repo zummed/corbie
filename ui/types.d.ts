@@ -400,6 +400,11 @@ export interface Decision {
   Answers: Card;
 }
 
+export interface Kit {
+  Tools: Tool[];
+  Hooks: Hook[];
+}
+
 export interface Scene {
   Type: string;
   Name: string;
@@ -407,6 +412,7 @@ export interface Scene {
   Chart?: Chart | null;
   Agent?: Agent | null;
   Decision?: Decision | null;
+  Kit?: Kit | null;
 }
 
 export interface Line {

@@ -191,6 +191,18 @@ test("drawing_decision_is_its_model_and_its_questions", async () => {
   for (const want of ["urgent", "team"]) assert(v.textContent.includes(want), `the decision does not name the question ${want}`);
 });
 
+test("drawing_toolkit_is_its_request_its_tools_and_its_answer", async () => {
+  let v = await draw("orders-kit");
+  equal(texts(v, "text.title"), ["find", "refund", "team", "request", "answer"], "the cards of a toolkit");
+  equal([classes(card(v, "refund")), card(v, "refund").querySelector("title").textContent], ["state tool", "Refund an order."], "a tool of a toolkit");
+  assert(texts(v, "text.sub").includes("approve: true"), "the tool marked for approval does not say so");
+  equal(classes(card(v, "team")), "state hook when", "a toolkit's hook with when:");
+  v = await draw("orders-kit-held");
+  equal([classes(card(v, "refund")), classes(card(v, "find")), classes(card(v, "team"))], ["state tool held", "state tool never", "state hook when now"], "the tool a run called, held for the toolkit's hook");
+  v = await draw("server-kit");
+  equal([texts(v, "text.title"), card(v, "job").querySelector("title").textContent], [["job", "request", "answer"], "answers every request\nallow: net:notes.example.com"], "a toolkit with one job");
+});
+
 // extent gives where a text's letters run across, by its anchor and the
 // length of its letters in the font it is set in.
 function extent(t) {
@@ -450,6 +462,7 @@ test("drawing_card_name_links_to_its_line", async () => {
   const name = check.querySelector("text.title").closest("a");
   assert(name?.matches("a.line"), "the name of a card is no link to its line");
   equal(name.getAttribute("href"), "/machines?line=" + "4", "the address of check's line");
+  assert(name.querySelector("text.title").getBoundingClientRect().width > 0, "the name of a card that links to its line is not drawn");
   equal(check.querySelector("a.card").getAttribute("href"), "/run/a-client/9", "the link of the rest of the card");
   assert(!name.closest("a.card") && !check.querySelector("a.card a"), "a link is inside another");
   v = await drawWith("lookup-in-child");

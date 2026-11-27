@@ -21,6 +21,7 @@ import (
 	"github.com/zummed/corbie/machine/agent"
 	"github.com/zummed/corbie/machine/flow"
 	"github.com/zummed/corbie/machine/statechart"
+	"github.com/zummed/corbie/machine/toolkit"
 )
 
 //go:embed layout.js drawing.js
@@ -103,6 +104,7 @@ type Scene struct {
 	Chart      *Chart    `json:",omitzero"`
 	Agent      *Agent    `json:",omitzero"`
 	Decision   *Decision `json:",omitzero"`
+	Kit        *Kit      `json:",omitzero"`
 }
 
 // A Card is what a card says: the icon of what its job is, its name, a line
@@ -213,6 +215,13 @@ type Decision struct {
 	Answers     Card
 }
 
+// A Kit is a machine of type toolkit: its tools, or the one job that
+// answers every request, and its hooks.
+type Kit struct {
+	Tools []Tool
+	Hooks []Hook
+}
+
 // Draw gives the graph of a definition, with a run's state marked on it
 // when run is not nil.
 func Draw(def *machine.Definition, run *Run) (Scene, error) {
@@ -274,6 +283,12 @@ func sceneOf(def *machine.Definition, run *Run, w *walker) (Scene, error) {
 		s.Decision = decisionOf(&dec, run)
 		s.Decision.ModelLine = lineOf(def.Lines, "model")
 		s.Decision.Answers.Line = lineOf(def.Lines, "questions")
+	case "toolkit":
+		var k toolkit.Toolkit
+		if err := json.Unmarshal(def.Body, &k); err != nil {
+			return s, err
+		}
+		s.Kit = kitOf(def, &k, run, w)
 	default:
 		return s, fmt.Errorf("a machine of type %q has no drawing", def.Type)
 	}

@@ -2,6 +2,7 @@ package store
 
 import (
 	"bytes"
+	"cmp"
 	"context"
 	"crypto/sha256"
 	"encoding/binary"
@@ -35,10 +36,10 @@ type memberHard struct {
 // memberState is how far a member has applied the log, who the members
 // were by then, and where the log it keeps begins.
 type memberState struct {
-	Applied   uint64            `json:"applied"`
-	Voters    []uint64          `json:"voters"`
-	Learners  []uint64          `json:"learners"`
-	Addresses map[uint64]string `json:"addresses"`
+	Applied  uint64              `json:"applied"`
+	Voters   []uint64            `json:"voters"`
+	Learners []uint64            `json:"learners"`
+	Members  map[uint64]memberAt `json:"members"`
 	// Compact is the last entry no longer kept, and CompactTerm its term.
 	Compact     uint64 `json:"compact"`
 	CompactTerm uint64 `json:"compactTerm"`
@@ -98,7 +99,7 @@ func (m *Member) begin() error {
 		return fmt.Errorf("store: the member's log in %s: %w", m.log, err)
 	}
 	if n := len(state.Voters) + len(state.Learners); n > 0 && !slices.Contains(state.Voters, m.id) && !slices.Contains(state.Learners, m.id) {
-		return fmt.Errorf("store: %s is not a member of this store: it was removed, or the copy in %s is another member's", m.self, m.dir.root)
+		return fmt.Errorf("store: %s is not a member of this store: it was removed, or the copy in %s is another member's", m.name, m.dir.root)
 	}
 	entries, err := m.loadEntries(state.Compact, state.CompactTerm)
 	if err != nil {
@@ -106,7 +107,7 @@ func (m *Member) begin() error {
 	}
 	ms := raft.NewMemoryStorage()
 	if state.Compact > 0 {
-		addresses, _ := json.Marshal(state.Addresses)
+		addresses, _ := json.Marshal(state.Members)
 		if err := ms.ApplySnapshot(&pb.Snapshot{Data: addresses, Metadata: &pb.SnapshotMetadata{
 			Index: &state.Compact, Term: &state.CompactTerm,
 			ConfState: &pb.ConfState{Voters: state.Voters, Learners: state.Learners}}}); err != nil {
@@ -120,7 +121,7 @@ func (m *Member) begin() error {
 		return err
 	}
 	if state.ConfIndex > state.Compact {
-		addresses, _ := json.Marshal(state.Addresses)
+		addresses, _ := json.Marshal(state.Members)
 		if _, err := ms.CreateSnapshot(state.ConfIndex, &pb.ConfState{Voters: state.Voters, Learners: state.Learners}, addresses); err != nil {
 			return err
 		}
@@ -150,13 +151,37 @@ func (m *Member) begin() error {
 	m.mu.Lock()
 	m.running, m.applied, m.term = true, state.Applied, hard.Term
 	m.voters, m.learners = state.Voters, state.Learners
-	for id, address := range state.Addresses {
-		m.addrs[id] = address
+	for id, member := range state.Members {
+		m.addrs[id], m.called[id] = member.Address, member.Name
 	}
-	m.addrs[m.id] = m.self
+	// A member is reached where it now listens, whatever it recorded.
+	moved := len(state.Members) > 0 && state.Members[m.id].Address != m.self
+	m.addrs[m.id], m.called[m.id] = m.self, m.name
 	m.mu.Unlock()
+	if moved {
+		if err := m.noteAddresses(); err != nil {
+			return err
+		}
+	}
 	go m.run()
 	return nil
+}
+
+// noteAddresses writes down the members' addresses as this member now has
+// them, with what it last recorded of the log.
+func (m *Member) noteAddresses() error {
+	m.mu.Lock()
+	for id, member := range m.state.Members {
+		if address := m.addrs[id]; address != "" {
+			member.Address = address
+			m.state.Members[id] = member
+		}
+	}
+	m.mu.Unlock()
+	if err := m.saveJSON("applied", m.state); err != nil {
+		return err
+	}
+	return m.writeMembers()
 }
 
 // loadEntries reads the log kept after compact, whose term is term: the
@@ -349,9 +374,14 @@ func (m *Member) apply(e *pb.Entry) error {
 		if cc.GetType() == pb.ConfChangeRemoveNode {
 			if removed = cc.GetNodeId() == m.id; !removed {
 				delete(m.addrs, cc.GetNodeId())
+				delete(m.called, cc.GetNodeId())
 			}
 		} else if about.Address != "" {
-			m.addrs[cc.GetNodeId()] = about.Address
+			m.called[cc.GetNodeId()] = about.Name
+			// A member heard from since it joined has said where it is.
+			if m.addrs[cc.GetNodeId()] == "" {
+				m.addrs[cc.GetNodeId()] = about.Address
+			}
 		}
 		m.mu.Unlock()
 		// What a member that must copy the directory is sent names the
@@ -406,14 +436,24 @@ func (m *Member) apply(e *pb.Entry) error {
 }
 
 func (m *Member) errRemoved() error {
-	return fmt.Errorf("store: %s was removed from the store's members", m.self)
+	return fmt.Errorf("store: %s was removed from the store's members", m.name)
 }
 
-// addresses gives the members' addresses as a snapshot carries them.
-func (m *Member) addresses() []byte {
+// table gives the members' names and addresses.
+func (m *Member) table() map[uint64]memberAt {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	addresses, _ := json.Marshal(m.addrs)
+	table := map[uint64]memberAt{}
+	for id, name := range m.called {
+		table[id] = memberAt{name, m.addrs[id]}
+	}
+	return table
+}
+
+// addresses gives the members' names and addresses as a snapshot carries
+// them.
+func (m *Member) addresses() []byte {
+	addresses, _ := json.Marshal(m.table())
 	return addresses
 }
 
@@ -536,11 +576,14 @@ func (m *Member) fetch(ctx context.Context, address, route, path, name string) (
 // than the snapshot, and the entries after the snapshot are applied to it.
 func (m *Member) restore(snap *pb.Snapshot) error {
 	index, term := snap.GetMetadata().GetIndex(), snap.GetMetadata().GetTerm()
-	addresses := map[uint64]string{}
+	addresses := map[uint64]memberAt{}
 	json.Unmarshal(snap.GetData(), &addresses)
 	m.mu.Lock()
-	for id, address := range addresses {
-		m.addrs[id] = address
+	for id, member := range addresses {
+		m.called[id] = member.Name
+		if id != m.id {
+			m.addrs[id] = member.Address
+		}
 	}
 	m.mu.Unlock()
 	for copied := false; !copied; {
@@ -571,7 +614,7 @@ func (m *Member) restore(snap *pb.Snapshot) error {
 	m.mu.Unlock()
 	m.at, m.since = index, nil
 	m.state = memberState{Applied: index, Compact: index, CompactTerm: term, ConfIndex: index,
-		Voters: cs.GetVoters(), Learners: cs.GetLearners(), Addresses: addresses}
+		Voters: cs.GetVoters(), Learners: cs.GetLearners(), Members: m.table()}
 	// How far the copy is applied is written down before the log it makes
 	// needless goes: a computer that stops between the two starts with a
 	// log it does not need, and never with one that ends before what it
@@ -641,20 +684,19 @@ func (m *Member) copyFrom(address string, index uint64) error {
 // computer that opens the directory finds them.
 func (m *Member) writeMembers() error {
 	m.mu.Lock()
-	var lines []string
+	var members []MemberAt
 	for _, id := range m.voters {
 		if m.addrs[id] != "" {
-			lines = append(lines, m.addrs[id])
+			members = append(members, MemberAt{Name: cmp.Or(m.called[id], unnamed), Address: m.addrs[id]})
 		}
 	}
 	for _, id := range m.learners {
 		if m.addrs[id] != "" {
-			lines = append(lines, m.addrs[id]+" joining")
+			members = append(members, MemberAt{Name: cmp.Or(m.called[id], unnamed), Address: m.addrs[id], Joining: true})
 		}
 	}
 	m.mu.Unlock()
-	slices.Sort(lines)
-	return SetMembers(m.dir.root, lines)
+	return SetMembers(m.dir.root, members)
 }
 
 // record writes down how far the log is applied, once enough is applied or
@@ -672,11 +714,8 @@ func (m *Member) record(force bool) error {
 	state.Applied = m.at
 	m.mu.Lock()
 	state.Voters, state.Learners = slices.Clone(m.voters), slices.Clone(m.learners)
-	state.Addresses = map[uint64]string{}
-	for id, address := range m.addrs {
-		state.Addresses[id] = address
-	}
 	m.mu.Unlock()
+	state.Members = m.table()
 	if m.at > state.Compact+2*memberTrail {
 		cut := m.at - memberTrail
 		term, err := m.ms.Term(cut)
@@ -685,7 +724,7 @@ func (m *Member) record(force bool) error {
 		}
 		// Since the members last changed they have been as they are now.
 		if cut > state.ConfIndex {
-			addresses, _ := json.Marshal(state.Addresses)
+			addresses, _ := json.Marshal(state.Members)
 			if _, err := m.ms.CreateSnapshot(cut, &pb.ConfState{Voters: state.Voters, Learners: state.Learners}, addresses); err != nil {
 				return err
 			}
@@ -733,7 +772,7 @@ func (m *Member) ticked() error {
 		m.promoting = true
 		go func() {
 			ctx, cancel := context.WithTimeout(m.ctx, 10*time.Second)
-			m.unanswered(m.askLeader(ctx, "/member/promote?address="+url.QueryEscape(m.self)))
+			m.unanswered(m.askLeader(ctx, "/member/promote?id="+strconv.FormatUint(m.id, 10)))
 			cancel()
 			m.later(func() { m.promoting = false })
 		}()
@@ -882,14 +921,11 @@ func (m *Member) turned(by uint64, away bool) {
 // serveRaft takes what another member's Raft sends. A computer that is no
 // member is turned away.
 func (m *Member) serveRaft(w http.ResponseWriter, r *http.Request) {
-	from := r.Header.Get(headFrom)
-	id := memberID(from)
+	from := r.Header.Get(headAt)
+	id, _ := strconv.ParseUint(r.Header.Get(headFrom), 10, 64)
 	m.mu.Lock()
 	running := m.running
 	member := len(m.voters)+len(m.learners) == 0 || slices.Contains(m.voters, id) || slices.Contains(m.learners, id)
-	if member && m.addrs[id] == "" {
-		m.addrs[id] = from
-	}
 	m.mu.Unlock()
 	switch {
 	case !running:

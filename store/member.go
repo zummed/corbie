@@ -7,11 +7,11 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"crypto/tls"
+	"encoding/binary"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"hash/fnv"
 	"io"
 	"net"
 	"net/http"
@@ -45,7 +45,7 @@ import (
 //
 // A member keeps, in .log at the top of its copy:
 //
-//	members          the members' addresses, one to a line
+//	members          each member's name and address, one member to a line
 //	hard             the term and the vote
 //	applied          how far the log is applied, who the members are, and
 //	                 where the kept log begins
@@ -56,6 +56,7 @@ const (
 	membersFile = "members"
 
 	headFrom   = "Corbie-From"
+	headAt     = "Corbie-At"
 	headLeader = "Corbie-Leader"
 
 	// memberElection and memberHeartbeat are in ticks.
@@ -114,47 +115,73 @@ func HasMembers(root string) bool {
 	return err == nil
 }
 
-// MembersOf gives the addresses of the members of the directory at root, as
-// host:port, those that are joining among them, or none where the directory
-// has one member.
-func MembersOf(root string) ([]string, error) {
-	members, joining, err := membersAt(root)
-	return append(members, joining...), err
+// A MemberAt is a member as the members file lists it: its name, the
+// address the others reach it at, as host:port, and whether it is joining:
+// it copies the directory, and does not yet count.
+type MemberAt struct {
+	Name    string
+	Address string
+	Joining bool
 }
 
-// JoiningOf gives the members of the directory at root that are joining:
-// each copies the directory, and does not yet count.
-func JoiningOf(root string) []string {
-	_, joining, _ := membersAt(root)
-	return joining
-}
+// unnamed stands in the members file for the name of a member a computer
+// is to ask and has not yet heard from.
+const unnamed = "-"
 
-// membersAt reads the members file: an address to a line, and after it the
-// word joining for a member that does not yet count.
-func membersAt(root string) (members, joining []string, err error) {
+// MembersOf gives the members of the directory at root, by name, or none
+// where the directory has one member.
+func MembersOf(root string) ([]MemberAt, error) {
 	data, err := os.ReadFile(filepath.Join(root, membersDir, membersFile))
 	if errors.Is(err, os.ErrNotExist) {
-		return nil, nil, nil
+		return nil, nil
 	}
+	var members []MemberAt
 	for line := range strings.Lines(string(data)) {
-		switch fields := strings.Fields(line); {
-		case len(fields) == 1:
-			members = append(members, fields[0])
-		case len(fields) == 2:
-			joining = append(joining, fields[0])
+		if fields := strings.Fields(line); len(fields) >= 2 {
+			members = append(members, MemberAt{Name: fields[0], Address: fields[1], Joining: len(fields) > 2})
 		}
 	}
-	return members, joining, err
+	return members, err
 }
 
-// SetMembers writes the members a directory is to join, on a computer that
-// is not yet one of them: the computer itself and those it is to ask.
-func SetMembers(root string, addresses []string) error {
+// AddressesOf gives the addresses of the members of the directory at root.
+func AddressesOf(root string) ([]string, error) {
+	members, err := MembersOf(root)
+	addresses := make([]string, len(members))
+	for i, member := range members {
+		addresses[i] = member.Address
+	}
+	return addresses, err
+}
+
+// SetMembers writes the members file: a line for each member, with its
+// name, its address and, where it is joining, the word joining.
+func SetMembers(root string, members []MemberAt) error {
 	log := filepath.Join(root, membersDir)
 	if err := mkdirAll(log); err != nil {
 		return err
 	}
-	return writeWhole(filepath.Join(log, membersFile), []byte(strings.Join(addresses, "\n")+"\n"))
+	var lines []string
+	for _, member := range members {
+		line := member.Name + " " + member.Address
+		if member.Joining {
+			line += " joining"
+		}
+		lines = append(lines, line)
+	}
+	slices.Sort(lines)
+	return writeWhole(filepath.Join(log, membersFile), []byte(strings.Join(lines, "\n")+"\n"))
+}
+
+// SetJoining sets the directory at root up to join a store's members: the
+// computer itself, by the name and address it is to have, and the addresses
+// of the members it is to ask.
+func SetJoining(root, name, address string, ask []string) error {
+	members := []MemberAt{{Name: name, Address: address, Joining: true}}
+	for _, address := range ask {
+		members = append(members, MemberAt{Name: unnamed, Address: address})
+	}
+	return SetMembers(root, members)
 }
 
 // LeaveMembers makes the copy at root the whole store, with one member: the
@@ -163,11 +190,12 @@ func LeaveMembers(root string) error {
 	return os.RemoveAll(filepath.Join(root, membersDir))
 }
 
-// memberID is the number a member is known to the others by.
-func memberID(address string) uint64 {
-	h := fnv.New64a()
-	h.Write([]byte(address))
-	return max(h.Sum64(), 1)
+// MemberID is the number a member is known to the others by, made of the
+// key of the member's own card. A computer that takes a member's place has
+// another card, and so another number under the same name.
+func MemberID(key ed25519.PublicKey) uint64 {
+	sum := sha256.Sum256(key)
+	return max(binary.BigEndian.Uint64(sum[:8]), 1)
 }
 
 func newID() string {
@@ -203,9 +231,16 @@ type change struct {
 }
 
 // memberChange rides with a change of members: who asked, and the member's
-// address.
+// name and address.
 type memberChange struct {
 	Req     string `json:"req"`
+	Name    string `json:"name"`
+	Address string `json:"address"`
+}
+
+// memberAt is a member's name and address, as the members keep them.
+type memberAt struct {
+	Name    string `json:"name"`
 	Address string `json:"address"`
 }
 
@@ -220,7 +255,8 @@ type Member struct {
 
 	dir    *directory
 	log    string
-	self   string
+	name   string
+	self   string // the address the others reach this member at
 	id     uint64
 	keeper ed25519.PublicKey
 	client *http.Client
@@ -240,6 +276,7 @@ type Member struct {
 	voters   []uint64
 	learners []uint64
 	addrs    map[uint64]string
+	called   map[uint64]string // the members' names
 	waiting  map[string]chan error
 	reads    map[string]chan uint64
 	err      error
@@ -257,9 +294,9 @@ type Member struct {
 }
 
 // OpenMember opens this computer's copy of a served directory, as the member
-// other computers reach at self, host:port. proof is the key of the store's
-// controller, which every member holds.
-func OpenMember(dir, self string, proof tls.Certificate) (*Member, error) {
+// of a name and a number, which other computers reach at self, host:port.
+// proof is the key of the store's controller, which every member holds.
+func OpenMember(dir, name string, id uint64, self string, proof tls.Certificate) (*Member, error) {
 	root, err := filepath.Abs(dir)
 	if err != nil {
 		return nil, err
@@ -281,7 +318,7 @@ func OpenMember(dir, self string, proof tls.Certificate) (*Member, error) {
 		ctx: ctx, halt: halt, many: HasMembers(root),
 		dir:  &directory{root: root, notices: opened.(*directory).notices, member: true},
 		log:  filepath.Join(root, membersDir),
-		self: self, id: memberID(self), keeper: keeper,
+		name: name, self: self, id: id, keeper: keeper,
 		client: &http.Client{Transport: &http.Transport{
 			TLSClientConfig: memberTLS(proof, keeper),
 			// A member that is off holds up no connection for the minutes
@@ -293,6 +330,7 @@ func OpenMember(dir, self string, proof tls.Certificate) (*Member, error) {
 			ResponseHeaderTimeout: time.Minute,
 		}},
 		addrs:   map[uint64]string{},
+		called:  map[uint64]string{},
 		waiting: map[string]chan error{},
 		reads:   map[string]chan uint64{},
 		do:      make(chan func()),
@@ -327,11 +365,11 @@ func (m *Member) Directory() Store { return m.dir }
 // or, on a computer set up to join, by asking them to take it. With one
 // member it starts nothing.
 func (m *Member) Start() error {
-	members, joining, _ := membersAt(m.dir.root)
+	members, _ := MembersOf(m.dir.root)
 	switch {
 	case exists(filepath.Join(m.log, "applied")):
 		return m.begin()
-	case len(members) == 1 && len(joining) == 0:
+	case len(members) == 1 && !members[0].Joining:
 		// The computer stopped as the first other computer joined, before
 		// anything was in the log: the directory has one member still.
 		m.mu.Lock()
@@ -413,17 +451,17 @@ func exists(path string) bool {
 	return err == nil
 }
 
-// Members gives the members' addresses as this member has them, voters
-// first, the leader's address where it knows one, and whether the directory
-// has more than one member at all.
+// Members gives the members' names as this member has them, voters first,
+// the leader's address where it knows one, and whether the directory has
+// more than one member at all.
 func (m *Member) Members() (voters, joining []string, leader string, many bool) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	for _, id := range m.voters {
-		voters = append(voters, m.addrs[id])
+		voters = append(voters, m.called[id])
 	}
 	for _, id := range m.learners {
-		joining = append(joining, m.addrs[id])
+		joining = append(joining, m.called[id])
 	}
 	slices.Sort(voters)
 	slices.Sort(joining)
@@ -984,7 +1022,8 @@ func (m *Member) call(ctx context.Context, address, method, route string, body i
 	if err != nil {
 		return nil, err
 	}
-	req.Header.Set(headFrom, m.self)
+	req.Header.Set(headFrom, strconv.FormatUint(m.id, 10))
+	req.Header.Set(headAt, m.self)
 	return m.client.Do(req)
 }
 
@@ -1001,7 +1040,7 @@ func (m *Member) others() []string {
 		}
 	}
 	m.mu.Unlock()
-	recorded, _ := MembersOf(m.dir.root)
+	recorded, _ := AddressesOf(m.dir.root)
 	for _, address := range recorded {
 		if address != m.self && !slices.Contains(addresses, address) {
 			addresses = append(addresses, address)
@@ -1055,7 +1094,8 @@ func (m *Member) join() {
 			return
 		}
 		ctx, cancel := context.WithTimeout(m.ctx, 10*time.Second)
-		m.unanswered(m.askLeader(ctx, "/member/join?address="+url.QueryEscape(m.self)))
+		m.unanswered(m.askLeader(ctx, "/member/join?"+url.Values{
+			"id": {strconv.FormatUint(m.id, 10)}, "name": {m.name}, "address": {m.self}}.Encode()))
 		cancel()
 		select {
 		case <-m.stop:
@@ -1075,23 +1115,30 @@ func (m *Member) unanswered(err error) {
 
 // Change adds a member that is joining, counts one that has joined, or
 // removes one. It is asked of the leader.
-func (m *Member) change(ctx context.Context, kind pb.ConfChangeType, address string) error {
+func (m *Member) change(ctx context.Context, kind pb.ConfChangeType, id uint64, name, address string) error {
 	m.changes.Lock()
 	defer m.changes.Unlock()
-	id := memberID(address)
 	m.mu.Lock()
 	voter, learner := slices.Contains(m.voters, id), slices.Contains(m.learners, id)
+	named := false // another member has the name
+	for other, has := range m.called {
+		named = named || has == name && other != id
+	}
 	m.mu.Unlock()
 	switch {
-	case kind == pb.ConfChangeAddLearnerNode && (voter || learner),
+	case kind == pb.ConfChangeAddLearnerNode && (voter || named):
+		// A member that counts and asks to join has lost its copy, and
+		// with it what it had promised the others. A name is one member's.
+		return fmt.Errorf("store: %s is a member of the store already: corbie init store --remove %s on another member removes it, and this computer then joins", name, name)
+	case kind == pb.ConfChangeAddLearnerNode && learner,
 		kind == pb.ConfChangeAddNode && voter,
 		kind == pb.ConfChangeRemoveNode && !voter && !learner:
 		return nil
 	case kind == pb.ConfChangeAddNode && !learner:
-		return fmt.Errorf("store: %s has not joined the store's members", address)
+		return fmt.Errorf("store: %s has not joined the store's members", name)
 	}
 	req := newID()
-	about, err := json.Marshal(memberChange{req, address})
+	about, err := json.Marshal(memberChange{req, name, address})
 	if err != nil {
 		return err
 	}
@@ -1100,13 +1147,13 @@ func (m *Member) change(ctx context.Context, kind pb.ConfChangeType, address str
 	return err
 }
 
-// Remove takes the member at an address out of the store's members. It is
+// Remove takes the member of a name out of the store's members. It is
 // asked of whichever member leads.
-func (m *Member) Remove(ctx context.Context, address string) error {
-	if address == m.self {
+func (m *Member) Remove(ctx context.Context, name string) error {
+	if name == m.name {
 		return errors.New("store: a member is removed from another member")
 	}
-	return m.askLeader(ctx, "/member/remove?address="+url.QueryEscape(address))
+	return m.askLeader(ctx, "/member/remove?name="+url.QueryEscape(name))
 }
 
 // serve answers another member. Whoever asks has proved the key of the
@@ -1116,6 +1163,7 @@ func (m *Member) serve(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "only a member of the store asks this", http.StatusUnauthorized)
 		return
 	}
+	m.heard(r)
 	ctx, q := r.Context(), r.URL.Query()
 	switch r.Method + " " + r.URL.Path {
 	case "POST /member/raft":
@@ -1184,6 +1232,31 @@ func (m *Member) serve(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// heard notes the address a member that asks something says it is reached
+// at: a member tells the others its address with everything it asks, so
+// one that starts at another address is found there.
+func (m *Member) heard(r *http.Request) {
+	id, _ := strconv.ParseUint(r.Header.Get(headFrom), 10, 64)
+	at := r.Header.Get(headAt)
+	if _, _, err := net.SplitHostPort(at); err != nil {
+		return
+	}
+	m.mu.Lock()
+	known := m.running && (slices.Contains(m.voters, id) || slices.Contains(m.learners, id))
+	moved := known && m.addrs[id] != at
+	if moved || m.running && len(m.voters)+len(m.learners) == 0 {
+		m.addrs[id] = at
+	}
+	m.mu.Unlock()
+	if moved {
+		go m.later(func() {
+			if err := m.noteAddresses(); err != nil {
+				m.slow(err)
+			}
+		})
+	}
+}
+
 func (m *Member) said(w http.ResponseWriter, err error) {
 	var not *notLeader
 	switch {
@@ -1243,16 +1316,31 @@ func (m *Member) servedTo(ctx context.Context, w http.ResponseWriter, at string)
 // first to join a directory with one member finds no members yet, and makes
 // this computer the first.
 func (m *Member) serveChange(w http.ResponseWriter, r *http.Request) {
-	address := r.URL.Query().Get("address")
-	if _, _, err := net.SplitHostPort(address); err != nil {
-		http.Error(w, "a member's address reads host:port", http.StatusBadRequest)
-		return
-	}
+	q := r.URL.Query()
+	id, _ := strconv.ParseUint(q.Get("id"), 10, 64)
+	name, address := q.Get("name"), q.Get("address")
 	kind := map[string]pb.ConfChangeType{
 		"/member/join":    pb.ConfChangeAddLearnerNode,
 		"/member/promote": pb.ConfChangeAddNode,
 		"/member/remove":  pb.ConfChangeRemoveNode,
 	}[r.URL.Path]
+	switch kind {
+	case pb.ConfChangeAddLearnerNode:
+		if _, _, err := net.SplitHostPort(address); err != nil || id == 0 || CheckPart(name) != nil || name == unnamed {
+			http.Error(w, "a member joins with its number, its name and its address, host:port", http.StatusBadRequest)
+			return
+		}
+	case pb.ConfChangeRemoveNode:
+		// A member is removed by its name, which the leader knows the
+		// number of.
+		m.mu.Lock()
+		for other, has := range m.called {
+			if has == name {
+				id = other
+			}
+		}
+		m.mu.Unlock()
+	}
 	if kind == pb.ConfChangeAddLearnerNode {
 		if err := m.becomeFirst(); err != nil {
 			m.said(w, err)
@@ -1270,7 +1358,7 @@ func (m *Member) serveChange(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "this store has one member", http.StatusConflict)
 		return
 	}
-	m.said(w, m.change(r.Context(), kind, address))
+	m.said(w, m.change(r.Context(), kind, id, name, address))
 }
 
 // becomeFirst makes this computer the first member of a directory that had one:
@@ -1291,8 +1379,8 @@ func (m *Member) becomeFirst() error {
 	m.many = true
 	m.mu.Unlock()
 	state := memberState{Applied: 1, Compact: 1, CompactTerm: 1, ConfIndex: 1,
-		Voters: []uint64{m.id}, Addresses: map[uint64]string{m.id: m.self}}
-	err := SetMembers(m.dir.root, []string{m.self})
+		Voters: []uint64{m.id}, Members: map[uint64]memberAt{m.id: {m.name, m.self}}}
+	err := SetMembers(m.dir.root, []MemberAt{{Name: m.name, Address: m.self}})
 	if err == nil {
 		err = m.saveJSON("hard", memberHard{Term: 1})
 	}

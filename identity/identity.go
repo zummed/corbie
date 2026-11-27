@@ -29,9 +29,13 @@ const (
 	Controller Kind = "controller"
 	Runner     Kind = "runner"
 	Client     Kind = "client"
+	// Member is the kind of the card of a computer that serves a store's
+	// directory. It is no party: it names the computer among the store's
+	// members, and is what the controller's identity is sealed to for it.
+	Member Kind = "member"
 )
 
-func (k Kind) valid() bool { return k == Controller || k == Runner || k == Client }
+func (k Kind) valid() bool { return k == Controller || k == Runner || k == Client || k == Member }
 
 // A Card is the public side of an identity: a name, a kind and two public
 // keys, signed by itself. Its text form is one line.

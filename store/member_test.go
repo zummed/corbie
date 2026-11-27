@@ -30,6 +30,7 @@ type members struct {
 	t      *testing.T
 	keeper ed25519.PrivateKey
 	all    []*testMember
+	made   uint64 // how many members were made, each with a name and a number of its own
 
 	mu      sync.Mutex
 	parties map[string]servedParty
@@ -37,11 +38,14 @@ type members struct {
 }
 
 type testMember struct {
+	name         string
+	id           uint64
 	address, dir string
 	listener     net.Listener
 	member       *Member
 	listening    *http.Server
 	failed       chan error
+	held         chan error // what the member was held up by, where a test asks
 }
 
 // quick has a party give up on a store out of reach sooner, for a test.
@@ -77,9 +81,11 @@ func (c *members) add() *testMember {
 	if err != nil {
 		c.t.Fatal(err)
 	}
-	tm := &testMember{address: l.Addr().String(), dir: c.t.TempDir(), listener: l, failed: make(chan error, 1)}
+	c.made++
+	tm := &testMember{name: fmt.Sprintf("m%d", c.made), id: 100 + c.made,
+		address: l.Addr().String(), dir: c.t.TempDir(), listener: l, failed: make(chan error, 1)}
 	if len(c.all) > 0 {
-		if err := SetMembers(tm.dir, []string{tm.address, c.all[0].address}); err != nil {
+		if err := SetJoining(tm.dir, tm.name, tm.address, []string{c.all[0].address}); err != nil {
 			c.t.Fatal(err)
 		}
 	}
@@ -88,7 +94,7 @@ func (c *members) add() *testMember {
 	if len(c.all) > 1 {
 		c.eventually("the member to be counted", func() bool {
 			voters, _, _, _ := tm.member.Members()
-			return slices.Contains(voters, tm.address)
+			return slices.Contains(voters, tm.name)
 		})
 	}
 	return tm
@@ -104,7 +110,7 @@ func (c *members) start(tm *testMember) {
 		}
 		tm.listener = l
 	}
-	m, err := OpenMember(tm.dir, tm.address, proofOf(c.t, c.keeper))
+	m, err := OpenMember(tm.dir, tm.name, tm.id, tm.address, proofOf(c.t, c.keeper))
 	if err != nil {
 		c.t.Fatal(err)
 	}
@@ -112,6 +118,14 @@ func (c *members) start(tm *testMember) {
 		select {
 		case tm.failed <- err:
 		default:
+		}
+	}
+	if tm.held != nil {
+		m.Held = func(err error) {
+			select {
+			case tm.held <- err:
+			default:
+			}
 		}
 	}
 	tm.member = m
@@ -332,7 +346,7 @@ func Test_store_members_carry_on_without_one(t *testing.T) {
 	lead := c.leader()
 	c.stop(lead)
 	// A member that has not yet started answers no party from its copy.
-	notYet, err := OpenMember(lead.dir, lead.address, proofOf(t, c.keeper))
+	notYet, err := OpenMember(lead.dir, lead.name, lead.id, lead.address, proofOf(t, c.keeper))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -479,7 +493,7 @@ func Test_store_members_removed_member_is_turned_away(t *testing.T) {
 			gone, stays = stays, tm
 		}
 	}
-	if err := stays.member.Remove(ctx, gone.address); err != nil {
+	if err := stays.member.Remove(ctx, gone.name); err != nil {
 		t.Fatal(err)
 	}
 	select {
@@ -798,7 +812,7 @@ func Test_store_members_the_leader_is_removed(t *testing.T) {
 		return false
 	}
 	memberCut.Store(&far)
-	if err := stays.member.Remove(ctx, lead.address); err != nil {
+	if err := stays.member.Remove(ctx, lead.name); err != nil {
 		t.Fatal(err)
 	}
 	c.eventually("the member that stays to lead", stays.leads)
@@ -856,7 +870,7 @@ func Test_store_members_a_change_let_in_in_one_term_is_not_made_in_another(t *te
 func Test_store_members_a_file_not_opened_is_not_answered_as_none(t *testing.T) {
 	_, keeper, _ := ed25519.GenerateKey(rand.Reader)
 	dir := t.TempDir()
-	m, err := OpenMember(dir, "127.0.0.1:1", proofOf(t, keeper))
+	m, err := OpenMember(dir, "m1", 101, "127.0.0.1:1", proofOf(t, keeper))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -889,10 +903,10 @@ func Test_store_members_a_first_join_cut_short_leaves_one_member(t *testing.T) {
 	}
 	did(t)(plain.Write(ctx, "a/one", []byte("1"), OnlyIfNew))
 	const self = "127.0.0.1:1"
-	if err := SetMembers(dir, []string{self}); err != nil {
+	if err := SetMembers(dir, []MemberAt{{Name: "m1", Address: self}}); err != nil {
 		t.Fatal(err)
 	}
-	m, err := OpenMember(dir, self, proofOf(t, keeper))
+	m, err := OpenMember(dir, "m1", 101, self, proofOf(t, keeper))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -922,10 +936,10 @@ func Test_store_members_a_computer_that_cannot_join_says_why(t *testing.T) {
 	l.Close()
 	dir := t.TempDir()
 	const self = "127.0.0.1:1"
-	if err := SetMembers(dir, []string{self + " joining", nobody}); err != nil {
+	if err := SetJoining(dir, "m1", self, []string{nobody}); err != nil {
 		t.Fatal(err)
 	}
-	m, err := OpenMember(dir, self, proofOf(t, keeper))
+	m, err := OpenMember(dir, "m1", 101, self, proofOf(t, keeper))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1025,10 +1039,10 @@ func Test_store_members_a_path_too_long_for_a_members_names_is_no_member(t *test
 		t.Fatal(err)
 	}
 	const self = "127.0.0.1:1"
-	if err := SetMembers(dir, []string{self + " joining", "127.0.0.1:2"}); err != nil {
+	if err := SetJoining(dir, "m1", self, []string{"127.0.0.1:2"}); err != nil {
 		t.Fatal(err)
 	}
-	m, err := OpenMember(dir, self, proofOf(t, keeper))
+	m, err := OpenMember(dir, "m1", 101, self, proofOf(t, keeper))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1060,5 +1074,105 @@ func TestServedUnreachableSaysWhatEachMemberSaid(t *testing.T) {
 		if !strings.Contains(err.Error(), want) {
 			t.Fatalf("a read with two of three members off says %q, and not %q", err, want)
 		}
+	}
+}
+
+// A member that starts at another address is found there: it says where it
+// is with everything it asks of the others. Here the others cannot carry on
+// without it.
+func Test_store_members_a_member_at_another_address_is_found_there(t *testing.T) {
+	c := newMembers(t, 3)
+	did(t)(c.owner().Write(ctx, "a/one", []byte("1"), OnlyIfNew))
+	stays, off, moves := c.all[0], c.all[1], c.all[2]
+	c.stop(off)
+	c.stop(moves)
+	l, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	was := moves.address
+	moves.address, moves.listener = l.Addr().String(), l
+	c.start(moves)
+
+	c.did(c.owner(stays, moves).Write(ctx, "a/two", []byte("2"), OnlyIfNew))
+	if got := c.agree(stays, moves); got["a/two"] != "2" {
+		t.Fatalf("the copies hold %v", got)
+	}
+	for _, tm := range []*testMember{stays, moves} {
+		c.eventually(tm.name+" to list the member's new address", func() bool {
+			listed, _ := AddressesOf(tm.dir)
+			return slices.Contains(listed, moves.address) && !slices.Contains(listed, was)
+		})
+	}
+	// A member started after the change finds the one that moved.
+	c.stop(stays)
+	c.start(off)
+	c.did(c.owner(off, moves).Write(ctx, "a/three", []byte("3"), OnlyIfNew))
+}
+
+// A name is one member's. A computer with another card that asks to join
+// under a member's name is refused, and so is a member that has lost its
+// copy: each is told to have the member removed. Once it is, the computer
+// joins under the name, and the computer that had it is turned away.
+func Test_store_members_a_name_is_one_members(t *testing.T) {
+	c := newMembers(t, 3)
+	did(t)(c.owner().Write(ctx, "a/one", []byte("1"), OnlyIfNew))
+	old := c.all[2]
+	asks := func(id uint64) (*testMember, chan error) {
+		l, err := net.Listen("tcp", "127.0.0.1:0")
+		if err != nil {
+			t.Fatal(err)
+		}
+		tm := &testMember{name: old.name, id: id, address: l.Addr().String(), dir: t.TempDir(), listener: l,
+			failed: make(chan error, 1), held: make(chan error, 1)}
+		if err := SetJoining(tm.dir, tm.name, tm.address, []string{c.all[0].address}); err != nil {
+			t.Fatal(err)
+		}
+		c.start(tm)
+		return tm, tm.held
+	}
+	refused := func(what string, held chan error) {
+		t.Helper()
+		select {
+		case err := <-held:
+			if !strings.Contains(err.Error(), old.name+" is a member of the store already") {
+				t.Fatalf("%s was told %v", what, err)
+			}
+		case <-time.After(10 * time.Second):
+			t.Fatalf("%s was told nothing", what)
+		}
+	}
+	// The member's own number, with an empty directory: its copy is lost.
+	c.stop(old)
+	lost, held := asks(old.id)
+	refused("a member that lost its copy", held)
+	c.stop(lost)
+	// Another number under the member's name.
+	other, held := asks(999)
+	refused("a computer that asks to join under a member's name", held)
+
+	if err := c.all[0].member.Remove(ctx, old.name); err != nil {
+		t.Fatal(err)
+	}
+	c.eventually("the computer to count under the name", func() bool {
+		voters, _, _, _ := other.member.Members()
+		return slices.Contains(voters, other.name)
+	})
+	c.did(c.owner(c.all[0], c.all[1], other).Write(ctx, "a/two", []byte("2"), OnlyIfNew))
+	if got := c.agree(c.all[0], c.all[1], other); got["a/one"] != "1" || got["a/two"] != "2" {
+		t.Fatalf("the copies hold %v", got)
+	}
+	if listed, _ := MembersOf(other.dir); len(listed) != 3 {
+		t.Fatalf("the members are %v", listed)
+	}
+	// The computer that had the name is turned away.
+	c.start(old)
+	select {
+	case err := <-old.failed:
+		if !strings.Contains(err.Error(), "removed") {
+			t.Fatalf("the computer that had the name stopped over %v", err)
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("the computer that had the name went on")
 	}
 }

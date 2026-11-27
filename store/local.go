@@ -46,7 +46,7 @@ func (l *local) now() (Store, error) {
 	if l.served != nil {
 		return l.served, nil
 	}
-	members, err := MembersOf(l.directory.root)
+	members, err := AddressesOf(l.directory.root)
 	if err != nil || len(members) == 0 {
 		return l.directory, err
 	}

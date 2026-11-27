@@ -184,17 +184,36 @@ A served directory with three members loses one and carries on. Each member hold
 
 The log has one order, so of two writes only-if-new to one name, one is done and the other is told "already there". The leader answers a read once a majority has confirmed that it is still the leader, so no member gives an old value in place of a newer one.
 
-For example, three switches share a store. `sw1` is set up as for one member, and a person copies `controller/identity` from its config to the other two.
+For example, three switches share a store. `sw1` is set up as for one member, and each of the other two joins with one line, as a runner enrols:
 
 ```
 sw1$   corbie init store
-sw2$   corbie init store --join corbie://sw1:8372
-sw3$   corbie init store --join corbie://sw1:8372
+sw2$   corbie init store --card | ssh sw1 corbie init store --admit - | corbie init store --join -
+sw3$   corbie init store --card | ssh sw1 corbie init store --admit - | corbie init store --join -
 ```
+
+```
+  --card    prints this computer's card as a member: its name, by default the host name, and its public keys
+  --admit   on a member, prints the controller's card, its identity encrypted to the card given, and the members' addresses
+  --join    saves the controller's identity in this computer's config, and sets the computer up to join
+```
+
+Only the private key of the card given to `--admit` decrypts the identity, so no private key is copied by hand. Each command prints the fingerprint of every card it reads. `--card --name <name>` names the card when it is first made, and the name never changes.
 
 `--join` takes an empty directory: the members' directory is copied into it. `corbie start` on a computer set up with `--join` asks the members to take it, copies the directory and then follows the log. The computer counts as a member once its copy is whole.
 
-Other parties are given `corbie://sw1:8372,sw2:8372,sw3:8372`, and reach the store while one computer of that address is a member and running.
+A member has a name and an address:
+
+```
+  the name      its card's name; the members know each other by it, and `--remove` takes it
+  the address   where its server listens, as host:port; `corbie init store --listen` sets it
+```
+
+- A member sends its address with each request to another member, and a member that receives another address than it has saved saves it. `corbie init store --listen` with another address, then `corbie start`, moves a member.
+- A name is one member's. A card with a member's name is not admitted, and the members take no computer under it.
+- A computer that replaces a lost member, and a member whose directory is lost, joins after `corbie init store --remove <name>` on another member.
+
+Other parties are given `corbie://sw1:8372,sw2:8372,sw3:8372`, and reach the store while one computer of that address is a member and running. A party keeps the address it was given. `corbie controller enrol <name>` prints the members' addresses as they are now, and the party's `trust` saves them.
 
 ```
   the leader stops                   the others elect a leader within seconds, and a party asks them at once
@@ -213,16 +232,25 @@ could not reach the store: dial tcp 10.0.0.1:8372: connect: no route to host; 10
 The members are changed with `corbie init store`:
 
 ```
-  --join <address>       makes this computer a member
-  --remove <host:port>   removes a member; asked of any other member
-  --alone                makes this computer's copy the whole store, with one member
+  --card              prints this computer's card
+  --admit <card>      on a member, admits the computer that has the card
+  --join <admitted>   makes this computer a member, with what `--admit` printed
+  --remove <name>     removes a member; asked of any other member
+  --alone             makes this computer's copy the whole store, with one member
 ```
 
 - Members are added and removed one at a time, and the others turn a removed member away. Its copy is not used again.
-- `--remove` of an address that is not a member is refused.
-- A member's address is not changed. `corbie init store --listen` with another address is refused there: the member is removed, and joins again with an empty directory.
+- `--remove` of a name that is no member's is refused.
+- `corbie init store --listen ""` is refused on a member.
 - A store with two members stops when either is off, and `corbie start` prints that.
-- `corbie init store` asks each member who leads, and prints what each answers: `leads`, `follows the leader`, `knows of no leader`, `does not answer`, or `joining, and not yet counted`.
+- `corbie init store` prints each member's name and address, asks each who leads, and prints what each answers: `leads`, `follows the leader`, `knows of no leader`, `does not answer`, or `joining, and not yet counted`.
+
+```
+  sw1   sw1:8372   leads
+  sw2   sw2:8372   follows the leader
+  sw3   sw3:8372   does not answer
+```
+
 - `--alone` is for a store that has lost a majority of its members for good. The copy may lack the last changes the store answered, so the store has gone back in time, as the next section describes.
 - `--alone` is refused while a process listens at the address `corbie init store` saved, as `corbie start` does there: a running member writes its log again.
 - A computer that was a member before `--alone` is never started again as one. Two computers that each believe they hold the store break only-if-new, on which everything rests.
@@ -238,8 +266,9 @@ On a member:
 - Windows takes no file name that contains one of `< > : " | ? *`, that ends in a dot or a space, or that is a device's name, such as `CON` or `NUL`, alone or before a dot. A member on any computer refuses such a part, so a member on Windows applies every entry that a member on Linux does.
 - A computer is not made a member where its file system takes no file name of 255 bytes, or its directory's path is too long for a name of 512 bytes under it. `corbie start` prints which.
 - A member holds the controller's identity, so it can do everything the controller can.
+- A member's card is no party's: the controller enrols no member's card, and a member's card signs nothing in the store.
 
-Members speak to each other on the wire parties use, and each proves the controller's key. A change the store has answered is on the disks of a majority of the members. The members' clocks need not agree for any of this.
+Members speak to each other on the wire parties use, and each proves the controller's key. A member counts each of the others by its card's key, so a computer with another card is another member, whatever its name. A change the store has answered is on the disks of a majority of the members. The members' clocks need not agree for any of this.
 
 ## What the store is trusted with
 

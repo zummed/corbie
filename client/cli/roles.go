@@ -133,6 +133,8 @@ type setting struct {
 	timeout           time.Duration
 	join, remove      string // corbie init store --join and --remove
 	alone             bool   // corbie init store --alone
+	card              bool   // corbie init store --card
+	admit             string // corbie init store --admit
 }
 
 // roleFlags gives the flags written after a role, which set what the role
@@ -164,6 +166,8 @@ func roleFlags(role string, set *setting, every *string) *flag.FlagSet {
 		flags.StringVar(&set.join, "join", "", "")
 		flags.StringVar(&set.remove, "remove", "", "")
 		flags.BoolVar(&set.alone, "alone", false, "")
+		flags.BoolVar(&set.card, "card", false, "")
+		flags.StringVar(&set.admit, "admit", "", "")
 	}
 	return flags
 }
@@ -287,8 +291,8 @@ func (e *Env) start(cfg identity.Config, named []item, before func() error) erro
 		if it.name != "store" {
 			continue
 		}
-		if sets[i].join != "" || sets[i].remove != "" || sets[i].alone {
-			return Mistake("store: --join, --remove and --alone change the store's members, with corbie init store")
+		if sets[i].join != "" || sets[i].remove != "" || sets[i].alone || sets[i].card || sets[i].admit != "" {
+			return Mistake("store: --card, --admit, --join, --remove and --alone change the store's members, with corbie init store")
 		}
 		stop, err := e.serve(sets[i].listen, sets[i].timeout)
 		if err != nil {

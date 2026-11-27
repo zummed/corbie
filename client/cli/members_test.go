@@ -4,7 +4,6 @@ import (
 	"context"
 	"os"
 	"path/filepath"
-	"slices"
 	"strings"
 	"testing"
 
@@ -32,30 +31,32 @@ func (m machine) stays(args ...string) (*said, func()) {
 	return errOut, end
 }
 
-// Three computers become the members of one store: the second and third are
-// given the controller's identity and join the first. A run goes on with the
-// first stopped, the first is removed, and the last copy is made the whole
-// store.
+// Three computers become the members of one store: the first admits the
+// card of the second and of the third, and each joins with what that
+// printed. A run goes on with the first stopped and with the second at
+// another address, the first is removed by its name, and the last copy is
+// made the whole store.
 func Test_store_members_join_carry_on_and_leave(t *testing.T) {
 	at1 := freePort(t)
 	sw1 := machine{t, filepath.Join(t.TempDir(), "sw1")}
 	first := filepath.Join(t.TempDir(), "store")
 	sw1.ok("", "init", "--store", first, "--name", "fab", "--ceiling", "all")
-	sw1.ok("", "init", "store", "--listen", at1)
+	// Every computer of the test has one host name, so each card is named.
+	sw1.ok("", "init", "store", "--card", "--name", "sw1")
+	if out := sw1.ok("", "init", "store", "--listen", at1); !strings.Contains(out, "corbie://"+at1) {
+		t.Fatalf("init store printed:\n%s", out)
+	}
 	_, stop1 := sw1.stays("start", "controller", "--interval", "20ms", "runner", "--interval", "20ms", "store")
 
+	// A computer that joins is given nothing by hand: its card goes to a
+	// member, and what the member prints comes back.
 	member := func(name string) (machine, string) {
 		m := machine{t, filepath.Join(t.TempDir(), name)}
-		identity, err := os.ReadFile(filepath.Join(sw1.config, "controller", "identity"))
-		if err != nil {
-			t.Fatal(err)
-		}
-		os.MkdirAll(filepath.Join(m.config, "controller"), 0o700)
-		if err := os.WriteFile(filepath.Join(m.config, "controller", "identity"), identity, 0o600); err != nil {
-			t.Fatal(err)
-		}
+		card := m.ok("", "init", "store", "--card", "--name", name)
+		admitted := sw1.ok(card, "init", "store", "--admit", "-")
 		at := freePort(t)
-		if out := m.ok("", "init", "store", "--listen", at, "--join", "corbie://"+at1); !strings.Contains(out, "joins the store's members when corbie start runs here") || !strings.Contains(out, "corbie://"+at) {
+		out := m.ok(admitted, "init", "store", "--listen", at, "--join", "-")
+		if !strings.Contains(out, "joins the store's members as "+name+" when corbie start runs here") || !strings.Contains(out, "corbie://"+at) {
 			t.Fatalf("init store --join printed:\n%s", out)
 		}
 		return m, at
@@ -67,16 +68,16 @@ func Test_store_members_join_carry_on_and_leave(t *testing.T) {
 	// the controller's identity, and reaches the store through the first.
 	card := sw2.ok("", "runner", "card", "--name", "sw2")
 	sw2.ok(sw2.ok(card, "controller", "enrol", "-", "--tags", "sw2"), "runner", "trust", "-", "--ceiling", "all")
-	said2, _ := sw2.stays("start", "controller", "--interval", "20ms", "runner", "--interval", "20ms", "store")
+	said2, stop2 := sw2.stays("start", "controller", "--interval", "20ms", "runner", "--interval", "20ms", "store")
 	_, stop3 := sw3.stays("start", "controller", "--interval", "20ms", "store")
-	// corbie init store with no --listen prints the members, and keeps the
-	// address saved: a member is known to the others by it.
+	// corbie init store with no --listen prints the members by name, and
+	// keeps the address saved.
 	until(t, "three members that count", func() bool {
 		out := sw1.ok("", "init", "store")
 		if !strings.Contains(out, "corbie://"+at1) {
 			t.Fatalf("init store with no --listen changed the address saved:\n%s", out)
 		}
-		return strings.Contains(out, at2) && strings.Contains(out, at3) && !strings.Contains(out, "joining")
+		return strings.Contains(out, "sw2   "+at2+"   ") && strings.Contains(out, "sw3   "+at3+"   ") && !strings.Contains(out, "joining")
 	})
 	// It prints which member leads, as each member answers.
 	until(t, "one member that leads and two that follow it", func() bool {
@@ -85,6 +86,9 @@ func Test_store_members_join_carry_on_and_leave(t *testing.T) {
 	})
 	if !strings.Contains(said2.String(), "store: joining the members at "+at1) {
 		t.Fatalf("a computer that joins said:\n%s", said2)
+	}
+	if again := sw2.ok("", "init", "store", "--card"); !strings.HasPrefix(again, "corbie-card:member:sw2:") {
+		t.Fatalf("init store --card on a member printed %q", again)
 	}
 	// Only a member's server changes a member's copy, and a person reads
 	// it as any directory.
@@ -100,9 +104,7 @@ func Test_store_members_join_carry_on_and_leave(t *testing.T) {
 	// A party is given every member's address.
 	laptop := machine{t, filepath.Join(t.TempDir(), "laptop")}
 	enrolled := sw1.ok(laptop.ok("", "client", "card", "--name", "laptop"), "controller", "enrol", "-", "--ceiling", "all")
-	all := []string{at1, at2, at3}
-	slices.Sort(all)
-	if lines := strings.Split(strings.TrimSpace(enrolled), "\n"); len(lines) != 2 || lines[1] != "corbie://"+strings.Join(all, ",") {
+	if lines := strings.Split(strings.TrimSpace(enrolled), "\n"); len(lines) != 2 || lines[1] != "corbie://"+strings.Join([]string{at1, at2, at3}, ",") {
 		t.Fatalf("enrol on a member printed %q, and not every member's address", enrolled)
 	}
 	laptop.ok(enrolled, "client", "trust", "-")
@@ -117,46 +119,92 @@ func Test_store_members_join_carry_on_and_leave(t *testing.T) {
 	}
 	greets("three")
 
+	// A member is reached by the others, and does not stop being served.
+	if status, _, said := sw2.run("", "init", "store", "--listen", ""); status != 1 || !strings.Contains(said, "this computer is the store's member sw2") {
+		t.Fatalf(`init store --listen "" on a member: %d %s`, status, said)
+	}
+	// A member's address is a setting: the second member is started at
+	// another, and the third finds it there by its name.
+	stop2()
+	moved := freePort(t)
+	if out := sw2.ok("", "init", "store", "--listen", moved); !strings.Contains(out, "corbie://"+moved) || !strings.Contains(out, "The other members are told this address when corbie start next runs here.") {
+		t.Fatalf("init store --listen with another address, on a member, printed:\n%s", out)
+	}
+	sw2.stays("start", "controller", "--interval", "20ms", "runner", "--interval", "20ms", "store")
+	until(t, "the second member at its new address", func() bool {
+		out := sw3.ok("", "init", "store")
+		return strings.Contains(out, "sw2   "+moved+"   ") && !strings.Contains(out, at2+" ") && strings.Count(out, "   leads\n") == 1
+	})
+	// A party keeps the addresses it was given. The runner on the second
+	// member is given them as they now are, and so carries on when the
+	// first member stops.
+	again2 := sw2.ok("", "controller", "enrol", "sw2")
+	if lines := strings.Split(strings.TrimSpace(again2), "\n"); len(lines) != 2 || lines[1] != "corbie://"+strings.Join([]string{at1, moved, at3}, ",") {
+		t.Fatalf("enrol after a member's address changed printed %q", again2)
+	}
+	sw2.ok(again2, "runner", "trust", "-", "--ceiling", "all")
+	greets("moved")
+
+	// A name is one member's: a card of a member's name is not admitted,
+	// and a member's card is no party's.
+	other := machine{t, filepath.Join(t.TempDir(), "other")}
+	again := other.ok("", "init", "store", "--card", "--name", "sw3")
+	if status, _, said := sw2.run(again, "init", "store", "--admit", "-"); status != 1 || !strings.Contains(said, "sw3 is a member of the store already") {
+		t.Fatalf("init store --admit of a member's name: %d %s", status, said)
+	}
+	if status, _, said := sw2.run(again, "controller", "enrol", "-"); status != 1 || !strings.Contains(said, "this is the card of a member") {
+		t.Fatalf("controller enrol of a member's card: %d %s", status, said)
+	}
+	// What was admitted is sealed to one card, and another does not join
+	// with it.
+	sealed := sw2.ok(machine{t, filepath.Join(t.TempDir(), "sw4")}.ok("", "init", "store", "--card", "--name", "sw4"), "init", "store", "--admit", "-")
+	if status, _, said := other.run(sealed, "init", "store", "--listen", freePort(t), "--join", "-"); status != 1 || !strings.Contains(said, "sealed to another card") {
+		t.Fatalf("init store --join with what another card was admitted with: %d %s", status, said)
+	}
+	if _, err := os.Stat(filepath.Join(other.config, "controller")); !os.IsNotExist(err) {
+		t.Fatalf("a computer that was not admitted holds something of the controller: %v", err)
+	}
+
 	// The first member stops, and the other two carry on.
 	stop1()
 	greets("two")
 	until(t, "the members that are on to lead and follow", func() bool {
 		out := sw2.ok("", "init", "store")
-		return strings.Contains(out, at1+"   does not answer\n") && strings.Count(out, "   leads\n") == 1 && strings.Count(out, "   follows the leader\n") == 1
+		return strings.Contains(out, "sw1   "+at1+"   does not answer\n") && strings.Count(out, "   leads\n") == 1 && strings.Count(out, "   follows the leader\n") == 1
 	})
 
-	// A member's address is not changed: the others know it by it.
-	for _, listen := range []string{"127.0.0.1:1", ""} {
-		if status, _, said := sw2.run("", "init", "store", "--listen", listen); status != 1 || !strings.Contains(said, "this computer is the store's member "+at2) {
-			t.Fatalf("init store --listen %q on a member: %d %s", listen, status, said)
-		}
-	}
-	if out := sw2.ok("", "init", "store", "--listen", at2); !strings.Contains(out, "corbie://"+at2) {
-		t.Fatalf("init store with the address saved, on a member, printed:\n%s", out)
-	}
-	// An address that is no member is not removed.
-	if status, _, said := sw2.run("", "init", "store", "--remove", "127.0.0.1:1"); status != 1 || !strings.Contains(said, "127.0.0.1:1 is not a member of the store") {
+	// A name that is no member's is not removed.
+	if status, _, said := sw2.run("", "init", "store", "--remove", "nobody"); status != 1 || !strings.Contains(said, "nobody is not a member of the store: its members are sw1, sw2, sw3") {
 		t.Fatalf("init store --remove of no member: %d %s", status, said)
 	}
-	// The first member is removed, from another member.
-	if out := sw2.ok("", "init", "store", "--remove", at1); !strings.Contains(out, at1+" is no longer a member") {
+	// The first member is removed by its name, from another member.
+	if out := sw2.ok("", "init", "store", "--remove", "sw1"); !strings.Contains(out, "sw1 is no longer a member") {
 		t.Fatalf("init store --remove printed:\n%s", out)
 	}
 	// Each member prints the members as its own copy has them, a moment
 	// after the leader's.
 	until(t, "two members", func() bool {
 		out := sw2.ok("", "init", "store")
-		return !strings.Contains(out, at1) && strings.Contains(out, at3)
+		return !strings.Contains(out, at1) && strings.Contains(out, "sw3   "+at3+"   ")
 	})
 	greets("after")
 	// The removed member, started again, is turned away by the others:
 	// corbie start says so and ends.
-	if status, _, said := sw1.run("", "start", "store"); status != 1 || !strings.Contains(said, at1+" was removed from the store's members") || !strings.Contains(said, "the store's server has stopped") {
+	if status, _, said := sw1.run("", "start", "store"); status != 1 || !strings.Contains(said, "sw1 was removed from the store's members") || !strings.Contains(said, "the store's server has stopped") {
 		t.Fatalf("corbie start on a removed member: %d %s", status, said)
 	}
-	if status, _, said := sw2.run("", "start", "store", "--join", "corbie://"+at3); status != 2 || !strings.Contains(said, "corbie init store") {
+	if status, _, said := sw2.run("", "start", "store", "--join", "-"); status != 2 || !strings.Contains(said, "corbie init store") {
 		t.Fatalf("corbie start store --join: %d %s", status, said)
 	}
+	// It joins again under its name, with its card and an empty directory.
+	back := sw2.ok(sw1.ok("", "init", "store", "--card"), "init", "store", "--admit", "-")
+	sw1.ok(back, "init", "store", "--store", filepath.Join(t.TempDir(), "again"), "--join", "-")
+	sw1.stays("start", "controller", "--interval", "20ms", "store")
+	until(t, "the first member to count again", func() bool {
+		out := sw3.ok("", "init", "store")
+		return strings.Contains(out, "sw1   "+at1+"   ") && !strings.Contains(out, "joining") && !strings.Contains(out, "does not answer")
+	})
+	greets("again")
 
 	// The third member's copy is made the whole store, with its server
 	// stopped.

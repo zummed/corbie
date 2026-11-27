@@ -6,6 +6,7 @@ import (
 	"crypto/tls"
 	"errors"
 	"io"
+	"slices"
 	"strings"
 	"sync"
 )
@@ -16,6 +17,7 @@ import (
 // in one copy and not in the others.
 type local struct {
 	directory *directory
+	self      string
 	open      func(address string) (Store, error)
 
 	mu     sync.Mutex
@@ -23,14 +25,16 @@ type local struct {
 }
 
 // OpenLocal opens the directory at dir as a party on the computer that
-// holds it. proof is the party's own, and keeper the key of the store's
-// controller, which every member proves.
-func OpenLocal(dir, party string, proof tls.Certificate, keeper ed25519.PublicKey) (Store, error) {
+// holds it. self is the address of this computer's member, as host:port,
+// which the party asks first: it is the nearest, and names the leader.
+// proof is the party's own, and keeper the key of the store's controller,
+// which every member proves.
+func OpenLocal(dir, self, party string, proof tls.Certificate, keeper ed25519.PublicKey) (Store, error) {
 	opened, err := OpenDirectory(dir)
 	if err != nil {
 		return nil, err
 	}
-	return &local{directory: opened.(*directory), open: func(address string) (Store, error) {
+	return &local{directory: opened.(*directory), self: self, open: func(address string) (Store, error) {
 		return OpenServed(address, party, proof, keeper)
 	}}, nil
 }
@@ -45,6 +49,9 @@ func (l *local) now() (Store, error) {
 	members, err := MembersOf(l.directory.root)
 	if err != nil || len(members) == 0 {
 		return l.directory, err
+	}
+	if at := slices.Index(members, l.self); at > 0 {
+		members[0], members[at] = members[at], members[0]
 	}
 	l.served, err = l.open(ServedScheme + strings.Join(members, ","))
 	return l.served, err

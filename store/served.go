@@ -8,8 +8,11 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"net"
 	"net/http"
+	"net/http/httptrace"
+	"net/textproto"
 	"net/url"
 	"slices"
 	"strconv"
@@ -44,13 +47,17 @@ type served struct {
 // names the member that does, and errLeaderless that of one that knows of
 // no leader. Neither did anything of what was asked.
 var (
-	errElsewhere  = errors.New("store: the member asked does not lead the store")
-	errLeaderless = errors.New("store: the member asked does not lead the store, and knows of no member that does")
+	errElsewhere  = errors.New("this member does not lead the store")
+	errLeaderless = errors.New("this member knows of no leader")
 )
 
 // errLeft is the answer of a member that put a change in the log and then
 // stopped leading: the leader after it has the change, or does not.
-var errLeft = errors.New("store: the member asked stopped leading before the change was answered")
+var errLeft = errors.New("this member stopped leading before the change was answered")
+
+// errSilent is a member that was sent a request and then sent nothing for
+// servedSilence.
+var errSilent = errors.New("this member sent nothing after the request")
 
 // errKeeper is a machine that answers at a served directory's address and does
 // not hold the key of the store's keeper.
@@ -67,6 +74,13 @@ var (
 	servedPauseMax = 2 * time.Second
 	servedIdle     = 3 * time.Second
 )
+
+// servedSilence is how long a member may send nothing before a party takes
+// it to be off and asks the next: while the connection is made, while each
+// end proves its key, and after a request is sent. A member that is on sends
+// a response at each servedWord until it answers. A computer that loses
+// power sends nothing, and the operating system waits minutes for it.
+var servedSilence = 3 * time.Second
 
 // OpenServed opens the directory served at an address as a party: proof is the
 // party's own, and keeper is the key of the controller whose machine serves
@@ -95,16 +109,39 @@ func OpenServed(address, party string, proof tls.Certificate, keeper ed25519.Pub
 					return nil
 				},
 			},
+			DialContext:         (&net.Dialer{Timeout: servedSilence}).DialContext,
+			TLSHandshakeTimeout: servedSilence,
 			MaxIdleConnsPerHost: 64,
 			// A connection that has sat unused is not used again: the
 			// server may have been stopped and started since, and a write
 			// that meets a closed connection cannot always be sent again.
-			IdleConnTimeout:       servedIdle,
-			ResponseHeaderTimeout: servedWait + 30*time.Second,
+			IdleConnTimeout: servedIdle,
 			// How long a value that is read as it is sent waits for the
 			// server to ask for it.
 			ExpectContinueTimeout: servedPatience,
 		}}}, nil
+}
+
+// Leader asks the member at an address, host:port, who leads the store, as
+// a party. It says whether that member leads, or else the address of the
+// member it names, which is nothing where it knows of none. An error is a
+// member that did not answer.
+func Leader(ctx context.Context, member, party string, proof tls.Certificate, keeper ed25519.PublicKey) (leads bool, leader string, err error) {
+	opened, err := OpenServed(ServedScheme+member, party, proof, keeper)
+	if err != nil {
+		return false, "", err
+	}
+	s := opened.(*served)
+	_, _, err = s.once(ctx, s.at(), call{method: http.MethodGet, route: "/read", query: named(VersionName)})
+	switch {
+	case err == nil:
+		return true, "", nil
+	case errors.Is(err, errElsewhere):
+		return false, strings.TrimPrefix(s.at(), "https://"), nil
+	case errors.Is(err, errLeaderless):
+		return false, "", nil
+	}
+	return false, "", err
 }
 
 // ServedHosts gives the members a served directory's address names, each as
@@ -168,8 +205,10 @@ func (s *served) send(ctx context.Context, c call) (servedAnswer, error) {
 		return servedAnswer{}, err
 	}
 	wait := servedPause
+	said := map[string]error{} // what each member asked said last
 	for began := time.Now(); ; wait = min(wait*2, servedPauseMax) {
-		a, mayHaveActed, err := s.once(ctx, c)
+		origin := s.at()
+		a, mayHaveActed, err := s.once(ctx, origin, c)
 		if err == nil && a.status >= http.StatusInternalServerError {
 			// The server's own word that it failed: asking again gets the
 			// same, and it may have got part of the way.
@@ -188,25 +227,44 @@ func (s *served) send(ctx context.Context, c call) (servedAnswer, error) {
 		if mayHaveActed && !c.twice {
 			return servedAnswer{}, fmt.Errorf("%w: %w", ErrUnknown, err)
 		}
+		said[origin] = err
 		if c.read != nil && c.read() {
-			return servedAnswer{}, fmt.Errorf("%w: %w", ErrUnreachable, err)
+			return servedAnswer{}, unreached(said)
 		}
 		if time.Since(began)+wait > servedPatience {
-			return servedAnswer{}, fmt.Errorf("%w: %w", ErrUnreachable, err)
+			return servedAnswer{}, unreached(said)
 		}
 		select {
 		case <-ctx.Done():
-			return servedAnswer{}, fmt.Errorf("%w: %w", ErrUnreachable, err)
+			return servedAnswer{}, unreached(said)
 		case <-time.After(wait):
 		}
 	}
 }
 
+// unreached is the error of a call that no member answered: what the member
+// asked said, or what each of several said.
+func unreached(said map[string]error) error {
+	format, args := "%w: %w", []any{ErrUnreachable}
+	for i, origin := range slices.Sorted(maps.Keys(said)) {
+		err := said[origin]
+		// A connection that was not made names the member already.
+		var op *net.OpError
+		if len(said) > 1 && !(errors.As(err, &op) && op.Op == "dial") {
+			err = fmt.Errorf("%s: %w", strings.TrimPrefix(origin, "https://"), err)
+		}
+		if i > 0 {
+			format += "; %w"
+		}
+		args = append(args, err)
+	}
+	return fmt.Errorf(format, args...)
+}
+
 // once sends a call one time, and gives the server's answer. Of a try that
 // got none it says whether the server may have acted on the call all the
 // same.
-func (s *served) once(ctx context.Context, c call) (a servedAnswer, mayHaveActed bool, err error) {
-	origin := s.at()
+func (s *served) once(ctx context.Context, origin string, c call) (a servedAnswer, mayHaveActed bool, err error) {
 	target := origin + c.route
 	if len(c.query) > 0 {
 		target += "?" + c.query.Encode()
@@ -216,6 +274,19 @@ func (s *served) once(ctx context.Context, c call) (a servedAnswer, mayHaveActed
 		// Not the value's own reader, which the client would close.
 		body = io.NopCloser(c.body())
 	}
+	// The try ends when the member sends nothing for servedSilence after
+	// the request: no interim response, and none of the answer.
+	ctx, end := context.WithCancelCause(ctx)
+	defer end(nil)
+	silence := time.AfterFunc(servedSilence, func() { end(errSilent) })
+	silence.Stop() // it begins when the request is sent
+	defer silence.Stop()
+	heard := func() { silence.Reset(servedSilence) }
+	var sent atomic.Bool
+	ctx = httptrace.WithClientTrace(ctx, &httptrace.ClientTrace{
+		WroteHeaders:   func() { sent.Store(true); heard() },
+		Got1xxResponse: func(int, textproto.MIMEHeader) error { heard(); return nil },
+	})
 	req, err := http.NewRequestWithContext(ctx, c.method, target, body)
 	if err != nil {
 		return a, false, withoutAddress(err)
@@ -230,17 +301,19 @@ func (s *served) once(ctx context.Context, c call) (a servedAnswer, mayHaveActed
 
 	resp, err := s.client.Do(req)
 	if err != nil {
+		if context.Cause(ctx) == errSilent {
+			err = errSilent
+		}
 		// The other connections kept to the server are as likely gone as
 		// this one: the next try starts on a new one.
 		s.client.CloseIdleConnections()
 		// A request that never found the server, or found another computer
 		// in its place, was never sent.
-		var op *net.OpError
-		neverSent := errors.As(err, &op) && op.Op == "dial" || errors.Is(err, errKeeper)
 		s.turn(origin, "")
-		return a, !neverSent, withoutAddress(err)
+		return a, sent.Load(), withoutAddress(err)
 	}
 	defer resp.Body.Close()
+	heard()
 	if resp.StatusCode == http.StatusMisdirectedRequest {
 		io.Copy(io.Discard, resp.Body)
 		leader := resp.Header.Get(headLeader)
@@ -255,11 +328,26 @@ func (s *served) once(ctx context.Context, c call) (a servedAnswer, mayHaveActed
 		s.turn(origin, "")
 		return a, true, errLeft
 	}
-	said, err := io.ReadAll(resp.Body)
+	said, err := io.ReadAll(hearing{resp.Body, heard})
 	if err != nil {
+		if context.Cause(ctx) == errSilent {
+			err = errSilent
+		}
 		return a, true, err
 	}
 	return servedAnswer{status: resp.StatusCode, mark: Mark(resp.Header.Get(headMark)), done: resp.Header.Get(headDone), body: said}, false, nil
+}
+
+// hearing reads an answer, and notes each part of it that arrives.
+type hearing struct {
+	from  io.Reader
+	heard func()
+}
+
+func (h hearing) Read(p []byte) (int, error) {
+	n, err := h.from.Read(p)
+	h.heard()
+	return n, err
 }
 
 // problem is the error an answer stands for, if it stands for one.
@@ -402,7 +490,7 @@ func (s *served) Notice(under string) (<-chan struct{}, func()) {
 	ctx, stop := context.WithCancel(context.Background())
 	go func() {
 		for ctx.Err() == nil {
-			a, _, err := s.once(ctx, call{method: http.MethodGet, route: "/wait", query: url.Values{"under": {under}}})
+			a, _, err := s.once(ctx, s.at(), call{method: http.MethodGet, route: "/wait", query: url.Values{"under": {under}}})
 			switch {
 			case err != nil || a.status != http.StatusOK:
 				// Out of reach or turned away: whoever waits still looks

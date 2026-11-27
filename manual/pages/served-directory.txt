@@ -36,7 +36,8 @@ Add a runner on another computer
 
 Each command prints the fingerprint of every card it reads, for two people to
 compare. `corbie start runner` must stay running. `desk` notifies it of each new
-job, so it does not poll.
+job, so it does not poll. Started before `corbie runner trust`, it takes jobs
+once the card is saved.
 
 Add a client on another computer
 --------------------------------
@@ -85,7 +86,11 @@ into the config on `sw2`:
   sw2$   corbie start
 
 `--join` needs an empty directory. Do the same on a third computer.
-`corbie init store` on a member prints the members.
+`corbie init store` on a member prints each member and which one leads:
+
+  desk:8372   leads
+  sw2:8372    follows the leader
+  sw3:8372    does not answer
 
   one member is off       the other two carry on within seconds
   a member is cut off     it answers nothing until it connects to another member
@@ -98,6 +103,10 @@ into the config on `sw2`:
   runner or a client then uses the store while one of them is on.
 - A store with two members stops when either is off.
 - A member keeps its address. To change it, remove the member and join again.
+- `--listen` takes an address that every other computer connects to, and so
+  no IPv6 link-local address, `fe80::…`.
+- A runner or a client stops waiting for a member that sends nothing for three
+  seconds, as one that lost power does, and asks the next.
 - With members, the store refuses a file whose path in the store is not UTF-8,
   is over 512 bytes, or has a part over 255 bytes.
 - With members, the store refuses a file whose path has a part that is no

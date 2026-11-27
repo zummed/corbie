@@ -7,11 +7,13 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"net/netip"
 	"os"
 	"path/filepath"
 	"slices"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 	"unicode"
 
@@ -189,33 +191,88 @@ func initStore(e *Env, listen string, set setting) error {
 		return err
 	}
 	done := struct {
-		Served  string   `json:"served,omitzero"`
-		Members []string `json:"members,omitzero"`
-		Joining []string `json:"joining,omitzero"`
+		Served  string            `json:"served,omitzero"`
+		Members []string          `json:"members,omitzero"`
+		Joining []string          `json:"joining,omitzero"`
+		State   map[string]string `json:"state,omitzero"`
 	}{}
 	if listen != "" {
 		if done.Served, err = servedAt(listen); err != nil {
 			return err
 		}
 	}
+	var all []string
 	if dir, err := store.DirectoryAt(cmp.Or(e.store, recorded)); err == nil {
-		all, _ := store.MembersOf(dir)
+		all, _ = store.MembersOf(dir)
 		done.Joining = store.JoiningOf(dir)
-		done.Members = slices.DeleteFunc(all, func(address string) bool { return slices.Contains(done.Joining, address) })
+		done.Members = slices.DeleteFunc(slices.Clone(all), func(address string) bool { return slices.Contains(done.Joining, address) })
+	}
+	if len(all) > 0 {
+		if done.State, err = memberStates(e, cfg, all, done.Joining); err != nil {
+			return err
+		}
 	}
 	return e.Print(done, func() string {
 		if done.Served == "" {
 			return "This computer serves its store directory to no other computer.\n"
 		}
 		said := "Other computers reach the directory at " + done.Served + " while corbie start runs here.\n"
-		if len(done.Members) > 0 {
-			said += "The store's members: " + strings.Join(done.Members, ", ") + "\n"
-		}
-		if len(done.Joining) > 0 {
-			said += "Joining, and not yet counted: " + strings.Join(done.Joining, ", ") + "\n"
+		if len(all) > 0 {
+			var listed []row
+			for _, member := range all {
+				listed = append(listed, row{member, done.State[member]})
+			}
+			said += "The store's members:\n" + lines(listed, width(listed))
 		}
 		return said
 	})
+}
+
+// The states corbie init store prints of a member.
+const (
+	memberLeads   = "leads"
+	memberFollows = "follows the leader"
+	memberNoLead  = "knows of no leader"
+	memberSilent  = "does not answer"
+	memberJoining = "joining, and not yet counted"
+)
+
+// memberStates asks every member at once who leads the store, as the
+// controller, and gives what each answered.
+func memberStates(e *Env, cfg identity.Config, members, joining []string) (map[string]string, error) {
+	ctl, err := cfg.Load(e.ctx, identity.Controller)
+	if err != nil {
+		return nil, err
+	}
+	proof, err := ctl.Proof()
+	if err != nil {
+		return nil, err
+	}
+	states := make([]string, len(members))
+	var wg sync.WaitGroup
+	for i, member := range members {
+		wg.Go(func() {
+			leads, leader, err := store.Leader(e.ctx, member, ctl.Name, proof, ctl.Card.SignKey())
+			switch {
+			case err != nil:
+				states[i] = memberSilent
+			case slices.Contains(joining, member):
+				states[i] = memberJoining
+			case leads:
+				states[i] = memberLeads
+			case leader != "":
+				states[i] = memberFollows
+			default:
+				states[i] = memberNoLead
+			}
+		})
+	}
+	wg.Wait()
+	state := map[string]string{}
+	for i, member := range members {
+		state[member] = states[i]
+	}
+	return state, nil
 }
 
 // sameMember refuses another address for a computer that is a member: the
@@ -388,14 +445,32 @@ func servable(listen, address string) error {
 	if listen == "" {
 		return nil
 	}
-	_, port, err := net.SplitHostPort(listen)
+	host, port, err := net.SplitHostPort(listen)
 	if n, perr := strconv.Atoi(port); err != nil || perr != nil || n < 1 || n > 65535 {
 		return Mistake("store --listen takes host:port, or :port for every network interface: :8372")
+	}
+	if ip, err := netip.ParseAddr(host); err == nil && (ip.Zone() != "" || ip.Is6() && ip.IsLinkLocalUnicast()) {
+		return Mistake("store --listen takes an address that every other computer connects to, and %s is an IPv6 link-local address: only a computer on the same link connects to it, and each writes it with the name of its own network interface", host)
 	}
 	if !store.IsDirectory(address) {
 		return Mistake("store is for a store that is a directory on this computer: a bucket is reached by every computer already")
 	}
 	return nil
+}
+
+// member is the address the other members know this computer's member by,
+// as host:port, or nothing where its directory is not served.
+func (e *Env) member() string {
+	cfg, err := e.Config()
+	if err != nil {
+		return ""
+	}
+	listen, _ := cfg.StoreListen()
+	if listen == "" {
+		return ""
+	}
+	at, _ := servedAt(listen)
+	return strings.TrimPrefix(at, store.ServedScheme)
 }
 
 // servedAt is the address other computers are given for a store's server that
@@ -530,7 +605,7 @@ func (e *Env) setUp(cfg identity.Config, address, name, keys string, limit permi
 		if err != nil {
 			return nil, nil, nil, err
 		}
-		if s, err = store.OpenLocal(dir, id.Name, proof, id.Card.SignKey()); err != nil {
+		if s, err = store.OpenLocal(dir, e.member(), id.Name, proof, id.Card.SignKey()); err != nil {
 			return nil, nil, nil, err
 		}
 	}

@@ -706,7 +706,7 @@ func Test_store_members_a_party_on_a_member_uses_its_server(t *testing.T) {
 	c.mu.Lock()
 	c.parties["here"] = servedParty{Party{Kind: Owner, Name: "here"}, key}
 	c.mu.Unlock()
-	here, err := OpenLocal(c.all[0].dir, "here", proofOf(t, key), keyOf(c.keeper))
+	here, err := OpenLocal(c.all[0].dir, c.all[0].address, "here", proofOf(t, key), keyOf(c.keeper))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -726,6 +726,20 @@ func Test_store_members_a_party_on_a_member_uses_its_server(t *testing.T) {
 	}
 	if got := c.agree(); got["a/members"] != "through a server" || got["a/alone"] != "as it is" {
 		t.Fatalf("the copies hold %v", got)
+	}
+
+	// A party on a member asks that member first.
+	for _, tm := range c.all {
+		there, err := OpenLocal(tm.dir, tm.address, "here", proofOf(t, key), keyOf(c.keeper))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if v, _ := read(t, there, "a/members"); v != "through a server" {
+			t.Fatalf("the party on %s reads %q", tm.address, v)
+		}
+		if first := there.(*local).served.(*served).origins[0]; first != "https://"+tm.address {
+			t.Fatalf("the party on %s asks %s first", tm.address, first)
+		}
 	}
 }
 
@@ -1021,5 +1035,30 @@ func Test_store_members_a_path_too_long_for_a_members_names_is_no_member(t *test
 	t.Cleanup(m.Stop)
 	if err := m.Start(); err == nil || !strings.Contains(err.Error(), "cannot be a member") || !strings.Contains(err.Error(), "is too long for a name of 512 bytes") {
 		t.Fatalf("a member in a directory with a path of %d bytes started: %v", len(dir), err)
+	}
+}
+
+// A call that no member answers reports what each member asked said: the
+// members that are off, and the one that is on and knows of no leader.
+func TestServedUnreachableSaysWhatEachMemberSaid(t *testing.T) {
+	c := newMembers(t, 3)
+	owner := c.owner()
+	c.did(owner.Write(ctx, "a/x", []byte("x"), OnlyIfNew))
+	on := c.all[0]
+	c.stop(c.all[1])
+	c.stop(c.all[2])
+	servedPatience = 2 * time.Second
+	_, _, err := owner.Read(ctx, "a/x")
+	if !errors.Is(err, ErrUnreachable) {
+		t.Fatalf("a read with two of three members off: %v", err)
+	}
+	for _, want := range []string{
+		on.address + ": this member knows of no leader",
+		"dial tcp " + c.all[1].address,
+		"dial tcp " + c.all[2].address,
+	} {
+		if !strings.Contains(err.Error(), want) {
+			t.Fatalf("a read with two of three members off says %q, and not %q", err, want)
+		}
 	}
 }

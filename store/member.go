@@ -283,7 +283,11 @@ func OpenMember(dir, self string, proof tls.Certificate) (*Member, error) {
 		log:  filepath.Join(root, membersDir),
 		self: self, id: memberID(self), keeper: keeper,
 		client: &http.Client{Transport: &http.Transport{
-			TLSClientConfig:       memberTLS(proof, keeper),
+			TLSClientConfig: memberTLS(proof, keeper),
+			// A member that is off holds up no connection for the minutes
+			// the operating system waits.
+			DialContext:           (&net.Dialer{Timeout: servedSilence}).DialContext,
+			TLSHandshakeTimeout:   servedSilence,
 			MaxIdleConnsPerHost:   16,
 			IdleConnTimeout:       time.Minute,
 			ResponseHeaderTimeout: time.Minute,

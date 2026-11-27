@@ -124,6 +124,8 @@ corbie start store --timeout 5m              closes a connection that sends noth
 
 The address other computers are given is the one `corbie init store` saved, with this computer's host name where it names every network interface. `corbie start store --listen` never changes it, `corbie init store` with no `--listen` keeps it, and `corbie init store --listen ""` serves the directory to no other computer.
 
+`corbie init store --listen` refuses an IPv6 link-local address, `fe80::…`. Only a computer on the same link connects to it, and each writes it with the name of its own network interface.
+
 There are no keys to a served directory: a party uses the identity it already has. A served directory's wire is private to the two computers. When a connection is made each end proves its own identity key: the party speaks only to a computer that holds its controller's key, and the server speaks only to a party whose key is the one in the controller's trust list for the name it gives, read afresh for every request, so a party that is removed is turned away from its next request on. The server holds each party to its row of the table, exactly as the table is drawn.
 
 Someone on the network between them can see that the two computers talk and how much, and can hold work up or cut it off; they can read nothing, write nothing, change nothing and answer nothing. Nothing of a connection is kept once it ends.
@@ -135,6 +137,16 @@ A party the controller trusts can fill every member's disk with values, and a cl
 A party waiting on its inbox is told the moment something is written there, as a process on the serving computer is, and is told nothing of names it may not read.
 
 With one member, that computer is the store. While it is off nothing moves, and what was waiting waits. Its process can be stopped and started again, as it is to update it, with work in flight on the other computers: they wait about ten seconds for it and carry on.
+
+A computer that loses power, or its network link, sends nothing, and the operating system waits minutes for it. So a server sends an HTTP 102 response each second until it answers a request, and a party stops waiting for a server that sends nothing for three seconds:
+
+```
+  while the connection is made      the request was not sent, and is sent again
+  while each end proves its key     the request was not sent, and is sent again
+  after the request is sent         a read, a listing or an overwrite is sent again; the outcome of any other change is reported as not known
+```
+
+A party sends a request again to the next member of the address, for about ten seconds. A request that takes the server long is waited for, however long.
 
 Off for longer, a job that finished meanwhile cannot say so, and is a timeout when its time is up. A store that must outlive a computer has three members, or is a bucket. A directory with one member copies into a bucket unchanged.
 
@@ -185,10 +197,17 @@ sw3$   corbie init store --join corbie://sw1:8372
 Other parties are given `corbie://sw1:8372,sw2:8372,sw3:8372`, and reach the store while one computer of that address is a member and running.
 
 ```
-  the leader stops or is cut off     the others elect a leader within seconds; a party waits about ten seconds, as for a restart
+  the leader stops                   the others elect a leader within seconds, and a party asks them at once
+  the leader loses power or a link   the same, once it has sent the party nothing for three seconds
   a member cannot reach a majority   it answers no request, and a party that asks it reports that the store cannot be reached
   a member comes back                it follows the log from where it stopped, or copies the directory again
   a majority is off                  nothing moves, and what was waiting waits
+```
+
+A party that no member answers for about ten seconds reports what each member it asked said:
+
+```
+could not reach the store: dial tcp 10.0.0.1:8372: connect: no route to host; 10.0.0.2:8372: this member knows of no leader; 10.0.0.3:8372: this member knows of no leader
 ```
 
 The members are changed with `corbie init store`:
@@ -203,7 +222,7 @@ The members are changed with `corbie init store`:
 - `--remove` of an address that is not a member is refused.
 - A member's address is not changed. `corbie init store --listen` with another address is refused there: the member is removed, and joins again with an empty directory.
 - A store with two members stops when either is off, and `corbie start` prints that.
-- `corbie init store` prints the members, and which of them are joining.
+- `corbie init store` asks each member who leads, and prints what each answers: `leads`, `follows the leader`, `knows of no leader`, `does not answer`, or `joining, and not yet counted`.
 - `--alone` is for a store that has lost a majority of its members for good. The copy may lack the last changes the store answered, so the store has gone back in time, as the next section describes.
 - `--alone` is refused while a process listens at the address `corbie init store` saved, as `corbie start` does there: a running member writes its log again.
 - A computer that was a member before `--alone` is never started again as one. Two computers that each believe they hold the store break only-if-new, on which everything rests.
@@ -211,7 +230,7 @@ The members are changed with `corbie init store`:
 On a member:
 
 - Only the member's server writes its copy. A person reads the files with ordinary tools, as in any directory.
-- From the moment a second member joins, a party on a member that opens the directory uses the members' servers in its place. No config changes. A controller there is held to the controller's row of the table.
+- From the moment a second member joins, a party on a member that opens the directory uses the members' servers in its place, and asks the member on its own computer first. No config changes. A controller there is held to the controller's row of the table.
 - `corbie start` starts the store's server first, and the other roles once a majority of the members reach each other.
 - The log is in `.log` at the top of the copy, with the values sent ahead of their entries.
 - A member that cannot apply an entry stops, and stops again at each start. So a change to a name that can hold no value is refused and stops no member: a name under a value, or a name with names under it.

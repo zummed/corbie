@@ -318,6 +318,7 @@ func (e *Env) start(cfg identity.Config, named []item, before func() error) erro
 			// afresh from the config at every pass.
 			woken := make(chan struct{}, 1)
 			stores := map[string]store.Store{}
+			started := false // a controller trusted after the start is printed
 			trusted := func() ([]runner.Served, error) {
 				held, err := cfg.TrustList(identity.Runner)
 				if err != nil {
@@ -334,6 +335,9 @@ func (e *Env) start(cfg identity.Config, named []item, before func() error) erro
 							return nil, fmt.Errorf("the store of the controller %q: %w", t.Card.Name, err)
 						}
 						stores[t.Store] = s
+						if started {
+							e.Say("runner %s  serving the controller %s", id.Name, t.Card.Name)
+						}
 						notice, _ := s.Notice(store.Inbox(id.Name))
 						go func() {
 							for range notice {
@@ -352,15 +356,16 @@ func (e *Env) start(cfg identity.Config, named []item, before func() error) erro
 			if err != nil {
 				return err
 			}
-			if len(serves) == 0 {
-				return fmt.Errorf("this runner trusts no controller yet: corbie runner trust takes a controller's card")
-			}
+			started = true
 			r := runner.New(id, serves...)
 			r.Trusted = trusted
 			r.Jobs = set.jobs
 			r.Wrapper = strings.Fields(set.wrapper)
 			running = append(running, role.Role{Name: name, Pass: r.Pass, Interval: set.interval, Notice: woken})
 			e.Say("runner %s  (%s), serving %d controller(s), %d jobs at once", id.Name, id.Fingerprint(), len(serves), set.jobs)
+			if len(serves) == 0 {
+				e.Say("runner %s  trusts no controller yet, and takes jobs once it trusts one: corbie runner trust takes a controller's card", id.Name)
+			}
 			for _, s := range stores {
 				e.unreported(name, s, set.interval)
 			}

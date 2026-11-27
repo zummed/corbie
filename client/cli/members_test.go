@@ -76,7 +76,12 @@ func Test_store_members_join_carry_on_and_leave(t *testing.T) {
 		if !strings.Contains(out, "corbie://"+at1) {
 			t.Fatalf("init store with no --listen changed the address saved:\n%s", out)
 		}
-		return strings.Contains(out, at2) && strings.Contains(out, at3) && !strings.Contains(out, "Joining")
+		return strings.Contains(out, at2) && strings.Contains(out, at3) && !strings.Contains(out, "joining")
+	})
+	// It prints which member leads, as each member answers.
+	until(t, "one member that leads and two that follow it", func() bool {
+		out := sw3.ok("", "init", "store")
+		return strings.Count(out, "   leads\n") == 1 && strings.Count(out, "   follows the leader\n") == 2
 	})
 	if !strings.Contains(said2.String(), "store: joining the members at "+at1) {
 		t.Fatalf("a computer that joins said:\n%s", said2)
@@ -115,6 +120,10 @@ func Test_store_members_join_carry_on_and_leave(t *testing.T) {
 	// The first member stops, and the other two carry on.
 	stop1()
 	greets("two")
+	until(t, "the members that are on to lead and follow", func() bool {
+		out := sw2.ok("", "init", "store")
+		return strings.Contains(out, at1+"   does not answer\n") && strings.Count(out, "   leads\n") == 1 && strings.Count(out, "   follows the leader\n") == 1
+	})
 
 	// A member's address is not changed: the others know it by it.
 	for _, listen := range []string{"127.0.0.1:1", ""} {

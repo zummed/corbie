@@ -629,6 +629,28 @@ Returns:
           those it no longer has; put it in the assistant part. It is left
           out where a reply in the conversation holds none
 
+Tool changes:
+
+A service reads the start of a request from its cache and charges less for
+it, and the tools are at the start. A conversation whose tools change, as
+an agent's do when it opens a toolkit, is then read at full price from that
+call on. With tool_changes: true the tools stay as first sent.
+
+1. chat gives offered with every reply, and the script keeps it in the
+   assistant part.
+2. The request's tools are those the first reply was offered, at every call.
+3. Each later change is sent as a message of the conversation, at the place
+   it was made: the names removed, and each tool added, whole.
+
+- Only anthropic takes tool_changes. Any other service refuses it as bad
+  input.
+- The model must take it: Claude Opus 4.8 and later, Sonnet 5.5, Haiku 5.5,
+  and the Fable and Mythos models, at Anthropic's own API. Any other model
+  answers 400, and the call fails as refused with the service's message.
+- A conversation with a reply that holds no offered is sent with the tools
+  of the call, as without tool_changes.
+- usage.cached shows what the service read from its cache.
+
 For decide, state is the text or data the questions are about, and questions
 is written in the System One format, which TypeSafe's Jev set: each question
 under its name, with these fields.

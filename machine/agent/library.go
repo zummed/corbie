@@ -176,7 +176,8 @@ script that changes what the model is sent makes those calls itself.
 
 A turn's input has these fields.
 
-  model    { name, service, address, key, effort, reply, own }; key is a secret's name
+  model    { name, service, address, key, effort, reply, own, tool_changes }; key is
+           a secret's name
   system   the system prompt
   tools    [{ name, description, args }]
   turns    the blobs that hold the conversation so far
@@ -187,13 +188,20 @@ A turn's input has these fields.
 A turn returns these fields.
 
   turn    a blob, made with blobs.make, of this turn's parts as JSON:
-          input.add, then the reply; without it the agent fails
+          input.add, then the reply; without it the agent fails. The reply
+          is { role: "assistant", content, calls }, with kept and offered
+          where llm.chat gave them
   text    the model's reply
   calls   the tool calls the model made: [{ id, name, args }]; when there are
           none, text is the agent's reply
   stop    "end", "tools" or "length"; on "length" the agent tells the model
           that its reply was cut short and takes another turn
   usage   { input, output, cached }, in tokens, as llm.chat gives it
+
+A script that calls llm.chat itself puts the reply's kept and offered in
+the assistant part. Without offered, a model with tool_changes: true is sent
+its tools as any model is, and the service's cache is lost when a toolkit is
+opened.
 
 This turn calls no model and answers at once.
 

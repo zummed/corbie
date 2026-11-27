@@ -84,7 +84,9 @@ The result
 ----------
 
   reply           the model's last reply, as text or in the shape of `reply:`
-  tokens          { input, output, cached }, counted over the agent's own turns
+  tokens          { input, output, cached }, counted over the agent's own
+                  turns; cached is how many of input the service read from
+                  its cache
   conversation    { turns, blobs, opened, tasks }: a blob for each turn, each
                   blob the model was shown by its handle's name, the list of
                   each toolkit that is open, and each call that has not ended
@@ -230,13 +232,6 @@ agent with many tools shows the model the ones it has opened.
 - A toolkit's list may hold a toolkit. The result of `open` names it, the
   model opens it with the list's name, `{ list: github, name: review }`,
   and its tools are shown as `github_review_read`.
-- A model service keeps the start of a request in its cache, and the tools
-  are at the start, so by default an open loses the cache. With
-  `tool_changes: true` on `model:`, for the service anthropic, the tools
-  sent stay those of the first turn and each tool an open adds is sent as a
-  message. The model must take it: Opus 4.8 and later, Sonnet 5.5, Haiku
-  5.5, and the Fable models, at Anthropic's own API. Any other model refuses
-  the request.
 - A list larger than 32 KiB is a blob: the list `toolkits` before the first
   turn, and a toolkit's list in the result of its `open`. The model searches
   it with the blob tools, then calls `open` with the list, or its blob's
@@ -267,6 +262,32 @@ input. The call is then a task.
 - A resume a hook refuses keeps the task. One that fails ends it.
 - An agent that ends with a task working gives it in `conversation.tasks`,
   and an agent given that `conversation` resumes it.
+
+The service's cache
+-------------------
+
+A model service keeps the start of a request in its cache and charges less
+to read it again. The tools are at the start, so by default every open, and
+every tool opened from a long list, loses the cache for the turn after it.
+
+  model: { name: claude-sonnet-5-5, secret: ANTHROPIC_KEY, tool_changes: true }
+
+1. The tools sent to the service stay those of the first turn.
+2. A tool that an open adds, or that is no longer offered, is sent as a
+   message of the conversation.
+3. Every turn after the first reads the earlier turns from the cache.
+
+- Only the service anthropic takes `tool_changes:`. For any other service
+  the definition is refused.
+- The model must take it: Opus 4.8 and later, Sonnet 5.5, Haiku 5.5, and the
+  Fable and Mythos models, at Anthropic's own API. Any other model refuses
+  the request, and the turn fails with the service's message.
+- `tokens.cached` in the result is how many tokens the service read from its
+  cache.
+- A `turn:` script of the definition's own keeps `offered` with each reply
+  for this to work, as `corbie manual agents` says.
+- `open` and `resume` have the same description at every turn, with or
+  without `tool_changes:`.
 
 Who is offered what
 -------------------

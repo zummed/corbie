@@ -1,6 +1,6 @@
 # Machines
 
-A machine is a definition that Corbie runs. There are four types: flow, statechart, agent and decision. Flow and statechart each have an area, and agent and decision, which call a model, share one. This area is what they all share: how a machine runs, how a definition is written, where it lives, what a machine can receive, and the hooks that run before and after its jobs.
+A machine is a definition that Corbie runs. There are five types: flow, statechart, agent, decision and toolkit. Flow, statechart and toolkit each have an area, and agent and decision, which call a model, share one. This area is what they all share: how a machine runs, how a definition is written, where it lives, what a machine can receive, and the hooks that run before and after its jobs.
 
 ## Steps
 
@@ -12,7 +12,7 @@ A machine runs until it reaches an end of its own, is cancelled, or passes its t
 
 ## Definitions
 
-A definition is data, written in YAML. Exactly one of its fields is `flow:`, `statechart:`, `agent:` or `decision:`, which gives its type and its name. That field may be written anywhere in the mapping, or come from a file the definition includes, and a definition with none or with two is refused. It may give the shape of its input, how long its instances are kept, and its limits.
+A definition is data, written in YAML. Exactly one of its fields is `flow:`, `statechart:`, `agent:`, `decision:` or `toolkit:`, which gives its type and its name. That field may be written anywhere in the mapping, or come from a file the definition includes, and a definition with none or with two is refused. It may give the shape of its input, how long its instances are kept, and its limits.
 
 A definition may carry `meta:`, with any value. Corbie keeps it with the stored definition, never reads it, and fills in no expression in it. An application keeps its own data there, such as when to start the machine.
 
@@ -514,7 +514,7 @@ A hook's expressions read the `input`, `values` and `run` of the machine that de
 | `approve` | true when the job is marked for approval |
 | `meta` | the job's `meta:` |
 | `script`, `machine`, `call` or `send` | what the job runs |
-| `tool` | for an agent's tool call, `{ name, entry, toolkit, description, args, said }` (see agent.md) |
+| `tool` | for an agent's tool call, `{ name, entry, toolkit, description, args, said }` (see agent.md); for a job of a toolkit, `{ toolkit, name, args }` (see toolkit.md) |
 
 A hook's `allow:` scopes are filled from the declaring machine's input and values, and never from `job`. A hook's job is a job of the definition that declares it, for every job it runs for: a script, a call or a send has that definition's `allow:` and `deny:` with its own, and it runs with the layers of that machine.
 

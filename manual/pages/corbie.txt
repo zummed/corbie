@@ -35,16 +35,18 @@ This machine is a flow named `fetch-title`. It has one stage, `get_title`, and
 the stage has one job, which is a script. Corbie provides `input`, `http` and
 `html` to the script.
 
-There are four types of machine. Two of them call an AI model.
+There are five types of machine. Two of them call an AI model.
 
   flow         stages that run in dependency order, in parallel, and can
                stream items from one stage to the next
   statechart   states, with transitions on events and timers
   agent        an AI model that calls tools in a loop until it answers
   decision     an AI model that answers fixed questions with probabilities
+  toolkit      tools that any machine opens and calls with a job
 
 In a flow each stage has a job, in a statechart a state can have one, and in
-an agent each tool is one. A decision has one job, which Corbie supplies.
+an agent each tool is one. A decision has one job, which Corbie supplies. In
+a toolkit each tool has a job, or one job answers for all of them.
 
 A job can be a machine, so the types nest. A statechart state can run a
 flow, and an agent's tool can be a flow or another agent.

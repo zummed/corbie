@@ -21,6 +21,12 @@ Change `ask:` to a hook, as `corbie manual hooks` says.
 `approve: true` and `approve: [exec]` mark a job, as before. A marked job that
 no `before` hook is for fails with status `denied`.
 
+- `toolkit:` is a fifth type of machine. It holds tools that any machine
+  opens and calls with a job, by its file or by its location, as
+  `corbie manual toolkit` says.
+- `server.toolkit(request)` of the `mcp` plugin answers a toolkit's request
+  for an MCP server, as `corbie manual mcp` says.
+
 After 0.32.0
 ------------
 

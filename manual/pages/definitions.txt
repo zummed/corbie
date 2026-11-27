@@ -1,8 +1,8 @@
 Definitions: every type of machine shares these fields, expressions, jobs, events and hooks.
 
 A definition is a YAML file. One field gives the machine's type and name:
-`flow: digest`, `statechart: review`, `agent: librarian` or
-`decision: urgent`. It may be written anywhere in the file, or come from a file it includes. A name is letters,
+`flow: digest`, `statechart: review`, `agent: librarian`,
+`decision: urgent` or `toolkit: notes`. It may be written anywhere in the file, or come from a file it includes. A name is letters,
 digits, `_` and `-`, and starts with a letter.
 
 Fields every type takes
@@ -478,5 +478,6 @@ Reference
   corbie manual statechart     the fields of a statechart
   corbie manual agent          the fields of an agent
   corbie manual decision       the fields of a decision
+  corbie manual toolkit        the fields of a toolkit
   corbie manual scripts        what a script reads, calls and returns
   corbie manual permissions    how an entry is written, and the layers that limit a job

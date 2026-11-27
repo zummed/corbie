@@ -1,0 +1,6 @@
+{
+  "status": "failed",
+  "failure": "error",
+  "error_contains": "/case/notes does not receive a call from the run",
+  "note": "R-ctl-128, R-perm-67: a toolkit's receive: says which runs call it."
+}

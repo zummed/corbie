@@ -201,5 +201,5 @@ Uses:
 
 Used by:
 
-- **Machines.** An agent and a decision are two of the four types, and each supplies the filling-out of its short forms, its check, its step, the state a watcher is shown (R-inst-72), and its manual page.
+- **Machines.** An agent and a decision are two of the five types, and each supplies the filling-out of its short forms, its check, its step, the state a watcher is shown (R-inst-72), and its manual page.
 - **Flow, Statechart.** Either may run an agent as a child, and an agent may run either, or another agent, as a tool.

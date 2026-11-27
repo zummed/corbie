@@ -343,7 +343,7 @@ func TestEveryYAMLIsAMachine(t *testing.T) {
 		got[m.Path] = m.Problem.Error()
 	}
 	listIt := func(file string) string { return "; if it is no machine, add the line " + file + " to .corbieignore" }
-	noType := "it gives no type: a machine writes one of agent:, decision:, flow:, statechart: with its name, or takes it from a file it includes"
+	noType := "it gives no type: a machine writes one of agent:, decision:, flow:, statechart:, toolkit: with its name, or takes it from a file it includes"
 	want := map[string]string{
 		"notes.yaml":                   "the definition is empty" + listIt("notes.yaml"),
 		"empty.yaml":                   "the definition is empty" + listIt("empty.yaml"),

@@ -209,6 +209,7 @@ A script cannot reach outside itself except through the kinds above, and those a
 - A model allowed `test` runs each script it writes as that user. Under `corbie test` the ceilings allow everything, so the only limit is the `allow:` lists the model wrote.
 - A permission to connect to a host governs the connection and nothing sent over it. A job allowed an MCP server can call any of its tools; what a call can do is set by the credentials the server is given.
 - An agent's listed tools are described by whoever wrote the list, and the model reads that text as it reads a tool's result.
+- A toolkit at a location uses its secrets for every caller its `receive:` accepts, which by default is every location of its tree. What a caller gives as its input is the caller's claim.
 - A tool that calls a machine in another tree is described by that tree's owner, and the model reads that text as it reads a tool's result. It changes when that owner submits.
 - A job that may read the runner's own files can read the runner's key, and with it every job sent to that runner.
 - A runner takes a job only of a run at or under its prefixes, and the run's location is the controller's word. A controller can send a runner any job it signs.

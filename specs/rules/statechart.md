@@ -176,6 +176,6 @@ Uses:
 
 Used by:
 
-- **Machines.** A statechart is one of the four types, and supplies the filling-out of its short forms, its check, its step, the state a watcher is shown (R-inst-72), and its manual page.
+- **Machines.** A statechart is one of the five types, and supplies the filling-out of its short forms, its check, its step, the state a watcher is shown (R-inst-72), and its manual page.
 - **Flow, Agent.** Either may run a chart as a child, and a chart may run either.
 - **Machines, for hooks.** A hook that waits for a person is typically a chart that hands out a ticket and ends with `{ ok }`.

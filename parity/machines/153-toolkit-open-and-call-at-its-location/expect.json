@@ -1,0 +1,24 @@
+{
+  "status": "done",
+  "output": {
+    "open": {
+      "instructions": "Notes are on the shelf a.",
+      "entries": [
+        {
+          "kind": "tool",
+          "name": "add_note",
+          "description": "Add a note.",
+          "args": {
+            "type": "object",
+            "properties": { "text": { "type": "string" } },
+            "required": ["text"],
+            "additionalProperties": false
+          }
+        }
+      ]
+    },
+    "add": { "result": { "shelf": "a", "text": "milk", "handle": true } },
+    "own": { "<contains>": "TOKEN is not set at /case/root or above" }
+  },
+  "note": "R-kit-03, R-kit-04: a toolkit with tools: answers an open with its instructions and entries, and a call with the tool's result. R-ctl-113: a secret set at the toolkit's location is sent to its tool's job and not to its caller's."
+}

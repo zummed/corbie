@@ -1,0 +1,6 @@
+# The toolkit's receive: does not list the caller: the call fails, and no
+# run of the toolkit starts.
+flow: caller
+allow: [send:notes]
+stages:
+  open: { job: { call: { at: notes }, input: { request: { do: open } } } }

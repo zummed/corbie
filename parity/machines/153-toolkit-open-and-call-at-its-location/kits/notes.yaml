@@ -1,0 +1,12 @@
+toolkit: notes
+description: Notes kept on shelves.
+input: { shelf: string }
+instructions: Notes are on the shelf ${input.shelf}.
+tools:
+  add_note:
+    description: Add a note.
+    args: { text: string }
+    job:
+      script: handle.js
+      input: { shelf: "${input.shelf}", text: "${args.text}" }
+      allow: ["secret:TOKEN@net:example.invalid"]

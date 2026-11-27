@@ -14,6 +14,7 @@ import (
 	"strings"
 
 	"github.com/zummed/corbie/machine"
+	_ "github.com/zummed/corbie/machine/toolkit" // every program that has agents has toolkits
 	"github.com/zummed/corbie/plugin/llm"
 )
 

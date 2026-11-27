@@ -1,0 +1,13 @@
+{
+  "status": "done",
+  "output": {
+    "open": {
+      "instructions": "Ask for the shelf a.",
+      "entries": [{ "kind": "tool", "name": "find", "description": "Find a note.", "args": { "type": "object" } }]
+    },
+    "find": { "result": "found milk on a" },
+    "export": { "working": { "said": "exporting" }, "state": { "task": "t1" } },
+    "bad": { "<contains>": "the toolkit's job answers a call with { result }, { working, state } or { requests, state }" }
+  },
+  "note": "R-kit-05, C-kit-01: a toolkit's job is given the toolkit's input and answers the request; an entry keeps its kind, name, description and args, and an answer of any other form fails the run."
+}

@@ -368,15 +368,6 @@ export interface Tool {
   Mark: string;
 }
 
-export interface Toolkit {
-  Name: string;
-  File: string;
-  When: string;
-  Toolkit: boolean;
-  Folded: boolean;
-  Tools: Tool[];
-}
-
 export interface Hook {
   Card: Card;
   When: boolean;
@@ -389,7 +380,7 @@ export interface Agent {
   ModelLine: string;
   Turn: number;
   Turns: number;
-  Toolkits: Toolkit[];
+  Tools: Tool[];
   Hooks: Hook[];
 }
 
@@ -520,70 +511,6 @@ export interface MachinesParts {
   list: Index | null;
   runs: Record<string, AtLocation>;
   view?: View | null;
-}
-
-export interface ToolkitTool {
-  Name: string;
-  Description: string;
-  Job: string;
-  File: string;
-  At: string;
-  Call: string;
-  Event: string;
-  To: string;
-  When: string;
-  Fixed: string[];
-  Approve: boolean;
-}
-
-export interface Start {
-  Name: string;
-  File: string;
-  At: string;
-  Type: string;
-}
-
-export interface Offer {
-  Name: string;
-  File: string;
-  At: string;
-  When: string;
-  Lifetime: string;
-  Started: string;
-  Starts: Start[];
-}
-
-export interface MachinesToolkit {
-  ID: string;
-  Tree: string;
-  Name: string;
-  Description: string;
-  File: string;
-  Instructions: string;
-  InstructionsFile: string;
-  Opening: boolean;
-  Tools: ToolkitTool[];
-  Offered: Offer[];
-}
-
-export interface ToolkitTree {
-  Prefix: string;
-  Toolkits: MachinesToolkit[];
-}
-
-export interface ToolkitList {
-  Trees: ToolkitTree[];
-  Stamp: string;
-}
-
-export interface ToolkitChosen {
-  Open: MachinesToolkit | null;
-  Stamp: string;
-}
-
-export interface ToolkitsParts {
-  list: ToolkitList;
-  toolkit?: ToolkitChosen | null;
 }
 
 export interface Party {

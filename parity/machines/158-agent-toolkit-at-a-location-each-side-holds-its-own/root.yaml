@@ -1,0 +1,14 @@
+# Support's agent names the orders team's toolkit by its location. Support's
+# hook holds the agent's call of a refund over 500, and reads what the model
+# said. The orders team's hook holds every refund in the toolkit's own run,
+# and is given nothing the model said.
+agent: helper
+model: { name: scripted, service: anthropic }
+turn: ./turn.js
+prompt: Refund order 7 three times.
+hooks:
+  lead:
+    when: "${job.call && job.tool.toolkit == 'orders' && job.tool.name == 'refund' && job.tool.args.amount > 500}"
+    before: { script: ./ask.js, input: { who: lead, tool: "${job.tool}" } }
+tools:
+  orders: { call: kits/orders }

@@ -11,6 +11,6 @@ hooks:
   finance:
     when: "${job.approve && job.tool.name == 'refund' && job.tool.args.amount > 100}"
     before: { script: ./ask-in.js, input: { channel: "#finance", approvers: finance, tool: "${job.tool.name}", args: "${job.tool.args}" } }
-toolkits:
-  orders: { include: toolkits/orders/toolkit.yaml }
-  infra: { include: toolkits/infra/toolkit.yaml }
+tools:
+  orders: { machine: ./toolkits/orders/toolkit.yaml }
+  infra: { machine: ./toolkits/infra/toolkit.yaml }

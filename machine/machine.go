@@ -360,18 +360,9 @@ type Limiter interface {
 // A Reader is a type with a part of its definitions that the controller
 // needs. It reads them as plain JSON, and compiles and evaluates nothing.
 type Reader interface {
-	// Lists says the definition takes shapes from outside as it runs.
-	Lists(def *Definition) bool
 	// Calls gives the locations, each a full path, whose recorded machines
 	// a run of the definition reads at its first step.
 	Calls(def *Definition) []string
-}
-
-// Lists says a definition takes shapes from outside as it runs.
-func Lists(def *Definition) bool {
-	t, _ := TypeOf(def.Type)
-	r, ok := t.(Reader)
-	return ok && r.Lists(def)
 }
 
 // Calls gives the locations whose recorded machines a run of a definition

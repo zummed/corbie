@@ -120,7 +120,7 @@ func newHouse(t *testing.T, interval time.Duration) *house {
 		return len(runs) == 4 && slices.ContainsFunc(runs, func(r *client.Run) bool { return r.Status == instance.Failed })
 	})
 	h.pages = New(Config{Controller: l.Controller.ID, Store: l.Controller.Store, List: h.list, Client: l.Client, Latest: latest,
-		Interval: interval, Shell: page.Shell{Offered: []string{"Runs", "Machines", "Toolkits"}}})
+		Interval: interval, Shell: page.Shell{Offered: []string{"Runs", "Machines"}}})
 	return h
 }
 

@@ -135,15 +135,7 @@ test("drawing_agent_is_a_loop_of_model_and_tools", async () => {
   const c = cards(await laid("helper"));
   const y = n => c.get(n).y;
   assert(y("claude-sonnet-5-5") < y("tell") && y("claude-sonnet-5-5") < y("look") && y("tell") < y("approval") && y("approval") < y("reply") && y("look") < y("reply"), "the model, the tools, the hook and the reply are not drawn top to bottom");
-  assert(mid(c.get("tell")).x !== mid(c.get("look")).x, "the toolkit and the tools are not side by side");
-});
-
-test("drawing_unused_toolkit_is_folded", async () => {
-  const l = await laid("toolkits-running");
-  const at = name => l.holders.find(h => h.name.text === name);
-  const look = mid(cards(l).get("look")).x;
-  assert(at("bins").x === at("servers").x && at("servers").y > at("bins").y, "the folded toolkits are not one below another");
-  assert(at("home").x < at("net").x && at("net").x < look && look < at("bins").x, "the folded toolkits are not after the others");
+  assert(mid(c.get("tell")).x === mid(c.get("look")).x && y("look") < y("tell"), "the tools are not one below another");
 });
 
 test("drawing_call_and_send_jobs_are_cards", async () => {

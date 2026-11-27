@@ -1,6 +1,6 @@
 # Toolkit
 
-A toolkit is a machine that holds tools. Another machine opens it and calls its tools with a job, as it runs any machine: by its file with `machine:`, or by its location with `call:`.
+A toolkit is a machine that holds tools. Another machine opens it and calls its tools with a job, as it runs any machine: by its file with `machine:`, or by its location with `call:`. An agent's entry that names a toolkit does both for its model (see [Agent](agent.md#toolkits)).
 
 ```yaml
 # kits/notes.yaml          location /x/kits/notes
@@ -63,7 +63,7 @@ A toolkit with `tools:` answers a request itself.
 
 No job starts for any of these.
 
-A tool is written as an agent's tool is: `description:`, `args:` in the short form or in full, and `job:`.
+A tool is written as an agent's tool is: `description:`, `args:` in the short form or in full, and `job:`. A `blob` in the short form is the blob itself, as in a machine's input.
 
 ## A job that answers
 
@@ -89,7 +89,8 @@ return server.toolkit(input.request)
 - The job is given the toolkit's input, `request` in it, or the `input:` it writes.
 - The job's output is the answer. The toolkit keeps only what the request's row above gives, and fails the run for any other form.
 - An entry keeps `kind`, `name`, `description` and `args`. Any other field is dropped, so an entry names nothing to call.
-- Two entries of one name fail the run, and so does a tool's `args` that is no shape.
+- Two entries of one name fail the run.
+- The toolkit does not compile a tool's `args` that a job gives. The job that answers a call checks its arguments.
 - `server.toolkit` of the `mcp` plugin answers a request for an MCP server (see plugin.md).
 
 ## Authority

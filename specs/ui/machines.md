@@ -1,8 +1,8 @@
 # Machines
 
-The Machines page shows the machines the controller has recorded: each tree, the machine at each of its locations, and for the one chosen its description, its location, the secrets and values it uses, its drawing and its definition. The Toolkits page shows the same machines from the tools up: each toolkit, what offers it and what starts that. A UI that acts as the controller offers both, and both only read: `corbie run submit` changes a tree.
+The Machines page shows the machines the controller has recorded: each tree, the machine at each of its locations, and for the one chosen its description, its location, the secrets and values it uses, its drawing and its definition. A UI that acts as the controller offers it, and it only reads: `corbie run submit` changes a tree. A toolkit is a machine, and is shown as any machine is.
 
-On both pages, choosing a machine, a toolkit, a tab or a card's link shows it in place, and the address names it. The list keeps its place, and Back shows what was shown before.
+Choosing a machine, a tab or a card's link shows it in place, and the address names it. The list keeps its place, and Back shows what was shown before.
 
 ## What is read
 
@@ -15,7 +15,7 @@ locations/<location>/+/file     the definition recorded at a location, and the c
 
 - A definition is as `corbie run submit` wrote it out: what it includes is in place, and each value has the file and line it was submitted from.
 - A file with a problem is not recorded. `corbie run submit` prints its problems, and its location keeps the definition recorded before.
-- The UI reads the trees at the interval, and a location's definition again only when a submit changed it. The Machines and Toolkits pages share what was read.
+- The UI reads the trees at the interval, and a location's definition again only when a submit changed it.
 
 ## The list
 
@@ -115,43 +115,3 @@ HUB              value · set at /home
 ```
 
 A machine that uses none shows no section.
-
-## Toolkits
-
-A toolkit is a group of tools under an agent's `toolkits:`. The Toolkits page lists, by tree, each toolkit an agent's `toolkits:` names, written in place or included from a file, with its `description:` and its count of tools, and shows the one chosen:
-
-```
-orders                                   toolkits/orders/toolkit.yaml
-
-The orders app.
-instructions toolkits/orders/instructions.md
-
-Offered by                                                    Started by
-support  /acme/agents/support  when: input.asker.scopes.includes(…)  conversation  transient: a call, a send, or corbie run start /acme/agents/support, starts each run
-
-read_file
-Read one file of a project.
-call gitlab/files/read
-input: project
-
-change_file                                                        needs approval
-Change a file of a project.
-call gitlab/commits/create
-input: project
-when: input.asker.scopes.includes('orders:write')
-```
-
-| Field | What it shows |
-|---|---|
-| instructions | the first line of the toolkit's `instructions:`, or the file they were included from |
-| Offered by | each agent whose `toolkits:` holds the toolkit, with the `when:` of its entry: the agent at a location, or one a machine at a location runs with `machine:` or writes in place |
-| Started by | for an agent at a location, each machine of its tree that runs its file with `machine:` or calls its location, and how its location's runs start; for any other agent, the machine that runs it or writes it in place |
-| Tools | each tool's `description:`, its job, the input a call fixes, its `when:`, and `needs approval` where the job has `approve: true` |
-
-- An agent and a machine that starts it link to the machine at their location on the Machines page. One with no location is named by its file.
-- A tool written `call:` gives the location it calls, linked to the machine recorded there, in any tree.
-- A tool whose job is a call, `job: { call: { at: chat/post } }`, is a call too: it gives the location, linked as above, and keeps its own `description:`. A tool whose job is a send gives its event and its address, its location linked to the machine recorded there, as the agent's drawing writes them: `send ping to chat/post#infra`.
-- A call's location is read from the tree's prefix, or from `/` where it begins with `/`. A location an expression gives is known only when the call runs, and is not followed.
-- A tool with `when:` has a dashed border.
-- A toolkit's file is the file its tools were submitted in, as the agent's definition gives it, where that is not the agent's own file. Two agents of one tree that take a toolkit's tools from the same file offer one toolkit, whichever name each gives it.
-- Opening a toolkit with `approve: true` is shown as `opening it needs approval`.

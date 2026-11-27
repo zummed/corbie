@@ -1,4 +1,5 @@
 # The orders team's toolkit: it says where its refunds are approved, and by whom.
+toolkit: orders
 description: Orders and refunds.
 tools:
   refund:

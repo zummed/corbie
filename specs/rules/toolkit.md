@@ -26,6 +26,8 @@ The detailed rules behind the [Toolkit overview](../toolkit.md). Area code: `kit
 
 **C-kit-01** An entry in a job's answer to an open keeps its kind, its name, its description and, for a tool, the shape of its arguments, and nothing else. An entry that kept a field of its writer's could name a location or a job for a reader of the list to run. *Test:* `toolkit_entry_keeps_only_its_four_fields`
 
+**C-kit-02** No step compiles the shape of a tool's arguments that a toolkit's job gives: the toolkit keeps it as data, and an agent offers it to its model as data. A shape from outside the definition could cost a step more than it may take, and a step is taken in the controller's process. *Test:* `toolkit_shape_from_a_job_is_not_compiled`
+
 ## Interfaces
 
 Uses:
@@ -38,3 +40,4 @@ Used by:
 
 - **Machines.** A toolkit is one of the five types, and supplies the shape of its definitions, the filling-out of its short forms, its check, its step and its manual page.
 - **Flow, Statechart.** Either runs a toolkit as a job, by its file or by its location.
+- **Agent.** An entry of an agent's `tools:` that names a toolkit opens it and calls its tools for the model (R-agent-59).

@@ -50,8 +50,8 @@ stages:
 output: ${stages.draft.output}
 `
 
-// A lab is a store in memory with a controller, and the Machines and
-// Toolkits pages on it, acting as the controller.
+// A lab is a store in memory with a controller, and the Machines
+// page on it, acting as the controller.
 type lab struct {
 	l     *client.Local
 	pages *Pages
@@ -133,7 +133,7 @@ func do(h http.Handler, method, target string, form url.Values) *httptest.Respon
 
 // project writes a directory laid out as a project of ready-made machines
 // is: a machine to keep running, machines in a directory whose name begins
-// with a dot, and an agent with a toolkit from a file of its own, with the
+// with a dot, and an agent with tools from a file of its own, with the
 // files that are no machine listed in .corbieignore.
 func project(t *testing.T) string {
 	t.Helper()
@@ -170,8 +170,8 @@ states:
 		".kit/unused.yaml":      "flow: unused\nstages:\n  a: { job: ./hear.js }\n",
 		".kit/post.yaml":        "flow: post\nstages:\n  a: { job: ./hear.js }\n",
 		".kit/hear.js":          "return 1",
-		"support.yaml":          "agent: support\nmodel: { name: claude-sonnet-5-5, secret: KEY }\nprompt: hello\nhooks: { approval: { before: { machine: .kit/post.yaml }, when: \"${job.approve}\" } }\ntoolkits:\n  messages: { include: ./toolkits/toolkit.yaml }\n",
-		"toolkits/toolkit.yaml": "description: messages\ntools:\n  tell: { description: tells, job: { machine: .kit/post.yaml, approve: true } }\n",
+		"support.yaml":          "agent: support\nmodel: { name: claude-sonnet-5-5, secret: KEY }\nprompt: hello\nhooks: { approval: { before: { machine: .kit/post.yaml }, when: \"${job.approve}\" } }\ntools: { include: ./toolkits/toolkit.yaml }\n",
+		"toolkits/toolkit.yaml": "# the tools that send messages,\n# which more than one agent has\ntell: { description: tells, job: { machine: .kit/post.yaml, approve: true } }\n",
 		"people/scopes.yaml":    "people: []\n",
 		".corbieignore":         "toolkits/\npeople/scopes.yaml\nshared/\n",
 	} {
@@ -265,8 +265,8 @@ func Test_machines_definition_is_read_once_per_submit(t *testing.T) {
 	if again := b.index(t); again != first {
 		t.Errorf("the store is read again with nothing submitted")
 	}
-	if p, k := pageOf(t, b.pages, "/machines"), pageOf(t, b.pages, "/toolkits"); p.List.Stamp != first.Stamp || k.Toolkits.Stamp != first.Stamp {
-		t.Errorf("the pages do not share what was read: %q %q %q", p.List.Stamp, k.Toolkits.Stamp, first.Stamp)
+	if p := pageOf(t, b.pages, "/machines"); p.List.Stamp != first.Stamp {
+		t.Errorf("the page does not show what was read: %q %q", p.List.Stamp, first.Stamp)
 	}
 	write(t, dir, map[string]string{"writer.yaml": strings.Replace(writer, "flow: writer", "flow: author", 1)})
 	b.submit(t, dir, "/docs")
@@ -290,7 +290,7 @@ func Test_machines_definition_is_read_once_per_submit(t *testing.T) {
 
 func Test_machines_drawing_unfolds_as_the_address_says(t *testing.T) {
 	dir := project(t)
-	write(t, dir, map[string]string{"here.yaml": "flow: here\nstages:\n  look:\n    job:\n      machine:\n        agent: in\n        model: { name: claude-sonnet-5-5, secret: KEY }\n        prompt: hello\n        toolkits:\n          messages: { include: ./toolkits/toolkit.yaml }\n"})
+	write(t, dir, map[string]string{"here.yaml": "flow: here\nstages:\n  look:\n    job:\n      machine:\n        agent: in\n        model: { name: claude-sonnet-5-5, secret: KEY }\n        prompt: hello\n        tools: { include: ./toolkits/toolkit.yaml }\n"})
 	b := newLab(t)
 	b.submit(t, dir, "/bot")
 	h := b.pages
@@ -329,17 +329,17 @@ func Test_machines_drawing_unfolds_as_the_address_says(t *testing.T) {
 	if card(agent.Drawing, "tell") == nil || card(agent.Drawing, "approval") == nil || !slices.Contains(card(agent.Drawing, "tell").Lines, "approve: true") {
 		t.Errorf("the agent's drawing does not hold tell, its approval and the hook: %+v", agent.Drawing)
 	}
-	if agent.Drawing.Agent == nil || !slices.ContainsFunc(agent.Drawing.Agent.Toolkits, func(k drawing.Toolkit) bool { return k.File == "toolkits/toolkit.yaml" }) {
-		t.Errorf("the agent's drawing does not give its toolkit's file: %+v", agent.Drawing.Agent)
+	if got := card(agent.Drawing, "tell").Line; got != "toolkits/toolkit.yaml:3" {
+		t.Errorf("the agent's drawing gives the tool's line as %q", got)
 	}
-	// A toolkit of an agent written in place has its file too.
+	// A tool of an agent written in place has its file too.
 	v := pageOf(t, h, "/machines?at=/bot/here&open=look").View
 	look := card(v.Drawing, "look")
 	if look == nil || look.In == nil || look.In.Agent == nil {
 		t.Fatalf("the page does not draw the agent unfolded: %+v", v.Drawing)
 	}
-	if !slices.ContainsFunc(look.In.Agent.Toolkits, func(k drawing.Toolkit) bool { return k.Name == "messages" && k.File == "toolkits/toolkit.yaml" }) {
-		t.Errorf("the toolkit's file is not given with it: %+v", look.In.Agent.Toolkits)
+	if !slices.ContainsFunc(look.In.Agent.Tools, func(k drawing.Tool) bool { return k.Card.Name == "tell" && k.Card.Line == "toolkits/toolkit.yaml:3" }) {
+		t.Errorf("the tool's file is not given with it: %+v", look.In.Agent.Tools)
 	}
 }
 
@@ -402,9 +402,8 @@ func Test_machines_a_machine_shows_its_location(t *testing.T) {
 		"services/closed.yaml":  "flow: closed\nreceive: []\nstages:\n  a: { job: write.js }\n",
 		"services/find.yaml":    "flow: find\ndescription: Find a person.\nstages:\n  a: { job: write.js }\n",
 		"services/look.yaml":    "flow: look\ndescription: Look a room up.\nstages:\n  a: { job: write.js }\n",
-		"services/asker.yaml": "agent: asker\n" + agentHead + "allow: [send:devices/boiler]\ntools:\n  who: { call: services/find }\n  again: { call: services/find }\n" +
-			"toolkits:\n  rooms: { description: the rooms, tools: { room: { call: services/look } } }\n",
-		"services/both.yaml": "agent: both\n" + agentHead + "allow: [send:services/find, send:devices/boiler]\ntools:\n  who: { call: services/find }\n  again: { call: services/find }\n",
+		"services/asker.yaml":   "agent: asker\n" + agentHead + "allow: [send:devices/boiler]\ntools:\n  who: { call: services/find }\n  again: { call: services/find }\n  room: { call: services/look }\n",
+		"services/both.yaml":    "agent: both\n" + agentHead + "allow: [send:services/find, send:devices/boiler]\ntools:\n  who: { call: services/find }\n  again: { call: services/find }\n",
 	})
 	h := b.pages
 	placeOf := func(at string) place {
@@ -523,7 +522,7 @@ func Test_machines_pages_only_read(t *testing.T) {
 		return slices.DeleteFunc(names, func(n string) bool { return !strings.HasPrefix(n, store.Locations(ctl.Name)+"/") })
 	}
 	before := held()
-	for _, path := range []string{"/machines", "/machines/save", "/machines/new", "/machines/start", "/machines/check", "/machines/secret-set", "/machines/raw", "/toolkits"} {
+	for _, path := range []string{"/machines", "/machines/save", "/machines/new", "/machines/start", "/machines/check", "/machines/secret-set", "/machines/raw"} {
 		form := url.Values{"at": {"/docs/review"}, "text": {"flow: x\n"}, "type": {"flow"}, "name": {"x"}, "value": {"v"}}
 		if w := do(b.pages, "POST", path, form); w.Code != http.StatusNotFound && w.Code != http.StatusMethodNotAllowed {
 			t.Errorf("POST %s answered %d", path, w.Code)
@@ -535,9 +534,8 @@ func Test_machines_pages_only_read(t *testing.T) {
 		}
 	}
 	pageOf(t, b.pages, "/machines?at=/docs/review&view=definition")
-	pageOf(t, b.pages, "/toolkits")
-	// That the pages show no form is checked in the browser, by
-	// machines_test.js and toolkits_test.js.
+	// That the page shows no form is checked in the browser, by
+	// machines_test.js.
 	if after := held(); len(before) == 0 || !slices.Equal(after, before) {
 		t.Errorf("the store holds %v under locations/, and held %v", after, before)
 	}

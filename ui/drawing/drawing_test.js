@@ -117,16 +117,17 @@ test("drawing_statechart_send_is_a_card", async () => {
 
 test("drawing_agent_is_a_loop_of_model_and_tools", async () => {
   let v = await draw("helper");
-  for (const want of ["messages", "tools"]) assert(texts(v, ".holder text.name").includes(want), `no holder is named ${want}`);
+  equal(texts(v, ".holder text.name"), ["tools"], "the holders of an agent");
   assert(texts(v, "text.on").includes("7 turns"), "the chip into the tools does not give the turns");
   assert(texts(v, "text.sub").includes("approve: true") && texts(v, "text.sub").includes("machine: ./approval.yaml"), "the tools' lines are not written");
   assert(text(card(v, "tell").querySelector("title")) === "tells someone", "a tool's description is not its tooltip");
+  equal([card(v, "messages").querySelector("use.icon").getAttribute("href"), texts(v, "text.sub").includes("machine: ./messages.yaml"), text(card(v, "messages").querySelector("title"))],
+    ["#g-toolkit", true, "messages"], "an entry that names a toolkit: its icon, its file and its description");
   equal(all(v, "path.edge").length, 2, "the arrows: model to tools, and tools to reply");
   v = await draw("helper-corbie-tool");
   assert(!v.textContent.includes("blob_read"), "a tool of Corbie's own is drawn, and no definition wrote it");
-  v = await draw("helper-included");
-  const titles = all(v, ".holder").map(h => `${h.querySelector("text.name").textContent}: ${h.querySelector("title")?.textContent ?? ""}`);
-  for (const want of ["messages: messages.yaml", "notes: notes.yaml"]) assert(titles.includes(want), `a toolkit's tooltip does not give its file: ${titles}`);
+  v = await draw("helper-opening");
+  equal([classes(card(v, "messages")), classes(card(v, "look"))], ["state tool now", "state tool never"], "the toolkit a run asks through, and a tool it has not asked for");
 });
 
 test("drawing_machine_unfolds_in_its_card", async () => {
@@ -149,16 +150,6 @@ test("drawing_machine_unfolds_in_its_card", async () => {
   assert(texts(v, "text.sub").includes("flow: b") && all(v, "a[href]").length === 0, "a card whose job started no run does not say its machine");
 });
 
-test("drawing_unused_toolkit_is_folded", async () => {
-  let v = await draw("toolkits-running");
-  const holder = name => all(v, ".holder").find(h => h.querySelector("text.name").textContent === name);
-  equal(["bins", "servers", "home", "net"].map(n => classes(holder(n))), ["state holder toolkit folded", "state holder toolkit folded", "state holder toolkit", "state holder toolkit"], "the toolkits");
-  for (const hidden of ["days", "put", "disk"]) assert(!texts(v, "text.title").includes(hidden), `a tool of a folded toolkit is drawn as a card: ${hidden}`);
-  assert(text(holder("bins").querySelector("text.sub")) === "2 tools" && text(holder("bins").querySelector("title")) === "days, put", "a folded toolkit does not give how many tools it has and name them");
-  v = await draw("toolkits");
-  assert(all(v, ".folded").length === 0 && texts(v, "text.title").includes("disk"), "a drawing of no run folds a toolkit");
-});
-
 test("drawing_call_and_send_jobs_are_cards", async () => {
   let v = await draw("trip");
   for (const want of ["call: services/weather", "send: set", "to: devices/boiler", "to: rooms/hall#${input.k}"]) assert(texts(v, "text.sub").includes(want), `the drawing does not hold ${want}`);
@@ -170,14 +161,9 @@ test("drawing_call_and_send_jobs_are_cards", async () => {
 
 test("drawing_conditions_approvals_and_calls_are_marked", async () => {
   let v = await draw("conditions");
-  const holder = name => all(v, ".holder").find(h => h.querySelector("text.name").textContent === name);
-  equal([classes(holder("orders")), text(holder("orders").querySelector("title"))], ["state holder toolkit when", "orders.yaml when: input.asker.scopes.includes('orders')"], "a toolkit with when:");
-  equal(classes(holder("notes")), "state holder toolkit", "a toolkit with no when:");
+  equal([classes(card(v, "orders")), card(v, "orders").querySelector("title").textContent], ["state tool when", "orders\nwhen: input.asker.scopes.includes('orders')"], "an entry that names a toolkit, with when:");
   equal([classes(card(v, "look")), card(v, "look").querySelector("title").textContent], ["state tool when", "looks\nwhen: input.look"], "a tool with when:");
   equal(classes(card(v, "jot")), "state tool", "a tool with no when:");
-  v = await draw("conditions-folded");
-  const folded = all(v, ".holder.folded.when");
-  assert(folded.length === 1 && folded[0].querySelector("title").textContent.startsWith("read\nwhen: input.asker"), "a folded toolkit with when: is not dashed with its condition");
   v = await draw("deploy-running");
   equal(texts(v, "text.sub").filter(t => t === "approve: true").length, 2, "the jobs that say approve: true");
   equal([classes(card(v, "ship")), classes(card(v, "pipeline"))], ["state stage held", "state stage now"], "the stages held and going");
@@ -218,7 +204,7 @@ function extent(t) {
 // write fits inside it in the real fonts.
 test("drawing_text_fits_its_card", async () => {
   const faults = [];
-  for (const name of [...(await fixture("examples")), "helper", "toolkits-running", "conditions", "trip-called", "nested-deep", "triage", "deploy-running"]) {
+  for (const name of [...(await fixture("examples")), "helper", "helper-opening", "conditions", "trip-called", "nested-deep", "triage", "deploy-running"]) {
     const v = await draw(name);
     const svg = v.querySelector("svg");
     for (const el of svg.querySelectorAll("*")) if (el.namespaceURI !== "http://www.w3.org/2000/svg") faults.push(`${name}: <${el.localName}> is not SVG`);
@@ -244,7 +230,7 @@ test("drawing_text_fits_its_card", async () => {
 // No two cards of a drawing overlap, but for a card drawn inside another.
 test("drawing_cards_do_not_overlap", async () => {
   const faults = [];
-  for (const name of [...(await fixture("examples")), "helper", "toolkits-running", "trip", "nested-deep", "lookup-in-child"]) {
+  for (const name of [...(await fixture("examples")), "helper", "helper-opening", "trip", "nested-deep", "lookup-in-child"]) {
     const v = await draw(name);
     const boxes = all(v, "g.state:not(.holder) > rect.box").map(r => ({ r, b: r.getBoundingClientRect() }));
     boxes.forEach((a, i) => {

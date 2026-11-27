@@ -299,7 +299,7 @@ The detailed rules behind the [Machines overview](../machine.md). Area code: `ma
 *Accept:* parity case 73: the child's own hook says yes and the root's says no, and the job is denied. Parity case 70 (one level up, yes), parity case 71 (one level up, no) and parity case 72 (two levels up, through a machine that writes no hook). Parity case 152: `finance` runs before `team` for a refund over 100, and its no denies the call.
 
 **R-mach-169** A hook's expressions read the `input`, `values` and `run` of the machine that declares it, and `job`: its `name`, `run: { id, machine }`, `input`, `allow`, `approve`, `meta`, what it runs and, for an agent's tool call, `tool`. An `after` hook's read `output`, the job's output. A hook that writes no `input:` is given `{ job }`, and after a job `{ job, output }`.
-*Accept:* parity case 63: the hook is given the job, its input and its script. Parity case 70: `job.run.machine` names each child. Parity case 89: `job.tool` holds the tool's name, the model's arguments, the tool's description and what the model said. A held call job is read as `call: { at }` and a held send job as `send: { to, event, data }` (`Test_ctl_hook_reads_a_held_call_or_send`). A root's hook that runs for a child's job reads the root's `run.id` and has the root definition's `allow:`. *Test:* `mach_hook_from_above_is_a_job_of_the_declaring_definition`
+*Accept:* parity case 63: the hook is given the job, its input and its script. Parity case 70: `job.run.machine` names each child. Parity case 89: `job.tool` holds the tool's name, the model's arguments and what the model said. A held call job is read as `call: { at }` and a held send job as `send: { to, event, data }` (`Test_ctl_hook_reads_a_held_call_or_send`). A root's hook that runs for a child's job reads the root's `run.id` and has the root definition's `allow:`. *Test:* `mach_hook_from_above_is_a_job_of_the_declaring_definition`
 
 **R-mach-170** A job may write `meta:`, data of any kind, which hooks read as `job.meta` and nothing else reads. A job of a machine made while running gives hooks no `meta`.
 *Accept:* parity case 152: each tool says in `meta:` where it is approved, one hook asks there, and a marked tool with no `meta:` is denied, since the hook cannot be filled in. *Test:* `mach_made_machine_gives_hooks_no_meta`
@@ -326,8 +326,8 @@ The detailed rules behind the [Machines overview](../machine.md). Area code: `ma
 
 ## Words from outside
 
-**R-mach-163** Words from outside, a definition made while running and the tools a `list:` gives, name no hook and no address. The hooks above a made machine that were not made while running run for its jobs, and with no `before` hook for it a marked job of it is denied; a made machine that writes `hooks:`, sends to an address or calls fails. A listed tool's call runs the entry's `job:`, takes the agent's hooks and addresses what that job names.
-*Accept:* for a made machine, the tests of C-ctl-64 and C-ctl-76; a made machine whose layers allow `send:/home/**` has a send to `/home/devices/boiler` refused, and its send to its parent is delivered (parity case 133). For a listed tool, `TestAgentHookReadsTheToolOfEachCall`: the call of `github_create_issue`, marked for approval through its entry, waits for the agent's hook; and `ctl_answer_cannot_write_a_listed_agents_hook`.
+**R-mach-163** Words from outside, a definition made while running, name no hook and no address. The hooks above a made machine that were not made while running run for its jobs, and with no `before` hook for it a marked job of it is denied; a made machine that writes `hooks:`, sends to an address or calls fails.
+*Accept:* the tests of C-ctl-64 and C-ctl-76; a made machine whose layers allow `send:/home/**` has a send to `/home/devices/boiler` refused, and its send to its parent is delivered (parity case 133).
 
 ## Failure
 

@@ -25,8 +25,7 @@ import (
 
 // A step of a machine made while running reads its definition in a process
 // of its own, with a limit on its memory and its time, and a step that
-// passes either fails that machine and nothing else. So does a step of an
-// agent after a list has given it shapes from outside. The process holds no
+// passes either fails that machine and nothing else. The process holds no
 // key and reaches no store. It is given what it needs, and gives back what
 // the machine asked for. That is data, and a machine's word, as a definition's
 // would be: every name in the store, every runner and every flag follow from

@@ -12,7 +12,7 @@ The rules behind [the Serving overview](../serve.md). Area code: `serve`.
 
 ## What each party opens
 
-**R-serve-02** No party opens Runs and /metrics; the controller opens Machines and Toolkits to read, and the Controller page; a page the UI may not offer answers that there is no such page. *Test:* `serve_each_party_opens_its_pages`
+**R-serve-02** No party opens Runs and /metrics; the controller opens Machines to read, and the Controller page; a page the UI may not offer answers that there is no such page. *Test:* `serve_each_party_opens_its_pages`
 
 **C-serve-04** A value from a page that begins with `-` is refused before any command runs. Corbie's command line reads flags anywhere among a command's arguments, so a value such as `--config=/tmp/other` would run the command as another config's party. *Test:* `serve_page_value_cannot_become_a_flag`
 

@@ -1,6 +1,6 @@
 // Package machines is the Machines page: the machines the controller
-// recorded, by tree, each drawn and as its definition. The Toolkits page shows
-// the same machines from the tools up. Both only read the store.
+// recorded, by tree, each drawn and as its definition. It only reads the
+// store.
 package machines
 
 import (
@@ -65,7 +65,7 @@ type handler struct {
 	differ map[string][]string
 }
 
-//go:embed machines.js toolkits.js shared.js
+//go:embed machines.js shared.js
 var files embed.FS
 
 // script serves one of the pages' scripts.
@@ -77,24 +77,20 @@ func script(name string) http.HandlerFunc {
 	}
 }
 
-// Pages is the Machines and Toolkits pages.
+// Pages is the Machines page.
 type Pages struct {
 	http.Handler
 	h *handler
 }
 
-// New gives the Machines and Toolkits pages.
+// New gives the Machines page.
 func New(c Config) *Pages {
 	h := &handler{Config: c, index: &indexed{store: c.Store, ctl: c.Controller}, differ: map[string][]string{}}
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /machines", h.show)
 	mux.HandleFunc("GET /machines/stream", h.stream)
 	mux.HandleFunc("GET /machines/view", h.viewPart)
-	mux.HandleFunc("GET /toolkits", h.showToolkits)
-	mux.HandleFunc("GET /toolkits/stream", h.streamToolkits)
-	mux.HandleFunc("GET /toolkits/view", h.toolkitPart)
 	mux.HandleFunc("GET /machines/script.js", script("machines.js"))
-	mux.HandleFunc("GET /toolkits/script.js", script("toolkits.js"))
 	mux.HandleFunc("GET /machines/shared.js", script("shared.js"))
 	return &Pages{Handler: mux, h: h}
 }
@@ -530,10 +526,6 @@ func (w *writing) mapping(m map[string]any, place, indent, first string) {
 		}
 		if place != "" {
 			at = place + "." + k
-		}
-		// A file writes a toolkit's tool under its toolkit.
-		if tool, _ := m[k].(map[string]any); place == "tools" && tool["toolkit"] != nil {
-			at = fmt.Sprintf("toolkits.%v.tools.%s", tool["toolkit"], k)
 		}
 		w.value(lead+k+":", m[k], at, indent)
 	}

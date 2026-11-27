@@ -96,10 +96,13 @@ Requests
 - A hook of the toolkit reads a call's tool as `job.tool`:
   `{ toolkit, name, args }`.
 - A toolkit is transient: each request is a run.
+- An agent names a toolkit as an entry of its `tools:`, and opens it and
+  calls its tools for its model, as `corbie manual agent` says.
 
 Reference
 ---------
 
+  corbie manual agent         an agent's entry that names a toolkit
   corbie manual mcp           `server.toolkit`, and a server's tasks
   corbie manual definitions   the fields every definition has
   corbie manual hooks         a job that runs before another

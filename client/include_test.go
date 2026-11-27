@@ -43,11 +43,11 @@ func TestIncludeWorksInEveryMapping(t *testing.T) {
 		"go.yaml":    "go: last\nsend: { include: ./to.yaml }\n",
 	}
 	for name, def := range map[string]string{
-		"a flow":       "flow: f\nstages:\n  one: { job: { include: ./job.yaml } }\n",
-		"a chart":      "statechart: c\ninitial: first\nstates: { include: ./waits.yaml }\n",
-		"an agent":     "agent: a\ninclude: ./base.yaml\ntools: { include: ./tools.yaml }\n",
-		"in a toolkit": "agent: a\ninclude: ./base.yaml\ntoolkits:\n  p: { description: P, tools: { include: ./tools.yaml } }\n",
-		"in place":     "flow: f\nstages:\n  one: { job: { machine: { agent: a, include: ./base.yaml, tools: { include: ./tools.yaml } } } }\n",
+		"a flow":    "flow: f\nstages:\n  one: { job: { include: ./job.yaml } }\n",
+		"a chart":   "statechart: c\ninitial: first\nstates: { include: ./waits.yaml }\n",
+		"an agent":  "agent: a\ninclude: ./base.yaml\ntools: { include: ./tools.yaml }\n",
+		"a toolkit": "toolkit: p\ndescription: P\ntools: { include: ./tools.yaml }\n",
+		"in place":  "flow: f\nstages:\n  one: { job: { machine: { agent: a, include: ./base.yaml, tools: { include: ./tools.yaml } } } }\n",
 	} {
 		d, err := machineParse(def, files)
 		if err != nil {
@@ -62,7 +62,7 @@ func TestIncludeWorksInEveryMapping(t *testing.T) {
 
 // Everything a job names is read from the directory of the file it is written
 // in: a script, its files, a machine, a machine written in place and what it
-// names, a job written as a path, a hook, a list and a turn.
+// names, a job written as a path, a hook, an entry's machine and a turn.
 func TestIncludedPathsAreReadFromTheFilesDirectory(t *testing.T) {
 	d := draft(t, `
 		agent: a
@@ -85,7 +85,7 @@ func TestIncludedPathsAreReadFromTheFilesDirectory(t *testing.T) {
 			    machine:
 			      flow: placed
 			      stages: { one: { job: ./lib/placed.js }, two: { job: { machine: ./lib/child.yaml } } }
-			listed: { list: ./lib/list.js, job: ./lib/list.js }
+			entry: { machine: ./lib/kit.yaml }
 		`,
 		"kit/ask.js":         "return {}",
 		"kit/turn.js":        "return {}",
@@ -94,11 +94,11 @@ func TestIncludedPathsAreReadFromTheFilesDirectory(t *testing.T) {
 		"kit/lib/one.js":     "return 1",
 		"top.js":             "return 1",
 		"kit/lib/placed.js":  "return 1",
-		"kit/lib/list.js":    "return []",
+		"kit/lib/kit.yaml":   "toolkit: kit\ndescription: K\ntools: { one: { description: O, job: ./beside.js } }\n",
 		"kit/lib/child.yaml": "flow: child\nstages: { one: { job: ./beside.js } }\n",
 		"kit/lib/beside.js":  "return 1",
 	})
-	for _, name := range []string{"./kit/ask.js", "./kit/turn.js", "./kit/lib/short.js", "./kit/lib/long.js", "./kit/lib/one.js", "./kit/lib/list.js"} {
+	for _, name := range []string{"./kit/ask.js", "./kit/turn.js", "./kit/lib/short.js", "./kit/lib/long.js", "./kit/lib/one.js"} {
 		if _, ok := d.Definition.Scripts[name]; !ok {
 			t.Errorf("the definition does not name %s: %v", name, d.Definition.Scripts)
 		}
@@ -108,6 +108,9 @@ func TestIncludedPathsAreReadFromTheFilesDirectory(t *testing.T) {
 	}
 	if _, ok := d.Definition.Scripts["./top.js"]; !ok {
 		t.Errorf("the definition does not name ./top.js: %v", d.Definition.Scripts)
+	}
+	if _, ok := d.Definition.Machines["./kit/lib/kit.yaml"]; !ok {
+		t.Errorf("the definition's machines are %v", d.Definition.Machines)
 	}
 	if _, ok := d.Definition.Machines["./kit/lib/child.yaml"]; !ok {
 		t.Errorf("the definition's machines are %v", d.Definition.Machines)

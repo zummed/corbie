@@ -4,9 +4,9 @@ The rules behind [the Machines overview](../machines.md). Area code: `machines`.
 
 ## What is read
 
-**R-machines-10** The pages read the trees the controller recorded and the definition recorded at each location, as the controller, and no directory. A location's definition is read again only when a submit changed it, and the Machines and Toolkits pages share what was read. *Test:* `machines_definition_is_read_once_per_submit`
+**R-machines-10** The pages read the trees the controller recorded and the definition recorded at each location, as the controller, and no directory. A location's definition is read again only when a submit changed it. *Test:* `machines_definition_is_read_once_per_submit`
 
-**C-machines-06** The Machines and Toolkits pages have no address that writes to the store or runs a command, and show no form. `corbie run submit` changes a tree, and a second way to change one would be a second path. *Test:* `machines_pages_only_read`
+**C-machines-06** The Machines page has no address that writes to the store or runs a command, and shows no form. `corbie run submit` changes a tree, and a second way to change one would be a second path. *Test:* `machines_pages_only_read`
 
 ## The list
 
@@ -32,10 +32,6 @@ The rules behind [the Machines overview](../machines.md). Area code: `machines`.
 
 **R-machines-04** The page lists each secret and each value a machine uses, read from its definition, its child machines included, and where each is set: the location nearest the machine's, at it or above, or `not set` at its location or above. *Test:* `machines_secrets_and_values_used_are_listed`
 
-## Toolkits
-
-**R-machines-06** The Toolkits page lists, by tree, each toolkit an agent offers: an agent at a location, or one a machine at a location runs with `machine:` or writes in place. A toolkit's file is the one its tools were submitted in, as the agent's definition gives it, where that is not the agent's own file, and two agents of one tree that take its tools from the same file offer one toolkit. A toolkit shows the first line of its `instructions:` or the file they were included from; each tool's `description:`, its job, for a call, written `call:` or as a job's `call:`, the location with a link to the machine recorded there and the input it fixes, for a job's `send:` the event and the address with a link to the machine recorded at its location, its `when:`, and whether the job has `approve: true`; each agent that offers it, with its entry's `when:`; and for an agent at a location each machine of its tree that runs its file with `machine:` or calls its location, and how its location's runs start, or for any other agent the machine that runs it or writes it in place. *Test:* `machines_toolkits_show_what_offers_each`, `machines_toolkits_call_machines_by_their_location`, `machines_toolkits_written_in_a_placed_agent_are_in_its_machine`
-
 ## Interfaces
 
-Machines uses Pages for the shell, the stream and its errors (`page.Shell`, `page.Write`, `page.Stream`, `page.Error`), and its tests use `pagetest.Run`, and Drawing to draw a definition and to find a toolkit's file (`drawing.Unfolded`, `drawing.Unfold`, `drawing.ToolkitFile`), and to write an address as a drawing does (`drawing.Address`). Serve gives it the controller and its store (`Config.Controller`, `Config.Store`), the list of runs the UI reads (`Config.List`), the client it acts as (`Config.Client`), and the latest step of a run as the Runs page reads it (`Config.Latest`), and Runs asks it for the address of the machine at a location (`Pages.Href`), and how the definition a run started with, by its reference, differs from the one recorded at its location (`Pages.Differs`).
+Machines uses Pages for the shell, the stream and its errors (`page.Shell`, `page.Write`, `page.Stream`, `page.Error`), and its tests use `pagetest.Run`, and Drawing to draw a definition (`drawing.Unfolded`, `drawing.Unfold`), and to write an address as a drawing does (`drawing.Address`). Serve gives it the controller and its store (`Config.Controller`, `Config.Store`), the list of runs the UI reads (`Config.List`), the client it acts as (`Config.Client`), and the latest step of a run as the Runs page reads it (`Config.Latest`), and Runs asks it for the address of the machine at a location (`Pages.Href`), and how the definition a run started with, by its reference, differs from the one recorded at its location (`Pages.Differs`).

@@ -51,8 +51,9 @@ const (
 const answerJob = "job"
 
 // shortForm is the short form of a tool's arguments. A blob there is the
-// name the model was shown, and a name the shape does not give is refused.
-var shortForm = machine.ShortForm{Blob: map[string]any{"type": "string", "format": "blob"}, Closed: true}
+// blob itself, as in a machine's input, and a name the shape does not give
+// is refused.
+var shortForm = machine.ShortForm{Blob: machine.InputForm.Blob, Closed: true}
 
 //go:embed manual.txt
 var manual string
@@ -367,9 +368,6 @@ func opened(given map[string]any) (any, error) {
 			args, _ := entry["args"].(map[string]any)
 			if args == nil {
 				args = map[string]any{"type": "object"}
-			}
-			if _, err := machine.CompileShape(args); err != nil {
-				return nil, fmt.Errorf("entries[%d].args: %v", i, err)
 			}
 			kept["args"] = args
 		}

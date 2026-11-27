@@ -1,0 +1,28 @@
+{
+  "status": "done",
+  "note": "R-agent-93, R-agent-29, R-kit-06: an agent opens and calls a toolkit at a location; the agent's hook holds its call and reads what the model said, and the toolkit's hook holds its tool's job in the toolkit's run.",
+  "record": [
+    { "machine": "helper", "emit": { "job": "turn#2", "name": "log", "data": { "<contains>": "open: Refund what the customer paid, and no more." } } },
+    {
+      "machine": "helper",
+      "ask": {
+        "kind": "script",
+        "name": "orders_refund.1.lead",
+        "job": { "input": { "who": "lead", "tool": { "toolkit": "orders", "name": "refund", "args": { "order": 7, "amount": 900 }, "said": "Refunding." } } }
+      }
+    },
+    { "machine": "helper", "ask": { "kind": "script", "name": "orders_refund.lead" }, "absent": true },
+    {
+      "machine": "orders",
+      "ask": {
+        "kind": "script",
+        "name": "refund.team",
+        "job": { "input": { "who": "team", "tool": { "toolkit": "orders", "name": "refund", "args": { "order": 7, "amount": 200 } } } }
+      }
+    },
+    { "machine": "orders", "emit": { "job": "refund.team", "name": "log", "data": { "<contains>": "said" } }, "absent": true },
+    { "machine": "helper", "emit": { "job": "turn#3", "name": "log", "data": { "<contains>": "orders_refund: refunded 200 of order 7" } } },
+    { "machine": "helper", "emit": { "job": "turn#3", "name": "log", "data": { "<contains>": "orders_refund: refunded 900 of order 7" } } },
+    { "machine": "helper", "emit": { "job": "turn#3", "name": "log", "data": { "<contains>": "the team said no" } } }
+  ]
+}

@@ -129,15 +129,13 @@ func load(ctx context.Context, s store.Store, ref blob.Ref) (*machine.Draft, err
 }
 
 // An index is what the pages show of the store, read once for each change
-// a submit makes: the list, the machine recorded at each location, and the
-// toolkits.
+// a submit makes: the list, and the machine recorded at each location.
 type index struct {
 	// Stamp is the mark of the trees as they were read: a page reads what
 	// it shows again when it differs.
 	Stamp    string
 	Trees    []listed
 	machines map[string]*recorded
-	toolkits []toolkit
 }
 
 // A listed is a tree of the list, with the machine at each of its
@@ -196,7 +194,6 @@ func (c *indexed) current(ctx context.Context) (*index, error) {
 	if c.ix != nil && c.ix.Stamp == ix.Stamp {
 		return c.ix, nil
 	}
-	ix.toolkits = toolkitsOf(ix)
 	c.ix = ix
 	return ix, nil
 }
@@ -239,4 +236,50 @@ func typeAndName(kind, name string) string {
 // sortedKeys gives a map's keys in order.
 func sortedKeys[V any](m map[string]V) []string {
 	return slices.Sorted(maps.Keys(m))
+}
+
+// fileOf gives the file of a value's file and line, as base.yaml:3.
+func fileOf(line string) string {
+	if i := strings.LastIndexByte(line, ':'); i >= 0 {
+		return line[:i]
+	}
+	return line
+}
+
+// locationOf gives the location a definition of a tree writes out, read
+// from the tree's prefix or from / where it begins with /, where a machine
+// is recorded there, or nothing.
+func (ix *index) locationOf(tree, at string) string {
+	if at == "" || machine.HasExpr(at) {
+		return ""
+	}
+	if !strings.HasPrefix(at, "/") {
+		at = path.Join(tree, at)
+	}
+	if ix.machines[at] == nil {
+		return ""
+	}
+	return at
+}
+
+// called gives the address on the Machines page of the machine recorded at
+// a location a call of a tree writes out, or none.
+func (ix *index) called(tree, at string) string {
+	if location := ix.locationOf(tree, at); location != "" {
+		return machineHref(location, nil)
+	}
+	return ""
+}
+
+// startsOf gives the machines that start the agent in a file: for an agent
+// in a file of its own, each machine that runs that file with `machine:` or
+// startedBy says how the runs at a location with a lifetime start.
+func startedBy(lifetime, location string) string {
+	switch lifetime {
+	case machine.LifetimeSingleton:
+		return "the submit starts its one run"
+	case machine.LifetimeKeyed:
+		return "a send to a key starts the run for that key"
+	}
+	return "a call, a send, or corbie run start " + location + ", starts each run"
 }

@@ -1,12 +1,12 @@
 const replies = [
   { text: "Opening.", calls: [
-      { id: "c1", name: "open", args: { toolkit: "orders" } },
-      { id: "c2", name: "open", args: { toolkit: "infra" } } ] },
+      { id: "c1", name: "open", args: { list: "toolkits", name: "orders" } },
+      { id: "c2", name: "open", args: { list: "toolkits", name: "infra" } } ] },
   { text: "Working.", calls: [
-      { id: "c3", name: "refund", args: { order: 7, amount: 20 } },
-      { id: "c4", name: "refund", args: { order: 7, amount: 900 } },
-      { id: "c5", name: "restart", args: { vm: "web-1" } },
-      { id: "c6", name: "wipe", args: { vm: "web-1" } } ] },
+      { id: "c3", name: "orders_refund", args: { order: 7, amount: 20 } },
+      { id: "c4", name: "orders_refund", args: { order: 7, amount: 900 } },
+      { id: "c5", name: "infra_restart", args: { vm: "web-1" } },
+      { id: "c6", name: "infra_wipe", args: { vm: "web-1" } } ] },
   { text: "Finished." },
 ]
 const said = require("agents").conversation(input)

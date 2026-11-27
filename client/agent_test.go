@@ -3,7 +3,6 @@ package client_test
 import (
 	"context"
 	"encoding/json"
-	"maps"
 	"net/http/httptest"
 	"strconv"
 	"strings"
@@ -325,7 +324,8 @@ func Test_agent_tool_cannot_take_an_agents_own_job_name(t *testing.T) {
 	for name, want := range map[string]string{
 		"turn":      `the tool "turn" has the name of a job the agent itself makes`,
 		"blob_read": `the tool "blob_read" has the name of one of the tools every agent has for blobs`,
-		"open":      `the tool "open" has the name of the tool every agent with toolkits has for opening them`,
+		"open":      `the tool "open" has the name the model opens a toolkit by`,
+		"toolkits":  `the tool "toolkits" has the name the model opens a toolkit by`,
 	} {
 		agentRefused(t, strings.Replace(agentDef("http://127.0.0.1:1", ""), "  add:\n", "  "+name+":\n", 1), want)
 	}
@@ -785,99 +785,26 @@ func TestAgentAsATool(t *testing.T) {
 	}
 }
 
-// listed is an agent with an entry whose tools come from a list.
-func listed(address, list string) string {
-	return strings.Replace(agentDef(address, ""), "tools:\n", `tools:
-		  files:
-		    list: { script: ./list.js, input: { tools: `+list+` } }
-		    job: { script: ./files.js, input: { tool: "${tool}", args: "${args}" } }
-`, 1)
-}
-
-var listedScripts = map[string]string{
-	"add.js":   scripts["add.js"],
-	"list.js":  `if (input.tools === "none") throw new Error("the server is away"); return input.tools`,
-	"files.js": `return { tool: input.tool, args: input.args }`,
-}
-
-const fileTools = `[
-		      { name: read, description: Read a file, args: { type: object, properties: { path: { type: string } }, required: [path] } },
-		      { name: open.recent, description: Open the last file, args: { type: object } } ]`
-
-func TestAgentListedTools(t *testing.T) {
-	m := newModel(t, calls("c1", "files_read", `{"path": "a.txt"}`), calls("c2", "files_open_recent", `{}`), says("done"))
-	l := local(t, "all")
-	setSecret(t, l, "TEST_KEY", "sk-test-key")
-	id, err := l.Run(ctx, draft(t, listed(m.URL, fileTools), listedScripts),
-		client.Start{Input: map[string]any{"question": "q"}})
-	if err != nil {
-		t.Fatal(err)
-	}
-	var jobs []string
-	r, err := l.Follow(ctx, id, 20*time.Millisecond, func(e client.Entry) {
-		for _, ask := range e.Asks {
-			if ask.Kind == "script" {
-				jobs = append(jobs, ask.Name)
-			}
-		}
-	})
-	if err != nil || r.Status != "done" {
-		t.Fatalf("the agent ended %+v, %v", r, err)
-	}
-	// The list runs once, before the first turn.
-	if got := strings.Join(jobs, " "); got != "files turn files_read turn#2 files_open_recent turn#3" {
-		t.Fatalf("the jobs were: %s", got)
-	}
-	// The model is offered each listed tool under the entry's name and its
-	// own, as the list gave it, and not the entry itself.
-	offered := jsonOf(m.Calls[0].Tools)
-	for _, want := range []string{`"name":"files_read"`, `"description":"Read a file"`, `"required":["path"]`, `"name":"files_open_recent"`} {
-		if !strings.Contains(offered, want) {
-			t.Errorf("the model was not offered %s: %s", want, offered)
-		}
-	}
-	if strings.Contains(offered, `"name":"files"`) {
-		t.Errorf("the model was offered the entry: %s", offered)
-	}
-	if offered != jsonOf(m.Calls[2].Tools) {
-		t.Errorf("the third turn was offered other tools: %s", jsonOf(m.Calls[2].Tools))
-	}
-	// The entry's job runs each, given the name the list gave.
-	if shown := strings.ReplaceAll(lastShown(m.Calls[1]), `\`, ""); !strings.Contains(shown, `"args":{"path":"a.txt"}`) || !strings.Contains(shown, `"tool":"read"`) {
-		t.Errorf("the first call gave: %s", shown)
-	}
-	if shown := strings.ReplaceAll(lastShown(m.Calls[2]), `\`, ""); !strings.Contains(shown, `"tool":"open.recent"`) {
-		t.Errorf("the second call gave: %s", shown)
-	}
-	// A run that carries the conversation on lists the tools again.
-	m2 := newModel(t, says("done again"))
-	setSecret(t, l, "TEST_KEY", "sk-test-key")
-	id, err = l.Run(ctx, draft(t, listed(m2.URL, fileTools)+"\n\t\tconversation: ${input.so}\n", listedScripts), client.Start{
-		Input: map[string]any{"question": "and again?", "so": carried(r.Output.(map[string]any)["conversation"], r.ID)}})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if second := wait(t, l, id); second.Status != "done" || jsonOf(m2.Calls[0].Tools) != offered {
-		t.Fatalf("the run that carried on ended %s (%s), offered %s", second.Status, second.Error, jsonOf(m2.Calls[0].Tools))
-	}
-}
-
-// A hook reads each call's tool by name: for a listed call, the entry and
-// the tool's own name, and for any other tool its name and no entry.
+// A hook reads each call's tool by name: for a call of a toolkit's tool, the
+// entry's name as toolkit and the tool's own name, and for any other tool
+// its name and no toolkit.
 func TestAgentHookReadsTheToolOfEachCall(t *testing.T) {
 	both := llmstandin.Reply{Text: "let me see", Calls: []llmstandin.ToolCall{{ID: "issue", Name: "github_create_issue", Args: `{"title":"Broken"}`}, {ID: "sum", Name: "add", Args: `{"n":1}`}}}
 	m := newModel(t, both, says("done"))
-	def := listed(m.URL, `[ { name: create_issue, description: Open an issue, args: { type: object } } ]`)
-	def = strings.Replace(def, "  files:\n", "  github:\n", 1)
-	def = strings.Replace(def, "\t\ttools:\n", "\t\thooks: { check: { before: ./check.js, when: \"${job.approve}\" } }\n\t\ttools:\n", 1)
-	def = strings.Replace(def, `args: "${args}" } }`, `args: "${args}" }, approve: true }`, 1)
+	def := strings.Replace(agentDef(m.URL, ""), "tools:\n", `hooks: { check: { before: ./check.js, when: "${job.approve}" } }
+		tools:
+		  github: { machine: ./github.yaml, open: true, approve: true }
+`, 1)
 	def = strings.Replace(def, `input: { n: "${args.n}" } }`, `input: { n: "${args.n}" }, approve: true }`, 1)
-	files := maps.Clone(listedScripts)
-	files["check.js"] = `
-		const listed = (a) => a.entry === "github" && a.name === "create_issue" && a.args.title === "Broken" && a.description === "Open an issue" && a.said === "let me see"
-		const own = (a) => !("entry" in a) && a.name === "add" && a.args.n === 1 && a.description === "Add one to a number"
+	files := map[string]string{"add.js": scripts["add.js"],
+		"github.yaml": "toolkit: github\ndescription: GitHub.\ntools:\n  create_issue: { description: Open an issue, args: { title: string }, job: { script: ./issue.js, input: \"${args}\" } }\n",
+		"issue.js":    `return "opened " + input.title`,
+		"check.js": `
+		const listed = (a) => a.toolkit === "github" && a.name === "create_issue" && a.args.title === "Broken" && a.said === "let me see" && !("description" in a)
+		const own = (a) => !("toolkit" in a) && a.name === "add" && a.args.n === 1 && a.said === "let me see"
 		const held = input.job
-		return { ok: held.name === "github_create_issue" ? listed(held.tool) : own(held.tool), note: "the hook read " + JSON.stringify(held.tool) }`
+		const ok = held.name === "open" ? held.tool.toolkit === "github" && held.tool.open : held.name === "github_create_issue" ? listed(held.tool) : own(held.tool)
+		return { ok, note: "the hook read " + JSON.stringify(held.tool) }`}
 	if r := runAgent(t, local(t, "all"), def, files); r.Status != "done" {
 		t.Fatalf("the agent ended %s: %s", r.Status, r.Error)
 	}
@@ -887,21 +814,12 @@ func TestAgentHookReadsTheToolOfEachCall(t *testing.T) {
 	}
 }
 
-// A listed tool's arguments, and an agent's reply and its tools', may have a
-// shape that leads back to itself.
+// An agent's reply and its tools' arguments may have a shape that leads
+// back to itself.
 func Test_agent_tree_shaped_tools_and_reply(t *testing.T) {
 	const tree = `{ type: object, properties: { name: { type: string }, kids: { type: array, items: { $ref: "#" } } }, required: [name] }`
-	m := newModel(t, calls("c1", "files_tree", `{"name": "a", "kids": [{"name": "b", "kids": [{"name": "c"}]}]}`), says("It is done."))
-	r := runAgent(t, local(t, "all"), listed(m.URL, `[ { name: tree, description: Takes a tree, args: `+tree+` } ]`), listedScripts)
-	if r.Status != "done" {
-		t.Fatalf("a tool with a tree for its arguments: %s %s", r.Status, r.Error)
-	}
-	if !strings.Contains(jsonOf(m.Calls[0]), `"$ref":"#"`) {
-		t.Fatalf("the model was offered: %s", jsonOf(m.Calls[0]))
-	}
-	// A shaped reply and a written tool's arguments are read the same way.
-	m = newModel(t, calls("c1", "add", `{"name": "a", "kids": [{"name": "b"}]}`), says(`{"name": "a", "kids": [{"name": "b", "kids": []}]}`))
-	def := strings.ReplaceAll(strings.ReplaceAll(`
+	def := func(address string) string {
+		return strings.ReplaceAll(strings.ReplaceAll(`
 		agent: trees
 		input: { question: any }
 		model: { name: test-model, service: anthropic, address: ADDRESS, secret: TEST_KEY }
@@ -912,83 +830,36 @@ func Test_agent_tree_shaped_tools_and_reply(t *testing.T) {
 		    description: Takes a tree
 		    args: TREE
 		    job: { script: ./add.js, input: { n: 1 } }
-	`, "ADDRESS", m.URL), "TREE", tree)
-	r = runAgent(t, local(t, "all"), def, scripts)
+	`, "ADDRESS", address), "TREE", tree)
+	}
+	m := newModel(t, calls("c1", "add", `{"name": "a", "kids": [{"name": "b"}]}`), says(`{"name": "a", "kids": [{"name": "b", "kids": []}]}`))
+	r := runAgent(t, local(t, "all"), def(m.URL), scripts)
 	if r.Status != "done" {
 		t.Fatalf("a tree for a reply and for a tool's arguments: %s %s", r.Status, r.Error)
 	}
+	if !strings.Contains(jsonOf(m.Calls[0]), `"$ref":"#"`) {
+		t.Fatalf("the model was offered: %s", jsonOf(m.Calls[0]))
+	}
 	// A model's arguments are checked as the shape says, at each level.
-	m = newModel(t, calls("c1", "files_tree", `{"name": "a", "kids": [{"kids": []}]}`), says("It is done."))
-	r = runAgent(t, local(t, "all"), listed(m.URL, `[ { name: tree, description: Takes a tree, args: `+tree+` } ]`), listedScripts)
+	m = newModel(t, calls("c1", "add", `{"name": "a", "kids": [{"kids": []}]}`), says(`{"name": "a"}`))
+	r = runAgent(t, local(t, "all"), def(m.URL), scripts)
 	if r.Status != "done" || !strings.Contains(jsonOf(m.Calls[1]), "/kids/0") {
 		t.Fatalf("a tree with a field missing: %s %s: %s", r.Status, r.Error, jsonOf(m.Calls[1]))
 	}
 }
 
-// A list that fails, or that gives a tool the model cannot be offered,
-// fails the agent before its first turn.
-func TestAgentListThatCannotBeUsedFails(t *testing.T) {
-	long := strings.Repeat("x", 60)
-	for list, want := range map[string]string{
-		`none`: "tools.files.list: the server is away",
-		`[ { description: Nameless, args: { type: object } } ]`:                              "a tool in the list has no name",
-		`[ { name: count, args: { type: string } } ]`:                                        `the tool "count"'s args`,
-		`[ { name: count } ]`:                                                                `the tool "count"'s args`,
-		`[ { name: ` + long + `, args: { type: object } } ]`:                                 "longer than 64 characters",
-		`[ { name: read, args: { type: object } }, { name: read, args: { type: object } } ]`: "which another tool has",
-	} {
-		m := newModel(t)
-		r := runAgent(t, local(t, "all"), listed(m.URL, list), listedScripts)
-		if r.Status != "failed" || !strings.Contains(r.Error, want) || len(m.Calls) != 0 {
-			t.Errorf("with the list %s the agent ended %s after %d turns: %s", list, r.Status, len(m.Calls), r.Error)
-		}
-	}
-	// An entry named blob that lists read would be shown as blob_read, the
-	// name of one of the blob tools.
-	m := newModel(t)
-	r := runAgent(t, local(t, "all"), strings.Replace(listed(m.URL, `[ { name: read, args: { type: object } } ]`), "  files:\n", "  blob:\n", 1), listedScripts)
-	if r.Status != "failed" || !strings.Contains(r.Error, `"blob_read", which another tool has`) {
-		t.Errorf("the agent ended %s: %s", r.Status, r.Error)
-	}
-}
-
-func Test_agent_listed_shape_marking_a_blob_fails(t *testing.T) {
-	m := newModel(t)
-	r := runAgent(t, local(t, "all"), listed(m.URL,
-		`[ { name: read, args: { type: object, properties: { pages: { type: array, items: { type: string, format: blob } } } } } ]`), listedScripts)
-	if r.Status != "failed" || !strings.Contains(r.Error, `the tool "read"'s args mark a blob`) || len(m.Calls) != 0 {
-		t.Fatalf("the agent ended %s: %s", r.Status, r.Error)
-	}
-}
-
-func Test_agent_listed_job_reads_args_whole(t *testing.T) {
-	agentRefused(t, strings.Replace(listed("http://127.0.0.1:1", fileTools), `args: "${args}"`, `args: "${args.path}"`, 1),
-		`it reads "args.path"; with list:, the job reads ${args} only whole`)
-	agentRefused(t, strings.Replace(listed("http://127.0.0.1:1", fileTools), "    job: { script: ./files.js", "    description: Files\n		    job: { script: ./files.js", 1),
-		"a tool with list: is given each tool's description and args by the list")
-	// Only a job of an entry with a list reads tool.
-	agentRefused(t, strings.Replace(agentDef("http://127.0.0.1:1", ""), `input: { n: "${args.n}" }`, `input: { n: "${tool}" }`, 1), "tool")
-	if _, err := machineParse(listed("http://127.0.0.1:1", fileTools), listedScripts); err != nil {
-		t.Fatalf("an entry whose job reads ${args} whole was refused: %v", err)
-	}
-}
-
-// An agent's entry lists the tools of an MCP server, and one script both
-// lists them and calls the one the model picks.
+// A toolkit whose job answers for an MCP server gives an agent the server's
+// tools: one script opens it and calls the tool the model picks.
 func TestAgentWithTheToolsOfAnMCPServer(t *testing.T) {
 	notes := httptest.NewServer(&standin.Server{Only: []string{"add_note", "find_notes"}})
 	t.Cleanup(notes.Close)
-	allow := `allow: ["net:` + strings.TrimPrefix(notes.URL, "http://") + `"]`
 	m := newModel(t, calls("c1", "notes_find_notes", `{"text": "tea"}`), says("Two notes."))
 	def := strings.Replace(agentDef(m.URL, ""), "tools:\n", `tools:
-		  notes:
-		    list: { script: ./notes.js, input: { address: "`+notes.URL+`/mcp" }, `+allow+` }
-		    job: { script: ./notes.js, input: { address: "`+notes.URL+`/mcp", tool: "${tool}", args: "${args}" }, `+allow+` }
+		  notes: { machine: ./notes.yaml, input: { address: "`+notes.URL+`/mcp" }, open: true }
 `, 1)
-	r := runAgent(t, local(t, "all"), def, map[string]string{"add.js": scripts["add.js"], "notes.js": `
-		const server = mcp.connect(input.address)
-		return input.tool ? server.call(input.tool, { args: input.args }) : server.tools()
-	`})
+	r := runAgent(t, local(t, "all"), def, map[string]string{"add.js": scripts["add.js"],
+		"notes.yaml": "toolkit: notes\ndescription: Notes.\ninput: { address: string }\njob: { script: ./notes.js, allow: [\"net:" + strings.TrimPrefix(notes.URL, "http://") + "\"] }\n",
+		"notes.js":   `return mcp.connect(input.address).toolkit(input.request)`})
 	if r.Status != "done" {
 		t.Fatalf("the agent ended %s: %s", r.Status, r.Error)
 	}

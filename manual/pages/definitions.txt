@@ -162,7 +162,7 @@ It may use JavaScript's operators, `? :`, arrow functions, methods such as
 
 - A name that is not one of these is refused when the definition is checked.
 - `when:` is a condition on a flow's stage, a statechart's transition, and an
-  agent's toolkit or tool.
+  entry of an agent's `tools:`.
 - An expression cannot change what it reads. It has no `eval`, `Function`,
   `Promise`, `require` or plugins, so it reads no file and makes no
   network connection.
@@ -414,7 +414,8 @@ it, and `job`. After a job they read `output`, the job's output.
   job.approve    true when the job is marked for approval
   job.meta       the job's `meta:`
   job.script, job.machine, job.call or job.send    what the job runs
-  job.tool       for an agent's tool call: { name, entry, toolkit, description, args, said }
+  job.tool       for an agent's tool call: { name, args, said }, with `toolkit`
+                 for a toolkit's tool; for a toolkit's job: { toolkit, name, args }
 
 - A hook with no `input:` is given `{ job }`, and after a job `{ job, output }`.
 - A hook's `allow:` scopes read `input` and `values`, and never `job`.
@@ -458,8 +459,8 @@ A script hook runs alone under `corbie test`. This one refuses a job whose
 Words from outside
 ------------------
 
-A machine made while running, which a script or a model wrote, and the tools a
-`list:` gives an agent are words from outside. They name no hook and no address.
+A machine made while running, which a script or a model wrote, is words from
+outside. It names no hook and no address.
 
 - A machine made while running writes no hooks: one that does fails as it
   starts. The hooks above it that were not made while running run for its
@@ -468,8 +469,8 @@ A machine made while running, which a script or a model wrote, and the tools a
   send to an address or a call fails it.
 - A machine made while running writes the names of its jobs and tools. Write a
   hook for its jobs with `when: "${job.approve}"`, and not with a name.
-- A tool from a `list:` runs the entry's `job:`, which the definition writes,
-  and takes the agent's hooks as any tool does.
+- The entries a toolkit's job gives are words from outside too. Corbie keeps
+  each one's kind, name, description and args, and reads nothing else of it.
 
 Reference
 ---------

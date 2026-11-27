@@ -36,15 +36,13 @@ return { blob, items, preview }
 // may open, and from the next turn shows the toolkit's tools. Its result is
 // the toolkit's instructions, which the step fills in and gives it.
 const (
-	openTool   = "open"
-	openScript = "corbie:open.js"
-	openSource = `return input.instructions
-`
-	openDescription = "Open a toolkit. Its instructions are the result, and its tools are shown to you from your next turn. The toolkits you can open:"
+	// openTool is the tool that opens a toolkit, and toolkitsList the list
+	// of the toolkits the agent's entries name.
+	openTool        = "open"
+	toolkitsList    = "toolkits"
+	openDescription = "Open a toolkit from a list, by its name. Its instructions are the result, and its tools are shown to you from your next turn, each under the toolkit's name and its own. The toolkits you can open:"
 )
 
-// large is how a blob tool gives back an answer too large to be a result:
-// as a blob, which the model is then shown as a handle.
 const large = `
 function fits(answer) {
   const text = JSON.stringify(answer)

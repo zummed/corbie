@@ -772,12 +772,10 @@ func (b *build) consult() (ignored []int, stepped bool, err error) {
 }
 
 // readStep gives what a step reads of a definition: in a process of its own
-// for a machine made while running and, after its first step, which holds
-// nothing from outside, for one that takes shapes from outside; here for any
-// other. s and start are the start of an instance's first step. It gives
+// for a machine made while running, and here for any other. s and start are the start of an instance's first step. It gives
 // nothing where the machine ended instead.
 func (b *build) readStep(s *instance.Start, start *arrival) (*stepOut, error) {
-	if b.st.Above.Made || s == nil && machine.Lists(b.def) {
+	if b.st.Above.Made {
 		return b.apart(s, start)
 	}
 	return b.readDefinition(s), nil

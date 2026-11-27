@@ -1,0 +1,4 @@
+toolkit: messages
+description: Messages to the team.
+tools:
+  tell: { description: Post a message, args: { text: string }, job: { script: ./tool.js, input: { did: tell, args: "${args}" }, approve: true } }

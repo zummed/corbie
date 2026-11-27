@@ -11,8 +11,8 @@ import (
 	llmstandin "github.com/zummed/corbie/plugin/llm/standin"
 )
 
-// orders is a tree whose agent has a toolkit of tools that call machines of
-// the tree, each fixing the project.
+// orders is a tree whose agent has tools that call machines of the tree,
+// two of them fixing the project, and a toolkit at a location.
 func orders(address string) map[string]string {
 	return map[string]string{
 		".corbieignore": "toolkits/\n",
@@ -22,15 +22,11 @@ func orders(address string) map[string]string {
 			model: { name: test-model, service: anthropic, address: ADDRESS, secret: TEST_KEY }
 			prompt: ${input.question}
 			hooks: { check: { before: toolkits/check.js, when: "${job.approve}" } }
-			toolkits:
-			  orders: { include: toolkits/orders.yaml }
-			  infra: { include: toolkits/infra.yaml }
-		`, "ADDRESS", address),
-		"toolkits/infra.yaml": `
-			description: The servers.
 			tools:
+			  include: toolkits/orders.yaml
 			  vm_status: { call: infra/vms/status }
-		`,
+			  kit: { call: kits/orders, input: { team: "${input.team}" } }
+		`, "ADDRESS", address),
 		"infra/vms/status.yaml": `
 			flow: status
 			description: The state of every virtual machine.
@@ -39,15 +35,25 @@ func orders(address string) map[string]string {
 		`,
 		"infra/vms/status.js": `return "all running"`,
 		"toolkits/orders.yaml": `
-			description: The orders app.
-			tools:
-			  read_file: { call: gitlab/files/read, input: { project: group/orders } }
-			  change_file: { call: gitlab/commits/create, input: { project: "${input.team}" }, approve: true }
+			read_file: { call: gitlab/files/read, input: { project: group/orders } }
+			change_file: { call: gitlab/commits/create, input: { project: "${input.team}" }, approve: true }
 		`,
 		"toolkits/check.js": `
 			const tool = input.job.tool
-			const fits = tool.toolkit === "orders" && tool.description === "Change one file." && tool.args.path === "a.txt" && !("project" in tool.args)
+			const fits = tool.name === "change_file" && tool.args.path === "a.txt" && !("project" in tool.args) && !("toolkit" in tool)
 			return { ok: fits, note: "read " + JSON.stringify(tool) }`,
+		"kits/orders.yaml": `
+			toolkit: orders
+			description: Orders and refunds.
+			input: { team: string }
+			instructions: Refund for ${input.team} only.
+			tools:
+			  refund:
+			    description: Refund an order.
+			    args: { order: number }
+			    job: { script: ./refund.js, input: { order: "${args.order}", team: "${input.team}" } }
+		`,
+		"kits/refund.js": `return "refunded " + input.order + " for " + input.team`,
 		"gitlab/files/read.yaml": `
 			flow: read
 			description: Read one file of a project.
@@ -76,23 +82,21 @@ func offeredTool(tools []any, name string) map[string]any {
 	return nil
 }
 
-// A tool written call: <location> is offered with the description and the
-// input of the machine at the location, without the names it fixes. The
+// An entry written call: <location> is offered with the description and
+// the input of the machine at the location, without the names it fixes. The
 // machine is given the fixed input with the model's arguments, and an
 // optional argument left out is absent. A call marked approve: true waits for
-// the agent's hook, which reads the machine's description, the model's
-// arguments and the toolkit.
+// the agent's hook, which reads the tool's name and the model's arguments.
+// A toolkit at a location is opened and called with no allow: of the agent's.
 func TestAgentToolCallsAMachineOfTheTree(t *testing.T) {
 	m := newModel(t,
-		llmstandin.Reply{Text: "opening", Calls: []llmstandin.ToolCall{
-			{ID: "c1", Name: "open", Args: `{"toolkit": "orders"}`},
-			{ID: "c4", Name: "open", Args: `{"toolkit": "infra"}`},
-		}},
 		llmstandin.Reply{Text: "reading", Calls: []llmstandin.ToolCall{
 			{ID: "c2", Name: "read_file", Args: `{"path": "a.txt"}`},
 			{ID: "c3", Name: "change_file", Args: `{"path": "a.txt", "text": "new"}`},
 			{ID: "c5", Name: "vm_status", Args: `{}`},
+			{ID: "c6", Name: "open", Args: `{"list": "toolkits", "name": "kit"}`},
 		}},
+		calls("c7", "kit_refund", `{"order": 7}`),
 		says("done"))
 	l := local(t, "all")
 	setSecret(t, l, "TEST_KEY", "sk-test-key")
@@ -105,17 +109,26 @@ func TestAgentToolCallsAMachineOfTheTree(t *testing.T) {
 	if r := wait(t, l, id); r.Status != "done" {
 		t.Fatalf("the agent ended %s: %s", r.Status, r.Error)
 	}
-	read := offeredTool(m.Calls[1].Tools, "read_file")
+	if got := openDescription(m.Calls[0].Tools); !strings.Contains(got, "- { list: toolkits, name: kit }: Orders and refunds.") {
+		t.Errorf("open says: %s", got)
+	}
+	if shown := lastShown(m.Calls[2]); !strings.Contains(shown, "refunded 7 for group/team") {
+		t.Errorf("the toolkit's tool gave: %s", shown)
+	}
+	read := offeredTool(m.Calls[0].Tools, "read_file")
 	want := map[string]any{"type": "object", "properties": map[string]any{"path": map[string]any{"type": "string"}, "ref": map[string]any{"type": "string"}},
 		"required": []any{"path"}, "additionalProperties": false}
 	if read["description"] != "Read one file of a project." || !reflect.DeepEqual(read["input_schema"], want) {
 		t.Fatalf("read_file was offered as %s", jsonOf(read))
 	}
-	status := offeredTool(m.Calls[1].Tools, "vm_status")
+	status := offeredTool(m.Calls[0].Tools, "vm_status")
 	if !reflect.DeepEqual(status["input_schema"], map[string]any{"type": "object", "properties": map[string]any{}, "additionalProperties": false}) {
 		t.Fatalf("vm_status was offered as %s", jsonOf(status))
 	}
-	shown := lastShown(m.Calls[2])
+	shown := lastShown(m.Calls[1])
+	if !strings.Contains(shown, "Refund for group/team only.") {
+		t.Errorf("the open gave: %s", shown)
+	}
 	if !strings.Contains(shown, `"content":"all running"`) {
 		t.Errorf("vm_status gave: %s", shown)
 	}
@@ -132,7 +145,6 @@ func TestAgentToolCallsAMachineOfTheTree(t *testing.T) {
 // other, does not fit, and runs nothing.
 func Test_agent_call_tool_arguments_are_closed(t *testing.T) {
 	m := newModel(t,
-		calls("c1", "open", `{"toolkit": "orders"}`),
 		llmstandin.Reply{Text: "reading", Calls: []llmstandin.ToolCall{
 			{ID: "c2", Name: "read_file", Args: `{"path": "a.txt", "project": "group/secret"}`},
 			{ID: "c3", Name: "read_file", Args: `{"path": "a.txt", "branch": "main"}`},
@@ -148,7 +160,7 @@ func Test_agent_call_tool_arguments_are_closed(t *testing.T) {
 	if r := wait(t, l, id); r.Status != "done" {
 		t.Fatalf("the agent ended %s: %s", r.Status, r.Error)
 	}
-	shown := lastShown(m.Calls[2])
+	shown := lastShown(m.Calls[1])
 	if strings.Count(shown, "the arguments do not fit the tool") != 2 || strings.Contains(shown, "given") {
 		t.Fatalf("the calls were answered: %s", shown)
 	}
@@ -158,7 +170,7 @@ func Test_agent_call_tool_arguments_are_closed(t *testing.T) {
 func TestAgentToolCallsAnAgent(t *testing.T) {
 	m := newModel(t, calls("c1", "helper", `{"question": "how?"}`), says("like this"), says("done"))
 	files := orders(m.URL)
-	files["agents/support.yaml"] = strings.Replace(files["agents/support.yaml"], "toolkits:\n", "tools:\n\t\t\t  helper: { call: agents/helper }\n\t\t\ttoolkits:\n", 1)
+	files["agents/support.yaml"] = strings.Replace(files["agents/support.yaml"], "tools:\n", "tools:\n\t\t\t  helper: { call: agents/helper }\n", 1)
 	files["agents/helper.yaml"] = strings.ReplaceAll(`
 		agent: helper
 		description: Answer a question.
@@ -234,14 +246,14 @@ func TestAgentCallToolIsRefused(t *testing.T) {
 		{"no description", "{ call: plain }", "tools.t.call: the machine at plain has no description:",
 			map[string]string{"plain.yaml": "flow: plain\nstages: { s: { job: gitlab/files/given.js } }\n"}},
 		{"a fixed name not in the input", "{ call: gitlab/files/read, input: { branch: main } }", `tools.t.input.branch: the machine at gitlab/files/read takes no input named "branch"`, nil},
-		{"job beside call", "{ call: gitlab/files/read, job: ./x.js }", "tools.t.job: a tool with call: has no job: the description and arguments come from the machine called", nil},
-		{"args beside call", "{ call: gitlab/files/read, args: { a: string } }", "tools.t.args: a tool with call: has no args:", nil},
-		{"description beside call", "{ call: gitlab/files/read, description: Read }", "tools.t.description: a tool with call: has no description:", nil},
+		{"job beside call", "{ call: gitlab/files/read, job: ./x.js }", "tools.t.job: an entry with machine: or call: has no job: the description and arguments come from the machine it names", nil},
+		{"args beside call", "{ call: gitlab/files/read, args: { a: string } }", "tools.t.args: an entry with machine: or call: has no args:", nil},
+		{"description beside call", "{ call: gitlab/files/read, description: Read }", "tools.t.description: an entry with machine: or call: has no description:", nil},
 		{"a singleton", "{ call: always }", "tools.t.call: the machine at always is singleton: a call starts a run only of a transient location",
 			map[string]string{"always.yaml": "statechart: always\ndescription: Always.\nlifetime: singleton\ninitial: a\nstates: { a: {} }\n"}},
 		{"an expression", `{ call: "${input.where}" }`, "tools.t.call: \"${input.where}\": the location is written out", nil},
-		{"input without call", `{ description: D, args: {}, job: gitlab/files/given.js, input: { a: 1 } }`, "tools.t.input: input: belongs to a tool with call:", nil},
-		{"approve without call", `{ description: D, args: {}, job: gitlab/files/given.js, approve: true }`, "tools.t.approve: approve: belongs to a tool with call:", nil},
+		{"input without call", `{ description: D, args: {}, job: gitlab/files/given.js, input: { a: 1 } }`, "tools.t.input: input: belongs to an entry with machine: or call:", nil},
+		{"approve without call", `{ description: D, args: {}, job: gitlab/files/given.js, approve: true }`, "tools.t.approve: approve: belongs to an entry with machine: or call:", nil},
 		{"an input written with allOf", "{ call: anyof }", "tools.t.call: the input of the machine at anyof is written with allOf",
 			map[string]string{"anyof.yaml": "flow: anyof\ndescription: A.\ninput: { type: object, allOf: [{ required: [a] }] }\nstages: { s: { job: gitlab/files/given.js } }\n"}},
 	}
@@ -250,7 +262,7 @@ func TestAgentCallToolIsRefused(t *testing.T) {
 		for name, text := range c.files {
 			files[name] = text
 		}
-		files["agents/support.yaml"] = strings.Replace(files["agents/support.yaml"], "toolkits:\n", "tools:\n\t\t\t  t: "+c.tool+"\n\t\t\ttoolkits:\n", 1)
+		files["agents/support.yaml"] = strings.Replace(files["agents/support.yaml"], "tools:\n", "tools:\n\t\t\t  t: "+c.tool+"\n", 1)
 		tree, err := client.ReadTree(house(t, files), "/x")
 		if err != nil {
 			t.Fatal(err)
@@ -271,20 +283,20 @@ func TestAgentCallToolIsRefused(t *testing.T) {
 func Test_agent_call_tool_needs_its_tree(t *testing.T) {
 	for _, at := range []string{"gitlab/files/read", "/netops/tools/show"} {
 		support := dedent(orders("http://127.0.0.1:1")["agents/support.yaml"])
-		support = strings.Replace(support, "toolkits:\n  orders: { include: toolkits/orders.yaml }\n", "tools:\n  t: { call: "+at+" }\n", 1)
+		support = support[:strings.Index(support, "tools:\n")] + "tools:\n  t: { call: " + at + " }\n"
 		if _, err := machine.ParseMade([]byte(support), machine.Given(nil)); err == nil || !strings.Contains(err.Error(), "tools.t.call: a machine made while running has no tree, and calls no location") {
 			t.Errorf("made while running, calling %s: %v", at, err)
 		}
 	}
 	files := orders("http://127.0.0.1:1")
-	files["agents/support.yaml"] = strings.Replace(files["agents/support.yaml"], "toolkits:\n",
-		"tools:\n\t\t\t  show: { call: /netops/tools/show }\n\t\t\t  here: { call: /x/nothing/here }\n\t\t\ttoolkits:\n", 1)
+	files["agents/support.yaml"] = strings.Replace(files["agents/support.yaml"], "tools:\n",
+		"tools:\n\t\t\t  show: { call: /netops/tools/show }\n\t\t\t  here: { call: /x/nothing/here }\n", 1)
 	dir := house(t, files)
 	alone, err := client.ReadFile(dir, "agents/support.yaml", "/alone", client.ScriptJob{})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := alone.Machines[0].Problem; err == nil || !strings.Contains(err.Error(), "toolkits/orders.yaml:3: toolkits.orders.tools.read_file.call: the machine at gitlab/files/read is read from the tree this file is in: give the tree's directory, as in corbie test <file> --in <dir>") ||
+	if err := alone.Machines[0].Problem; err == nil || !strings.Contains(err.Error(), "toolkits/orders.yaml:1: tools.read_file.call: the machine at gitlab/files/read is read from the tree this file is in: give the tree's directory, as in corbie test <file> --in <dir>") ||
 		strings.Contains(err.Error(), "tools.show") || strings.Contains(err.Error(), "tools.here") {
 		t.Errorf("read alone: %v", err)
 	}

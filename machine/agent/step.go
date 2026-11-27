@@ -1,8 +1,6 @@
 package agent
 
 import (
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json/v2"
 	"errors"
 	"fmt"
@@ -13,6 +11,7 @@ import (
 
 	"github.com/zummed/corbie/blob"
 	"github.com/zummed/corbie/machine"
+	"github.com/zummed/corbie/machine/toolkit"
 )
 
 // state is everything an agent remembers between steps. The conversation
@@ -46,37 +45,43 @@ type state struct {
 	Previews []*preview `json:"previews,omitzero"`
 	// Wrong says what was wrong with the last reply, if it did not fit.
 	Wrong string `json:"wrong,omitzero"`
-	// Lists are the jobs listing the tools of the entries that have a
-	// list, made before the first turn; each is named for its entry.
-	Lists []*listing `json:"lists,omitzero"`
-	// Listed are the tools the lists gave, by the name the model is shown.
-	Listed map[string]*listed `json:"listed,omitzero"`
-	// Opened are the toolkits the model has opened, each with the hash of
-	// the text its open gave.
-	Opened map[string]string `json:"opened,omitzero"`
-	// Unoffered are the toolkits and tools whose when: did not hold when the
-	// run started: the model is never shown them.
-	Unoffered *unoffered `json:"unoffered,omitzero"`
+	// Opening are the opens of the toolkits that are opened before the
+	// first turn.
+	Opening []*opening `json:"opening,omitzero"`
+	// Opened are the toolkits that are open, each a list of entries, by the
+	// list's name: an entry's name, or a list's name and the name of a
+	// toolkit in it.
+	Opened map[string]*kit `json:"opened,omitzero"`
+	// Unoffered are the entries whose when: did not hold when the run
+	// started: the model is never shown them.
+	Unoffered []string `json:"unoffered,omitzero"`
 }
 
-// unoffered are the toolkits and the tools, by name, that are not offered.
-type unoffered struct {
-	Toolkits []string `json:"toolkits,omitzero"`
-	Tools    []string `json:"tools,omitzero"`
+// opening is one open of a toolkit: the list it makes, the agent's entry
+// whose job opens it, and the names that lead to it inside that entry's
+// toolkit.
+type opening struct {
+	Job   string   `json:"job,omitzero"`
+	List  string   `json:"list"`
+	Entry string   `json:"entry"`
+	Path  []string `json:"path,omitzero"`
+	Done  bool     `json:"done,omitzero"`
 }
 
-// listing is the job that lists one entry's tools.
-type listing struct {
-	Entry string `json:"entry"`
-	Done  bool   `json:"done,omitzero"`
+// kit is an open toolkit: the entries its open gave. Every job for it is
+// the job of the agent's entry it came from.
+type kit struct {
+	Entry   string   `json:"entry"`
+	Path    []string `json:"path,omitzero"`
+	Entries []*entry `json:"entries,omitzero"`
 }
 
-// listed is one tool a list gave, which its entry's job runs.
-type listed struct {
-	Entry       string         `json:"entry"`
-	Name        string         `json:"name"` // as the list gave it
+// entry is one item of an open toolkit's list.
+type entry struct {
+	Kind        string         `json:"kind"`
+	Name        string         `json:"name"`
 	Description string         `json:"description,omitzero"`
-	Args        map[string]any `json:"args"`
+	Args        map[string]any `json:"args,omitzero"`
 }
 
 // preview is one job that looks at something before the model is shown it:
@@ -98,9 +103,11 @@ const showLimit = 32 << 10
 type call struct {
 	ID   string `json:"id"`
 	Tool string `json:"tool"`
-	Job  string `json:"job,omitzero"` // the job that carries it out; none if it ran nothing
-	Args any    `json:"args,omitzero"`
-	Done bool   `json:"done,omitzero"`
+	// Open is the toolkit the call opens, for a call of open.
+	Open *opening `json:"open,omitzero"`
+	Job  string   `json:"job,omitzero"` // the job that carries it out; none if it ran nothing
+	Args any      `json:"args,omitzero"`
+	Done bool     `json:"done,omitzero"`
 	// What goes back to the model: a result, an error or a denial.
 	Result any    `json:"result,omitzero"`
 	Error  string `json:"error,omitzero"`
@@ -115,7 +122,7 @@ type stepper struct {
 	st   *state
 	out  *machine.StepOut
 	eval *machine.Evaluator
-	// unread says, by the tool's name, why a tool written call: with a
+	// unread says, by the entry's name, why an entry written call: with a
 	// location in full has no description and no arguments.
 	unread map[string][]string
 }
@@ -169,12 +176,7 @@ func (s *stepper) arrive(event machine.Event) (bool, error) {
 			}
 			c.Done = true
 			if event.Name == machine.Done {
-				s.opened(c, event.Data)
-				c.Result = s.shown(s.said(c, event.Data))
-				// What opening a toolkit gives is its instructions, which the
-				// model is shown whole.
-				text, _ := json.Marshal(c.Result)
-				c.Large = len(text) > showLimit && c.Tool != openTool
+				s.done(c, event.Data)
 			} else {
 				// A tool that fails goes back to the model as an error,
 				// with whatever output it still gave.
@@ -183,24 +185,33 @@ func (s *stepper) arrive(event machine.Event) (bool, error) {
 				if data["status"] == machine.StatusDenied {
 					c.Error = "denied: " + c.Error
 				}
-				c.Result = s.shown(s.said(c, data["output"]))
+				if f := s.find(c.Tool); f != nil && f.kit == nil && c.Open == nil {
+					s.done(c, data["output"])
+					c.Large = false
+				}
 			}
 			return true, s.settled()
 		}
 	case s.st.Waiting == previewJob && (event.Name == machine.Done || event.Name == machine.Failed):
-		for _, l := range s.st.Lists {
-			if l.Entry != event.From || l.Done {
+		for _, o := range s.st.Opening {
+			if o.Job != event.From || o.Done {
 				continue
 			}
-			l.Done = true
-			// A list that fails fails the agent, as a turn does.
+			o.Done = true
+			// A toolkit that fails to open before the first turn fails the
+			// agent, as a turn does.
 			if event.Name == machine.Failed {
-				s.fail(event, s.a.Tools[l.Entry].place(l.Entry)+".list")
+				s.fail(event, place(o.Entry))
 				return true, nil
 			}
-			if err := s.take(l.Entry, event.Data); err != nil {
-				s.end(&machine.Error{Status: machine.StatusError, Error: err.Error()})
+			instructions, err := s.take(o, event.Data)
+			if err != nil {
+				s.end(&machine.Error{Status: machine.StatusError, Error: place(o.Entry) + ": " + err.Error()})
 				return true, nil
+			}
+			if instructions != "" {
+				s.st.Next = append([]any{map[string]any{"role": "user",
+					"content": fmt.Sprintf("(the toolkit %s is open; its instructions follow)\n%s", o.List, instructions)}}, s.st.Next...)
 			}
 			return true, s.ready()
 		}
@@ -216,15 +227,41 @@ func (s *stepper) arrive(event machine.Event) (bool, error) {
 	return false, nil
 }
 
-// said gives what the model is shown of a tool's output. A tool that is an
-// agent is shown as what that agent replied: its conversation and its count
-// of tokens are in the record, and are not the caller's to read through.
-func (s *stepper) said(c *call, output any) any {
-	if tool, _ := s.tool(c.Tool); tool == nil || !tool.Agent {
-		return output
+// done takes the output of a call's job. An open gives the toolkit's
+// instructions, and a call of a toolkit's tool the result in its answer.
+func (s *stepper) done(c *call, output any) {
+	f := s.find(c.Tool)
+	switch {
+	case c.Open != nil:
+		instructions, err := s.take(c.Open, output)
+		if err != nil {
+			c.Error = err.Error()
+			return
+		}
+		if instructions == "" {
+			instructions = "Opened " + c.Open.List + "."
+		}
+		// What opening a toolkit gives is shown to the model whole.
+		c.Result = instructions
+		return
+	case f != nil && f.kit != nil:
+		answer, _ := output.(map[string]any)
+		result, ended := answer["result"]
+		if !ended {
+			c.Error = "the toolkit's answer holds no result"
+			return
+		}
+		output = result
+	case f != nil && f.tool.Agent:
+		// A tool that is an agent is shown as what that agent replied: its
+		// conversation and its count of tokens are in the record, and are
+		// not the caller's to read through.
+		result, _ := output.(map[string]any)
+		output = result["reply"]
 	}
-	result, _ := output.(map[string]any)
-	return result["reply"]
+	c.Result = s.shown(output)
+	text, _ := json.Marshal(c.Result)
+	c.Large = len(text) > showLimit
 }
 
 // preview asks for a look at what the model is about to be shown for the
@@ -293,12 +330,12 @@ func (s *stepper) ready() error {
 			return nil
 		}
 	}
-	for _, l := range s.st.Lists {
-		if !l.Done {
+	for _, o := range s.st.Opening {
+		if !o.Done {
 			return nil
 		}
 	}
-	s.st.Lists = nil
+	s.st.Opening = nil
 	if len(s.st.Calls) > 0 {
 		var results []any
 		for _, c := range s.st.Calls {
@@ -391,8 +428,7 @@ func (s *stepper) begin() error {
 	if err != nil {
 		return err
 	}
-	carried, _ := so.(map[string]any)
-	if so != nil {
+	if carried, _ := so.(map[string]any); so != nil {
 		// A conversation carried on brings its turns and the blobs they
 		// name, so each name goes on meaning the blob it meant.
 		turns, isTurns := carried["turns"].([]any)
@@ -417,89 +453,72 @@ func (s *stepper) begin() error {
 	if err := s.offer(scope); err != nil {
 		return err
 	}
-	s.reopen(carried["opened"])
 	if err := s.readable(); err != nil {
 		return err
 	}
-	// The entries that list their tools list them once, now; the first
-	// turn waits for them as it waits for its previews.
+	// The toolkits with open: true are opened once, now; the first turn
+	// waits for them as it waits for its previews.
 	for _, name := range sortedNames(s.a.Tools) {
 		tool := s.a.Tools[name]
-		if tool.List == nil || !s.offers(name, tool) {
+		if !tool.Toolkit || !tool.Open || !s.offers(name) {
 			continue
 		}
-		job, err := tool.List.Fill(s.eval, scope, tool.place(name)+".list", name)
+		o := &opening{Job: openTool, List: name, Entry: name}
+		if n := len(s.st.Opening); n > 0 {
+			o.Job = fmt.Sprintf("%s.%d", openTool, n)
+		}
+		job, err := s.ask(o.Entry, o.Job, map[string]any{"do": toolkit.Open}, map[string]any{"toolkit": name, "open": true})
 		if err != nil {
 			return err
 		}
-		if tool.Toolkit != "" {
-			job.Tool = map[string]any{"toolkit": tool.Toolkit}
-		}
-		s.st.Lists = append(s.st.Lists, &listing{Entry: name})
+		s.st.Opening = append(s.st.Opening, o)
 		s.request(machine.Request{Job: job})
 	}
 	return s.preview()
 }
 
-// offer checks the when: of each toolkit and each tool once, on the
-// agent's input, and keeps those that do not hold. A when: is checked
-// once, so that every step offers the model the same tools.
+// offer checks the when: of each entry once, on the agent's input, and
+// keeps those that do not hold. A when: is checked once, so that every step
+// offers the model the same tools.
 func (s *stepper) offer(scope machine.Scope) error {
-	not := &unoffered{}
-	for _, name := range sortedNames(s.a.Toolkits) {
-		toolkit := s.a.Toolkits[name]
-		if toolkit.When == "" {
-			continue
-		}
-		ok, err := s.eval.Cond(toolkit.When, scope, toolkitPlace(name)+".when")
-		if err != nil {
-			return err
-		}
-		if !ok {
-			not.Toolkits = append(not.Toolkits, name)
-		}
-	}
 	for _, name := range sortedNames(s.a.Tools) {
 		tool := s.a.Tools[name]
 		if tool.When == "" {
 			continue
 		}
-		ok, err := s.eval.Cond(tool.When, scope, tool.place(name)+".when")
+		ok, err := s.eval.Cond(tool.When, scope, place(name)+".when")
 		if err != nil {
 			return err
 		}
 		if !ok {
-			not.Tools = append(not.Tools, name)
+			s.st.Unoffered = append(s.st.Unoffered, name)
 		}
-	}
-	if len(not.Toolkits) > 0 || len(not.Tools) > 0 {
-		s.st.Unoffered = not
 	}
 	return nil
 }
 
-// recorded fills in each tool written call: with a location in full from
+// recorded fills in each entry written call: with a location in full from
 // what the run read of the machine there as it started, and gives what is
-// wrong with each that cannot be filled in, by the tool's name.
+// wrong with each that cannot be filled in, by the entry's name.
 func (s *stepper) recorded() map[string][]string {
 	unread := map[string][]string{}
 	for name, tool := range s.a.Tools {
 		if !strings.HasPrefix(tool.Call, "/") {
 			continue
 		}
-		for _, w := range tool.called(tool.Call, s.in.Run.Recorded[tool.Call]) {
-			unread[name] = append(unread[name], tool.place(name)+w.at+": "+w.text)
+		for _, w := range tool.read(s.in.Run.Recorded[tool.Call]) {
+			unread[name] = append(unread[name], place(name)+w.at+": "+w.text)
 		}
 	}
 	return unread
 }
 
-// readable says what is wrong with each tool that is offered and calls a
+// readable says what is wrong with each entry that is offered and calls a
 // location in full whose machine could not be read.
 func (s *stepper) readable() error {
 	var wrong []string
 	for _, name := range sortedNames(s.unread) {
-		if s.offers(name, s.a.Tools[name]) {
+		if s.offers(name) {
 			wrong = append(wrong, s.unread[name]...)
 		}
 	}
@@ -509,204 +528,201 @@ func (s *stepper) readable() error {
 	return nil
 }
 
-// offers says whether a tool of the definition is offered: its when: and
-// its toolkit's held when the run started.
-func (s *stepper) offers(name string, tool *Tool) bool {
-	not := s.st.Unoffered
-	return not == nil || !slices.Contains(not.Tools, name) && !slices.Contains(not.Toolkits, tool.Toolkit)
-}
+// offers says whether an entry of the definition is offered: its when:
+// held when the run started.
+func (s *stepper) offers(name string) bool { return !slices.Contains(s.st.Unoffered, name) }
 
-// opened notes the toolkit an open call opened, with the hash of what the
-// open gave: its tools are shown from the next turn.
-func (s *stepper) opened(c *call, gave any) {
-	args, _ := c.Args.(map[string]any)
-	if toolkit, _ := args["toolkit"].(string); c.Tool == openTool {
-		s.open(toolkit, digest(gave))
-	}
-}
-
-func (s *stepper) open(toolkit, hash string) {
-	if s.st.Opened == nil {
-		s.st.Opened = map[string]string{}
-	}
-	s.st.Opened[toolkit] = hash
-}
-
-// gives is what opening a toolkit gives the model: its instructions, filled
-// from the agent's input, or with none, that it was opened.
-func (s *stepper) gives(name string) (any, error) {
-	instructions, err := s.eval.Fill(s.a.Toolkits[name].Instructions, machine.Scope{"input": s.in.Input}, toolkitPlace(name)+".instructions")
-	if instructions == nil || instructions == "" {
-		instructions = "Opened " + name + "."
-	}
-	return instructions, err
-}
-
-// digest is the SHA-256, in hex, of what an open gave.
-func digest(gave any) string {
-	text, ok := gave.(string)
-	if !ok {
-		data, _ := json.Marshal(gave, json.Deterministic(true))
-		text = string(data)
-	}
-	sum := sha256.Sum256([]byte(text))
-	return hex.EncodeToString(sum[:])
-}
-
-// reopen opens the toolkits a conversation carried on had open. The
-// conversation is input, so it opens only what one call of open would: a
-// toolkit the agent has, whose when: held, and whose open is not marked for approval.
-// It opens one only where an open now would give what the model was given,
-// so that the model is given instructions that changed.
-func (s *stepper) reopen(opened any) {
-	hashes, _ := opened.(map[string]any)
-	for _, name := range slices.Sorted(maps.Keys(hashes)) {
-		toolkit, ok := s.a.Toolkits[name]
-		if !ok || toolkit.Approve || s.st.Unoffered != nil && slices.Contains(s.st.Unoffered.Toolkits, name) {
-			continue
+// shownAs gives the name the model is shown for a tool of a list, and the
+// name of the list a toolkit in a list makes: the list's name and its own,
+// joined by _. Model services take a tool's name in letters, digits, _
+// and -.
+func shownAs(list, name string) string {
+	return list + "_" + strings.Map(func(r rune) rune {
+		if r == '_' || r == '-' || r < 128 && (unicode.IsLetter(r) || unicode.IsDigit(r)) {
+			return r
 		}
-		gave, err := s.gives(name)
-		if hash, _ := hashes[name].(string); err == nil && hash == digest(gave) {
-			s.open(name, hash)
+		return '_'
+	}, name)
+}
+
+// ask gives the job that puts a request to the toolkit an entry names: the
+// entry's job, whose input is the input the entry fixes and the request.
+func (s *stepper) ask(name, jobName string, request, shown map[string]any) (*machine.Job, error) {
+	job, err := s.a.Tools[name].Job.Fill(s.eval, machine.Scope{"input": s.in.Input}, place(name), jobName)
+	if err != nil {
+		return nil, err
+	}
+	input := map[string]any{}
+	fixed, _ := job.Input.(map[string]any)
+	maps.Copy(input, fixed)
+	input["request"] = request
+	job.Input, job.Tool = input, shown
+	return job, nil
+}
+
+// openable gives the toolkits the model can open, each as the open that
+// would open it: the agent's entries that name a toolkit and are offered,
+// in the list toolkits, and the toolkits in each open list. One that is
+// open is left out.
+func (s *stepper) openable() map[string]*opening {
+	out := map[string]*opening{}
+	for name, tool := range s.a.Tools {
+		if _, open := s.st.Opened[name]; tool.Toolkit && !open && s.offers(name) {
+			out[name] = &opening{List: name, Entry: name}
 		}
 	}
-}
-
-// opener gives the tool that opens a toolkit as the model is shown it: with
-// the name and description of each toolkit offered and not yet open. With
-// none left, there is no such tool.
-func (s *stepper) opener() *Tool {
-	own := s.a.Tools[openTool]
-	var lines []string
-	var names []any
-	for _, name := range sortedNames(s.a.Toolkits) {
-		if _, open := s.st.Opened[name]; !open && (s.st.Unoffered == nil || !slices.Contains(s.st.Unoffered.Toolkits, name)) {
-			lines = append(lines, "- "+name+": "+s.a.Toolkits[name].Description)
-			names = append(names, name)
-		}
-	}
-	if own == nil || len(names) == 0 {
-		return nil
-	}
-	return &Tool{Description: own.Description + "\n" + strings.Join(lines, "\n"), Job: own.Job,
-		Args: map[string]any{"type": "object", "properties": map[string]any{"toolkit": map[string]any{"type": "string", "enum": names}},
-			"required": []any{"toolkit"}, "additionalProperties": false}}
-}
-
-// shows says whether the model is shown a tool of the definition: one that
-// is offered, and in no toolkit or in a toolkit the model has opened.
-func (s *stepper) shows(name string, tool *Tool) bool {
-	_, open := s.st.Opened[tool.Toolkit]
-	return s.offers(name, tool) && (tool.Toolkit == "" || open)
-}
-
-// take keeps the tools one entry's list gave, each under the entry's name
-// and its own, or says what is wrong with the list.
-func (s *stepper) take(entry string, data any) error {
-	place := s.a.Tools[entry].place(entry) + ".list"
-	items, ok := data.([]any)
-	if !ok {
-		return fmt.Errorf("%s: the list gave no list of tools; it returns [{ name, description, args }, ...]", place)
-	}
-	for _, item := range items {
-		tool, _ := item.(map[string]any)
-		name, _ := tool["name"].(string)
-		if name == "" {
-			return fmt.Errorf("%s: a tool in the list has no name", place)
-		}
-		// Model services take a tool's name in letters, digits, _ and -.
-		shown := entry + "_" + strings.Map(func(r rune) rune {
-			if r == '_' || r == '-' || r < 128 && (unicode.IsLetter(r) || unicode.IsDigit(r)) {
-				return r
+	for list, k := range s.st.Opened {
+		for _, e := range k.Entries {
+			as := shownAs(list, e.Name)
+			if _, open := s.st.Opened[as]; e.Kind == toolkit.KindToolkit && !open {
+				out[as] = &opening{List: as, Entry: k.Entry, Path: append(slices.Clone(k.Path), e.Name)}
 			}
-			return '_'
-		}, name)
+		}
+	}
+	return out
+}
+
+// within gives the list a toolkit is opened from, the name it has there
+// and its description.
+func (s *stepper) within(o *opening) (list, name, description string) {
+	if len(o.Path) == 0 {
+		return toolkitsList, o.Entry, s.a.Tools[o.Entry].Description
+	}
+	name = o.Path[len(o.Path)-1]
+	for list, k := range s.st.Opened {
+		for _, e := range k.Entries {
+			if k.Entry == o.Entry && e.Kind == toolkit.KindToolkit && shownAs(list, e.Name) == o.List {
+				return list, name, e.Description
+			}
+		}
+	}
+	return "", name, ""
+}
+
+// opener gives the tool that opens a toolkit as the model is shown it:
+// with the list, the name and the description of each toolkit it can open.
+func (s *stepper) opener() map[string]any {
+	can := s.openable()
+	var lines []string
+	for _, as := range sortedNames(can) {
+		list, name, description := s.within(can[as])
+		lines = append(lines, fmt.Sprintf("- { list: %s, name: %s }: %s", list, name, description))
+	}
+	text := func() any { return map[string]any{"type": "string"} }
+	return map[string]any{"name": openTool, "description": openDescription + "\n" + strings.Join(lines, "\n"),
+		"args": map[string]any{"type": "object", "properties": map[string]any{"list": text(), "name": text()},
+			"required": []any{"list", "name"}, "additionalProperties": false}}
+}
+
+// chosen gives the open a call of open asks for, or says what is wrong
+// with the call.
+func (s *stepper) chosen(args any) (*opening, string) {
+	given, _ := args.(map[string]any)
+	list, _ := given["list"].(string)
+	name, _ := given["name"].(string)
+	can := s.openable()
+	for _, as := range sortedNames(can) {
+		if in, named, _ := s.within(can[as]); in == list && named == name {
+			return can[as], ""
+		}
+	}
+	return nil, fmt.Sprintf("there is no toolkit named %q to open in the list %q", name, list)
+}
+
+// take keeps the entries an open gave, as the list the open makes, and
+// gives the toolkit's instructions, or says what is wrong with the answer.
+// A tool is shown to the model under the list's name and its own.
+func (s *stepper) take(o *opening, answer any) (string, error) {
+	given, _ := answer.(map[string]any)
+	items, ok := given["entries"].([]any)
+	if !ok {
+		return "", fmt.Errorf("the toolkit gave no answer to an open: it answers { instructions, entries }")
+	}
+	k := &kit{Entry: o.Entry, Path: o.Path}
+	seen := map[string]bool{}
+	for _, item := range items {
+		written, _ := item.(map[string]any)
+		e := &entry{}
+		e.Kind, _ = written["kind"].(string)
+		e.Name, _ = written["name"].(string)
+		e.Description, _ = written["description"].(string)
+		e.Args, _ = written["args"].(map[string]any)
+		shown := shownAs(o.List, e.Name)
 		_, own := s.a.Tools[shown]
-		_, twice := s.st.Listed[shown]
-		description, _ := tool["description"].(string)
-		args, _ := tool["args"].(map[string]any)
-		if len(shown) > 64 {
-			return fmt.Errorf("%s: the tool %q would be shown to the model as %q, which is longer than 64 characters", place, name, shown)
+		switch {
+		case e.Name == "" || e.Kind != toolkit.KindTool && e.Kind != toolkit.KindToolkit:
+			return "", fmt.Errorf("the toolkit gave no answer to an open: an entry is { kind, name, description, args }")
+		case e.Kind == toolkit.KindToolkit:
+		case len(shown) > 64:
+			return "", fmt.Errorf("the tool %q would be shown to the model as %q, which is longer than 64 characters", e.Name, shown)
+		case own || seen[shown] || shown == openTool || s.find(shown) != nil:
+			return "", fmt.Errorf("the tool %q would be shown to the model as %q, which another tool has", e.Name, shown)
 		}
-		if own || twice {
-			return fmt.Errorf("%s: the tool %q would be shown to the model as %q, which another tool has", place, name, shown)
+		seen[shown] = e.Kind == toolkit.KindTool
+		k.Entries = append(k.Entries, e)
+	}
+	if s.st.Opened == nil {
+		s.st.Opened = map[string]*kit{}
+	}
+	s.st.Opened[o.List] = k
+	instructions, _ := given["instructions"].(string)
+	return instructions, nil
+}
+
+// found is a tool the model knows by a name: an entry of the definition,
+// or a tool of an open toolkit, with the list it is in and its own name.
+type found struct {
+	entry       string
+	tool        *Tool
+	description string
+	args        map[string]any
+	kit         *kit
+	name        string
+}
+
+// find gives the tool the model knows by a name: an entry that is offered
+// and is one tool, or a tool of an open toolkit.
+func (s *stepper) find(name string) *found {
+	if tool, ok := s.a.Tools[name]; ok {
+		if tool.Toolkit || !s.offers(name) {
+			return nil
 		}
-		if _, err := machine.CompileShape(args); err != nil {
-			return fmt.Errorf("%s: the tool %q's args: %v", place, name, err)
+		return &found{entry: name, tool: tool, description: tool.Description, args: tool.Args}
+	}
+	for _, list := range sortedNames(s.st.Opened) {
+		k := s.st.Opened[list]
+		for _, e := range k.Entries {
+			if e.Kind == toolkit.KindTool && shownAs(list, e.Name) == name {
+				return &found{entry: k.Entry, tool: s.a.Tools[k.Entry], description: e.Description, args: e.Args, kit: k, name: e.Name}
+			}
 		}
-		// A blob's reference holds its key, and the entry's job would send
-		// it to whoever wrote the list.
-		if marksBlob(args) {
-			return fmt.Errorf("%s: the tool %q's args mark a blob, and a listed tool cannot take one", place, name)
-		}
-		if s.st.Listed == nil {
-			s.st.Listed = map[string]*listed{}
-		}
-		s.st.Listed[shown] = &listed{Entry: entry, Name: name, Description: description, Args: args}
 	}
 	return nil
 }
 
-// marksBlob says whether a shape marks a blob anywhere in it.
-func marksBlob(v any) bool {
-	switch v := v.(type) {
-	case map[string]any:
-		if v["format"] == "blob" {
-			return true
-		}
-		for _, item := range v {
-			if marksBlob(item) {
-				return true
-			}
-		}
-	case []any:
-		for _, item := range v {
-			if marksBlob(item) {
-				return true
-			}
+// offered gives the tools the model is offered, each with its name, its
+// description and what arguments it takes: the entries that are one tool,
+// the tools of each open toolkit, and the tool that opens a toolkit while
+// one is left to open. The model never sees how a tool is run or what it
+// is permitted.
+func (s *stepper) offered() []any {
+	names := slices.Collect(maps.Keys(s.a.Tools))
+	for list, k := range s.st.Opened {
+		for _, e := range k.Entries {
+			names = append(names, shownAs(list, e.Name))
 		}
 	}
-	return false
-}
-
-// tool gives the tool the model knows by a name: one of the definition's
-// own, or one a list gave, which its entry's job runs. For a listed tool it
-// also gives the name the list gave, which the job reads as tool.
-func (s *stepper) tool(name string) (*Tool, string) {
-	if name == openTool {
-		return s.opener(), ""
-	}
-	if tool, ok := s.a.Tools[name]; ok && tool.List == nil {
-		if !s.shows(name, tool) {
-			return nil, ""
-		}
-		return tool, ""
-	}
-	l, ok := s.st.Listed[name]
-	if !ok || !s.shows(l.Entry, s.a.Tools[l.Entry]) {
-		return nil, ""
-	}
-	entry := s.a.Tools[l.Entry]
-	return &Tool{Description: l.Description, Args: l.Args, Job: entry.Job, Agent: entry.Agent, Toolkit: entry.Toolkit}, l.Name
-}
-
-// offered gives the names of the tools the model is offered: those of
-// no toolkit and of each toolkit it has opened, and the tool that opens a
-// toolkit while one is left to open.
-func (s *stepper) offered() []string {
-	var names []string
-	for name, tool := range s.a.Tools {
-		if tool.List == nil {
-			names = append(names, name)
-		}
-	}
-	names = append(names, slices.Collect(maps.Keys(s.st.Listed))...)
-	names = slices.DeleteFunc(names, func(name string) bool {
-		tool, _ := s.tool(name)
-		return tool == nil
-	})
 	slices.Sort(names)
-	return names
+	var tools []any
+	for _, name := range names {
+		if f := s.find(name); f != nil {
+			tools = append(tools, map[string]any{"name": name, "description": f.description, "args": f.args})
+		}
+	}
+	if len(s.openable()) > 0 {
+		tools = append(tools, s.opener())
+	}
+	return tools
 }
 
 // turn asks for the next turn: one call to the model, made by a job. At
@@ -730,13 +746,7 @@ func (s *stepper) turn() error {
 	if err != nil {
 		return err
 	}
-	var tools []any
-	for _, name := range s.offered() {
-		// The model sees a tool's name, its description and what arguments
-		// it takes; never how it is run or what it is permitted.
-		tool, _ := s.tool(name)
-		tools = append(tools, map[string]any{"name": name, "description": tool.Description, "args": tool.Args})
-	}
+	tools := s.offered()
 	own := make([]any, len(s.a.Model.Own))
 	for i, tool := range s.a.Model.Own {
 		own[i] = tool
@@ -807,71 +817,91 @@ func (s *stepper) replied(data any) error {
 		one.ID, _ = made["id"].(string)
 		one.Tool, _ = made["name"].(string)
 		s.st.Calls = append(s.st.Calls, one)
-		tool, listedAs := s.tool(one.Tool)
-		if tool == nil {
+		// Each call's job is named after its tool; a tool called more than
+		// once in a turn adds its place.
+		named := func() string {
+			seen[one.Tool]++
+			if seen[one.Tool] > 1 {
+				return fmt.Sprintf("%s.%d", one.Tool, seen[one.Tool]-1)
+			}
+			return one.Tool
+		}
+		// A hook reads the call as job.tool: the toolkit's entry, the tool's
+		// own name, the arguments and what the model said.
+		through := func(o *kit, shown map[string]any) map[string]any {
+			shown["toolkit"], shown["said"] = o.Entry, text
+			if len(o.Path) > 0 {
+				shown["path"] = o.Path
+			}
+			return shown
+		}
+		if one.Tool == openTool {
+			o, wrong := s.chosen(one.Args)
+			if o == nil {
+				one.Done, one.Error = true, wrong
+				continue
+			}
+			request := map[string]any{"do": toolkit.Open}
+			if len(o.Path) > 0 {
+				request["toolkit"] = o.Path
+			}
+			one.Job, one.Open = named(), o
+			job, err := s.ask(o.Entry, one.Job, request, through(&kit{Entry: o.Entry, Path: o.Path}, map[string]any{"open": true}))
+			if err != nil {
+				return err
+			}
+			s.request(machine.Request{Job: job})
+			continue
+		}
+		f := s.find(one.Tool)
+		if f == nil {
 			one.Done, one.Error = true, fmt.Sprintf("there is no tool named %q", one.Tool)
 			continue
 		}
-		args, err := s.fit(tool.Args, one.Args)
+		if f.kit != nil {
+			// The toolkit checks the arguments, which go to it as the model
+			// gave them.
+			args := one.Args
+			if args == nil {
+				args = map[string]any{}
+			}
+			request := map[string]any{"do": toolkit.Call, "tool": f.name, "args": args}
+			if len(f.kit.Path) > 0 {
+				request["toolkit"] = f.kit.Path
+			}
+			one.Job = named()
+			job, err := s.ask(f.entry, one.Job, request, through(f.kit, map[string]any{"name": f.name, "args": one.Args}))
+			if err != nil {
+				return err
+			}
+			s.request(machine.Request{Job: job})
+			continue
+		}
+		args, err := s.fit(f.args, one.Args)
 		if err != nil {
 			one.Done, one.Error = true, "the arguments do not fit the tool: "+err.Error()
 			continue
 		}
-		// Each call's job is named after its tool; a tool called more than
-		// once in a turn adds its place.
-		seen[one.Tool]++
-		one.Job = one.Tool
-		if seen[one.Tool] > 1 {
-			one.Job = fmt.Sprintf("%s.%d", one.Tool, seen[one.Tool]-1)
-		}
-		// A hook reads the tool's name, the arguments, the tool's description
-		// and what the model said, and for a listed tool its entry and its
-		// own name.
-		shown := map[string]any{"name": one.Tool, "description": tool.Description, "args": one.Args, "said": text}
+		one.Job = named()
 		scope["args"] = args
-		entry := one.Tool
-		delete(scope, "tool")
-		if listedAs != "" {
-			entry = s.st.Listed[one.Tool].Entry
-			scope["tool"] = listedAs
-			shown["entry"], shown["name"] = entry, listedAs
+		at := place(one.Tool)
+		if !f.tool.named() {
+			at += ".job"
 		}
-		place := s.a.Tools[entry].place(entry) + ".job"
-		if tool.Call != "" {
-			place = s.a.Tools[entry].place(entry)
-		}
-		job, err := tool.Job.Fill(s.eval, scope, place, one.Job)
+		job, err := f.tool.Job.Fill(s.eval, scope, at, one.Job)
 		if err != nil {
 			return err
 		}
-		// A tool that calls a machine gives it the model's arguments as they
-		// were given, with the input the tool fixes over them.
-		if tool.Call != "" {
+		// An entry that names a machine gives it the model's arguments as
+		// they were given, with the input the entry fixes over them.
+		if f.tool.named() {
 			input := map[string]any{}
 			maps.Copy(input, args)
 			fixed, _ := job.Input.(map[string]any)
 			maps.Copy(input, fixed)
 			job.Input = input
 		}
-		// Opening a toolkit marked for approval waits for a hook, which reads
-		// the toolkit's name and description. The open job's input is
-		// the toolkit's name and its instructions, filled in now, to give back.
-		in := tool.Toolkit
-		if one.Tool == openTool {
-			in, _ = args["toolkit"].(string)
-			toolkit := s.a.Toolkits[in]
-			job.Approve = toolkit.Approve
-			shown["description"] = toolkit.Description
-			gives, err := s.gives(in)
-			if err != nil {
-				return err
-			}
-			job.Input = map[string]any{"toolkit": in, "instructions": gives}
-		}
-		if in != "" {
-			shown["toolkit"] = in
-		}
-		job.Tool = shown
+		job.Tool = map[string]any{"name": one.Tool, "args": one.Args, "said": text}
 		s.request(machine.Request{Job: job})
 	}
 	return s.settled()
@@ -913,8 +943,7 @@ func (s *stepper) finish(text string) error {
 }
 
 // result is what an agent's result, or its error, always carries: the
-// conversation, as its turns, the blobs they name and the toolkits open,
-// and a count of the tokens its own turns used.
+// conversation, as its turns and the blobs they name, and a count of the tokens its own turns used.
 func (s *stepper) result(reply any) map[string]any {
 	turns, blobs := s.st.Turns, s.st.Handles
 	if turns == nil {
@@ -923,11 +952,7 @@ func (s *stepper) result(reply any) map[string]any {
 	if blobs == nil {
 		blobs = map[string]any{}
 	}
-	conversation := map[string]any{"turns": turns, "blobs": blobs}
-	if len(s.st.Opened) > 0 {
-		conversation["opened"] = s.st.Opened
-	}
-	out := map[string]any{"conversation": conversation,
+	out := map[string]any{"conversation": map[string]any{"turns": turns, "blobs": blobs},
 		"tokens": map[string]any{"input": s.st.Tokens["input"], "output": s.st.Tokens["output"], "cached": s.st.Tokens["cached"]}}
 	if reply != nil {
 		out["reply"] = s.real(reply)

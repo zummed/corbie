@@ -59,8 +59,9 @@ Words:
   - **tree**: a directory a client submitted at a prefix. It belongs to that client.
   - **location**: where a machine lives: its file's path under its tree's prefix, without `.yaml`.
   - **listed file**: a file the `.corbieignore` at the top of the directory lists. It has no location; a machine may still include it. Every other `.yaml` file is a machine.
-  - **toolkit**: a group of tools under an agent's `toolkits:`, with its `description:`, `instructions:` and tools.
-  - **description**: the `description:` of a machine, a toolkit or a tool: what it is for.
+  - **toolkit**: a machine of type toolkit. It holds tools, and answers a request to open it or to call one of them.
+  - **entry**: an item of an agent's `tools:`, or of the list a toolkit gives when it is opened.
+  - **description**: the `description:` of a machine or a tool: what it is for.
   - **address**: a location, with `#key` at a keyed location, as the command line writes it.
   - **directory**, never "folder". **computer**, never "machine".
   - **controller**, **runner**, **client**: the three kinds of process. **store**: the directory or bucket they share.

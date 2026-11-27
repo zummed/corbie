@@ -21,6 +21,27 @@ Change `ask:` to a hook, as `corbie manual hooks` says.
 `approve: true` and `approve: [exec]` mark a job, as before. A marked job that
 no `before` hook is for fails with status `denied`.
 
+Change an agent's `toolkits:` and `list:` to entries of `tools:` that name a
+toolkit, as `corbie manual agent` says.
+
+  toolkits: { net: { include: toolkits/net/toolkit.yaml } }   tools: { net: { machine: ./toolkits/net.yaml } }
+  the included file, with description: and tools:             a machine: add `toolkit: net` to it
+  instructions: that read ${input…}                           the toolkit reads its own input, which the entry's input: gives
+  a tool in a toolkit, called show                            the model calls it as net_show
+  open { toolkit: net }                                       open { list: toolkits, name: net }
+  approve: true on a toolkit, for its open                    approve: true on the entry, for its open and every call
+  when: on a tool inside a toolkit                            when: on the entry
+  hooks: for a toolkit's tools, in the agent                  unchanged for machine:; a toolkit at a location writes its own
+  tools: { files: { list: …, job: … } }                       a toolkit whose job: answers every request, with open: true
+  ${tool} in the job of an entry with list:                   input.request.tool, in the toolkit's job
+  job.tool.entry and job.tool.name                            job.tool.toolkit and job.tool.name
+  job.tool.description                                        gone
+  a tool or a listed tool with a blob argument, in a toolkit  write the tool in the agent
+  conversation.opened                                         gone: a run that carries a conversation on opens its toolkits again
+  the Toolkits page of `corbie ui`                            gone: a toolkit is a machine on the Machines page
+
+- An entry `{ machine: ./file.yaml }` names a machine by its file, as
+  `{ call: location }` names one by its location.
 - `toolkit:` is a fifth type of machine. It holds tools that any machine
   opens and calls with a job, by its file or by its location, as
   `corbie manual toolkit` says.

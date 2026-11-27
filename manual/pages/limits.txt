@@ -56,8 +56,7 @@ These are true of definitions.
   4 MiB of YAML that writes [1,1,...]           2.3 seconds, 660 MiB
   14 levels of files that name the next twice   3.9 seconds, 230 MiB
 
-- Each step of a machine made while running, and each step after the first of
-  an agent with a `list:` tool, is taken in a process of its own, and may use
+- Each step of a machine made while running is taken in a process of its own, and may use
   10 seconds and 1 GiB of memory. Past either, that machine fails and nothing
   else does. Machines that each use a step's whole time delay other
   runs, because the controller waits for four such steps at a time, and a run
@@ -69,8 +68,8 @@ These are true of definitions.
   or the whole controller. The step is taken once more and its machine fails.
 - A value is checked against a shape in time and memory that grow with the size
   of both, and nothing limits a shape. An owner's shape costs this to the
-  controller. A made machine's shape, and a shape a `list:` gives, stop at the
-  step's limits.
+  controller. A made machine's shape stops at the step's limits. Corbie
+  compiles no shape a toolkit's job gives.
 
   a list of texts against items: { type: string }    0.07 microseconds a character
   256 KiB of numbers against 1800 types                119 seconds

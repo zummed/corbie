@@ -1438,3 +1438,23 @@ func Test_runs_a_run_links_to_its_machine(t *testing.T) {
 		t.Errorf("a run with no machine to show links to one: %v", got)
 	}
 }
+
+// An agent's job for a toolkit, its open or a call of one of its tools, is
+// marked as the entry it goes through, which is the card the drawing has.
+func Test_runs_agent_marks_a_toolkits_jobs_as_its_entry(t *testing.T) {
+	call := &machine.Job{Name: "net_show", Tool: map[string]any{"toolkit": "net", "name": "show"}}
+	entries := []client.Entry{{ID: "a-client/1", Step: 1, Asks: []instance.Ask{
+		{Kind: instance.AskChild, Name: "open#1", Child: "a-client/2", Job: &machine.Job{Name: "open", Tool: map[string]any{"toolkit": "net", "open": true}}},
+		{Kind: instance.AskChild, Name: "net_show#1", Child: "a-client/3", Job: call},
+		{Kind: instance.AskScript, Name: "add#1", Job: &machine.Job{Name: "add", Tool: map[string]any{"name": "add"}}},
+	}}}
+	byID := map[string]*client.Run{"a-client/1": {ID: "a-client/1", Machine: "helper", Type: "agent"}}
+	st := &instance.State{Jobs: map[string]*instance.Going{"net_show": {Job: *call}}}
+	m := marksOf("a-client/1", entries, "running", st, byID)
+	if got := strings.Join(m.Steps[0].Asked, " "); got != "net net add" {
+		t.Errorf("the step asked for: %s", got)
+	}
+	if got := strings.Join(m.Going, " "); got != "net" {
+		t.Errorf("the jobs going are: %s", got)
+	}
+}

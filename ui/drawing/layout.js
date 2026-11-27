@@ -28,8 +28,6 @@ const trackGap = 22;
 const chanGap = 12;
 // lineApart is how far a chip is from every arrow but its own.
 const lineApart = 12;
-// foldedH is how high a folded toolkit is: its name and how many tools it has.
-const foldedH = 52;
 
 // layout gives the drawing of a scene: its parts, how far it reaches, and
 // the box the whole is drawn in. Every part listed has a key, unique among
@@ -142,7 +140,7 @@ class Drawn {
 
   // holder draws a box round cards, with its name.
   holder(cls, b, name, sub, title) {
-    this.holders.push({ key: (cls.includes("toolkit") ? "toolkit " : "holder ") + name, class: cls, x: b.x, y: b.y, w: b.w, h: b.h, name: { x: b.x + 14, y: b.y + 22, text: name }, sub, title });
+    this.holders.push({ key: "holder " + name, class: cls, x: b.x, y: b.y, w: b.w, h: b.h, name: { x: b.x + 14, y: b.y + 22, text: name }, sub, title });
   }
 
   // paint draws an item in a box, as a link where it has one, and the
@@ -1315,20 +1313,25 @@ function spots(p, q, w, last) {
 
 // An agent
 
-// toolkitSize gives how big a group of what the model can call is.
-function toolkitSize(g) {
-  if (g.Folded) return { w: cardW, h: foldedH };
-  let w = cardW, h = 0;
-  if (g.Toolkit) {
-    h = innerTop + inner;
-    w = cardW + 2 * inner;
+// perColumn is how many tools are drawn one below another.
+const perColumn = 6;
+
+// columnsOf gives tools as columns of cards, perColumn to a column.
+function columnsOf(all) {
+  const columns = [];
+  for (let i = 0; i < all.length; i += perColumn) {
+    const Tools = all.slice(i, i + perColumn);
+    const group = { Tools, items: Tools.map(t => itemOf(t.Card)) };
+    let w = cardW, h = 0;
+    for (const t of group.items) {
+      const b = size(t);
+      h += b.h + 12;
+      w = Math.max(w, b.w);
+    }
+    group.at = { x: 0, y: 0, w, h: h - 12 };
+    columns.push([group]);
   }
-  for (const t of g.items) {
-    const b = size(t);
-    h += b.h + 12;
-    w = Math.max(w, b.w);
-  }
-  return { w, h: h - 12 };
+  return columns;
 }
 
 // columnSize gives how big a column of groups is, one below another.
@@ -1390,19 +1393,10 @@ function paintTools(d, box, columns, hookItems) {
   return now;
 }
 
-// drawAgent draws three things, one below another: the model, what it can
-// call, and its reply. Each group of what it can call is a column, and the
-// toolkits folded are one column after the others.
+// drawAgent draws three things, one below another: the model, its
+// entries, and its reply. The entries are in columns.
 function drawAgent(a) {
-  const groups = (a.Toolkits ?? []).map(g => {
-    const items = (g.Tools ?? []).map(t => itemOf(t.Card));
-    const group = { ...g, items };
-    group.at = { x: 0, y: 0, ...toolkitSize(group) };
-    return group;
-  });
-  const columns = groups.filter(g => !g.Folded).map(g => [g]);
-  const folded = groups.filter(g => g.Folded);
-  if (folded.length > 0) columns.push(folded);
+  const columns = columnsOf(a.Tools ?? []);
   const hookItems = (a.Hooks ?? []).map(h => ({ hook: h, item: itemOf(h.Card) }));
 
   const box = toolsBox(columns, hookItems);
@@ -1435,21 +1429,11 @@ function drawAgent(a) {
 
 // A toolkit
 
-// perColumn is how many tools of a toolkit are drawn one below another.
-const perColumn = 6;
-
 // drawKit draws three things, one below another: the request, the tools
 // it can be for, and the answer. The tools are in columns, and the
 // toolkit's hooks are below them.
 function drawKit(k) {
-  const columns = [];
-  const all = k.Tools ?? [];
-  for (let i = 0; i < all.length; i += perColumn) {
-    const Tools = all.slice(i, i + perColumn);
-    const group = { Name: "", Tools, items: Tools.map(t => itemOf(t.Card)) };
-    group.at = { x: 0, y: 0, ...toolkitSize(group) };
-    columns.push([group]);
-  }
+  const columns = columnsOf(k.Tools ?? []);
   const hookItems = (k.Hooks ?? []).map(h => ({ hook: h, item: itemOf(h.Card) }));
   const box = toolsBox(columns, hookItems);
   const tools = box.tools;
@@ -1471,26 +1455,11 @@ function drawKit(k) {
   return d;
 }
 
-// paintGroup draws a group of what the model can call, and says whether a
-// tool in it is one the agent waits on. A toolkit's name is cut to its
-// holder, and its tooltip gives the file it is included from and its
-// `when:`. A toolkit or a tool with `when:` has a dashed border.
+// paintGroup draws one column of tools, and says whether a tool in it is
+// one the run waits on. A tool with `when:` has a dashed border.
 function paintGroup(d, g) {
   const b = g.at;
   let y = b.y;
-  let cls = "state holder toolkit";
-  if (g.When) cls += " when";
-  const name = clip(g.Name, Math.trunc((b.w - 28) / nameW));
-  if (g.Folded) {
-    const n = g.items.length;
-    d.holder(cls + " folded", b, name, { x: b.x + 14, y: b.y + 39, text: `${n} ${n === 1 ? "tool" : "tools"}` }, titleOf(g.items.map(t => t.name).join(", "), g.When));
-    d.reach(b);
-    return false;
-  }
-  if (g.Toolkit) {
-    d.holder(cls, b, name, null, titleOf(g.File, g.When));
-    y += innerTop;
-  }
   d.reach(b);
   let now = false;
   g.Tools.forEach((t, i) => {

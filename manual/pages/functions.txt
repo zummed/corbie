@@ -37,8 +37,7 @@ Build each function's package
   timeout       for a runner, its longest job's timeout plus 30 seconds;
                 for a controller, at least 30 seconds
 
-Each step of a machine made while running, and each step after the first of
-an agent with a `list:` tool, starts a process, up to four at a time, which
+Each step of a machine made while running starts a process, up to four at a time, which
 takes about 15 ms and may hold 1 GiB of memory. A function with less memory is
 stopped by Lambda at that point, and the step's machine fails.
 

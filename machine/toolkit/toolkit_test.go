@@ -137,11 +137,27 @@ func Test_toolkit_entry_keeps_only_its_four_fields(t *testing.T) {
 		{[]any{map[string]any{"kind": "job", "name": "find"}}, "entries[0].kind: an entry's kind is tool or toolkit"},
 		{[]any{map[string]any{"kind": "tool"}}, "entries[0].name: an entry has a name"},
 		{[]any{map[string]any{"kind": "tool", "name": "a"}, map[string]any{"kind": "toolkit", "name": "a"}}, `entries[1].name: two entries are named "a"`},
-		{[]any{map[string]any{"kind": "tool", "name": "a", "args": map[string]any{"type": 4}}}, "entries[0].args:"},
 	} {
 		out := step(t, server, map[string]any{"do": "open"}, machine.Event{Name: machine.Done, From: answerJob, Data: map[string]any{"entries": c.entries}})
 		if end := out.Requests[0].End; end == nil || end.Error == nil || !strings.Contains(end.Error.Error, c.problem) {
 			t.Errorf("the entries %v gave %+v, want a failure holding %q", c.entries, end, c.problem)
 		}
+	}
+}
+
+// A shape a job gives for a tool's arguments is kept as data: one that
+// would not compile, or would cost much to compile, ends the step as any
+// other does.
+func Test_toolkit_shape_from_a_job_is_not_compiled(t *testing.T) {
+	huge := map[string]any{"type": 4, "pattern": strings.Repeat("(a{1000})", 3000)}
+	entries := []any{map[string]any{"kind": "tool", "name": "a", "args": map[string]any{"allOf": []any{huge, huge, huge, huge}}}}
+	out := step(t, server, map[string]any{"do": "open"}, machine.Event{Name: machine.Done, From: answerJob, Data: map[string]any{"entries": entries}})
+	end := out.Requests[0].End
+	if end == nil || end.Error != nil {
+		t.Fatalf("the open ended %+v", end)
+	}
+	got, _ := json.Marshal(end.Output)
+	if !strings.Contains(string(got), `"type":4`) {
+		t.Fatalf("the shape was not kept as it was given: %.200s", got)
 	}
 }

@@ -1,5 +1,5 @@
-// What the Machines and Toolkits pages share: a definition as text, and
-// the address of a machine on the Machines page.
+// A definition as text, and the address of a machine on the Machines
+// page.
 import { html } from "ui";
 
 // machineHref gives the address of the machine at a location on the

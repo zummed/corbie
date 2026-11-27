@@ -94,7 +94,7 @@ corbie up
 
 ## Watch it in a browser
 
-`corbie ui` shows every run, draws each machine, and lists the toolkits. It is in the same file.
+`corbie ui` shows every run and draws each machine. It is in the same file.
 
 <br>
 

@@ -9,10 +9,11 @@ import (
 	"github.com/zummed/corbie/machine/toolkit"
 )
 
-// agentOf gives an agent's model, what it can call, and its hooks. On a run's
-// page a toolkit whose tools the run has not asked for is folded.
+// agentOf gives an agent's model, its entries, each a card, and its hooks.
+// An entry that names a toolkit is marked by the jobs the run asked for
+// through it.
 func agentOf(def *machine.Definition, a *agent.Agent, run *Run, w *walker) *Agent {
-	out := &Agent{Model: a.Model.Name, Turns: a.Turns, Toolkits: []Toolkit{}, Turn: run.latest().Turn}
+	out := &Agent{Model: a.Model.Name, Turns: a.Turns, Tools: []Tool{}, Turn: run.latest().Turn}
 	if out.Model == "" {
 		out.Model = "model"
 	}
@@ -24,43 +25,17 @@ func agentOf(def *machine.Definition, a *agent.Agent, run *Run, w *walker) *Agen
 	if out.Mark != "" && out.Mark != "failed" && out.Mark != "now" {
 		out.Mark = "done"
 	}
-	own := w.file
-	if own == "" {
-		own = fileOf(def.Lines[def.Type])
-	}
-	at := map[string]int{}
-	for _, name := range sortedKeys(a.Toolkits) {
-		at[name] = len(out.Toolkits)
-		out.Toolkits = append(out.Toolkits, Toolkit{Name: name, File: ToolkitFile(def, name, own), When: a.Toolkits[name].When, Toolkit: true, Tools: []Tool{}})
-	}
-	var free *Toolkit
 	for _, t := range sortedKeys(a.Tools) {
 		tool := a.Tools[t]
 		if tool.Job != nil && strings.HasPrefix(tool.Job.Script, "corbie:") {
 			continue // Corbie's own, which no definition writes
 		}
-		place := "tools." + t
-		if tool.Toolkit != "" {
-			place = "toolkits." + tool.Toolkit + ".tools." + t
-		}
-		c := Card{Name: t, Title: titleOf(tool.Description, tool.When), Line: lineOf(w.lines, place)}
+		c := Card{Name: t, Title: titleOf(tool.Description, tool.When), Line: lineOf(w.lines, "tools."+t)}
 		w.describe(&c, t, tool.Job)
-		it := Tool{Card: c, When: tool.When != "", Mark: jobMark(run, t)}
-		if i, ok := at[tool.Toolkit]; ok {
-			out.Toolkits[i].Tools = append(out.Toolkits[i].Tools, it)
-			continue
+		if tool.Toolkit {
+			c.Icon = "toolkit"
 		}
-		if free == nil {
-			free = &Toolkit{Tools: []Tool{}}
-		}
-		free.Tools = append(free.Tools, it)
-	}
-	if free != nil {
-		out.Toolkits = append(out.Toolkits, *free)
-	}
-	for i, g := range out.Toolkits {
-		used := slices.ContainsFunc(g.Tools, func(t Tool) bool { return t.Mark != "never" })
-		out.Toolkits[i].Folded = run != nil && g.Toolkit && !used
+		out.Tools = append(out.Tools, Tool{Card: c, When: tool.When != "", Mark: jobMark(run, t)})
 	}
 	out.Hooks = hooksOf(def, run, w)
 	return out

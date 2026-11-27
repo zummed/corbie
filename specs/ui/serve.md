@@ -41,7 +41,7 @@ A UI listens on this computer only, and refuses a `--listen` address of any othe
 ```
 no party        Runs, with every run's status; /metrics
 client          each of its own runs in full, with Reply, Send and Cancel; Reply on any run, with a ticket's value
-controller      Machines and Toolkits, to read; Controller, with its parties, secrets and values; cancelling any run
+controller      Machines, to read; Controller, with its parties, secrets and values; cancelling any run
 ```
 
 The UI needs the store, and refuses to start where it cannot open it.

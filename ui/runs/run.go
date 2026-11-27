@@ -982,12 +982,29 @@ func waitsOf(run *client.Run, st *instance.State, kids []*client.Run, at time.Ti
 func marksOf(id string, entries []client.Entry, status string, st *instance.State, byID map[string]*client.Run) *drawing.Run {
 	m := &drawing.Run{Ended: status != instance.Running && status != instance.Waiting, Failed: status == instance.Failed, Children: map[string]drawing.Child{}}
 	hooks := map[string]string{} // the hook of each hook's job the run asked for, by the job's name
+	// An agent's job for a toolkit is named by the entry it goes through.
+	kits := map[string]string{}
+	agent := byID[id] != nil && byID[id].Type == "agent"
 	for _, e := range entries {
 		for _, a := range e.Asks {
-			if e.ID == id && a.Job != nil && a.Job.Hook != "" {
+			if e.ID != id || a.Job == nil {
+				continue
+			}
+			if a.Job.Hook != "" {
 				hooks[named(a.Name)] = a.Job.Hook
 			}
+			if tool, _ := a.Job.Tool.(map[string]any); agent {
+				if kit, _ := tool["toolkit"].(string); kit != "" {
+					kits[named(a.Name)] = kit
+				}
+			}
 		}
+	}
+	jobOf := func(name string) string {
+		if kit := kits[named(name)]; kit != "" {
+			return kit
+		}
+		return jobOf(name)
 	}
 	for _, e := range entries {
 		if e.ID != id || e.Step == 0 {

@@ -195,7 +195,7 @@ func start(ctx context.Context, e *cli.Env, o options) (*ui, error) {
 	}
 	shell := page.Shell{Parties: p.names, Offered: []string{"Runs"}}
 	if p.controller != nil {
-		shell.Offered = append(shell.Offered, "Machines", "Toolkits", "Controller")
+		shell.Offered = append(shell.Offered, "Machines", "Controller")
 	}
 
 	mux := http.NewServeMux()
@@ -219,8 +219,6 @@ func start(ctx context.Context, e *cli.Env, o options) (*ui, error) {
 			Interval: interval, Shell: shell, Latest: steps.Latest})
 		mux.Handle("/machines", areaMachines)
 		mux.Handle("/machines/", areaMachines)
-		mux.Handle("/toolkits", areaMachines)
-		mux.Handle("/toolkits/", areaMachines)
 		c.Machine, c.Differs = areaMachines.Href, areaMachines.Differs
 		areaController := controller.New(controller.Config{Controller: p.controller, Store: p.store, Command: command, Interval: interval, Changed: u.list.Changed, Shell: shell})
 		mux.Handle("/controller", areaController)

@@ -170,12 +170,12 @@ type Rule struct {
 }
 
 // An Agent is its model with its mark and the turn it is on, how many turns
-// it has, what it can call, its hooks, and where its file writes the model.
+// it has, its entries, its hooks, and where its file writes the model.
 type Agent struct {
 	Model, Mark string
 	ModelLine   string
 	Turn, Turns int
-	Toolkits    []Toolkit
+	Tools       []Tool
 	Hooks       []Hook
 }
 
@@ -189,16 +189,6 @@ type Hook struct {
 // HookJob is the name a run's marks give the jobs of a hook: one no job of
 // a definition has.
 func HookJob(hook string) string { return "hook " + hook }
-
-// A Toolkit is one group of what the model can call: a toolkit, or the
-// tools in no toolkit, which has no name. File is the file the toolkit is
-// included from, where that is not the agent's own, and Folded says the
-// run drawn has not asked for its tools.
-type Toolkit struct {
-	Name, File, When string
-	Toolkit, Folded  bool
-	Tools            []Tool
-}
 
 // A Tool is a tool's card, whether it has `when:`, and its mark.
 type Tool struct {
@@ -332,25 +322,6 @@ func (w *walker) open(at, job string) (string, *Scene) {
 // inPlace says a name in a definition's table of machines is that of a
 // machine written in place.
 func inPlace(job string) bool { return strings.HasPrefix(job, "in-place-") }
-
-// ToolkitFile gives the file a toolkit of an agent is included from, as
-// Corbie writes out the agent: the file its tools are written in, or its
-// `description:` where it has no tools, when that is not own, the agent's
-// own file. A toolkit written in place gives nothing.
-func ToolkitFile(def *machine.Definition, toolkit, own string) string {
-	at := "toolkits." + toolkit + "."
-	file := fileOf(def.Lines[at+"description"])
-	for _, place := range slices.Sorted(maps.Keys(def.Lines)) {
-		if strings.HasPrefix(place, at+"tools.") {
-			file = fileOf(def.Lines[place])
-			break
-		}
-	}
-	if file == own {
-		return ""
-	}
-	return file
-}
 
 // fileOf gives the file of a value's file and line, as base.yaml:3.
 func fileOf(line string) string {

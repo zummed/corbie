@@ -305,9 +305,9 @@ func Test_serve_each_party_opens_its_pages(t *testing.T) {
 		args               []string
 		open, shut, header []string
 	}{
-		{[]string{"none"}, []string{"/runs", "/metrics"}, []string{"/machines", "/toolkits", "/controller"}, nil},
-		{[]string{"client"}, []string{"/runs", "/metrics"}, []string{"/machines", "/toolkits", "/controller"}, nil},
-		{[]string{"controller"}, []string{"/runs", "/metrics", "/machines", "/toolkits", "/controller"}, nil, []string{"/machines Machines", "/toolkits Toolkits", "/controller Controller"}},
+		{[]string{"none"}, []string{"/runs", "/metrics"}, []string{"/machines", "/controller"}, nil},
+		{[]string{"client"}, []string{"/runs", "/metrics"}, []string{"/machines", "/controller"}, nil},
+		{[]string{"controller"}, []string{"/runs", "/metrics", "/machines", "/controller"}, nil, []string{"/machines Machines", "/controller Controller"}},
 	} {
 		ctx, cancel := context.WithCancel(context.Background())
 		u, err := started(ctx, config, c.args...)
@@ -399,7 +399,7 @@ func Test_page_loads_nothing_from_another_site(t *testing.T) {
 		t.Fatal(err)
 	}
 	far := regexp.MustCompile(`(?i)(https?:)?//[a-z0-9.-]+\.[a-z]{2,}`)
-	for _, path := range []string{"/runs", "/machines", "/toolkits", "/controller", "/assets/ui.css", "/assets/ui.js", "/runs/script.js", "/machines/script.js", "/toolkits/script.js", "/controller/script.js", "/drawing/drawing.js", "/drawing/layout.js"} {
+	for _, path := range []string{"/runs", "/machines", "/controller", "/assets/ui.css", "/assets/ui.js", "/runs/script.js", "/machines/script.js", "/controller/script.js", "/drawing/drawing.js", "/drawing/layout.js"} {
 		w := ask(u.handler, "GET", path)
 		if w.Code != http.StatusOK {
 			t.Errorf("%s answered %d", path, w.Code)

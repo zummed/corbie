@@ -805,3 +805,43 @@ func follow(t *testing.T, l *client.Local, id string) following {
 	f.run = r
 	return f
 }
+
+// A skill a person writes is a toolkit whose instructions are its SKILL.md
+// and whose files: are its other files. The toolkit then has the tool read,
+// which gives one of them, and takes no other path.
+func TestAgentOpensASkillWrittenAsAToolkit(t *testing.T) {
+	files := maps.Clone(toolkits)
+	files["toolkits/review/toolkit.yaml"] = `
+		toolkit: review
+		description: Review code using the team's checklist.
+		instructions: { include: ./SKILL.md }
+		files: [./references/checklist.md]
+	`
+	files["toolkits/review/SKILL.md"] = "# Code review\n\nRead `references/checklist.md`, then review the diff.\n"
+	files["toolkits/review/references/checklist.md"] = "# Review checklist\n\nCheck correctness, tests, and compatibility.\n"
+	m := newModel(t, calls("c1", "open", opens("payments")), calls("c2", "payments_read", `{"path": "references/checklist.md"}`),
+		calls("c3", "payments_read", `{"path": "SKILL.md"}`), says("done"))
+	def := strings.Replace(helper(m.URL, ""), "./toolkits/payments.yaml", "./toolkits/review/toolkit.yaml", 1)
+	l := local(t, "all")
+	r := wait(t, l, startWith(t, l, def, files, map[string]any{"question": "q"}))
+	if r.Status != "done" {
+		t.Fatalf("the agent ended %s: %s", r.Status, r.Error)
+	}
+	if shown := lastShown(m.Calls[1]); !strings.Contains(shown, "then review the diff") {
+		t.Errorf("the open of the skill gave: %s", shown)
+	}
+	read := offeredTool(m.Calls[1].Tools, "payments_read")
+	if read == nil || !strings.Contains(jsonOf(read["input_schema"]), `"enum":["references/checklist.md"]`) {
+		t.Errorf("read was offered as %s", jsonOf(read))
+	}
+	if shown := lastShown(m.Calls[2]); !strings.Contains(shown, "Check correctness, tests, and compatibility.") {
+		t.Errorf("read gave: %s", shown)
+	}
+	if shown := lastShown(m.Calls[3]); !strings.Contains(shown, "the arguments do not fit the tool") {
+		t.Errorf("read of a file the toolkit does not list was shown as: %s", shown)
+	}
+	if _, err := machineParse("toolkit: k\ndescription: K\nfiles: [./a.md]\ntools:\n  read: { description: R, job: ./r.js }\n", map[string]string{"a.md": "a", "r.js": ""}); err == nil ||
+		!strings.Contains(err.Error(), `tools.read: the tool "read" has the name of the tool a toolkit with files: has`) {
+		t.Errorf("a toolkit with files: and a tool read: %v", err)
+	}
+}

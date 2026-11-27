@@ -124,6 +124,27 @@ return server.toolkit(input.request)
 - The toolkit does not compile a tool's `args` that a job gives. The job that answers a call checks its arguments.
 - `server.toolkit` of the `mcp` plugin answers a request for an MCP server (see plugin.md).
 
+## A skill
+
+A skill is a toolkit whose instructions are its `SKILL.md`, with one tool, `read`, that gives one of its other files.
+
+```yaml
+# review/toolkit.yaml
+toolkit: review
+description: Review code using the team's checklist.
+instructions: { include: ./SKILL.md }
+files: [./references/checklist.md]
+```
+
+1. An open gives the text of `SKILL.md` as the instructions, and the entry of the tool `read`.
+2. A call of `read` with `{ path: references/checklist.md }` gives that file's text.
+
+- `files:` lists text files, each written as a path is. With it the toolkit has the tool `read`, and no tool of the toolkit may take that name.
+- `read` takes `path`, one of the files as it is written from the toolkit's directory. Any other path does not fit.
+- `read` is a script of Corbie's own, which is sent the files and is allowed nothing.
+- Corbie runs no script that a skill holds: a script among the files is text `read` gives.
+- A skill of an MCP server is a toolkit inside the server's toolkit, which the server's job answers for (see plugin.md).
+
 ## Authority
 
 A toolkit's run is a run like any other, so the machine area gives all of this:

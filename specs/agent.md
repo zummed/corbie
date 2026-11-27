@@ -279,7 +279,7 @@ Every list the model chooses from is a list of entries: the agent's own toolkits
 - A tool of such a list that the model has not opened is not offered, and a call of it goes back to the model as an error.
 - A list that could not be stored is shown as a short one is.
 
-A toolkit's list may hold a toolkit, as well as tools. The model opens it from the list of the toolkit that gave it:
+A toolkit's list may hold a toolkit, as well as tools, as an MCP server's list holds its skills (see plugin.md). The model opens it from the list of the toolkit that gave it:
 
 ```
 open { list: github, name: review }     the request is { do: open, toolkit: [review] }

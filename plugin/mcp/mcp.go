@@ -4,7 +4,9 @@ package mcp
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/base64"
+	"encoding/hex"
 	"errors"
 	"runtime/debug"
 	"slices"
@@ -93,8 +95,11 @@ type server struct {
 	instructions string
 	// tasks says the script uses the server as a toolkit, which takes a
 	// task as a call's answer.
-	tasks  bool
-	closed bool
+	tasks bool
+	// skilled says the server has skills, which it lists and whose files
+	// it gives.
+	skilled bool
+	closed  bool
 }
 
 // self is who the plugin says it is to a server.
@@ -112,7 +117,10 @@ var capabilities = map[string]any{"elicitation": map[string]any{"form": map[stri
 
 // withTasks are the same, and that a call may be answered with a task.
 var withTasks = map[string]any{"elicitation": capabilities["elicitation"],
-	"extensions": map[string]any{"io.modelcontextprotocol/tasks": map[string]any{}}}
+	"extensions": map[string]any{"io.modelcontextprotocol/tasks": map[string]any{}, skillsExtension: map[string]any{}}}
+
+// skillsExtension is the extension by which a server lists skills.
+const skillsExtension = "io.modelcontextprotocol/skills"
 
 // object is the server as the script holds it.
 func (s *server) object() *plugin.Object {
@@ -161,6 +169,9 @@ func (s *server) agree(ctx context.Context) error {
 		return err
 	case answer.Error == nil:
 		s.instructions, _ = answer.Result["instructions"].(string)
+		can, _ := answer.Result["capabilities"].(map[string]any)
+		extensions, _ := can["extensions"].(map[string]any)
+		_, s.skilled = extensions[skillsExtension]
 		return s.choose(ctx, answer.Result["supportedVersions"])
 	case answer.Error.Code == unsupportedVersion:
 		data, _ := answer.Error.Data.(map[string]any)
@@ -473,8 +484,16 @@ func (s *server) toolkit(job *plugin.Job, first any, _ plugin.Options) (any, err
 	if err := data("request", request); err != nil {
 		return nil, err
 	}
+	// A skill is a toolkit inside the server's: the request names it.
+	skill := ""
 	if inner, ok := request["toolkit"]; ok && inner != nil {
-		return nil, plugin.Errorf(plugin.BadInput, "the server %s has no toolkit %v inside it", s.name, inner)
+		path, _ := inner.([]any)
+		if len(path) == 1 {
+			skill, _ = path[0].(string)
+		}
+		if skill == "" || !s.skilled {
+			return nil, plugin.Errorf(plugin.BadInput, "the server %s has no toolkit %v inside it", s.name, inner)
+		}
 	}
 	do, _ := request["do"].(string)
 	tool, _ := request["tool"].(string)
@@ -496,6 +515,9 @@ func (s *server) toolkit(job *plugin.Job, first any, _ plugin.Options) (any, err
 	s.tasks = true
 	ctx, cancel := context.WithTimeout(job.Context, s.limit)
 	defer cancel()
+	if skill != "" {
+		return s.inSkill(ctx, skill, do, tool, args)
+	}
 	switch do {
 	case "open":
 		tools, err := s.list(ctx)
@@ -504,6 +526,15 @@ func (s *server) toolkit(job *plugin.Job, first any, _ plugin.Options) (any, err
 		}
 		for _, tool := range tools {
 			tool.(map[string]any)["kind"] = "tool"
+		}
+		if s.skilled {
+			skills, err := s.skills(ctx)
+			if err != nil {
+				return nil, err
+			}
+			for _, sk := range skills {
+				tools = append(tools, map[string]any{"kind": "toolkit", "name": sk.name, "description": sk.description})
+			}
 		}
 		return map[string]any{"instructions": s.instructions, "entries": tools}, nil
 	case "call":
@@ -543,6 +574,146 @@ func (s *server) toolkit(job *plugin.Job, first any, _ plugin.Options) (any, err
 		return map[string]any{"result": "cancelled"}, nil
 	}
 	return nil, plugin.Errorf(plugin.BadInput, "a request to a toolkit is to open, call, resume or cancel, and not to %q", do)
+}
+
+// A skill is one of the server's skills: its name and description, the
+// address of its SKILL.md, and the digest of each of its files by address.
+type skill struct {
+	name, description, uri string
+	files                  map[string]string
+}
+
+// root is the address of the skill's directory.
+func (k *skill) root() string { return k.uri[:strings.LastIndex(k.uri, "/")+1] }
+
+// skills lists the server's skills. One whose files the server makes as
+// they are asked for has no list of them, and is left out.
+func (s *server) skills(ctx context.Context) ([]*skill, error) {
+	var out []*skill
+	cursor := ""
+	for page := 0; ; page++ {
+		if page == 1000 {
+			return nil, plugin.Errorf(plugin.Failed, "the server %s's list of skills did not end after a thousand pages", s.name)
+		}
+		params := map[string]any{}
+		if cursor != "" {
+			params["cursor"] = cursor
+		}
+		result, err := s.request(ctx, "skills/list", params, "", nil)
+		if err != nil {
+			return nil, err
+		}
+		listed, _ := result["skills"].([]any)
+		for _, item := range listed {
+			entry, _ := item.(map[string]any)
+			front, _ := entry["frontmatter"].(map[string]any)
+			k := &skill{files: map[string]string{}}
+			k.name, _ = front["name"].(string)
+			k.description, _ = front["description"].(string)
+			k.uri, _ = entry["uri"].(string)
+			resources, listedFiles := entry["resources"].([]any)
+			for _, r := range resources {
+				file, _ := r.(map[string]any)
+				uri, _ := file["uri"].(string)
+				digest, _ := file["digest"].(string)
+				k.files[uri] = digest
+			}
+			if _, has := k.files[k.uri]; k.name != "" && listedFiles && has && strings.Contains(k.uri, "/") {
+				out = append(out, k)
+			}
+		}
+		if cursor, _ = result["nextCursor"].(string); cursor == "" {
+			return out, nil
+		}
+	}
+}
+
+// inSkill answers a request for one of the server's skills, as a toolkit:
+// an open gives its SKILL.md as the instructions and one tool, read, and a
+// call of read gives one of the files the skill lists.
+func (s *server) inSkill(ctx context.Context, name, do, tool string, args map[string]any) (any, error) {
+	skills, err := s.skills(ctx)
+	if err != nil {
+		return nil, err
+	}
+	i := slices.IndexFunc(skills, func(k *skill) bool { return k.name == name })
+	if i < 0 {
+		return nil, plugin.Errorf(plugin.BadInput, "the server %s has no skill %q", s.name, name)
+	}
+	k := skills[i]
+	var paths []any
+	for uri := range k.files {
+		if path, under := strings.CutPrefix(uri, k.root()); under && uri != k.uri {
+			paths = append(paths, path)
+		}
+	}
+	slices.SortFunc(paths, func(a, b any) int { return strings.Compare(a.(string), b.(string)) })
+	switch {
+	case do == "open":
+		text, err := s.file(ctx, k, k.uri)
+		if err != nil {
+			return nil, err
+		}
+		instructions, isText := text.(string)
+		if !isText {
+			return nil, plugin.Errorf(plugin.Failed, "the server %s gave a SKILL.md of the skill %q that is not text", s.name, name)
+		}
+		entries := []any{}
+		if len(paths) > 0 {
+			entries = append(entries, map[string]any{"kind": "tool", "name": "read", "description": "Read one of the files of the skill " + name + ".",
+				"args": map[string]any{"type": "object", "properties": map[string]any{"path": map[string]any{"type": "string", "enum": paths}},
+					"required": []any{"path"}, "additionalProperties": false}})
+		}
+		return map[string]any{"instructions": instructions, "entries": entries}, nil
+	case do == "call" && tool == "read":
+		path, _ := args["path"].(string)
+		if !slices.Contains(paths, any(path)) {
+			return nil, plugin.Errorf(plugin.BadInput, "the skill %q lists no file %q", name, path)
+		}
+		contents, err := s.file(ctx, k, k.root()+path)
+		if err != nil {
+			return nil, err
+		}
+		return map[string]any{"result": contents}, nil
+	case do == "call":
+		return nil, plugin.Errorf(plugin.BadInput, "the skill %q has the one tool read, and no tool %q", name, tool)
+	}
+	return nil, plugin.Errorf(plugin.BadInput, "a read of a skill's file ends with the file, so there is nothing to %s", do)
+}
+
+// file reads one file of a skill, and checks it against the digest the
+// skill's list gives for it. It gives a text, or a blob.
+func (s *server) file(ctx context.Context, k *skill, uri string) (any, error) {
+	result, err := s.request(ctx, "resources/read", map[string]any{"uri": uri}, "", nil)
+	if err != nil {
+		return nil, err
+	}
+	contents, _ := result["contents"].([]any)
+	for _, item := range contents {
+		part, _ := item.(map[string]any)
+		if part["uri"] != uri {
+			continue
+		}
+		var given any
+		var bytes []byte
+		if text, isText := part["text"].(string); isText {
+			given, bytes = text, []byte(text)
+		} else {
+			encoded, _ := part["blob"].(string)
+			decoded, err := base64.StdEncoding.DecodeString(encoded)
+			if err != nil {
+				return nil, plugin.Errorf(plugin.Failed, "the server %s gave contents that are not base64: %v", s.name, err)
+			}
+			kind, _ := part["mimeType"].(string)
+			given, bytes = plugin.NewBlob(kind, decoded), decoded
+		}
+		sum := sha256.Sum256(bytes)
+		if digest := "sha256:" + hex.EncodeToString(sum[:]); digest != k.files[uri] {
+			return nil, plugin.Errorf(plugin.Failed, "the server %s gave %s with the digest %s, and its skill lists %s", s.name, uri, digest, k.files[uri])
+		}
+		return given, nil
+	}
+	return nil, plugin.Errorf(plugin.Failed, "the server %s gave no contents for %s", s.name, uri)
 }
 
 // answer gives a call's result as a toolkit answers: { result }, or
@@ -841,6 +1012,13 @@ Options:
   entries are the server's tools, each { kind: "tool", name, description,
   args }. result is what call gives. state is what the call ended with, and
   responses are as for call.
+- A server with the Skills extension gives each skill in an open as
+  { kind: "toolkit", name, description }. A request with toolkit: [name]
+  is for that skill: an open gives its SKILL.md as the instructions and one
+  tool, read, and a call of read with { path } gives one of the files the
+  skill lists, a text or a blob. The plugin checks each file's SHA-256
+  against the skill's list, which finds a broken transfer and is no
+  control. It runs nothing a skill holds.
 - A server on the web may answer a call with a task, which ends later. The
   call then gives { working: { said, wait }, state }: said is the server's
   message about the task, and wait the seconds it asks for between requests.

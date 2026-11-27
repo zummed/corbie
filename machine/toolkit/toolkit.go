@@ -71,6 +71,14 @@ const (
 	KindToolkit = "toolkit"
 )
 
+// The tool a toolkit with files: has, and its script.
+const (
+	readTool   = "read"
+	readScript = "corbie:read.js"
+	readSource = `return require(input.files[input.path])
+`
+)
+
 // answerJob is the name of the job that answers every request.
 const answerJob = "job"
 
@@ -103,6 +111,8 @@ func (toolkitType) Shape() *machine.Shape {
 	return &machine.Shape{Name: "toolkit", What: "a toolkit", Fields: []machine.Field{
 		{Name: "instructions", Kind: machine.KindText, Description: "the text an open gives; it reads the toolkit's input"},
 		{Name: "tools", Kind: machine.KindNamed, Of: tool, Description: "the toolkit's tools, each a named job"},
+		{Name: "files", Kind: machine.KindList, Path: true,
+			Description: "text files a caller reads with the tool read, which the toolkit then has: a skill's files beside its SKILL.md"},
 		{Name: "job", Kind: machine.KindJob,
 			Description: "one job that answers every request, in place of instructions and tools; it is given the toolkit's input"},
 	}}
@@ -114,9 +124,34 @@ func (toolkitType) Fill(p *machine.Parser, f *machine.Fields) any {
 	if job, ok := f.Value("job"); ok {
 		t.Job = p.Job("job", job)
 	}
+	// With files:, the toolkit has a tool that reads one of them: a script
+	// of Corbie's own, which is sent the files and nothing else.
+	files := map[string]any{}
+	var sent []string
+	for _, written := range f.Strings("files") {
+		clean := p.CleanPath(written)
+		p.File("files", clean)
+		files[strings.TrimPrefix(written, "./")] = clean
+		sent = append(sent, clean)
+	}
+	if len(files) > 0 {
+		p.Builtin(readScript, readSource)
+		paths := []any{}
+		for _, name := range sortedNames(files) {
+			paths = append(paths, name)
+		}
+		t.Tools = map[string]*Tool{readTool: {Description: "Read one of the toolkit's files.",
+			Args: map[string]any{"type": "object", "properties": map[string]any{"path": map[string]any{"type": "string", "enum": paths}},
+				"required": []any{"path"}, "additionalProperties": false},
+			Job: &machine.JobSpec{Script: readScript, Files: sent, Alone: true, Input: map[string]any{"path": "${args.path}", "files": files}}}}
+	}
 	tools, order := f.Map("tools")
 	for _, name := range order {
 		place := "tools." + name
+		if _, reads := t.Tools[name]; reads {
+			p.Problem(place, "the tool %q has the name of the tool a toolkit with files: has for reading them", name)
+			continue
+		}
 		tf := p.Fields(place, tools[name], f.Of("tools"))
 		if tf == nil {
 			continue

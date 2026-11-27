@@ -895,6 +895,36 @@ func TestAgentResumesAnMCPServersTask(t *testing.T) {
 	}
 }
 
+// A skill of an MCP server is a toolkit in the server's list: the model
+// opens it, is shown its SKILL.md, and reads its other files with read.
+func TestAgentOpensASkillOfAnMCPServer(t *testing.T) {
+	notes := httptest.NewServer(&standin.Server{Only: []string{"add_note"}, Skills: true})
+	t.Cleanup(notes.Close)
+	m := newModel(t, calls("c1", "open", `{"list": "notes", "name": "code-review"}`),
+		calls("c2", "notes_code-review_read", `{"path": "references/checklist.md"}`), says("Reviewed."))
+	def := strings.Replace(agentDef(m.URL, ""), "tools:\n", `tools:
+		  notes: { machine: ./notes.yaml, input: { address: "`+notes.URL+`/mcp" }, open: true }
+`, 1)
+	r := runAgent(t, local(t, "all"), def, map[string]string{"add.js": scripts["add.js"],
+		"notes.yaml": "toolkit: notes\ndescription: Notes.\ninput: { address: string }\njob: { script: ./notes.js, allow: [\"net:" + strings.TrimPrefix(notes.URL, "http://") + "\"] }\n",
+		"notes.js":   `return mcp.connect(input.address).toolkit(input.request)`})
+	if r.Status != "done" {
+		t.Fatalf("the agent ended %s: %s", r.Status, r.Error)
+	}
+	if got := openDescription(m.Calls[0].Tools); !strings.Contains(got, "- { list: notes, name: code-review }: Review code using the team's checklist.") {
+		t.Errorf("open says: %s", got)
+	}
+	if shown := lastShown(m.Calls[1]); !strings.Contains(shown, "then review the diff") {
+		t.Errorf("the open of the skill gave: %s", shown)
+	}
+	if got := offeredNames(m.Calls[1].Tools); !strings.Contains(got, "notes_code-review_read") {
+		t.Errorf("after the open of the skill, the turn was offered: %s", got)
+	}
+	if shown := lastShown(m.Calls[2]); !strings.Contains(shown, "Check correctness, tests, and compatibility.") {
+		t.Errorf("read gave: %s", shown)
+	}
+}
+
 // A tool whose job is a call is shown to the model as the whole of the
 // called run's result, and a called run that fails as its error.
 func Test_agent_tool_that_calls_shows_the_whole_result(t *testing.T) {

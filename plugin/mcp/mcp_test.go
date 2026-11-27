@@ -593,3 +593,57 @@ func TestSignIn(t *testing.T) {
 		}
 	}
 }
+
+// A server's skills are toolkits inside the server's: an open lists each
+// with its name and description, an open of one gives its SKILL.md as the
+// instructions and the tool read, and read gives a file the skill lists.
+// A file that differs from the digest its skill lists is refused.
+func TestServerSkillsAreToolkits(t *testing.T) {
+	for _, w := range ways(t, "") {
+		if w.server == nil {
+			continue
+		}
+		w.server.Skills = true
+		opened, err := toolkit(t, w, map[string]any{"do": "open"})
+		entries, _ := opened["entries"].([]any)
+		if err != nil || len(entries) == 0 {
+			t.Fatalf("open gave %v, %v", opened, err)
+		}
+		last := entries[len(entries)-1].(map[string]any)
+		if want := map[string]any{"kind": "toolkit", "name": "code-review", "description": "Review code using the team's checklist."}; !reflect.DeepEqual(last, want) {
+			t.Errorf("the skill's entry was %v", last)
+		}
+		in := []any{"code-review"}
+		skill, err := toolkit(t, w, map[string]any{"do": "open", "toolkit": in})
+		text, _ := skill["instructions"].(string)
+		if err != nil || !strings.Contains(text, "Read `references/checklist.md`, then review the diff.") {
+			t.Fatalf("the open of the skill gave %v, %v", skill, err)
+		}
+		read := skill["entries"].([]any)[0].(map[string]any)
+		paths := read["args"].(map[string]any)["properties"].(map[string]any)["path"].(map[string]any)["enum"]
+		if read["name"] != "read" || !reflect.DeepEqual(paths, []any{"references/checklist.md"}) {
+			t.Errorf("the skill's tool was %v", read)
+		}
+		file, err := toolkit(t, w, map[string]any{"do": "call", "toolkit": in, "tool": "read", "args": map[string]any{"path": "references/checklist.md"}})
+		if err != nil || file["result"] != "# Review checklist\n\nCheck correctness, tests, and compatibility.\n" {
+			t.Errorf("read gave %v, %v", file, err)
+		}
+		for _, bad := range []map[string]any{
+			{"do": "call", "toolkit": in, "tool": "read", "args": map[string]any{"path": "SKILL.md"}},
+			{"do": "call", "toolkit": in, "tool": "read", "args": map[string]any{"path": "../other/secret.md"}},
+			{"do": "call", "toolkit": in, "tool": "run"},
+			{"do": "open", "toolkit": []any{"made"}},
+			{"do": "open", "toolkit": []any{"code-review", "deeper"}},
+			{"do": "resume", "toolkit": in, "tool": "read", "state": map[string]any{}},
+		} {
+			if _, err := toolkit(t, w, bad); codeOf(err) != plugin.BadInput {
+				t.Errorf("the request %v gave %v", bad, err)
+			}
+		}
+		w.server.Changed = true
+		if _, err := toolkit(t, w, map[string]any{"do": "call", "toolkit": in, "tool": "read", "args": map[string]any{"path": "references/checklist.md"}}); codeOf(err) != plugin.Failed || !strings.Contains(err.Error(), "and its skill lists sha256:") {
+			t.Errorf("a file that is not the one listed gave %v", err)
+		}
+		w.server.Skills, w.server.Changed = false, false
+	}
+}

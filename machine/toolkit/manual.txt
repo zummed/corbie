@@ -68,6 +68,8 @@ Fields
   input          the shape of its input; `request` is added by the caller
   instructions   the text an open gives; it reads `input`, `values` and `run`
   tools          the tools, by name
+  files          text files a caller reads with the tool `read`: a skill's
+                 files beside its `SKILL.md`
   job            one job that answers every request, in place of
                  `instructions:` and `tools:`
 
@@ -105,6 +107,28 @@ Requests
 - A toolkit is transient: each request is a run.
 - An agent names a toolkit as an entry of its `tools:`, and opens it and
   calls its tools for its model, as `corbie manual agent` says.
+
+A skill
+-------
+
+A skill is a toolkit whose instructions are its `SKILL.md`, with one tool,
+`read`, that gives one of its other files.
+
+  # review/toolkit.yaml
+  toolkit: review
+  description: Review code using the team's checklist.
+  instructions: { include: ./SKILL.md }
+  files: [./references/checklist.md]
+
+- With `files:`, the toolkit has the tool `read`, which takes `path`: one of
+  the files, written from the toolkit's directory, as
+  `references/checklist.md`. No tool of the toolkit is named `read`.
+- `read` is a script of Corbie's own. It is sent the files, and is allowed
+  nothing.
+- Corbie runs no script that a skill holds. A script is a file `read` gives
+  as text.
+- A skill of an MCP server is a toolkit inside the server's, as
+  `corbie manual mcp` says.
 
 Reference
 ---------

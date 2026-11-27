@@ -80,6 +80,17 @@ A plugin's page in the manual is its specification. It lists each call, its opti
 - A call or a task that needs input gives `{ requests, state }`, and a resume with the responses answers it.
 - A program stops when its job ends, so the plugin waits in the job for a program's task.
 
+A server that has the Skills extension, `io.modelcontextprotocol/skills`, gives its skills as toolkits inside its own:
+
+1. An open lists each skill after the tools, as `{ kind: toolkit, name, description }`, from the skill's frontmatter.
+2. An open with `toolkit: [code-review]` reads the skill's `SKILL.md` and gives its text as the instructions, with one tool, `read`.
+3. A call of `read` with `toolkit: [code-review]` and `{ path }` gives one of the skill's other files: a text, or a blob.
+
+- `read` takes only a path the skill's list of files gives. The plugin reads no other address of the server.
+- The plugin checks the SHA-256 of each file it reads against the digest in the skill's list, and fails with both where they differ. That finds a file changed or cut short since the list was made. It is no control: the server writes both.
+- A skill whose files the server makes as they are asked for has no list of them, and is left out.
+- The plugin reads a file only when it is asked for, and runs nothing a skill holds.
+
 Corbie also comes with libraries written in script, among them the standard turn of an agent.
 
 Databases, message queues, mail and the like are not in this list. Each is an extension, added by whoever needs it.

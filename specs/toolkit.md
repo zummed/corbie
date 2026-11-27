@@ -64,7 +64,7 @@ A toolkit with `tools:` answers a request itself.
 
 No job starts for any of these.
 
-A tool is written as an agent's tool is: `description:`, `args:` in the short form or in full, and `job:`. A `blob` in the short form is the blob itself, as in a machine's input.
+A tool is written as an agent's tool is: `description:`, `args:` in the short form or in full, and `job:`. A `blob` in the short form is the blob itself, as in a machine's input; an agent offers it to the model as a name.
 
 ## A resume waits
 

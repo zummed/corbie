@@ -77,7 +77,7 @@ service and `secret:<secret>@net:<host>`, and nothing from the definition's
     prompt: Say hello.
 
     corbie test elsewhere.yaml --secret-env MODELS_KEY
-      output: {"conversation":{"blobs":{},"turns":[{"$blob":"conversation.turns[0]","size":1616,"type":"application/json"}]},"reply":"Hello.","tokens":{"cached":0,"input":10,"output":5}}
+      output: {"conversation":{"blobs":{},"turns":[{"$blob":"conversation.turns[0]","size":1714,"type":"application/json"}]},"reply":"Hello.","tokens":{"cached":0,"input":10,"output":5}}
       used: net:models.example:443 secret:MODELS_KEY@net:models.example:443
 
 The result
@@ -232,11 +232,14 @@ agent with many tools shows the model the ones it has opened.
 - A toolkit's list may hold a toolkit. The result of `open` names it, the
   model opens it with the list's name, `{ list: github, name: review }`,
   and its tools are shown as `github_review_read`.
-- A list larger than 32 KiB is a blob: the list `toolkits` before the first
-  turn, and a toolkit's list in the result of its `open`. The model searches
-  it with the blob tools, then calls `open` with the list, or its blob's
-  name, and an entry's name. A tool it opens that way is offered from the
-  next turn.
+- A toolkit's list larger than `limits: { show: }` is not offered. The result
+  of its `open` gives the names, `{ kind, name, description }`, and the model
+  calls `open` with the list and an entry's name. A job named `open` reads
+  the entry, and a tool is offered from the next turn.
+- Names larger than the limit are a blob, as is a list `toolkits` that
+  large. The model searches it with the blob tools, then opens an entry.
+- A toolkit's tool takes a blob as a tool written in place does: `args: {
+  file: blob }` is offered as a name, and the tool's job reads the blob.
 - An agent given a `conversation` has open each toolkit in its `opened`
   that the agent has, whose `when:` holds and that has no `approve: true`.
   It runs no open for it, and gives no instructions again. The model opens
@@ -312,8 +315,11 @@ Blobs
   needed to read it, and `preview` is its first items, given once.
 - Every agent has the tools `blob_read`, `blob_search` and `blob_code`, which
   read part of a blob. A large answer from one is returned as a blob.
-- A tool's result over about 32 KiB is stored as a blob by a job named
+- A tool's result over 32 KiB is stored as a blob by a job named
   `preview`, which also reads each new blob before the next turn.
+- `limits: { show: 4KB }` changes that size, for a model with a small
+  context. `blob_read` and `blob_search` return the items that fit in it,
+  with `next`, the item to continue from.
 - A blob with no items, such as a document or an image, needs a tool of the
   definition's that reads its format.
 - An image or a PDF that the service accepts is also sent to the model whole.

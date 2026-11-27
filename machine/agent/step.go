@@ -94,11 +94,12 @@ type kit struct {
 	Entry   string   `json:"entry"`
 	Path    []string `json:"path,omitzero"`
 	Entries []*entry `json:"entries,omitzero"`
-	// Blob is the name of the blob that holds the list, where it is too
-	// large to show: the model searches it, and opens a tool by its name.
+	// Stored is the blob that holds the list's entries, where the list is
+	// too large to show. Entries are then the tools the model has opened.
+	Stored any `json:"stored,omitzero"`
+	// Blob is the name of the blob that holds the names of such a list,
+	// where they are too large to show too: the model searches it.
 	Blob string `json:"blob,omitzero"`
-	// Loaded are the tools of such a list the model has opened.
-	Loaded []string `json:"loaded,omitzero"`
 }
 
 // entry is one item of an open toolkit's list.
@@ -122,8 +123,16 @@ type preview struct {
 }
 
 // showLimit is the most of a tool's result, as JSON, that is shown to the
-// model in place. A larger one is stored as a blob.
+// model in place by default. A larger one is stored as a blob.
 const showLimit = 32 << 10
+
+// show gives the most that is shown to the model in place.
+func (s *stepper) show() int {
+	if s.a.Show > 0 {
+		return int(s.a.Show)
+	}
+	return showLimit
+}
 
 // call is one call the model made in a turn.
 type call struct {
@@ -133,14 +142,25 @@ type call struct {
 	Open *opening `json:"open,omitzero"`
 	// Task is the task the call carries on, for a call of resume.
 	Task string `json:"task,omitzero"`
-	Job  string `json:"job,omitzero"` // the job that carries it out; none if it ran nothing
-	Args any    `json:"args,omitzero"`
-	Done bool   `json:"done,omitzero"`
+	// Find is the entry the call opens from a list that is stored, while
+	// its job reads the entry.
+	Find *finding `json:"find,omitzero"`
+	Job  string   `json:"job,omitzero"` // the job that carries it out; none if it ran nothing
+	Args any      `json:"args,omitzero"`
+	Done bool     `json:"done,omitzero"`
 	// What goes back to the model: a result, an error or a denial.
 	Result any    `json:"result,omitzero"`
 	Error  string `json:"error,omitzero"`
 	// Large says the result is too large to show, and is to be stored.
 	Large bool `json:"large,omitzero"`
+}
+
+// finding is an open from a list that is stored: the list, the entry's
+// name, and what the model said, which a hook of the toolkit's open reads.
+type finding struct {
+	List string `json:"list"`
+	Name string `json:"name"`
+	Said string `json:"said,omitzero"`
 }
 
 // stepper is one step being taken.
@@ -203,7 +223,11 @@ func (s *stepper) arrive(event machine.Event) (bool, error) {
 				continue
 			}
 			c.Done = true
-			if event.Name == machine.Done {
+			if c.Find != nil && event.Name == machine.Done {
+				if err := s.read(c, event.Data); err != nil {
+					return true, err
+				}
+			} else if event.Name == machine.Done {
 				s.done(c, event.Data)
 			} else {
 				// A tool that fails goes back to the model as an error,
@@ -216,7 +240,7 @@ func (s *stepper) arrive(event machine.Event) (bool, error) {
 					// A resume that fails for any other reason ends its task.
 					delete(s.st.Tasks, c.Task)
 				}
-				if f := s.find(c.Tool); f != nil && f.kit == nil && c.Open == nil {
+				if f := s.find(c.Tool); f != nil && f.kit == nil && c.Open == nil && c.Find == nil {
 					s.done(c, data["output"])
 					c.Large = false
 				}
@@ -244,8 +268,8 @@ func (s *stepper) arrive(event machine.Event) (bool, error) {
 				s.st.Next = append([]any{map[string]any{"role": "user",
 					"content": fmt.Sprintf("(the toolkit %s is open; its instructions follow)\n%s", o.List, instructions)}}, s.st.Next...)
 			}
-			if list := s.listed(s.st.Opened[o.List].Entries); s.large(list) {
-				s.look(&preview{List: o.List}, map[string]any{"value": list})
+			if s.large(s.listed(s.st.Opened[o.List].Entries)) {
+				s.list(&preview{List: o.List})
 			} else if inside := s.toolkitsIn(o.List); len(inside) > 0 {
 				s.st.Next = append(s.st.Next, map[string]any{"role": "user", "content": map[string]any{"list": o.List, "toolkits": inside, "how": howToOpen(o.List)}})
 			}
@@ -341,7 +365,7 @@ func (s *stepper) done(c *call, output any) {
 	}
 	c.Result = s.shown(output)
 	text, _ := json.Marshal(c.Result)
-	c.Large = len(text) > showLimit
+	c.Large = len(text) > s.show()
 }
 
 // preview asks for a look at what the model is about to be shown for the
@@ -356,7 +380,7 @@ func (s *stepper) preview() error {
 		switch {
 		case c.Large && c.Open != nil:
 			// A list too large to show is stored, and the model searches it.
-			s.look(&preview{Call: i + 1, List: c.Open.List}, map[string]any{"value": s.listed(s.st.Opened[c.Open.List].Entries)})
+			s.list(&preview{Call: i + 1, List: c.Open.List})
 		case c.Large:
 			s.look(&preview{Call: i + 1}, map[string]any{"value": c.Result})
 		}
@@ -365,17 +389,30 @@ func (s *stepper) preview() error {
 	return s.ready()
 }
 
-// look asks for a preview job.
-func (s *stepper) look(p *preview, input map[string]any) {
+// name gives a preview job its name, and keeps it.
+func (s *stepper) name(p *preview) {
 	p.Job = previewJob
 	if n := len(s.st.Previews); n > 0 {
 		p.Job = fmt.Sprintf("%s.%d", previewJob, n)
 	}
 	s.st.Previews = append(s.st.Previews, p)
+}
+
+// look asks for a preview job.
+func (s *stepper) look(p *preview, input map[string]any) {
+	s.name(p)
 	s.request(machine.Request{Job: &machine.Job{Name: p.Job, Script: previewScript, Alone: true, Input: input}})
 }
 
-// listed gives a list's entries as the model reads them in a blob.
+// list asks for the job that stores a toolkit's list: its entries as one
+// blob, and their names for the model to choose by.
+func (s *stepper) list(p *preview) {
+	s.name(p)
+	s.request(machine.Request{Job: &machine.Job{Name: p.Job, Script: listScript, Alone: true,
+		Input: map[string]any{"entries": s.listed(s.st.Opened[p.List].Entries), "limit": float64(s.show())}}})
+}
+
+// listed gives a list's entries as they are stored.
 func (s *stepper) listed(entries []*entry) []any {
 	out := []any{}
 	for _, e := range entries {
@@ -392,35 +429,54 @@ func (s *stepper) listed(entries []*entry) []any {
 // result.
 func (s *stepper) large(list []any) bool {
 	text, _ := json.Marshal(list)
-	return len(text) > showLimit
+	return len(text) > s.show()
 }
 
-// howToSearch tells the model what to do with a list that is a blob.
+// howToSearch tells the model what to do with a list whose names are a
+// blob, and howToChoose with one whose names it is shown.
 func howToSearch(list string) string {
 	return fmt.Sprintf("search this blob with the blob tools, then call open with { list: %q, name: <an entry's name> }", list)
 }
 
-// stored takes the blob a preview job made of a list. The list is then
-// that blob: the model searches it, and opens an entry by its name. A list
-// that could not be stored is shown as a short one is.
+func howToChoose(list string) string {
+	return fmt.Sprintf("call open with { list: %q, name: <an entry's name> }: a tool is offered from your next turn", list)
+}
+
+// stored takes what a job stored of a list. The agent's own toolkits are
+// one blob, which the model searches. A toolkit's list is its entries as a
+// blob the agent keeps, and their names: shown to the model, or a blob it
+// searches. The model opens an entry by its name. A list that could not be
+// stored is shown as a short one is.
 func (s *stepper) stored(p *preview, event machine.Event, found map[string]any) {
 	var c *call
 	if p.Call > 0 {
 		c = s.st.Calls[p.Call-1]
 		c.Large = false
 	}
-	if _, stored := blob.AsRef(found["blob"]); event.Name != machine.Done || !stored {
+	if event.Name != machine.Done {
 		return
 	}
-	handle, _ := s.shown(found["blob"]).(map[string]any)
-	p.Handle, _ = handle["blob"].(string)
-	s.st.Fresh = slices.DeleteFunc(s.st.Fresh, func(name string) bool { return name == p.Handle })
+	told := map[string]any{"list": p.List}
+	if _, searched := blob.AsRef(found["blob"]); searched {
+		handle, _ := s.shown(found["blob"]).(map[string]any)
+		p.Handle, _ = handle["blob"].(string)
+		s.st.Fresh = slices.DeleteFunc(s.st.Fresh, func(name string) bool { return name == p.Handle })
+		told["entries"], told["how"] = handle, howToSearch(p.List)
+	} else if names, shown := found["names"].([]any); shown && p.List != toolkitsList {
+		told["entries"], told["how"] = names, howToChoose(p.List)
+	} else {
+		return
+	}
 	if p.List == toolkitsList {
 		s.st.Toolkits = p.Handle
 	} else {
-		s.st.Opened[p.List].Blob = p.Handle
+		entries, kept := blob.AsRef(found["entries"])
+		if !kept {
+			return
+		}
+		k := s.st.Opened[p.List]
+		k.Stored, k.Blob, k.Entries = entries.Value(), p.Handle, nil
 	}
-	told := map[string]any{"list": p.List, "entries": handle, "how": howToSearch(p.List)}
 	if c != nil {
 		told["instructions"] = c.Result
 		c.Result = told
@@ -627,7 +683,8 @@ func (s *stepper) begin() error {
 			}
 			tool, ok := s.a.Tools[k.Entry]
 			_, shown := s.st.Handles[k.Blob]
-			if !ok || !tool.Toolkit || tool.Job.Approve || !s.offers(k.Entry) || k.Blob != "" && !shown {
+			_, stored := blob.AsRef(k.Stored)
+			if !ok || !tool.Toolkit || tool.Job.Approve || !s.offers(k.Entry) || k.Blob != "" && !shown || k.Stored != nil && !stored {
 				continue
 			}
 			k.Entries = slices.DeleteFunc(k.Entries, func(e *entry) bool { return e == nil })
@@ -798,11 +855,11 @@ func (s *stepper) within(o *opening) (list, name, description string) {
 // a tool of a long list to open. Its description is the same at every
 // turn: the conversation names what can be opened.
 func (s *stepper) opener() map[string]any {
-	blobs := s.st.Toolkits != ""
+	stored := s.st.Toolkits != ""
 	for _, k := range s.st.Opened {
-		blobs = blobs || k.Blob != ""
+		stored = stored || k.Stored != nil
 	}
-	if len(s.openable()) == 0 && !blobs {
+	if len(s.openable()) == 0 && !stored {
 		return nil
 	}
 	text := func() any { return map[string]any{"type": "string"} }
@@ -862,20 +919,67 @@ func (s *stepper) chosen(args any) (*opening, string) {
 	return nil, fmt.Sprintf("there is no toolkit named %q to open in the list %q", name, list)
 }
 
-// loads gives the tool of a list that is a blob which a call of open asks
-// for: the list, and the name the model is then shown the tool by.
-func (s *stepper) loads(args any) (*kit, string) {
-	list, name := s.listNamed(args)
-	k := s.st.Opened[list]
-	if k == nil || k.Blob == "" {
-		return nil, ""
+// taken says what is wrong with the name a tool would be shown to the model
+// under, or nothing.
+func (s *stepper) taken(name, shown string) string {
+	_, own := s.a.Tools[shown]
+	switch {
+	case len(shown) > 64:
+		return fmt.Sprintf("the tool %q would be shown to the model as %q, which is longer than 64 characters", name, shown)
+	case own || shown == openTool || shown == resumeTool || s.has(shown):
+		return fmt.Sprintf("the tool %q would be shown to the model as %q, which another tool has", name, shown)
 	}
-	for _, e := range k.Entries {
-		if e.Kind == toolkit.KindTool && e.Name == name {
-			return k, shownAs(list, name)
+	return ""
+}
+
+// asEntry reads one entry of a list, or gives nothing for what is not one.
+// A blob among a tool's arguments is the name the model was shown.
+func asEntry(item any) *entry {
+	written, _ := item.(map[string]any)
+	e := &entry{}
+	e.Kind, _ = written["kind"].(string)
+	e.Name, _ = written["name"].(string)
+	e.Description, _ = written["description"].(string)
+	e.Args, _ = asArg(written["args"]).(map[string]any)
+	if e.Name == "" || e.Kind != toolkit.KindTool && e.Kind != toolkit.KindToolkit {
+		return nil
+	}
+	return e
+}
+
+// read takes the entry a job read from a stored list, for a call of open.
+// A tool is offered from the next turn. A toolkit is opened as any is, by
+// the job of the agent's entry.
+func (s *stepper) read(c *call, output any) error {
+	f := c.Find
+	c.Find = nil
+	k := s.st.Opened[f.List]
+	e := asEntry(output)
+	if e == nil || k == nil {
+		c.Error = fmt.Sprintf("there is no entry named %q in the list %q", f.Name, f.List)
+		return nil
+	}
+	shown := shownAs(f.List, e.Name)
+	if e.Kind == toolkit.KindTool {
+		if c.Error = s.taken(e.Name, shown); c.Error == "" {
+			k.Entries = append(k.Entries, e)
+			c.Result = "Opened " + shown + ": it is offered from your next turn."
 		}
+		return nil
 	}
-	return nil, ""
+	if _, open := s.st.Opened[shown]; open {
+		c.Error = fmt.Sprintf("the toolkit %q is open", shown)
+		return nil
+	}
+	o := &opening{List: shown, Entry: k.Entry, Path: append(slices.Clone(k.Path), e.Name)}
+	tool := map[string]any{"toolkit": o.Entry, "open": true, "said": f.Said, "path": o.Path}
+	job, err := s.ask(o.Entry, c.Job, map[string]any{"do": toolkit.Open, "toolkit": o.Path}, tool)
+	if err != nil {
+		return err
+	}
+	c.Open, c.Done = o, false
+	s.request(machine.Request{Job: job})
+	return nil
 }
 
 // take keeps the entries an open gave, as the list the open makes, and
@@ -890,22 +994,18 @@ func (s *stepper) take(o *opening, answer any) (string, error) {
 	k := &kit{Entry: o.Entry, Path: o.Path}
 	seen := map[string]bool{}
 	for _, item := range items {
-		written, _ := item.(map[string]any)
-		e := &entry{}
-		e.Kind, _ = written["kind"].(string)
-		e.Name, _ = written["name"].(string)
-		e.Description, _ = written["description"].(string)
-		e.Args, _ = written["args"].(map[string]any)
-		shown := shownAs(o.List, e.Name)
-		_, own := s.a.Tools[shown]
-		switch {
-		case e.Name == "" || e.Kind != toolkit.KindTool && e.Kind != toolkit.KindToolkit:
+		e := asEntry(item)
+		if e == nil {
 			return "", fmt.Errorf("the toolkit gave no answer to an open: an entry is { kind, name, description, args }")
-		case e.Kind == toolkit.KindToolkit:
-		case len(shown) > 64:
-			return "", fmt.Errorf("the tool %q would be shown to the model as %q, which is longer than 64 characters", e.Name, shown)
-		case own || seen[shown] || shown == openTool || shown == resumeTool || s.has(shown):
-			return "", fmt.Errorf("the tool %q would be shown to the model as %q, which another tool has", e.Name, shown)
+		}
+		shown := shownAs(o.List, e.Name)
+		if e.Kind == toolkit.KindTool {
+			if wrong := s.taken(e.Name, shown); wrong != "" {
+				return "", errors.New(wrong)
+			}
+			if seen[shown] {
+				return "", fmt.Errorf("the tool %q would be shown to the model as %q, which another tool has", e.Name, shown)
+			}
 		}
 		seen[shown] = e.Kind == toolkit.KindTool
 		k.Entries = append(k.Entries, e)
@@ -954,7 +1054,7 @@ func (s *stepper) find(name string) *found {
 	for _, list := range sortedNames(s.st.Opened) {
 		k := s.st.Opened[list]
 		for _, e := range k.Entries {
-			if e.Kind == toolkit.KindTool && shownAs(list, e.Name) == name && (k.Blob == "" || slices.Contains(k.Loaded, name)) {
+			if e.Kind == toolkit.KindTool && shownAs(list, e.Name) == name {
 				return &found{entry: k.Entry, tool: s.a.Tools[k.Entry], description: e.Description, args: e.Args, kit: k, name: e.Name}
 			}
 		}
@@ -1104,13 +1204,16 @@ func (s *stepper) replied(data any) error {
 			}
 			return shown
 		}
-		if k, shown := s.loads(one.Args); one.Tool == openTool && k != nil {
-			// A tool of a list that is a blob is offered once it is opened.
-			// No job runs: the agent has the entry.
-			if !slices.Contains(k.Loaded, shown) {
-				k.Loaded = append(k.Loaded, shown)
+		if list, name := s.listNamed(one.Args); one.Tool == openTool && s.st.Opened[list] != nil && s.st.Opened[list].Stored != nil {
+			// An entry of a list that is stored is read from it, by a job.
+			k := s.st.Opened[list]
+			if slices.ContainsFunc(k.Entries, func(e *entry) bool { return e.Name == name }) {
+				one.Done, one.Result = true, "Opened "+shownAs(list, name)+": it is offered from your next turn."
+				continue
 			}
-			one.Done, one.Result = true, "Opened "+shown+": it is offered from your next turn."
+			one.Job, one.Find = named(), &finding{List: list, Name: name, Said: text}
+			s.request(machine.Request{Job: &machine.Job{Name: one.Job, Script: entryScript, Alone: true,
+				Input: map[string]any{"entries": k.Stored, "name": name}}})
 			continue
 		}
 		if one.Tool == openTool {
@@ -1152,7 +1255,7 @@ func (s *stepper) replied(data any) error {
 				args = map[string]any{}
 			}
 			request := map[string]any{"do": toolkit.Resume, "tool": t.Tool, "args": args, "state": t.State}
-			shown := map[string]any{"name": t.Tool, "args": t.Args, "resume": name}
+			shown := map[string]any{"name": t.Tool, "args": s.shown(t.Args), "resume": name}
 			if t.Requests != nil {
 				shown["requests"] = t.Requests
 			}
@@ -1179,17 +1282,23 @@ func (s *stepper) replied(data any) error {
 		}
 		if f.kit != nil {
 			// The toolkit checks the arguments, which go to it as the model
-			// gave them.
-			args := one.Args
-			if args == nil {
-				args = map[string]any{}
+			// gave them, with each blob's name turned into the blob.
+			given := one.Args
+			if given == nil {
+				given = map[string]any{}
 			}
+			args, err := s.blobs(f.args, f.args, given, 0)
+			if err != nil {
+				one.Done, one.Error = true, "the arguments do not fit the tool: "+err.Error()
+				continue
+			}
+			one.Args = args
 			request := map[string]any{"do": toolkit.Call, "tool": f.name, "args": args}
 			if len(f.kit.Path) > 0 {
 				request["toolkit"] = f.kit.Path
 			}
 			one.Job = named()
-			job, err := s.ask(f.entry, one.Job, request, through(f.kit, map[string]any{"name": f.name, "args": one.Args}))
+			job, err := s.ask(f.entry, one.Job, request, through(f.kit, map[string]any{"name": f.name, "args": given}))
 			if err != nil {
 				return err
 			}

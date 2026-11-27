@@ -30,6 +30,20 @@ if (/^text\/|^application\/jsonl?$/.test(blob.type)) {
 }
 return { blob, items, preview }
 `
+	// The job that stores a toolkit's list too large to show: its entries
+	// as one blob, and their names, as they are where they fit in what the
+	// model is shown, and as a blob with its preview where they do not.
+	listScript = "corbie:list.js"
+	listSource = `const entries = blobs.make(input.entries)
+const names = input.entries.map(e => ({ kind: e.kind, name: e.name, description: e.description }))
+if (JSON.stringify(names).length <= input.limit) return { entries, names }
+return { entries, blob: blobs.make(names), items: names.length, preview: names.slice(0, 5) }
+`
+	// The job that reads one entry of a stored list, by its name.
+	entryScript = "corbie:entry.js"
+	entrySource = `for (const entry of blobs.items(input.entries)) if (entry.name === input.name) return entry
+return null
+`
 )
 
 // The tool that opens a toolkit: the step shows it the toolkits the model
@@ -43,13 +57,26 @@ const (
 	// resumeTool is the tool that carries on a call that has not ended.
 	resumeTool        = "resume"
 	resumeDescription = "Carry on a call that has not ended, by the name of the task its result gave. It waits for the work, and returns its result, or working again. Give responses, by the names of the requests, to a call that asked for input. With cancel: true it cancels the call."
-	openDescription   = "Open a toolkit from a list, by its name. Its instructions are the result, and its tools are offered to you from your next turn, each under the toolkit's name and its own. You are shown each list you can open from: its toolkits, or a blob to search. From a list that is a blob, open a tool by its name before you call it."
+	openDescription   = "Open a toolkit from a list, by its name. Its instructions are the result, and its tools are offered to you from your next turn, each under the toolkit's name and its own. You are shown each list you can open from: its toolkits, the names of its entries, or a blob of those names to search. From a list of names, open a tool by its name before you call it."
 )
 
 const large = `
 function fits(answer) {
   const text = JSON.stringify(answer)
   return text !== undefined && text.length > 100000 ? blobs.make(text, { type: "application/json" }) : answer
+}
+`
+
+// room gives a function that says whether one more item fits in what the
+// model is shown in place. The first item always fits: one too large to
+// show is stored as a blob, as any result is.
+const room = `
+function room(limit) {
+  let left = limit - 256
+  return function (item, held) {
+    left -= JSON.stringify(item).length + 32
+    return held === 0 || left >= 0
+  }
 }
 `
 
@@ -62,28 +89,34 @@ var blobTools = map[string]struct {
 	source      string
 }{
 	"blob_read": {
-		description: "Read some of a blob's items: the lines of a text, the rows of a table, the entries of a list. Gives count items starting at from (50 from the start, if not said). The blob's handle says how many items it has. Reaching an item means reading up to it, so reading far into a large blob is slow.",
+		description: "Read some of a blob's items: the lines of a text, the rows of a table, the entries of a list. Gives count items starting at from (50 from the start, if not said), or as many of them as can be shown, with the place to read from next. The blob's handle says how many items it has. Reaching an item means reading up to it, so reading far into a large blob is slow.",
 		args:        map[string]any{"blob": "blob", "from": "number?", "count": "number?"},
 		input:       map[string]any{"blob": "${args.blob}", "from": "${args.from}", "count": "${args.count}"},
-		source: large + `const from = input.from || 0
-return fits({ from, items: Array.from(blobs.items(input.blob, { from, count: input.count || 50 })) })
+		source: room + `const from = input.from || 0
+const items = [], fits = room(input.limit)
+let next = null
+for (const item of blobs.items(input.blob, { from, count: input.count || 50 })) {
+  if (!fits(item, items.length)) { next = from + items.length; break }
+  items.push(item)
+}
+return next === null ? { from, items } : { from, items, next }
 `},
 	"blob_search": {
-		description: "Search a blob's items for a text, from the item at from (the start, if not said). Gives up to 50 matching items, each with its place, and where there may be more, the place to search from next.",
+		description: "Search a blob's items for a text, from the item at from (the start, if not said). Gives up to 50 matching items, or as many as can be shown, each with its place, and where there may be more, the place to search from next.",
 		args:        map[string]any{"blob": "blob", "find": "string", "from": "number?"},
 		input:       map[string]any{"blob": "${args.blob}", "find": "${args.find}", "from": "${args.from}"},
-		source: large + `const found = []
+		source: room + `const found = [], fits = room(input.limit)
 const want = input.find.toLowerCase()
 let at = input.from || 0, next = null
 for (const item of blobs.items(input.blob, { from: at })) {
   const text = typeof item === "string" ? item : JSON.stringify(item)
   if (text.toLowerCase().includes(want)) {
-    if (found.length === 50) { next = at; break }
+    if (found.length === 50 || !fits(item, found.length)) { next = at; break }
     found.push({ at, item })
   }
   at++
 }
-return fits(next === null ? { found } : { found, next })
+return next === null ? { found } : { found, next }
 `},
 	"blob_code": {
 		description: "Run a few lines of JavaScript over a blob's items and get back only the answer. The code is the body of a function of items and returns the answer. items is walked with for...of and is not a list, so a blob of any size can be gone through, as in: let n = 0; for (const r of items) if (r.total > 100) n++; return n. An answer that is large comes back as a blob.",

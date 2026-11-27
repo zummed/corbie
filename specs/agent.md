@@ -256,7 +256,8 @@ tools:
 
 - The entry's `input:` is the toolkit's input, with `request` added by the agent. A toolkit at another location is recorded in that tree, so the agent passes on only what its entry writes.
 - The toolkit's `description:` is the machine's, which the model reads before it opens it.
-- The toolkit checks a call's arguments against the tool's shape. Arguments that do not fit fail the toolkit's run, and go back to the model as an error. The agent gives the arguments as the model gave them, and turns no blob's name into the blob.
+- The toolkit checks a call's arguments against the tool's shape. Arguments that do not fit fail the toolkit's run, and go back to the model as an error. The agent gives the arguments as the model gave them, with each blob's name turned into the blob.
+- A blob among a tool's arguments is offered to the model as `format: blob`, and the model gives the name it was shown, as for a tool written in place. A name the conversation has not shown goes back to the model as an error. A task keeps the arguments as they were sent, and a resume sends them again.
 - In a name the model is shown, a character other than a letter, a digit, `_` or `-` is written `_`.
 - An open whose list gives a tool that would be shown under the name of another tool, or under a name longer than 64 characters, goes back to the model as an error, and opens nothing.
 - The result of `open` is shown to the model whole, and is never stored as a blob. With no instructions, it is `Opened net.`.
@@ -270,15 +271,27 @@ tools:
 
 ### Lists
 
-Every list the model chooses from is a list of entries: the agent's own toolkits, in the list `toolkits`, and the tools and toolkits an open toolkit gives, in a list named as the toolkit is. A list small enough to show is shown: `open` names each toolkit of it, and its tools are offered. A list whose JSON is larger than 32 KiB, the limit for a tool's result, is a blob.
+Every list the model chooses from is a list of entries: the agent's own toolkits, in the list `toolkits`, and the tools and toolkits an open toolkit gives, in a list named as the toolkit is. A list small enough to show is shown: `open` names each toolkit of it, and its tools are offered. The limit is the one for a tool's result, `limits: { show: }`, 32 KiB by default (see [Blobs and the model](#blobs-and-the-model)).
 
-1. A job named `preview` stores the list as a blob of entries, `{ kind, name, description, args }`.
-2. The model is shown the blob's handle: for the list `toolkits` before the first turn, and for a toolkit's list in the result of its `open`, with its instructions.
-3. The model searches the blob with the blob tools.
-4. The model calls `open` with the list and an entry's name. A toolkit is opened as any is. A tool is offered from the next turn, and no job runs for it.
+A toolkit's list whose JSON is larger than the limit is stored, and the model chooses from its names.
 
-- The model names such a list by its name or by its blob's name.
-- A tool of such a list that the model has not opened is not offered, and a call of it goes back to the model as an error.
+1. A job named `preview` stores the entries, `{ kind, name, description, args }`, as a blob. The agent keeps the blob's reference, and the model is not shown it.
+2. The model is shown the names, `{ kind, name, description }` of each entry, in the result of the `open`, with its instructions.
+3. The model calls `open` with the list and an entry's name, and a job named `open` reads that entry from the blob.
+4. A tool is offered from the next turn, and the agent keeps its entry. A toolkit is opened as any is, by a second job named `open`.
+
+```
+the list with args    the names    the model is shown                      the model then
+under the limit       -            the tools, offered at the next turn     calls a tool
+over the limit        under it     the names, in the result of open        opens an entry by its name
+over the limit        over it      the handle of a blob of the names       searches the blob, then opens an entry
+```
+
+- The list `toolkits` holds names and descriptions only. Over the limit it is a blob, which a job named `preview` stores before the first turn, and each entry is opened as any toolkit is.
+- The model names a list whose names are a blob by the list's name or by the blob's.
+- A tool of a stored list that the model has not opened is not offered, and a call of it goes back to the model as an error.
+- A name the list does not hold, or a tool whose shown name another tool has, goes back to the model as an error.
+- Of a stored list the agent's state holds the two blobs and the entries the model opened, and nothing else.
 - A list that could not be stored is shown as a short one is.
 
 A toolkit's list may hold a toolkit, as well as tools, as an MCP server's list holds its skills (see plugin.md). The result of the open names each, and the model opens it from the list of the toolkit that gave it:
@@ -359,7 +372,7 @@ In a result the conversation is one value: its turns, the blobs the model was sh
 
 ```
 conversation: { turns: [ turn 1, turn 2, … ], blobs: { blob1: …, blob2: … },
-                opened: { net: { entry, entries, blob, loaded } }, tasks: { task1: { entry, tool, args, state } } }
+                opened: { net: { entry, entries, stored, blob } }, tasks: { task1: { entry, tool, args, state } } }
 ```
 
 An agent started with it carries on where the other stopped. Every name goes on meaning the blob it meant, and a blob the conversation has not shown takes a name it has not used.
@@ -369,7 +382,7 @@ A run that carries a conversation on runs nothing for it at its start. The conve
 - the list's `entry` is an entry the definition has, as a toolkit;
 - that entry's `when:` holds on the run's own input;
 - that entry is not marked `approve: true`;
-- a list that is a blob names a blob the conversation holds.
+- a list whose names are a blob names a blob the conversation holds, and a stored list holds the reference of a blob.
 
 A list that is kept is open from the first turn, as the model was shown it: its tools are offered, `open` does not name it, and its instructions are in the conversation and are not given again. A toolkit with `open: true` that is kept is not opened again. Any other list is passed over, and the model opens that toolkit with `open`.
 
@@ -394,6 +407,16 @@ A blob of a type the model's service takes as content, an image or a document, i
 The model uses the handle's name to refer to the blob. The agent turns names into references before a tool is run, and references into handles before the model sees anything. A blob's key never reaches a model by any path, including inside the contents of another blob.
 
 Every agent has tools for working with blobs without reading them whole: one to read a range of items, one to search, and one to run a few lines of code over a blob and get back only the answer. They are ordinary scripts, allowed nothing from the definition's lists. A tool result too large to show is stored as a blob, by the job that makes its preview, and the model is given its handle.
+
+`limits: { show: }` is the most the model is shown in place, as the size of the JSON, and is 32 KiB by default. One limit covers three things:
+
+```
+a tool's result               over the limit, it is stored as a blob
+a toolkit's list, with args   over the limit, the model is shown its names (see Lists)
+blob_read, blob_search        give the items that fit, and the place to go on from
+```
+
+The first item a blob tool gives is given whatever its size. The limit is of each thing shown, and not of the conversation.
 
 ## Events
 

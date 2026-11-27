@@ -929,3 +929,133 @@ func TestAgentToolChangesAreSentAsMessages(t *testing.T) {
 		t.Errorf("tool_changes: on a model of the service openai: %v", err)
 	}
 }
+
+// A list too large to offer, whose names fit in what the model is shown, is
+// shown as its names. The agent keeps the entries as a blob, and of the
+// list only the tools the model opened. An entry is opened by its name: a
+// tool is offered from the next turn, and a toolkit is opened as any is.
+func TestAgentLongListIsShownAsItsNames(t *testing.T) {
+	files := maps.Clone(toolkits)
+	files["toolkits/net.yaml"] = "toolkit: net\ndescription: The firewall and the switch.\ninput: { asker: any }\njob: ./many.js\n"
+	files["toolkits/many.js"] = `
+		const r = input.request
+		const inside = (r.toolkit || []).join("/")
+		if (r.do !== "open") return { result: inside + ":" + r.tool }
+		if (inside !== "") return { instructions: "Review well.", entries: [{ kind: "tool", name: "read", description: "Reads", args: { type: "object" } }] }
+		const entries = [{ kind: "toolkit", name: "review", description: "How to review." }]
+		for (let i = 0; i < 80; i++) entries.push({ kind: "tool", name: "t" + i, description: "Tool " + i,
+			args: { type: "object", properties: { note: { type: "string", description: "x".repeat(600) } } } })
+		return { instructions: "Choose one.", entries }`
+	m := newModel(t, calls("c1", "open", opens("net")), calls("c2", "open", `{"list": "net", "name": "t42"}`),
+		calls("c3", "open", `{"list": "net", "name": "review"}`), calls("c4", "open", `{"list": "net", "name": "none"}`),
+		calls("c5", "net_t42", `{}`), calls("c6", "net_review_read", `{}`), says("done"))
+	l := local(t, "all")
+	r := wait(t, l, startWith(t, l, helper(m.URL, ""), files, map[string]any{"question": "q"}))
+	if r.Status != "done" {
+		t.Fatalf("the agent ended %s: %s", r.Status, r.Error)
+	}
+	shown := strings.ReplaceAll(lastShown(m.Calls[1]), `\`, "")
+	if !strings.Contains(shown, `"instructions":"Choose one."`) || !strings.Contains(shown, `{"description":"Tool 42","kind":"tool","name":"t42"}`) ||
+		!strings.Contains(shown, `{"description":"How to review.","kind":"toolkit","name":"review"}`) || !strings.Contains(shown, `call open with { list: "net", name:`) {
+		t.Errorf("the open of a long list was shown as: %.900s", shown)
+	}
+	if strings.Contains(shown, "xxxx") || strings.Contains(shown, `"blob"`) {
+		t.Errorf("the names of a long list hold arguments, or are a blob: %.900s", shown)
+	}
+	if got := offeredNames(m.Calls[1].Tools); got != "add "+blobToolNames+" open" {
+		t.Errorf("after the open of a long list, the turn was offered: %s", got)
+	}
+	if got := offeredNames(m.Calls[2].Tools); got != "add "+blobToolNames+" net_t42 open" {
+		t.Errorf("after the open of a tool, the turn was offered: %s", got)
+	}
+	if shown := lastShown(m.Calls[3]); !strings.Contains(shown, "Review well.") {
+		t.Errorf("the open of a toolkit in a long list gave: %s", shown)
+	}
+	if shown := lastShown(m.Calls[4]); !strings.Contains(shown, `there is no entry named \"none\" in the list \"net\"`) {
+		t.Errorf("the open of a name the list does not hold gave: %s", shown)
+	}
+	if shown := lastShown(m.Calls[5]); !strings.Contains(shown, ":t42") {
+		t.Errorf("the call of the opened tool gave: %s", shown)
+	}
+	if shown := lastShown(m.Calls[6]); !strings.Contains(shown, "review:read") {
+		t.Errorf("the call of the tool inside gave: %s", shown)
+	}
+	// Of the list, the conversation holds the blob of its entries and the
+	// tool that was opened.
+	net := r.Output.(map[string]any)["conversation"].(map[string]any)["opened"].(map[string]any)["net"].(map[string]any)
+	if entries, _ := net["entries"].([]any); len(entries) != 1 || net["stored"] == nil || net["blob"] != nil {
+		t.Errorf("the conversation holds the long list as: %.600s", jsonOf(net))
+	}
+}
+
+// limits: { show: } is the most the model is shown in place: a larger
+// result is a blob, and a blob tool gives the items that fit, with the place
+// to go on from.
+func TestAgentShowLimitsWhatTheModelIsShown(t *testing.T) {
+	def := strings.Replace(agentDef("ADDRESS", "limits: { show: 2KB }"), "tools:\n", `tools:
+		  lines:
+		    description: Make some lines
+		    args: { n: number }
+		    job: { script: ./lines.js, input: { n: "${args.n}" } }
+`, 1)
+	files := map[string]string{"add.js": scripts["add.js"],
+		"lines.js": `const out = []; for (let i = 0; i < input.n; i++) out.push("line " + i + " " + "x".repeat(92)); return out`}
+	m := newModel(t, calls("c1", "lines", `{"n": 10}`), calls("c2", "lines", `{"n": 40}`),
+		calls("c3", "blob_read", `{"blob": "blob1"}`), calls("c4", "blob_search", `{"blob": "blob1", "find": "line"}`), says("done"))
+	l := local(t, "all")
+	if r := runAgent(t, l, strings.Replace(def, "ADDRESS", m.URL, 1), files); r.Status != "done" {
+		t.Fatalf("the agent ended %s: %s", r.Status, r.Error)
+	}
+	if shown := lastShown(m.Calls[1]); !strings.Contains(shown, "line 9 ") || strings.Contains(shown, "blob1") {
+		t.Errorf("a result under the limit was shown as: %.300s", shown)
+	}
+	if shown := strings.ReplaceAll(lastShown(m.Calls[2]), `\`, ""); !strings.Contains(shown, `"blob":"blob1"`) || !strings.Contains(shown, `"items":40`) {
+		t.Errorf("a result over the limit was shown as: %.300s", shown)
+	}
+	for i, tool := range []string{"blob_read", "blob_search"} {
+		shown := strings.ReplaceAll(lastShown(m.Calls[3+i]), `\`, "")
+		if len(shown) > 2048+200 || !strings.Contains(shown, "line 0 ") || strings.Contains(shown, "line 30 ") || !strings.Contains(shown, `"next":`) || strings.Contains(shown, "blob2") {
+			t.Errorf("%s gave %d bytes: %.300s", tool, len(shown), shown)
+		}
+	}
+}
+
+// A blob among the arguments of a toolkit's tool is the name the model was
+// shown: the agent turns it into the blob, and the tool's job reads it.
+func TestAgentGivesAToolkitsToolABlob(t *testing.T) {
+	files := maps.Clone(toolkits)
+	files["toolkits/net.yaml"] = `
+		toolkit: net
+		description: The firewall and the switch.
+		input: { asker: any }
+		tools:
+		  make:
+		    description: Make a file
+		    args: { text: string }
+		    job: { script: ./make.js, input: { text: "${args.text}" } }
+		  size:
+		    description: Count a file's bytes
+		    args: { file: blob }
+		    job: { script: ./size.js, input: { file: "${args.file}" } }
+	`
+	files["toolkits/make.js"] = `return { file: blobs.make(input.text) }`
+	files["toolkits/size.js"] = `return "read: " + blobs.read(input.file, { as: "text" })`
+	m := newModel(t, calls("c1", "open", opens("net")), calls("c2", "net_make", `{"text": "some text"}`),
+		calls("c3", "net_size", `{"file": "blob1"}`), calls("c4", "net_size", `{"file": "blob9"}`), says("done"))
+	l := local(t, "all")
+	if r := wait(t, l, startWith(t, l, helper(m.URL, ""), files, map[string]any{"question": "q"})); r.Status != "done" {
+		t.Fatalf("the agent ended %s: %s", r.Status, r.Error)
+	}
+	if offered := strings.ReplaceAll(jsonOf(m.Calls[1].Tools), `\`, ""); !strings.Contains(offered, `"format":"blob","type":"string"}},"required":["file"]`) {
+		t.Errorf("the tool's blob was offered as: %s", offered)
+	}
+	if shown := lastShown(m.Calls[3]); !strings.Contains(shown, "read: some text") {
+		t.Errorf("the tool given a blob gave: %s", shown)
+	}
+	if shown := lastShown(m.Calls[4]); !strings.Contains(shown, `should name a blob the conversation has shown`) {
+		t.Errorf("a name that is no blob's gave: %s", shown)
+	}
+	if all := jsonOf(m.Calls); strings.Contains(all, `$blob`) {
+		t.Fatalf("a blob's reference reached the model: %.600s", all)
+	}
+}

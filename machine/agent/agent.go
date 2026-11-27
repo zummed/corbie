@@ -4,9 +4,11 @@
 package agent
 
 import (
+	"cmp"
 	"encoding/json/jsontext"
 	"encoding/json/v2"
 	"fmt"
+	"maps"
 	"net"
 	"net/url"
 	"slices"
@@ -28,6 +30,9 @@ type Agent struct {
 	Tools map[string]*Tool `json:"tools,omitzero"`
 	// Turns is how many turns the agent has; twenty if it says nothing.
 	Turns int `json:"turns,omitzero"`
+	// Show is the most the model is shown in place, in bytes; none means
+	// the default.
+	Show int64 `json:"show,omitzero"`
 	// Reply is the shape of the reply in the agent's result, where it is
 	// data and not text: a JSON Schema of an object.
 	Reply map[string]any `json:"reply,omitzero"`
@@ -260,7 +265,8 @@ func (agentType) Name() string { return "agent" }
 
 // Limits adds an agent's turns to the limits every type takes.
 func (agentType) Limits() []machine.Field {
-	return []machine.Field{{Name: "turns", Kind: machine.KindNumber, Description: "how many turns it has; twenty by default"}}
+	return []machine.Field{{Name: "turns", Kind: machine.KindNumber, Description: "how many turns it has; twenty by default"},
+		{Name: "show", Kind: machine.KindSize, Description: "the most of a tool's result, or of a toolkit's list, the model is shown in place; 32KB by default"}}
 }
 
 // Shape is what an agent's definition holds of its own. A model holds the
@@ -464,19 +470,32 @@ func (t *Tool) read(m machine.Recorded) []wrong {
 	return out
 }
 
-// asArg gives one property of a machine's input as a tool's argument: a
+// asArg gives a machine's input, or a part of it, as a tool's arguments: a
 // blob, which the input takes as the blob itself, is the name the model was
-// shown.
-func asArg(property any) any {
-	m, ok := property.(map[string]any)
-	if !ok || m["type"] != "object" || !slices.Equal(asTexts(m["required"]), []string{"$blob"}) {
-		return property
+// shown, at any depth.
+func asArg(shape any) any {
+	switch m := shape.(type) {
+	case map[string]any:
+		if m["type"] == "object" && slices.Equal(asTexts(m["required"]), []string{"$blob"}) {
+			arg := map[string]any{"type": "string", "format": "blob"}
+			if description, ok := m["description"]; ok {
+				arg["description"] = description
+			}
+			return arg
+		}
+		out := make(map[string]any, len(m))
+		for name, item := range m {
+			out[name] = asArg(item)
+		}
+		return out
+	case []any:
+		out := make([]any, len(m))
+		for i, item := range m {
+			out[i] = asArg(item)
+		}
+		return out
 	}
-	arg := map[string]any{"type": "string", "format": "blob"}
-	if description, ok := m["description"]; ok {
-		arg["description"] = description
-	}
-	return arg
+	return shape
 }
 
 func asTexts(v any) []string {
@@ -491,7 +510,7 @@ func asTexts(v any) []string {
 
 // Fill reads an agent as written and gives its full form.
 func (agentType) Fill(p *machine.Parser, f *machine.Fields) any {
-	a := &Agent{System: f.Text("system"), Turns: p.Limits().Int("turns")}
+	a := &Agent{System: f.Text("system"), Turns: p.Limits().Int("turns"), Show: p.Limits().Size("show")}
 	// With no model named, the check says an agent names its model.
 	if mf := f.Fields("model"); mf != nil {
 		a.Model = Model{Name: mf.Text("name"), Secret: mf.Text("secret"), Service: mf.Text("service"),
@@ -524,8 +543,11 @@ func (agentType) Fill(p *machine.Parser, f *machine.Fields) any {
 			continue
 		}
 		p.Builtin("corbie:"+name+".js", tool.source)
+		// A blob tool gives the model no more than it is shown in place.
+		input := maps.Clone(tool.input)
+		input["limit"] = float64(cmp.Or(a.Show, showLimit))
 		a.Tools[name] = &Tool{Description: tool.description, Args: filled(p, "tools."+name+".args", tool.args),
-			Job: &machine.JobSpec{Script: "corbie:" + name + ".js", Input: tool.input, Alone: true}}
+			Job: &machine.JobSpec{Script: "corbie:" + name + ".js", Input: input, Alone: true}}
 	}
 	// The job that makes a turn: Corbie's own script, or one the
 	// definition puts in its place. It is written exactly what it needs and
@@ -537,6 +559,8 @@ func (agentType) Fill(p *machine.Parser, f *machine.Fields) any {
 		a.Turn = &machine.JobSpec{Script: turnScript}
 	}
 	p.Builtin(previewScript, previewSource)
+	p.Builtin(listScript, listSource)
+	p.Builtin(entryScript, entrySource)
 	a.Turn.Alone = true
 	if a.Model.check() == nil {
 		a.Turn.Allow = append(a.Model.permissions(), a.Turn.Allow...)

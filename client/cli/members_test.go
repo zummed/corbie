@@ -224,6 +224,10 @@ func Test_store_members_join_carry_on_and_leave(t *testing.T) {
 		t.Fatalf("init store --alone beside a running server: %d %s", status, said)
 	}
 	stop3()
+	// A config with no member's card is not joining, and is not asked for one.
+	if err := os.Remove(filepath.Join(sw3.config, "member", "identity")); err != nil {
+		t.Fatal(err)
+	}
 	if out := sw3.ok("", "init", "store", "--alone"); !strings.Contains(out, "is now the whole store, with one member") {
 		t.Fatalf("init store --alone printed:\n%s", out)
 	}

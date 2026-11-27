@@ -330,14 +330,16 @@ func (b *bucket) List(ctx context.Context, under string) ([]Listed, error) {
 	return b.list(ctx, under, 0)
 }
 
-// First reads one page of a listing, which is a thousand names at most.
+// First asks for one page of a listing, of the number of names wanted.
 func (b *bucket) First(ctx context.Context, under string, n int) ([]Listed, error) {
-	listed, err := b.list(ctx, under, 1)
-	return listed[:max(min(len(listed), n, firstMost), 0)], err
+	if n = min(n, firstMost); n < 1 {
+		return nil, checkUnder(under)
+	}
+	return b.list(ctx, under, n)
 }
 
-// list reads a listing to its end, or for a number of pages.
-func (b *bucket) list(ctx context.Context, under string, pages int) ([]Listed, error) {
+// list reads a listing to its end, or its first names when a number is given.
+func (b *bucket) list(ctx context.Context, under string, first int) ([]Listed, error) {
 	if err := checkUnder(under); err != nil {
 		return nil, err
 	}
@@ -347,6 +349,9 @@ func (b *bucket) list(ctx context.Context, under string, pages int) ([]Listed, e
 	}
 	// Names come back escaped, so that no name can spoil the listing.
 	query := url.Values{"list-type": {"2"}, "encoding-type": {"url"}, "prefix": {prefix}}
+	if first > 0 {
+		query.Set("max-keys", strconv.Itoa(first))
+	}
 	var listed []Listed
 	for {
 		a, err := b.send(ctx, request{method: http.MethodGet, query: query, twice: true})
@@ -373,7 +378,7 @@ func (b *bucket) list(ctx context.Context, under string, pages int) ([]Listed, e
 			}
 			listed = append(listed, Listed{strings.TrimPrefix(key, b.prefix), Mark(c.ETag)})
 		}
-		if pages--; !page.IsTruncated || pages == 0 {
+		if !page.IsTruncated || first > 0 {
 			return listed, nil
 		}
 		query.Set("continuation-token", page.NextContinuationToken)

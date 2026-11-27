@@ -551,18 +551,21 @@ func storeAlone(e *Env, cfg identity.Config, address string) error {
 	if err != nil {
 		return err
 	}
-	// A computer that is joining has not the whole of the store yet.
-	self, err := cfg.Load(e.ctx, identity.Member)
-	if err != nil {
-		return err
-	}
-	members, err := store.MembersOf(dir)
-	if err != nil {
-		return err
-	}
-	for _, member := range members {
-		if member.Name == self.Name && member.Joining {
-			return fmt.Errorf("this computer is joining the store's members, and its copy in %s is not the whole store: run corbie init store --alone on a member", dir)
+	// A computer that is joining has not the whole of the store yet, and
+	// only one with a member's card joins.
+	if cfg.Has(identity.Member) {
+		self, err := cfg.Load(e.ctx, identity.Member)
+		if err != nil {
+			return err
+		}
+		members, err := store.MembersOf(dir)
+		if err != nil {
+			return err
+		}
+		for _, member := range members {
+			if member.Name == self.Name && member.Joining {
+				return fmt.Errorf("this computer is joining the store's members, and its copy in %s is not the whole store: run corbie init store --alone on a member", dir)
+			}
 		}
 	}
 	// A store's server that runs here goes on as a member, and writes its

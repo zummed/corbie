@@ -180,7 +180,7 @@ func (f *fakeS3) kind(r *http.Request) string {
 	switch {
 	case r.URL.Path == "/"+fakeBucket:
 		if get && q.Get("list-type") == "2" && q.Get("encoding-type") == "url" &&
-			(only("list-type", "encoding-type", "prefix") || only("list-type", "encoding-type", "prefix", "continuation-token")) {
+			(only("list-type", "encoding-type", "prefix") || only("list-type", "encoding-type", "prefix", "continuation-token") || only("list-type", "encoding-type", "prefix", "max-keys")) {
 			return fList
 		}
 	case !strings.HasPrefix(r.URL.Path, "/"+fakeBucket+"/"):
@@ -481,8 +481,12 @@ func (f *fakeS3) list(q url.Values) reply {
 		Contents              []struct{ Key, ETag string }
 		NextContinuationToken string `xml:",omitempty"`
 	}
-	if len(keys) > f.page {
-		keys = keys[:f.page]
+	size := f.page
+	if most, err := strconv.Atoi(q.Get("max-keys")); err == nil {
+		size = min(size, most)
+	}
+	if len(keys) > size {
+		keys = keys[:size]
 		page.IsTruncated = true
 		page.NextContinuationToken = keys[len(keys)-1]
 	}

@@ -369,52 +369,23 @@ func fillNamed(p *machine.Parser, tf *machine.Fields, place string) *Tool {
 	tf.Text("description")
 	tf.Map("args")
 	tf.Value("job")
-	tool := &Tool{When: tf.Cond("when"), Open: tf.Bool("open"), Job: &machine.JobSpec{Approve: tf.Bool("approve")}}
-	tool.Job.Meta, _ = tf.Value("meta")
-	fixed := map[string]any{}
-	if written, ok := tf.Value("input"); ok {
-		if fixed, ok = written.(map[string]any); !ok {
-			p.Problem(place+".input", "this should be a mapping of names of the machine's input, and is not one")
-			fixed = map[string]any{}
-		}
-	}
-	if len(fixed) > 0 {
-		tool.Job.Input = fixed
-	}
-	byFile := tf.Has("machine")
-	file, at := tf.Text("machine"), tf.Text("call")
+	tool := &Tool{When: tf.Cond("when"), Open: tf.Bool("open")}
 	var target *machine.Definition
-	switch {
-	case byFile && at != "":
-		p.Problem(place, "an entry names its machine by its file with machine:, or by its location with call:, and not both")
+	tool.Job, tool.Machine, tool.Call, target = p.Named(tf, place, "an entry")
+	if target == nil {
+		// One that cannot be read has its problem, and a location in full
+		// is read when the run starts.
 		return tool
-	case byFile:
-		tool.Machine = p.Machine(place+".machine", file)
-		tool.Job.Machine = tool.Machine
-		if target = p.MachineNamed(tool.Machine); target == nil {
-			return tool
-		}
-	default:
-		tool.Call = at
-		tool.Job.Call = &machine.AddressSpec{At: at}
-		target = p.MachineAt(place+".call", at)
-		if target != nil || strings.HasPrefix(at, "/") {
-			tool.Job.Allow = []string{"send:" + at}
-		}
-		if target == nil {
-			// A location in full is read when the run starts.
-			return tool
-		}
 	}
 	for _, w := range tool.read(machine.Recorded{Description: target.Description, Input: target.Input, Type: target.Type, Lifetime: target.Lifetime}) {
-		p.Problem(place+w.at, "%s", w.text)
+		p.Problem(place+w.At, "%s", w.Text)
 	}
 	return tool
 }
 
 // wrong is what is wrong with an entry that names a machine, at a place
 // under the entry's: .machine or .call, or .input.<name> for a name it fixes.
-type wrong struct{ at, text string }
+type wrong = machine.Wrong
 
 // read gives an entry that names a machine its description from what is
 // read of that machine, and says what is wrong. A toolkit makes the entry a
@@ -428,46 +399,36 @@ func (t *Tool) read(m machine.Recorded) []wrong {
 	}
 	var out []wrong
 	if m.Refused != "" {
-		return []wrong{{at, m.Refused}}
+		return []wrong{{At: at, Text: m.Refused}}
 	}
 	t.Description, t.Agent, t.Toolkit = m.Description, m.Type == "agent", m.Type == "toolkit"
 	if m.Description == "" {
-		out = append(out, wrong{at, fmt.Sprintf("%s has no description:, which the model is given as the entry's", the)})
+		out = append(out, wrong{At: at, Text: fmt.Sprintf("%s has no description:, which the model is given as the entry's", the)})
 	}
 	if t.Call != "" && m.Lifetime != machine.LifetimeTransient {
-		out = append(out, wrong{at, fmt.Sprintf("%s is %s: a call starts a run only of a transient location", the, m.Lifetime)})
+		out = append(out, wrong{At: at, Text: fmt.Sprintf("%s is %s: a call starts a run only of a transient location", the, m.Lifetime)})
 	}
 	if t.Open && !t.Toolkit {
-		out = append(out, wrong{".open", fmt.Sprintf("%s is no toolkit: open: is for an entry that names a toolkit", the)})
+		out = append(out, wrong{At: ".open", Text: fmt.Sprintf("%s is no toolkit: open: is for an entry that names a toolkit", the)})
 	}
-	properties := map[string]any{}
-	if given, ok := m.Input["properties"].(map[string]any); ok {
-		for name, property := range given {
-			properties[name] = asArg(property)
-		}
-	}
-	required, _ := m.Input["required"].([]any)
 	fixed, _ := t.Job.Input.(map[string]any)
-	for _, name := range sortedNames(fixed) {
-		if _, named := properties[name]; !named || t.Toolkit && name == "request" {
-			out = append(out, wrong{".input." + name, fmt.Sprintf("%s takes no input named %q", the, name)})
-		}
-		delete(properties, name)
-		required = slices.DeleteFunc(slices.Clone(required), func(r any) bool { return r == name })
-	}
 	if t.Toolkit {
+		// A toolkit is given request by the agent, and gives its own tools.
+		given, _ := m.Input["properties"].(map[string]any)
+		for _, name := range sortedNames(fixed) {
+			if _, named := given[name]; !named || name == "request" {
+				out = append(out, wrong{At: ".input." + name, Text: fmt.Sprintf("%s takes no input named %q", the, name)})
+			}
+		}
 		return out
 	}
-	for _, key := range sortedNames(m.Input) {
-		if !slices.Contains([]string{"type", "properties", "required", "additionalProperties", "description", "title"}, key) {
-			out = append(out, wrong{at, fmt.Sprintf("the input of %s is written with %s, and a tool takes its arguments only from an input written with properties", the, key)})
-		}
+	args, more := m.Args(at, the, fixed)
+	properties := args["properties"].(map[string]any)
+	for name, property := range properties {
+		properties[name] = asArg(property)
 	}
-	t.Args = map[string]any{"type": "object", "properties": properties, "additionalProperties": false}
-	if len(required) > 0 {
-		t.Args["required"] = required
-	}
-	return out
+	t.Args = args
+	return append(out, more...)
 }
 
 // asArg gives a machine's input, or a part of it, as a tool's arguments: a

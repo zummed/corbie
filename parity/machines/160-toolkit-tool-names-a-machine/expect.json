@@ -1,0 +1,52 @@
+{
+  "status": "done",
+  "output": {
+    "open": {
+      "instructions": "",
+      "entries": [
+        {
+          "kind": "tool",
+          "name": "change_file",
+          "description": "Change one file of a project.",
+          "args": {
+            "type": "object",
+            "properties": { "path": { "type": "string" }, "text": { "type": "string" } },
+            "required": ["path", "text"],
+            "additionalProperties": false
+          }
+        },
+        {
+          "kind": "tool",
+          "name": "read_file",
+          "description": "Read one file of a project.",
+          "args": {
+            "type": "object",
+            "properties": { "path": { "type": "string" }, "ref": { "type": "string" } },
+            "required": ["path"],
+            "additionalProperties": false
+          }
+        }
+      ]
+    },
+    "read": { "result": { "read": { "project": "group/orders", "path": "a.txt" } } },
+    "change": { "result": { "changed": { "project": "group/orders", "path": "a.txt", "text": "new" } } },
+    "other": { "<contains>": "additional properties 'project' not allowed" }
+  },
+  "note": "R-kit-09: a tool written machine: or call: takes its description and its arguments from the machine it names, without the names it fixes, and runs that machine with the fixed input over the arguments. Its approve: and meta: are its job's, which the toolkit's hook reads with job.tool.",
+  "record": [
+    {
+      "machine": "orders",
+      "ask": {
+        "kind": "script",
+        "name": "change_file.team",
+        "job": {
+          "input": {
+            "tool": { "toolkit": "orders", "name": "change_file", "args": { "path": "a.txt", "text": "new" } },
+            "meta": { "channel": "#orders-team" }
+          }
+        }
+      }
+    },
+    { "machine": "orders", "ask": { "kind": "script", "name": "read_file.team" }, "absent": true }
+  ]
+}

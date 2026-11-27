@@ -503,6 +503,43 @@ func (p *Parser) MachineNamed(name string) *Definition {
 	return nil
 }
 
+// Named reads what a tool written with machine: or call: gives beside its
+// name: the job that runs the machine with the input the tool fixes, its
+// approve: and its meta:, and the machine it names, by its file or by its
+// location. One written call: holds send: for the location. The machine is
+// nil where it cannot be read, and for a location in full, which no tree
+// read gives. what is the tool as a problem names it: "an entry" or "a tool".
+func (p *Parser) Named(tf *Fields, place, what string) (job *JobSpec, file, at string, target *Definition) {
+	job = &JobSpec{Approve: tf.Bool("approve")}
+	job.Meta, _ = tf.Value("meta")
+	if written, ok := tf.Value("input"); ok {
+		fixed, ok := written.(map[string]any)
+		if !ok {
+			p.Problem(place+".input", "this should be a mapping of names of the machine's input, and is not one")
+		}
+		if len(fixed) > 0 {
+			job.Input = fixed
+		}
+	}
+	byFile := tf.Has("machine")
+	file, at = tf.Text("machine"), tf.Text("call")
+	switch {
+	case byFile && at != "":
+		p.Problem(place, "%s names its machine by its file with machine:, or by its location with call:, and not both", what)
+		return job, "", "", nil
+	case byFile:
+		file = p.Machine(place+".machine", file)
+		job.Machine = file
+		return job, file, "", p.MachineNamed(file)
+	}
+	job.Call = &AddressSpec{At: at}
+	target = p.MachineAt(place+".call", at)
+	if target != nil || strings.HasPrefix(at, "/") {
+		job.Allow = []string{"send:" + at}
+	}
+	return job, "", at, target
+}
+
 // MachineAt reads the machine at a location of the tree being read, as a
 // tool that calls it needs it: its type, description, input in full form
 // and lifetime, and nothing else. Its includes are joined, and no machine

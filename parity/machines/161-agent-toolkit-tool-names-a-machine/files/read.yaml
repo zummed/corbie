@@ -1,0 +1,6 @@
+flow: read
+description: Read one file of a project.
+input: { project: string, path: string, ref: "string?" }
+stages:
+  read: { job: { script: echo.js, input: { read: "${input}" } } }
+output: ${stages.read.output}

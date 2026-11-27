@@ -2,11 +2,15 @@ package toolkit
 
 import (
 	"encoding/json/v2"
+	"io/fs"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/zummed/corbie/machine"
+	_ "github.com/zummed/corbie/machine/flow"
+	_ "github.com/zummed/corbie/machine/statechart"
 )
 
 const notes = `toolkit: notes
@@ -187,5 +191,116 @@ func TestToolkitResumeWaitIsHeldToItsLimit(t *testing.T) {
 		if r := answers(long); r.End == nil {
 			t.Errorf("a wait of %v seconds asked for %+v", long, r)
 		}
+	}
+}
+
+// orders is a toolkit at kits/orders whose tools name machines of its tree.
+const orders = `toolkit: orders
+description: The orders app.
+input: { team: string }
+tools:
+  read_file: { call: files/read, input: { project: "${input.team}/orders" } }
+  change_file: { machine: ./change.yaml, approve: true, meta: { channel: "#orders-team" } }
+`
+
+// tree is the tree the toolkit orders is in.
+var tree = map[string]string{
+	"files/read.yaml":  "flow: read\ndescription: Read one file of a project.\ninput: { project: string, path: string, ref: \"string?\" }\nstages:\n  read: { job: { script: ./add.js } }\n",
+	"files/add.js":     "return 1",
+	"kits/change.yaml": "flow: change\ndescription: Change one file.\ninput: { path: string, text: string }\nstages:\n  change: { job: { script: ./add.js } }\n",
+	"kits/add.js":      "return 1",
+	"kits/plain.yaml":  "flow: plain\nstages:\n  one: { job: { script: ./add.js } }\n",
+	"kits/keyed.yaml":  "statechart: keyed\ndescription: Kept.\nlifetime: keyed\ninitial: a\nstates:\n  a: { end: done }\n",
+	"kits/notes.yaml":  notes,
+	"kits/all.yaml":    "flow: all\ndescription: Any of these.\ninput: { type: object, anyOf: [{ required: [a] }, { required: [b] }] }\nstages:\n  one: { job: { script: ./add.js } }\n",
+}
+
+// parseOrders reads the toolkit orders, as written, at kits/orders in its tree.
+func parseOrders(src string) (*machine.Definition, error) {
+	load := func(name string) ([]byte, error) {
+		text, ok := tree[name]
+		if !ok {
+			return nil, fs.ErrNotExist
+		}
+		return []byte(text), nil
+	}
+	draft, err := machine.ParseAt("kits/orders.yaml", []byte(src), load, func(string) bool { return true })
+	if err != nil {
+		return nil, err
+	}
+	return draft.Definition, nil
+}
+
+// A tool written machine: or call: takes its description and its arguments
+// from the machine it names, without the names it fixes, and its job runs
+// that machine with the fixed input over the arguments.
+func TestToolkitToolNamesAMachine(t *testing.T) {
+	def, err := parseOrders(orders)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var kit Toolkit
+	if err := json.Unmarshal(def.Body, &kit); err != nil {
+		t.Fatal(err)
+	}
+	read, change := kit.Tools["read_file"], kit.Tools["change_file"]
+	if read.Description != "Read one file of a project." || change.Description != "Change one file." {
+		t.Errorf("the descriptions are %q and %q", read.Description, change.Description)
+	}
+	if want := map[string]any{"type": "object", "additionalProperties": false, "required": []any{"path"},
+		"properties": map[string]any{"path": map[string]any{"type": "string"}, "ref": map[string]any{"type": "string"}}}; !reflect.DeepEqual(read.Args, want) {
+		t.Errorf("read_file's arguments are %v", read.Args)
+	}
+	if read.Job.Call == nil || read.Job.Call.At != "files/read" || len(read.Job.Allow) != 1 || read.Job.Allow[0] != "send:files/read" {
+		t.Errorf("read_file's job is %+v", read.Job)
+	}
+	if change.Job.Machine == "" || !change.Job.Approve || len(change.Job.Allow) != 0 {
+		t.Errorf("change_file's job is %+v", change.Job)
+	}
+	input := map[string]any{"team": "group", "request": map[string]any{"do": "call", "tool": "read_file", "args": map[string]any{"path": "a.txt", "ref": "main"}}}
+	out, err := toolkitType{}.Step(&machine.StepIn{Definition: def, Events: []machine.Event{{Name: machine.Start}}, Input: input, Time: time.Unix(0, 0), Seed: []byte("s")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(out.Requests) != 1 || out.Requests[0].Job == nil {
+		t.Fatalf("the call asked for %+v", out.Requests)
+	}
+	job := out.Requests[0].Job
+	if want := map[string]any{"path": "a.txt", "ref": "main", "project": "group/orders"}; !reflect.DeepEqual(job.Input, want) {
+		t.Errorf("the machine is given %v", job.Input)
+	}
+	if want := map[string]any{"toolkit": "orders", "name": "read_file", "args": map[string]any{"path": "a.txt", "ref": "main"}}; !reflect.DeepEqual(job.Tool, want) {
+		t.Errorf("job.tool is %v", job.Tool)
+	}
+}
+
+// What a tool that names a machine is refused for, each at its place.
+func TestToolkitToolThatNamesAMachineIsChecked(t *testing.T) {
+	for _, c := range []struct{ tool, problem string }{
+		{"{ call: files/read, description: Reads. }", "tools.t.description: a tool with machine: or call: has no description"},
+		{"{ call: files/read, machine: ./change.yaml }", "tools.t: a tool names its machine by its file with machine:, or by its location with call:, and not both"},
+		{"{ call: /other/files/read }", "tools.t.call: a toolkit's tool names a location of its own tree"},
+		{"{ call: files/none }", "tools.t.call: there is no machine at files/none"},
+		{"{ call: kits/notes }", "tools.t.call: the machine at kits/notes is a toolkit"},
+		{"{ machine: ./notes.yaml }", "tools.t.machine: the machine ./kits/notes.yaml is a toolkit"},
+		{"{ call: kits/plain }", "tools.t.call: the machine at kits/plain has no description:"},
+		{"{ call: kits/keyed }", "tools.t.call: the machine at kits/keyed is keyed"},
+		{"{ call: kits/all }", "tools.t.call: the input of the machine at kits/all is written with anyOf"},
+		{"{ call: files/read, input: { branch: main } }", `tools.t.input.branch: the machine at files/read takes no input named "branch"`},
+		{"{ call: files/read, input: { project: \"${args.path}\" } }", "tools.t.input.project: in ${args.path}: it reads \"args\""},
+		{"{ description: Adds., args: {}, job: { script: ./add.js }, approve: true }", "tools.t.approve: approve: belongs to a tool with machine: or call:"},
+	} {
+		_, err := parseOrders("toolkit: orders\ndescription: The orders app.\ntools:\n  t: " + c.tool + "\n")
+		if err == nil || !strings.Contains(err.Error(), c.problem) {
+			t.Errorf("the tool %s gave %v, want a problem holding %q", c.tool, err, c.problem)
+		}
+	}
+	// A machine made while running has no tree, so it names no location.
+	if _, err := machine.ParseMade([]byte("toolkit: orders\ndescription: The orders app.\ntools:\n  t: { call: files/read }\n"), machine.Given(nil)); err == nil || !strings.Contains(err.Error(), "tools.t.call: a machine made while running has no tree, and calls no location") {
+		t.Errorf("a machine made while running gave %v", err)
+	}
+	// A file read alone has no tree, so it names no location.
+	if _, err := parse("toolkit: orders\ndescription: The orders app.\ntools:\n  t: { call: files/read }\n"); err == nil || !strings.Contains(err.Error(), "tools.t.call: the machine at files/read is read from the tree this file is in") {
+		t.Errorf("a file read alone gave %v", err)
 	}
 }

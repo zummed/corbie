@@ -5,6 +5,16 @@ Each section lists what changed after one release, the newest first.
 compatible before version 1: a file or a command written the old way is
 refused.
 
+After 0.43.0
+------------
+
+This is new.
+
+- A toolkit's tool is written `machine:` or `call:`, as an agent's entry is:
+  `read_file: { call: gitlab/files/read, input: { project: group/orders } }`.
+  Its description and arguments are the machine's, as `corbie manual toolkit`
+  says.
+
 After 0.42.0
 ------------
 

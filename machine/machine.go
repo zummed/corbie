@@ -7,6 +7,8 @@ import (
 	"encoding/json/jsontext"
 	"errors"
 	"fmt"
+	"maps"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -384,6 +386,41 @@ type Recorded struct {
 	Type        string         `json:"type,omitzero"`
 	Lifetime    string         `json:"lifetime,omitzero"`
 	Refused     string         `json:"refused,omitzero"`
+}
+
+// Wrong is what is wrong with a tool that names a machine, at a place under
+// the tool's: .machine or .call, or .input.<name> for a name it fixes.
+type Wrong struct{ At, Text string }
+
+// Args gives the arguments of a tool that names the machine: the machine's
+// input without the names the tool fixes, and no other name. It says what
+// is wrong: a fixed name the input does not give, and an input written with
+// more than properties. at is the place of the tool's machine: or call:, and
+// the names the machine, as "the machine at gitlab/files/read".
+func (m Recorded) Args(at, the string, fixed map[string]any) (map[string]any, []Wrong) {
+	var out []Wrong
+	properties := map[string]any{}
+	if given, ok := m.Input["properties"].(map[string]any); ok {
+		properties = maps.Clone(given)
+	}
+	required, _ := m.Input["required"].([]any)
+	for _, name := range slices.Sorted(maps.Keys(fixed)) {
+		if _, named := properties[name]; !named {
+			out = append(out, Wrong{".input." + name, fmt.Sprintf("%s takes no input named %q", the, name)})
+		}
+		delete(properties, name)
+		required = slices.DeleteFunc(slices.Clone(required), func(r any) bool { return r == name })
+	}
+	for _, key := range slices.Sorted(maps.Keys(m.Input)) {
+		if !slices.Contains([]string{"type", "properties", "required", "additionalProperties", "description", "title"}, key) {
+			out = append(out, Wrong{at, fmt.Sprintf("the input of %s is written with %s, and a tool takes its arguments only from an input written with properties", the, key)})
+		}
+	}
+	args := map[string]any{"type": "object", "properties": properties, "additionalProperties": false}
+	if len(required) > 0 {
+		args["required"] = required
+	}
+	return args, out
 }
 
 // A Receiver is a type whose runs take events sent to them by their address,

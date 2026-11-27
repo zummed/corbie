@@ -1182,7 +1182,11 @@ func Test_store_members_a_name_is_one_members(t *testing.T) {
 func Test_store_members_a_join_refused_leaves_one_member(t *testing.T) {
 	c := newMembers(t, 1)
 	first := c.all[0]
-	did(t)(c.owner().Write(ctx, "a/x:y", []byte("1"), OnlyIfNew))
+	// Windows takes no such name with one member either.
+	named := runtime.GOOS != "windows"
+	if named {
+		did(t)(c.owner().Write(ctx, "a/x:y", []byte("1"), OnlyIfNew))
+	}
 	l, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatal(err)
@@ -1204,6 +1208,9 @@ func Test_store_members_a_join_refused_leaves_one_member(t *testing.T) {
 	c.stop(same)
 	if HasMembers(first.dir) {
 		t.Fatal("a join that was refused gave the directory a log")
+	}
+	if !named {
+		return
 	}
 
 	c.add()

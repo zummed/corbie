@@ -18,6 +18,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"strconv"
 	"strings"
@@ -575,7 +576,8 @@ func (l leader) Delete(ctx context.Context, name string, how How) (bool, error) 
 	defer m.names.lock(name)()
 	// A name the directory took when it had one member is deleted, though
 	// a store with members takes no such name: every member holds it.
-	if err := checkMemberName(name); err != nil && !exists(m.dir.path(name)) {
+	// Windows holds no such name, and opens another file by it.
+	if err := checkMemberName(name); err != nil && (runtime.GOOS == "windows" || !exists(m.dir.path(name))) {
 		return false, err
 	}
 	if fits, err := m.settled(ctx, func() (bool, error) { return m.fits(name, how) }); err != nil || !fits {

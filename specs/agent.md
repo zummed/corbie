@@ -243,7 +243,7 @@ tools:
     job: { script: ./show-status.js, input: { device: "${args.device}", command: "${args.command}" }, allow: [net:192.0.2.1:22] }
 ```
 
-1. The model is shown one more tool, `open`, with the list, the name and the description of each toolkit it can open.
+1. The model is shown one more tool, `open`, and is told before its prompt which toolkits it can open: the list `toolkits`, with the name and the description of each.
 2. The model calls `open` with `{ list: toolkits, name: net }`, and a job named `open` runs: the entry's job, with the request `{ do: open }`.
 3. The model is shown the toolkit's instructions as the result of `open`.
 4. From the next turn, the model is shown the toolkit's tools, each under the entry's name and its own: `net_show_status`.
@@ -261,6 +261,8 @@ tools:
 - An open whose list gives a tool that would be shown under the name of another tool, or under a name longer than 64 characters, goes back to the model as an error, and opens nothing.
 - The result of `open` is shown to the model whole, and is never stored as a blob. With no instructions, it is `Opened net.`.
 - `open` and `resume` are supplied by Corbie, and no entry may take the name `open`, `toolkits` or `resume`. `open` is not shown while no toolkit can be opened.
+- The description of `open`, and of `resume`, is the same at every turn, so no tool's definition changes during a run. What can be opened is in the conversation: the list `toolkits` before the prompt, and the toolkits inside a toolkit in the result of its open.
+- A model service keeps the start of a request in its cache, and the tools are at the start, so an open loses the cache by default. `model: { tool_changes: true }` keeps it, for a service and a model that take a change of tools as a message (see [Models](model.md#chat)).
 - An entry with `open: true` is opened before the first turn, by a job named `open`. The first turn is offered its tools and is shown its instructions. A toolkit that fails to open then fails the agent.
 - `approve: true` marks the open and every call through the entry for approval. A call a hook refuses goes back to the model as denied, with the hook's note, and a refused open opens nothing.
 - The agent's hooks run for the open and for each call, which are the agent's jobs. A toolkit's own hooks run for its tools' jobs, in its run (see [Toolkit](toolkit.md#authority)).
@@ -275,11 +277,11 @@ Every list the model chooses from is a list of entries: the agent's own toolkits
 3. The model searches the blob with the blob tools.
 4. The model calls `open` with the list and an entry's name. A toolkit is opened as any is. A tool is offered from the next turn, and no job runs for it.
 
-- `open` names a list that is a blob with its blob, and not its entries.
+- The model names such a list by its name or by its blob's name.
 - A tool of such a list that the model has not opened is not offered, and a call of it goes back to the model as an error.
 - A list that could not be stored is shown as a short one is.
 
-A toolkit's list may hold a toolkit, as well as tools, as an MCP server's list holds its skills (see plugin.md). The model opens it from the list of the toolkit that gave it:
+A toolkit's list may hold a toolkit, as well as tools, as an MCP server's list holds its skills (see plugin.md). The result of the open names each, and the model opens it from the list of the toolkit that gave it:
 
 ```
 open { list: github, name: review }     the request is { do: open, toolkit: [review] }
@@ -291,7 +293,7 @@ github_review_read                      the request is { do: call, toolkit: [rev
 A toolkit answers a call with `{ working, state }` where the work goes on, such as a task of an MCP server, or with `{ requests, state }` where it needs input. The call is then a task.
 
 1. The agent keeps the state under a name, `task1`, and the model is shown `{ task: task1, working }` or `{ task: task1, requests }` as the call's result.
-2. The model is offered one more tool, `resume`, which names each task. It goes on with other tools.
+2. The model is offered one more tool, `resume`. It goes on with other tools.
 3. The model calls `resume` with `{ task: task1 }`, and with `responses`, by the names of the requests, where the call asked for input.
 4. A job named `resume` runs: the entry's job, with the request `{ do: resume, tool, args, state, responses }`. The toolkit waits for the work (see [Toolkit](toolkit.md#a-resume-waits)).
 5. The model is shown the result, and the task is gone. An answer of `working` or `requests` again keeps the task, with its new state.

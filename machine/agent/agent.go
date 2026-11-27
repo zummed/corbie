@@ -54,6 +54,9 @@ type Model struct {
 	// Own are the tools of its own that a model run as a program may use:
 	// tools Corbie does not run.
 	Own []string `json:"own,omitzero"`
+	// ToolChanges says tools added or removed after the first turn are
+	// sent to the service as messages, for a service that has that.
+	ToolChanges bool `json:"tool_changes,omitzero"`
 }
 
 // Tool is an entry of an agent's tools. Written in place it is a named job
@@ -145,7 +148,11 @@ func heldBy(service *llm.Service) []string {
 	if service.Program != "" {
 		return append(held, "own")
 	}
-	return append(held, "address", "reply_tokens")
+	held = append(held, "address", "reply_tokens")
+	if service.ToolChanges {
+		held = append(held, "tool_changes")
+	}
+	return held
 }
 
 // chats gives the services that have chat: those an agent's model may be
@@ -178,6 +185,8 @@ func (m Model) check() error {
 		return fmt.Errorf("the service %q is a program on the runner's computer, and has no address", name)
 	case len(m.Own) > 0 && !slices.Contains(held, "own"):
 		return fmt.Errorf("own: is for a service that is a program, which may have tools of its own; the service %q has none", name)
+	case m.ToolChanges && !slices.Contains(held, "tool_changes"):
+		return fmt.Errorf("the service %q has no way to be sent a change of tools in a message, and takes no tool_changes:", name)
 	case m.ReplyTokens != 0 && !slices.Contains(held, "reply_tokens"):
 		return fmt.Errorf("the service %q is a program, which writes what it writes: it cannot be held to a size of reply, and takes no reply_tokens:", name)
 	}
@@ -277,6 +286,8 @@ func (agentType) Shape() *machine.Shape {
 			Description: "where the service lives, for a model that is not at its service's usual place: self-hosted, or offered by a cloud"},
 		{Name: "effort", Kind: machine.KindWord, Description: "how much effort the model is to take"},
 		{Name: "reply_tokens", Kind: machine.KindNumber, Description: "the most a reply may hold, in tokens"},
+		{Name: "tool_changes", Kind: machine.KindFlag,
+			Description: "for a service that has it: a tool added or removed after the first turn is sent as a message, so the service keeps its cache; the model must be one that takes it"},
 		{Name: "own", Kind: machine.KindList,
 			Description: "for a service that is a program: the tools of its own it may use. Corbie does not run them, so each needs leave for all it could do: network to browse, disk to read or write files, all for a shell or a skill"},
 	}}
@@ -484,7 +495,7 @@ func (agentType) Fill(p *machine.Parser, f *machine.Fields) any {
 	// With no model named, the check says an agent names its model.
 	if mf := f.Fields("model"); mf != nil {
 		a.Model = Model{Name: mf.Text("name"), Secret: mf.Text("secret"), Service: mf.Text("service"),
-			Address: mf.Text("address"), Effort: mf.Text("effort"), ReplyTokens: mf.Int("reply_tokens"), Own: mf.Strings("own")}
+			Address: mf.Text("address"), Effort: mf.Text("effort"), ReplyTokens: mf.Int("reply_tokens"), Own: mf.Strings("own"), ToolChanges: mf.Bool("tool_changes")}
 		mf.Done()
 	}
 	a.Prompt, _ = f.Value("prompt")

@@ -911,8 +911,8 @@ func TestAgentOpensASkillOfAnMCPServer(t *testing.T) {
 	if r.Status != "done" {
 		t.Fatalf("the agent ended %s: %s", r.Status, r.Error)
 	}
-	if got := openDescription(m.Calls[0].Tools); !strings.Contains(got, "- { list: notes, name: code-review }: Review code using the team's checklist.") {
-		t.Errorf("open says: %s", got)
+	if shown := strings.ReplaceAll(jsonOf(m.Calls[0]), `\`, ""); !strings.Contains(shown, `"list":"notes"`) || !strings.Contains(shown, `{"description":"Review code using the team's checklist.","name":"code-review"}`) {
+		t.Errorf("the first turn was shown: %s", shown)
 	}
 	if shown := lastShown(m.Calls[1]); !strings.Contains(shown, "then review the diff") {
 		t.Errorf("the open of the skill gave: %s", shown)

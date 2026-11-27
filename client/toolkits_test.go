@@ -1,6 +1,7 @@
 package client_test
 
 import (
+	"encoding/json"
 	"fmt"
 	"maps"
 	"slices"
@@ -127,15 +128,17 @@ func TestAgentToolkitsAreOpenedByTheModel(t *testing.T) {
 	if got := offeredNames(m.Calls[0].Tools); got != "add "+blobToolNames+" open" {
 		t.Errorf("the first turn was offered: %s", got)
 	}
-	if got := openDescription(m.Calls[0].Tools); !strings.Contains(got, "- { list: toolkits, name: net }: The firewall and the switch.") ||
-		!strings.Contains(got, "- { list: toolkits, name: payments }: Payments.") {
-		t.Errorf("open says: %s", got)
+	// The model is told which toolkits it can open before its prompt, and
+	// the description of open is the same at every turn.
+	if shown := strings.ReplaceAll(jsonOf(m.Calls[0].Messages[0]), `\`, ""); !strings.Contains(shown, `"toolkits":[{"description":"The firewall and the switch.","name":"net"},{"description":"Payments.","name":"payments"}]`) ||
+		!strings.Contains(shown, `call open with { list: "toolkits", name:`) {
+		t.Errorf("the first turn was shown: %s", shown)
+	}
+	if first, later := openDescription(m.Calls[0].Tools), openDescription(m.Calls[1].Tools); first == "" || first != later || strings.Contains(first, "net") {
+		t.Errorf("open says %q, then %q", first, later)
 	}
 	if got := offeredNames(m.Calls[1].Tools); got != "add "+blobToolNames+" net_show open" {
 		t.Errorf("the turn after the open was offered: %s", got)
-	}
-	if got := openDescription(m.Calls[1].Tools); strings.Contains(got, "net") || !strings.Contains(got, "payments") {
-		t.Errorf("after the open, open says: %s", got)
 	}
 	if shown := lastShown(m.Calls[1]); !strings.Contains(shown, "Run show commands only. q is asking.") {
 		t.Errorf("the open of net gave: %s", shown)
@@ -229,14 +232,14 @@ func TestAgentListTooLargeToShowIsABlob(t *testing.T) {
 		t.Fatalf("the agent ended %s: %s", r.Status, r.Error)
 	}
 	if shown := strings.ReplaceAll(lastShown(m.Calls[1]), `\`, ""); !strings.Contains(shown, `"instructions":"Search first."`) || !strings.Contains(shown, `"blob":"blob1"`) ||
-		!strings.Contains(shown, `"items":80`) || !strings.Contains(shown, "then call open with this list") {
+		!strings.Contains(shown, `"items":80`) || !strings.Contains(shown, `"list":"net"`) {
 		t.Errorf("the open of a long list was shown as: %.600s", shown)
 	}
 	if got := offeredNames(m.Calls[1].Tools); got != "add "+blobToolNames+" open" {
 		t.Errorf("after the open of a long list, the turn was offered: %s", got)
 	}
-	if got := openDescription(m.Calls[1].Tools); !strings.Contains(got, "- the list net is the blob blob1") {
-		t.Errorf("after the open of a long list, open says: %s", got)
+	if shown := strings.ReplaceAll(lastShown(m.Calls[1]), `\`, ""); !strings.Contains(shown, `call open with { list: "net", name:`) {
+		t.Errorf("the open of a long list did not say how to open from it: %.600s", shown)
 	}
 	if shown := strings.ReplaceAll(lastShown(m.Calls[2]), `\`, ""); !strings.Contains(shown, `"name":"t42"`) {
 		t.Errorf("the search gave: %.400s", shown)
@@ -261,8 +264,8 @@ func TestAgentListTooLargeToShowIsABlob(t *testing.T) {
 	if r := wait(t, l, startWith(t, l, helper(m.URL, ""), files, map[string]any{"question": "q"})); r.Status != "done" {
 		t.Fatalf("the agent ended %s: %s", r.Status, r.Error)
 	}
-	if got := openDescription(m.Calls[0].Tools); !strings.Contains(got, "- the list toolkits is the blob blob1") || strings.Contains(got, "yyyy") {
-		t.Errorf("with a long list of toolkits, open says: %.300s", got)
+	if got := jsonOf(m.Calls[0].Tools); strings.Contains(got, "yyyy") {
+		t.Errorf("with a long list of toolkits, the tools hold a description: %.300s", got)
 	}
 	if shown := strings.ReplaceAll(jsonOf(m.Calls[0]), `\`, ""); !strings.Contains(shown, `"list":"toolkits"`) || !strings.Contains(shown, `"items":2`) {
 		t.Errorf("the first turn was shown: %.600s", shown)
@@ -312,8 +315,8 @@ func TestAgentToolkitToolNamesAreTheirOwn(t *testing.T) {
 	if shown := lastShown(m.Calls[1]); !strings.Contains(shown, `the tool \"show\" would be shown to the model as \"net_show\", which another tool has`) {
 		t.Errorf("the open was shown as: %s", shown)
 	}
-	if got := openDescription(m.Calls[1].Tools); !strings.Contains(got, "name: net }") {
-		t.Errorf("after the open that failed, open says: %s", got)
+	if got := offeredNames(m.Calls[1].Tools); !strings.Contains(got, "open") {
+		t.Errorf("after the open that failed, the turn was offered: %s", got)
 	}
 }
 
@@ -399,8 +402,8 @@ func TestAgentWhenSaysWhatIsOffered(t *testing.T) {
 	if got := offeredNames(m.Calls[0].Tools); got != blobToolNames+" open" {
 		t.Errorf("the first turn was offered: %s", got)
 	}
-	if got := openDescription(m.Calls[0].Tools); strings.Contains(got, "payments") || !strings.Contains(got, "name: net }") {
-		t.Errorf("open says: %s", got)
+	if shown := jsonOf(m.Calls[0]); strings.Contains(shown, "Payments.") || !strings.Contains(shown, "The firewall and the switch.") {
+		t.Errorf("the first turn was shown: %s", shown)
 	}
 	if shown := lastShown(m.Calls[1]); !strings.Contains(shown, `there is no toolkit named \"payments\" to open in the list \"toolkits\"`) {
 		t.Errorf("the open of a toolkit not offered was shown as: %s", shown)
@@ -512,8 +515,8 @@ func TestAgentOpensAToolkitInsideAToolkit(t *testing.T) {
 	if r := wait(t, l, startWith(t, l, helper(m.URL, ""), files, map[string]any{"question": "q"})); r.Status != "done" {
 		t.Fatalf("the agent ended %s: %s", r.Status, r.Error)
 	}
-	if got := openDescription(m.Calls[1].Tools); !strings.Contains(got, "- { list: net, name: review }: How to review.") {
-		t.Errorf("after the open of net, open says: %s", got)
+	if shown := strings.ReplaceAll(lastShown(m.Calls[1]), `\`, ""); !strings.Contains(shown, `"toolkits":[{"description":"How to review.","name":"review"}]`) || !strings.Contains(shown, `"instructions":"Top."`) {
+		t.Errorf("the open of net gave: %s", shown)
 	}
 	if got := offeredNames(m.Calls[2].Tools); got != "add "+blobToolNames+" net_find net_review_read open" {
 		t.Errorf("with both open, the turn was offered: %s", got)
@@ -628,7 +631,7 @@ func TestAgentResumesACallThatHasNotEnded(t *testing.T) {
 		t.Errorf("with no task, the turn was offered: %s", got)
 	}
 	resume := offeredTool(m.Calls[2].Tools, "resume")
-	if resume == nil || !strings.Contains(resume["description"].(string), "- task1: export of net") {
+	if resume == nil || strings.Contains(resume["description"].(string), "task1") {
 		t.Errorf("resume was offered as %s", jsonOf(resume))
 	}
 	if shown := lastShown(m.Calls[3]); !strings.Contains(shown, "exported notes at ask 3") {
@@ -843,5 +846,86 @@ func TestAgentOpensASkillWrittenAsAToolkit(t *testing.T) {
 	if _, err := machineParse("toolkit: k\ndescription: K\nfiles: [./a.md]\ntools:\n  read: { description: R, job: ./r.js }\n", map[string]string{"a.md": "a", "r.js": ""}); err == nil ||
 		!strings.Contains(err.Error(), `tools.read: the tool "read" has the name of the tool a toolkit with files: has`) {
 		t.Errorf("a toolkit with files: and a tool read: %v", err)
+	}
+}
+
+// With tool_changes: true, the tools sent to the service are those of the
+// first turn at every turn, and a tool added or removed later is a message
+// of the conversation, at the place the change was made. A run that carries
+// the conversation on sends the same tools and the same messages.
+func TestAgentToolChangesAreSentAsMessages(t *testing.T) {
+	changesIn := func(c llmstandin.Call) []string {
+		var out []string
+		for i, m := range c.Messages {
+			message, _ := m.(map[string]any)
+			if message["role"] != "system" {
+				continue
+			}
+			for _, b := range message["content"].([]any) {
+				block := b.(map[string]any)
+				tool := block["tool"].(map[string]any)
+				name, _ := tool["name"].(string)
+				if definition, ok := tool["definition"].(map[string]any); ok {
+					name = definition["name"].(string)
+					if definition["input_schema"] == nil || definition["description"] == nil {
+						t.Errorf("a tool was added without its definition: %v", definition)
+					}
+				}
+				out = append(out, fmt.Sprintf("%d:%s:%s", i, block["type"], name))
+			}
+		}
+		return out
+	}
+	with := func(address, extra string) string {
+		return strings.Replace(helper(address, extra), "service: anthropic,", "service: anthropic, tool_changes: true,", 1)
+	}
+	m := newModel(t, calls("c1", "open", opens("net")), calls("c2", "net_show", `{"command": "a"}`),
+		calls("c3", "open", opens("payments")), says("done"))
+	l := local(t, "all")
+	r := wait(t, l, startHelper(t, l, with(m.URL, ""), map[string]any{"question": "q"}))
+	if r.Status != "done" {
+		t.Fatalf("the agent ended %s: %s", r.Status, r.Error)
+	}
+	first := offeredNames(m.Calls[0].Tools)
+	for i, c := range m.Calls {
+		if got := offeredNames(c.Tools); got != first || c.Beta != "inline-tools-2026-09-15" {
+			t.Errorf("turn %d was sent the tools %s with the beta %q; the first was sent %s", i+1, got, c.Beta, first)
+		}
+	}
+	if got := changesIn(m.Calls[0]); len(got) != 0 {
+		t.Errorf("the first turn was sent the changes %v", got)
+	}
+	if got, want := strings.Join(changesIn(m.Calls[1]), " "), "4:tool_addition:net_show"; got != want {
+		t.Errorf("the turn after the open was sent the changes %s, want %s", got, want)
+	}
+	// With both open, open is removed, and the earlier change is where it was.
+	if got, want := strings.Join(changesIn(m.Calls[3]), " "), "4:tool_addition:net_show 9:tool_removal:open 9:tool_addition:payments_pay"; got != want {
+		t.Errorf("the last turn was sent the changes %s, want %s", got, want)
+	}
+	// The messages before a change are sent again as they were.
+	before, _ := json.Marshal(m.Calls[1].Messages[:4])
+	again, _ := json.Marshal(m.Calls[3].Messages[:4])
+	if string(before) != string(again) {
+		t.Errorf("the start of the conversation was sent as\n%s\nand then as\n%s", before, again)
+	}
+	m2 := newModel(t, says("again"))
+	conversation := r.Output.(map[string]any)["conversation"]
+	wait(t, l, startHelper(t, l, with(m2.URL, "conversation: ${input.so}"), map[string]any{"question": "and?", "so": carried(conversation, r.ID)}))
+	if got := offeredNames(m2.Calls[0].Tools); got != first {
+		t.Errorf("the run that carried on was sent the tools %s", got)
+	}
+	if got := changesIn(m2.Calls[0]); len(got) != 3 || got[0] != "4:tool_addition:net_show" {
+		t.Errorf("the run that carried on was sent the changes %v", got)
+	}
+	// Without tool_changes, the tools sent are those of each turn, with no beta.
+	m3 := newModel(t, calls("c1", "open", opens("net")), says("done"))
+	wait(t, l, startHelper(t, l, helper(m3.URL, ""), map[string]any{"question": "q"}))
+	if got := offeredNames(m3.Calls[1].Tools); !strings.Contains(got, "net_show") || m3.Calls[1].Beta != "" || len(changesIn(m3.Calls[1])) != 0 {
+		t.Errorf("without tool_changes the second turn was sent %s, the beta %q and the changes %v", got, m3.Calls[1].Beta, changesIn(m3.Calls[1]))
+	}
+	// A service with no such message refuses the field.
+	if _, err := machineParse(strings.Replace(with("http://127.0.0.1:1", ""), "service: anthropic, tool_changes: true,", "service: openai, tool_changes: true,", 1), toolkits); err == nil ||
+		!strings.Contains(err.Error(), "tool_changes") {
+		t.Errorf("tool_changes: on a model of the service openai: %v", err)
 	}
 }

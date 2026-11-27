@@ -246,6 +246,8 @@ func (s *stepper) arrive(event machine.Event) (bool, error) {
 			}
 			if list := s.listed(s.st.Opened[o.List].Entries); s.large(list) {
 				s.look(&preview{List: o.List}, map[string]any{"value": list})
+			} else if inside := s.toolkitsIn(o.List); len(inside) > 0 {
+				s.st.Next = append(s.st.Next, map[string]any{"role": "user", "content": map[string]any{"list": o.List, "toolkits": inside, "how": howToOpen(o.List)}})
 			}
 			return true, s.ready()
 		}
@@ -312,10 +314,13 @@ func (s *stepper) done(c *call, output any) {
 		if instructions == "" {
 			instructions = "Opened " + c.Open.List + "."
 		}
-		// What opening a toolkit gives is shown to the model whole. A list
-		// too large to show is stored first.
+		// What opening a toolkit gives is shown to the model whole, with the
+		// toolkits its list holds. A list too large to show is stored first.
 		c.Result = instructions
 		c.Large = s.large(s.listed(s.st.Opened[c.Open.List].Entries))
+		if inside := s.toolkitsIn(c.Open.List); len(inside) > 0 && !c.Large {
+			c.Result = map[string]any{"instructions": instructions, "list": c.Open.List, "toolkits": inside, "how": howToOpen(c.Open.List)}
+		}
 		return
 	case c.Task != "":
 		var ended bool
@@ -391,7 +396,9 @@ func (s *stepper) large(list []any) bool {
 }
 
 // howToSearch tells the model what to do with a list that is a blob.
-const howToSearch = "search this blob with the blob tools, then call open with this list and an entry's name"
+func howToSearch(list string) string {
+	return fmt.Sprintf("search this blob with the blob tools, then call open with { list: %q, name: <an entry's name> }", list)
+}
 
 // stored takes the blob a preview job made of a list. The list is then
 // that blob: the model searches it, and opens an entry by its name. A list
@@ -413,7 +420,7 @@ func (s *stepper) stored(p *preview, event machine.Event, found map[string]any) 
 	} else {
 		s.st.Opened[p.List].Blob = p.Handle
 	}
-	told := map[string]any{"list": p.List, "entries": handle, "how": howToSearch}
+	told := map[string]any{"list": p.List, "entries": handle, "how": howToSearch(p.List)}
 	if c != nil {
 		told["instructions"] = c.Result
 		c.Result = told
@@ -640,6 +647,9 @@ func (s *stepper) begin() error {
 	}
 	if list := s.listed(own); s.large(list) {
 		s.look(&preview{List: toolkitsList}, map[string]any{"value": list})
+	} else if can := s.toolkitsIn(toolkitsList); len(can) > 0 {
+		// The model is told which toolkits it can open before its prompt.
+		s.st.Next = append([]any{map[string]any{"role": "user", "content": map[string]any{"list": toolkitsList, "toolkits": can, "how": howToOpen(toolkitsList)}}}, s.st.Next...)
 	}
 	// The toolkits with open: true are opened once, now; the first turn
 	// waits for them as it waits for its previews.
@@ -784,50 +794,70 @@ func (s *stepper) within(o *opening) (list, name, description string) {
 	return "", name, ""
 }
 
-// opener gives the tool that opens a toolkit as the model is shown it:
-// with the list, the name and the description of each toolkit it can open.
+// opener gives the tool that opens a toolkit, while there is a toolkit or
+// a tool of a long list to open. Its description is the same at every
+// turn: the conversation names what can be opened.
 func (s *stepper) opener() map[string]any {
-	can := s.openable()
-	var lines []string
-	// A list that is a blob is named with its blob, and its entries are not.
-	blobs := map[string]string{}
-	if s.st.Toolkits != "" {
-		blobs[toolkitsList] = s.st.Toolkits
+	blobs := s.st.Toolkits != ""
+	for _, k := range s.st.Opened {
+		blobs = blobs || k.Blob != ""
 	}
-	for list, k := range s.st.Opened {
-		if k.Blob != "" {
-			blobs[list] = k.Blob
-		}
-	}
-	for _, list := range sortedNames(blobs) {
-		lines = append(lines, fmt.Sprintf("- the list %s is the blob %s: search it, and open a toolkit or a tool of it by its name", list, blobs[list]))
-	}
-	for _, as := range sortedNames(can) {
-		list, name, description := s.within(can[as])
-		if _, isBlob := blobs[list]; !isBlob {
-			lines = append(lines, fmt.Sprintf("- { list: %s, name: %s }: %s", list, name, description))
-		}
-	}
-	if len(lines) == 0 {
+	if len(s.openable()) == 0 && !blobs {
 		return nil
 	}
 	text := func() any { return map[string]any{"type": "string"} }
-	return map[string]any{"name": openTool, "description": openDescription + "\n" + strings.Join(lines, "\n"),
+	return map[string]any{"name": openTool, "description": openDescription,
 		"args": map[string]any{"type": "object", "properties": map[string]any{"list": text(), "name": text()},
 			"required": []any{"list", "name"}, "additionalProperties": false}}
+}
+
+// howToOpen tells the model what to do with a list of toolkits it is shown.
+func howToOpen(list string) string {
+	return fmt.Sprintf("call open with { list: %q, name: <a toolkit's name> }", list)
+}
+
+// toolkitsIn gives the toolkits of a list that the model can open, each
+// with its name and its description, as the model is shown them.
+func (s *stepper) toolkitsIn(list string) []any {
+	can := s.openable()
+	out := []any{}
+	for _, as := range sortedNames(can) {
+		if in, name, description := s.within(can[as]); in == list {
+			out = append(out, map[string]any{"name": name, "description": description})
+		}
+	}
+	return out
+}
+
+// listNamed gives the list a call of open names: by its name, or by the
+// name of the blob that holds it.
+func (s *stepper) listNamed(args any) (list, name string) {
+	given, _ := args.(map[string]any)
+	list, _ = given["list"].(string)
+	name, _ = given["name"].(string)
+	if list != "" && list == s.st.Toolkits {
+		return toolkitsList, name
+	}
+	for named, k := range s.st.Opened {
+		if list != "" && list == k.Blob {
+			return named, name
+		}
+	}
+	return list, name
 }
 
 // chosen gives the open a call of open asks for, or says what is wrong
 // with the call.
 func (s *stepper) chosen(args any) (*opening, string) {
-	given, _ := args.(map[string]any)
-	list, _ := given["list"].(string)
-	name, _ := given["name"].(string)
+	list, name := s.listNamed(args)
 	can := s.openable()
 	for _, as := range sortedNames(can) {
 		if in, named, _ := s.within(can[as]); in == list && named == name {
 			return can[as], ""
 		}
+	}
+	if _, open := s.st.Opened[list]; !open && list != toolkitsList {
+		return nil, fmt.Sprintf("there is no list named %q: a list is %s, or a toolkit that is open", list, toolkitsList)
 	}
 	return nil, fmt.Sprintf("there is no toolkit named %q to open in the list %q", name, list)
 }
@@ -835,9 +865,7 @@ func (s *stepper) chosen(args any) (*opening, string) {
 // loads gives the tool of a list that is a blob which a call of open asks
 // for: the list, and the name the model is then shown the tool by.
 func (s *stepper) loads(args any) (*kit, string) {
-	given, _ := args.(map[string]any)
-	list, _ := given["list"].(string)
-	name, _ := given["name"].(string)
+	list, name := s.listNamed(args)
 	k := s.st.Opened[list]
 	if k == nil || k.Blob == "" {
 		return nil, ""
@@ -957,11 +985,7 @@ func (s *stepper) offered() []any {
 		tools = append(tools, opener)
 	}
 	if len(s.st.Tasks) > 0 {
-		var lines []string
-		for _, name := range sortedNames(s.st.Tasks) {
-			lines = append(lines, fmt.Sprintf("- %s: %s of %s", name, s.st.Tasks[name].Tool, s.st.Tasks[name].Entry))
-		}
-		tools = append(tools, map[string]any{"name": resumeTool, "description": resumeDescription + "\n" + strings.Join(lines, "\n"),
+		tools = append(tools, map[string]any{"name": resumeTool, "description": resumeDescription,
 			"args": map[string]any{"type": "object", "properties": map[string]any{"task": map[string]any{"type": "string"},
 				"responses": map[string]any{"type": "object"}, "cancel": map[string]any{"type": "boolean"}},
 				"required": []any{"task"}, "additionalProperties": false}})
@@ -1001,7 +1025,7 @@ func (s *stepper) turn() error {
 		add = append(add, map[string]any{"role": "user", "content": fmt.Sprintf("(%d turns remain: finish with what you have)", left)})
 	}
 	given := map[string]any{
-		"model":  map[string]any{"name": s.a.Model.Name, "service": s.a.Model.serviceOf(), "address": s.a.Model.addressOf(), "secret": s.a.Model.Secret, "effort": s.a.Model.Effort, "reply_tokens": float64(s.a.Model.ReplyTokens), "own": own},
+		"model":  map[string]any{"name": s.a.Model.Name, "service": s.a.Model.serviceOf(), "address": s.a.Model.addressOf(), "secret": s.a.Model.Secret, "effort": s.a.Model.Effort, "reply_tokens": float64(s.a.Model.ReplyTokens), "own": own, "tool_changes": s.a.Model.ToolChanges},
 		"system": system, "tools": tools, "turns": s.st.Turns, "add": add, "shape": s.a.Reply,
 		// The blobs the model has been shown, by name: those its service
 		// takes as content are sent to it as they are.

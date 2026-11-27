@@ -42,8 +42,8 @@ const (
 	toolkitsList = "toolkits"
 	// resumeTool is the tool that carries on a call that has not ended.
 	resumeTool        = "resume"
-	resumeDescription = "Carry on a call that has not ended, by its task's name. It waits for the work, and returns its result, or working again. Give responses, by the names of the requests, to a call that asked for input. With cancel: true it cancels the call. The tasks:"
-	openDescription   = "Open a toolkit from a list, by its name. Its instructions are the result, and its tools are shown to you from your next turn, each under the toolkit's name and its own. The toolkits you can open:"
+	resumeDescription = "Carry on a call that has not ended, by the name of the task its result gave. It waits for the work, and returns its result, or working again. Give responses, by the names of the requests, to a call that asked for input. With cancel: true it cancels the call."
+	openDescription   = "Open a toolkit from a list, by its name. Its instructions are the result, and its tools are offered to you from your next turn, each under the toolkit's name and its own. You are shown each list you can open from: its toolkits, or a blob to search. From a list that is a blob, open a tool by its name before you call it."
 )
 
 const large = `
@@ -149,9 +149,11 @@ exports.turn = function (input) {
     effort: input.model.effort || null,
     reply_tokens: input.model.reply_tokens || null,
     own: input.model.own && input.model.own.length ? input.model.own : null,
+    tool_changes: input.model.tool_changes || null,
   })
   const answer = { role: "assistant", content: reply.text, calls: reply.calls }
   if (reply.kept) answer.kept = reply.kept
+  if (reply.offered) answer.offered = reply.offered
   const turn = blobs.make((input.add || []).concat([answer]), { type: "application/json" })
   return { turn, text: reply.text, calls: reply.calls, stop: reply.stop, usage: reply.usage }
 }

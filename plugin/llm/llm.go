@@ -45,6 +45,10 @@ type Service struct {
 	// Shapes says the service has a way of its own to be given the shape
 	// of answer wanted. One that has none is told it in the system text.
 	Shapes bool
+	// ToolChanges says the service has a way to be told, in a message of
+	// the conversation, that a tool was added or removed, so that the
+	// tools it was first sent stay as they were.
+	ToolChanges bool
 	// Chat holds a conversation: one call. Decide puts questions with fixed
 	// answers to a System One model. A service has one or both.
 	Chat   func(job *plugin.Job, c *Call) (*Reply, error)
@@ -75,6 +79,9 @@ type Call struct {
 	// Shape is the shape of answer wanted, for a service that takes it
 	// itself.
 	Shape map[string]any
+	// ToolChanges says tools added or removed since the first turn are
+	// sent as messages of the conversation.
+	ToolChanges bool
 }
 
 // Reply is what a model gave back.
@@ -179,7 +186,7 @@ func (s *Service) Takes(typ string, size int64) error {
 
 func init() {
 	plugin.Register(&plugin.Module{Name: "llm", Page: page, Calls: map[string]*plugin.Call{
-		"chat":   {Options: []string{"service", "model", "address", "key", "system", "tools", "shape", "effort", "reply_tokens", "timeout", "own"}, Do: chat},
+		"chat":   {Options: []string{"service", "model", "address", "key", "system", "tools", "shape", "effort", "reply_tokens", "timeout", "own", "tool_changes"}, Do: chat},
 		"decide": {Options: []string{"service", "model", "address", "key", "questions", "timeout"}, Do: decide},
 		"takes": {Options: []string{"service"}, Do: func(job *plugin.Job, first any, opt plugin.Options) (any, error) {
 			b, ok := first.(*plugin.Blob)
@@ -264,6 +271,12 @@ func chat(job *plugin.Job, first any, opt plugin.Options) (any, error) {
 	for _, tool := range own {
 		c.Own = append(c.Own, text(tool))
 	}
+	if c.ToolChanges, err = opt.Bool("tool_changes", false); err != nil {
+		return nil, err
+	}
+	if c.ToolChanges && !svc.ToolChanges {
+		return nil, plugin.Errorf(plugin.BadInput, "llm.chat: the service %q has no way to be sent a change of tools in a message, and takes no tool_changes:", name)
+	}
 	// Content the service does not take, or that is too large for it, is
 	// refused before anything is sent.
 	for _, part := range said {
@@ -292,6 +305,12 @@ func chat(job *plugin.Job, first any, opt plugin.Options) (any, error) {
 		r.Calls = []any{}
 	}
 	out := map[string]any{"text": r.Text, "calls": r.Calls, "stop": r.Stop, "usage": r.Usage, "kept": nil}
+	// What this turn was offered that the turn before was not, for the
+	// script to keep with the reply: the conversation then says which
+	// tools each turn had.
+	if changed, known := offeredSince(said, c.Tools); known {
+		out["offered"] = changed.value()
+	}
 	// What the service wants back unchanged is marked as that service's:
 	// it is sent back to no other.
 	if r.Kept != nil {
@@ -402,8 +421,10 @@ func (f File) Data(job *plugin.Job) (string, error) {
 // sent and what comes back are written in its way of talking.
 type web struct {
 	path string
-	// headers gives the request's headers, given the key.
+	// headers gives the request's headers, given the key, and more those
+	// a call needs whether or not it has a key.
 	headers func(key string) map[string]string
+	more    func(c *Call) map[string]string
 	// request builds what is sent, and reply reads the whole answer.
 	request func(job *plugin.Job, c *Call) (map[string]any, error)
 	reply   func(body map[string]any) (*Reply, error)
@@ -417,7 +438,7 @@ type web struct {
 // be read. The key is an ordinary secret, and goes only where it is bound
 // to: a key bound to a host never goes over a plain connection. A call with
 // no key sends none.
-func (svc *web) send(ctx context.Context, job *plugin.Job, address string, key any, limit time.Duration, asked map[string]any) (io.ReadCloser, error) {
+func (svc *web) send(ctx context.Context, job *plugin.Job, address string, key any, limit time.Duration, asked map[string]any, more map[string]string) (io.ReadCloser, error) {
 	target, err := url.Parse(strings.TrimSuffix(address, "/") + svc.path)
 	if err != nil || target.Host == "" || (target.Scheme != "http" && target.Scheme != "https") {
 		return nil, plugin.Errorf(plugin.BadInput, "the model's address is not a web address")
@@ -452,6 +473,9 @@ func (svc *web) send(ctx context.Context, job *plugin.Job, address string, key a
 		return nil, plugin.Errorf(plugin.BadInput, "the request cannot be made")
 	}
 	req.Header.Set("Content-Type", "application/json")
+	for name, value := range more {
+		req.Header.Set(name, value)
+	}
 	if revealed != "" {
 		for name, value := range svc.headers(revealed) {
 			req.Header.Set(name, value)
@@ -485,7 +509,11 @@ func (svc *web) chat(job *plugin.Job, c *Call) (*Reply, error) {
 	asked["stream"] = true
 	ctx, cancel := context.WithTimeout(job.Context, c.Limit)
 	defer cancel()
-	body, err := svc.send(ctx, job, c.Address, c.Key, c.Limit, asked)
+	var more map[string]string
+	if svc.more != nil {
+		more = svc.more(c)
+	}
+	body, err := svc.send(ctx, job, c.Address, c.Key, c.Limit, asked, more)
 	if err != nil {
 		return nil, err
 	}
@@ -505,7 +533,7 @@ func (svc *web) chat(job *plugin.Job, c *Call) (*Reply, error) {
 func (svc *web) decide(job *plugin.Job, q *Questions) (*Answers, error) {
 	ctx, cancel := context.WithTimeout(job.Context, q.Limit)
 	defer cancel()
-	body, err := svc.send(ctx, job, q.Address, q.Key, q.Limit, map[string]any{"model": q.Model, "state": q.State, "questions": q.Questions})
+	body, err := svc.send(ctx, job, q.Address, q.Key, q.Limit, map[string]any{"model": q.Model, "state": q.State, "questions": q.Questions}, nil)
 	if err != nil {
 		return nil, err
 	}

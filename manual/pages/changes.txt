@@ -57,6 +57,14 @@ toolkit, as `corbie manual agent` says.
 - An agent's long list is a blob: more than 32 KiB of toolkits, or of a
   toolkit's tools, is searched with the blob tools, and a tool is opened by
   its name before it is called.
+- `open` and `resume` have the same description at every turn. The model is
+  told which toolkits it can open in the conversation: before its prompt,
+  and in the result of an open. A hook or a turn script that read the list
+  from the description of `open` reads the conversation.
+- `model: { tool_changes: true }`, for the service anthropic, keeps the
+  service's cache when a toolkit is opened, as `corbie manual agent` says.
+  `llm.chat` gives `offered`, which a turn script of your own keeps in the
+  assistant part for it to work.
 - An entry `{ machine: ./file.yaml }` names a machine by its file, as
   `{ call: location }` names one by its location.
 - `toolkit:` is a fifth type of machine. It holds tools that any machine

@@ -109,8 +109,8 @@ func TestAgentToolCallsAMachineOfTheTree(t *testing.T) {
 	if r := wait(t, l, id); r.Status != "done" {
 		t.Fatalf("the agent ended %s: %s", r.Status, r.Error)
 	}
-	if got := openDescription(m.Calls[0].Tools); !strings.Contains(got, "- { list: toolkits, name: kit }: Orders and refunds.") {
-		t.Errorf("open says: %s", got)
+	if shown := strings.ReplaceAll(jsonOf(m.Calls[0]), `\`, ""); !strings.Contains(shown, `{"description":"Orders and refunds.","name":"kit"}`) {
+		t.Errorf("the first turn was shown: %s", shown)
 	}
 	if shown := lastShown(m.Calls[2]); !strings.Contains(shown, "refunded 7 for group/team") {
 		t.Errorf("the toolkit's tool gave: %s", shown)

@@ -33,6 +33,7 @@ type Call struct {
 	Messages []any // without the marks that ask for the request's start to be kept
 	Tools    []any
 	Body     []byte `json:"-"` // the request's body, as it was sent
+	Beta     string // the anthropic-beta header
 }
 
 // A Reply is the model's answer: its text, then the tools it calls. Each
@@ -90,7 +91,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}
-	call := Call{Turn: len(s.Calls) + 1, Key: r.Header.Get("x-api-key"), System: sent.System, Messages: sent.Messages, Tools: sent.Tools, Body: body}
+	call := Call{Turn: len(s.Calls) + 1, Key: r.Header.Get("x-api-key"), System: sent.System, Messages: sent.Messages, Tools: sent.Tools, Body: body, Beta: r.Header.Get("anthropic-beta")}
 	s.Calls = append(s.Calls, call)
 	s.mu.Unlock()
 	reply := s.Answer(call)

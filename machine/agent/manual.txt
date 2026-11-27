@@ -62,6 +62,8 @@ The model
   effort          low, medium or high; claude-code also takes xhigh and max
   reply_tokens    the most tokens a reply may hold
   own             for claude-code: tools of the program that the model may use
+  tool_changes    for anthropic: `true` keeps the service's cache when a
+                  toolkit is opened, as under Toolkits
 
 The key is a secret. `--secret-env ANTHROPIC_KEY` reads it from that
 environment variable for `corbie test`, and `corbie controller secret set
@@ -75,7 +77,7 @@ service and `secret:<secret>@net:<host>`, and nothing from the definition's
     prompt: Say hello.
 
     corbie test elsewhere.yaml --secret-env MODELS_KEY
-      output: {"conversation":{"blobs":{},"turns":[{"$blob":"conversation.turns[0]","size":91,"type":"application/json"}]},"reply":"Hello.","tokens":{"cached":0,"input":10,"output":5}}
+      output: {"conversation":{"blobs":{},"turns":[{"$blob":"conversation.turns[0]","size":1616,"type":"application/json"}]},"reply":"Hello.","tokens":{"cached":0,"input":10,"output":5}}
       used: net:models.example:443 secret:MODELS_KEY@net:models.example:443
 
 The result
@@ -194,8 +196,8 @@ agent with many tools shows the model the ones it has opened.
     github: { call: tools/github, open: true }
     orders: { call: /orders/toolkits/orders, approve: true }
 
-1. The model is shown a tool `open`, with the list, the name and the
-   description of each toolkit it can open.
+1. The model is shown a tool `open`, and before its prompt the list
+   `toolkits`: the name and the description of each toolkit it can open.
 2. The model calls `open` with `{ list: toolkits, name: net }`, and a job
    named `open` runs the toolkit with the request `{ do: open }`.
 3. `open` returns the toolkit's instructions to the model.
@@ -225,13 +227,21 @@ agent with many tools shows the model the ones it has opened.
   refuses opens nothing.
 - The agent's hooks run for the open and for each call. A toolkit's own
   `hooks:` run for its tools' jobs.
-- A toolkit's list may hold a toolkit. The model opens it with the list's
-  name, `{ list: github, name: review }`, and its tools are shown as
-  `github_review_read`.
+- A toolkit's list may hold a toolkit. The result of `open` names it, the
+  model opens it with the list's name, `{ list: github, name: review }`,
+  and its tools are shown as `github_review_read`.
+- A model service keeps the start of a request in its cache, and the tools
+  are at the start, so by default an open loses the cache. With
+  `tool_changes: true` on `model:`, for the service anthropic, the tools
+  sent stay those of the first turn and each tool an open adds is sent as a
+  message. The model must take it: Opus 4.8 and later, Sonnet 5.5, Haiku
+  5.5, and the Fable models, at Anthropic's own API. Any other model refuses
+  the request.
 - A list larger than 32 KiB is a blob: the list `toolkits` before the first
   turn, and a toolkit's list in the result of its `open`. The model searches
-  it with the blob tools, then calls `open` with the list and an entry's
-  name. A tool it opens that way is offered from the next turn.
+  it with the blob tools, then calls `open` with the list, or its blob's
+  name, and an entry's name. A tool it opens that way is offered from the
+  next turn.
 - An agent given a `conversation` has open each toolkit in its `opened`
   that the agent has, whose `when:` holds and that has no `approve: true`.
   It runs no open for it, and gives no instructions again. The model opens
@@ -243,6 +253,7 @@ input. The call is then a task.
 
 1. The model is shown `{ task: task1, working }` or `{ task: task1, requests }`.
 2. The model is offered a tool `resume`, and goes on with other tools.
+   A call's result names its task.
 3. The model calls `resume` with `{ task: task1 }`, and a job named `resume`
    runs the toolkit with the request `{ do: resume, tool, args, state }`.
 4. The toolkit waits for the work, and `resume` returns its result.

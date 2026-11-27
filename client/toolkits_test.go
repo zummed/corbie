@@ -1059,3 +1059,42 @@ func TestAgentGivesAToolkitsToolABlob(t *testing.T) {
 		t.Fatalf("a blob's reference reached the model: %.600s", all)
 	}
 }
+
+// A resume sends the blob the call was sent, and a hook reads the
+// arguments of the call and of its resume as the model gave them.
+func TestAgentResumeSendsTheBlobAgain(t *testing.T) {
+	m := newModel(t, calls("c1", "open", opens("net")), calls("c2", "net_make", `{"text": "some text"}`),
+		calls("c3", "net_later", `{"file": "blob1"}`), calls("c4", "resume", `{"task": "task1"}`), says("done"))
+	def, files := approved(m.URL, `
+		const tool = input.job.tool
+		if (tool.name === "later" && tool.args.file !== "blob1") return { ok: false, note: "the hook read " + JSON.stringify(tool.args) }
+		return { ok: true }`)
+	files["toolkits/net.yaml"] = `
+		toolkit: net
+		description: The firewall and the switch.
+		input: { asker: any }
+		tools:
+		  make:
+		    description: Make a file
+		    args: { text: string }
+		    job: { script: ./make.js, input: { text: "${args.text}" } }
+		  later:
+		    description: Read a file, later
+		    args: { file: blob }
+		    job: { script: ./later.js, input: { file: "${args.file}", request: "${input.request}" } }
+	`
+	files["toolkits/make.js"] = `return { file: blobs.make(input.text) }`
+	files["toolkits/later.js"] = `
+		if (input.request.do === "call") return { requests: { go: { message: "Go on?" } }, state: { step: 1 } }
+		return "read later: " + blobs.read(input.file, { as: "text" })`
+	l := local(t, "all")
+	if r := wait(t, l, startWith(t, l, def, files, map[string]any{"question": "q"})); r.Status != "done" {
+		t.Fatalf("the agent ended %s: %s", r.Status, r.Error)
+	}
+	if shown := lastShown(m.Calls[3]); !strings.Contains(shown, "task1") {
+		t.Errorf("the call was shown as: %s", shown)
+	}
+	if shown := lastShown(m.Calls[4]); !strings.Contains(shown, "read later: some text") {
+		t.Errorf("the resume gave: %s", shown)
+	}
+}

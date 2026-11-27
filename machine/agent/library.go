@@ -92,31 +92,31 @@ var blobTools = map[string]struct {
 		description: "Read some of a blob's items: the lines of a text, the rows of a table, the entries of a list. Gives count items starting at from (50 from the start, if not said), or as many of them as can be shown, with the place to read from next. The blob's handle says how many items it has. Reaching an item means reading up to it, so reading far into a large blob is slow.",
 		args:        map[string]any{"blob": "blob", "from": "number?", "count": "number?"},
 		input:       map[string]any{"blob": "${args.blob}", "from": "${args.from}", "count": "${args.count}"},
-		source: room + `const from = input.from || 0
-const items = [], fits = room(input.limit)
+		source: large + room + `const from = input.from || 0
+const items = [], takes = room(input.limit)
 let next = null
 for (const item of blobs.items(input.blob, { from, count: input.count || 50 })) {
-  if (!fits(item, items.length)) { next = from + items.length; break }
+  if (!takes(item, items.length)) { next = from + items.length; break }
   items.push(item)
 }
-return next === null ? { from, items } : { from, items, next }
+return fits(next === null ? { from, items } : { from, items, next })
 `},
 	"blob_search": {
 		description: "Search a blob's items for a text, from the item at from (the start, if not said). Gives up to 50 matching items, or as many as can be shown, each with its place, and where there may be more, the place to search from next.",
 		args:        map[string]any{"blob": "blob", "find": "string", "from": "number?"},
 		input:       map[string]any{"blob": "${args.blob}", "find": "${args.find}", "from": "${args.from}"},
-		source: room + `const found = [], fits = room(input.limit)
+		source: large + room + `const found = [], takes = room(input.limit)
 const want = input.find.toLowerCase()
 let at = input.from || 0, next = null
 for (const item of blobs.items(input.blob, { from: at })) {
   const text = typeof item === "string" ? item : JSON.stringify(item)
   if (text.toLowerCase().includes(want)) {
-    if (found.length === 50 || !fits(item, found.length)) { next = at; break }
+    if (found.length === 50 || !takes(item, found.length)) { next = at; break }
     found.push({ at, item })
   }
   at++
 }
-return next === null ? { found } : { found, next }
+return fits(next === null ? { found } : { found, next })
 `},
 	"blob_code": {
 		description: "Run a few lines of JavaScript over a blob's items and get back only the answer. The code is the body of a function of items and returns the answer. items is walked with for...of and is not a list, so a blob of any size can be gone through, as in: let n = 0; for (const r of items) if (r.total > 100) n++; return n. An answer that is large comes back as a blob.",

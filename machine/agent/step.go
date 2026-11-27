@@ -1,10 +1,12 @@
 package agent
 
 import (
+	"cmp"
 	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"maps"
+	"reflect"
 	"slices"
 	"strings"
 	"unicode"
@@ -69,8 +71,10 @@ type task struct {
 	Entry string   `json:"entry"`
 	Path  []string `json:"path,omitzero"`
 	Tool  string   `json:"tool"`
-	// Args are the arguments the model gave the call.
+	// Args are the arguments the model gave the call, and Sent the same
+	// with each blob's name turned into the blob, where they hold one.
 	Args any `json:"args,omitzero"`
+	Sent any `json:"sent,omitzero"`
 	// State is what the toolkit last gave, which a resume gives back.
 	State any `json:"state,omitzero"`
 	// Requests are what the call asks for, where it asks for input.
@@ -147,7 +151,10 @@ type call struct {
 	Find *finding `json:"find,omitzero"`
 	Job  string   `json:"job,omitzero"` // the job that carries it out; none if it ran nothing
 	Args any      `json:"args,omitzero"`
-	Done bool     `json:"done,omitzero"`
+	// Sent are the arguments a toolkit was sent, where a blob's name in
+	// them was turned into the blob.
+	Sent any  `json:"sent,omitzero"`
+	Done bool `json:"done,omitzero"`
 	// What goes back to the model: a result, an error or a denial.
 	Result any    `json:"result,omitzero"`
 	Error  string `json:"error,omitzero"`
@@ -353,7 +360,7 @@ func (s *stepper) done(c *call, output any) {
 		}
 	case f != nil && f.kit != nil:
 		var ended bool
-		if output, ended = s.goesOn(c, &task{Entry: f.entry, Path: f.kit.Path, Tool: f.name, Args: c.Args}, output); !ended {
+		if output, ended = s.goesOn(c, &task{Entry: f.entry, Path: f.kit.Path, Tool: f.name, Args: c.Args, Sent: c.Sent}, output); !ended {
 			return
 		}
 	case f != nil && f.tool.Agent:
@@ -1250,12 +1257,12 @@ func (s *stepper) replied(data any) error {
 			// A resume is the call carried on: its job is the entry's, with
 			// the call's tool and arguments, so a hook that held the call
 			// holds the resume.
-			args := t.Args
+			args := cmp.Or(t.Sent, t.Args)
 			if args == nil {
 				args = map[string]any{}
 			}
 			request := map[string]any{"do": toolkit.Resume, "tool": t.Tool, "args": args, "state": t.State}
-			shown := map[string]any{"name": t.Tool, "args": s.shown(t.Args), "resume": name}
+			shown := map[string]any{"name": t.Tool, "args": t.Args, "resume": name}
 			if t.Requests != nil {
 				shown["requests"] = t.Requests
 			}
@@ -1292,7 +1299,9 @@ func (s *stepper) replied(data any) error {
 				one.Done, one.Error = true, "the arguments do not fit the tool: "+err.Error()
 				continue
 			}
-			one.Args = args
+			if !reflect.DeepEqual(args, given) {
+				one.Sent = args
+			}
 			request := map[string]any{"do": toolkit.Call, "tool": f.name, "args": args}
 			if len(f.kit.Path) > 0 {
 				request["toolkit"] = f.kit.Path

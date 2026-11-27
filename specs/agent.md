@@ -257,7 +257,7 @@ tools:
 - The entry's `input:` is the toolkit's input, with `request` added by the agent. A toolkit at another location is recorded in that tree, so the agent passes on only what its entry writes.
 - The toolkit's `description:` is the machine's, which the model reads before it opens it.
 - The toolkit checks a call's arguments against the tool's shape. Arguments that do not fit fail the toolkit's run, and go back to the model as an error. The agent gives the arguments as the model gave them, with each blob's name turned into the blob.
-- A blob among a tool's arguments is offered to the model as `format: blob`, and the model gives the name it was shown, as for a tool written in place. A name the conversation has not shown goes back to the model as an error. A task keeps the arguments as they were sent, and a resume sends them again.
+- A blob among a tool's arguments is offered to the model as `format: blob`, and the model gives the name it was shown, as for a tool written in place. A name the conversation has not shown goes back to the model as an error. A resume sends the same blobs again, and a hook reads the arguments of the call and of its resume as the model gave them.
 - In a name the model is shown, a character other than a letter, a digit, `_` or `-` is written `_`.
 - An open whose list gives a tool that would be shown under the name of another tool, or under a name longer than 64 characters, goes back to the model as an error, and opens nothing.
 - The result of `open` is shown to the model whole, and is never stored as a blob. With no instructions, it is `Opened net.`.

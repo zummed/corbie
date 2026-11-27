@@ -1013,8 +1013,8 @@ func (s *stepper) take(o *opening, answer any) (string, error) {
 			if seen[shown] {
 				return "", fmt.Errorf("the tool %q would be shown to the model as %q, which another tool has", e.Name, shown)
 			}
+			seen[shown] = true
 		}
-		seen[shown] = e.Kind == toolkit.KindTool
 		k.Entries = append(k.Entries, e)
 	}
 	if s.st.Opened == nil {
@@ -1078,7 +1078,9 @@ func (s *stepper) offered() []any {
 	names := slices.Collect(maps.Keys(s.a.Tools))
 	for list, k := range s.st.Opened {
 		for _, e := range k.Entries {
-			names = append(names, shownAs(list, e.Name))
+			if e.Kind == toolkit.KindTool {
+				names = append(names, shownAs(list, e.Name))
+			}
 		}
 	}
 	slices.Sort(names)
@@ -1294,7 +1296,7 @@ func (s *stepper) replied(data any) error {
 			if given == nil {
 				given = map[string]any{}
 			}
-			args, err := s.blobs(f.args, f.args, given, 0)
+			args, err := s.blobs(f.args, given)
 			if err != nil {
 				one.Done, one.Error = true, "the arguments do not fit the tool: "+err.Error()
 				continue
@@ -1454,7 +1456,7 @@ func (s *stepper) fit(shape map[string]any, data any) (map[string]any, error) {
 	if err := machine.Fits(schema, data); err != nil {
 		return nil, err
 	}
-	out, err := s.blobs(shape, shape, data, 0)
+	out, err := s.blobs(shape, data)
 	if err != nil {
 		return nil, err
 	}

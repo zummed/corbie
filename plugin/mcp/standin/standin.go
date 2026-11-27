@@ -5,6 +5,7 @@ package standin
 
 import (
 	"bufio"
+	"cmp"
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/hex"
@@ -52,6 +53,10 @@ type Server struct {
 	// Skills says the server has the skill code-review, and Changed that
 	// its checklist is not the file its list gives the digest of.
 	Skills, Changed bool
+	// Skill, where set, is the skill's name, and Undigested says its list
+	// gives no digest of its files.
+	Skill      string
+	Undigested bool
 
 	mu    sync.Mutex
 	notes []string
@@ -173,11 +178,15 @@ func (s *Server) Answer(m map[string]any, session string, web bool) map[string]a
 		var manifest []any
 		for _, name := range []string{"SKILL.md", "references/checklist.md"} {
 			sum := sha256.Sum256([]byte(skillFiles[name]))
-			manifest = append(manifest, map[string]any{"uri": skillRoot + name, "digest": "sha256:" + hex.EncodeToString(sum[:]), "size": len(skillFiles[name])})
+			file := map[string]any{"uri": skillRoot + name, "digest": "sha256:" + hex.EncodeToString(sum[:]), "size": len(skillFiles[name])}
+			if s.Undigested {
+				delete(file, "digest")
+			}
+			manifest = append(manifest, file)
 		}
 		return result(map[string]any{"resultType": "complete", "ttlMs": 300000, "cacheScope": "public", "skills": []any{
 			map[string]any{"uri": skillRoot + "SKILL.md", "resources": manifest,
-				"frontmatter": map[string]any{"name": "code-review", "description": "Review code using the team's checklist."}},
+				"frontmatter": map[string]any{"name": cmp.Or(s.Skill, "code-review"), "description": "Review code using the team's checklist."}},
 			map[string]any{"uri": "skill://made/SKILL.md", "resources": "dynamic", "frontmatter": map[string]any{"name": "made", "description": "Made as it is asked for."}},
 		}})
 	case "resources/read":

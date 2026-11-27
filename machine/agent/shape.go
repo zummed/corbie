@@ -13,20 +13,33 @@ import (
 // not give is refused.
 var shortForm = machine.ShortForm{Blob: map[string]any{"type": "string", "format": "blob"}, Closed: true}
 
+// shapeWork is the most parts of a shape that are read for one value.
+const shapeWork = 1 << 20
+
 // blobs gives a value with each handle's name, where the shape marks a
 // blob with format: blob, turned into the blob's reference. The value has
 // been checked against the shape already.
-func (s *stepper) blobs(root, shape map[string]any, v any, hops int) (any, error) {
+func (s *stepper) blobs(shape map[string]any, v any) (any, error) {
+	left := shapeWork
+	return s.blobsAt(shape, shape, v, 0, &left)
+}
+
+func (s *stepper) blobsAt(root, shape map[string]any, v any, hops int, left *int) (any, error) {
 	// A $ref and the keywords that apply more schemas to the same value
 	// consume nothing of it: a shape that only goes round them is not
 	// followed for ever.
 	if hops > 64 {
 		return v, nil
 	}
+	// A shape from outside can name itself many times over, and the work
+	// would double at each hop.
+	if *left--; *left < 0 {
+		return nil, fmt.Errorf("the shape of these arguments is too large to read: it names its own parts more than %d times", shapeWork)
+	}
 	var err error
 	if ref, ok := shape["$ref"].(string); ok {
 		if to, found := pointer(root, ref); found {
-			if v, err = s.blobs(root, to, v, hops+1); err != nil {
+			if v, err = s.blobsAt(root, to, v, hops+1, left); err != nil {
 				return nil, err
 			}
 		}
@@ -35,7 +48,7 @@ func (s *stepper) blobs(root, shape map[string]any, v any, hops int) (any, error
 		subs, _ := shape[many].([]any)
 		for _, sub := range subs {
 			if m, ok := sub.(map[string]any); ok {
-				if v, err = s.blobs(root, m, v, hops+1); err != nil {
+				if v, err = s.blobsAt(root, m, v, hops+1, left); err != nil {
 					return nil, err
 				}
 			}
@@ -60,7 +73,7 @@ func (s *stepper) blobs(root, shape map[string]any, v any, hops int) (any, error
 			if _, named := properties[name]; !named {
 				sub = more
 			}
-			if out[name], err = s.blobs(root, sub, item, 0); err != nil {
+			if out[name], err = s.blobsAt(root, sub, item, 0, left); err != nil {
 				return nil, err
 			}
 		}
@@ -77,7 +90,7 @@ func (s *stepper) blobs(root, shape map[string]any, v any, hops int) (any, error
 			if i < len(first) {
 				sub, _ = first[i].(map[string]any)
 			}
-			if out[i], err = s.blobs(root, sub, item, 0); err != nil {
+			if out[i], err = s.blobsAt(root, sub, item, 0, left); err != nil {
 				return nil, err
 			}
 		}

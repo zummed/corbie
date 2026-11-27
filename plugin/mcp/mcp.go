@@ -93,8 +93,8 @@ type server struct {
 	schemas map[string]map[string]any
 	// instructions are what the server says of how to use it.
 	instructions string
-	// tasks says the script uses the server as a toolkit, which takes a
-	// task as a call's answer.
+	// tasks says a request to the server as a toolkit is being answered,
+	// which takes a task as a call's answer.
 	tasks bool
 	// skilled says the server has skills, which it lists and whose files
 	// it gives.
@@ -513,6 +513,7 @@ func (s *server) toolkit(job *plugin.Job, first any, _ plugin.Options) (any, err
 		args = map[string]any{}
 	}
 	s.tasks = true
+	defer func() { s.tasks = false }()
 	ctx, cancel := context.WithTimeout(job.Context, s.limit)
 	defer cancel()
 	if skill != "" {
@@ -533,6 +534,9 @@ func (s *server) toolkit(job *plugin.Job, first any, _ plugin.Options) (any, err
 				return nil, err
 			}
 			for _, sk := range skills {
+				if _, tool := s.schemas[sk.name]; tool {
+					return nil, plugin.Errorf(plugin.Failed, "the server %s has a tool and a skill that are both named %q, and a toolkit's entries have one name each", s.name, sk.name)
+				}
 				tools = append(tools, map[string]any{"kind": "toolkit", "name": sk.name, "description": sk.description})
 			}
 		}
@@ -682,7 +686,7 @@ func (s *server) inSkill(ctx context.Context, name, do, tool string, args map[st
 }
 
 // file reads one file of a skill, and checks it against the digest the
-// skill's list gives for it. It gives a text, or a blob.
+// skill's list gives for it, where it gives one. It gives a text, or a blob.
 func (s *server) file(ctx context.Context, k *skill, uri string) (any, error) {
 	result, err := s.request(ctx, "resources/read", map[string]any{"uri": uri}, "", nil)
 	if err != nil {
@@ -708,7 +712,7 @@ func (s *server) file(ctx context.Context, k *skill, uri string) (any, error) {
 			given, bytes = plugin.NewBlob(kind, decoded), decoded
 		}
 		sum := sha256.Sum256(bytes)
-		if digest := "sha256:" + hex.EncodeToString(sum[:]); digest != k.files[uri] {
+		if digest := "sha256:" + hex.EncodeToString(sum[:]); k.files[uri] != "" && digest != k.files[uri] {
 			return nil, plugin.Errorf(plugin.Failed, "the server %s gave %s with the digest %s, and its skill lists %s", s.name, uri, digest, k.files[uri])
 		}
 		return given, nil

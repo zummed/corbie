@@ -339,7 +339,9 @@ func (toolkitType) Step(in *machine.StepIn) (*machine.StepOut, error) {
 			wait := defaultWait
 			said, _ := working.(map[string]any)
 			if seconds, ok := said["wait"].(float64); ok && seconds > 0 {
-				wait = time.Duration(seconds * float64(time.Second))
+				// At least a second, and no more than ends after the limit.
+				most := st.Until.Sub(in.Time).Seconds() + 1
+				wait = time.Duration(min(max(seconds, 1), most) * float64(time.Second))
 			}
 			if r.Do != Resume || !goesOn || in.Time.Add(wait).After(st.Until) {
 				end(&machine.Ending{Output: answer})

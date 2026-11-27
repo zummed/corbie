@@ -70,7 +70,7 @@ A tool is written as an agent's tool is: `description:`, `args:` in the short fo
 
 A resume whose job answers `{ working, state }` does not end. The toolkit waits and asks again:
 
-1. It sets a timer for `working.wait` seconds, 5 by default. No job is going, so no runner is in use.
+1. It sets a timer for `working.wait` seconds, 5 by default and 1 at the least. No job is going, so no runner is in use.
 2. At the timer it starts the job again, with the request's `state` replaced by the state the last answer gave.
 3. It ends with the first answer that is not `working`.
 4. An answer of `working` whose wait would end after `limits: { resume: }`, ten minutes by default, ends the run with `{ working, state }`.

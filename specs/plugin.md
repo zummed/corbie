@@ -87,7 +87,7 @@ A server that has the Skills extension, `io.modelcontextprotocol/skills`, gives 
 3. A call of `read` with `toolkit: [code-review]` and `{ path }` gives one of the skill's other files: a text, or a blob.
 
 - `read` takes only a path the skill's list of files gives. The plugin reads no other address of the server.
-- The plugin checks the SHA-256 of each file it reads against the digest in the skill's list, and fails with both where they differ. That finds a file changed or cut short since the list was made. It is no control: the server writes both.
+- The plugin checks the SHA-256 of each file it reads against the digest the skill's list gives for it, and fails with both where they differ. A file listed with no digest is not checked. That finds a file changed or cut short since the list was made. It is no control: the server writes both.
 - A skill whose files the server makes as they are asked for has no list of them, and is left out.
 - The plugin reads a file only when it is asked for, and runs nothing a skill holds.
 

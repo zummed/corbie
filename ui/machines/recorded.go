@@ -271,8 +271,6 @@ func (ix *index) called(tree, at string) string {
 	return ""
 }
 
-// startsOf gives the machines that start the agent in a file: for an agent
-// in a file of its own, each machine that runs that file with `machine:` or
 // startedBy says how the runs at a location with a lifetime start.
 func startedBy(lifetime, location string) string {
 	switch lifetime {

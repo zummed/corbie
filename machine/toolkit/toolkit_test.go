@@ -161,3 +161,31 @@ func Test_toolkit_shape_from_a_job_is_not_compiled(t *testing.T) {
 		t.Fatalf("the shape was not kept as it was given: %.200s", got)
 	}
 }
+
+// A resume waits a second at the least between two asks, and a wait that
+// would end after its limit ends it.
+func TestToolkitResumeWaitIsHeldToItsLimit(t *testing.T) {
+	def, err := parse(server)
+	if err != nil {
+		t.Fatal(err)
+	}
+	request := map[string]any{"do": "resume", "tool": "find", "state": map[string]any{}}
+	answers := func(wait float64) machine.Request {
+		t.Helper()
+		st, _ := json.Marshal(state{Until: time.Unix(600, 0)})
+		out, err := toolkitType{}.Step(&machine.StepIn{Definition: def, State: st, Input: map[string]any{"request": request}, Time: time.Unix(0, 0), Seed: []byte("s"),
+			Events: []machine.Event{{Name: machine.Done, Data: map[string]any{"working": map[string]any{"wait": wait}, "state": map[string]any{}}}}})
+		if err != nil || len(out.Requests) != 1 {
+			t.Fatalf("a wait of %v gave %+v, %v", wait, out, err)
+		}
+		return out.Requests[0]
+	}
+	if r := answers(0.001); r.Timer == nil || !r.Timer.At.Equal(time.Unix(1, 0)) {
+		t.Errorf("a wait of a millisecond asked for %+v", r)
+	}
+	for _, long := range []float64{601, 1e12, 1e300} {
+		if r := answers(long); r.End == nil {
+			t.Errorf("a wait of %v seconds asked for %+v", long, r)
+		}
+	}
+}

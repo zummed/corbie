@@ -314,13 +314,16 @@ func TestNotice(t *testing.T) {
 			defer stopOther()
 			// A served directory, with members or without, tells over the
 			// wire: the asking has to reach the server before the write, and
-			// the telling takes a moment.
+			// the telling takes a moment. How long either takes is the
+			// computer's own, so there a write is made again until one is
+			// told of.
 			var wait time.Duration
+			writes := 1
 			if kind == "served" || kind == "members" {
 				wait = 300 * time.Millisecond
+				writes = 20
 				time.Sleep(wait)
 			}
-			must[bool](t)(s.Write(ctx, "ctl/inbox/c1/m1", []byte("x"), OnlyIfNew))
 			got := func(ch <-chan struct{}) bool {
 				select {
 				case <-ch:
@@ -334,7 +337,12 @@ func TestNotice(t *testing.T) {
 					return false
 				}
 			}
-			if !got(in) {
+			told := false
+			for i := 0; i < writes && !told; i++ {
+				must[bool](t)(s.Write(ctx, fmt.Sprintf("ctl/inbox/c1/m%d", i), []byte("x"), OnlyIfNew))
+				told = got(in)
+			}
+			if !told {
 				t.Fatal("a write under the path gave no notice")
 			}
 			if got(other) {

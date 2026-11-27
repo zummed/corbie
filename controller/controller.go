@@ -50,8 +50,14 @@ func New(id *identity.Identity, s store.Store) *Controller {
 		Command: []string{exe, role.Arg, StepArg}, StepTime: StepTime}
 }
 
-// wakeBatch is how many wakes a pass reads at once.
-const wakeBatch = 1000
+// A pass reads the first wakeFirst wakes, then wakeGrows times as many while
+// all it read are due, up to wakeBatch, which is the most a store gives at
+// once.
+const (
+	wakeFirst = 10
+	wakeGrows = 10
+	wakeBatch = 1000
+)
 
 // MaxMessage is the largest a message may be.
 const MaxMessage = 256 << 10
@@ -122,20 +128,26 @@ func (c *Controller) Pass(ctx context.Context) (next time.Time, err error) {
 	if err != nil {
 		return next, err
 	}
-	// Wakes are named by their times and read soonest first, a batch at a
-	// time: a pass costs what is due, however many wakes there are.
-	wakes, err := store.Names(p.store.First(ctx, store.Wakes(p.ctl), wakeBatch))
-	if err != nil {
-		return next, err
-	}
-	// A whole batch that is all due says nothing of what is behind it: a
-	// machine's wake may be due there, behind housekeeping that waits its
-	// turn. Then every wake is read.
-	if len(wakes) == wakeBatch {
-		if at, _, _, ok := store.ParseWake(p.ctl, wakes[wakeBatch-1]); !ok || !at.After(p.now) {
+	// Wakes are named by their times and read soonest first, in batches
+	// that grow until one ends with a wake that is not yet due: a pass costs
+	// what is due, however many wakes there are. A machine's wake may be due
+	// behind housekeeping that waits its turn, so every due wake is read.
+	var wakes []string
+	for n := wakeFirst; ; n *= wakeGrows {
+		if n > wakeBatch {
 			if wakes, err = store.Names(p.store.List(ctx, store.Wakes(p.ctl))); err != nil {
 				return next, err
 			}
+			break
+		}
+		if wakes, err = store.Names(p.store.First(ctx, store.Wakes(p.ctl), n)); err != nil {
+			return next, err
+		}
+		if len(wakes) < n {
+			break
+		}
+		if at, _, _, ok := store.ParseWake(p.ctl, wakes[n-1]); ok && at.After(p.now) {
+			break
 		}
 	}
 	messages := make([]*arrival, len(names))

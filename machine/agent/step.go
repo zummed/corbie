@@ -124,7 +124,7 @@ type preview struct {
 
 // showLimit is the most of a tool's result, as JSON, that is shown to the
 // model in place by default. A larger one is stored as a blob.
-const showLimit = 32 << 10
+const showLimit = 16 << 10
 
 // show gives the most that is shown to the model in place.
 func (s *stepper) show() int {

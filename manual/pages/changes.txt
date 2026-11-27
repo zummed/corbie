@@ -54,9 +54,9 @@ toolkit, as `corbie manual agent` says.
 - `server.toolkit` gives the skills of an MCP server that has the Skills
   extension, each as a toolkit in the server's list, as `corbie manual mcp`
   says.
-- A toolkit's list of more than 32 KiB is not offered: the result of `open`
+- A toolkit's list of more than 16 KiB is not offered: the result of `open`
   gives the names of its entries, and the model opens a tool by its name
-  before it calls it. Names of more than 32 KiB, or that many toolkits, are
+  before it calls it. Names of more than 16 KiB, or that many toolkits, are
   a blob, which the model searches with the blob tools.
 - `limits: { show: }` sets that size for an agent. `blob_read` and
   `blob_search` return the items that fit in it, with `next`.

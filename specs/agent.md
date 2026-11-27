@@ -271,7 +271,7 @@ tools:
 
 ### Lists
 
-Every list the model chooses from is a list of entries: the agent's own toolkits, in the list `toolkits`, and the tools and toolkits an open toolkit gives, in a list named as the toolkit is. A list small enough to show is shown: `open` names each toolkit of it, and its tools are offered. The limit is the one for a tool's result, `limits: { show: }`, 32 KiB by default (see [Blobs and the model](#blobs-and-the-model)).
+Every list the model chooses from is a list of entries: the agent's own toolkits, in the list `toolkits`, and the tools and toolkits an open toolkit gives, in a list named as the toolkit is. A list small enough to show is shown: `open` names each toolkit of it, and its tools are offered. The limit is the one for a tool's result, `limits: { show: }`, 16 KiB by default (see [Blobs and the model](#blobs-and-the-model)).
 
 A toolkit's list whose JSON is larger than the limit is stored, and the model chooses from its names.
 
@@ -408,7 +408,7 @@ The model uses the handle's name to refer to the blob. The agent turns names int
 
 Every agent has tools for working with blobs without reading them whole: one to read a range of items, one to search, and one to run a few lines of code over a blob and get back only the answer. They are ordinary scripts, allowed nothing from the definition's lists. A tool result too large to show is stored as a blob, by the job that makes its preview, and the model is given its handle.
 
-`limits: { show: }` is the most the model is shown in place, as the size of the JSON, and is 32 KiB by default. One limit covers three things:
+`limits: { show: }` is the most the model is shown in place, as the size of the JSON, and is 16 KiB by default. One limit covers three things:
 
 ```
 a tool's result               over the limit, it is stored as a blob

@@ -315,7 +315,7 @@ Blobs
   needed to read it, and `preview` is its first items, given once.
 - Every agent has the tools `blob_read`, `blob_search` and `blob_code`, which
   read part of a blob. A large answer from one is returned as a blob.
-- A tool's result over 32 KiB is stored as a blob by a job named
+- A tool's result over 16 KiB is stored as a blob by a job named
   `preview`, which also reads each new blob before the next turn.
 - `limits: { show: 4KB }` changes that size, for a model with a small
   context. `blob_read` and `blob_search` return the items that fit in it,

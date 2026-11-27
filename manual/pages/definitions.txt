@@ -40,7 +40,7 @@ expressions read `input`, `values` and `run`.
   jobs: 100      how many jobs a run may start; default no limit
   runs: 50       of a keyed or transient file, how many runs at its location may be running at once; default no limit
   turns: 20      an agent's turns, as in `corbie manual agent`
-  show: 32KB     the most an agent's model is shown of one result or list, as in `corbie manual agent`
+  show: 16KB     the most an agent's model is shown of one result or list, as in `corbie manual agent`
   resume: 10m    how long a toolkit's resume waits, as in `corbie manual toolkit`
 
 A length of time is written `30s`, `5m`, `48h` or `7d`.

@@ -160,7 +160,7 @@ The detailed rules behind the [Agent overview](../agent.md). Area code: `agent`.
 **R-agent-51** A tool result too large to show is stored as a blob, by the job that makes its preview, and the model is given its handle.
 *Accept:* a tool returns a hundred kilobytes of text; the next turn is shown a handle for it and not the text.
 
-**R-agent-100** `limits: { show: }` is the most the model is shown in place, 32 KiB by default: a tool's result over it is stored as a blob, and `blob_read` and `blob_search` give the items that fit under it, with the place to go on from.
+**R-agent-100** `limits: { show: }` is the most the model is shown in place, 16 KiB by default: a tool's result over it is stored as a blob, and `blob_read` and `blob_search` give the items that fit under it, with the place to go on from.
 *Accept:* `TestAgentShowLimitsWhatTheModelIsShown`: with `show: 2KB`, a result of 10 lines is shown and one of 40 lines is a blob of 40 items; `blob_read` and `blob_search` of it each give its first lines in under the limit, with `next`, and no further blob.
 
 **R-agent-53** A blob of a type the model's service takes as content is sent to the model as it is, beside its handle and under its name, in every call from the turn it is first shown; a blob of any other type is only its handle.

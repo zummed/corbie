@@ -266,7 +266,7 @@ func (agentType) Name() string { return "agent" }
 // Limits adds an agent's turns to the limits every type takes.
 func (agentType) Limits() []machine.Field {
 	return []machine.Field{{Name: "turns", Kind: machine.KindNumber, Description: "how many turns it has; twenty by default"},
-		{Name: "show", Kind: machine.KindSize, Description: "the most of a tool's result, or of a toolkit's list, the model is shown in place; 32KB by default"}}
+		{Name: "show", Kind: machine.KindSize, Description: "the most of a tool's result, or of a toolkit's list, the model is shown in place; 16KB by default"}}
 }
 
 // Shape is what an agent's definition holds of its own. A model holds the

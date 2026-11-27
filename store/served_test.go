@@ -107,7 +107,7 @@ func (f *servedDirectory) as(p Party) Store {
 // the party's and the key it takes to be the keeper's.
 func (f *servedDirectory) opened(address, name string, key ed25519.PrivateKey, keeper ed25519.PublicKey) Store {
 	f.t.Helper()
-	s, err := OpenServed(address, name, proofOf(f.t, key), keeper)
+	s, err := OpenServed(address, name, proofOf(f.t, key), keeper, nil)
 	if err != nil {
 		f.t.Fatal(err)
 	}
@@ -116,9 +116,16 @@ func (f *servedDirectory) opened(address, name string, key ed25519.PrivateKey, k
 
 func TestServedAddress(t *testing.T) {
 	for _, bad := range []string{"corbie://desk", "corbie://desk:8372/main", "corbie://key@desk:8372", "corbie://desk:8372?region=x", "corbie://"} {
-		if _, err := OpenServed(bad, "p", tls.Certificate{}, nil); err == nil {
+		if _, err := OpenServed(bad, "p", tls.Certificate{}, nil, nil); err == nil {
 			t.Errorf("%s was taken as a served directory's address", bad)
 		}
+	}
+	// A % in an address begins an escape, as in any URL.
+	if _, err := ServedHosts("corbie://[fe80::1%eth0]:8372"); err == nil || !strings.Contains(err.Error(), "%25") {
+		t.Errorf("an address with a %% not written %%25 gave %v", err)
+	}
+	if hosts, err := ServedHosts("corbie://[fe80::1%25eth0]:8372"); err != nil || len(hosts) != 1 {
+		t.Errorf("an address with a network interface's name after %%25 gave %v %v", hosts, err)
 	}
 	if _, err := Open("corbie://desk:8372"); err == nil || IsDirectory("corbie://desk:8372") {
 		t.Errorf("a served directory was opened with no party, or taken for a directory: %v", err)

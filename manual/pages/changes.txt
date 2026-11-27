@@ -5,6 +5,12 @@ Each section lists what changed after one release, the newest first.
 compatible before version 1: a file or a command written the old way is
 refused.
 
+After 0.41.0
+------------
+
+  a runner or a client, after a member moves   saves the members' new addresses itself; enrolling it again is not needed
+  --store corbie://[fe80::1%eth0]:8372         refused: the % is written %25
+
 After 0.40.0
 ------------
 

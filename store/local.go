@@ -35,7 +35,7 @@ func OpenLocal(dir, self, party string, proof tls.Certificate, keeper ed25519.Pu
 		return nil, err
 	}
 	return &local{directory: opened.(*directory), self: self, open: func(address string) (Store, error) {
-		return OpenServed(address, party, proof, keeper)
+		return OpenServed(address, party, proof, keeper, nil)
 	}}, nil
 }
 

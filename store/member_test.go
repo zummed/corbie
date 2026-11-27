@@ -179,7 +179,7 @@ func (c *members) as(p Party, of ...*testMember) Store {
 		c.parties[p.Name] = held
 	}
 	c.mu.Unlock()
-	s, err := OpenServed(c.address(of...), p.Name, proofOf(c.t, held.key), keyOf(c.keeper))
+	s, err := OpenServed(c.address(of...), p.Name, proofOf(c.t, held.key), keyOf(c.keeper), nil)
 	if err != nil {
 		c.t.Fatal(err)
 	}
@@ -382,7 +382,17 @@ func Test_store_members_minority_answers_nothing(t *testing.T) {
 	c.cut[old.address] = true
 	c.mu.Unlock()
 
+	// A party on the cut-off member's side: the member names the others in
+	// its answers, and the party connects to none of them.
 	cutOff := c.owner(old)
+	transport := cutOff.(*served).client.Transport.(*http.Transport)
+	dial := transport.DialContext
+	transport.DialContext = func(ctx context.Context, network, address string) (net.Conn, error) {
+		if address != old.address {
+			return nil, errors.New("cut off")
+		}
+		return dial(ctx, network, address)
+	}
 	// It does not yet know that it is cut off, and a name its copy holds
 	// may be free by now.
 	if done, err := cutOff.Write(ctx, "a/one", []byte("again"), OnlyIfNew); !errors.Is(err, ErrUnreachable) {
@@ -510,6 +520,64 @@ func Test_store_members_removed_member_is_turned_away(t *testing.T) {
 	}
 }
 
+// A party given one member's address is told the others in that member's
+// answer, and reaches the store when the member it was given is off. It is
+// told again when a member is removed.
+func Test_store_members_a_party_is_told_the_members_addresses(t *testing.T) {
+	c := newMembers(t, 3)
+	given := c.all[0]
+	c.mu.Lock()
+	_, key, _ := ed25519.GenerateKey(rand.Reader)
+	c.parties["owner"] = servedParty{Party{Kind: Owner, Name: "owner"}, key}
+	c.mu.Unlock()
+	var mu sync.Mutex
+	var told []string
+	s, err := OpenServed(c.address(given), "owner", proofOf(t, key), keyOf(c.keeper), func(address string) {
+		mu.Lock()
+		told = append(told, address)
+		mu.Unlock()
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	did(t)(s.Write(ctx, "a/one", []byte("1"), OnlyIfNew))
+	hosts := func(address string) []string {
+		hosts, err := ServedHosts(address)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return slices.Sorted(slices.Values(hosts))
+	}
+	all := hosts(c.address())
+	mu.Lock()
+	if len(told) != 1 || !slices.Equal(hosts(told[0]), all) || !slices.Equal(hosts(ServedAddress(s)), all) {
+		t.Fatalf("a party given %s was told %v and has %s; the members are at %v", given.address, told, ServedAddress(s), all)
+	}
+	mu.Unlock()
+	// The members it was not given answer it.
+	c.stop(given)
+	did(t)(s.Write(ctx, "a/two", []byte("2"), OnlyIfNew))
+	c.start(given)
+
+	// A member removed is no longer among them.
+	lead := c.leader()
+	var gone *testMember
+	for _, tm := range c.all {
+		if tm != lead && tm != given {
+			gone = tm
+		}
+	}
+	if err := lead.member.Remove(ctx, gone.name); err != nil {
+		t.Fatal(err)
+	}
+	writes := 0
+	c.eventually("the party to be told that a member is removed", func() bool {
+		writes++
+		did(t)(s.Write(ctx, fmt.Sprintf("a/more-%d", writes), []byte("x"), OnlyIfNew))
+		return !slices.Contains(hosts(ServedAddress(s)), gone.address) && len(hosts(ServedAddress(s))) == 2
+	})
+}
+
 // A copy made the whole store has no log, and is a directory with one
 // member again.
 func Test_store_members_alone_is_a_directory_again(t *testing.T) {
@@ -578,7 +646,7 @@ func answering(t *testing.T, answer http.HandlerFunc) Store {
 	server := &http.Server{Handler: answer}
 	go server.Serve(ServedListener(l, proofOf(t, keeper)))
 	t.Cleanup(func() { server.Close() })
-	s, err := OpenServed(ServedScheme+l.Addr().String(), "party", proofOf(t, key), keyOf(keeper))
+	s, err := OpenServed(ServedScheme+l.Addr().String(), "party", proofOf(t, key), keyOf(keeper), nil)
 	if err != nil {
 		t.Fatal(err)
 	}

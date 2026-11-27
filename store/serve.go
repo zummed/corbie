@@ -43,6 +43,9 @@ const (
 	headParty = "Corbie-Party"
 	headMark  = "Corbie-Mark"
 	headDone  = "Corbie-Done"
+	// headMembers carries the members' addresses in every answer of a
+	// member, so that a party has them as they are now.
+	headMembers = "Corbie-Members"
 
 	howNew       = "only-if-new"
 	howOver      = "overwrite"
@@ -272,6 +275,11 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set(headDone, a.done)
 	if a.status == http.StatusMisdirectedRequest {
 		w.Header().Set(headLeader, a.leader)
+	}
+	if s.Member != nil {
+		if at := s.Member.counted(); at != "" {
+			w.Header().Set(headMembers, at)
+		}
 	}
 	w.WriteHeader(a.status)
 	w.Write(a.body)

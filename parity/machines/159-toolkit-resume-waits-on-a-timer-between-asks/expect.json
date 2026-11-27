@@ -1,0 +1,13 @@
+{
+  "status": "done",
+  "output": {
+    "begin": { "working": { "said": "asked 1", "wait": 2 }, "state": { "asked": 1 } },
+    "carry": { "result": "exported notes at ask 3" },
+    "short": { "working": { "said": "asked 2", "wait": 2 }, "state": { "asked": 2 } }
+  },
+  "note": "R-kit-07: a tool's job gives { working, state } in place of its result, and a resume asks again on a timer until the work ends or limits: { resume: } has passed.",
+  "record": [
+    { "machine": "exports", "ask": { "kind": "script", "name": "export#2" } },
+    { "machine": "short", "ask": { "kind": "script", "name": "export#2" }, "absent": true }
+  ]
+}

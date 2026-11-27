@@ -499,9 +499,9 @@ func (agentType) Fill(p *machine.Parser, f *machine.Fields) any {
 	}
 	// The tool that opens a toolkit is Corbie's, and the agent itself
 	// answers it: it starts the job of the entry that names the toolkit.
-	for _, name := range []string{openTool, toolkitsList} {
+	for _, name := range []string{openTool, toolkitsList, resumeTool} {
 		if _, taken := a.Tools[name]; taken {
-			p.Problem(place(name), "the tool %q has the name the model opens a toolkit by: open, with the list toolkits", name)
+			p.Problem(place(name), "the tool %q has a name Corbie's own tools for toolkits have: open, with the list toolkits, and resume", name)
 		}
 	}
 	// The blob tools every agent has are ordinary scripts. They need no

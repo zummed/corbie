@@ -8,9 +8,11 @@ import (
 	"encoding/json/jsontext"
 	"encoding/json/v2"
 	"fmt"
+	"maps"
 	"slices"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/zummed/corbie/machine"
 )
@@ -23,6 +25,28 @@ type Toolkit struct {
 	Tools        map[string]*Tool `json:"tools,omitzero"`
 	// Job answers every request, in place of Instructions and Tools.
 	Job *machine.JobSpec `json:"job,omitzero"`
+	// Resume is how long a resume waits for work to end; ten minutes if it
+	// says nothing.
+	Resume machine.Duration `json:"resume,omitzero"`
+}
+
+// DefaultResume is how long a resume waits for work to end by default, and
+// defaultWait how long it waits between two asks where the answer gives no
+// time.
+const (
+	DefaultResume = 10 * time.Minute
+	defaultWait   = 5 * time.Second
+)
+
+// waitTimer is the name of the timer a resume waits on between two asks.
+const waitTimer = "wait"
+
+// state is what a resume that waits remembers between steps.
+type state struct {
+	// State is the state the job last gave, which the next ask gives back.
+	State any `json:"state,omitzero"`
+	// Until is when the resume stops waiting.
+	Until time.Time `json:"until,omitzero"`
 }
 
 // Tool is a named job a call runs, with its description and the shape of
@@ -64,6 +88,11 @@ func init() { machine.Register(toolkitType{}) }
 
 func (toolkitType) Name() string { return "toolkit" }
 
+// Limits adds how long a resume waits to the limits every type takes.
+func (toolkitType) Limits() []machine.Field {
+	return []machine.Field{{Name: "resume", Kind: machine.KindDuration, Description: "how long a resume waits for work to end before it answers working again; ten minutes by default"}}
+}
+
 // Shape is what a toolkit's definition holds of its own.
 func (toolkitType) Shape() *machine.Shape {
 	tool := &machine.Shape{Name: "tool", What: "a tool", Fields: []machine.Field{
@@ -81,7 +110,7 @@ func (toolkitType) Shape() *machine.Shape {
 
 // Fill reads a toolkit as written and gives its full form.
 func (toolkitType) Fill(p *machine.Parser, f *machine.Fields) any {
-	t := &Toolkit{Instructions: f.Text("instructions")}
+	t := &Toolkit{Instructions: f.Text("instructions"), Resume: p.Limits().Duration("resume")}
 	if job, ok := f.Value("job"); ok {
 		t.Job = p.Job("job", job)
 	}
@@ -211,51 +240,86 @@ func requestOf(input any) (*request, error) {
 
 // Step takes a toolkit's step. At its start it answers an open itself, or
 // asks for the job the request needs, and that job's end is the toolkit's.
+// A resume whose job answers working waits on a timer and asks again, until
+// the work ends or the resume has waited as long as it may.
 func (toolkitType) Step(in *machine.StepIn) (*machine.StepOut, error) {
 	var t Toolkit
 	if err := json.Unmarshal(in.Definition.Body, &t); err != nil {
 		return nil, err
 	}
-	out := &machine.StepOut{}
+	st := &state{}
+	if in.State != nil {
+		if err := json.Unmarshal(in.State, st); err != nil {
+			return nil, err
+		}
+	}
+	out := &machine.StepOut{State: st}
 	end := func(e *machine.Ending) { out.Requests = append(out.Requests, machine.Request{End: e}) }
 	fail := func(err error) {
 		end(&machine.Ending{Error: &machine.Error{Status: machine.StatusError, Error: err.Error()}})
 	}
+	// ask starts the job a request needs, or ends the run with the answer
+	// the toolkit gives itself.
+	ask := func(input any) {
+		r, err := requestOf(input)
+		if err != nil {
+			fail(err)
+			return
+		}
+		answer, job, err := t.start(in, r, input)
+		switch {
+		case err != nil:
+			fail(err)
+		case job != nil:
+			if r.Do != Open {
+				job.Tool = map[string]any{"toolkit": in.Definition.Name, "name": r.Tool, "args": r.Args}
+			}
+			out.Requests = append(out.Requests, machine.Request{Job: job})
+		default:
+			end(&machine.Ending{Output: answer})
+		}
+	}
 	for i, event := range in.Events {
 		switch event.Name {
 		case machine.Start:
-			r, err := requestOf(in.Input)
-			if err != nil {
-				fail(err)
-				continue
+			limit := time.Duration(t.Resume)
+			if limit == 0 {
+				limit = DefaultResume
 			}
-			answer, job, err := t.start(in, r)
-			switch {
-			case err != nil:
-				fail(err)
-			case job != nil:
-				if r.Do != Open {
-					job.Tool = map[string]any{"toolkit": in.Definition.Name, "name": r.Tool, "args": r.Args}
-				}
-				out.Requests = append(out.Requests, machine.Request{Job: job})
-			default:
-				end(&machine.Ending{Output: answer})
-			}
+			st.Until = in.Time.Add(limit)
+			ask(in.Input)
 		case machine.Done:
 			r, err := requestOf(in.Input)
 			if err != nil {
 				return nil, err
 			}
-			if t.Job == nil {
-				end(&machine.Ending{Output: map[string]any{"result": event.Data}})
-				continue
-			}
-			answer, err := answered(r.Do, event.Data)
+			answer, err := t.answer(r.Do, event.Data)
 			if err != nil {
 				fail(err)
 				continue
 			}
-			end(&machine.Ending{Output: answer})
+			// A resume waits while the work goes on, and the time fits.
+			given, _ := answer.(map[string]any)
+			working, goesOn := given["working"]
+			wait := defaultWait
+			said, _ := working.(map[string]any)
+			if seconds, ok := said["wait"].(float64); ok && seconds > 0 {
+				wait = time.Duration(seconds * float64(time.Second))
+			}
+			if r.Do != Resume || !goesOn || in.Time.Add(wait).After(st.Until) {
+				end(&machine.Ending{Output: answer})
+				continue
+			}
+			st.State = given["state"]
+			out.Requests = append(out.Requests, machine.Request{Timer: &machine.TimerAt{Name: waitTimer, At: in.Time.Add(wait)}})
+		case machine.Timer:
+			// The next ask gives back the state the last answer gave.
+			whole, _ := in.Input.(map[string]any)
+			asked, _ := whole["request"].(map[string]any)
+			input, request := maps.Clone(whole), maps.Clone(asked)
+			request["state"] = st.State
+			input["request"] = request
+			ask(input)
 		case machine.Failed:
 			end(&machine.Ending{Error: machine.Unhandled(event.From, event.Data)})
 		default:
@@ -266,21 +330,21 @@ func (toolkitType) Step(in *machine.StepIn) (*machine.StepOut, error) {
 }
 
 // start gives the answer to a request the toolkit answers itself, or the
-// job that answers it.
-func (t *Toolkit) start(in *machine.StepIn, r *request) (any, *machine.Job, error) {
+// job that answers it. input is the run's input, with the request in it.
+func (t *Toolkit) start(in *machine.StepIn, r *request, input any) (any, *machine.Job, error) {
 	eval := machine.NewEvaluator(in.Time, in.Seed, in.Run)
-	scope := machine.Scope{"input": in.Input}
+	scope := machine.Scope{"input": input}
 	if t.Job != nil {
 		job, err := t.Job.Fill(eval, scope, "job", answerJob)
 		if err != nil {
 			return nil, nil, err
 		}
 		if t.Job.Input == nil {
-			job.Input = in.Input
+			job.Input = input
 		}
 		return nil, job, nil
 	}
-	whole, _ := in.Input.(map[string]any)
+	whole, _ := input.(map[string]any)
 	if _, inside := whole["request"].(map[string]any)["toolkit"]; inside {
 		return nil, nil, fmt.Errorf("request.toolkit: the toolkit %s has no toolkit inside it", in.Definition.Name)
 	}
@@ -297,11 +361,8 @@ func (t *Toolkit) start(in *machine.StepIn, r *request) (any, *machine.Job, erro
 		return map[string]any{"instructions": instructions, "entries": entries}, nil, nil
 	}
 	tool, ok := t.Tools[r.Tool]
-	switch {
-	case !ok:
+	if !ok {
 		return nil, nil, fmt.Errorf("the toolkit %s has no tool %q (it has: %s)", in.Definition.Name, r.Tool, strings.Join(sortedNames(t.Tools), ", "))
-	case r.Do != Call:
-		return nil, nil, fmt.Errorf("request.do: a call of the tool %q ends with its result, so there is nothing to %s", r.Tool, r.Do)
 	}
 	schema, err := machine.CompileShape(tool.Args)
 	if err != nil {
@@ -313,6 +374,23 @@ func (t *Toolkit) start(in *machine.StepIn, r *request) (any, *machine.Job, erro
 	scope["args"] = r.Args
 	job, err := tool.Job.Fill(eval, scope, "tools."+r.Tool+".job", r.Tool)
 	return nil, job, err
+}
+
+// answer gives the toolkit's answer from what its job gave. A tool's job
+// gives its result, or { working, state } or { requests, state } in place
+// of one. A job that answers every request gives the answer itself.
+func (t *Toolkit) answer(do string, data any) (any, error) {
+	if t.Job != nil {
+		return answered(do, data)
+	}
+	given, _ := data.(map[string]any)
+	_, state := given["state"]
+	_, working := given["working"]
+	_, requests := given["requests"]
+	if do != Cancel && len(given) == 2 && state && (working || requests) {
+		return given, nil
+	}
+	return map[string]any{"result": data}, nil
 }
 
 // answered gives the answer a toolkit's job gave to a request, holding

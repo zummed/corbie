@@ -36,8 +36,8 @@ A run of a toolkit is given `request:` in its input, beside what the toolkit's `
 |---|---|
 | `{ do: open }` | `{ instructions, entries }` |
 | `{ do: call, tool, args }` | `{ result }`, `{ working, state }` or `{ requests, state }` |
-| `{ do: resume, tool, state, responses }` | the same three |
-| `{ do: cancel, tool, state }` | `{ result }` |
+| `{ do: resume, tool, args, state, responses }` | the same three |
+| `{ do: cancel, tool, args, state }` | `{ result }` |
 
 - The answer is the run's result.
 - An entry is `{ kind, name, description, args }`. `kind` is `tool` or `toolkit`, and `args` is the shape of a tool's arguments.
@@ -53,17 +53,48 @@ A toolkit with `tools:` answers a request itself.
 2. A call checks `args` against the tool's `args:`.
 3. The call starts the tool's job, which reads `input` and `args`.
 4. The run ends with `{ result }`, the job's output. A job that fails fails the run.
+5. A job whose output is `{ working, state }` or `{ requests, state }` ends the run with that answer in place of a result.
+6. A resume or a cancel is a call again: the same check, and the same job, which reads the request as `input.request`.
 
 | A request that | Ends the run |
 |---|---|
 | names a tool the toolkit does not have | failed, naming the tools it has |
 | gives arguments that do not fit | failed, naming each place |
-| resumes or cancels | failed: a tool's call ends with its result |
 | gives `toolkit:` | failed: the toolkit has none inside it |
 
 No job starts for any of these.
 
 A tool is written as an agent's tool is: `description:`, `args:` in the short form or in full, and `job:`. A `blob` in the short form is the blob itself, as in a machine's input.
+
+## A resume waits
+
+A resume whose job answers `{ working, state }` does not end. The toolkit waits and asks again:
+
+1. It sets a timer for `working.wait` seconds, 5 by default. No job is going, so no runner is in use.
+2. At the timer it starts the job again, with the request's `state` replaced by the state the last answer gave.
+3. It ends with the first answer that is not `working`.
+4. An answer of `working` whose wait would end after `limits: { resume: }`, ten minutes by default, ends the run with `{ working, state }`.
+
+```yaml
+toolkit: exports
+description: Exports that take a while.
+limits: { resume: 30m }
+tools:
+  export:
+    description: Export something.
+    args: { what: string }
+    job: { script: ./export.js, input: { what: "${args.what}", request: "${input.request}" } }
+```
+
+```js
+// export.js
+const r = input.request
+if (r.do === "call") return { working: { said: "started", wait: 30 }, state: { id: start(input.what) } }
+if (r.do === "cancel") return stop(r.state.id)
+return ended(r.state.id) ? fetch(r.state.id) : { working: { wait: 30 }, state: r.state }
+```
+
+A call ends working at once, so its caller goes on. A toolkit with `job:` waits the same way.
 
 ## A job that answers
 

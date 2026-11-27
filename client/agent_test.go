@@ -324,8 +324,9 @@ func Test_agent_tool_cannot_take_an_agents_own_job_name(t *testing.T) {
 	for name, want := range map[string]string{
 		"turn":      `the tool "turn" has the name of a job the agent itself makes`,
 		"blob_read": `the tool "blob_read" has the name of one of the tools every agent has for blobs`,
-		"open":      `the tool "open" has the name the model opens a toolkit by`,
-		"toolkits":  `the tool "toolkits" has the name the model opens a toolkit by`,
+		"open":      `the tool "open" has a name Corbie's own tools for toolkits have`,
+		"toolkits":  `the tool "toolkits" has a name Corbie's own tools for toolkits have`,
+		"resume":    `the tool "resume" has a name Corbie's own tools for toolkits have`,
 	} {
 		agentRefused(t, strings.Replace(agentDef("http://127.0.0.1:1", ""), "  add:\n", "  "+name+":\n", 1), want)
 	}
@@ -868,6 +869,29 @@ func TestAgentWithTheToolsOfAnMCPServer(t *testing.T) {
 	}
 	if shown := lastShown(m.Calls[1]); !strings.Contains(shown, "2 notes: tea at 4, tea at 5") {
 		t.Errorf("the call gave %s", shown)
+	}
+}
+
+// A call that an MCP server makes a task ends working, and a resume waits
+// for the task at the toolkit's location, asking the server on a timer.
+func TestAgentResumesAnMCPServersTask(t *testing.T) {
+	notes := httptest.NewServer(&standin.Server{Slow: 2})
+	t.Cleanup(notes.Close)
+	m := newModel(t, calls("c1", "notes_export_notes", `{}`), calls("c2", "resume", `{"task": "task1"}`), says("Exported."))
+	def := strings.Replace(agentDef(m.URL, ""), "tools:\n", `tools:
+		  notes: { machine: ./notes.yaml, input: { address: "`+notes.URL+`/mcp" }, open: true }
+`, 1)
+	r := runAgent(t, local(t, "all"), def, map[string]string{"add.js": scripts["add.js"],
+		"notes.yaml": "toolkit: notes\ndescription: Notes.\ninput: { address: string }\njob: { script: ./notes.js, allow: [\"net:" + strings.TrimPrefix(notes.URL, "http://") + "\"] }\n",
+		"notes.js":   `return mcp.connect(input.address).toolkit(input.request)`})
+	if r.Status != "done" {
+		t.Fatalf("the agent ended %s: %s", r.Status, r.Error)
+	}
+	if shown := strings.ReplaceAll(lastShown(m.Calls[1]), `\`, ""); !strings.Contains(shown, `"task":"task1"`) || !strings.Contains(shown, `"working"`) {
+		t.Errorf("the call the server made a task was shown as: %s", shown)
+	}
+	if shown := lastShown(m.Calls[2]); !strings.Contains(shown, "exported the notes") {
+		t.Errorf("the resume gave: %s", shown)
 	}
 }
 

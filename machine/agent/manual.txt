@@ -83,8 +83,9 @@ The result
 
   reply           the model's last reply, as text or in the shape of `reply:`
   tokens          { input, output, cached }, counted over the agent's own turns
-  conversation    { turns, blobs }: a blob for each turn, and each blob the
-                  model was shown by its handle's name
+  conversation    { turns, blobs, tasks }: a blob for each turn, each blob the
+                  model was shown by its handle's name, and each call that
+                  has not ended
 
 A reply that does not fit `reply:` is returned to the model, which takes
 another turn. A failed agent's output has `conversation` and `tokens`.
@@ -131,8 +132,8 @@ any depth.
   reply, and the sub-agent's conversation stays in its own record.
 - A tool whose job is a call gets the called run's whole result, or its error.
 - A tool called twice in one turn has jobs named `shelf` and `shelf.1`.
-- No entry is named turn, preview, open, toolkits, blob_read, blob_search or
-  blob_code.
+- No entry is named turn, preview, open, resume, toolkits, blob_read,
+  blob_search or blob_code.
 
 A machine as an entry
 ---------------------
@@ -228,6 +229,26 @@ agent with many tools shows the model the ones it has opened.
   name, `{ list: github, name: review }`, and its tools are shown as
   `github_review_read`.
 - An agent given a `conversation` starts with every toolkit closed.
+
+A toolkit answers a call with `{ working, state }` where the work goes on,
+such as a task of an MCP server, or `{ requests, state }` where it needs
+input. The call is then a task.
+
+1. The model is shown `{ task: task1, working }` or `{ task: task1, requests }`.
+2. The model is offered a tool `resume`, and goes on with other tools.
+3. The model calls `resume` with `{ task: task1 }`, and a job named `resume`
+   runs the toolkit with the request `{ do: resume, tool, args, state }`.
+4. The toolkit waits for the work, and `resume` returns its result.
+
+- `resume` takes `responses`, by the names of the requests, for a call that
+  asked for input, and `cancel: true` to cancel the call.
+- A resume that returns `working` again keeps the task.
+- A resume has the entry's `approve:`. A hook reads `job.tool: { toolkit,
+  name, args, resume, requests, responses, cancel }`, where `resume` is the
+  task's name, and gives other responses with `{ ok: true, input }`.
+- A resume a hook refuses keeps the task. One that fails ends it.
+- An agent that ends with a task working gives it in `conversation.tasks`,
+  and an agent given that `conversation` resumes it.
 
 Who is offered what
 -------------------

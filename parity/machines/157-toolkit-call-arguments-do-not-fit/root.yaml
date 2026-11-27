@@ -1,5 +1,6 @@
-# A call gives an argument of the wrong type, and one names a tool the
-# toolkit does not have. Each run of the toolkit fails, and no job starts.
+# A call gives an argument of the wrong type, one names a tool the toolkit
+# does not have, and a resume gives no arguments. Each run of the toolkit
+# fails, and no job starts.
 flow: caller
 stages:
   wrong: { job: { machine: ./notes.yaml, input: { request: { do: call, tool: add_note, args: { text: 4 } } } } }

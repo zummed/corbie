@@ -38,9 +38,12 @@ return { blob, items, preview }
 const (
 	// openTool is the tool that opens a toolkit, and toolkitsList the list
 	// of the toolkits the agent's entries name.
-	openTool        = "open"
-	toolkitsList    = "toolkits"
-	openDescription = "Open a toolkit from a list, by its name. Its instructions are the result, and its tools are shown to you from your next turn, each under the toolkit's name and its own. The toolkits you can open:"
+	openTool     = "open"
+	toolkitsList = "toolkits"
+	// resumeTool is the tool that carries on a call that has not ended.
+	resumeTool        = "resume"
+	resumeDescription = "Carry on a call that has not ended, by its task's name. It waits for the work, and returns its result, or working again. Give responses, by the names of the requests, to a call that asked for input. With cancel: true it cancels the call. The tasks:"
+	openDescription   = "Open a toolkit from a list, by its name. Its instructions are the result, and its tools are shown to you from your next turn, each under the toolkit's name and its own. The toolkits you can open:"
 )
 
 const large = `

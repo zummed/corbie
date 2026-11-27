@@ -15,14 +15,17 @@ The detailed rules behind the [Toolkit overview](../toolkit.md). Area code: `kit
 **R-kit-03** A toolkit with `tools:` answers an open with `{ instructions, entries }`: its `instructions:` filled from the input, and one entry `{ kind: tool, name, description, args }` for each tool, in the order of their names, `args` in full form.
 *Accept:* parity case 153: the open gives the instructions with the shelf filled in, and the entry of `add_note` with the full shape of its arguments.
 
-**R-kit-04** A toolkit with `tools:` answers a call by checking `args` against the tool's `args:`, then starting the tool's job, which reads `input` and `args`. The run ends with `{ result }`, the job's output, or fails as the job did. A tool the toolkit does not have, arguments that do not fit, a resume, a cancel and a request with `toolkit:` each fail the run before any job starts.
-*Accept:* parity case 153: the call's result is the job's output, made from the input's shelf and the argument's text. Parity case 157: an argument of the wrong type, a tool the toolkit does not have and a resume each fail, and no script is asked for.
+**R-kit-04** A toolkit with `tools:` answers a call, a resume and a cancel by checking `args` against the tool's `args:`, then starting the tool's job, which reads `input` and `args`, and the request as `input.request`. The run ends with `{ result }`, the job's output, or fails as the job did; a job whose output is `{ working, state }` or `{ requests, state }` ends a call or a resume with that answer. A tool the toolkit does not have, arguments that do not fit and a request with `toolkit:` each fail the run before any job starts.
+*Accept:* parity case 153: the call's result is the job's output, made from the input's shelf and the argument's text. Parity case 157: an argument of the wrong type, a tool the toolkit does not have and a resume with no arguments each fail, and no script is asked for. Parity case 159: the call ends with the `{ working, state }` its job gave.
 
 **R-kit-05** A toolkit with `job:` starts that job for every request, with the toolkit's input or the `input:` the job writes, and the job's output is the answer. An answer to an open is `{ instructions, entries }`; to a call or a resume, `{ result }`, `{ working, state }` or `{ requests, state }`; to a cancel, `{ result }`. An answer of any other form fails the run.
 *Accept:* parity case 154: the open, a call that gives a result and a call that gives `{ working, state }` each end with the job's answer, and an answer of `{ result, at }` fails the run.
 
 **R-kit-06** The job a toolkit starts for a call, a resume or a cancel carries `job.tool`, `{ toolkit, name, args }`: the toolkit's name, the request's tool and its arguments. The toolkit's hooks read it.
 *Accept:* parity case 156: the toolkit's hook, whose `when:` reads `job.tool.name`, is given `{ toolkit: notes, name: add_note, args: { text: milk } }`, and the caller's hook does not run for the tool's job.
+
+**R-kit-07** A resume whose job answers `{ working, state }` sets a timer for `working.wait` seconds, 5 by default, and at the timer starts the job again with that state as the request's. It ends with the first answer that is not `working`, or with `{ working, state }` where the wait would end after `limits: { resume: }`, ten minutes by default. A call ends with `working` at once.
+*Accept:* parity case 159: a resume of work that ends at the third ask starts the job twice and ends with the result, and the same resume of a toolkit with `limits: { resume: 1s }` starts it once and ends working.
 
 **C-kit-01** An entry in a job's answer to an open keeps its kind, its name, its description and, for a tool, the shape of its arguments, and nothing else. An entry that kept a field of its writer's could name a location or a job for a reader of the list to run. *Test:* `toolkit_entry_keeps_only_its_four_fields`
 

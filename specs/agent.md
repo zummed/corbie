@@ -168,6 +168,7 @@ A tool's call takes the agent's hooks like any job (see [Machines](machine.md#ho
 | `toolkit` | for an open and for a call of a toolkit's tool, the name of the agent's entry |
 | `open` | `true` for an open of a toolkit |
 | `path` | for a toolkit inside a toolkit, the names that lead to it |
+| `resume` | for a resume, the task's name, with `requests`, `responses` and `cancel` |
 
 A hook runs once for each call. A call no hook holds runs at once, and the next turn waits for the held calls as well as for the others. A call a hook refuses goes back to the model as denied, with the hook's note.
 
@@ -259,17 +260,42 @@ tools:
 - In a name the model is shown, a character other than a letter, a digit, `_` or `-` is written `_`.
 - An open whose list gives a tool that would be shown under the name of another tool, or under a name longer than 64 characters, goes back to the model as an error, and opens nothing.
 - The result of `open` is shown to the model whole, and is never stored as a blob. With no instructions, it is `Opened net.`.
-- `open` is supplied by Corbie, and no entry may take the name `open` or `toolkits`. It is not shown while no toolkit can be opened.
+- `open` and `resume` are supplied by Corbie, and no entry may take the name `open`, `toolkits` or `resume`. `open` is not shown while no toolkit can be opened.
 - An entry with `open: true` is opened before the first turn, by a job named `open`. The first turn is offered its tools and is shown its instructions. A toolkit that fails to open then fails the agent.
 - `approve: true` marks the open and every call through the entry for approval. A call a hook refuses goes back to the model as denied, with the hook's note, and a refused open opens nothing.
 - The agent's hooks run for the open and for each call, which are the agent's jobs. A toolkit's own hooks run for its tools' jobs, in its run (see [Toolkit](toolkit.md#authority)).
-- An answer with no `result` goes back to the model as an error.
+- An answer with `working` or `requests` makes the call a task (see [A call that has not ended](#a-call-that-has-not-ended)). Any other answer with no `result` goes back to the model as an error.
 
 A toolkit's list may hold a toolkit, as well as tools. The model opens it from the list of the toolkit that gave it:
 
 ```
 open { list: github, name: review }     the request is { do: open, toolkit: [review] }
 github_review_read                      the request is { do: call, toolkit: [review], tool: read, args }
+```
+
+## A call that has not ended
+
+A toolkit answers a call with `{ working, state }` where the work goes on, such as a task of an MCP server, or with `{ requests, state }` where it needs input. The call is then a task.
+
+1. The agent keeps the state under a name, `task1`, and the model is shown `{ task: task1, working }` or `{ task: task1, requests }` as the call's result.
+2. The model is offered one more tool, `resume`, which names each task. It goes on with other tools.
+3. The model calls `resume` with `{ task: task1 }`, and with `responses`, by the names of the requests, where the call asked for input.
+4. A job named `resume` runs: the entry's job, with the request `{ do: resume, tool, args, state, responses }`. The toolkit waits for the work (see [Toolkit](toolkit.md#a-resume-waits)).
+5. The model is shown the result, and the task is gone. An answer of `working` or `requests` again keeps the task, with its new state.
+
+- A resume is the call carried on. Its job has the entry's `approve:` and `meta:`, and its `job.tool` is the call's `{ toolkit, name, args }`, with what the model `said` in the turn that resumed it.
+- A hook tells a resume by `job.tool.resume`, the task's name, and reads `job.tool.requests` and `job.tool.responses`. It gives a person's answer in place of the model's with `{ ok: true, input }`, the job's input with other `responses` in its `request`.
+- `resume` with `cancel: true` asks the toolkit to cancel, with `{ do: cancel }`, and the task is gone. `job.tool.cancel` is `true`.
+- A resume a hook refuses goes back to the model as denied, and keeps the task. A resume that fails for any other reason ends the task.
+- Two calls of `resume` in one turn for one task run one job, and the second goes back to the model as an error.
+- `resume` is not shown while the run has no task.
+- Cancelling an agent cancels no work a toolkit started elsewhere.
+
+```yaml
+hooks:
+  person:
+    when: "${job.tool && job.tool.resume && job.tool.requests}"
+    before: { machine: ./ask-a-person.yaml, input: { job: "${job}" } }
 ```
 
 ## Who is offered what
@@ -314,15 +340,17 @@ An agent has a number of turns, twenty by default, and the model is told when fe
 
 The conversation is everything the model has been shown and has said: the prompt, each reply and tool call, and each call's result, error or denial. It is kept as its turns, each written once as the turn ends. Nothing is rewritten as the conversation grows.
 
-In a result the conversation is one value: its turns, and the blobs the model was shown, each under the name the model knows it by.
+In a result the conversation is one value: its turns, the blobs the model was shown, each under the name the model knows it by, and the tasks that have not ended. With no task, `tasks` is left out.
 
 ```
-conversation: { turns: [ turn 1, turn 2, … ], blobs: { blob1: …, blob2: … } }
+conversation: { turns: [ turn 1, turn 2, … ], blobs: { blob1: …, blob2: … }, tasks: { task1: { entry, tool, args, state } } }
 ```
 
 An agent started with it carries on where the other stopped. Every name goes on meaning the blob it meant, and a blob the conversation has not shown takes a name it has not used.
 
 A run that carries a conversation on has every toolkit closed, and opens the entries with `open: true` again. The model opens any other toolkit with `open`.
+
+The run keeps each task whose entry it has, as a toolkit that is offered, and the model resumes it by its name. The conversation is input, written by whoever starts the run, so a task's state is that writer's claim: the resume is the entry's job, which its hooks hold and its toolkit checks.
 
 ## Blobs and the model
 
@@ -358,6 +386,7 @@ An agent's record holds these entries, under these names:
 | job named after a tool, `shelf`, `shelf.1` | one call of the tool the model named; its `done` or `failed` goes back to the model |
 | job named after a toolkit's tool, `net_show_status` | one call of that tool: the entry's job, with the request |
 | job `open`, `open.1` | an open of a toolkit: the entry's job, with the request |
+| job `resume`, `resume.1` | a resume or a cancel of a task: the entry's job, with the request |
 | job `preview`, `preview.1` | the preview of a blob before the model is first shown it |
 
 `stop` is `end`, `tools` or `length`.

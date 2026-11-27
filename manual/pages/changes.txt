@@ -40,6 +40,14 @@ toolkit, as `corbie manual agent` says.
   conversation.opened                                         gone: a run that carries a conversation on opens its toolkits again
   the Toolkits page of `corbie ui`                            gone: a toolkit is a machine on the Machines page
 
+- A call of a toolkit's tool that ends `{ working, state }` or
+  `{ requests, state }` is shown to the model as a task, and the model
+  carries it on with `resume`, as `corbie manual agent` says. No entry is
+  named `resume`.
+- A tool written under a toolkit's `tools:` may give `{ working, state }` or
+  `{ requests, state }` in place of its result, and its job runs again for a
+  resume or a cancel. A resume gives the tool's `args` again. A resume waits
+  up to `limits: { resume: 10m }`.
 - An entry `{ machine: ./file.yaml }` names a machine by its file, as
   `{ call: location }` names one by its location.
 - `toolkit:` is a fifth type of machine. It holds tools that any machine

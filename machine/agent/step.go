@@ -55,6 +55,23 @@ type state struct {
 	// Unoffered are the entries whose when: did not hold when the run
 	// started: the model is never shown them.
 	Unoffered []string `json:"unoffered,omitzero"`
+	// Tasks are the calls of toolkits' tools that have not ended, by the
+	// name the model knows each by.
+	Tasks map[string]*task `json:"tasks,omitzero"`
+}
+
+// task is a call of a toolkit's tool that ended working, or with requests
+// for input: what a resume needs to carry it on.
+type task struct {
+	Entry string   `json:"entry"`
+	Path  []string `json:"path,omitzero"`
+	Tool  string   `json:"tool"`
+	// Args are the arguments the model gave the call.
+	Args any `json:"args,omitzero"`
+	// State is what the toolkit last gave, which a resume gives back.
+	State any `json:"state,omitzero"`
+	// Requests are what the call asks for, where it asks for input.
+	Requests any `json:"requests,omitzero"`
 }
 
 // opening is one open of a toolkit: the list it makes, the agent's entry
@@ -105,9 +122,11 @@ type call struct {
 	Tool string `json:"tool"`
 	// Open is the toolkit the call opens, for a call of open.
 	Open *opening `json:"open,omitzero"`
-	Job  string   `json:"job,omitzero"` // the job that carries it out; none if it ran nothing
-	Args any      `json:"args,omitzero"`
-	Done bool     `json:"done,omitzero"`
+	// Task is the task the call carries on, for a call of resume.
+	Task string `json:"task,omitzero"`
+	Job  string `json:"job,omitzero"` // the job that carries it out; none if it ran nothing
+	Args any    `json:"args,omitzero"`
+	Done bool   `json:"done,omitzero"`
 	// What goes back to the model: a result, an error or a denial.
 	Result any    `json:"result,omitzero"`
 	Error  string `json:"error,omitzero"`
@@ -184,6 +203,9 @@ func (s *stepper) arrive(event machine.Event) (bool, error) {
 				c.Error = fmt.Sprint(data["error"])
 				if data["status"] == machine.StatusDenied {
 					c.Error = "denied: " + c.Error
+				} else if c.Task != "" {
+					// A resume that fails for any other reason ends its task.
+					delete(s.st.Tasks, c.Task)
 				}
 				if f := s.find(c.Tool); f != nil && f.kit == nil && c.Open == nil {
 					s.done(c, data["output"])
@@ -227,6 +249,43 @@ func (s *stepper) arrive(event machine.Event) (bool, error) {
 	return false, nil
 }
 
+// goesOn takes a toolkit's answer to a call or a resume. With a result the
+// call has ended, and its task with it. With working, or with requests for
+// input, the call is a task: the model is shown its name, and carries it on
+// with resume.
+func (s *stepper) goesOn(c *call, t *task, output any) (result any, ended bool) {
+	answer, _ := output.(map[string]any)
+	if result, ended = answer["result"]; ended {
+		delete(s.st.Tasks, c.Task)
+		return result, true
+	}
+	state, kept := answer["state"]
+	working, works := answer["working"]
+	requests, asks := answer["requests"]
+	if t == nil || !kept || !works && !asks {
+		c.Error = "the toolkit's answer holds no result"
+		return nil, false
+	}
+	name := c.Task
+	for n := len(s.st.Tasks) + 1; name == ""; n++ {
+		// A name is never one a task of the conversation has.
+		if _, used := s.st.Tasks[fmt.Sprintf("task%d", n)]; !used {
+			name = fmt.Sprintf("task%d", n)
+		}
+	}
+	if s.st.Tasks == nil {
+		s.st.Tasks = map[string]*task{}
+	}
+	t.State, t.Requests = state, requests
+	s.st.Tasks[name] = t
+	if asks {
+		c.Result = s.shown(map[string]any{"task": name, "requests": requests})
+	} else {
+		c.Result = s.shown(map[string]any{"task": name, "working": working})
+	}
+	return nil, false
+}
+
 // done takes the output of a call's job. An open gives the toolkit's
 // instructions, and a call of a toolkit's tool the result in its answer.
 func (s *stepper) done(c *call, output any) {
@@ -244,14 +303,16 @@ func (s *stepper) done(c *call, output any) {
 		// What opening a toolkit gives is shown to the model whole.
 		c.Result = instructions
 		return
-	case f != nil && f.kit != nil:
-		answer, _ := output.(map[string]any)
-		result, ended := answer["result"]
-		if !ended {
-			c.Error = "the toolkit's answer holds no result"
+	case c.Task != "":
+		var ended bool
+		if output, ended = s.goesOn(c, s.st.Tasks[c.Task], output); !ended {
 			return
 		}
-		output = result
+	case f != nil && f.kit != nil:
+		var ended bool
+		if output, ended = s.goesOn(c, &task{Entry: f.entry, Path: f.kit.Path, Tool: f.name, Args: c.Args}, output); !ended {
+			return
+		}
 	case f != nil && f.tool.Agent:
 		// A tool that is an agent is shown as what that agent replied: its
 		// conversation and its count of tokens are in the record, and are
@@ -428,7 +489,8 @@ func (s *stepper) begin() error {
 	if err != nil {
 		return err
 	}
-	if carried, _ := so.(map[string]any); so != nil {
+	carried, _ := so.(map[string]any)
+	if so != nil {
 		// A conversation carried on brings its turns and the blobs they
 		// name, so each name goes on meaning the blob it meant.
 		turns, isTurns := carried["turns"].([]any)
@@ -455,6 +517,20 @@ func (s *stepper) begin() error {
 	}
 	if err := s.readable(); err != nil {
 		return err
+	}
+	// A conversation carried on brings the tasks still working. It is input,
+	// so a task is kept only where its entry is a toolkit that is offered.
+	kept, _ := json.Marshal(carried["tasks"])
+	var tasks map[string]*task
+	if json.Unmarshal(kept, &tasks) == nil {
+		for name, t := range tasks {
+			if tool, ok := s.a.Tools[t.Entry]; t != nil && ok && tool.Toolkit && s.offers(t.Entry) {
+				if s.st.Tasks == nil {
+					s.st.Tasks = map[string]*task{}
+				}
+				s.st.Tasks[name] = t
+			}
+		}
 	}
 	// The toolkits with open: true are opened once, now; the first turn
 	// waits for them as it waits for its previews.
@@ -722,6 +798,16 @@ func (s *stepper) offered() []any {
 	if len(s.openable()) > 0 {
 		tools = append(tools, s.opener())
 	}
+	if len(s.st.Tasks) > 0 {
+		var lines []string
+		for _, name := range sortedNames(s.st.Tasks) {
+			lines = append(lines, fmt.Sprintf("- %s: %s of %s", name, s.st.Tasks[name].Tool, s.st.Tasks[name].Entry))
+		}
+		tools = append(tools, map[string]any{"name": resumeTool, "description": resumeDescription + "\n" + strings.Join(lines, "\n"),
+			"args": map[string]any{"type": "object", "properties": map[string]any{"task": map[string]any{"type": "string"},
+				"responses": map[string]any{"type": "object"}, "cancel": map[string]any{"type": "boolean"}},
+				"required": []any{"task"}, "additionalProperties": false}})
+	}
 	return tools
 }
 
@@ -811,6 +897,7 @@ func (s *stepper) replied(data any) error {
 	s.st.Waiting = "tools"
 	scope := machine.Scope{"input": s.in.Input}
 	seen := map[string]int{}
+	resumed := map[string]bool{}
 	for _, c := range calls {
 		made, _ := c.(map[string]any)
 		one := &call{Args: made["args"]}
@@ -847,6 +934,47 @@ func (s *stepper) replied(data any) error {
 			}
 			one.Job, one.Open = named(), o
 			job, err := s.ask(o.Entry, one.Job, request, through(&kit{Entry: o.Entry, Path: o.Path}, map[string]any{"open": true}))
+			if err != nil {
+				return err
+			}
+			s.request(machine.Request{Job: job})
+			continue
+		}
+		if one.Tool == resumeTool {
+			given, _ := one.Args.(map[string]any)
+			name, _ := given["task"].(string)
+			t := s.st.Tasks[name]
+			switch {
+			case t == nil:
+				one.Done, one.Error = true, fmt.Sprintf("there is no task named %q", name)
+				continue
+			case resumed[name]:
+				one.Done, one.Error = true, fmt.Sprintf("another call of this turn resumes the task %q", name)
+				continue
+			}
+			resumed[name] = true
+			// A resume is the call carried on: its job is the entry's, with
+			// the call's tool and arguments, so a hook that held the call
+			// holds the resume.
+			args := t.Args
+			if args == nil {
+				args = map[string]any{}
+			}
+			request := map[string]any{"do": toolkit.Resume, "tool": t.Tool, "args": args, "state": t.State}
+			shown := map[string]any{"name": t.Tool, "args": t.Args, "resume": name}
+			if t.Requests != nil {
+				shown["requests"] = t.Requests
+			}
+			if cancel, _ := given["cancel"].(bool); cancel {
+				request["do"], shown["cancel"] = toolkit.Cancel, true
+			} else if responses, given := given["responses"]; given {
+				request["responses"], shown["responses"] = responses, responses
+			}
+			if len(t.Path) > 0 {
+				request["toolkit"] = t.Path
+			}
+			one.Job, one.Task = named(), name
+			job, err := s.ask(t.Entry, one.Job, request, through(&kit{Entry: t.Entry, Path: t.Path}, shown))
 			if err != nil {
 				return err
 			}
@@ -952,7 +1080,11 @@ func (s *stepper) result(reply any) map[string]any {
 	if blobs == nil {
 		blobs = map[string]any{}
 	}
-	out := map[string]any{"conversation": map[string]any{"turns": turns, "blobs": blobs},
+	conversation := map[string]any{"turns": turns, "blobs": blobs}
+	if len(s.st.Tasks) > 0 {
+		conversation["tasks"] = s.st.Tasks
+	}
+	out := map[string]any{"conversation": conversation,
 		"tokens": map[string]any{"input": s.st.Tokens["input"], "output": s.st.Tokens["output"], "cached": s.st.Tokens["cached"]}}
 	if reply != nil {
 		out["reply"] = s.real(reply)

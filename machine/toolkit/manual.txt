@@ -83,16 +83,23 @@ Requests
 
   { do: open }                        { instructions, entries }
   { do: call, tool, args }            { result }, { working, state } or { requests, state }
-  { do: resume, tool, state }         the same three
-  { do: cancel, tool, state }         { result }
+  { do: resume, tool, args, state }   the same three; with `responses` to requests
+  { do: cancel, tool, args, state }   { result }
 
 - An entry holds `kind`, `name`, `description` and, for a tool, `args`.
   Anything else a job's answer gives in an entry is dropped.
 - A call whose arguments do not fit the tool's `args:` fails, and the error
   names each place.
-- A tool written under `tools:` ends with its result, so a resume or a cancel
-  of it fails. A job that answers gives `{ working, state }` for work that has
-  not ended, and is asked again with a resume.
+- A tool's job gives `{ working, state }` in place of its result for work
+  that has not ended, and `{ requests, state }` for work that needs input.
+  The run ends with that answer.
+- A resume or a cancel starts the tool's job again. The job reads the
+  request as `input.request`: its `do`, the `state` it gave, and the
+  `responses` to its requests.
+- A resume whose job answers `working` again waits and asks again, until the
+  work ends. It waits `working.wait` seconds between two asks, 5 by default,
+  on a timer, so no runner is in use. After `limits: { resume: 10m }`, ten
+  minutes by default, it ends with `{ working, state }`.
 - A hook of the toolkit reads a call's tool as `job.tool`:
   `{ toolkit, name, args }`.
 - A toolkit is transient: each request is a run.

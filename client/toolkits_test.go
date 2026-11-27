@@ -457,6 +457,133 @@ func TestAgentEntryNamesAMachineByItsFile(t *testing.T) {
 	}
 }
 
+// slow gives the helper's files with net's tools replaced by two whose
+// calls do not end: export, whose work ends at the third ask, and choose,
+// which asks for input.
+func slow() map[string]string {
+	files := maps.Clone(toolkits)
+	files["toolkits/net.yaml"] = `
+		toolkit: net
+		description: The firewall and the switch.
+		input: { asker: any }
+		tools:
+		  export:
+		    description: Export something
+		    args: { what: string }
+		    job: { script: ./export.js, input: { what: "${args.what}", request: "${input.request}" } }
+		  choose:
+		    description: Choose a colour
+		    job: { script: ./choose.js, input: { request: "${input.request}" } }
+	`
+	files["toolkits/export.js"] = `
+		const r = input.request
+		if (r.do === "cancel") return "cancelled at ask " + r.state.asked
+		const asked = r.do === "call" ? 0 : r.state.asked
+		if (asked < 2) return { working: { said: "asked " + (asked + 1), wait: 0.05 }, state: { asked: asked + 1 } }
+		return "exported " + input.what + " at ask " + (asked + 1)`
+	files["toolkits/choose.js"] = `
+		const r = input.request
+		if (r.do === "call") return { requests: { colour: { message: "Which colour?" } }, state: { step: 1 } }
+		return "chose " + r.responses.colour + " at step " + r.state.step`
+	return files
+}
+
+// A call of a toolkit's tool that ends working is a task: the model is
+// shown its name, and carries it on with resume, which waits for the work
+// and gives its result. resume with cancel: true cancels it. An agent that
+// ends with a task working names it in its conversation, and a run that
+// carries the conversation on resumes it.
+func TestAgentResumesACallThatHasNotEnded(t *testing.T) {
+	m := newModel(t, calls("c1", "open", opens("net")), calls("c2", "net_export", `{"what": "notes"}`),
+		calls("c3", "resume", `{"task": "task1"}`), calls("c4", "resume", `{"task": "task1"}`), says("done"))
+	l := local(t, "all")
+	id := startWith(t, l, helper(m.URL, ""), slow(), map[string]any{"question": "q"})
+	var jobs []string
+	r, err := l.Follow(ctx, id, 20*time.Millisecond, func(e client.Entry) {
+		for _, ask := range e.Asks {
+			if e.ID == id && (ask.Kind == "script" || ask.Kind == "child") {
+				jobs = append(jobs, ask.Name)
+			}
+		}
+	})
+	if err != nil || r.Status != "done" {
+		t.Fatalf("the agent ended %+v, %v", r, err)
+	}
+	if got := strings.Join(jobs, " "); got != "turn open turn#2 net_export turn#3 resume turn#4 turn#5" {
+		t.Errorf("the jobs were: %s", got)
+	}
+	if shown := strings.ReplaceAll(lastShown(m.Calls[2]), `\`, ""); !strings.Contains(shown, `"task":"task1"`) || !strings.Contains(shown, `"said":"asked 1"`) {
+		t.Errorf("the call that did not end was shown as: %s", shown)
+	}
+	if got := offeredNames(m.Calls[1].Tools); strings.Contains(got, "resume") {
+		t.Errorf("with no task, the turn was offered: %s", got)
+	}
+	resume := offeredTool(m.Calls[2].Tools, "resume")
+	if resume == nil || !strings.Contains(resume["description"].(string), "- task1: export of net") {
+		t.Errorf("resume was offered as %s", jsonOf(resume))
+	}
+	if shown := lastShown(m.Calls[3]); !strings.Contains(shown, "exported notes at ask 3") {
+		t.Errorf("the resume gave: %s", shown)
+	}
+	if got := offeredNames(m.Calls[3].Tools); strings.Contains(got, "resume") {
+		t.Errorf("with the task ended, the turn was offered: %s", got)
+	}
+	if shown := lastShown(m.Calls[4]); !strings.Contains(shown, `there is no task named \"task1\"`) {
+		t.Errorf("the resume of a task that ended was shown as: %s", shown)
+	}
+	// A cancel is the tool's job, asked to cancel.
+	m = newModel(t, calls("c1", "open", opens("net")), calls("c2", "net_export", `{"what": "notes"}`),
+		calls("c3", "resume", `{"task": "task1", "cancel": true}`), says("done"))
+	if r := wait(t, l, startWith(t, l, helper(m.URL, ""), slow(), map[string]any{"question": "q"})); r.Status != "done" {
+		t.Fatalf("the agent ended %s: %s", r.Status, r.Error)
+	}
+	if shown := lastShown(m.Calls[3]); !strings.Contains(shown, "cancelled at ask 1") {
+		t.Errorf("the cancel gave: %s", shown)
+	}
+	// An agent that ends with a task working names it, and another carries it on.
+	m = newModel(t, calls("c1", "open", opens("net")), calls("c2", "net_export", `{"what": "notes"}`), says("later"))
+	r = wait(t, l, startWith(t, l, helper(m.URL, ""), slow(), map[string]any{"question": "q"}))
+	conversation := r.Output.(map[string]any)["conversation"].(map[string]any)
+	if got := jsonOf(conversation["tasks"]); got != `{"task1":{"args":{"what":"notes"},"entry":"net","state":{"asked":1},"tool":"export"}}` {
+		t.Fatalf("the conversation names the tasks as: %s", got)
+	}
+	m2 := newModel(t, calls("c3", "resume", `{"task": "task1"}`), says("done"))
+	wait(t, l, startWith(t, l, helper(m2.URL, "conversation: ${input.so}"), slow(), map[string]any{"question": "and?", "so": carried(conversation, r.ID)}))
+	if shown := lastShown(m2.Calls[1]); !strings.Contains(shown, "exported notes at ask 3") {
+		t.Errorf("the run that carried on resumed the task as: %s", shown)
+	}
+}
+
+// A call that asks for input is a task too: the model is shown the requests
+// and gives its responses with resume. A resume is the call carried on, so
+// the hook that holds the entry's jobs holds it, reads the requests and the
+// model's responses, and gives a person's answer in place of the model's.
+func TestAgentHookHoldsAResume(t *testing.T) {
+	m := newModel(t, calls("c1", "open", opens("net")), calls("c2", "net_choose", `{}`),
+		calls("c3", "resume", `{"task": "task1", "responses": {"colour": "red"}}`), says("done"))
+	def, files := approved(m.URL, `
+		const held = input.job, tool = held.tool
+		if (!tool.resume) return { ok: true }
+		const fits = tool.toolkit === "net" && tool.name === "choose" && tool.resume === "task1" &&
+			tool.requests.colour.message === "Which colour?" && tool.responses.colour === "red"
+		if (!fits) return { ok: false, note: "the hook read " + JSON.stringify(tool) }
+		const request = { ...held.input.request, responses: { colour: "blue" } }
+		return { ok: true, input: { ...held.input, request } }`)
+	for name, text := range slow() {
+		files[name] = text
+	}
+	l := local(t, "all")
+	if r := wait(t, l, startWith(t, l, def, files, map[string]any{"question": "q"})); r.Status != "done" {
+		t.Fatalf("the agent ended %s: %s", r.Status, r.Error)
+	}
+	if shown := strings.ReplaceAll(lastShown(m.Calls[2]), `\`, ""); !strings.Contains(shown, `"task":"task1"`) || !strings.Contains(shown, `"message":"Which colour?"`) {
+		t.Errorf("the call that asks for input was shown as: %s", shown)
+	}
+	if shown := lastShown(m.Calls[3]); !strings.Contains(shown, "chose blue at step 1") {
+		t.Errorf("the resume gave: %s", shown)
+	}
+}
+
 // asking gives the helper with its tool add marked for approval and a hook
 // whose input is the value given, and its files.
 func asking(address, askInput string) (def string, files map[string]string) {

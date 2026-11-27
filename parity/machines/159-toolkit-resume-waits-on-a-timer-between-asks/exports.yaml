@@ -1,0 +1,7 @@
+toolkit: exports
+description: Exports that take a while.
+tools:
+  export:
+    description: Export something.
+    args: { what: string }
+    job: { script: ./export.js, input: { what: "${args.what}", request: "${input.request}" } }

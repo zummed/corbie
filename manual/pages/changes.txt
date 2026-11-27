@@ -16,6 +16,8 @@ seconds, and a server of 0.39.0 sends nothing while it works on a request.
   corbie init store --json             has `name`, and `members`: each one's `name`, `address` and `state`
   corbie init store --listen fe80::…   refused: an IPv6 link-local address
   corbie start runner, with no trust   stays running, and takes jobs once corbie runner trust is run
+  corbie start, with no runner card    stays running, and starts the runner once corbie runner card is run
+  corbie check                         its run is kept for an hour; before, a week
 
 A store with more than one member is made again. With no run in progress,
 stop `corbie start` on every member and run `corbie init store --alone` on

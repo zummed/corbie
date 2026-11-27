@@ -36,8 +36,8 @@ Add a runner on another computer
 
 Each command prints the fingerprint of every card it reads, for two people to
 compare. `corbie start runner` must stay running. `desk` notifies it of each new
-job, so it does not poll. Started before `corbie runner trust`, it takes jobs
-once the card is saved.
+job, so it does not poll. Started before `corbie runner card` or
+`corbie runner trust`, it takes jobs once both have run.
 
 Add a client on another computer
 --------------------------------

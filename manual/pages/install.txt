@@ -57,6 +57,7 @@ Check the setup
 
 `corbie check` ends every setup. It records a machine at
 `/corbie-check/<client>` and starts a run of it with one job and one timer.
+The run is kept for an hour.
 
   the controller took the start    ok     1.0s
   a runner took the job            ok     0.2s

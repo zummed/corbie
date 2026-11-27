@@ -32,20 +32,20 @@ import (
 // config records where it listens.
 func held(cfg identity.Config) ([]string, error) {
 	var names []string
-	for _, kind := range []identity.Kind{identity.Controller, identity.Runner} {
-		if cfg.Has(kind) {
-			names = append(names, string(kind))
-		}
+	if !cfg.Has(identity.Controller) && !cfg.Has(identity.Runner) {
+		return nil, fmt.Errorf("the config %s holds no controller and no runner: corbie init sets this computer up", cfg.Dir)
 	}
+	if cfg.Has(identity.Controller) {
+		names = append(names, string(identity.Controller))
+	}
+	// The runner is run whether or not its card is made yet.
+	names = append(names, string(identity.Runner))
 	listen, err := cfg.StoreListen()
 	if err != nil {
 		return nil, err
 	}
 	if listen != "" && cfg.Has(identity.Controller) {
 		names = append(names, "store")
-	}
-	if len(names) == 0 {
-		return nil, fmt.Errorf("the config %s holds no controller and no runner: corbie init sets this computer up", cfg.Dir)
 	}
 	return names, nil
 }
@@ -314,66 +314,88 @@ func (e *Env) start(cfg identity.Config, named []item, before func() error) erro
 			e.Say("controller %s  (%s)", id.Name, id.Fingerprint())
 			e.unreported(name, s, set.interval)
 		case "runner":
-			id, err := cfg.Load(e.ctx, identity.Runner)
-			if err != nil {
-				return err
-			}
-			// Each controller has its own store and its own ceiling, read
-			// afresh from the config at every pass.
+			// A runner whose card is made after the start is started at the
+			// first pass that finds the card.
 			woken := make(chan struct{}, 1)
-			stores := map[string]store.Store{}
-			started := false // a controller trusted after the start is printed
-			trusted := func() ([]runner.Served, error) {
-				held, err := cfg.TrustList(identity.Runner)
+			var pass role.Pass
+			begin := func() error {
+				id, err := cfg.Load(e.ctx, identity.Runner)
 				if err != nil {
-					return nil, err
+					return err
 				}
-				var serves []runner.Served
-				for _, t := range held {
-					if !t.Trusted() {
-						continue
+				// Each controller has its own store and its own ceiling, read
+				// afresh from the config at every pass.
+				stores := map[string]store.Store{}
+				started := false // a controller trusted after the start is printed
+				trusted := func() ([]runner.Served, error) {
+					held, err := cfg.TrustList(identity.Runner)
+					if err != nil {
+						return nil, err
 					}
-					s, opened := stores[t.Store]
-					if !opened {
-						if s, err = e.Open(t.Store, id, t.Card); err != nil {
-							return nil, fmt.Errorf("the store of the controller %q: %w", t.Card.Name, err)
+					var serves []runner.Served
+					for _, t := range held {
+						if !t.Trusted() {
+							continue
 						}
-						stores[t.Store] = s
-						if started {
-							e.Say("runner %s  serving the controller %s", id.Name, t.Card.Name)
-							e.unreported(name, s, set.interval)
-						}
-						notice, _ := s.Notice(store.Inbox(id.Name))
-						go func() {
-							for range notice {
-								select {
-								case woken <- struct{}{}:
-								default:
-								}
+						s, opened := stores[t.Store]
+						if !opened {
+							if s, err = e.Open(t.Store, id, t.Card); err != nil {
+								return nil, fmt.Errorf("the store of the controller %q: %w", t.Card.Name, err)
 							}
-						}()
+							stores[t.Store] = s
+							if started {
+								e.Say("runner %s  serving the controller %s", id.Name, t.Card.Name)
+								e.unreported(name, s, set.interval)
+							}
+							notice, _ := s.Notice(store.Inbox(id.Name))
+							go func() {
+								for range notice {
+									select {
+									case woken <- struct{}{}:
+									default:
+									}
+								}
+							}()
+						}
+						serves = append(serves, runner.Served{Controller: t.Card, Ceiling: t.Ceiling, Prefixes: t.Prefixes, Store: s})
 					}
-					serves = append(serves, runner.Served{Controller: t.Card, Ceiling: t.Ceiling, Prefixes: t.Prefixes, Store: s})
+					return serves, nil
 				}
-				return serves, nil
+				serves, err := trusted()
+				if err != nil {
+					return err
+				}
+				started = true
+				r := runner.New(id, serves...)
+				r.Trusted = trusted
+				r.Jobs = set.jobs
+				r.Wrapper = strings.Fields(set.wrapper)
+				pass = r.Pass
+				e.Say("runner %s  (%s), serving %d controller(s), %d jobs at once", id.Name, id.Fingerprint(), len(serves), set.jobs)
+				if len(serves) == 0 {
+					e.Say("runner %s  trusts no controller yet, and takes jobs once it trusts one: corbie runner trust takes a controller's card", id.Name)
+				}
+				for _, s := range stores {
+					e.unreported(name, s, set.interval)
+				}
+				return nil
 			}
-			serves, err := trusted()
-			if err != nil {
+			if !cfg.Has(identity.Runner) {
+				e.Say("runner  this computer has no runner yet, and one starts once corbie runner card has made its card")
+			} else if err := begin(); err != nil {
 				return err
 			}
-			started = true
-			r := runner.New(id, serves...)
-			r.Trusted = trusted
-			r.Jobs = set.jobs
-			r.Wrapper = strings.Fields(set.wrapper)
-			running = append(running, role.Role{Name: name, Pass: r.Pass, Interval: set.interval, Notice: woken})
-			e.Say("runner %s  (%s), serving %d controller(s), %d jobs at once", id.Name, id.Fingerprint(), len(serves), set.jobs)
-			if len(serves) == 0 {
-				e.Say("runner %s  trusts no controller yet, and takes jobs once it trusts one: corbie runner trust takes a controller's card", id.Name)
-			}
-			for _, s := range stores {
-				e.unreported(name, s, set.interval)
-			}
+			running = append(running, role.Role{Name: name, Interval: set.interval, Notice: woken, Pass: func(ctx context.Context) (time.Time, error) {
+				if pass == nil {
+					if !cfg.Has(identity.Runner) {
+						return time.Time{}, nil
+					}
+					if err := begin(); err != nil {
+						return time.Time{}, err
+					}
+				}
+				return pass(ctx)
+			}})
 		case "gateway":
 			e.listen, e.tokenFile, e.clients = set.listen, set.tokenFile, set.clients
 			e.oidc = set.oidc

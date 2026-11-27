@@ -252,7 +252,7 @@ function Card(props) {
   }
   return html`<g class="at" style=${() => at(c().box.x, c().box.y)}><g class=${() => [c().class, { lit: props.ctx.lights(key()), pick: picks() }]} data-key=${key} data-path=${path} tabindex=${() => (picks() ? "0" : undefined)} onClick=${pick} onKeyDown=${enter}>
     <a class="card" href=${() => c().href || undefined}>${body()}</a>
-    <Show when=${lineHref} fallback=${name}>${href => html`<a class="line" href=${href}>${name()}<title>${() => "written at " + c().line}</title></a>`}</Show>
+    <a class=${() => (lineHref() ? "line" : undefined)} href=${() => lineHref() || undefined}>${name()}<title>${() => (lineHref() ? "written at " + c().line : c().tooltip)}</title></a>
     <Show when=${() => count() > 0}>${() => html`<g class="count" transform=${() => `translate(${num(c().box.w - 12)} 0)`}><rect x=${() => num(-(10 + 7 * String(count()).length) / 2)} y="-9" width=${() => 10 + 7 * String(count()).length} height="18" rx="9" /><text text-anchor="middle" y="4">${count}</text><title>${() => `${count()} running here now`}</title></g>`}</Show>
     <title>${() => c().tooltip}</title>
   </g><Show when=${() => c().in}>${i => html`<g class="at in" style=${() => at(i().x - c().box.x, i().y - c().box.y)}><${Parts} of=${() => i()} prefix=${() => key() + " › "} path=${path} ctx=${props.ctx} /></g>`}</Show></g>`;

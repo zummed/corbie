@@ -1176,3 +1176,69 @@ func Test_store_members_a_name_is_one_members(t *testing.T) {
 		t.Fatal("the computer that had the name went on")
 	}
 }
+
+// A join that is refused leaves a directory with one member as it was, and a
+// name the directory took then is deleted once it has members.
+func Test_store_members_a_join_refused_leaves_one_member(t *testing.T) {
+	c := newMembers(t, 1)
+	first := c.all[0]
+	did(t)(c.owner().Write(ctx, "a/x:y", []byte("1"), OnlyIfNew))
+	l, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	same := &testMember{name: first.name, id: 999, address: l.Addr().String(), dir: t.TempDir(), listener: l,
+		failed: make(chan error, 1), held: make(chan error, 1)}
+	if err := SetJoining(same.dir, same.name, same.address, []string{first.address}); err != nil {
+		t.Fatal(err)
+	}
+	c.start(same)
+	select {
+	case err := <-same.held:
+		if !strings.Contains(err.Error(), first.name+" is a member of the store already") {
+			t.Fatalf("a computer of the first member's name was told %v", err)
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("a computer of the first member's name was told nothing")
+	}
+	c.stop(same)
+	if HasMembers(first.dir) {
+		t.Fatal("a join that was refused gave the directory a log")
+	}
+
+	c.add()
+	c.add()
+	s := c.owner()
+	if done, err := s.Write(ctx, "a/x:y", []byte("2"), Overwrite); done || !errors.Is(err, ErrName) {
+		t.Fatalf("a write of a name no member takes: %v %v", done, err)
+	}
+	c.did(s.Delete(ctx, "a/x:y", Overwrite))
+	if got := c.agree(); len(got) != 0 {
+		t.Fatalf("the copies hold %v", got)
+	}
+	if done, err := s.Delete(ctx, "a/x:y", Overwrite); done || !errors.Is(err, ErrName) {
+		t.Fatalf("a delete of a name that holds nothing and no member takes: %v %v", done, err)
+	}
+}
+
+// A member that goes silent before it asked for a value was sent none of
+// it: the party sends the value whole at the next try.
+func Test_store_members_a_value_not_asked_for_is_sent_at_the_next_try(t *testing.T) {
+	silence := servedSilence
+	servedSilence = 300 * time.Millisecond
+	t.Cleanup(func() { servedSilence = silence })
+	var asked atomic.Int32
+	var got []byte
+	s := answering(t, func(w http.ResponseWriter, r *http.Request) {
+		if asked.Add(1) == 1 {
+			<-r.Context().Done()
+			return
+		}
+		got, _ = io.ReadAll(r.Body)
+		w.Header().Set(headDone, "true")
+	})
+	done, err := s.WriteFrom(ctx, "a/blob", strings.NewReader("whole"))
+	if !done || err != nil || string(got) != "whole" || asked.Load() != 2 {
+		t.Fatalf("a value a silent member did not ask for: done %v, %v, %q, asked %d times", done, err, got, asked.Load())
+	}
+}

@@ -149,7 +149,7 @@ func (m *Member) begin() error {
 	}
 	m.sweep()
 	m.mu.Lock()
-	m.running, m.applied, m.term = true, state.Applied, hard.Term
+	m.applied, m.term = state.Applied, hard.Term
 	m.voters, m.learners = state.Voters, state.Learners
 	for id, member := range state.Members {
 		m.addrs[id], m.called[id] = member.Address, member.Name
@@ -163,6 +163,10 @@ func (m *Member) begin() error {
 			return err
 		}
 	}
+	// Only a member whose log is being run is stopped.
+	m.mu.Lock()
+	m.running = true
+	m.mu.Unlock()
 	go m.run()
 	return nil
 }

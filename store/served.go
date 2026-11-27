@@ -308,9 +308,10 @@ func (s *served) once(ctx context.Context, origin string, c call) (a servedAnswe
 		// this one: the next try starts on a new one.
 		s.client.CloseIdleConnections()
 		// A request that never found the server, or found another computer
-		// in its place, was never sent.
+		// in its place, was never sent. A value the server did not ask for
+		// was not sent either, and the server has nothing to act on.
 		s.turn(origin, "")
-		return a, sent.Load(), withoutAddress(err)
+		return a, sent.Load() && (c.read == nil || c.read()), withoutAddress(err)
 	}
 	defer resp.Body.Close()
 	heard()

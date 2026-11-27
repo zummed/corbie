@@ -252,6 +252,7 @@ The members are changed with `corbie init store`:
 ```
 
 - `--alone` is for a store that has lost a majority of its members for good. The copy may lack the last changes the store answered, so the store has gone back in time, as the next section describes.
+- `--alone` is refused on a computer that is joining: its copy is not the whole store.
 - `--alone` is refused while a process listens at the address `corbie init store` saved, as `corbie start` does there: a running member writes its log again.
 - A computer that was a member before `--alone` is never started again as one. Two computers that each believe they hold the store break only-if-new, on which everything rests.
 
@@ -262,7 +263,7 @@ On a member:
 - `corbie start` starts the store's server first, and the other roles once a majority of the members reach each other.
 - The log is in `.log` at the top of the copy, with the values sent ahead of their entries.
 - A member that cannot apply an entry stops, and stops again at each start. So a change to a name that can hold no value is refused and stops no member: a name under a value, or a name with names under it.
-- With members, a name is UTF-8 and at most 512 bytes, and each of its parts at most 255 bytes and a file name that Windows takes. A change to any other name is refused before it is in the log.
+- With members, a name is UTF-8 and at most 512 bytes, and each of its parts at most 255 bytes and a file name that Windows takes. A change to any other name is refused before it is in the log, except the delete of a name the store holds from when it had one member.
 - Windows takes no file name that contains one of `< > : " | ? *`, that ends in a dot or a space, or that is a device's name, such as `CON` or `NUL`, alone or before a dot. A member on any computer refuses such a part, so a member on Windows applies every entry that a member on Linux does.
 - A computer is not made a member where its file system takes no file name of 255 bytes, or its directory's path is too long for a name of 512 bytes under it. `corbie start` prints which.
 - A member holds the controller's identity, so it can do everything the controller can.

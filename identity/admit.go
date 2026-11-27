@@ -41,7 +41,7 @@ func (id *Identity) Admit(to Card, store string, now time.Time) ([]byte, error) 
 // the controller's identity and the address of its store.
 func (id *Identity) Admitted(text []byte) (*Identity, string, error) {
 	bad := errors.New("this is not what corbie init store --admit printed: a controller's card, and its identity sealed to this computer's card")
-	line, rest, ok := bytes.Cut(bytes.TrimSpace(text), []byte("\n"))
+	line, rest, ok := bytes.Cut(bytes.TrimSpace(bytes.ReplaceAll(text, []byte("\r\n"), []byte("\n"))), []byte("\n"))
 	if !ok {
 		return nil, "", bad
 	}

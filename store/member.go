@@ -569,10 +569,15 @@ func (l leader) Copy(ctx context.Context, from, to string) (bool, error) {
 
 func (l leader) Delete(ctx context.Context, name string, how How) (bool, error) {
 	m := l.m
-	if err := checkMemberName(name); err != nil {
+	if err := checkName(name); err != nil {
 		return false, err
 	}
 	defer m.names.lock(name)()
+	// A name the directory took when it had one member is deleted, though
+	// a store with members takes no such name: every member holds it.
+	if err := checkMemberName(name); err != nil && !exists(m.dir.path(name)) {
+		return false, err
+	}
 	if fits, err := m.settled(ctx, func() (bool, error) { return m.fits(name, how) }); err != nil || !fits {
 		return false, err
 	}
@@ -1129,7 +1134,7 @@ func (m *Member) change(ctx context.Context, kind pb.ConfChangeType, id uint64, 
 	case kind == pb.ConfChangeAddLearnerNode && (voter || named):
 		// A member that counts and asks to join has lost its copy, and
 		// with it what it had promised the others. A name is one member's.
-		return fmt.Errorf("store: %s is a member of the store already: corbie init store --remove %s on another member removes it, and this computer then joins", name, name)
+		return errMember(name)
 	case kind == pb.ConfChangeAddLearnerNode && learner,
 		kind == pb.ConfChangeAddNode && voter,
 		kind == pb.ConfChangeRemoveNode && !voter && !learner:
@@ -1145,6 +1150,11 @@ func (m *Member) change(ctx context.Context, kind pb.ConfChangeType, id uint64, 
 	cc := &pb.ConfChange{Type: kind.Enum(), NodeId: &id, Context: about}
 	_, err = m.wait(ctx, req, func() error { return m.rn.ProposeConfChange(cc) })
 	return err
+}
+
+// errMember refuses a join under a name that is a member's.
+func errMember(name string) error {
+	return fmt.Errorf("store: %s is a member of the store already: corbie init store --remove %s on another member removes it, and this computer then joins", name, name)
 }
 
 // Remove takes the member of a name out of the store's members. It is
@@ -1342,6 +1352,12 @@ func (m *Member) serveChange(w http.ResponseWriter, r *http.Request) {
 		m.mu.Unlock()
 	}
 	if kind == pb.ConfChangeAddLearnerNode {
+		// A join that is refused leaves a directory with one member as it
+		// was.
+		if id == m.id || name == m.name {
+			m.said(w, errMember(name))
+			return
+		}
 		if err := m.becomeFirst(); err != nil {
 			m.said(w, err)
 			return

@@ -1,6 +1,7 @@
 package identity_test
 
 import (
+	"bytes"
 	"context"
 	"strings"
 	"testing"
@@ -30,6 +31,10 @@ func Test_id_admitted_read_only_by_its_card(t *testing.T) {
 	got, at, err := member.Admitted(text)
 	if err != nil {
 		t.Fatal(err)
+	}
+	// A pipe that ends each line as Windows does changes nothing.
+	if _, _, err := member.Admitted(bytes.ReplaceAll(text, []byte("\n"), []byte("\r\n"))); err != nil {
+		t.Fatalf("with lines ended as Windows ends them: %v", err)
 	}
 	if !got.Card.Same(ctl.Card) || at != "corbie://sw1:8372" {
 		t.Fatalf("admitted gave the controller %s at %s", got.Card.Name, at)

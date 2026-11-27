@@ -199,6 +199,10 @@ func Test_store_members_join_carry_on_and_leave(t *testing.T) {
 	// It joins again under its name, with its card and an empty directory.
 	back := sw2.ok(sw1.ok("", "init", "store", "--card"), "init", "store", "--admit", "-")
 	sw1.ok(back, "init", "store", "--store", filepath.Join(t.TempDir(), "again"), "--join", "-")
+	// A computer that is joining has not the whole store to be alone with.
+	if status, _, said := sw1.run("", "init", "store", "--alone"); status != 1 || !strings.Contains(said, "is joining the store's members") {
+		t.Fatalf("init store --alone on a computer that is joining: %d %s", status, said)
+	}
 	sw1.stays("start", "controller", "--interval", "20ms", "store")
 	until(t, "the first member to count again", func() bool {
 		out := sw3.ok("", "init", "store")

@@ -341,6 +341,7 @@ func (e *Env) start(cfg identity.Config, named []item, before func() error) erro
 						stores[t.Store] = s
 						if started {
 							e.Say("runner %s  serving the controller %s", id.Name, t.Card.Name)
+							e.unreported(name, s, set.interval)
 						}
 						notice, _ := s.Notice(store.Inbox(id.Name))
 						go func() {

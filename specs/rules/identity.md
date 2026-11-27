@@ -38,6 +38,8 @@ The detailed rules behind the [Identity overview](../identity.md).
 
 **C-id-23** A config that holds both the identity file and the address of one in a bucket is refused, and a config that holds the file takes no address. Reading one of the two quietly lets a party run with keys its owner believes are no longer in use. *Test:* `id_config_with_file_and_address_refused`
 
+**C-id-24** What `corbie init store --admit` prints is read only with the private key of the member's card it was given: the controller's identity in it is encrypted to that card, and it is given to a member's card and no other. It crosses a pipe and a network connection, and whoever reads the controller's private key there is the controller. *Test:* `id_admitted_read_only_by_its_card`
+
 ## Enrolment
 
 **R-id-10** Two parties trust each other only by each taking the other's card, and trust must be held on both sides before anything passes between them; nothing is trusted for where it runs or for the config it shares.

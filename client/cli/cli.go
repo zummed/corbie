@@ -544,7 +544,7 @@ func (e *Env) Open(recorded string, as *identity.Identity, ctl identity.Card) (s
 		var proof tls.Certificate
 		if dir, err = store.DirectoryAt(address); err == nil {
 			if proof, err = as.Proof(); err == nil {
-				s, err = store.OpenLocal(dir, as.Name, proof, ctl.SignKey())
+				s, err = store.OpenLocal(dir, e.member(), as.Name, proof, ctl.SignKey())
 			}
 		}
 	case !store.IsServed(address):

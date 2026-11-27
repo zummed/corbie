@@ -254,7 +254,11 @@ func (e *Env) serve(listen string, timeout time.Duration) (func(), error) {
 		return nil, err
 	}
 	// The server alone reads and writes this computer's copy as it is.
-	member, err := store.OpenMember(dir, strings.TrimPrefix(at, store.ServedScheme), proof)
+	self, err := memberCard(e, cfg)
+	if err != nil {
+		return nil, err
+	}
+	member, err := store.OpenMember(dir, self.Name, store.MemberID(self.Card.SignKey()), strings.TrimPrefix(at, store.ServedScheme), proof)
 	if err != nil {
 		return nil, err
 	}
@@ -321,7 +325,7 @@ func (e *Env) amongMembers(member *store.Member, dir string) error {
 	}
 	switch {
 	case len(voters) == 0:
-		asked, _ := store.MembersOf(dir)
+		asked, _ := store.AddressesOf(dir)
 		asked = slices.DeleteFunc(asked, func(address string) bool { return address == member.Address() })
 		e.Say("store: joining the members at %s: this computer counts as a member once its copy is whole", strings.Join(asked, ", "))
 	default:

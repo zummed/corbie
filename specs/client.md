@@ -216,6 +216,8 @@ corbie start runner               the runner alone
 corbie start ui                   the UI alone, beside roles that systemd runs
 ```
 
+A runner that trusts no controller yet is started all the same. `corbie start` prints that, and the runner takes jobs once `corbie runner trust` has saved a controller's card.
+
 The words after a name, up to the next name, are its own: a role's flags, or a program's arguments. `--config`, `--store`, `--json` and `--help` are `corbie start`'s wherever they are written.
 
 ```

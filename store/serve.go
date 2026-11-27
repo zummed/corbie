@@ -56,6 +56,11 @@ const (
 	servedValue = 64 << 20
 )
 
+// servedWord is how often the server tells a party that its request has no
+// answer yet. A party takes a server that sends nothing for servedSilence to
+// be off.
+var servedWord = time.Second
+
 // Proof is what an end of a served directory's wire shows of itself as a
 // connection is made: its identity key and nothing else. Whoever shows it is
 // known to hold the key's other half.
@@ -186,6 +191,60 @@ func (u unhurried) Read(p []byte) (int, error) {
 
 func (u unhurried) Close() error { return u.value.Close() }
 
+// interim sends a party the responses that come before a request's answer:
+// 102 at each servedWord, so that the party knows the server is on, and 100
+// when the server first reads a value the party waits to send. One response
+// is written at a time, and none once the answer is.
+type interim struct {
+	mu   sync.Mutex
+	w    http.ResponseWriter
+	done bool
+}
+
+func (i *interim) send(status int) {
+	i.mu.Lock()
+	defer i.mu.Unlock()
+	if !i.done {
+		i.w.WriteHeader(status)
+	}
+}
+
+// begin sends 102 at each servedWord until the function it gives is called.
+func (i *interim) begin() (end func()) {
+	stop := make(chan struct{})
+	go func() {
+		tick := time.NewTicker(servedWord)
+		defer tick.Stop()
+		for {
+			select {
+			case <-stop:
+				return
+			case <-tick.C:
+				i.send(http.StatusProcessing)
+			}
+		}
+	}()
+	return func() {
+		close(stop)
+		i.mu.Lock()
+		i.done = true
+		i.mu.Unlock()
+	}
+}
+
+// awaited is a value a party sends only once the server asks for it. The
+// server asks at the first read.
+type awaited struct {
+	io.ReadCloser
+	interim *interim
+	asked   sync.Once
+}
+
+func (a *awaited) Read(p []byte) (int, error) {
+	a.asked.Do(func() { a.interim.send(http.StatusContinue) })
+	return a.ReadCloser.Read(p)
+}
+
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if s.Timeout > 0 {
 		r.Body = unhurried{r.Body, http.NewResponseController(w), s.Timeout}
@@ -194,7 +253,14 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		s.Member.serve(w, r)
 		return
 	}
-	a := s.answer(r)
+	early := &interim{w: w}
+	if r.Header.Get("Expect") != "" {
+		r.Body = &awaited{ReadCloser: r.Body, interim: early}
+	}
+	a := func() servedAnswer {
+		defer early.begin()()
+		return s.answer(r)
+	}()
 	select {
 	case <-s.stopped():
 		// A server that is stopping answers what it has in hand and keeps

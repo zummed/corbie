@@ -5,6 +5,28 @@ Each section lists what changed after one release, the newest first.
 compatible before version 1: a file or a command written the old way is
 refused.
 
+After 0.39.0
+------------
+
+Update the computers that serve a directory before its runners and clients. A
+runner or a client stops waiting for a server that sends nothing for three
+seconds, and a server of 0.39.0 sends nothing while it works on a request.
+
+  corbie init store, on a member       prints a row for each member: its name, its address, and whether it leads
+  corbie init store --json             has `name`, and `members`: each one's `name`, `address` and `state`
+  corbie init store --listen fe80::…   refused: an IPv6 link-local address
+  corbie start runner, with no trust   stays running, and takes jobs once corbie runner trust is run
+
+A store with more than one member is made again. With no run in progress,
+stop `corbie start` on every member and run `corbie init store --alone` on
+one. The others join with empty directories, as
+`corbie manual served-directory` says.
+
+  corbie init store --join corbie://host:port   removed: --join takes what corbie init store --admit printed
+  controller/identity, copied by hand           not needed: --admit prints it encrypted to the computer's card
+  corbie init store --remove host:port          takes the member's name: --remove sw2
+  corbie init store --listen, on a member       changes the member's address; before, refused
+
 After 0.38.0
 ------------
 

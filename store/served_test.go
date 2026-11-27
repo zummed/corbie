@@ -647,3 +647,86 @@ func Test_store_served_a_connection_that_proves_no_key_is_not_logged(t *testing.
 		t.Fatalf("the server printed, of a connection that proved no key:\n%s", logged.said.String())
 	}
 }
+
+// quiet has a party take a silent member to be off sooner, for a test.
+func quiet(t *testing.T) {
+	silence, word := servedSilence, servedWord
+	servedSilence, servedWord = 300*time.Millisecond, 50*time.Millisecond
+	t.Cleanup(func() { servedSilence, servedWord = silence, word })
+}
+
+// A member that sends nothing is taken to be off after a moment, and the
+// party asks the next: one that takes a connection and proves no key, and
+// one that takes a request and sends no response. A request sent to it may
+// have been done, so a change that is not the same twice is reported as not
+// known. A server that takes long over a request says so meanwhile, and is
+// waited for.
+func Test_store_served_directory_a_silent_member_is_passed_over(t *testing.T) {
+	quiet(t)
+	f := newServedDirectory(t)
+	client := f.as(Party{Kind: Client, Name: "cli", Controller: "ctl"})
+	held := f.parties["cli"]
+	second := "," + strings.TrimPrefix(f.address, ServedScheme)
+	if _, err := f.directory.Write(ctx, "ctl/receipts/cli/r1", []byte("receipt"), OnlyIfNew); err != nil {
+		t.Fatal(err)
+	}
+	listen := func() net.Listener {
+		l, err := net.Listen("tcp", "127.0.0.1:0")
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { l.Close() })
+		return l
+	}
+	within := func(what string, began time.Time) {
+		t.Helper()
+		if took := time.Since(began); took > 3*time.Second {
+			t.Fatalf("%s took %s", what, took)
+		}
+	}
+
+	// It takes the connection and sends nothing: no request was sent, so
+	// any request goes to the next member.
+	mute := listen()
+	go func() {
+		for {
+			conn, err := mute.Accept()
+			if err != nil {
+				return
+			}
+			t.Cleanup(func() { conn.Close() })
+		}
+	}()
+	s := f.opened(ServedScheme+mute.Addr().String()+second, "cli", held.key, keyOf(f.keeper))
+	began := time.Now()
+	if done, err := s.Write(ctx, "ctl/inbox/cli/m1", []byte("start"), OnlyIfNew); !done || err != nil {
+		t.Fatalf("a write only-if-new with a member that proves no key: %v %v", done, err)
+	}
+	within("a write past a member that proves no key", began)
+
+	// It takes the request and sends no response.
+	stuck, release := listen(), make(chan struct{})
+	taking := &http.Server{Handler: http.HandlerFunc(func(http.ResponseWriter, *http.Request) { <-release })}
+	t.Cleanup(func() { close(release); taking.Close() })
+	go taking.Serve(ServedListener(stuck, proofOf(t, f.keeper)))
+	s = f.opened(ServedScheme+stuck.Addr().String()+second, "cli", held.key, keyOf(f.keeper))
+	began = time.Now()
+	if v, _ := read(t, s, "ctl/receipts/cli/r1"); v != "receipt" {
+		t.Fatalf("a read with a member that answers nothing: %q", v)
+	}
+	within("a read past a member that answers nothing", began)
+	s = f.opened(ServedScheme+stuck.Addr().String()+second, "cli", held.key, keyOf(f.keeper))
+	if done, err := s.Write(ctx, "ctl/inbox/cli/m2", []byte("start"), OnlyIfNew); done || !errors.Is(err, ErrUnknown) {
+		t.Fatalf("a write only-if-new sent to a member that answers nothing: %v %v", done, err)
+	}
+
+	// The server takes three times as long as a silent member is given.
+	who := f.server.Who
+	f.server.Who = func(ctx context.Context, name string) (Party, ed25519.PublicKey, error) {
+		time.Sleep(3 * servedSilence)
+		return who(ctx, name)
+	}
+	if v, _ := read(t, client, "ctl/receipts/cli/r1"); v != "receipt" {
+		t.Fatalf("a read the server took long over: %q", v)
+	}
+}

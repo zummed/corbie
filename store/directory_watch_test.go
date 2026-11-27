@@ -170,7 +170,7 @@ func Test_store_directory_says_why_it_is_not_watched(t *testing.T) {
 	}
 	// A party that opens the directory with its identity is told the same.
 	_, key, _ := ed25519.GenerateKey(rand.Reader)
-	here, err := OpenLocal(dir, "here", proofOf(t, key), keyOf(key))
+	here, err := OpenLocal(dir, "", "here", proofOf(t, key), keyOf(key))
 	if err != nil {
 		t.Fatal(err)
 	}

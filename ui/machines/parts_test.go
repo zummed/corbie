@@ -4,6 +4,8 @@ import (
 	"encoding/json/jsontext"
 	"encoding/json/v2"
 	"net/http"
+	"os"
+	"path/filepath"
 	"regexp"
 	"slices"
 	"strings"
@@ -12,19 +14,15 @@ import (
 	"github.com/zummed/corbie/ui/drawing"
 )
 
-// shown is a Machines or Toolkits page's parts, as the page is given them
-// to draw, and the JSON they are given as. List is the list of either
-// page: Trees holds the machines of each tree on the Machines page, and
-// Toolkits the list of the Toolkits page.
+// shown is the Machines page's parts, as the page is given them to draw,
+// and the JSON they are given as. Trees holds the machines of each tree.
 type shown struct {
 	List struct {
 		Stamp string
 		Trees []listed
 	} `json:"list"`
-	View     view          `json:"view"`
-	Toolkits toolkitList   `json:"-"`
-	Toolkit  toolkitChosen `json:"toolkit"`
-	JSON     string        `json:"-"`
+	View view   `json:"view"`
+	JSON string `json:"-"`
 }
 
 var partsAt = regexp.MustCompile(`(?s)<script type="application/json" id="parts">(.*?)</script>`)
@@ -44,11 +42,6 @@ func pageOf(t *testing.T, h http.Handler, target string) shown {
 	var s shown
 	if err := json.Unmarshal([]byte(m[1]), &s); err != nil {
 		t.Fatalf("%s carries parts that do not read: %v", target, err)
-	}
-	if err := json.Unmarshal([]byte(m[1]), &struct {
-		List *toolkitList `json:"list"`
-	}{&s.Toolkits}); err != nil {
-		t.Fatalf("%s carries a list that does not read: %v", target, err)
 	}
 	var v jsontext.Value = []byte(m[1])
 	v.Indent()
@@ -108,10 +101,8 @@ func cards(s *drawing.Scene) []drawing.Card {
 		}
 	}
 	if s.Agent != nil {
-		for _, k := range s.Agent.Toolkits {
-			for _, tool := range k.Tools {
-				add(tool.Card)
-			}
+		for _, tool := range s.Agent.Tools {
+			add(tool.Card)
 		}
 		for _, hook := range s.Agent.Hooks {
 			add(hook.Card)
@@ -119,6 +110,14 @@ func cards(s *drawing.Scene) []drawing.Card {
 	}
 	if s.Decision != nil {
 		add(s.Decision.Answers)
+	}
+	if s.Kit != nil {
+		for _, tool := range s.Kit.Tools {
+			add(tool.Card)
+		}
+		for _, hook := range s.Kit.Hooks {
+			add(hook.Card)
+		}
 	}
 	return out
 }
@@ -131,3 +130,15 @@ func card(s *drawing.Scene, name string) *drawing.Card {
 	}
 	return nil
 }
+
+func write(t *testing.T, dir string, files map[string]string) {
+	t.Helper()
+	for name, text := range files {
+		os.MkdirAll(filepath.Dir(filepath.Join(dir, name)), 0o755)
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(text), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
+const agentHead = "model: { name: claude-sonnet-5-5, secret: KEY }\nprompt: hello\n"

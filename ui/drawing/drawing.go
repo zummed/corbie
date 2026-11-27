@@ -21,6 +21,7 @@ import (
 	"github.com/zummed/corbie/machine/agent"
 	"github.com/zummed/corbie/machine/flow"
 	"github.com/zummed/corbie/machine/statechart"
+	"github.com/zummed/corbie/machine/toolkit"
 )
 
 //go:embed layout.js drawing.js
@@ -103,6 +104,7 @@ type Scene struct {
 	Chart      *Chart    `json:",omitzero"`
 	Agent      *Agent    `json:",omitzero"`
 	Decision   *Decision `json:",omitzero"`
+	Kit        *Kit      `json:",omitzero"`
 }
 
 // A Card is what a card says: the icon of what its job is, its name, a line
@@ -168,12 +170,12 @@ type Rule struct {
 }
 
 // An Agent is its model with its mark and the turn it is on, how many turns
-// it has, what it can call, its hooks, and where its file writes the model.
+// it has, its entries, its hooks, and where its file writes the model.
 type Agent struct {
 	Model, Mark string
 	ModelLine   string
 	Turn, Turns int
-	Toolkits    []Toolkit
+	Tools       []Tool
 	Hooks       []Hook
 }
 
@@ -188,16 +190,6 @@ type Hook struct {
 // a definition has.
 func HookJob(hook string) string { return "hook " + hook }
 
-// A Toolkit is one group of what the model can call: a toolkit, or the
-// tools in no toolkit, which has no name. File is the file the toolkit is
-// included from, where that is not the agent's own, and Folded says the
-// run drawn has not asked for its tools.
-type Toolkit struct {
-	Name, File, When string
-	Toolkit, Folded  bool
-	Tools            []Tool
-}
-
 // A Tool is a tool's card, whether it has `when:`, and its mark.
 type Tool struct {
 	Card Card
@@ -211,6 +203,13 @@ type Decision struct {
 	Model, Mark string
 	ModelLine   string
 	Answers     Card
+}
+
+// A Kit is a machine of type toolkit: its tools, or the one job that
+// answers every request, and its hooks.
+type Kit struct {
+	Tools []Tool
+	Hooks []Hook
 }
 
 // Draw gives the graph of a definition, with a run's state marked on it
@@ -274,6 +273,12 @@ func sceneOf(def *machine.Definition, run *Run, w *walker) (Scene, error) {
 		s.Decision = decisionOf(&dec, run)
 		s.Decision.ModelLine = lineOf(def.Lines, "model")
 		s.Decision.Answers.Line = lineOf(def.Lines, "questions")
+	case "toolkit":
+		var k toolkit.Toolkit
+		if err := json.Unmarshal(def.Body, &k); err != nil {
+			return s, err
+		}
+		s.Kit = kitOf(def, &k, run, w)
 	default:
 		return s, fmt.Errorf("a machine of type %q has no drawing", def.Type)
 	}
@@ -317,25 +322,6 @@ func (w *walker) open(at, job string) (string, *Scene) {
 // inPlace says a name in a definition's table of machines is that of a
 // machine written in place.
 func inPlace(job string) bool { return strings.HasPrefix(job, "in-place-") }
-
-// ToolkitFile gives the file a toolkit of an agent is included from, as
-// Corbie writes out the agent: the file its tools are written in, or its
-// `description:` where it has no tools, when that is not own, the agent's
-// own file. A toolkit written in place gives nothing.
-func ToolkitFile(def *machine.Definition, toolkit, own string) string {
-	at := "toolkits." + toolkit + "."
-	file := fileOf(def.Lines[at+"description"])
-	for _, place := range slices.Sorted(maps.Keys(def.Lines)) {
-		if strings.HasPrefix(place, at+"tools.") {
-			file = fileOf(def.Lines[place])
-			break
-		}
-	}
-	if file == own {
-		return ""
-	}
-	return file
-}
 
 // fileOf gives the file of a value's file and line, as base.yaml:3.
 func fileOf(line string) string {

@@ -61,7 +61,7 @@ func init() {
 	efforts := []string{"low", "medium", "high"}
 	takes := append(append([]Accept{}, Images...), Documents...)
 	Register(&Service{Name: "anthropic", Address: "https://api.anthropic.com", Models: []string{"claude"},
-		Efforts: efforts, Accepts: takes, Chat: anthropic.chat})
+		Efforts: efforts, Accepts: takes, ToolChanges: true, Chat: anthropic.chat})
 	Register(&Service{Name: "openai", Address: "https://api.openai.com", Models: []string{"gpt", "o1", "o3", "o4"},
 		Efforts: efforts, Accepts: takes, Chat: openaiResponses.chat})
 	Register(&Service{Name: "openai-chat", Address: "https://api.openai.com",
@@ -93,7 +93,12 @@ func keep(messages []any) {
 	if len(messages) == 0 {
 		return
 	}
+	// A message that changes the tools may follow the last the user's side
+	// said: the mark is on that one.
 	last := messages[len(messages)-1].(map[string]any)
+	if last["role"] == "system" && len(messages) > 1 {
+		last = messages[len(messages)-2].(map[string]any)
+	}
 	if last["role"] != "user" {
 		return
 	}
@@ -102,14 +107,55 @@ func keep(messages []any) {
 	}
 }
 
+// toolChangesBeta is the header by which the service takes a change of
+// tools in a message.
+const toolChangesBeta = "inline-tools-2026-09-15"
+
+func anthropicTool(tool any) map[string]any {
+	return map[string]any{"name": field(tool, "name"), "description": field(tool, "description"), "input_schema": schema(field(tool, "args"))}
+}
+
+// toolChange gives a change of tools as a message of the conversation:
+// each tool removed by its name, and each added whole.
+func toolChange(c changed) map[string]any {
+	var blocks []any
+	for _, name := range c.removed {
+		blocks = append(blocks, map[string]any{"type": "tool_removal", "tool": map[string]any{"type": "tool_reference", "name": name}})
+	}
+	for _, tool := range c.added {
+		blocks = append(blocks, map[string]any{"type": "tool_addition", "tool": map[string]any{"type": "tool_definition", "definition": anthropicTool(tool)}})
+	}
+	return map[string]any{"role": "system", "content": blocks}
+}
+
 var anthropic = &web{
 	path: "/v1/messages",
 	headers: func(key string) map[string]string {
 		return map[string]string{"x-api-key": key, "anthropic-version": "2023-06-01"}
 	},
+	more: func(c *Call) map[string]string {
+		if _, known := offeredSince(c.Said, c.Tools); c.ToolChanges && known {
+			return map[string]string{"anthropic-beta": toolChangesBeta}
+		}
+		return nil
+	},
 	request: func(job *plugin.Job, c *Call) (map[string]any, error) {
 		var messages []any
+		// With tool_changes, the tools sent are those the first turn was
+		// offered, and each later change is a message where it was made. It
+		// needs every reply to hold what its turn was offered.
+		_, known := offeredSince(c.Said, c.Tools)
+		inMessages := c.ToolChanges && known
+		first, offered, replies := c.Tools, offering{}, 0
 		for _, part := range c.Said {
+			if change, _ := changeOf(part); inMessages && field(part, "role") == "assistant" {
+				if replies++; replies == 1 {
+					first = change.added
+				} else if !change.none() {
+					messages = append(messages, toolChange(change))
+				}
+				offered.apply(change)
+			}
 			switch field(part, "role") {
 			case "assistant":
 				// Parts the service wants back unchanged are sent as they came.
@@ -155,6 +201,9 @@ var anthropic = &web{
 		if room == 0 {
 			room = defaultRoom // this service refuses a call without it
 		}
+		if change := offered.since(c.Tools); inMessages && replies > 0 && !change.none() {
+			messages = append(messages, toolChange(change))
+		}
 		keep(messages)
 		body := map[string]any{"model": c.Model, "max_tokens": room, "messages": messages}
 		if c.System != "" {
@@ -164,9 +213,8 @@ var anthropic = &web{
 			body["output_config"] = map[string]any{"effort": c.Effort}
 		}
 		var tools []any
-		for _, tool := range c.Tools {
-			tools = append(tools, map[string]any{"name": field(tool, "name"), "description": field(tool, "description"),
-				"input_schema": schema(field(tool, "args"))})
+		for _, tool := range first {
+			tools = append(tools, anthropicTool(tool))
 		}
 		if tools != nil {
 			body["tools"] = tools
@@ -520,8 +568,8 @@ var openaiResponses = &web{
 
 const page = `llm: this plugin holds a conversation with a model, or puts questions with fixed answers to a System One model.
 
-  llm.chat(conversation, { service, model, address, key, system, tools, shape, effort, reply_tokens, timeout, own })
-      gives { text, calls, stop, usage, kept }
+  llm.chat(conversation, { service, model, address, key, system, tools, shape, effort, reply_tokens, timeout, own, tool_changes })
+      gives { text, calls, stop, usage, kept, offered }
   llm.decide(state, { service, model, address, key, questions, timeout })
       gives { answers, model, usage }
   llm.takes(blob, { service })    returns true when the service accepts the blob in files
@@ -533,7 +581,7 @@ probabilities and writes no text.
 conversation is a list of parts, each one of these.
 
   { role: "user", content, files }                                   what the model is told
-  { role: "assistant", content, calls, kept }                        a reply of the model's
+  { role: "assistant", content, calls, kept, offered }               a reply of the model's
   { role: "tool", results: [{ id, name, result, error, files }] }    the results of its tool calls
 
 files maps a name to a blob: an image (png, jpeg, gif or webp, up to 5 MiB) or
@@ -560,6 +608,11 @@ Options:
   timeout         seconds, or text such as "5m"; default 3m
   own             for claude-code: the program's own tools that it may use,
                   by name
+  tool_changes    for anthropic: true sends a tool added or removed since
+                  the first reply as a message of the conversation, so the
+                  tools first sent stay as they were and the service's
+                  cache is kept. The model must be one that takes it, and
+                  every reply in the conversation must hold its offered
 
 Returns:
   text    the model's reply; also emitted as "text" while it arrives, for a
@@ -571,6 +624,32 @@ Returns:
           the service read from its cache, 0 from a service that reports none
   kept    what the service needs back unchanged, or null; put it in the
           assistant part
+  offered { added, removed }: the tools this call was given that the last
+          reply in the conversation was not, each whole, and the names of
+          those it no longer has; put it in the assistant part. It is left
+          out where a reply in the conversation holds none
+
+Tool changes:
+
+A service reads the start of a request from its cache and charges less for
+it, and the tools are at the start. A conversation whose tools change, as
+an agent's do when it opens a toolkit, is then read at full price from that
+call on. With tool_changes: true the tools stay as first sent.
+
+1. chat gives offered with every reply, and the script keeps it in the
+   assistant part.
+2. The request's tools are those the first reply was offered, at every call.
+3. Each later change is sent as a message of the conversation, at the place
+   it was made: the names removed, and each tool added, whole.
+
+- Only anthropic takes tool_changes. Any other service refuses it as bad
+  input.
+- The model must take it: Claude Opus 4.8 and later, Sonnet 5.5, Haiku 5.5,
+  and the Fable and Mythos models, at Anthropic's own API. Any other model
+  answers 400, and the call fails as refused with the service's message.
+- A conversation with a reply that holds no offered is sent with the tools
+  of the call, as without tool_changes.
+- usage.cached shows what the service read from its cache.
 
 For decide, state is the text or data the questions are about, and questions
 is written in the System One format, which TypeSafe's Jev set: each question

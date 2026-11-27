@@ -1,0 +1,18 @@
+# The toolkit has one job, which answers every request. The entry its
+# answer to an open gives holds a field of its own, at:, which is dropped.
+flow: caller
+stages:
+  open: { job: { machine: ./kit.yaml, input: { shelf: a, request: { do: open } } } }
+  find:
+    job:
+      machine: ./kit.yaml
+      input: { shelf: a, request: { do: call, tool: find, args: { text: milk } } }
+  export:
+    job: { machine: ./kit.yaml, input: { request: { do: call, tool: export } } }
+  bad:
+    job: { machine: ./kit.yaml, input: { request: { do: call, tool: bad } } }
+output:
+  open: ${stages.open.output}
+  find: ${stages.find.output}
+  export: ${stages.export.output}
+  bad: ${stages.bad.error}

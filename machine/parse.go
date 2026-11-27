@@ -487,6 +487,22 @@ func (p *Parser) MachineType(name string) string {
 	return ""
 }
 
+// CleanPath gives a path as a definition keeps it, from the context.
+func (p *Parser) CleanPath(name string) string { return p.cleanPath(name) }
+
+// File loads a file a type's definition names beside its jobs, from the
+// context, as a job's files are loaded.
+func (p *Parser) File(place, name string) { p.file(place, name) }
+
+// MachineNamed gives the definition of a machine the definition names, as
+// a job names it, or nothing for one that is not known until it runs.
+func (p *Parser) MachineNamed(name string) *Definition {
+	if child := p.draft.Children[name]; child != nil {
+		return child.Definition
+	}
+	return nil
+}
+
 // MachineAt reads the machine at a location of the tree being read, as a
 // tool that calls it needs it: its type, description, input in full form
 // and lifetime, and nothing else. Its includes are joined, and no machine

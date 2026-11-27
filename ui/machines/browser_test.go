@@ -9,8 +9,8 @@ import (
 	"github.com/zummed/corbie/ui/page/pagetest"
 )
 
-// served gives the UI as serve mounts it for the Machines and Toolkits
-// pages: the pages, the assets and the drawing's files.
+// served gives the UI as serve mounts it for the Machines page: the page,
+// the assets and the drawing's files.
 func served(h *Pages) http.Handler {
 	mux := http.NewServeMux()
 	mux.Handle("GET /assets/", http.StripPrefix("/assets", page.Assets()))
@@ -34,13 +34,4 @@ func Test_machines_in_the_browser(t *testing.T) {
 	})
 	mux.Handle("/", served(b.pages))
 	pagetest.Run(t, pagetest.Config{Handler: mux, Page: "/machines?at=/bot/support", Module: "machines/machines_test.js"})
-}
-
-// Test_machines_toolkits_in_the_browser runs toolkits_test.js on the
-// Toolkits page, open at the toolkit the tests' project offers.
-func Test_machines_toolkits_in_the_browser(t *testing.T) {
-	v := toolkitsView_(t, toolkitsProject(t), "")
-	open := byDescription(t, v, "messages")
-	pagetest.Run(t, pagetest.Config{Handler: served(v.pages), Page: "/toolkits?toolkit=" + open.ID, Module: "machines/toolkits_test.js",
-		Fixtures: map[string]any{"toolkits": v}})
 }

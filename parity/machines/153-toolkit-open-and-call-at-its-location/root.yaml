@@ -1,0 +1,17 @@
+# A flow opens the toolkit at /case/kits/notes and calls its tool. The
+# secret TOKEN is set at the toolkit's location only: the tool's job is sent
+# a handle for it, and the flow's own job, which names it too, fails.
+flow: caller
+allow: [send:kits/notes]
+stages:
+  open: { job: { call: { at: kits/notes }, input: { shelf: a, request: { do: open } } } }
+  add:
+    job:
+      call: { at: kits/notes }
+      input: { shelf: a, request: { do: call, tool: add_note, args: { text: milk } } }
+  own:
+    job: { script: ./handle.js, input: { text: mine }, allow: ["secret:TOKEN@net:example.invalid"] }
+output:
+  open: ${stages.open.output}
+  add: ${stages.add.output}
+  own: ${stages.own.error}

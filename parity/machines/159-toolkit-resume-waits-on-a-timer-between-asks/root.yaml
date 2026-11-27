@@ -1,0 +1,19 @@
+# A call of the tool ends working, with a state. A resume with that state
+# asks the tool's job again, waits on a timer while it answers working, and
+# ends with the result. A resume of a toolkit that may wait one second ends
+# working again.
+flow: caller
+stages:
+  begin: { job: { machine: ./exports.yaml, input: { request: { do: call, tool: export, args: { what: notes } } } } }
+  carry:
+    job:
+      machine: ./exports.yaml
+      input: { request: { do: resume, tool: export, args: { what: notes }, state: "${stages.begin.output.state}" } }
+  short:
+    job:
+      machine: ./short.yaml
+      input: { request: { do: resume, tool: export, args: { what: notes }, state: "${stages.begin.output.state}" } }
+output:
+  begin: ${stages.begin.output}
+  carry: ${stages.carry.output}
+  short: ${stages.short.output}

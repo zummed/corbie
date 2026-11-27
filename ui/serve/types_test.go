@@ -32,7 +32,6 @@ func Test_serve_types_are_what_pages_are_sent(t *testing.T) {
 		{"RunsListParts", runs.ListParts{}},
 		{"RunParts", runs.RunParts{}},
 		{"MachinesParts", machines.MachinesParts{}},
-		{"ToolkitsParts", machines.ToolkitsParts{}},
 		{"ControllerParts", controller.Parts{}},
 	}
 	w := &typeWriter{names: map[reflect.Type]string{}}

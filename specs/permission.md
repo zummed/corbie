@@ -198,8 +198,6 @@ A job with no permissions still has its input and its result, plain computation,
 
 A machine a job made runs only when a job starts it, which takes `machine: ${…}` in a running machine's definition. A script cannot start a machine. Each of its steps is then taken in a process of its own, with a limit on its memory and its time, and a step past either fails that machine and nothing else (see Controller). That process checks the definition again and takes nothing a job's process said on trust. A bug in what it runs gets that process and no more: the controller takes from it only what a definition could say, and works out every name, runner and flag itself.
 
-A shape a `list:` job gives is read the same way: every step of that agent after its first is taken in a process of its own, with the same limits, and past either the agent fails with the reason and nothing else does.
-
 ## What Corbie does not defend against
 
 A script cannot reach outside itself except through the kinds above, and those are checked. Beyond that, these are true and Corbie says so.
@@ -208,8 +206,8 @@ A script cannot reach outside itself except through the kinds above, and those a
 - A model through `corbie mcp` runs every command of Corbie's, as the user who started `corbie mcp`. `--allow` gives it only the commands named.
 - A model allowed `test` runs each script it writes as that user. Under `corbie test` the ceilings allow everything, so the only limit is the `allow:` lists the model wrote.
 - A permission to connect to a host governs the connection and nothing sent over it. A job allowed an MCP server can call any of its tools; what a call can do is set by the credentials the server is given.
-- An agent's listed tools are described by whoever wrote the list, and the model reads that text as it reads a tool's result.
-- A tool that calls a machine in another tree is described by that tree's owner, and the model reads that text as it reads a tool's result. It changes when that owner submits.
+- A toolkit at a location uses its secrets for every caller its `receive:` accepts, which by default is every location of its tree. What a caller gives as its input is the caller's claim, and so is the `state` of a resume or a cancel: a caller that has another caller's state can resume or cancel that work.
+- The name, the description and the instructions of a toolkit or a tool in another tree, or of one a toolkit's job reads from a server, are that owner's words, and the model reads them as it reads a tool's result. They change when that owner changes them. They are no control: what an owner must enforce is in its permissions and its hooks. The digest of a skill's file is the server's word too.
 - A job that may read the runner's own files can read the runner's key, and with it every job sent to that runner.
 - A runner takes a job only of a run at or under its prefixes, and the run's location is the controller's word. A controller can send a runner any job it signs.
 - Whoever may read an identity's object in a bucket has that party's keys. Corbie does not check the bucket's policy.
@@ -220,7 +218,6 @@ A script cannot reach outside itself except through the kinds above, and those a
 - A job cannot listen for connections. Nothing a job opens outlives the job.
 - A served directory's wire is private to the two computers. Someone on the network between them can see that they talk and how much, and can hold work up or cut it off, and nothing else (see Store).
 - A runner or a client that a served directory's controller trusts can fill every member's disk with values. A client's listing of the records reads every file in them, so many listings at once slow every run. Corbie limits neither (see Store).
-- A step of an agent with a `list:` tool runs in a process of its own and its answer is the agent's word, so a bug in what that process runs can ask for any job of the agent's definition, with any lists and no approval the definition's jobs would have marked. A permission the layers above refuse stays refused, `approve:` still marks what it lists, and a hook stays the definition's.
 - An owner's expression runs in the controller's own process. Nothing limits its memory, and its one second stops its own code and not a call to something built in, so `'a'.repeat(2**40)` ends the controller and a regular expression that backtracks holds a step without end. An owner can do this to a controller that takes their definitions. Only a definition a client submitted has its expressions run in the controller's own process; a definition a job stored runs in a process of its own (see Controller).
 - An owner's expression is read and compiled in the controller's own process, and nothing stops that. Reading `=>` nested in what stands before another takes twice as long with each, and so does compiling a chain of `&&`, `||` or `??` whose left sides are fixed, so forty of either never finish. 4 MB of brackets ended a client for want of stack in 2.4 seconds, and the controller reads an expression with the same code.
 - Nothing limits what reading a definition costs the process that reads it. An owner's definition costs this to their own client and controller. A job's costs that job, and past its limits the job fails and the runner goes on: 4 MB of brackets in a define ended the job's process, and 20 levels of files that each name the next twice ran to its time limit. These were measured reading and checking each:
@@ -248,7 +245,7 @@ A script cannot reach outside itself except through the kinds above, and those a
 - A step that asks for as much as fits in its 4 MiB delays other machines for as long as carrying it out takes.
 - A host with less memory than four steps' 4 GiB stops a step's process or the whole controller. The step is then taken once more, and its machine fails.
 - A stored definition is read as plain JSON by the controller, to keep or copy what it names and, for a made machine, for what its answer may not say. Each is at most 4 MiB, is read once in a pass, and nothing in it is compiled or evaluated.
-- A value is checked against a shape in time and memory that grow with the size of both, and nothing limits a shape. An owner's shape costs this to the controller. A made machine's shape, and a shape a list gives, stop at the step's limits. These were measured, with a value of 256 KiB unless it says otherwise:
+- A value is checked against a shape in time and memory that grow with the size of both, and nothing limits a shape. An owner's shape costs this to the controller. A made machine's shape stops at the step's limits. No step compiles a shape a toolkit's job gives. These were measured, with a value of 256 KiB unless it says otherwise:
 
 ```
   a list of texts against items: { type: string }    0.07 µs for each character

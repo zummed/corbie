@@ -36,7 +36,7 @@ When a machine's last step both sends events and ends the machine, the events ar
 
 ## A step in a process of its own
 
-Two kinds of step are taken in a process of their own: every step of a machine made while running, and every step after the first of an agent with a `list:` tool. Both read words from outside (see [Machines](machine.md#words-from-outside)). The machine above an agent, and a tool's machine below it, are taken as their own definitions say.
+Every step of a machine made while running is taken in a process of its own: it reads words from outside (see [Machines](machine.md#words-from-outside)). Every other step is taken in the controller's own process. The machine above an agent, and a tool's machine below it, are taken as their own definitions say.
 
 ## A machine made while running
 
@@ -76,21 +76,6 @@ An answer is data of at most 4 MiB, nested at most 1000 deep, of at most 1024 se
 A step past a limit, or whose process ends without an answer, ends the machine as failed, with the reason, in a step of the controller's own. Its parent receives an ordinary failure.
 
 A controller that stops ends the step's process too, and leaves the note. A pass that finds a note less than 15 seconds old, a step's time and 5 seconds, leaves the step alone, since another copy may be taking it. After that time it takes the step once more. A step taken twice with no answer ends the machine, so a step that ends its controller does so twice at most.
-
-## An agent with a list
-
-A `list:` job gives shapes from outside the definition, which the agent's steps compile and check values against. So every step after the agent's first is taken as a made machine's is, with the same limits and the same bounds on its answer. Its first step holds nothing from outside, and is taken in the controller.
-
-- The controller notes this in the state at the first step, from the definition read as plain JSON. An answer has no say in it.
-- The agent stays the owner's: nothing narrows it, and its hooks are its definition's. An answer cannot name a hook, as no answer can.
-- A step takes about 16 ms where it took 5 ms, with 20 listed tools, and one more write to the store.
-- The step's whole time and 5 seconds must fit in what the host leaves of a call, so a host whose calls are shorter than 15 seconds fails such an agent and says so.
-
-A pass takes four such steps at a time, and the rest wait for the next pass: at once on a computer, and at the next call on a serverless host, within a minute. A pass waits for them, and an owner's run pays that wait in each pass it needs. Beside eight machines that each used a step's whole time, a run of 20 ms took 19 to 20 seconds.
-
-A pass on a serverless host takes a step only if the step's whole time and 5 seconds fit in the time the host has left. Otherwise the step waits for the next call and spends no try. A host whose calls are too short for that fails the machine, and the failure says so.
-
-Any other machine is an owner's words, and its steps are taken in the controller's own process.
 
 ## Sending a job
 

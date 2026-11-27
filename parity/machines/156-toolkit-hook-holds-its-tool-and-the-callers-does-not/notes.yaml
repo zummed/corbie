@@ -1,0 +1,11 @@
+toolkit: notes
+description: Notes kept on shelves.
+hooks:
+  team:
+    when: "${job.approve && job.tool.name == 'add_note'}"
+    before: { script: ./yes.js, input: { tool: "${job.tool}" } }
+tools:
+  add_note:
+    description: Add a note.
+    args: { text: string }
+    job: { script: ./add.js, input: "${args}", approve: true }

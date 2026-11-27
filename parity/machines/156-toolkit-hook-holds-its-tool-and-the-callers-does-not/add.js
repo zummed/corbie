@@ -1,0 +1,1 @@
+return "added " + input.text

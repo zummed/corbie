@@ -1,6 +1,6 @@
 # Corbie
 
-Corbie runs machines. A machine is a flow, a statechart, an agent or a decision, written as a definition in YAML, and it contains jobs, which do its work. A job is a script, a machine, or a send. A machine is named by its file (`machine:`) or by its location (`call:`), and a send delivers an event and returns nothing.
+Corbie runs machines. A machine is a flow, a statechart, an agent, a decision or a toolkit, written as a definition in YAML, and it contains jobs, which do its work. A job is a script, a machine, or a send. A machine is named by its file (`machine:`) or by its location (`call:`), and a send delivers an event and returns nothing.
 
 One binary does everything. What a process does is set by the roles it is started with and by nothing else.
 
@@ -140,7 +140,7 @@ Each area below has an overview in this directory, written to be read. The detai
 
 **[Machines](machine.md).** What every machine type shares: the definition, values filled in from input, the events a machine receives, the requests it makes, and the contract a type keeps with the controller.
 
-**[Flow](flow.md), [Statechart](statechart.md), [Agent](agent.md).** One area for each of flow and statechart, and one for the two types that call a model, agent and decision.
+**[Flow](flow.md), [Statechart](statechart.md), [Agent](agent.md), [Toolkit](toolkit.md).** One area for each of flow, statechart and toolkit, and one for the two types that call a model, agent and decision.
 
 **[Runner](runner.md).** What a runner's pass does with a job, and the world a script runs in.
 

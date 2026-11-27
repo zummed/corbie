@@ -5,6 +5,67 @@ Each section lists what changed after one release, the newest first.
 compatible before version 1: a file or a command written the old way is
 refused.
 
+After 0.42.0
+------------
+
+Change an agent's `toolkits:` and `list:` to entries of `tools:` that name a
+toolkit, as `corbie manual agent` says.
+
+  toolkits: { net: { include: toolkits/net/toolkit.yaml } }   tools: { net: { machine: ./toolkits/net.yaml } }
+  the included file, with description: and tools:             a machine: add `toolkit: net` to it
+  instructions: that read ${input…}                           the toolkit reads its own input, which the entry's input: gives
+  a tool in a toolkit, called show                            the model calls it as net_show
+  open { toolkit: net }                                       open { list: toolkits, name: net }
+  approve: true on a toolkit, for its open                    approve: true on the entry, for its open and every call
+  when: on a tool inside a toolkit                            when: on the entry
+  hooks: for a toolkit's tools, in the agent                  unchanged for machine:; a toolkit at a location writes its own
+  tools: { files: { list: …, job: … } }                       a toolkit whose job: answers every request, with open: true
+  ${tool} in the job of an entry with list:                   input.request.tool, in the toolkit's job
+  job.tool.entry and job.tool.name                            job.tool.toolkit and job.tool.name
+  job.tool.description                                        gone
+  a tool or a listed tool with a blob argument, in a toolkit  write the tool in the agent
+  conversation.opened, a hash for each toolkit                the list of each toolkit that is open; no hash is checked
+  the Toolkits page of `corbie ui`                            gone: a toolkit is a machine on the Machines page
+
+- A call of a toolkit's tool that ends `{ working, state }` or
+  `{ requests, state }` is shown to the model as a task, and the model
+  carries it on with `resume`, as `corbie manual agent` says. No entry is
+  named `resume`.
+- A tool written under a toolkit's `tools:` may give `{ working, state }` or
+  `{ requests, state }` in place of its result, and its job runs again for a
+  resume or a cancel. A resume gives the tool's `args` again. A resume waits
+  up to `limits: { resume: 10m }`.
+- A toolkit takes `files:`, and then has the tool `read`: a skill is a
+  toolkit whose instructions include its `SKILL.md`. A toolkit that names a
+  tool `read` and writes `files:` is refused.
+- `server.toolkit` gives the skills of an MCP server that has the Skills
+  extension, each as a toolkit in the server's list, as `corbie manual mcp`
+  says.
+- A toolkit's list of more than 16 KiB is not offered: the result of `open`
+  gives the names of its entries, and the model opens a tool by its name
+  before it calls it. Names of more than 16 KiB, or that many toolkits, are
+  a blob, which the model searches with the blob tools.
+- `limits: { show: }` sets that size for an agent. `blob_read` and
+  `blob_search` return the items that fit in it, with `next`.
+- A toolkit's tool is given a blob: the model gives the name it was shown.
+- In a carried conversation, an open list is `{ entry, entries, stored,
+  blob }`.
+- `open` and `resume` have the same description at every turn. The model is
+  told which toolkits it can open in the conversation: before its prompt,
+  and in the result of an open. A hook or a turn script that read the list
+  from the description of `open` reads the conversation.
+- `model: { tool_changes: true }`, for the service anthropic, keeps the
+  service's cache when a toolkit is opened, as `corbie manual agent` says.
+  `llm.chat` gives `offered`, which a turn script of your own keeps in the
+  assistant part for it to work.
+- An entry `{ machine: ./file.yaml }` names a machine by its file, as
+  `{ call: location }` names one by its location.
+- `toolkit:` is a fifth type of machine. It holds tools that any machine
+  opens and calls with a job, by its file or by its location, as
+  `corbie manual toolkit` says.
+- `server.toolkit(request)` of the `mcp` plugin answers a toolkit's request
+  for an MCP server, as `corbie manual mcp` says.
+
 After 0.41.0
 ------------
 

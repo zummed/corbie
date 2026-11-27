@@ -1,0 +1,5 @@
+toolkit: orders
+description: Orders and refunds.
+tools:
+  read: { description: Read an order, args: { order: number }, job: { script: ./tool.js, input: { did: read, args: "${args}" } } }
+  refund: { description: Refund an order, args: { order: number, amount: number }, job: { script: ./tool.js, input: { did: refund, args: "${args}" }, approve: true } }

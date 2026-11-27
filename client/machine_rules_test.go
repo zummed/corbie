@@ -679,8 +679,8 @@ func Test_mach_file_leading_back_to_itself_is_refused(t *testing.T) {
 		{"a file included below itself", agent + "tools: { include: ./t.yaml }\n",
 			map[string]string{"t.yaml": "t: { description: x, job: " + inPlaceAgent("tools: { include: ./t.yaml }") + " }\n"},
 			"the definition leads back to itself: t.yaml -> t.yaml"},
-		{"a toolkit's file", agent + "toolkits:\n  s: { include: ./s.yaml }\n",
-			map[string]string{"s.yaml": "description: Loop.\ntools:\n  t: { description: x, job: " + inPlaceAgent("toolkits: { s: { include: ./s.yaml } }") + " }\n"},
+		{"a toolkit's file", agent + "tools:\n  s: { machine: ./s.yaml }\n",
+			map[string]string{"s.yaml": "toolkit: s\ndescription: Loop.\ntools:\n  t: { description: x, job: " + inPlaceAgent("tools: { s: { machine: ./s.yaml } }") + " }\n"},
 			"the definition leads back to itself: s.yaml -> s.yaml"},
 		{"a machine file", "flow: f\nstages:\n  one: { job: { machine: ./f.yaml } }\n",
 			map[string]string{"f.yaml": "flow: g\nstages:\n  one: { job: { machine: { flow: inner, stages: { two: { job: { machine: ./f.yaml } } } } } }\n"},
@@ -694,8 +694,8 @@ func Test_mach_file_leading_back_to_itself_is_refused(t *testing.T) {
 		{"a type from a file that includes itself", "include: ./a.yaml\n",
 			map[string]string{"a.yaml": "flow: a\nstages: { s: { job: ./s.js } }\ninclude: ./a.yaml\n", "s.js": "return 1"},
 			"a.yaml:3: include: the definition leads back to itself: a.yaml -> a.yaml"},
-		{"an included file and a machine file", agent + "toolkits:\n  s: { include: ./s.yaml }\n",
-			map[string]string{"s.yaml": "description: Loop.\ntools:\n  t: { description: x, job: { machine: ./b.yaml } }\n", "b.yaml": agent + "toolkits:\n  s: { include: ./s.yaml }\n"},
+		{"an included file and a machine file", agent + "tools: { include: ./s.yaml }\n",
+			map[string]string{"s.yaml": "t: { description: x, job: { machine: ./b.yaml } }\n", "b.yaml": agent + "tools: { include: ./s.yaml }\n"},
 			"the definition leads back to itself: s.yaml -> b.yaml -> s.yaml"},
 	} {
 		began := time.Now()
@@ -713,8 +713,8 @@ func Test_mach_file_leading_back_to_itself_is_refused(t *testing.T) {
 // defined it, saying so, and the runner goes on to run the next job.
 func Test_mach_made_definition_leading_back_to_itself_fails_its_job(t *testing.T) {
 	files := map[string]string{"make.js": `
-		return machines.define("agent: a\n` + growModel + `\nprompt: hi\ntoolkits:\n  s: { include: ./s.yaml }\n",
-			{ files: { "./s.yaml": "description: Loop.\ntools:\n  t: { description: x, job: ` + inPlaceAgent("toolkits: { s: { include: ./s.yaml } }") + ` }\n" } })
+		return machines.define("agent: a\n` + growModel + `\nprompt: hi\ntools: { include: ./s.yaml }\n",
+			{ files: { "./s.yaml": "t: { description: x, job: ` + inPlaceAgent("tools: { include: ./s.yaml }") + ` }\n" } })
 	`}
 	l := local(t)
 	r := run(t, l, "flow: maker\nstages:\n  make: { job: ./make.js }\n", files, nil)
@@ -903,7 +903,7 @@ func Test_mach_type_is_one_field_anywhere(t *testing.T) {
 		}
 	}
 	for def, want := range map[string]string{
-		"stages: { s: { job: ./s.js } }\n": "it gives no type: a machine writes one of agent:, decision:, flow:, statechart: with its name, or takes it from a file it includes",
+		"stages: { s: { job: ./s.js } }\n": "it gives no type: a machine writes one of agent:, decision:, flow:, statechart:, toolkit: with its name, or takes it from a file it includes",
 		"flow: a\ninclude: ./b.yaml\n":     "it gives more than one type, flow: a at line 1, statechart: b at b.yaml:1: a machine has one",
 		"include: [./m.yaml, ./b.yaml]\n":  "it gives more than one type, flow: post at m.yaml:1, statechart: b at b.yaml:1: a machine has one",
 	} {

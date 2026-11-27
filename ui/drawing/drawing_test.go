@@ -105,50 +105,16 @@ hooks: { approval: { before: { machine: ./approval.yaml }, when: "${job.approve}
 tools:
   look: { description: looks at a thing, job: ./w.js }
   idle: { description: idles, job: ./w.js }
-toolkits:
-  messages:
-    description: messages
-    tools:
-      tell: { description: tells someone, job: { script: ./w.js, approve: true } }
-`
-
-const toolkits = `agent: helper
-model: { name: claude-sonnet-5-5, secret: KEY }
-prompt: hello
-tools:
-  look: { description: looks, job: ./w.js }
-toolkits:
-  bins:
-    description: bins
-    tools:
-      days: { description: bin days, job: ./w.js }
-      put: { description: puts out, job: ./w.js }
-  home:
-    description: home
-    tools:
-      lights: { description: lights, job: ./w.js }
-  net:
-    description: net
-    tools:
-      ping: { description: pings, job: ./w.js }
-  servers:
-    description: servers
-    tools:
-      disk: { description: disks, job: ./w.js }
+  tell: { description: tells someone, job: { script: ./w.js, approve: true } }
+  messages: { machine: ./messages.yaml }
 `
 
 const conditions = `agent: helper
 model: { name: claude-sonnet-5-5, secret: KEY }
 prompt: hello
-toolkits:
-  orders:
-    include: ./orders.yaml
-    when: "${input.asker.scopes.includes('orders')}"
-  notes:
-    description: notes
-    tools:
-      jot: { description: jots, job: ./w.js }
 tools:
+  orders: { machine: ./orders.yaml, when: "${input.asker.scopes.includes('orders')}" }
+  jot: { description: jots, job: ./w.js }
   look: { description: looks, job: ./w.js, when: "${input.look}" }
 `
 
@@ -191,9 +157,8 @@ var given = map[string]string{
 	"w.js": script, "write.js": script,
 	"two.yaml":      "flow: two\nstages:\n  a: { job: ./w.js }\n",
 	"approval.yaml": "flow: approval\nstages:\n  a: { job: ./w.js }\n",
-	"orders.yaml":   "description: orders\ntools:\n  read: { description: reads, job: ./w.js }\n",
-	"messages.yaml": "description: messages\ntools:\n  tell: { description: tells, job: ./w.js }\n",
-	"notes.yaml":    "description: notes\ntools: {}\n",
+	"orders.yaml":   "toolkit: orders\ndescription: orders\ntools:\n  read: { description: reads, job: ./w.js }\n",
+	"messages.yaml": "toolkit: messages\ndescription: messages\ntools:\n  post: { description: posts, job: ./w.js }\n",
 	"sub/c.yaml":    "flow: c\nstages:\n  deep: { job: w.js }\n",
 	"b.yaml":        "flow: b\nstages:\n  inner: { job: { machine: ./sub/c.yaml } }\n",
 }
@@ -297,17 +262,8 @@ states:
 		Children: map[string]Child{HookJob("approval"): {ID: "a-client/2", Machine: "approval", Type: "flow"}},
 	})
 	add("helper-corbie-tool", def(helper), &Run{Steps: []Step{{Shown: machine.Shown{Turn: 1}, Asked: []string{"blob_read"}}}, Going: []string{"blob_read"}})
-	add("helper-included", def(`agent: helper
-model: { name: claude-sonnet-5-5, secret: KEY }
-prompt: hello
-toolkits:
-  messages: { include: ./messages.yaml }
-  notes: { include: ./notes.yaml }
-`), nil)
-	add("toolkits", def(toolkits), nil)
-	add("toolkits-running", def(toolkits), &Run{Steps: []Step{{Asked: []string{"lights"}}, {Shown: machine.Shown{Turn: 1}, Asked: []string{"ping"}}}, Going: []string{"ping"}})
+	add("helper-opening", def(helper), &Run{Steps: []Step{{Shown: machine.Shown{Turn: 1}, Asked: []string{"messages"}}}, Going: []string{"messages"}})
 	add("conditions", def(conditions), nil)
-	add("conditions-folded", def(conditions), &Run{Steps: []Step{{Asked: []string{"jot"}}}})
 	add("deploy-running", def(deploy), &Run{Steps: []Step{{Shown: machine.Shown{Stages: map[string]string{"plan": "done", "ship": "running", "pipeline": "running"}}}}, Going: []string{"ship", "pipeline"}, Held: []string{"ship"}})
 	add("deploys-held", def(`statechart: deploys
 hooks: { approval: { before: { machine: ./approval.yaml }, when: "${job.approve}" } }
@@ -329,6 +285,16 @@ questions:
   urgent: { type: noul, instructions: The customer cannot use the product. }
   team: { type: choice, instructions: Who handles it, criteria: { billing: money, support: help } }
 `), nil)
+	orders := `toolkit: orders
+description: Orders, refunds and returns.
+hooks: { team: { before: ./w.js, when: "${job.approve}" } }
+tools:
+  refund: { description: Refund an order., args: { order: number }, job: { script: ./w.js, approve: true } }
+  find: { description: Find an order., args: { order: number }, job: ./w.js }
+`
+	add("orders-kit", def(orders), nil)
+	add("orders-kit-held", def(orders), &Run{Steps: []Step{{Asked: []string{"refund"}}}, Going: []string{"refund", HookJob("team")}, Held: []string{"refund"}})
+	add("server-kit", def("toolkit: server\ndescription: A server of tools.\njob: { script: ./w.js, allow: [net:notes.example.com] }\n"), nil)
 
 	draft, err := machine.Parse([]byte(nested), machine.Given(given))
 	if err != nil {
@@ -527,8 +493,7 @@ stages:
 `
 
 // A card gives where its file writes it, as file:line: a stage, a state,
-// a state inside another, a tool, a tool of a toolkit, a hook and the
-// model.
+// a state inside another, a tool, a hook and the model.
 func Test_drawing_card_gives_its_line(t *testing.T) {
 	flow := scene(t, definition(t, limited, given), nil)
 	lines := map[string]string{}
@@ -557,12 +522,10 @@ func Test_drawing_card_gives_its_line(t *testing.T) {
 	}
 	agent := scene(t, definition(t, helper, given), nil)
 	lines = map[string]string{"model": agent.Agent.ModelLine, "approval": agent.Agent.Hooks[0].Card.Line}
-	for _, g := range agent.Agent.Toolkits {
-		for _, tool := range g.Tools {
-			lines[tool.Card.Name] = tool.Card.Line
-		}
+	for _, tool := range agent.Agent.Tools {
+		lines[tool.Card.Name] = tool.Card.Line
 	}
-	if want := map[string]string{"model": "2", "approval": "5", "look": "7", "idle": "8", "tell": "13"}; !maps.Equal(lines, want) {
+	if want := map[string]string{"model": "2", "approval": "5", "look": "7", "idle": "8", "tell": "9", "messages": "10"}; !maps.Equal(lines, want) {
 		t.Errorf("the agent's cards are written at %v, not %v", lines, want)
 	}
 }

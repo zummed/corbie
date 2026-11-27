@@ -1,6 +1,6 @@
 # Machines
 
-A machine is a definition that Corbie runs. There are four types: flow, statechart, agent and decision. Flow and statechart each have an area, and agent and decision, which call a model, share one. This area is what they all share: how a machine runs, how a definition is written, where it lives, what a machine can receive, and the hooks that run before and after its jobs.
+A machine is a definition that Corbie runs. There are five types: flow, statechart, agent, decision and toolkit. Flow, statechart and toolkit each have an area, and agent and decision, which call a model, share one. This area is what they all share: how a machine runs, how a definition is written, where it lives, what a machine can receive, and the hooks that run before and after its jobs.
 
 ## Steps
 
@@ -12,7 +12,7 @@ A machine runs until it reaches an end of its own, is cancelled, or passes its t
 
 ## Definitions
 
-A definition is data, written in YAML. Exactly one of its fields is `flow:`, `statechart:`, `agent:` or `decision:`, which gives its type and its name. That field may be written anywhere in the mapping, or come from a file the definition includes, and a definition with none or with two is refused. It may give the shape of its input, how long its instances are kept, and its limits.
+A definition is data, written in YAML. Exactly one of its fields is `flow:`, `statechart:`, `agent:`, `decision:` or `toolkit:`, which gives its type and its name. That field may be written anywhere in the mapping, or come from a file the definition includes, and a definition with none or with two is refused. It may give the shape of its input, how long its instances are kept, and its limits.
 
 A definition may carry `meta:`, with any value. Corbie keeps it with the stored definition, never reads it, and fills in no expression in it. An application keeps its own data there, such as when to start the machine.
 
@@ -67,8 +67,8 @@ system:
 allow:
   - { include: ./base.yaml#allow }
   - send:devices/*
-toolkits:
-  home: { include: toolkits/home/toolkit.yaml, approve: true }
+tools:
+  lights: { include: tools/lights.yaml }
 ```
 
 ```yaml
@@ -107,7 +107,7 @@ allow:
 
 - A file is read as a definition is: a number is a number, and a value YAML would read as a date stays the text written. An empty file is refused.
 - A path in a file reads as any path does, and `./` from that file's own directory. What a shape gives as a value, such as `input:` or `meta:`, stays as it is written, whatever it holds.
-- A problem in an included file names that file: `toolkits/home/toolkit.yaml:4: toolkits.home.colour: …`.
+- A problem in an included file names that file: `tools/lights.yaml:4: tools.lights.colour: …`.
 - More than 1,000 includes written out by one definition, and what is below it, are refused. A file reached by two routes counts each time, though its values are merged once.
 
 A definition is checked as a whole, and everything wrong with it is reported together. Each problem names its place and the line of the value written nearest it, and its file when the problem is in another file, as a path from the definition's directory: `line 8: tools.tell.does: …`, `kids/kid.yaml:2: value: …`. A stored definition has no lines, so the controller's check gives none. The client checks it before sending, so mistakes are found at once, and the controller checks it again with the same code, because it does not take a client's word.
@@ -305,12 +305,12 @@ The context is the directory a client submits as a tree. For a single file it is
 
 | A path written as | Is read from |
 |---|---|
-| `toolkits/net/toolkit.yaml` | the context |
+| `toolkits/net.yaml` | the context |
 | `./tools/pve.js` | the directory of the file it is written in |
 
 `../` and a path from the top of the disk are refused in a definition. A script that loads another with `require` names it from its own directory, with `./` or `../`, since a bare name there is a plugin.
 
-No file leads back to itself. A machine file or an included file that names a file already being read is refused, with machines written in place between them as well, and the refusal names the chain: `b.yaml:3: toolkits.s.include: the definition leads back to itself: s.yaml -> b.yaml -> s.yaml`.
+No file leads back to itself. A machine file or an included file that names a file already being read is refused, with machines written in place between them as well, and the refusal names the chain: `b.yaml:3: tools.include: the definition leads back to itself: s.yaml -> b.yaml -> s.yaml`.
 
 A machine as it is stored is at most 4 MiB, as much as a step may read of one stored definition, with a reference for each of its files and child definitions. One past it is refused at its place, by the client and by a job's `define`, and nothing is stored.
 
@@ -514,7 +514,7 @@ A hook's expressions read the `input`, `values` and `run` of the machine that de
 | `approve` | true when the job is marked for approval |
 | `meta` | the job's `meta:` |
 | `script`, `machine`, `call` or `send` | what the job runs |
-| `tool` | for an agent's tool call, `{ name, entry, toolkit, description, args, said }` (see agent.md) |
+| `tool` | for an agent's tool call, `{ name, args, said }`, with `toolkit` for a toolkit's tool and `open` for an open (see agent.md); for a job of a toolkit, `{ toolkit, name, args }` (see toolkit.md) |
 
 A hook's `allow:` scopes are filled from the declaring machine's input and values, and never from `job`. A hook's job is a job of the definition that declares it, for every job it runs for: a script, a call or a send has that definition's `allow:` and `deny:` with its own, and it runs with the layers of that machine.
 
@@ -568,7 +568,9 @@ Waiting for a person happens inside the hook, typically a statechart that issues
 A job may write `meta:`, data of any kind. Hooks read it as `job.meta`, and Corbie gives it no meaning. A tool says where it is approved, and one hook asks there:
 
 ```yaml
-# toolkits/orders/toolkit.yaml
+# toolkits/orders.yaml
+toolkit: orders
+description: Orders and refunds.
 tools:
   refund:
     description: Refund an order
@@ -576,6 +578,8 @@ tools:
     job: { script: ./tool.js, input: { args: "${args}" }, approve: true, meta: { channel: "#orders-team", approvers: "orders:approve" } }
 
 # helper.yaml
+tools:
+  orders: { machine: ./toolkits/orders.yaml }
 hooks:
   team:
     when: "${job.approve}"
@@ -591,10 +595,10 @@ hooks:
 
 ## Words from outside
 
-A definition made while running, which a script or a model wrote, and the tools a `list:` job gives an agent are words from outside: no owner wrote them. Words from outside name no hook and no address. A step that reads them is taken in a process of its own (see Controller).
+A definition made while running, which a script or a model wrote, is words from outside: no owner wrote it. It names no hook and no address, and each of its steps is taken in a process of its own (see Controller).
 
 - A machine made while running may address only its parent and its children. The hooks above it that were not made while running are for its jobs, and it gives hooks no `meta`. It writes the names of its jobs and tools, so a hook whose `when:` reads `job.name` or `job.tool` may not run for them, and one whose `when:` reads `job.approve`, which the controller works out, does. One that writes `hooks:` fails as it starts, and one that sends to an address or calls a location fails then.
-- A tool a `list:` gives runs the entry's `job:`, which takes the agent's hooks as any tool's job does, with the entry's `approve:` and `meta:`, and which addresses what that job names. A list gives each tool a name, a description and the shape of its arguments, and nothing else is read from it.
+- The entries a toolkit's job gives are words from outside too. Corbie keeps each one's kind, its name, its description and the shape of a tool's arguments, as data: no step compiles them, and nothing else is read from an entry (see toolkit.md).
 
 ## Failure
 

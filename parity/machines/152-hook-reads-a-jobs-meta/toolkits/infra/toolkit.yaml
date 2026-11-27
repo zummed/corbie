@@ -1,4 +1,5 @@
 # The infra team's toolkit. restart says where it is approved, and wipe does not.
+toolkit: infra
 description: Servers.
 tools:
   restart:

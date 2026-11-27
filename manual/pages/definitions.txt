@@ -1,8 +1,8 @@
 Definitions: every type of machine shares these fields, expressions, jobs, events and hooks.
 
 A definition is a YAML file. One field gives the machine's type and name:
-`flow: digest`, `statechart: review`, `agent: librarian` or
-`decision: urgent`. It may be written anywhere in the file, or come from a file it includes. A name is letters,
+`flow: digest`, `statechart: review`, `agent: librarian`,
+`decision: urgent` or `toolkit: notes`. It may be written anywhere in the file, or come from a file it includes. A name is letters,
 digits, `_` and `-`, and starts with a letter.
 
 Fields every type takes
@@ -40,6 +40,8 @@ expressions read `input`, `values` and `run`.
   jobs: 100      how many jobs a run may start; default no limit
   runs: 50       of a keyed or transient file, how many runs at its location may be running at once; default no limit
   turns: 20      an agent's turns, as in `corbie manual agent`
+  show: 16KB     the most an agent's model is shown of one result or list, as in `corbie manual agent`
+  resume: 10m    how long a toolkit's resume waits, as in `corbie manual toolkit`
 
 A length of time is written `30s`, `5m`, `48h` or `7d`.
 
@@ -162,7 +164,7 @@ It may use JavaScript's operators, `? :`, arrow functions, methods such as
 
 - A name that is not one of these is refused when the definition is checked.
 - `when:` is a condition on a flow's stage, a statechart's transition, and an
-  agent's toolkit or tool.
+  entry of an agent's `tools:`.
 - An expression cannot change what it reads. It has no `eval`, `Function`,
   `Promise`, `require` or plugins, so it reads no file and makes no
   network connection.
@@ -414,7 +416,8 @@ it, and `job`. After a job they read `output`, the job's output.
   job.approve    true when the job is marked for approval
   job.meta       the job's `meta:`
   job.script, job.machine, job.call or job.send    what the job runs
-  job.tool       for an agent's tool call: { name, entry, toolkit, description, args, said }
+  job.tool       for an agent's tool call: { name, args, said }, with `toolkit`
+                 for a toolkit's tool; for a toolkit's job: { toolkit, name, args }
 
 - A hook with no `input:` is given `{ job }`, and after a job `{ job, output }`.
 - A hook's `allow:` scopes read `input` and `values`, and never `job`.
@@ -458,8 +461,8 @@ A script hook runs alone under `corbie test`. This one refuses a job whose
 Words from outside
 ------------------
 
-A machine made while running, which a script or a model wrote, and the tools a
-`list:` gives an agent are words from outside. They name no hook and no address.
+A machine made while running, which a script or a model wrote, is words from
+outside. It names no hook and no address.
 
 - A machine made while running writes no hooks: one that does fails as it
   starts. The hooks above it that were not made while running run for its
@@ -468,8 +471,8 @@ A machine made while running, which a script or a model wrote, and the tools a
   send to an address or a call fails it.
 - A machine made while running writes the names of its jobs and tools. Write a
   hook for its jobs with `when: "${job.approve}"`, and not with a name.
-- A tool from a `list:` runs the entry's `job:`, which the definition writes,
-  and takes the agent's hooks as any tool does.
+- The entries a toolkit's job gives are words from outside too. Corbie keeps
+  each one's kind, name, description and args, and reads nothing else of it.
 
 Reference
 ---------
@@ -478,5 +481,6 @@ Reference
   corbie manual statechart     the fields of a statechart
   corbie manual agent          the fields of an agent
   corbie manual decision       the fields of a decision
+  corbie manual toolkit        the fields of a toolkit
   corbie manual scripts        what a script reads, calls and returns
   corbie manual permissions    how an entry is written, and the layers that limit a job

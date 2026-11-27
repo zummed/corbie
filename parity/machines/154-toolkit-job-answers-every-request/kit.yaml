@@ -1,0 +1,3 @@
+toolkit: kit
+description: A stand-in for a server of tools.
+job: { script: ./answer.js }

@@ -1,0 +1,12 @@
+toolkit: orders
+description: Orders, refunds and returns.
+instructions: Refund what the customer paid, and no more.
+hooks:
+  team:
+    when: "${job.approve}"
+    before: { script: ./ask.js, input: { who: team, tool: "${job.tool}" } }
+tools:
+  refund:
+    description: Refund an order.
+    args: { order: number, amount: number }
+    job: { script: ./refund.js, input: "${args}", approve: true }

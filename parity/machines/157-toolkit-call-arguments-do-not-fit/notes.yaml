@@ -1,0 +1,4 @@
+toolkit: notes
+description: Notes kept on shelves.
+tools:
+  add_note: { description: Add a note., args: { text: string }, job: { script: ./add.js, input: "${args}" } }

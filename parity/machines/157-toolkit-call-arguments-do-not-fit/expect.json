@@ -1,0 +1,10 @@
+{
+  "status": "done",
+  "output": {
+    "wrong": { "<contains>": "the arguments do not fit the tool \"add_note\"" },
+    "missing": { "<contains>": "the toolkit notes has no tool \"remove_note\" (it has: add_note)" },
+    "resume": { "<contains>": "the arguments do not fit the tool \"add_note\": missing property 'text'" }
+  },
+  "record": [{ "machine": "notes", "ask": { "kind": "script" }, "absent": true }],
+  "note": "R-kit-04: a toolkit checks a call's arguments against the tool's args:, for a resume as for a call, and a request it cannot answer fails its run."
+}

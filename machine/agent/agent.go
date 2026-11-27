@@ -4,9 +4,11 @@
 package agent
 
 import (
+	"cmp"
 	"encoding/json/jsontext"
 	"encoding/json/v2"
 	"fmt"
+	"maps"
 	"net"
 	"net/url"
 	"slices"
@@ -14,20 +16,23 @@ import (
 	"strings"
 
 	"github.com/zummed/corbie/machine"
+	_ "github.com/zummed/corbie/machine/toolkit" // every program that has agents has toolkits
 	"github.com/zummed/corbie/plugin/llm"
 )
 
 // Agent is the full form of the fields of a definition that only an agent has.
 type Agent struct {
-	Model  Model            `json:"model"`
-	System string           `json:"system,omitzero"`
-	Prompt any              `json:"prompt,omitzero"`
-	Tools  map[string]*Tool `json:"tools,omitzero"`
-	// Toolkits are groups of tools the model is shown once it opens them.
-	// A toolkit's tools are among Tools, each naming its toolkit.
-	Toolkits map[string]*Toolkit `json:"toolkits,omitzero"`
+	Model  Model  `json:"model"`
+	System string `json:"system,omitzero"`
+	Prompt any    `json:"prompt,omitzero"`
+	// Tools are the agent's entries: each a tool written in place, or a
+	// machine, which is one tool or, where it is a toolkit, a toolkit.
+	Tools map[string]*Tool `json:"tools,omitzero"`
 	// Turns is how many turns the agent has; twenty if it says nothing.
 	Turns int `json:"turns,omitzero"`
+	// Show is the most the model is shown in place, in bytes; none means
+	// the default.
+	Show int64 `json:"show,omitzero"`
 	// Reply is the shape of the reply in the agent's result, where it is
 	// data and not text: a JSON Schema of an object.
 	Reply map[string]any `json:"reply,omitzero"`
@@ -54,76 +59,44 @@ type Model struct {
 	// Own are the tools of its own that a model run as a program may use:
 	// tools Corbie does not run.
 	Own []string `json:"own,omitzero"`
+	// ToolChanges says tools added or removed after the first turn are
+	// sent to the service as messages, for a service that has that.
+	ToolChanges bool `json:"tool_changes,omitzero"`
 }
 
-// Tool is a named job a model may pick, with its description and the shape
-// of its arguments, a JSON Schema of an object.
+// Tool is an entry of an agent's tools. Written in place it is a named job
+// a model may pick, with its description and the shape of its arguments, a
+// JSON Schema of an object. Written machine: or call: it names a machine,
+// whose description it takes: any machine is one tool, whose arguments are
+// the machine's input, and a toolkit is a toolkit, which the model opens.
 type Tool struct {
-	Description string           `json:"description"`
+	Description string           `json:"description,omitzero"`
 	Args        map[string]any   `json:"args,omitzero"`
 	Job         *machine.JobSpec `json:"job"`
 	// Agent says the tool's job is an agent: the model is shown what that
 	// agent replied, and not the conversation it had.
 	Agent bool `json:"agent,omitzero"`
-	// List is a job that lists tools, each with its description and the
-	// shape of its arguments, in place of Description and Args: Job runs
-	// each of them.
-	List *machine.JobSpec `json:"list,omitzero"`
-	// Toolkit names the toolkit the tool is in, if it is in one.
-	Toolkit string `json:"toolkit,omitzero"`
-	// Call is the location of the machine the tool calls, where it is
-	// written as call:. Its description and its arguments are that
-	// machine's; Job calls it, with the input the tool fixes, and the
-	// model's arguments are added to that input.
-	Call string `json:"call,omitzero"`
+	// Machine is the file of the machine the entry names, and Call its
+	// location. Job runs it with the input the entry fixes.
+	Machine string `json:"machine,omitzero"`
+	Call    string `json:"call,omitzero"`
+	// Toolkit says the machine the entry names is a toolkit.
+	Toolkit bool `json:"toolkit,omitzero"`
+	// Open says a toolkit is opened before the first turn.
+	Open bool `json:"open,omitzero"`
 	// When is a condition on the agent's input, checked when the run
-	// starts: the tool is offered only if it holds.
+	// starts: the entry is offered only if it holds.
 	When string `json:"when,omitzero"`
 }
 
-// Toolkit is a group of tools the model is shown once it opens it.
-type Toolkit struct {
-	Description string `json:"description"`
-	// Instructions are the text the model is given when it opens the
-	// toolkit, filled from the agent's input then.
-	Instructions string `json:"instructions,omitzero"`
-	// Approve marks the toolkit's opening for approval.
-	Approve bool `json:"approve,omitzero"`
-	// When is a condition on the agent's input, checked when the run
-	// starts: the toolkit is offered only if it holds.
-	When string `json:"when,omitzero"`
-	// Meta is data Corbie keeps and never reads.
-	Meta any `json:"meta,omitzero"`
-}
+// named says the entry names a machine, by its file or its location.
+func (t *Tool) named() bool { return t.Machine != "" || t.Call != "" }
 
-// place is where a tool of a name is in the definition.
-func (t *Tool) place(name string) string {
-	if t.Toolkit != "" {
-		return toolkitPlace(t.Toolkit) + ".tools." + name
-	}
-	return "tools." + name
-}
+// place is where an entry of a name is in the definition.
+func place(name string) string { return "tools." + name }
 
-// toolkitPlace is where a toolkit is in the definition.
-func toolkitPlace(name string) string { return "toolkits." + name }
-
-// Lists says an entry of the agent's tools has a list, whose job gives shapes
-// from outside the definition.
-func (agentType) Lists(def *machine.Definition) bool {
-	var a Agent
-	if json.Unmarshal(def.Body, &a) != nil {
-		return false
-	}
-	for _, tool := range a.Tools {
-		if tool != nil && tool.List != nil {
-			return true
-		}
-	}
-	return false
-}
-
-// Calls gives the locations the agent's tools written call: name in full,
-// whose machines a run reads as it starts.
+// Calls gives the locations the agent's entries written call: name in
+// full, whose machines a run reads as it starts.
 func (agentType) Calls(def *machine.Definition) []string {
 	var a Agent
 	if json.Unmarshal(def.Body, &a) != nil {
@@ -180,7 +153,11 @@ func heldBy(service *llm.Service) []string {
 	if service.Program != "" {
 		return append(held, "own")
 	}
-	return append(held, "address", "reply_tokens")
+	held = append(held, "address", "reply_tokens")
+	if service.ToolChanges {
+		held = append(held, "tool_changes")
+	}
+	return held
 }
 
 // chats gives the services that have chat: those an agent's model may be
@@ -213,6 +190,8 @@ func (m Model) check() error {
 		return fmt.Errorf("the service %q is a program on the runner's computer, and has no address", name)
 	case len(m.Own) > 0 && !slices.Contains(held, "own"):
 		return fmt.Errorf("own: is for a service that is a program, which may have tools of its own; the service %q has none", name)
+	case m.ToolChanges && !slices.Contains(held, "tool_changes"):
+		return fmt.Errorf("the service %q has no way to be sent a change of tools in a message, and takes no tool_changes:", name)
 	case m.ReplyTokens != 0 && !slices.Contains(held, "reply_tokens"):
 		return fmt.Errorf("the service %q is a program, which writes what it writes: it cannot be held to a size of reply, and takes no reply_tokens:", name)
 	}
@@ -286,7 +265,8 @@ func (agentType) Name() string { return "agent" }
 
 // Limits adds an agent's turns to the limits every type takes.
 func (agentType) Limits() []machine.Field {
-	return []machine.Field{{Name: "turns", Kind: machine.KindNumber, Description: "how many turns it has; twenty by default"}}
+	return []machine.Field{{Name: "turns", Kind: machine.KindNumber, Description: "how many turns it has; twenty by default"},
+		{Name: "show", Kind: machine.KindSize, Description: "the most of a tool's result, or of a toolkit's list, the model is shown in place; 16KB by default"}}
 }
 
 // Shape is what an agent's definition holds of its own. A model holds the
@@ -312,40 +292,33 @@ func (agentType) Shape() *machine.Shape {
 			Description: "where the service lives, for a model that is not at its service's usual place: self-hosted, or offered by a cloud"},
 		{Name: "effort", Kind: machine.KindWord, Description: "how much effort the model is to take"},
 		{Name: "reply_tokens", Kind: machine.KindNumber, Description: "the most a reply may hold, in tokens"},
+		{Name: "tool_changes", Kind: machine.KindFlag,
+			Description: "for a service that has it: a tool added or removed after the first turn is sent as a message, so the service keeps its cache; the model must be one that takes it"},
 		{Name: "own", Kind: machine.KindList,
 			Description: "for a service that is a program: the tools of its own it may use. Corbie does not run them, so each needs leave for all it could do: network to browse, disk to read or write files, all for a shell or a skill"},
 	}}
-	when := machine.Field{Name: "when", Kind: machine.KindWord,
-		Description: "a condition, one expression of the agent's input, checked when the run starts: it is offered only if it holds"}
 	tool := &machine.Shape{Name: "tool", What: "a tool", Fields: []machine.Field{
 		{Name: "description", Kind: machine.KindText, Description: "what the tool is for, for the model to choose by"},
 		{Name: "args", Kind: machine.KindTypes, Description: "the shape of its arguments: each name with the type of its value, or a JSON Schema with type: object"},
 		{Name: "job", Kind: machine.KindJob, Description: "the job that is started when the model picks it; it reads input and args"},
-		{Name: "list", Kind: machine.KindJob,
-			Description: "a job that lists tools, in place of description and args; job runs each of them, and reads tool, the name the list gave"},
+		{Name: "machine", Kind: machine.KindWord, Path: true,
+			Description: "the file of a machine, in place of description, args and job: the description is that machine's. A toolkit is a toolkit the model opens; any other machine is one tool, whose arguments are its input"},
 		{Name: "call", Kind: machine.KindWord,
-			Description: "a location whose machine the tool calls, in place of description, args and job: the description and the arguments are that machine's. One in the same tree is written from its prefix and read with the tree; one written in full from / is read when the run starts"},
+			Description: "the location of a machine, in place of machine:. One in the same tree is written from its prefix and read with the tree; one written in full from / is read when the run starts"},
 		{Name: "input", Kind: machine.KindValue,
-			Description: "of a tool with call: the names of the machine's input the tool fixes, which the model is not given; it reads the agent's input"},
-		{Name: "approve", Kind: machine.KindFlag, Description: "of a tool with call: marks the call for approval, so it starts only after a hook before it"},
-		{Name: "meta", Kind: machine.KindValue, Description: "of a tool with call: data of any kind, which hooks read as job.meta and nothing else reads"},
-		when,
-	}}
-	toolkit := &machine.Shape{Name: "toolkit", What: "a toolkit", Fields: []machine.Field{
-		{Name: "description", Kind: machine.KindText, Description: "what the toolkit is for, which the model reads before it opens it"},
-		{Name: "instructions", Kind: machine.KindText,
-			Description: "the text the model is given when it opens the toolkit; it reads the agent's input"},
-		{Name: "approve", Kind: machine.KindFlag, Description: "marks opening the toolkit for approval, so it opens only after a hook before it"},
-		when,
-		{Name: "tools", Kind: machine.KindNamed, Of: tool, Description: "the toolkit's tools, each a named job"},
-		{Name: "meta", Kind: machine.KindValue, Description: "data of any kind, which Corbie keeps and never reads"},
+			Description: "of an entry with machine: or call:, the names of the machine's input the entry fixes, which the model is not given; it reads the agent's input"},
+		{Name: "approve", Kind: machine.KindFlag, Description: "of an entry with machine: or call:, marks every job the entry starts for approval, so each starts only after a hook before it"},
+		{Name: "meta", Kind: machine.KindValue, Description: "of an entry with machine: or call:, data of any kind, which hooks read as job.meta and nothing else reads"},
+		{Name: "open", Kind: machine.KindFlag, Description: "of an entry that names a toolkit: the toolkit is opened before the first turn"},
+		{Name: "when", Kind: machine.KindWord,
+			Description: "a condition, one expression of the agent's input, checked when the run starts: the entry is offered only if it holds"},
 	}}
 	return &machine.Shape{Name: "agent", What: "an agent", Fields: []machine.Field{
 		{Name: "model", Kind: machine.KindFields, Of: model, Description: "the model its turns are sent to"},
 		{Name: "system", Kind: machine.KindText, Description: "the system text"},
 		{Name: "prompt", Kind: machine.KindValue, Description: "what the agent is asked; an expression of its input"},
-		{Name: "tools", Kind: machine.KindNamed, Of: tool, Description: "the tools the model may pick, each a named job"},
-		{Name: "toolkits", Kind: machine.KindNamed, Of: toolkit, Description: "groups of tools the model is shown once it opens them"},
+		{Name: "tools", Kind: machine.KindNamed, Of: tool,
+			Description: "the agent's entries: each a tool written in place, or a machine named by its file or its location"},
 		{Name: "reply", Kind: machine.KindTypes, Description: "the shape of its reply where it is data: each name with the type of its value, or a JSON Schema with type: object"},
 		{Name: "conversation", Kind: machine.KindValue,
 			Description: "a conversation to carry on from: the conversation of an earlier agent's result, given whole"},
@@ -353,133 +326,119 @@ func (agentType) Shape() *machine.Shape {
 	}}
 }
 
-// fillToolkit reads one toolkit as written. A tool of a toolkit may not
-// take the name of any other tool.
-func fillToolkit(p *machine.Parser, a *Agent, shape *machine.Shape, name string, written any) {
-	place := toolkitPlace(name)
-	ff := p.Fields(place, written, shape)
-	if ff == nil {
-		return
-	}
-	toolkit := &Toolkit{Description: ff.Text("description"), Instructions: ff.Text("instructions"),
-		Approve: ff.Bool("approve"), When: ff.Cond("when")}
-	a.Toolkits[name] = toolkit
-	toolkit.Meta, _ = ff.Value("meta")
-	ff.Refuse("hooks", "a toolkit has no hooks: the agent's hooks run for its tools' jobs, and read the toolkit's name as job.tool.toolkit; write hooks: in the agent")
-	tools, order := ff.Map("tools")
-	for _, toolName := range order {
-		if _, taken := a.Tools[toolName]; taken {
-			p.Problem(place+".tools."+toolName, "the tool %q has the name of another tool of the agent", toolName)
-			continue
-		}
-		if t := fillTool(p, a, ff.Of("tools"), place+".tools."+toolName, toolName, tools[toolName]); t != nil {
-			t.Toolkit = name
-		}
-	}
-	ff.Done()
-}
-
-// fillTool reads one tool as written and adds it to the agent's tools.
-func fillTool(p *machine.Parser, a *Agent, shape *machine.Shape, place, name string, written any) *Tool {
+// fillTool reads one entry as written and adds it to the agent's tools.
+func fillTool(p *machine.Parser, a *Agent, shape *machine.Shape, place, name string, written any) {
 	tf := p.Fields(place, written, shape)
 	if tf == nil {
-		return nil
+		return
 	}
-	if tf.Has("call") {
-		tool := fillCall(p, tf, place)
+	if tf.Has("machine") || tf.Has("call") {
+		a.Tools[name] = fillNamed(p, tf, place)
 		tf.Done()
-		a.Tools[name] = tool
-		return tool
+		return
 	}
-	for _, field := range []string{"input", "approve", "meta"} {
+	for _, field := range []string{"input", "approve", "meta", "open"} {
 		if tf.Has(field) {
-			p.Problem(place+"."+field, "%s: belongs to a tool with call:; a tool with job: writes it in the job", field)
+			p.Problem(place+"."+field, "%s: belongs to an entry with machine: or call:; a tool with job: writes its input, approve and meta in the job", field)
 		}
 	}
 	tf.Value("input")
 	tf.Bool("approve")
 	tf.Value("meta")
+	tf.Bool("open")
 	tool := &Tool{Description: tf.Text("description"), When: tf.Cond("when")}
-	if list, ok := tf.Value("list"); ok {
-		tool.List = p.Job(place+".list", list)
-	}
-	if args, _ := tf.Map("args"); args != nil || tool.List == nil {
-		tool.Args = filled(p, place+".args", args)
-	}
+	args, _ := tf.Map("args")
+	tool.Args = filled(p, place+".args", args)
 	if job, ok := tf.Value("job"); ok {
 		tool.Job = p.Job(place+".job", job)
 		tool.Agent = tool.Job != nil && p.MachineType(tool.Job.Machine) == "agent"
 	}
 	tf.Done()
 	a.Tools[name] = tool
-	return tool
 }
 
-// fillCall reads a tool written with call:. It holds send: for the
-// location, and nothing else is written for it. Its job calls the location
-// with the input the tool fixes.
-func fillCall(p *machine.Parser, tf *machine.Fields, place string) *Tool {
-	for _, field := range []string{"description", "args", "job", "list"} {
+// fillNamed reads an entry written with machine: or call:. Nothing else of
+// a tool is written for it: its job runs the machine with the input the
+// entry fixes, and one written call: holds send: for the location.
+func fillNamed(p *machine.Parser, tf *machine.Fields, place string) *Tool {
+	for _, field := range []string{"description", "args", "job"} {
 		if tf.Has(field) {
-			p.Problem(place+"."+field, "a tool with call: has no %s: the description and arguments come from the machine called", field)
+			p.Problem(place+"."+field, "an entry with machine: or call: has no %s: the description and arguments come from the machine it names", field)
 		}
 	}
 	tf.Text("description")
 	tf.Map("args")
 	tf.Value("job")
-	tf.Value("list")
-	at := tf.Text("call")
-	tool := &Tool{Call: at, When: tf.Cond("when"),
-		Job: &machine.JobSpec{Call: &machine.AddressSpec{At: at}, Approve: tf.Bool("approve")}}
+	tool := &Tool{When: tf.Cond("when"), Open: tf.Bool("open"), Job: &machine.JobSpec{Approve: tf.Bool("approve")}}
 	tool.Job.Meta, _ = tf.Value("meta")
 	fixed := map[string]any{}
 	if written, ok := tf.Value("input"); ok {
 		if fixed, ok = written.(map[string]any); !ok {
-			p.Problem(place+".input", "this should be a mapping of names of the called machine's input, and is not one")
+			p.Problem(place+".input", "this should be a mapping of names of the machine's input, and is not one")
 			fixed = map[string]any{}
 		}
 	}
 	if len(fixed) > 0 {
 		tool.Job.Input = fixed
 	}
-	target := p.MachineAt(place+".call", at)
-	if target != nil || strings.HasPrefix(at, "/") {
-		tool.Job.Allow = []string{"send:" + at}
-	}
-	if target == nil {
-		// A location in full is read when the run starts.
+	byFile := tf.Has("machine")
+	file, at := tf.Text("machine"), tf.Text("call")
+	var target *machine.Definition
+	switch {
+	case byFile && at != "":
+		p.Problem(place, "an entry names its machine by its file with machine:, or by its location with call:, and not both")
 		return tool
+	case byFile:
+		tool.Machine = p.Machine(place+".machine", file)
+		tool.Job.Machine = tool.Machine
+		if target = p.MachineNamed(tool.Machine); target == nil {
+			return tool
+		}
+	default:
+		tool.Call = at
+		tool.Job.Call = &machine.AddressSpec{At: at}
+		target = p.MachineAt(place+".call", at)
+		if target != nil || strings.HasPrefix(at, "/") {
+			tool.Job.Allow = []string{"send:" + at}
+		}
+		if target == nil {
+			// A location in full is read when the run starts.
+			return tool
+		}
 	}
-	for _, w := range tool.called(at, machine.Recorded{Description: target.Description, Input: target.Input, Type: target.Type, Lifetime: target.Lifetime}) {
+	for _, w := range tool.read(machine.Recorded{Description: target.Description, Input: target.Input, Type: target.Type, Lifetime: target.Lifetime}) {
 		p.Problem(place+w.at, "%s", w.text)
 	}
 	return tool
 }
 
-// wrong is what is wrong with a tool that calls a machine, at a place under
-// the tool's: .call, or .input.<name> for a name it fixes.
+// wrong is what is wrong with an entry that names a machine, at a place
+// under the entry's: .machine or .call, or .input.<name> for a name it fixes.
 type wrong struct{ at, text string }
 
-// called gives a tool written call: its description and its arguments from
-// the machine recorded at its location, and says what is wrong. The
-// arguments are the machine's input without the names the tool fixes, and
-// no other name. A blob in that input is the name the model was shown.
-func (t *Tool) called(at string, m machine.Recorded) []wrong {
+// read gives an entry that names a machine its description from what is
+// read of that machine, and says what is wrong. A toolkit makes the entry a
+// toolkit. Any other machine makes it one tool, whose arguments are the
+// machine's input without the names the entry fixes, and no other name. A
+// blob in that input is the name the model was shown.
+func (t *Tool) read(m machine.Recorded) []wrong {
+	at, the := ".machine", "the machine "+t.Machine
+	if t.Call != "" {
+		at, the = ".call", "the machine at "+t.Call
+	}
 	var out []wrong
 	if m.Refused != "" {
-		return []wrong{{".call", m.Refused}}
+		return []wrong{{at, m.Refused}}
 	}
-	t.Description, t.Agent = m.Description, m.Type == "agent"
+	t.Description, t.Agent, t.Toolkit = m.Description, m.Type == "agent", m.Type == "toolkit"
 	if m.Description == "" {
-		out = append(out, wrong{".call", fmt.Sprintf("the machine at %s has no description:, which the model is given as the tool's", at)})
+		out = append(out, wrong{at, fmt.Sprintf("%s has no description:, which the model is given as the entry's", the)})
 	}
-	if m.Lifetime != machine.LifetimeTransient {
-		out = append(out, wrong{".call", fmt.Sprintf("the machine at %s is %s: a call starts a run only of a transient location", at, m.Lifetime)})
+	if t.Call != "" && m.Lifetime != machine.LifetimeTransient {
+		out = append(out, wrong{at, fmt.Sprintf("%s is %s: a call starts a run only of a transient location", the, m.Lifetime)})
 	}
-	for _, key := range sortedNames(m.Input) {
-		if !slices.Contains([]string{"type", "properties", "required", "additionalProperties", "description", "title"}, key) {
-			out = append(out, wrong{".call", fmt.Sprintf("the input of the machine at %s is written with %s, and a tool takes its arguments only from an input written with properties", at, key)})
-		}
+	if t.Open && !t.Toolkit {
+		out = append(out, wrong{".open", fmt.Sprintf("%s is no toolkit: open: is for an entry that names a toolkit", the)})
 	}
 	properties := map[string]any{}
 	if given, ok := m.Input["properties"].(map[string]any); ok {
@@ -490,11 +449,19 @@ func (t *Tool) called(at string, m machine.Recorded) []wrong {
 	required, _ := m.Input["required"].([]any)
 	fixed, _ := t.Job.Input.(map[string]any)
 	for _, name := range sortedNames(fixed) {
-		if _, named := properties[name]; !named {
-			out = append(out, wrong{".input." + name, fmt.Sprintf("the machine at %s takes no input named %q", at, name)})
+		if _, named := properties[name]; !named || t.Toolkit && name == "request" {
+			out = append(out, wrong{".input." + name, fmt.Sprintf("%s takes no input named %q", the, name)})
 		}
 		delete(properties, name)
 		required = slices.DeleteFunc(slices.Clone(required), func(r any) bool { return r == name })
+	}
+	if t.Toolkit {
+		return out
+	}
+	for _, key := range sortedNames(m.Input) {
+		if !slices.Contains([]string{"type", "properties", "required", "additionalProperties", "description", "title"}, key) {
+			out = append(out, wrong{at, fmt.Sprintf("the input of %s is written with %s, and a tool takes its arguments only from an input written with properties", the, key)})
+		}
 	}
 	t.Args = map[string]any{"type": "object", "properties": properties, "additionalProperties": false}
 	if len(required) > 0 {
@@ -503,19 +470,32 @@ func (t *Tool) called(at string, m machine.Recorded) []wrong {
 	return out
 }
 
-// asArg gives one property of a machine's input as a tool's argument: a
+// asArg gives a machine's input, or a part of it, as a tool's arguments: a
 // blob, which the input takes as the blob itself, is the name the model was
-// shown.
-func asArg(property any) any {
-	m, ok := property.(map[string]any)
-	if !ok || m["type"] != "object" || !slices.Equal(asTexts(m["required"]), []string{"$blob"}) {
-		return property
+// shown, at any depth.
+func asArg(shape any) any {
+	switch m := shape.(type) {
+	case map[string]any:
+		if m["type"] == "object" && slices.Equal(asTexts(m["required"]), []string{"$blob"}) {
+			arg := map[string]any{"type": "string", "format": "blob"}
+			if description, ok := m["description"]; ok {
+				arg["description"] = description
+			}
+			return arg
+		}
+		out := make(map[string]any, len(m))
+		for name, item := range m {
+			out[name] = asArg(item)
+		}
+		return out
+	case []any:
+		out := make([]any, len(m))
+		for i, item := range m {
+			out[i] = asArg(item)
+		}
+		return out
 	}
-	arg := map[string]any{"type": "string", "format": "blob"}
-	if description, ok := m["description"]; ok {
-		arg["description"] = description
-	}
-	return arg
+	return shape
 }
 
 func asTexts(v any) []string {
@@ -530,11 +510,11 @@ func asTexts(v any) []string {
 
 // Fill reads an agent as written and gives its full form.
 func (agentType) Fill(p *machine.Parser, f *machine.Fields) any {
-	a := &Agent{System: f.Text("system"), Turns: p.Limits().Int("turns")}
+	a := &Agent{System: f.Text("system"), Turns: p.Limits().Int("turns"), Show: p.Limits().Size("show")}
 	// With no model named, the check says an agent names its model.
 	if mf := f.Fields("model"); mf != nil {
 		a.Model = Model{Name: mf.Text("name"), Secret: mf.Text("secret"), Service: mf.Text("service"),
-			Address: mf.Text("address"), Effort: mf.Text("effort"), ReplyTokens: mf.Int("reply_tokens"), Own: mf.Strings("own")}
+			Address: mf.Text("address"), Effort: mf.Text("effort"), ReplyTokens: mf.Int("reply_tokens"), Own: mf.Strings("own"), ToolChanges: mf.Bool("tool_changes")}
 		mf.Done()
 	}
 	a.Prompt, _ = f.Value("prompt")
@@ -547,33 +527,27 @@ func (agentType) Fill(p *machine.Parser, f *machine.Fields) any {
 	for _, name := range order {
 		fillTool(p, a, f.Of("tools"), "tools."+name, name, tools[name])
 	}
-	// Toolkits are filled in after every other tool, so that a tool of a
-	// toolkit is checked against all of them.
-	a.Toolkits = map[string]*Toolkit{}
-	toolkits, order := f.Map("toolkits")
-	for _, name := range order {
-		fillToolkit(p, a, f.Of("toolkits"), name, toolkits[name])
-	}
-	// The tool that opens a toolkit is Corbie's, as the blob tools are. It
-	// needs no permission and gets nothing from the definition's lists.
-	if _, taken := a.Tools[openTool]; taken {
-		p.Problem(a.Tools[openTool].place(openTool), "the tool %q has the name of the tool every agent with toolkits has for opening them", openTool)
-	} else if len(a.Toolkits) > 0 {
-		p.Builtin(openScript, openSource)
-		a.Tools[openTool] = &Tool{Description: openDescription, Args: filled(p, "tools."+openTool+".args", map[string]any{"toolkit": "string"}),
-			Job: &machine.JobSpec{Script: openScript, Alone: true}}
+	// The tool that opens a toolkit is Corbie's, and the agent itself
+	// answers it: it starts the job of the entry that names the toolkit.
+	for _, name := range []string{openTool, toolkitsList, resumeTool} {
+		if _, taken := a.Tools[name]; taken {
+			p.Problem(place(name), "the tool %q has a name Corbie's own tools for toolkits have: open, with the list toolkits, and resume", name)
+		}
 	}
 	// The blob tools every agent has are ordinary scripts. They need no
 	// permission, and the code tool runs what the model wrote, so they get
 	// nothing from the definition's lists.
 	for name, tool := range blobTools {
 		if _, own := a.Tools[name]; own {
-			p.Problem(a.Tools[name].place(name), "the tool %q has the name of one of the tools every agent has for blobs", name)
+			p.Problem(place(name), "the tool %q has the name of one of the tools every agent has for blobs", name)
 			continue
 		}
 		p.Builtin("corbie:"+name+".js", tool.source)
+		// A blob tool gives the model no more than it is shown in place.
+		input := maps.Clone(tool.input)
+		input["limit"] = float64(cmp.Or(a.Show, showLimit))
 		a.Tools[name] = &Tool{Description: tool.description, Args: filled(p, "tools."+name+".args", tool.args),
-			Job: &machine.JobSpec{Script: "corbie:" + name + ".js", Input: tool.input, Alone: true}}
+			Job: &machine.JobSpec{Script: "corbie:" + name + ".js", Input: input, Alone: true}}
 	}
 	// The job that makes a turn: Corbie's own script, or one the
 	// definition puts in its place. It is written exactly what it needs and
@@ -585,6 +559,8 @@ func (agentType) Fill(p *machine.Parser, f *machine.Fields) any {
 		a.Turn = &machine.JobSpec{Script: turnScript}
 	}
 	p.Builtin(previewScript, previewSource)
+	p.Builtin(listScript, listSource)
+	p.Builtin(entryScript, entrySource)
 	a.Turn.Alone = true
 	if a.Model.check() == nil {
 		a.Turn.Allow = append(a.Model.permissions(), a.Turn.Allow...)
@@ -628,41 +604,20 @@ func (agentType) Check(c *machine.Checker, def *machine.Definition) {
 		c.Problem("turn", "an agent needs the job that makes its turns")
 	}
 	c.Job("turn", a.Turn, "input")
-	for _, name := range sortedNames(a.Toolkits) {
-		toolkit, place := a.Toolkits[name], toolkitPlace(name)
-		c.Name(place, name)
-		if toolkit == nil || toolkit.Description == "" {
-			c.Problem(place+".description", "a toolkit says what it is for, for the model to choose by")
-			continue
-		}
-		if machine.HasExpr(toolkit.Description) {
-			c.Problem(place+".description", "a description is plain text, with no expression")
-		}
-		c.Value(place+".instructions", toolkit.Instructions, "input")
-		if toolkit.When != "" {
-			c.Cond(place+".when", toolkit.When, "input")
-		}
-		if toolkit.Approve {
-			c.Approves()
-		}
-	}
 	for _, name := range sortedNames(a.Tools) {
 		tool := a.Tools[name]
 		if tool == nil {
 			c.Problem("tools."+name, "a tool needs a job")
 			continue
 		}
-		checkTool(c, &a, name, tool)
+		checkTool(c, name, tool)
 	}
 }
 
-// checkTool reports what is wrong with one tool.
-func checkTool(c *machine.Checker, a *Agent, name string, tool *Tool) {
-	place := tool.place(name)
+// checkTool reports what is wrong with one entry.
+func checkTool(c *machine.Checker, name string, tool *Tool) {
+	place := place(name)
 	c.Name(place, name)
-	if _, ok := a.Toolkits[tool.Toolkit]; tool.Toolkit != "" && !ok {
-		c.Problem(place, "the tool is in the toolkit %q, which the agent does not have", tool.Toolkit)
-	}
 	if tool.When != "" {
 		c.Cond(place+".when", tool.When, "input")
 	}
@@ -673,28 +628,15 @@ func checkTool(c *machine.Checker, a *Agent, name string, tool *Tool) {
 		c.Problem(place, "a tool needs a job")
 		return
 	}
-	if tool.Call != "" {
-		// What the machine called gives was checked as it was read, and one
-		// at a location in full is read when the run starts.
+	if tool.named() {
+		// What the machine gives was checked as it was read, and one at a
+		// location in full is read when the run starts.
 		if tool.Args != nil {
 			if _, err := machine.CompileShape(tool.Args); err != nil {
-				c.Problem(place+".call", "%v", err)
+				c.Problem(place, "%v", err)
 			}
 		}
 		c.Job(place, tool.Job, "input")
-		return
-	}
-	if tool.List != nil {
-		if tool.Description != "" || tool.Args != nil {
-			c.Problem(place, "a tool with list: is given each tool's description and args by the list, and has no description: or args: of its own")
-		}
-		c.Job(place+".list", tool.List, "input")
-		c.Job(place+".job", tool.Job, "args", "input", "tool")
-		// The arguments' fields are not known until the list is made, so
-		// one read here could be missing every time.
-		for _, read := range machine.ReadsIn(append([]any{tool.Job.Input}, tool.Job.Addressed()...), "args") {
-			c.Problem(place+".job", "it reads \"args.%s\"; with list:, the job reads ${args} only whole, since its fields are not known until the run", read.Name)
-		}
 		return
 	}
 	if tool.Description == "" {

@@ -14,9 +14,13 @@ The rules behind [the Drawing overview](../drawing.md). Area code: `drawing`.
 
 ## An agent
 
-**R-drawing-06** An agent is drawn as its model, a holder of its tools, with each toolkit a holder of its tools, and `reply`, one below another, with two arrows; Corbie's own tools are not drawn. *Test:* `drawing_agent_is_a_loop_of_model_and_tools`
+**R-drawing-06** An agent is drawn as its model, a holder of its entries, each a card, and `reply`, one below another, with two arrows; an entry that names a toolkit has the toolkit's icon and, on a run, the mark of the jobs asked for through it; Corbie's own tools are not drawn. *Test:* `drawing_agent_is_a_loop_of_model_and_tools` and `runs_agent_marks_a_toolkits_jobs_as_its_entry`
 
-**R-drawing-10** A toolkit or a tool with `when:` is drawn with a dashed border and its condition in its tooltip, and a card whose job has `approve: true` says so, in a machine of any type. *Test:* `drawing_conditions_approvals_and_calls_are_marked`
+**R-drawing-10** An agent's entry with `when:` is drawn with a dashed border and its condition in its tooltip, and a card whose job has `approve: true` says so, in a machine of any type. *Test:* `drawing_conditions_approvals_and_calls_are_marked`
+
+## A toolkit
+
+**R-drawing-18** A toolkit is drawn as `request`, above a holder of its tools and its hooks, above `answer`, joined by two arrows; a toolkit with `job:` has the one card `job`. On a run, the tool the request started is marked going, held or done, a hook going, and every other tool never used. *Test:* `drawing_toolkit_is_its_request_its_tools_and_its_answer`
 
 ## A decision
 
@@ -31,8 +35,6 @@ The rules behind [the Drawing overview](../drawing.md). Area code: `drawing`.
 ## A run on the drawing
 
 **R-drawing-03** A run is marked on its drawing: a flow's stages by their status, and as held where the job waits for approval; a statechart's states as current, held where the job waits for approval, entered before or never entered, a state passed through within one step being entered; and an agent's model, and each tool and hook as going, a tool as held, used at an earlier step or never used; a run that ended is marked by how it ended, a failed run at the states it ended in and at the card of the job whose failure ended it. *Test:* `drawing_run_is_marked_on_the_drawing`, `drawing_conditions_approvals_and_calls_are_marked`
-
-**R-drawing-08** On a run's page, a toolkit of an agent whose tools the run has not asked for by the step drawn is folded to its name and how many tools it has, and the folded toolkits are drawn one below another after the others; on the Machines page every toolkit is drawn in full. *Test:* `drawing_unused_toolkit_is_folded`
 
 **R-drawing-04** The transition the step drawn took is marked on its arrow or in its card, and no other. *Test:* `drawing_transition_just_taken_is_marked`
 

@@ -18,6 +18,19 @@ The tokens used are given as `usage`, with three counts:
 
 A service keeps the start of a request it was sent in the last five minutes, and charges less to read it again. Corbie asks Anthropic's service to keep it with every request, with `cache_control` on the request's last block, and an agent's turn sends the tools, system text and messages of the turn before unchanged. When the tools offered change, as when a toolkit is opened, none of the request is read from the cache.
 
+Anthropic's service takes a change of tools as a message of the conversation, which keeps the cache. A model with `tool_changes: true` uses it:
+
+1. Each reply holds `offered`: the tools its call was given that the reply before was not, each whole, and the names of those it no longer has. `chat` gives it, and the turn's script keeps it in the assistant part.
+2. The request's `tools` are those the first reply was offered, at every turn.
+3. Each later change is sent as a message of role `system`, before the reply whose turn first had it, with a `tool_removal` for each name and a `tool_addition` holding each definition.
+4. The change of the turn being made is the last message.
+
+- The request carries the header `anthropic-beta: inline-tools-2026-09-15`.
+- Only a model that takes it accepts the request: Opus 4.8 and later, Sonnet 5.5, Haiku 5.5 and the Fable and Mythos models, at Anthropic's own API. Any other fails the turn with the service's refusal. So it is a field a definition writes, and no default.
+- A conversation in which a reply holds no `offered`, as one a turn script of the definition's own wrote, is sent with the tools of the turn in `tools`, as without the field.
+- A tool whose definition differs from the one last offered under its name is added again, which replaces it from there. A definition that changes between two runs of one conversation loses the cache once, from that message.
+- A service with no such message refuses `tool_changes:` when the definition is checked.
+
 ## Decide
 
 A System One model writes no text. It is given the text or data the questions are about, sent as `state`, and named questions, and answers every question at once with probabilities. A question has a type, its instructions, and for two of the types its criteria.

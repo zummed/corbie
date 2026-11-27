@@ -4,7 +4,9 @@ package mcp
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/base64"
+	"encoding/hex"
 	"errors"
 	"runtime/debug"
 	"slices"
@@ -89,6 +91,14 @@ type server struct {
 	// schemas are the input schemas of the tools listed, by name: a call
 	// carries the arguments they mark in headers.
 	schemas map[string]map[string]any
+	// instructions are what the server says of how to use it.
+	instructions string
+	// tasks says a request to the server as a toolkit is being answered,
+	// which takes a task as a call's answer.
+	tasks bool
+	// skilled says the server has skills, which it lists and whose files
+	// it gives.
+	skilled bool
 	closed  bool
 }
 
@@ -105,11 +115,19 @@ var self = func() map[string]any {
 // for input made with a form, through the script.
 var capabilities = map[string]any{"elicitation": map[string]any{"form": map[string]any{}}}
 
+// withTasks are the same, and that a call may be answered with a task.
+var withTasks = map[string]any{"elicitation": capabilities["elicitation"],
+	"extensions": map[string]any{"io.modelcontextprotocol/tasks": map[string]any{}, skillsExtension: map[string]any{}}}
+
+// skillsExtension is the extension by which a server lists skills.
+const skillsExtension = "io.modelcontextprotocol/skills"
+
 // object is the server as the script holds it.
 func (s *server) object() *plugin.Object {
 	return &plugin.Object{Close: s.close, Calls: map[string]*plugin.Call{
-		"tools": {Do: s.tools},
-		"call":  {Options: []string{"args", "responses", "state"}, Do: s.call},
+		"tools":   {Do: s.tools},
+		"call":    {Options: []string{"args", "responses", "state"}, Do: s.call},
+		"toolkit": {Do: s.toolkit},
 	}}
 }
 
@@ -150,6 +168,10 @@ func (s *server) agree(ctx context.Context) error {
 	case err != nil:
 		return err
 	case answer.Error == nil:
+		s.instructions, _ = answer.Result["instructions"].(string)
+		can, _ := answer.Result["capabilities"].(map[string]any)
+		extensions, _ := can["extensions"].(map[string]any)
+		_, s.skilled = extensions[skillsExtension]
 		return s.choose(ctx, answer.Result["supportedVersions"])
 	case answer.Error.Code == unsupportedVersion:
 		data, _ := answer.Error.Data.(map[string]any)
@@ -193,6 +215,7 @@ func (s *server) handshake(ctx context.Context, version string) error {
 		return plugin.Errorf(plugin.Failed, "the server %s answered the handshake with MCP %q, which the plugin does not speak", s.name, spoken)
 	}
 	s.legacy = spoken
+	s.instructions, _ = answer.Result["instructions"].(string)
 	if err := s.way.tell(ctx, &message{JSONRPC: "2.0", Method: "notifications/initialized"}, s.headers("", "", nil)); err != nil {
 		return s.failure(ctx, err)
 	}
@@ -208,10 +231,14 @@ func (s *server) message(method string, params map[string]any) *message {
 // plugin is and what it can do; name is the tool a call is to.
 func (s *server) send(ctx context.Context, method string, params map[string]any, name string, args map[string]any) (*message, error) {
 	if s.legacy == "" {
+		can := capabilities
+		if s.tasks {
+			can = withTasks
+		}
 		params["_meta"] = map[string]any{
 			"io.modelcontextprotocol/protocolVersion":    latest,
 			"io.modelcontextprotocol/clientInfo":         self,
-			"io.modelcontextprotocol/clientCapabilities": capabilities,
+			"io.modelcontextprotocol/clientCapabilities": can,
 		}
 	}
 	return s.way.ask(ctx, s.message(method, params), s.headers(method, name, args))
@@ -354,6 +381,27 @@ func (s *server) call(job *plugin.Job, first any, opt plugin.Options) (any, erro
 	if s.legacy != "" && (responses != nil || state != "") {
 		return nil, plugin.Errorf(plugin.BadInput, "the server %s speaks MCP %s, which has no requests for input to respond to", s.name, s.legacy)
 	}
+	ctx, cancel := context.WithTimeout(job.Context, s.limit)
+	defer cancel()
+	result, err := s.invoke(ctx, name, args, responses, state)
+	if err != nil {
+		return nil, err
+	}
+	if result["resultType"] == "input_required" {
+		out := map[string]any{}
+		if requests, ok := result["inputRequests"]; ok {
+			out["requests"] = requests
+		}
+		if state, ok := result["requestState"]; ok {
+			out["state"] = state
+		}
+		return out, nil
+	}
+	return s.given(result)
+}
+
+// invoke sends a call to a tool and gives the server's result as it is.
+func (s *server) invoke(ctx context.Context, name string, args, responses map[string]any, state string) (map[string]any, error) {
 	params := func() map[string]any {
 		p := map[string]any{"name": name, "arguments": args}
 		if responses != nil {
@@ -364,8 +412,6 @@ func (s *server) call(job *plugin.Job, first any, opt plugin.Options) (any, erro
 		}
 		return p
 	}
-	ctx, cancel := context.WithTimeout(job.Context, s.limit)
-	defer cancel()
 	answer, err := s.send(ctx, "tools/call", params(), name, args)
 	if err == nil && answer.Error != nil && answer.Error.Code == headerMismatch && s.web {
 		// The server wants arguments carried in headers that the plugin
@@ -381,21 +427,22 @@ func (s *server) call(job *plugin.Job, first any, opt plugin.Options) (any, erro
 	if answer.Error != nil {
 		return nil, s.failed(answer.Error)
 	}
-	result := answer.Result
-	switch result["resultType"] {
-	case "input_required":
-		out := map[string]any{}
-		if requests, ok := result["inputRequests"]; ok {
-			out["requests"] = requests
+	switch answer.Result["resultType"] {
+	case nil, "complete", "input_required":
+	case "task":
+		if s.tasks {
+			break
 		}
-		if state, ok := result["requestState"]; ok {
-			out["state"] = state
-		}
-		return out, nil
-	case nil, "complete":
+		fallthrough
 	default:
-		return nil, plugin.Errorf(plugin.Failed, "the server %s answered with a result of type %v, which MCP does not have", s.name, result["resultType"])
+		return nil, plugin.Errorf(plugin.Failed, "the server %s answered with a result of type %v, which MCP does not have", s.name, answer.Result["resultType"])
 	}
+	return answer.Result, nil
+}
+
+// given gives what a tool gave as a script holds it: { content, data }. A
+// tool that reported an error fails with its text.
+func (s *server) given(result map[string]any) (map[string]any, error) {
 	content, err := s.content(result["content"])
 	if err != nil {
 		return nil, err
@@ -417,6 +464,329 @@ func (s *server) call(job *plugin.Job, first any, opt plugin.Options) (any, erro
 		out["data"] = structured
 	}
 	return out, nil
+}
+
+// toolkit answers a request to the server as a toolkit: to open it, to
+// call a tool, or to resume or cancel a call that has not ended.
+func (s *server) toolkit(job *plugin.Job, first any, _ plugin.Options) (any, error) {
+	request, ok := first.(map[string]any)
+	if !ok {
+		return nil, plugin.Errorf(plugin.BadInput, "toolkit takes a request: { do, tool, args, state, responses }")
+	}
+	if err := s.isOpen(); err != nil {
+		return nil, err
+	}
+	for key := range request {
+		if !slices.Contains([]string{"do", "toolkit", "tool", "args", "state", "responses"}, key) {
+			return nil, plugin.Errorf(plugin.BadInput, "a request to a toolkit has no %s", key)
+		}
+	}
+	if err := data("request", request); err != nil {
+		return nil, err
+	}
+	// A skill is a toolkit inside the server's: the request names it.
+	skill := ""
+	if inner, ok := request["toolkit"]; ok && inner != nil {
+		path, _ := inner.([]any)
+		if len(path) == 1 {
+			skill, _ = path[0].(string)
+		}
+		if skill == "" || !s.skilled {
+			return nil, plugin.Errorf(plugin.BadInput, "the server %s has no toolkit %v inside it", s.name, inner)
+		}
+	}
+	do, _ := request["do"].(string)
+	tool, _ := request["tool"].(string)
+	args, _ := request["args"].(map[string]any)
+	state, _ := request["state"].(map[string]any)
+	responses, _ := request["responses"].(map[string]any)
+	task, _ := state["task"].(string)
+	switch {
+	case do != "open" && tool == "":
+		return nil, plugin.Errorf(plugin.BadInput, "a request to %s a tool names the tool", do)
+	case (do == "resume" || do == "cancel") && state == nil:
+		return nil, plugin.Errorf(plugin.BadInput, "a request to %s a call gives the state the call ended with", do)
+	case (do == "resume" || do == "cancel") && s.legacy != "":
+		return nil, plugin.Errorf(plugin.BadInput, "the server %s speaks MCP %s, which has no call to %s", s.name, s.legacy, do)
+	}
+	if args == nil {
+		args = map[string]any{}
+	}
+	s.tasks = true
+	defer func() { s.tasks = false }()
+	ctx, cancel := context.WithTimeout(job.Context, s.limit)
+	defer cancel()
+	if skill != "" {
+		return s.inSkill(ctx, skill, do, tool, args)
+	}
+	switch do {
+	case "open":
+		tools, err := s.list(ctx)
+		if err != nil {
+			return nil, err
+		}
+		for _, tool := range tools {
+			tool.(map[string]any)["kind"] = "tool"
+		}
+		if s.skilled {
+			skills, err := s.skills(ctx)
+			if err != nil {
+				return nil, err
+			}
+			for _, sk := range skills {
+				if _, tool := s.schemas[sk.name]; tool {
+					return nil, plugin.Errorf(plugin.Failed, "the server %s has a tool and a skill that are both named %q, and a toolkit's entries have one name each", s.name, sk.name)
+				}
+				tools = append(tools, map[string]any{"kind": "toolkit", "name": sk.name, "description": sk.description})
+			}
+		}
+		return map[string]any{"instructions": s.instructions, "entries": tools}, nil
+	case "call":
+		result, err := s.invoke(ctx, tool, args, nil, "")
+		if err != nil {
+			return nil, err
+		}
+		return s.answer(ctx, args, result)
+	case "resume":
+		if task == "" {
+			// The call asked for input before it began a task: the same
+			// call, with the responses, carries it on.
+			args, _ = state["args"].(map[string]any)
+			asked, _ := state["request"].(string)
+			result, err := s.invoke(ctx, tool, args, responses, asked)
+			if err != nil {
+				return nil, err
+			}
+			return s.answer(ctx, args, result)
+		}
+		if responses != nil {
+			if _, err := s.request(ctx, "tasks/update", map[string]any{"taskId": task, "inputResponses": responses}, task, nil); err != nil {
+				return nil, err
+			}
+		}
+		result, err := s.request(ctx, "tasks/get", map[string]any{"taskId": task}, task, nil)
+		if err != nil {
+			return nil, err
+		}
+		return s.progress(ctx, result)
+	case "cancel":
+		if task != "" {
+			if _, err := s.request(ctx, "tasks/cancel", map[string]any{"taskId": task}, task, nil); err != nil {
+				return nil, err
+			}
+		}
+		return map[string]any{"result": "cancelled"}, nil
+	}
+	return nil, plugin.Errorf(plugin.BadInput, "a request to a toolkit is to open, call, resume or cancel, and not to %q", do)
+}
+
+// A skill is one of the server's skills: its name and description, the
+// address of its SKILL.md, and the digest of each of its files by address.
+type skill struct {
+	name, description, uri string
+	files                  map[string]string
+}
+
+// root is the address of the skill's directory.
+func (k *skill) root() string { return k.uri[:strings.LastIndex(k.uri, "/")+1] }
+
+// skills lists the server's skills. One whose files the server makes as
+// they are asked for has no list of them, and is left out.
+func (s *server) skills(ctx context.Context) ([]*skill, error) {
+	var out []*skill
+	cursor := ""
+	for page := 0; ; page++ {
+		if page == 1000 {
+			return nil, plugin.Errorf(plugin.Failed, "the server %s's list of skills did not end after a thousand pages", s.name)
+		}
+		params := map[string]any{}
+		if cursor != "" {
+			params["cursor"] = cursor
+		}
+		result, err := s.request(ctx, "skills/list", params, "", nil)
+		if err != nil {
+			return nil, err
+		}
+		listed, _ := result["skills"].([]any)
+		for _, item := range listed {
+			entry, _ := item.(map[string]any)
+			front, _ := entry["frontmatter"].(map[string]any)
+			k := &skill{files: map[string]string{}}
+			k.name, _ = front["name"].(string)
+			k.description, _ = front["description"].(string)
+			k.uri, _ = entry["uri"].(string)
+			resources, listedFiles := entry["resources"].([]any)
+			for _, r := range resources {
+				file, _ := r.(map[string]any)
+				uri, _ := file["uri"].(string)
+				digest, _ := file["digest"].(string)
+				k.files[uri] = digest
+			}
+			if _, has := k.files[k.uri]; k.name != "" && listedFiles && has && strings.Contains(k.uri, "/") {
+				out = append(out, k)
+			}
+		}
+		if cursor, _ = result["nextCursor"].(string); cursor == "" {
+			return out, nil
+		}
+	}
+}
+
+// inSkill answers a request for one of the server's skills, as a toolkit:
+// an open gives its SKILL.md as the instructions and one tool, read, and a
+// call of read gives one of the files the skill lists.
+func (s *server) inSkill(ctx context.Context, name, do, tool string, args map[string]any) (any, error) {
+	skills, err := s.skills(ctx)
+	if err != nil {
+		return nil, err
+	}
+	i := slices.IndexFunc(skills, func(k *skill) bool { return k.name == name })
+	if i < 0 {
+		return nil, plugin.Errorf(plugin.BadInput, "the server %s has no skill %q", s.name, name)
+	}
+	k := skills[i]
+	var paths []any
+	for uri := range k.files {
+		if path, under := strings.CutPrefix(uri, k.root()); under && uri != k.uri {
+			paths = append(paths, path)
+		}
+	}
+	slices.SortFunc(paths, func(a, b any) int { return strings.Compare(a.(string), b.(string)) })
+	switch {
+	case do == "open":
+		text, err := s.file(ctx, k, k.uri)
+		if err != nil {
+			return nil, err
+		}
+		instructions, isText := text.(string)
+		if !isText {
+			return nil, plugin.Errorf(plugin.Failed, "the server %s gave a SKILL.md of the skill %q that is not text", s.name, name)
+		}
+		entries := []any{}
+		if len(paths) > 0 {
+			entries = append(entries, map[string]any{"kind": "tool", "name": "read", "description": "Read one of the files of the skill " + name + ".",
+				"args": map[string]any{"type": "object", "properties": map[string]any{"path": map[string]any{"type": "string", "enum": paths}},
+					"required": []any{"path"}, "additionalProperties": false}})
+		}
+		return map[string]any{"instructions": instructions, "entries": entries}, nil
+	case do == "call" && tool == "read":
+		path, _ := args["path"].(string)
+		if !slices.Contains(paths, any(path)) {
+			return nil, plugin.Errorf(plugin.BadInput, "the skill %q lists no file %q", name, path)
+		}
+		contents, err := s.file(ctx, k, k.root()+path)
+		if err != nil {
+			return nil, err
+		}
+		return map[string]any{"result": contents}, nil
+	case do == "call":
+		return nil, plugin.Errorf(plugin.BadInput, "the skill %q has the one tool read, and no tool %q", name, tool)
+	}
+	return nil, plugin.Errorf(plugin.BadInput, "a read of a skill's file ends with the file, so there is nothing to %s", do)
+}
+
+// file reads one file of a skill, and checks it against the digest the
+// skill's list gives for it, where it gives one. It gives a text, or a blob.
+func (s *server) file(ctx context.Context, k *skill, uri string) (any, error) {
+	result, err := s.request(ctx, "resources/read", map[string]any{"uri": uri}, "", nil)
+	if err != nil {
+		return nil, err
+	}
+	contents, _ := result["contents"].([]any)
+	for _, item := range contents {
+		part, _ := item.(map[string]any)
+		if part["uri"] != uri {
+			continue
+		}
+		var given any
+		var bytes []byte
+		if text, isText := part["text"].(string); isText {
+			given, bytes = text, []byte(text)
+		} else {
+			encoded, _ := part["blob"].(string)
+			decoded, err := base64.StdEncoding.DecodeString(encoded)
+			if err != nil {
+				return nil, plugin.Errorf(plugin.Failed, "the server %s gave contents that are not base64: %v", s.name, err)
+			}
+			kind, _ := part["mimeType"].(string)
+			given, bytes = plugin.NewBlob(kind, decoded), decoded
+		}
+		sum := sha256.Sum256(bytes)
+		if digest := "sha256:" + hex.EncodeToString(sum[:]); k.files[uri] != "" && digest != k.files[uri] {
+			return nil, plugin.Errorf(plugin.Failed, "the server %s gave %s with the digest %s, and its skill lists %s", s.name, uri, digest, k.files[uri])
+		}
+		return given, nil
+	}
+	return nil, plugin.Errorf(plugin.Failed, "the server %s gave no contents for %s", s.name, uri)
+}
+
+// answer gives a call's result as a toolkit answers: { result }, or
+// { requests, state } for a call that asks for input, or what a task has
+// come to.
+func (s *server) answer(ctx context.Context, args, result map[string]any) (any, error) {
+	switch result["resultType"] {
+	case "input_required":
+		return map[string]any{"requests": result["inputRequests"],
+			"state": map[string]any{"args": args, "request": result["requestState"]}}, nil
+	case "task":
+		return s.progress(ctx, result)
+	}
+	out, err := s.given(result)
+	if err != nil {
+		return nil, err
+	}
+	return map[string]any{"result": out}, nil
+}
+
+// progress gives what a task has come to: { result } once it has ended,
+// { requests, state } while it asks for input, and { working, state }
+// otherwise. A program ends with its job, so its task is waited for.
+func (s *server) progress(ctx context.Context, task map[string]any) (any, error) {
+	id, _ := task["taskId"].(string)
+	state := map[string]any{"task": id}
+	wait := time.Second
+	if ms, ok := task["pollIntervalMs"].(float64); ok && ms > 0 {
+		wait = time.Duration(ms * float64(time.Millisecond))
+	}
+	for {
+		said, _ := task["statusMessage"].(string)
+		switch task["status"] {
+		case "completed":
+			result, _ := task["result"].(map[string]any)
+			out, err := s.given(result)
+			if err != nil {
+				return nil, err
+			}
+			return map[string]any{"result": out}, nil
+		case "failed":
+			if e, ok := task["error"].(map[string]any); ok {
+				said, _ = e["message"].(string)
+			}
+			return nil, plugin.Errorf(plugin.Failed, "the server %s's task failed: %s", s.name, said)
+		case "cancelled":
+			return nil, plugin.Errorf(plugin.Failed, "the server %s's task was cancelled", s.name)
+		case "input_required":
+			if !s.web {
+				return nil, plugin.Errorf(plugin.Failed, "the server %s asks for input in a task, and a program's task ends with its job", s.name)
+			}
+			return map[string]any{"requests": task["inputRequests"], "state": state}, nil
+		case "working":
+			if s.web {
+				return map[string]any{"working": map[string]any{"said": said, "wait": wait.Seconds()}, "state": state}, nil
+			}
+		default:
+			return nil, plugin.Errorf(plugin.Failed, "the server %s's task has the status %v, which MCP does not have", s.name, task["status"])
+		}
+		select {
+		case <-ctx.Done():
+			return nil, s.failure(ctx, ctx.Err())
+		case <-time.After(wait):
+		}
+		var err error
+		if task, err = s.request(ctx, "tasks/get", map[string]any{"taskId": id}, id, nil); err != nil {
+			return nil, err
+		}
+	}
 }
 
 // content gives what a tool gave as a script holds it: text as text, an
@@ -609,6 +979,7 @@ const page = `mcp: this plugin is a client of an MCP server: it lists the server
   mcp.start(program, { args, env, dir, timeout })       returns a server, a program it starts
   server.tools()                                        returns [{ name, description, args }]
   server.call(name, { args, responses, state })         returns { content, data }, or { requests, state }
+  server.toolkit(request)                               returns the answer to a toolkit's request
   server.close()                                        closes the connection, or stops the program
 
 address is a URL that starts https:// or http://. program is as for exec.run
@@ -627,9 +998,8 @@ Options:
 
 - The plugin speaks MCP 2026-07-28, and the earlier version a server has if
   it does not speak that one.
-- tools gives the server's tools in the form an agent's list: job returns
-  (` + "`corbie manual agent`" + `). args is the tool's input schema as the server
-  wrote it. Over the web, a tool that marks an argument for a header where
+- tools gives the server's tools. args is the tool's input schema as the
+  server wrote it. Over the web, a tool that marks an argument for a header where
   no header can carry it is left out.
 - call gives content as a list: text as text, an image, audio or a file as
   a blob, and a link as { link, name }. data is the tool's structured
@@ -638,6 +1008,30 @@ Options:
   same call made with { responses, state }, in this job or a later one,
   carries on. The plugin tells a server it takes requests made with a form,
   and the script gives the responses.
+- toolkit takes one of four requests:
+  { do: "open" }                             gives { instructions, entries }
+  { do: "call", tool, args }                 gives { result }, { working, state } or { requests, state }
+  { do: "resume", tool, state, responses }   gives the same three
+  { do: "cancel", tool, state }              gives { result }
+  entries are the server's tools, each { kind: "tool", name, description,
+  args }. result is what call gives. state is what the call ended with, and
+  responses are as for call.
+- A server with the Skills extension gives each skill in an open as
+  { kind: "toolkit", name, description }. A request with toolkit: [name]
+  is for that skill: an open gives its SKILL.md as the instructions and one
+  tool, read, and a call of read with { path } gives one of the files the
+  skill lists, a text or a blob. The plugin checks each file's SHA-256
+  against the skill's list, which finds a broken transfer and is no
+  control. It runs nothing a skill holds.
+- A server on the web may answer a call with a task, which ends later. The
+  call then gives { working: { said, wait }, state }: said is the server's
+  message about the task, and wait the seconds it asks for between requests.
+  A resume with that state, in this job or a later one, asks the server
+  once and gives { result } when the task has ended.
+- A task that needs input gives { requests, state }, and a resume with the
+  responses answers it. A cancel tells the server to cancel the task.
+- A program stops when its job ends, so the plugin waits for a program's
+  task in the job, up to the timeout. Such a task that needs input fails.
 - A job whose output is too large to send fails. A script that gives an
   agent a tool's result puts a large text into a blob, which the model reads
   with its blob tools: ` + "`text.length > 100000 ? blobs.make(text) : text`" + `.
@@ -649,9 +1043,10 @@ Options:
 
 Errors:
   failed      the tool reported an error, and the message is its text; or
-              the server answered with an error
-  bad_input   the server refused the request: a tool it does not have, or
-              arguments it does not take
+              the server answered with an error; or a task failed or was
+              cancelled
+  bad_input   the server refused the request: a tool it does not have,
+              arguments it does not take, or a task it does not have
   not_found   the program was not found
   refused     the server turned the connection or the sign-in away
   timeout     the server did not answer within the timeout
@@ -682,4 +1077,22 @@ This script lists the tools of a server it starts, and calls one.
     const found = server.call("find_notes", { args: { text: "tea" } })
     server.close()
     return found                        // gives { content: ["2 notes: tea at 4, tea at 5"] }
+
+This script calls a tool that the server makes a task, and resumes it.
+
+    allow: ["secret:NOTES_TOKEN@net:notes.example.com"]
+
+    const server = mcp.connect("https://notes.example.com/mcp", {
+      headers: { Authorization: secrets.text` + "`Bearer ${secrets.get(\"NOTES_TOKEN\")}`" + ` },
+    })
+    const begun = server.toolkit({ do: "call", tool: "export_notes" })   // { working: { said, wait }, state }
+    return server.toolkit({ do: "resume", tool: "export_notes", state: begun.state })
+    // gives { result: { content: ["exported the notes"] } }
+
+This script opens a server it starts, as a toolkit.
+
+    allow: ["secret:NOTES_KEY@exec:notes-server"]
+
+    const server = mcp.start("notes-server", { env: { NOTES_KEY: secrets.get("NOTES_KEY") } })
+    return server.toolkit({ do: "open" }).entries.map((entry) => entry.name)   // gives ["add_note", "find_notes"]
 `

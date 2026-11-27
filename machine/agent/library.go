@@ -30,25 +30,53 @@ if (/^text\/|^application\/jsonl?$/.test(blob.type)) {
 }
 return { blob, items, preview }
 `
+	// The job that stores a toolkit's list too large to show: its entries
+	// as one blob, and their names, as they are where they fit in what the
+	// model is shown, and as a blob with its preview where they do not.
+	listScript = "corbie:list.js"
+	listSource = `const entries = blobs.make(input.entries)
+const names = input.entries.map(e => ({ kind: e.kind, name: e.name, description: e.description }))
+if (JSON.stringify(names).length <= input.limit) return { entries, names }
+return { entries, blob: blobs.make(names), items: names.length, preview: names.slice(0, 5) }
+`
+	// The job that reads one entry of a stored list, by its name.
+	entryScript = "corbie:entry.js"
+	entrySource = `for (const entry of blobs.items(input.entries)) if (entry.name === input.name) return entry
+return null
+`
 )
 
 // The tool that opens a toolkit: the step shows it the toolkits the model
 // may open, and from the next turn shows the toolkit's tools. Its result is
 // the toolkit's instructions, which the step fills in and gives it.
 const (
-	openTool   = "open"
-	openScript = "corbie:open.js"
-	openSource = `return input.instructions
-`
-	openDescription = "Open a toolkit. Its instructions are the result, and its tools are shown to you from your next turn. The toolkits you can open:"
+	// openTool is the tool that opens a toolkit, and toolkitsList the list
+	// of the toolkits the agent's entries name.
+	openTool     = "open"
+	toolkitsList = "toolkits"
+	// resumeTool is the tool that carries on a call that has not ended.
+	resumeTool        = "resume"
+	resumeDescription = "Carry on a call that has not ended, by the name of the task its result gave. It waits for the work, and returns its result, or working again. Give responses, by the names of the requests, to a call that asked for input. With cancel: true it cancels the call."
+	openDescription   = "Open a toolkit from a list, by its name. Its instructions are the result, and its tools are offered to you from your next turn, each under the toolkit's name and its own. You are shown each list you can open from: its toolkits, the names of its entries, or a blob of those names to search. From a list of names, open a tool by its name before you call it."
 )
 
-// large is how a blob tool gives back an answer too large to be a result:
-// as a blob, which the model is then shown as a handle.
 const large = `
 function fits(answer) {
   const text = JSON.stringify(answer)
   return text !== undefined && text.length > 100000 ? blobs.make(text, { type: "application/json" }) : answer
+}
+`
+
+// room gives a function that says whether one more item fits in what the
+// model is shown in place. The first item always fits: one too large to
+// show is stored as a blob, as any result is.
+const room = `
+function room(limit) {
+  let left = limit - 256
+  return function (item, held) {
+    left -= JSON.stringify(item).length + 32
+    return held === 0 || left >= 0
+  }
 }
 `
 
@@ -61,23 +89,29 @@ var blobTools = map[string]struct {
 	source      string
 }{
 	"blob_read": {
-		description: "Read some of a blob's items: the lines of a text, the rows of a table, the entries of a list. Gives count items starting at from (50 from the start, if not said). The blob's handle says how many items it has. Reaching an item means reading up to it, so reading far into a large blob is slow.",
+		description: "Read some of a blob's items: the lines of a text, the rows of a table, the entries of a list. Gives count items starting at from (50 from the start, if not said), or as many of them as can be shown, with the place to read from next. The blob's handle says how many items it has. Reaching an item means reading up to it, so reading far into a large blob is slow.",
 		args:        map[string]any{"blob": "blob", "from": "number?", "count": "number?"},
 		input:       map[string]any{"blob": "${args.blob}", "from": "${args.from}", "count": "${args.count}"},
-		source: large + `const from = input.from || 0
-return fits({ from, items: Array.from(blobs.items(input.blob, { from, count: input.count || 50 })) })
+		source: large + room + `const from = input.from || 0
+const items = [], takes = room(input.limit)
+let next = null
+for (const item of blobs.items(input.blob, { from, count: input.count || 50 })) {
+  if (!takes(item, items.length)) { next = from + items.length; break }
+  items.push(item)
+}
+return fits(next === null ? { from, items } : { from, items, next })
 `},
 	"blob_search": {
-		description: "Search a blob's items for a text, from the item at from (the start, if not said). Gives up to 50 matching items, each with its place, and where there may be more, the place to search from next.",
+		description: "Search a blob's items for a text, from the item at from (the start, if not said). Gives up to 50 matching items, or as many as can be shown, each with its place, and where there may be more, the place to search from next.",
 		args:        map[string]any{"blob": "blob", "find": "string", "from": "number?"},
 		input:       map[string]any{"blob": "${args.blob}", "find": "${args.find}", "from": "${args.from}"},
-		source: large + `const found = []
+		source: large + room + `const found = [], takes = room(input.limit)
 const want = input.find.toLowerCase()
 let at = input.from || 0, next = null
 for (const item of blobs.items(input.blob, { from: at })) {
   const text = typeof item === "string" ? item : JSON.stringify(item)
   if (text.toLowerCase().includes(want)) {
-    if (found.length === 50) { next = at; break }
+    if (found.length === 50 || !takes(item, found.length)) { next = at; break }
     found.push({ at, item })
   }
   at++
@@ -148,9 +182,11 @@ exports.turn = function (input) {
     effort: input.model.effort || null,
     reply_tokens: input.model.reply_tokens || null,
     own: input.model.own && input.model.own.length ? input.model.own : null,
+    tool_changes: input.model.tool_changes || null,
   })
   const answer = { role: "assistant", content: reply.text, calls: reply.calls }
   if (reply.kept) answer.kept = reply.kept
+  if (reply.offered) answer.offered = reply.offered
   const turn = blobs.make((input.add || []).concat([answer]), { type: "application/json" })
   return { turn, text: reply.text, calls: reply.calls, stop: reply.stop, usage: reply.usage }
 }
@@ -173,7 +209,8 @@ script that changes what the model is sent makes those calls itself.
 
 A turn's input has these fields.
 
-  model    { name, service, address, key, effort, reply, own }; key is a secret's name
+  model    { name, service, address, key, effort, reply, own, tool_changes }; key is
+           a secret's name
   system   the system prompt
   tools    [{ name, description, args }]
   turns    the blobs that hold the conversation so far
@@ -184,13 +221,20 @@ A turn's input has these fields.
 A turn returns these fields.
 
   turn    a blob, made with blobs.make, of this turn's parts as JSON:
-          input.add, then the reply; without it the agent fails
+          input.add, then the reply; without it the agent fails. The reply
+          is { role: "assistant", content, calls }, with kept and offered
+          where llm.chat gave them
   text    the model's reply
   calls   the tool calls the model made: [{ id, name, args }]; when there are
           none, text is the agent's reply
   stop    "end", "tools" or "length"; on "length" the agent tells the model
           that its reply was cut short and takes another turn
   usage   { input, output, cached }, in tokens, as llm.chat gives it
+
+A script that calls llm.chat itself puts the reply's kept and offered in
+the assistant part. Without offered, a model with tool_changes: true is sent
+its tools as any model is, and the service's cache is lost when a toolkit is
+opened.
 
 This turn calls no model and answers at once.
 

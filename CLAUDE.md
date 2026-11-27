@@ -1,6 +1,6 @@
 # Corbie
 
-Corbie runs machines (flows, statecharts, and the two that call an AI model: agents and decisions) whose work is done by JavaScript jobs on runners. Every party reads and writes one store directly, and nothing important is held in memory.
+Corbie runs machines (flows, statecharts, toolkits, and the two that call an AI model: agents and decisions) whose work is done by JavaScript jobs on runners. Every party reads and writes one store directly, and nothing important is held in memory.
 
 It is one Go module, one package per area of the design, and the binary in `cmd/corbie`. The UI, `corbie ui`, is the packages under `ui/`.
 
@@ -52,15 +52,16 @@ Words:
 - No metaphor and no soft verbs. Not "decides", "reaches", "touches", "meets", "holds on to", "is owed", "stands", "says so". Not "unless it says": write "by default".
 - One word for one thing, the same in the specs, the code, the manual and what is printed. A word with two meanings is a fault, and so is a second word for the same thing. A word is changed everywhere or not at all.
 - These words are settled:
-  - **machine**: a YAML definition of type flow, statechart, agent or decision. Never a computer.
+  - **machine**: a YAML definition of type flow, statechart, agent, decision or toolkit. Never a computer.
   - **job**: the `job:` block of a stage, a state or a tool, and the `before:` or `after:` of a hook. A job is a script, a machine, or a send. A machine is named by its file (`machine:`) or by its location (`call:`), and a send delivers an event and returns nothing. A runner executes a script; a machine named by its file runs as a child run, and one named by its location as a run of its own whose result is the job's output.
   - **hook**: a job a definition names under `hooks:`, which runs before or after other jobs.
   - **run**: one execution of a machine, which a client starts, lists and shows.
   - **tree**: a directory a client submitted at a prefix. It belongs to that client.
   - **location**: where a machine lives: its file's path under its tree's prefix, without `.yaml`.
   - **listed file**: a file the `.corbieignore` at the top of the directory lists. It has no location; a machine may still include it. Every other `.yaml` file is a machine.
-  - **toolkit**: a group of tools under an agent's `toolkits:`, with its `description:`, `instructions:` and tools.
-  - **description**: the `description:` of a machine, a toolkit or a tool: what it is for.
+  - **toolkit**: a machine of type toolkit. It holds tools, and answers a request to open it or to call one of them.
+  - **entry**: an item of an agent's `tools:`, or of the list a toolkit gives when it is opened.
+  - **description**: the `description:` of a machine or a tool: what it is for.
   - **address**: a location, with `#key` at a keyed location, as the command line writes it.
   - **directory**, never "folder". **computer**, never "machine".
   - **controller**, **runner**, **client**: the three kinds of process. **store**: the directory or bucket they share.

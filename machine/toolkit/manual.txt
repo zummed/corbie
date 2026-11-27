@@ -1,0 +1,140 @@
+Toolkit: a toolkit holds tools that any machine opens and calls with a job.
+
+1. A job starts a run of the toolkit with `request:` in its input.
+2. `{ do: open }` gives the toolkit's instructions and one entry for each tool.
+3. `{ do: call, tool, args }` runs that tool's job and gives `{ result }`.
+
+    # notes.yaml
+    toolkit: notes
+    description: Notes kept on shelves.
+    input: { shelf: string }
+    instructions: Notes are on the shelf ${input.shelf}.
+    tools:
+      add_note:
+        description: Add a note.
+        args: { text: string }
+        job: { script: ./add.js, input: { shelf: "${input.shelf}", text: "${args.text}" } }
+
+    // add.js
+    return "added to " + input.shelf + ": " + input.text
+
+    corbie test notes.yaml --input '{"shelf": "a", "request": {"do": "open"}}'
+      output: {"entries":[{"args":{"additionalProperties":false,"properties":{"text":{"type":"string"}},"required":["text"],"type":"object"},"description":"Add a note.","kind":"tool","name":"add_note"}],"instructions":"Notes are on the shelf a."}
+
+    corbie test notes.yaml --input '{"shelf": "a", "request": {"do": "call", "tool": "add_note", "args": {"text": "milk"}}}'
+      output: {"result":"added to a: milk"}
+
+A flow or a statechart names the toolkit by its file, or by its location with
+`call:`.
+
+    # shop.yaml
+    flow: shop
+    stages:
+      add:
+        job:
+          machine: ./notes.yaml
+          input: { shelf: a, request: { do: call, tool: add_note, args: { text: eggs } } }
+    output: ${stages.add.output.result}
+
+    corbie test shop.yaml
+      output: "added to a: eggs"
+
+A job that answers
+------------------
+
+A toolkit with `job:` has no tools of its own. The job is given the toolkit's
+input and answers the request. `server.toolkit` answers it for an MCP server.
+
+    # server.yaml
+    toolkit: server
+    description: The notes server's tools.
+    job:
+      script: ./server.js
+      allow: ["secret:NOTES_TOKEN@net:notes.example.com"]
+
+    // server.js
+    const server = mcp.connect("https://notes.example.com/mcp", {
+      headers: { Authorization: secrets.text`Bearer ${secrets.get("NOTES_TOKEN")}` },
+    })
+    return server.toolkit(input.request)
+
+    corbie test server.yaml --input '{"request": {"do": "call", "tool": "find_notes", "args": {"query": "milk"}}}' --secret-env NOTES_TOKEN
+      output: {"result":{"content":["3 notes: tea at 4, tea at 5, cake at 6"]}}
+
+Fields
+------
+
+  description    what the toolkit is for; a toolkit must have one
+  input          the shape of its input; `request` is added by the caller
+  instructions   the text an open gives; it reads `input`, `values` and `run`
+  tools          the tools, by name
+  files          text files a caller reads with the tool `read`: a skill's
+                 files beside its `SKILL.md`
+  job            one job that answers every request, in place of
+                 `instructions:` and `tools:`
+
+A tool has these fields.
+
+  description    what the tool is for
+  args           the shape of its arguments
+  job            a script, a machine, a call or a send; it reads `input` and
+                 `args`
+
+Requests
+--------
+
+  { do: open }                        { instructions, entries }
+  { do: call, tool, args }            { result }, { working, state } or { requests, state }
+  { do: resume, tool, args, state }   the same three; with `responses` to requests
+  { do: cancel, tool, args, state }   { result }
+
+- An entry holds `kind`, `name`, `description` and, for a tool, `args`.
+  Anything else a job's answer gives in an entry is dropped.
+- A call whose arguments do not fit the tool's `args:` fails, and the error
+  names each place.
+- A tool's job gives `{ working, state }` in place of its result for work
+  that has not ended, and `{ requests, state }` for work that needs input.
+  The run ends with that answer.
+- A resume or a cancel starts the tool's job again. The job reads the
+  request as `input.request`: its `do`, the `state` it gave, and the
+  `responses` to its requests.
+- A resume whose job answers `working` again waits and asks again, until the
+  work ends. It waits `working.wait` seconds between two asks, 5 by default
+  and 1 at the least, on a timer, so no runner is in use. After
+  `limits: { resume: 10m }`, ten minutes by default, it ends with
+  `{ working, state }`.
+- A hook of the toolkit reads a call's tool as `job.tool`:
+  `{ toolkit, name, args }`.
+- A toolkit is transient: each request is a run.
+- An agent names a toolkit as an entry of its `tools:`, and opens it and
+  calls its tools for its model, as `corbie manual agent` says.
+
+A skill
+-------
+
+A skill is a toolkit whose instructions are its `SKILL.md`, with one tool,
+`read`, that gives one of its other files.
+
+  # review/toolkit.yaml
+  toolkit: review
+  description: Review code using the team's checklist.
+  instructions: { include: ./SKILL.md }
+  files: [./references/checklist.md]
+
+- With `files:`, the toolkit has the tool `read`, which takes `path`: one of
+  the files, written from the toolkit's directory, as
+  `references/checklist.md`. No tool of the toolkit is named `read`.
+- `read` is a script of Corbie's own. It is sent the files, and is allowed
+  nothing.
+- Corbie runs no script that a skill holds. A script is a file `read` gives
+  as text.
+- A skill of an MCP server is a toolkit inside the server's, as
+  `corbie manual mcp` says.
+
+Reference
+---------
+
+  corbie manual agent         an agent's entry that names a toolkit
+  corbie manual mcp           `server.toolkit`, and a server's tasks
+  corbie manual definitions   the fields every definition has
+  corbie manual hooks         a job that runs before another

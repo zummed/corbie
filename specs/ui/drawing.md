@@ -2,7 +2,7 @@
 
 A machine is drawn top to bottom from its definition in full form, and a run's state is shown on the drawing.
 
-1. The UI reads the machine's graph, with Corbie's own types for a flow, a statechart, an agent and a decision: each card and what it says, the arrows, and the marks of a run.
+1. The UI reads the machine's graph, with Corbie's own types for a flow, a statechart, an agent, a decision and a toolkit: each card and what it says, the arrows, and the marks of a run.
 2. The page lays the graph out and draws it as SVG, with Solid, at the size it needs.
 
 Each holder, card, arrow and chip is an element of its own, and a card keeps its element while the graph changes. The same drawing is on a run's page and on the Machines page.
@@ -92,17 +92,27 @@ Which stage waits for which is the flow package's rule, which it keeps to itself
 An agent is three things, one below another, joined by two arrows.
 
 1. The model is a card, holding the model's name.
-2. Its tools are in one holder. Each toolkit is a holder inside it, with its name and its tools. Its tooltip gives its `when:` and the file its tools are written in, or its `description:` where it has no tools, as the definition written out gives each value's file, where that is not the agent's own file. Tools in no toolkit are cards beside the toolkits, and each of the agent's hooks is a card below them, named as the hook is, with a dashed border where it has a `when:`. The chip on the arrow into the holder gives how many turns the agent has.
+2. Its entries are in one holder: each is a card, in the order of their names, six to a column, and each of the agent's hooks is a card below them, named as the hook is, with a dashed border where it has a `when:`. The chip on the arrow into the holder gives how many turns the agent has.
 3. `reply` is a narrow card.
 
-- A toolkit or a tool with `when:` has a dashed border, and its tooltip gives the condition: `when: input.asker.scopes.includes('orders:read')`.
-- A tool written `call:` is the card of a job that calls: `call: people/find`.
-- On a run's page the file the agent's type is written in is taken as the agent's own file.
+- An entry with `when:` has a dashed border, and its tooltip gives the condition: `when: input.asker.scopes.includes('orders:read')`.
+- An entry written `machine:` or `call:` is the card of a job that runs or calls a machine: `machine: ./toolkits/net.yaml`, `call: people/find`. One that names a toolkit has the toolkit's icon, and its tooltip gives the toolkit's `description:`.
+- On a run, an entry that names a toolkit is marked by the jobs the run asked for through it: its opens and the calls of its tools.
 - Tools that are Corbie's own, whose script begins `corbie:`, are not drawn.
 
 ## A decision
 
 A decision is two things, one below the other, joined by one arrow: its model, by its name, and its answers, with the name of each question.
+
+## A toolkit
+
+A toolkit is three things, one below another, joined by two arrows.
+
+1. `request` is a narrow card.
+2. Its tools are in one holder: each tool is a card, in the order of their names, six to a column, and each of the toolkit's hooks is a card below them, as an agent's are. A toolkit with `job:` has one card, `job`.
+3. `answer` is a narrow card.
+
+A tool's tooltip gives its `description:`.
 
 ## A machine inside a machine
 
@@ -122,6 +132,7 @@ A run is drawn as of one step: the step selected in Steps. Its marks come from i
 flow         each stage's status: waiting, running, held for a hook, done, failed or skipped
 statechart   the states it is in, and whether a state's job is held for a hook; states it was in before are outlined in moss, and states never entered faintly
 decision     the model going now while its job runs
+toolkit      the tool or the job the request started, going now, held for a hook, or done; each hook going now; the other tools as never used
 agent        the turn it is on; the model going now while its turn runs; each tool and each hook going now, a tool held for a hook, used at an earlier step, or never used
 ```
 
@@ -130,7 +141,5 @@ A run that ended is marked by how it ended. A stage still running when it ended 
 A statechart's run is followed through its steps: from the states it was in before a step, by the events the step took, to the states it is in after. A state it passed through within one step was entered, such as the state it started in and left at its first step. Where an event has rules to several states, the rule taken is the one to a state the run is in after the step.
 
 The transition the step drawn took is drawn in petrol, its chip's words too, heavier than the other arrows and over any arrow it shares a line with, or written in petrol in its card. Its arrow is drawn along its line from the state it leaves, in 0.7s, so a person sees it taken. A card's mark changes colour over 0.4s. The states a run that did not fail ended in are outlined in moss, as states it was in.
-
-A toolkit of an agent is folded where the run has not asked for its tools by the step drawn. A folded toolkit is a small holder with its name and how many tools it has, `2 tools`, and its tooltip names them. The folded toolkits are one below another, in one column after the others, so the toolkits the run uses are drawn side by side and in view together.
 
 A flow's stage and a statechart's state whose job waits for a hook are outlined in amber, as held. An agent's hook is going while a tool waits for it: the tool is outlined in amber, as held, and the hook as going now. The run a hook's job started is linked from the hook's card.

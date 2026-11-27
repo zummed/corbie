@@ -71,17 +71,11 @@ func lying(kind string, args []string) {
 	asks := func(asks ...instance.Ask) { out.Step.Asks = append(out.Step.Asks, asks...) }
 	ask := func(a instance.Ask) { asks(a) }
 	soon := in.Time.Add(time.Minute)
-	// A lie is told once: after it, a step asks for nothing. "after a list" is
-	// another lie, told at the second step, the first a listed agent takes
-	// here.
+	// A lie is told once: after it, a step asks for nothing.
 	if kind == "grown" {
 		out.State, out.Step = instance.State{}, instance.Step{}
 	}
-	second := kind == "after a list" && max(in.Number, in.Step.Number) == 2
-	if second {
-		kind, args = args[0], args[1:]
-	}
-	if max(in.Number, in.Step.Number) > 1 && !second {
+	if max(in.Number, in.Step.Number) > 1 {
 		if kind == "grown" && max(in.Number, in.Step.Number) == 2 {
 			out.Requests = []machine.Request{{Ticket: &machine.TicketNamed{ID: "y", Name: "y", Value: strings.Repeat("a", 3<<20)}}}
 		}
@@ -356,18 +350,16 @@ func Test_ctl_answer_with_many_sends_fails_its_machine(t *testing.T) {
 
 // A step of a type no definition of which can send to an address cannot say
 // so, however odd the address.
-func Test_ctl_answer_of_a_listed_agent_cannot_send_to_an_address(t *testing.T) {
+func Test_ctl_answer_of_an_agent_cannot_send_to_an_address(t *testing.T) {
 	for _, lie := range [][]string{{"address send", "/t/room", "chat:1"}, {"strange addresses"}} {
 		w := newWorld(t)
 		target := w.rooms(nil)
 		w.say(target, "say", 1, "one")
 		w.settle()
 		room := w.runsOf("talk")[0]
-		run, r1 := w.listed()
-		w.lieNext("after a list", lie...)
-		w.result(r1, run, "t", oneTool)
+		run := w.lied(madeAgent, lie[0], lie[1:]...)
 		w.settle()
-		if st := w.latest(run).State; st.Status != instance.Failed || !strings.Contains(st.Error.Error, "sent to an address") {
+		if st := w.latest(w.child(run)).State; st.Status != instance.Failed || !strings.Contains(st.Error.Error, "sent to an address") {
 			t.Fatalf("%s: the agent is %s: %+v", lie[0], st.Status, st.Error)
 		}
 		if steps := w.steps(room); len(steps) != 1 {
@@ -375,6 +367,8 @@ func Test_ctl_answer_of_a_listed_agent_cannot_send_to_an_address(t *testing.T) {
 		}
 	}
 }
+
+const madeAgent = "agent: made\nmodel: { name: m, service: anthropic, address: \"http://127.0.0.1:1\", secret: KEY }\nprompt: hello\n"
 
 const plain = "flow: plain\nstages:\n  a: { job: ./step.js }\n"
 
@@ -1005,61 +999,6 @@ func Test_ctl_client_start_names_a_location(t *testing.T) {
 	}
 }
 
-// lister is an owner's agent with an entry that lists tools from elsewhere,
-// and a toolkit.
-const lister = `
-	agent: lister
-	model: { name: m, service: anthropic, address: "http://127.0.0.1:1", secret: KEY }
-	hooks: { ok: { before: ./ok.js, when: "${job.approve}" } }
-	prompt: hello
-	tools:
-	  t:
-	    list: { script: ./step.js }
-	    job: ./step.js
-	toolkits:
-	  s: { include: ./toolkit.yaml }
-`
-
-var listerFiles = map[string]string{"step.js": "return 1", "ok.js": "return {}",
-	"toolkit.yaml": "description: Things.\ntools:\n  u: { description: U, job: ./step.js }\n"}
-
-// listed runs lister as far as the runner that has its list, and gives a tool.
-func (w *world) listed() (run string, r1 *identity.Identity) {
-	w.t.Helper()
-	r1 = w.newRunner()
-	w.secret("KEY", "k", "/")
-	run = w.submit(lister, listerFiles, nil)
-	w.settle()
-	return run, r1
-}
-
-var oneTool = instance.Result{Status: instance.Done, Output: []any{
-	map[string]any{"name": "read", "description": "Read", "args": map[string]any{"type": "object"}}}}
-
-// A list brings shapes from outside the definition, so what follows it is
-// taken in a process of its own. The first step holds nothing from outside.
-func Test_ctl_listed_agent_steps_after_its_first_are_taken_in_a_process(t *testing.T) {
-	w := newWorld(t)
-	w.ctrl.Command = []string{"/nonexistent/no-step-process"}
-	run, r1 := w.listed()
-	if st := w.latest(run).State; st.Status != instance.Running {
-		t.Fatalf("after its first step, the agent is %+v", st)
-	}
-	w.result(r1, run, "t", oneTool)
-	w.settle()
-	if st := w.latest(run).State; st.Status != instance.Failed || !strings.Contains(st.Error.Error, "the step's process could not be started") {
-		t.Fatalf("with no process, the agent is %s: %+v", st.Status, st.Error)
-	}
-	w = newWorld(t)
-	run, r1 = w.listed()
-	w.result(r1, run, "t", oneTool)
-	w.settle()
-	turn := w.inboxOf(r1)[w.jobName(r1, "turn")]
-	if turn == nil || !strings.Contains(fmt.Sprint(turn.Job.Input), "t_read") {
-		t.Fatalf("the turn is %+v", turn)
-	}
-}
-
 // jobName gives the name in a runner's inbox of a job.
 func (w *world) jobName(r1 *identity.Identity, job string) string {
 	w.t.Helper()
@@ -1069,39 +1008,6 @@ func (w *world) jobName(r1 *identity.Identity, job string) string {
 		}
 	}
 	return ""
-}
-
-// A step that passes a limit fails that agent, with the reason, and nothing
-// else.
-func Test_ctl_listed_step_past_a_limit_fails_that_agent(t *testing.T) {
-	w := newWorld(t)
-	owner := w.submit(family, nil, nil)
-	run, r1 := w.listed()
-	w.ctrl.Command, w.ctrl.StepTime = []string{os.Args[0], stepThatHangs, t.TempDir() + "/started"}, 100*time.Millisecond
-	w.result(r1, run, "t", oneTool)
-	w.settle()
-	if st := w.latest(run).State; st.Status != instance.Failed || !strings.Contains(st.Error.Error, "may take") {
-		t.Fatalf("the agent is %s: %+v", st.Status, st.Error)
-	}
-	w.done(owner)
-}
-
-// A shape from outside that costs too much to read costs that agent, and the
-// controller goes on with the others.
-func Test_ctl_listed_shape_past_a_limit_fails_that_agent(t *testing.T) {
-	w := newWorld(t)
-	owner := w.submit(family, nil, nil)
-	run, r1 := w.listed()
-	w.ctrl.StepTime = 500 * time.Millisecond
-	huge := map[string]any{"pattern": strings.Repeat("(a{1000})", 3000)}
-	w.result(r1, run, "t", instance.Result{Status: instance.Done, Output: []any{map[string]any{"name": "read",
-		"args": map[string]any{"type": "object", "allOf": []any{huge, huge, huge, huge, huge, huge, huge, huge}}}}})
-	w.settle()
-	st := w.latest(run).State
-	if st.Status != instance.Failed || !strings.Contains(st.Error.Error, "may take") && !strings.Contains(st.Error.Error, "without an answer") {
-		t.Fatalf("the agent is %s: %+v", st.Status, st.Error)
-	}
-	w.done(owner)
 }
 
 // A machine stored by a job goes past what a define checks. What it costs to
@@ -1161,21 +1067,6 @@ func Test_ctl_made_definition_past_a_limit_fails_that_machine(t *testing.T) {
 		if st.Status != instance.Failed || !strings.Contains(st.Error.Error, "may take") && !strings.Contains(st.Error.Error, "without an answer") {
 			t.Errorf("%s: the machine is %s: %+v", name, st.Status, st.Error)
 		}
-	}
-}
-
-// An owner's agent takes its steps in a process, and its hooks are still its
-// definition's words: an answer has nowhere to name or fill one, and the hook
-// is read from the definition and filled here.
-func Test_ctl_answer_cannot_write_a_listed_agents_hook(t *testing.T) {
-	w := newWorld(t)
-	run, r1 := w.listed()
-	w.lieNext("after a list", "fills")
-	w.result(r1, run, "t", oneTool)
-	w.settle()
-	hook := w.inboxOf(r1)[w.jobName(r1, "x.ok")]
-	if hook == nil || hook.Job.Path != "./ok.js" {
-		t.Errorf("the hook's job is %+v", hook)
 	}
 }
 

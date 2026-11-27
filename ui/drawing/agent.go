@@ -6,12 +6,14 @@ import (
 
 	"github.com/zummed/corbie/machine"
 	"github.com/zummed/corbie/machine/agent"
+	"github.com/zummed/corbie/machine/toolkit"
 )
 
-// agentOf gives an agent's model, what it can call, and its hooks. On a run's
-// page a toolkit whose tools the run has not asked for is folded.
+// agentOf gives an agent's model, its entries, each a card, and its hooks.
+// An entry that names a toolkit is marked by the jobs the run asked for
+// through it.
 func agentOf(def *machine.Definition, a *agent.Agent, run *Run, w *walker) *Agent {
-	out := &Agent{Model: a.Model.Name, Turns: a.Turns, Toolkits: []Toolkit{}, Turn: run.latest().Turn}
+	out := &Agent{Model: a.Model.Name, Turns: a.Turns, Tools: []Tool{}, Turn: run.latest().Turn}
 	if out.Model == "" {
 		out.Model = "model"
 	}
@@ -23,44 +25,25 @@ func agentOf(def *machine.Definition, a *agent.Agent, run *Run, w *walker) *Agen
 	if out.Mark != "" && out.Mark != "failed" && out.Mark != "now" {
 		out.Mark = "done"
 	}
-	own := w.file
-	if own == "" {
-		own = fileOf(def.Lines[def.Type])
-	}
-	at := map[string]int{}
-	for _, name := range sortedKeys(a.Toolkits) {
-		at[name] = len(out.Toolkits)
-		out.Toolkits = append(out.Toolkits, Toolkit{Name: name, File: ToolkitFile(def, name, own), When: a.Toolkits[name].When, Toolkit: true, Tools: []Tool{}})
-	}
-	var free *Toolkit
 	for _, t := range sortedKeys(a.Tools) {
 		tool := a.Tools[t]
 		if tool.Job != nil && strings.HasPrefix(tool.Job.Script, "corbie:") {
 			continue // Corbie's own, which no definition writes
 		}
-		place := "tools." + t
-		if tool.Toolkit != "" {
-			place = "toolkits." + tool.Toolkit + ".tools." + t
-		}
-		c := Card{Name: t, Title: titleOf(tool.Description, tool.When), Line: lineOf(w.lines, place)}
+		c := Card{Name: t, Title: titleOf(tool.Description, tool.When), Line: lineOf(w.lines, "tools."+t)}
 		w.describe(&c, t, tool.Job)
-		it := Tool{Card: c, When: tool.When != "", Mark: jobMark(run, t)}
-		if i, ok := at[tool.Toolkit]; ok {
-			out.Toolkits[i].Tools = append(out.Toolkits[i].Tools, it)
-			continue
+		if tool.Toolkit {
+			c.Icon = "toolkit"
 		}
-		if free == nil {
-			free = &Toolkit{Tools: []Tool{}}
-		}
-		free.Tools = append(free.Tools, it)
+		out.Tools = append(out.Tools, Tool{Card: c, When: tool.When != "", Mark: jobMark(run, t)})
 	}
-	if free != nil {
-		out.Toolkits = append(out.Toolkits, *free)
-	}
-	for i, g := range out.Toolkits {
-		used := slices.ContainsFunc(g.Tools, func(t Tool) bool { return t.Mark != "never" })
-		out.Toolkits[i].Folded = run != nil && g.Toolkit && !used
-	}
+	out.Hooks = hooksOf(def, run, w)
+	return out
+}
+
+// hooksOf gives a definition's hooks, each a card with its mark.
+func hooksOf(def *machine.Definition, run *Run, w *walker) []Hook {
+	var out []Hook
 	for _, name := range sortedKeys(def.Hooks) {
 		h, when, job := def.Hooks[name], "before", def.Hooks[name].Before
 		if job == nil {
@@ -68,7 +51,24 @@ func agentOf(def *machine.Definition, a *agent.Agent, run *Run, w *walker) *Agen
 		}
 		c := Card{Name: name, Title: titleOf(when+" a job", h.When), Line: lineOf(w.lines, "hooks."+name)}
 		w.describe(&c, HookJob(name), job)
-		out.Hooks = append(out.Hooks, Hook{Card: c, When: h.When != "", Mark: jobMark(run, HookJob(name))})
+		out = append(out, Hook{Card: c, When: h.When != "", Mark: jobMark(run, HookJob(name))})
+	}
+	return out
+}
+
+// kitOf gives a toolkit's tools, each a card with its mark, or the one job
+// that answers every request, and its hooks.
+func kitOf(def *machine.Definition, k *toolkit.Toolkit, run *Run, w *walker) *Kit {
+	out := &Kit{Tools: []Tool{}, Hooks: hooksOf(def, run, w)}
+	if k.Job != nil {
+		c := Card{Name: "job", Title: "answers every request", Line: lineOf(w.lines, "job")}
+		w.describe(&c, "job", k.Job)
+		out.Tools = append(out.Tools, Tool{Card: c, Mark: jobMark(run, "job")})
+	}
+	for _, name := range sortedKeys(k.Tools) {
+		c := Card{Name: name, Title: k.Tools[name].Description, Line: lineOf(w.lines, "tools."+name)}
+		w.describe(&c, name, k.Tools[name].Job)
+		out.Tools = append(out.Tools, Tool{Card: c, Mark: jobMark(run, name)})
 	}
 	return out
 }

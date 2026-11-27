@@ -9,14 +9,13 @@ The header is at the top of every page. It holds Corbie's logo, the pages the UI
 ```
 Runs         the list of runs, and each run's page
 Machines     the machines the controller recorded, when the UI acts as the controller
-Toolkits     the toolkits of those machines, and what offers each
 Controller   runners, clients and secrets, when the UI acts as the controller
 Manual       Corbie's manual, as corbie manual web serves it, in Corbie's own look
 ```
 
 ## The look
 
-The UI is a dashboard. It uses the whole window, with a 20px margin and no column of fixed width. The page fills the window under the header: the Machines and Toolkits pages and a run's page fit in it, and their panels scroll inside.
+The UI is a dashboard. It uses the whole window, with a 20px margin and no column of fixed width. The page fills the window under the header: the Machines page and a run's page fit in it, and their panels scroll inside.
 
 - Data is set in IBM Plex Mono at 13px, secondary data at 11.5px, and labels and buttons in IBM Plex Sans. Both are in the binary, and no page of the UI fetches anything from another site.
 - A page carries labels and data. It writes a sentence only where it cannot show a thing, or where a person must act to fix one.
@@ -40,7 +39,7 @@ button       30px high, corners of 6px; one that starts or adds something is fil
 label        a section's name, in capitals
 ```
 
-A handle is between Steps and the drawing on a run's page, between the drawing and the details, and between the list and the view on the Machines and Toolkits pages. The browser keeps each size in its local storage, for every page of the UI.
+A handle is between Steps and the drawing on a run's page, between the drawing and the details, and between the list and the view on the Machines page. The browser keeps each size in its local storage, for every page of the UI.
 
 ## Commands
 

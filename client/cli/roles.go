@@ -310,14 +310,15 @@ func (e *Env) start(cfg identity.Config, named []item, before func() error) erro
 			}
 			notice, stop := s.Notice(store.Inbox(id.Name))
 			defer stop()
-			running = append(running, role.Role{Name: name, Pass: controller.New(id, s).Pass, Interval: set.interval, Notice: notice})
+			pass := e.warned(name, set.interval, controller.New(id, s).Pass, map[string]store.Store{"": s})
+			running = append(running, role.Role{Name: name, Pass: pass, Interval: set.interval, Notice: notice})
 			e.Say("controller %s  (%s)", id.Name, id.Fingerprint())
-			e.unreported(name, s, set.interval)
 		case "runner":
 			// A runner whose card is made after the start is started at the
 			// first pass that finds the card.
 			woken := make(chan struct{}, 1)
 			var pass role.Pass
+			stores := map[string]store.Store{}
 			begin := func() error {
 				id, err := cfg.Load(e.ctx, identity.Runner)
 				if err != nil {
@@ -325,7 +326,6 @@ func (e *Env) start(cfg identity.Config, named []item, before func() error) erro
 				}
 				// Each controller has its own store and its own ceiling, read
 				// afresh from the config at every pass.
-				stores := map[string]store.Store{}
 				started := false // a controller trusted after the start is printed
 				trusted := func() ([]runner.Served, error) {
 					held, err := cfg.TrustList(identity.Runner)
@@ -355,7 +355,6 @@ func (e *Env) start(cfg identity.Config, named []item, before func() error) erro
 							stores[t.Store] = s
 							if started {
 								e.Say("runner %s  serving the controller %s", id.Name, t.Card.Name)
-								e.unreported(name, s, set.interval)
 							}
 							notice, _ := s.Notice(store.Inbox(id.Name))
 							go func() {
@@ -385,9 +384,6 @@ func (e *Env) start(cfg identity.Config, named []item, before func() error) erro
 				if len(serves) == 0 {
 					e.Say("runner %s  trusts no controller yet, and takes jobs once it trusts one: corbie runner trust takes a controller's card", id.Name)
 				}
-				for _, s := range stores {
-					e.unreported(name, s, set.interval)
-				}
 				return nil
 			}
 			if !cfg.Has(identity.Runner) {
@@ -395,7 +391,7 @@ func (e *Env) start(cfg identity.Config, named []item, before func() error) erro
 			} else if err := begin(); err != nil {
 				return err
 			}
-			running = append(running, role.Role{Name: name, Interval: set.interval, Notice: woken, Pass: func(ctx context.Context) (time.Time, error) {
+			running = append(running, role.Role{Name: name, Interval: set.interval, Notice: woken, Pass: e.warned(name, set.interval, func(ctx context.Context) (time.Time, error) {
 				if pass == nil {
 					if !cfg.Has(identity.Runner) {
 						return time.Time{}, nil
@@ -405,7 +401,7 @@ func (e *Env) start(cfg identity.Config, named []item, before func() error) erro
 					}
 				}
 				return pass(ctx)
-			}})
+			}, stores)})
 		case "gateway":
 			e.listen, e.tokenFile, e.clients = set.listen, set.tokenFile, set.clients
 			e.oidc = set.oidc
@@ -480,18 +476,41 @@ func (e *Env) start(cfg identity.Config, named []item, before func() error) erro
 	}
 }
 
-// unreported warns, as a role starts, that the operating system does not
-// report what other processes write into the role's store, and says why.
-func (e *Env) unreported(name string, s store.Store, interval time.Duration) {
+// warned gives a role's pass that warns of each of the role's stores the
+// operating system does not report the writes to: before the first pass,
+// and after any pass by whose end the system has refused. It warns of a
+// store once. The pass may add to stores.
+func (e *Env) warned(name string, interval time.Duration, pass role.Pass, stores map[string]store.Store) role.Pass {
+	said := map[store.Store]bool{}
+	look := func() {
+		for _, s := range stores {
+			if !said[s] {
+				said[s] = e.unreported(name, s, interval)
+			}
+		}
+	}
+	return func(ctx context.Context) (time.Time, error) {
+		look()
+		next, err := pass(ctx)
+		look()
+		return next, err
+	}
+}
+
+// unreported warns that the operating system does not report what other
+// processes write into a role's store, and says why. It says whether it
+// warned.
+func (e *Env) unreported(name string, s store.Store, interval time.Duration) bool {
 	err := store.Unreported(s)
 	if err == nil {
-		return
+		return false
 	}
 	limits := ""
 	if runtime.GOOS == "linux" && (errors.Is(err, syscall.EMFILE) || errors.Is(err, syscall.ENOSPC)) {
 		limits = " On Linux the limits are fs.inotify.max_user_instances and fs.inotify.max_user_watches."
 	}
 	e.Say("%s: warning: the operating system does not report writes to the store's directory (%s). A message another process writes is taken at the next poll, every %s.%s", name, e.clean(err.Error()), interval, limits)
+	return true
 }
 
 // programEnv is the environment a program corbie starts is given: this

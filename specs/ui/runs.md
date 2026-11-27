@@ -273,7 +273,7 @@ a child                     its root's machine, unfolded down the cards of the j
 The details of a row have four tabs, and Open opens the row's run's page:
 
 ```
-What happened   the row's facts: the job and its machine or script, the toolkit a tool is from (the `toolkit` of the job's `tool`), a tool's arguments, the hook a job is held for and the run it started, the turn, the error, the address sent to and the run that took it
+What happened   the row's facts: the job and its machine or script, the toolkit a job is for (the `toolkit` of the job's `tool`), a tool's arguments, the hook a job is held for and the run it started, the turn, the error, the address sent to and the run that took it
 Input           what the row's job, call or event was given
 Output          what it gave back, and what the row's job logged in that attempt, each value with its time
 Record          the values the run's jobs emitted since the step before, and the row's step, in the words corbie run show --record prints, each named by its run's machine

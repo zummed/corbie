@@ -11,56 +11,6 @@ After 0.41.0
   a runner or a client, after a member moves   saves the members' new addresses itself; enrolling it again is not needed
   --store corbie://[fe80::1%eth0]:8372         refused: the % is written %25
 
-After 0.40.0
-------------
-
-  corbie start, with no runner card   stays running, and starts the runner once corbie runner card is run
-  corbie check                        its run is kept for an hour; before, a week
-
-After 0.39.0
-------------
-
-Update the computers that serve a directory before its runners and clients. A
-runner or a client stops waiting for a server that sends nothing for three
-seconds, and a server of 0.39.0 sends nothing while it works on a request.
-
-  corbie init store, on a member       prints a row for each member: its name, its address, and whether it leads
-  corbie init store --json             has `name`, and `members`: each one's `name`, `address` and `state`
-  corbie init store --listen fe80::…   refused: an IPv6 link-local address
-  corbie start runner, with no trust   stays running, and takes jobs once corbie runner trust is run
-
-A store with more than one member is made again. With no run in progress,
-stop `corbie start` on every member and run `corbie init store --alone` on
-one. The others join with empty directories, as
-`corbie manual served-directory` says.
-
-  corbie init store --join corbie://host:port   removed: --join takes what corbie init store --admit printed
-  controller/identity, copied by hand           not needed: --admit prints it encrypted to the computer's card
-  corbie init store --remove host:port          takes the member's name: --remove sw2
-  corbie init store --listen, on a member       changes the member's address; before, refused
-
-After 0.38.0
-------------
-
-`corbie init store` with no `--listen` keeps the address saved before. Before,
-it saved `:8372` again. Write `corbie init store --listen :8372` for that.
-
-After 0.34.0
-------------
-
-Change `ask:` to a hook, as `corbie manual hooks` says.
-
-  ask: ./ask.js                           hooks: { approval: { before: ./ask.js, when: "${job.approve}" } }
-  input.jobs, a list                      input.job, one job: the hook runs once for each held job
-  input.asking.machine                    input.job.run.machine
-  a job's asked: { tool, args, … }        input.job.tool: { name, args, … }
-  return { approved: [names], note }      return { ok: true } or { ok: false, note }
-  the nearest ask above a job             every hook above a job runs, the job's own machine's first
-  a stage, state or tool named ask        allowed
-
-`approve: true` and `approve: [exec]` mark a job, as before. A marked job that
-no `before` hook is for fails with status `denied`.
-
 Change an agent's `toolkits:` and `list:` to entries of `tools:` that name a
 toolkit, as `corbie manual agent` says.
 
@@ -118,6 +68,56 @@ toolkit, as `corbie manual agent` says.
   `corbie manual toolkit` says.
 - `server.toolkit(request)` of the `mcp` plugin answers a toolkit's request
   for an MCP server, as `corbie manual mcp` says.
+
+After 0.40.0
+------------
+
+  corbie start, with no runner card   stays running, and starts the runner once corbie runner card is run
+  corbie check                        its run is kept for an hour; before, a week
+
+After 0.39.0
+------------
+
+Update the computers that serve a directory before its runners and clients. A
+runner or a client stops waiting for a server that sends nothing for three
+seconds, and a server of 0.39.0 sends nothing while it works on a request.
+
+  corbie init store, on a member       prints a row for each member: its name, its address, and whether it leads
+  corbie init store --json             has `name`, and `members`: each one's `name`, `address` and `state`
+  corbie init store --listen fe80::…   refused: an IPv6 link-local address
+  corbie start runner, with no trust   stays running, and takes jobs once corbie runner trust is run
+
+A store with more than one member is made again. With no run in progress,
+stop `corbie start` on every member and run `corbie init store --alone` on
+one. The others join with empty directories, as
+`corbie manual served-directory` says.
+
+  corbie init store --join corbie://host:port   removed: --join takes what corbie init store --admit printed
+  controller/identity, copied by hand           not needed: --admit prints it encrypted to the computer's card
+  corbie init store --remove host:port          takes the member's name: --remove sw2
+  corbie init store --listen, on a member       changes the member's address; before, refused
+
+After 0.38.0
+------------
+
+`corbie init store` with no `--listen` keeps the address saved before. Before,
+it saved `:8372` again. Write `corbie init store --listen :8372` for that.
+
+After 0.34.0
+------------
+
+Change `ask:` to a hook, as `corbie manual hooks` says.
+
+  ask: ./ask.js                           hooks: { approval: { before: ./ask.js, when: "${job.approve}" } }
+  input.jobs, a list                      input.job, one job: the hook runs once for each held job
+  input.asking.machine                    input.job.run.machine
+  a job's asked: { tool, args, … }        input.job.tool: { name, args, … }
+  return { approved: [names], note }      return { ok: true } or { ok: false, note }
+  the nearest ask above a job             every hook above a job runs, the job's own machine's first
+  a stage, state or tool named ask        allowed
+
+`approve: true` and `approve: [exec]` mark a job, as before. A marked job that
+no `before` hook is for fails with status `denied`.
 
 After 0.32.0
 ------------

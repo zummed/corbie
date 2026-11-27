@@ -510,6 +510,29 @@ func (e *Env) address(recorded string) (string, error) {
 	return "", fmt.Errorf("no store is known: name one with --store, or set this computer up with corbie init")
 }
 
+// moved saves the address a store's members now have in the trust a runner
+// or a client holds for the controller, where the trust still has the
+// address the store was opened at, and says so.
+func (e *Env) moved(kind identity.Kind, controller, was, now string) {
+	err := func() error {
+		cfg, err := e.Config()
+		if err != nil {
+			return err
+		}
+		held, err := cfg.Trust(kind, controller)
+		if err != nil || held == nil || held.Store != was {
+			return err
+		}
+		held.Store = now
+		return cfg.SetTrust(kind, *held)
+	}()
+	if err != nil {
+		e.Say("the store's members are now at %s, and this could not be saved: %s", now, e.clean(err.Error()))
+		return
+	}
+	e.Say("the store's members are now at %s", now)
+}
+
 // Address is the address of the store the command opened last, or "" when
 // it has opened none.
 func (e *Env) Address() string {
@@ -554,9 +577,15 @@ func (e *Env) Open(recorded string, as *identity.Identity, ctl identity.Card) (s
 	case as.Kind == identity.Controller:
 		return nil, fmt.Errorf("a controller uses its directory directly, on the computer that serves it: its store is the directory, not %q", address)
 	default:
+		// The members' addresses, as a member names them, are saved where
+		// the address came from this party's trust.
+		var moved func(string)
+		if address == recorded {
+			moved = func(now string) { e.moved(as.Kind, ctl.Name, recorded, now) }
+		}
 		var proof tls.Certificate
 		if proof, err = as.Proof(); err == nil {
-			s, err = store.OpenServed(address, as.Name, proof, ctl.SignKey())
+			s, err = store.OpenServed(address, as.Name, proof, ctl.SignKey(), moved)
 		}
 	}
 	if err != nil {

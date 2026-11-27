@@ -452,6 +452,23 @@ func exists(path string) bool {
 	return err == nil
 }
 
+// counted gives the addresses of the members that count, as this member has
+// them, in the order of the members' names and with a comma between: what
+// follows corbie:// in the store's address.
+func (m *Member) counted() string {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	voters := slices.Clone(m.voters)
+	slices.SortFunc(voters, func(a, b uint64) int { return strings.Compare(m.called[a], m.called[b]) })
+	var at []string
+	for _, id := range voters {
+		if m.addrs[id] != "" {
+			at = append(at, m.addrs[id])
+		}
+	}
+	return strings.Join(at, ",")
+}
+
 // Members gives the members' names as this member has them, voters first,
 // the leader's address where it knows one, and whether the directory has
 // more than one member at all.

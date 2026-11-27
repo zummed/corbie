@@ -36,11 +36,15 @@ type served struct {
 	party  string
 	client *http.Client
 
-	// origins are the members the address names, and origin the one last
-	// found to answer: the leader, once a member has said who that is.
+	// origins are the members the address names, or those a member has
+	// named since, and origin the one last found to answer: the leader,
+	// once a member has said who that is.
 	mu      sync.Mutex
 	origins []string
 	origin  string
+	// moved, if set, is told the store's address when a member names
+	// other members than origins holds.
+	moved func(address string)
 }
 
 // errElsewhere is the answer of a member that does not lead the store and
@@ -84,8 +88,9 @@ var servedSilence = 3 * time.Second
 
 // OpenServed opens the directory served at an address as a party: proof is the
 // party's own, and keeper is the key of the controller whose machine serves
-// the directory.
-func OpenServed(address, party string, proof tls.Certificate, keeper ed25519.PublicKey) (Store, error) {
+// the directory. moved, where given, is told the store's address each time a
+// member names other members than the party has.
+func OpenServed(address, party string, proof tls.Certificate, keeper ed25519.PublicKey, moved func(address string)) (Store, error) {
 	hosts, err := ServedHosts(address)
 	if err != nil {
 		return nil, err
@@ -94,7 +99,7 @@ func OpenServed(address, party string, proof tls.Certificate, keeper ed25519.Pub
 	for i, host := range hosts {
 		origins[i] = "https://" + host
 	}
-	return &served{origins: origins, origin: origins[0], party: party,
+	return &served{origins: origins, origin: origins[0], party: party, moved: moved,
 		client: &http.Client{Transport: &http.Transport{
 			TLSClientConfig: &tls.Config{
 				Certificates: []tls.Certificate{proof},
@@ -127,7 +132,7 @@ func OpenServed(address, party string, proof tls.Certificate, keeper ed25519.Pub
 // member it names, which is nothing where it knows of none. An error is a
 // member that did not answer.
 func Leader(ctx context.Context, member, party string, proof tls.Certificate, keeper ed25519.PublicKey) (leads bool, leader string, err error) {
-	opened, err := OpenServed(ServedScheme+member, party, proof, keeper)
+	opened, err := OpenServed(ServedScheme+member, party, proof, keeper, nil)
 	if err != nil {
 		return false, "", err
 	}
@@ -155,11 +160,57 @@ func ServedHosts(address string) ([]string, error) {
 	}
 	hosts := strings.Split(rest, ",")
 	for _, host := range hosts {
-		if name, port, err := net.SplitHostPort(host); err != nil || name == "" || port == "" {
+		name, port, err := net.SplitHostPort(host)
+		if err != nil || name == "" || port == "" {
 			return nil, bad
+		}
+		// An address is a URL, where a % begins an escape.
+		if _, zone, zoned := strings.Cut(name, "%"); zoned && !strings.HasPrefix(zone, "25") {
+			return nil, fmt.Errorf("store: in a served directory's address the %% before a network interface's name is written %%25: corbie://[fe80::1%%25eth0]:8372")
 		}
 	}
 	return hosts, nil
+}
+
+// ServedAddress gives the address of a served directory as the store has it
+// now, with the members a member last named, or nothing for any other store.
+func ServedAddress(s Store) string {
+	served, ok := s.(*served)
+	if !ok {
+		return ""
+	}
+	served.mu.Lock()
+	defer served.mu.Unlock()
+	hosts := make([]string, len(served.origins))
+	for i, origin := range served.origins {
+		hosts[i] = strings.TrimPrefix(origin, "https://")
+	}
+	return ServedScheme + strings.Join(hosts, ",")
+}
+
+// learn takes the members a member named in its answer. Where they are
+// others than the party has, the party asks them from then on.
+func (s *served) learn(members string) {
+	if members == "" {
+		return
+	}
+	hosts, err := ServedHosts(ServedScheme + members)
+	if err != nil {
+		return
+	}
+	origins := make([]string, len(hosts))
+	for i, host := range hosts {
+		origins[i] = "https://" + host
+	}
+	s.mu.Lock()
+	same := slices.Equal(slices.Sorted(slices.Values(origins)), slices.Sorted(slices.Values(s.origins)))
+	if !same {
+		s.origins = origins
+	}
+	s.mu.Unlock()
+	if !same && s.moved != nil {
+		s.moved(ServedScheme + members)
+	}
 }
 
 // at gives the member to ask.
@@ -315,6 +366,7 @@ func (s *served) once(ctx context.Context, origin string, c call) (a servedAnswe
 	}
 	defer resp.Body.Close()
 	heard()
+	s.learn(resp.Header.Get(headMembers))
 	if resp.StatusCode == http.StatusMisdirectedRequest {
 		io.Copy(io.Discard, resp.Body)
 		leader := resp.Header.Get(headLeader)

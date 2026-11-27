@@ -111,14 +111,18 @@ hand. `--join` needs an empty directory. Do the same on a third computer.
 - A member is known by its name. `corbie init store --listen <address>` on a
   member, then `corbie start`, changes its address, and the other members
   are told it.
-- A runner or a client keeps the addresses it was given.
-  `corbie controller enrol <name>` prints the members' addresses again, for
-  `corbie runner trust -` or `corbie client trust -`.
+- A member's answers carry the members' addresses as they are now. A runner
+  or a client saves them when they change, and prints
+  `the store's members are now at corbie://…`.
 - A name is one member's. To replace a computer, or a member that lost its
   directory, run `corbie init store --remove <name>` on another member, then
   the line above on the computer.
+- A runner or a client is known by its name and its key. On a computer that
+  replaces another under the same names, `corbie controller enrol` takes
+  `--replace` for each new card.
 - `--listen` takes an address that every other computer connects to, and so
-  no IPv6 link-local address, `fe80::…`.
+  no IPv6 link-local address, `fe80::…`. In `--store`, the `%` before a
+  network interface's name is written `%25`.
 - A runner or a client stops waiting for a member that sends nothing for three
   seconds, as one that lost power does, and asks the next.
 - With members, the store refuses a file whose path in the store is not UTF-8,

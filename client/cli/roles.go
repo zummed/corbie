@@ -339,6 +339,16 @@ func (e *Env) start(cfg identity.Config, named []item, before func() error) erro
 						}
 						s, opened := stores[t.Store]
 						if !opened {
+							// The address the members now have, saved in the
+							// trust, is the store opened at the one before.
+							for at, was := range stores {
+								if store.ServedAddress(was) == t.Store {
+									delete(stores, at)
+									stores[t.Store], s, opened = was, was, true
+								}
+							}
+						}
+						if !opened {
 							if s, err = e.Open(t.Store, id, t.Card); err != nil {
 								return nil, fmt.Errorf("the store of the controller %q: %w", t.Card.Name, err)
 							}

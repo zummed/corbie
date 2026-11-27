@@ -135,15 +135,23 @@ func Test_store_members_join_carry_on_and_leave(t *testing.T) {
 		out := sw3.ok("", "init", "store")
 		return strings.Contains(out, "sw2   "+moved+"   ") && !strings.Contains(out, at2+" ") && strings.Count(out, "   leads\n") == 1
 	})
-	// A party keeps the addresses it was given. The runner on the second
-	// member is given them as they now are, and so carries on when the
-	// first member stops.
-	again2 := sw2.ok("", "controller", "enrol", "sw2")
-	if lines := strings.Split(strings.TrimSpace(again2), "\n"); len(lines) != 2 || lines[1] != "corbie://"+strings.Join([]string{at1, moved, at3}, ",") {
+	// A member's answer names the members' addresses as they now are. The
+	// runner on the second member and the client on the laptop each save
+	// them in their trust, and so carry on when the first member stops.
+	greets("moved")
+	now := "corbie://" + strings.Join([]string{at1, moved, at3}, ",")
+	for _, trust := range []string{filepath.Join(sw2.config, "runner", "trust", "fab-controller"), filepath.Join(laptop.config, "client", "trust", "fab-controller")} {
+		until(t, "the members' addresses saved in "+trust, func() bool {
+			held, err := os.ReadFile(trust)
+			if err != nil {
+				t.Fatal(err)
+			}
+			return strings.Contains(string(held), now)
+		})
+	}
+	if again2 := sw2.ok("", "controller", "enrol", "sw2"); !strings.HasSuffix(strings.TrimSpace(again2), now) {
 		t.Fatalf("enrol after a member's address changed printed %q", again2)
 	}
-	sw2.ok(again2, "runner", "trust", "-", "--ceiling", "all")
-	greets("moved")
 
 	// A name is one member's: a card of a member's name is not admitted,
 	// and a member's card is no party's.

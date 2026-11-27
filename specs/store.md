@@ -124,7 +124,7 @@ corbie start store --timeout 5m              closes a connection that sends noth
 
 The address other computers are given is the one `corbie init store` saved, with this computer's host name where it names every network interface. `corbie start store --listen` never changes it, `corbie init store` with no `--listen` keeps it, and `corbie init store --listen ""` serves the directory to no other computer.
 
-`corbie init store --listen` refuses an IPv6 link-local address, `fe80::…`. Only a computer on the same link connects to it, and each writes it with the name of its own network interface.
+`corbie init store --listen` refuses an IPv6 link-local address, `fe80::…`. Only a computer on the same link connects to it, and each writes it with the name of its own network interface. In a store's address the `%` before that name is written `%25`, as in any URL, and an address with another `%` is refused: `corbie://[fe80::1%25eth0]:8372`.
 
 There are no keys to a served directory: a party uses the identity it already has. A served directory's wire is private to the two computers. When a connection is made each end proves its own identity key: the party speaks only to a computer that holds its controller's key, and the server speaks only to a party whose key is the one in the controller's trust list for the name it gives, read afresh for every request, so a party that is removed is turned away from its next request on. The server holds each party to its row of the table, exactly as the table is drawn.
 
@@ -213,7 +213,13 @@ A member has a name and an address:
 - A name is one member's. A card with a member's name is not admitted, and the members take no computer under it.
 - A computer that replaces a lost member, and a member whose directory is lost, joins after `corbie init store --remove <name>` on another member.
 
-Other parties are given `corbie://sw1:8372,sw2:8372,sw3:8372`, and reach the store while one computer of that address is a member and running. A party keeps the address it was given. `corbie controller enrol <name>` prints the members' addresses as they are now, and the party's `trust` saves them.
+Other parties are given `corbie://sw1:8372,sw2:8372,sw3:8372`, and reach the store while one computer of that address is a member and running. Every answer of a member carries the members' addresses as they are now. A runner or a client that is sent other addresses than it has asks those members from then on, saves the address in its trust for the controller, and prints it:
+
+```
+the store's members are now at corbie://sw1:8372,sw2:8372,sw4:8372
+```
+
+An address named with `--store` or `$CORBIE_STORE` is not saved.
 
 ```
   the leader stops                   the others elect a leader within seconds, and a party asks them at once

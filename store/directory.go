@@ -418,9 +418,14 @@ func (f *directory) names(ctx context.Context, under string) ([]string, error) {
 		return nil, err
 	}
 	defer unlock()
+	return f.walk(under)
+}
+
+// walk gives every name under the path, in order. Its caller has the lock.
+func (f *directory) walk(under string) ([]string, error) {
 	var names []string
 	top := f.path(under)
-	err = filepath.WalkDir(top, func(path string, d fs.DirEntry, err error) error {
+	err := filepath.WalkDir(top, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			if gone(err) {
 				return nil // deleted while the listing was going on
@@ -466,6 +471,20 @@ func (f *directory) First(ctx context.Context, under string, n int) ([]Listed, e
 		return nil, err
 	}
 	n = max(min(n, firstMost), 0)
+	names, err := f.first(ctx, under, n)
+	if err != nil {
+		return nil, err
+	}
+	return f.marked(ctx, names[:min(len(names), n)])
+}
+
+// first gives the names First reads for their marks, under one lock.
+func (f *directory) first(ctx context.Context, under string, n int) ([]string, error) {
+	unlock, err := f.lock(ctx, false)
+	if err != nil {
+		return nil, err
+	}
+	defer unlock()
 	entries, err := os.ReadDir(f.path(under))
 	if err != nil && !gone(err) {
 		return nil, err
@@ -486,14 +505,14 @@ func (f *directory) First(ctx context.Context, under string, n int) ([]Listed, e
 			names = append(names, at)
 			continue
 		}
-		below, err := f.names(ctx, at)
+		below, err := f.walk(at)
 		if err != nil {
 			return nil, err
 		}
 		names = append(names, below...)
 	}
 	slices.Sort(names)
-	return f.marked(ctx, names[:min(len(names), n)])
+	return names, nil
 }
 
 func (f *directory) Notice(under string) (<-chan struct{}, func()) {

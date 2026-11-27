@@ -5,6 +5,12 @@ Each section lists what changed after one release, the newest first.
 compatible before version 1: a file or a command written the old way is
 refused.
 
+After 0.40.0
+------------
+
+  corbie start, with no runner card   stays running, and starts the runner once corbie runner card is run
+  corbie check                        its run is kept for an hour; before, a week
+
 After 0.39.0
 ------------
 

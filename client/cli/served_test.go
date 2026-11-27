@@ -117,6 +117,27 @@ func TestARunnerStartedBeforeItTrustsAController(t *testing.T) {
 	}
 }
 
+// A runner whose card is made after corbie start is started when the card
+// is made, and takes jobs once it trusts the controller.
+func TestARunnerMadeAfterTheStart(t *testing.T) {
+	d := machine{t, filepath.Join(t.TempDir(), "desk")}
+	d.ok("", "init", "--store", filepath.Join(t.TempDir(), "store"), "--name", "desk", "--ceiling", "all")
+	d.ok("", "controller", "remove", "desk-runner")
+	if err := os.RemoveAll(filepath.Join(d.config, "runner")); err != nil {
+		t.Fatal(err)
+	}
+	said, _ := d.stays("start")
+	until(t, "corbie start to say that the computer has no runner", func() bool {
+		return strings.Contains(said.String(), "has no runner yet")
+	})
+	card := d.ok("", "runner", "card", "--name", "late")
+	until(t, "the runner to start", func() bool { return strings.Contains(said.String(), "runner late  (") })
+	d.ok(d.ok(card, "controller", "enrol", "-", "--tags", "late"), "runner", "trust", "-", "--ceiling", "all")
+	if status, f := d.check("--tag", "late"); status != 0 {
+		t.Fatalf("the check of a runner made after the start found %+v", f)
+	}
+}
+
 func TestServingIsTheControllersComputersAndADirectorysOnly(t *testing.T) {
 	// A machine that was never told where it serves does not serve.
 	plain := machine{t, filepath.Join(t.TempDir(), "plain")}

@@ -6,6 +6,7 @@ import (
 	"crypto/ed25519"
 	"crypto/rand"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"net"
 	"net/http"
@@ -238,7 +239,7 @@ func (e *Env) serve(listen string, timeout time.Duration) (func(), error) {
 	if err != nil {
 		return nil, err
 	}
-	ctl, directory, err := e.Controller()
+	ctl, err := cfg.Load(e.ctx, identity.Controller)
 	if err != nil {
 		return nil, err
 	}
@@ -248,11 +249,36 @@ func (e *Env) serve(listen string, timeout time.Duration) (func(), error) {
 	if err != nil {
 		return nil, err
 	}
+	dir, err := store.DirectoryAt(address)
+	if err != nil {
+		return nil, err
+	}
+	// The server alone reads and writes this computer's copy as it is.
+	self, err := memberCard(e, cfg)
+	if err != nil {
+		return nil, err
+	}
+	member, err := store.OpenMember(dir, self.Name, store.MemberID(self.Card.SignKey()), strings.TrimPrefix(at, store.ServedScheme), proof)
+	if err != nil {
+		return nil, err
+	}
+	member.Failed = func(err error) { e.Say("store: %s", strings.TrimPrefix(e.clean(err.Error()), "store: ")) }
+	member.Held = member.Failed
+	directory := member.Directory()
+	if !store.HasMembers(dir) {
+		if err := store.Check(e.ctx, directory); err != nil {
+			return nil, err
+		}
+	}
 	listener, err := net.Listen("tcp", listen)
 	if err != nil {
 		return nil, err
 	}
 	who := func(ctx context.Context, name string) (store.Party, ed25519.PublicKey, error) {
+		// A controller on another member is the controller.
+		if name == ctl.Name {
+			return store.Party{Kind: store.Controller, Name: name}, ctl.Card.SignKey(), nil
+		}
 		trust, err := identity.ReadTrust(ctx, directory, ctl.Card, name)
 		if err != nil || !trust.Trusted() {
 			return store.Party{}, nil, err
@@ -263,12 +289,11 @@ func (e *Env) serve(listen string, timeout time.Duration) (func(), error) {
 		}
 		return store.Party{Kind: kind, Name: name, Controller: ctl.Name}, trust.Card.SignKey(), nil
 	}
-	served := &store.Server{Directory: directory, Who: who, Timeout: timeout,
+	served := &store.Server{Directory: directory, Member: member, Who: who, Timeout: timeout,
 		Failed: func(err error) { e.Say("store: %s", e.clean(err.Error())) }}
 	server := served.HTTP()
 	go server.Serve(store.ServedListener(listener, proof))
-	e.Say("store of the controller %s, served at %s, listening on %s", ctl.Name, at, listener.Addr())
-	return func() {
+	stop := func() {
 		// Every request in hand is answered before the server goes: one
 		// cut off would leave its party not knowing whether it was done.
 		served.Stop()
@@ -276,5 +301,55 @@ func (e *Env) serve(listen string, timeout time.Duration) (func(), error) {
 		defer cancel()
 		server.Shutdown(ctx)
 		server.Close()
-	}, nil
+		member.Stop()
+	}
+	if err := member.Start(); err != nil {
+		stop()
+		return nil, err
+	}
+	e.Say("store of the controller %s, served at %s, listening on %s", ctl.Name, at, listener.Addr())
+	if err := e.amongMembers(member, dir); err != nil {
+		stop()
+		return nil, err
+	}
+	return stop, nil
+}
+
+// amongMembers says what a store's server is set up to do in a directory
+// with members, and waits for a majority of them: until then no role on
+// this computer can read the store.
+func (e *Env) amongMembers(member *store.Member, dir string) error {
+	voters, joining, _, many := member.Members()
+	if !many {
+		return nil
+	}
+	switch {
+	case len(voters) == 0:
+		asked, _ := store.AddressesOf(dir)
+		asked = slices.DeleteFunc(asked, func(address string) bool { return address == member.Address() })
+		e.Say("store: joining the members at %s: this computer counts as a member once its copy is whole", strings.Join(asked, ", "))
+	default:
+		e.Say("store: %d members: %s", len(voters), strings.Join(voters, ", "))
+	}
+	if len(joining) > 0 {
+		e.Say("store: joining: %s", strings.Join(joining, ", "))
+	}
+	if len(voters) == 2 {
+		e.Say("store: with two members the store stops when either is off; three lose one and carry on")
+	}
+	for waited := 0; !member.Led(); waited++ {
+		// What stopped the member is printed as it stops.
+		if member.Err() != nil {
+			return errors.New("the store's server has stopped")
+		}
+		if waited == 20 {
+			e.Say("store: waiting for a majority of the members")
+		}
+		select {
+		case <-e.ctx.Done():
+			return e.ctx.Err()
+		case <-time.After(100 * time.Millisecond):
+		}
+	}
+	return nil
 }

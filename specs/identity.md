@@ -10,6 +10,8 @@ A party's name is chosen when its identity is made and never changes. The store 
 
 A computer's parties live in one config directory, with a place each for a controller, a runner and a client. One computer can be all three.
 
+A computer that is a member of a store has one more identity in its config, with a card of kind `member`. It is no party: the controller enrols no member's card, and the identity signs nothing in the store. The card names the computer among the store's members, and the controller's identity is encrypted to it when the computer joins (see Store).
+
 ## An identity in a bucket
 
 By default an identity is a file in the config. `--identity <address>`, on a command that makes an identity, keeps it in an S3 bucket. `corbie init` takes it for all three parties, and `corbie controller card`, `corbie runner card` and `corbie client card` for one.

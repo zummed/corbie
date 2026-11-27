@@ -22,6 +22,7 @@ import (
 //	<config>/runner/trust/<name>      a controller the runner serves
 //	<config>/client/identity          the client's keys
 //	<config>/client/trust/<name>      the client's controller
+//	<config>/member/identity          the keys of this computer as a member of a store
 //
 // In place of identity, a party's directory may hold identity-address: the
 // address of the bucket that keeps its keys.
@@ -170,6 +171,9 @@ func (c Config) Make(ctx context.Context, kind Kind, name string) (*Identity, er
 	}
 	return c.Load(ctx, kind)
 }
+
+// Keep saves an identity as the config's own of its kind.
+func (c Config) Keep(id *Identity) error { return id.Save(c.identityPath(id.Kind)) }
 
 // ControllerStore is the address of the controller's store.
 func (c Config) ControllerStore() (string, error) {

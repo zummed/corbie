@@ -18,8 +18,10 @@ import (
 const checkPrefix = "/corbie-check"
 
 // The check's run asks for one job and sets one timer, so that everything a
-// setup has to do for a run happens once.
+// setup has to do for a run happens once. It is kept an hour: a check that
+// is run every few seconds does not fill the store.
 const checkChart = `statechart: check
+keep: 1h
 initial: working
 states:
   working:

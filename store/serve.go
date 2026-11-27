@@ -1,6 +1,7 @@
 package store
 
 import (
+	"bytes"
 	"context"
 	"crypto"
 	"crypto/ed25519"
@@ -10,6 +11,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"math/big"
 	"net"
 	"net/http"
@@ -41,6 +43,9 @@ const (
 	headParty = "Corbie-Party"
 	headMark  = "Corbie-Mark"
 	headDone  = "Corbie-Done"
+	// headMembers carries the members' addresses in every answer of a
+	// member, so that a party has them as they are now.
+	headMembers = "Corbie-Members"
 
 	howNew       = "only-if-new"
 	howOver      = "overwrite"
@@ -53,6 +58,11 @@ const (
 	// value written only-if-new is of any size, and goes straight to disk.
 	servedValue = 64 << 20
 )
+
+// servedWord is how often the server tells a party that its request has no
+// answer yet. A party takes a server that sends nothing for servedSilence to
+// be off.
+var servedWord = time.Second
 
 // Proof is what an end of a served directory's wire shows of itself as a
 // connection is made: its identity key and nothing else. Whoever shows it is
@@ -91,6 +101,10 @@ func ServedListener(l net.Listener, keeper tls.Certificate) net.Listener {
 type Server struct {
 	// Directory is the directory served.
 	Directory Store
+	// Member is this computer's part in a directory with members. With it,
+	// the server answers a party only while this member leads the others,
+	// and otherwise says who does.
+	Member *Member
 	// Who says which party a name is and which key is its own. A name that
 	// is no party of the controller's has no key.
 	Who func(ctx context.Context, name string) (Party, ed25519.PublicKey, error)
@@ -122,7 +136,21 @@ func (s *Server) stopped() chan struct{} {
 // HTTP gives the server that takes the requests. A connection that sends
 // nothing for the timeout, between two requests, is closed.
 func (s *Server) HTTP() *http.Server {
-	return &http.Server{Handler: s, ReadHeaderTimeout: 10 * time.Second, IdleTimeout: s.Timeout}
+	return &http.Server{Handler: s, ReadHeaderTimeout: 10 * time.Second, IdleTimeout: s.Timeout,
+		ErrorLog: log.New(requestsOnly{log.Writer()}, "", log.LstdFlags)}
+}
+
+// requestsOnly drops what an HTTP server logs of a connection that ended
+// before it proved a key: a computer that is no party, or one that only
+// looked whether the server is there. It asked nothing of the store, and
+// the line reads as a fault of the store.
+type requestsOnly struct{ log io.Writer }
+
+func (r requestsOnly) Write(line []byte) (int, error) {
+	if bytes.Contains(line, []byte("TLS handshake error")) {
+		return len(line), nil
+	}
+	return r.log.Write(line)
 }
 
 // an answer is what the server says to one request.
@@ -130,6 +158,7 @@ type servedAnswer struct {
 	status int
 	mark   Mark
 	done   string
+	leader string
 	body   []byte
 }
 
@@ -165,11 +194,76 @@ func (u unhurried) Read(p []byte) (int, error) {
 
 func (u unhurried) Close() error { return u.value.Close() }
 
+// interim sends a party the responses that come before a request's answer:
+// 102 at each servedWord, so that the party knows the server is on, and 100
+// when the server first reads a value the party waits to send. One response
+// is written at a time, and none once the answer is.
+type interim struct {
+	mu   sync.Mutex
+	w    http.ResponseWriter
+	done bool
+}
+
+func (i *interim) send(status int) {
+	i.mu.Lock()
+	defer i.mu.Unlock()
+	if !i.done {
+		i.w.WriteHeader(status)
+	}
+}
+
+// begin sends 102 at each servedWord until the function it gives is called.
+func (i *interim) begin() (end func()) {
+	stop := make(chan struct{})
+	go func() {
+		tick := time.NewTicker(servedWord)
+		defer tick.Stop()
+		for {
+			select {
+			case <-stop:
+				return
+			case <-tick.C:
+				i.send(http.StatusProcessing)
+			}
+		}
+	}()
+	return func() {
+		close(stop)
+		i.mu.Lock()
+		i.done = true
+		i.mu.Unlock()
+	}
+}
+
+// awaited is a value a party sends only once the server asks for it. The
+// server asks at the first read.
+type awaited struct {
+	io.ReadCloser
+	interim *interim
+	asked   sync.Once
+}
+
+func (a *awaited) Read(p []byte) (int, error) {
+	a.asked.Do(func() { a.interim.send(http.StatusContinue) })
+	return a.ReadCloser.Read(p)
+}
+
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if s.Timeout > 0 {
 		r.Body = unhurried{r.Body, http.NewResponseController(w), s.Timeout}
 	}
-	a := s.answer(r)
+	if strings.HasPrefix(r.URL.Path, "/member/") && s.Member != nil {
+		s.Member.serve(w, r)
+		return
+	}
+	early := &interim{w: w}
+	if r.Header.Get("Expect") != "" {
+		r.Body = &awaited{ReadCloser: r.Body, interim: early}
+	}
+	a := func() servedAnswer {
+		defer early.begin()()
+		return s.answer(r)
+	}()
 	select {
 	case <-s.stopped():
 		// A server that is stopping answers what it has in hand and keeps
@@ -179,6 +273,14 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set(headMark, string(a.mark))
 	w.Header().Set(headDone, a.done)
+	if a.status == http.StatusMisdirectedRequest {
+		w.Header().Set(headLeader, a.leader)
+	}
+	if s.Member != nil {
+		if at := s.Member.counted(); at != "" {
+			w.Header().Set(headMembers, at)
+		}
+	}
 	w.WriteHeader(a.status)
 	w.Write(a.body)
 }
@@ -188,6 +290,15 @@ func (s *Server) answer(r *http.Request) servedAnswer {
 	name := r.Header.Get(headParty)
 	if CheckPart(name) != nil {
 		return said(http.StatusUnauthorized, "the request names no party")
+	}
+	// A member that does not lead says who does before anything else: its
+	// own copy may not yet hold a party the leader's does.
+	directory := s.Directory
+	if s.Member != nil {
+		var err error
+		if directory, err = s.Member.store(); err != nil {
+			return s.failed(err)
+		}
 	}
 	party, key, err := s.Who(ctx, name)
 	if err != nil {
@@ -202,7 +313,7 @@ func (s *Server) answer(r *http.Request) servedAnswer {
 		return notParty(name)
 	}
 
-	held := held{s.Directory, party}
+	held := held{directory, party}
 	q := r.URL.Query()
 	how := Overwrite
 	switch q.Get("how") {
@@ -259,7 +370,7 @@ func (s *Server) answer(r *http.Request) servedAnswer {
 		}
 		a.body = []byte(strings.Join(lines, "\n"))
 	case "GET /wait":
-		done, err = s.wait(ctx, party, q.Get("under"))
+		done, err = s.wait(ctx, party, q.Get("under"), directory)
 	default:
 		return said(http.StatusNotFound, "a served directory has no such call")
 	}
@@ -290,8 +401,21 @@ func saidAs(status int, kind, err error) servedAnswer {
 }
 
 // failed answers that something went wrong at this end, and tells this end
-// what.
+// what. A member that does not lead the others has done nothing, and says
+// who leads; one that stopped leading with a change in the log does not
+// know what became of it.
 func (s *Server) failed(err error) servedAnswer {
+	var not *notLeader
+	switch {
+	case errors.As(err, &not):
+		a := said(http.StatusMisdirectedRequest, "this member does not lead the store")
+		a.leader = not.leader
+		return a
+	case errors.Is(err, ErrUnknown):
+		return said(http.StatusServiceUnavailable, "this member stopped leading before the change was answered")
+	case errors.Is(err, ErrUnreachable):
+		return said(http.StatusMisdirectedRequest, "this member has stopped")
+	}
 	if s.Failed != nil {
 		s.Failed(err)
 	}
@@ -301,24 +425,39 @@ func (s *Server) failed(err error) servedAnswer {
 // wait answers once a name under the path that the party may read is
 // written, or after a while that nothing was. A party learns nothing of
 // names it may not read, not even that they changed.
-func (s *Server) wait(ctx context.Context, p Party, under string) (bool, error) {
+func (s *Server) wait(ctx context.Context, p Party, under string, served Store) (bool, error) {
 	if err := checkUnder(under); err != nil {
 		return false, err
 	}
-	f, ok := s.Directory.(*directory)
-	if !ok {
+	var f *directory
+	switch served := served.(type) {
+	case *directory:
+		f = served
+	case leader:
+		f = served.m.dir
+	default:
 		return false, fmt.Errorf("store: only a directory is served")
 	}
 	written, stop := f.noticeIf(under, func(name string) bool { return p.Allows(ActRead, name) })
 	defer stop()
-	select {
-	case <-written:
-		return true, nil
-	case <-time.After(servedWait):
-		return false, nil
-	case <-s.stopped():
-		return false, nil
-	case <-ctx.Done():
-		return false, nil
+	held := time.After(servedWait)
+	for {
+		select {
+		case <-written:
+			return true, nil
+		case <-held:
+			return false, nil
+		case <-s.stopped():
+			return false, nil
+		case <-ctx.Done():
+			return false, nil
+		case <-time.After(time.Second):
+			// A member that has stopped leading has nothing more to tell.
+			if s.Member != nil {
+				if _, err := s.Member.store(); err != nil {
+					return false, nil
+				}
+			}
+		}
 	}
 }

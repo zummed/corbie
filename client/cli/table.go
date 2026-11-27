@@ -49,7 +49,7 @@ a flow of one stage, and these flags set that stage's job. With a definition,
 
 func init() {
 	Commands = []Command{
-		{Name: "init", Usage: "[--store <address>] [--identity <address>] [--ceiling <list>] [--deny <entry>] [--name <name>] | store [--listen host:port]", Summary: "create a controller, a runner and a client on this computer", Run: cmdInit, Help: `
+		{Name: "init", Usage: "[--store <address>] [--identity <address>] [--ceiling <list>] [--deny <entry>] [--name <name>] | store [--listen host:port] [--card [--name <name>] | --admit <card> | --join <admitted> | --remove <name> | --alone]", Summary: "create a controller, a runner and a client on this computer", Run: cmdInit, Help: `
 It creates the three in the config directory, makes each trust the others,
 sets up the store and prints what it did. Running it again replaces the
 ceiling with the one then given.
@@ -72,10 +72,36 @@ corbie init store sets up only the store's server, which gives other
 computers this computer's store directory, on a config that holds the
 controller; corbie start then runs it.
 
-  store --listen host:port   where it listens; default :8372, every network
-                             interface, with this computer's host name given
-                             to other computers
+  store --listen host:port   where it listens; default the address saved
+                             before, or else :8372, every network interface,
+                             with this computer's host name given to other
+                             computers
   store --listen ""          serves the directory to no other computer
+
+A store has members: computers that each hold a copy of the directory. A
+computer joins with one line, run on it:
+
+  corbie init store --card | ssh sw1 corbie init store --admit - \
+      | corbie init store --join -
+
+  store --card               prints this computer's card, named by its host
+                             name, or by --name where the card is first made
+  store --admit <card>       on a member, prints the controller's identity
+                             encrypted to that card, and the members'
+                             address; - reads the card from standard input
+  store --join <admitted>    takes what --admit printed, and makes this
+                             computer a member: corbie start then copies the
+                             members' directory into this computer's, which
+                             must be empty; - reads standard input
+  store --remove <name>      removes a member of the store, from another
+                             member
+  store --alone              makes this computer's copy the whole store, with
+                             one member, where the other members are lost;
+                             corbie start is stopped on this computer first
+
+corbie init store on a member prints the store's members: each one's name,
+its address, and whether it leads. --listen with another address there
+changes the member's address, and the other members are told it.
 
 A name that another controller has on the store is refused.
 

@@ -142,7 +142,7 @@ A file given alone is a tree of one file, at `--at`, by default `/` and the file
 
 A script file can be submitted as it is. The package wraps it in a flow of one stage, with the permissions it may use and its limits, which the command line takes as flags.
 
-`corbie check` is the last step of setting anything up. It submits a small transient machine of its own as a tree at `/corbie-check/<client>`, so several clients can check one controller, starts a run of it, which asks for one job and sets one timer, follows it as any client does, and reports each thing that had to happen, with how long it took. While it waits it says what for.
+`corbie check` is the last step of setting anything up. It submits a small transient machine of its own as a tree at `/corbie-check/<client>`, so several clients can check one controller, starts a run of it, which asks for one job and sets one timer, follows it as any client does, and reports each thing that had to happen, with how long it took. The run is kept for an hour. While it waits it says what for.
 
 The client's ceiling needs an `at:` entry that matches `/corbie-check/<client>`. Without one, the check's first line is the refused submit, with the line to add.
 
@@ -215,6 +215,10 @@ corbie start                      the controller and the runner, after corbie in
 corbie start runner               the runner alone
 corbie start ui                   the UI alone, beside roles that systemd runs
 ```
+
+A runner that trusts no controller yet is started all the same. `corbie start` prints that, and the runner takes jobs once `corbie runner trust` has saved a controller's card.
+
+On a config that holds a controller and no runner, `corbie start` prints that the computer has no runner yet, and starts the runner once `corbie runner card` has made its card. `corbie start runner` does the same.
 
 The words after a name, up to the next name, are its own: a role's flags, or a program's arguments. `--config`, `--store`, `--json` and `--help` are `corbie start`'s wherever they are written.
 

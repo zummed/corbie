@@ -2,14 +2,18 @@ package cli
 
 import (
 	"cmp"
+	"context"
+	"errors"
 	"fmt"
 	"io"
 	"net"
+	"net/netip"
 	"os"
 	"path/filepath"
 	"slices"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 	"unicode"
 
@@ -109,77 +113,478 @@ func ownStore(address string) error {
 }
 
 // storeListen is where the store's server listens when store is named with
-// no --listen: every network interface, at this port.
+// no --listen and the config has none saved: every network interface, at
+// this port.
 const storeListen = ":8372"
 
 // sharing reads the line of a command that sets the store's server up: the
 // flags registered on e.Flags, wherever they are written, and store with
 // its --listen after it. It says whether store is named, and where its server
-// is to listen: by default storeListen, and nothing where --listen is
-// written empty, which stops the directory being served.
-func sharing(e *Env, args []string) (listen string, shared bool, err error) {
+// is to listen where --listen is written: nothing where it is written
+// empty, which stops the directory being served.
+func sharing(e *Env, args []string) (listen string, set setting, shared bool, err error) {
 	mine, named, err := items(e, args)
 	if err != nil {
-		return "", false, err
+		return "", set, false, err
 	}
 	if _, err := e.Parse(mine); err != nil {
-		return "", false, err
+		return "", set, false, err
 	}
 	for _, it := range named {
 		if it.name != "store" {
-			return "", false, Mistake("%q is not set up here: only the store's server is, as store [--listen host:port]", it.name)
+			return "", set, false, Mistake("%q is not set up here: only the store's server is, as store [--listen host:port]", it.name)
 		}
-		set, err := settings(it)
-		if err != nil {
-			return "", false, err
+		if set, err = settings(it); err != nil {
+			return "", set, false, err
 		}
 		shared, listen = true, set.listen
-		if !set.listened {
-			listen = storeListen
-		}
 	}
-	return listen, shared, nil
+	return listen, set, shared, nil
 }
 
 // initStore is corbie init store: it sets up the store's server alone, on a
-// config whose controller it proves the key of, or with no address stops
-// the directory being served.
-func initStore(e *Env, listen string) error {
+// config whose controller it proves the key of, changes the store's members,
+// or with no address stops the directory being served.
+func initStore(e *Env, listen string, set setting, name string) error {
 	for _, flag := range []string{"ceiling", "deny", "name", "identity"} {
-		if e.Given(flag) {
+		if e.Given(flag) && !(flag == "name" && set.card) {
 			return Mistake("--%s sets up the controller, the runner and the client, and store sets up only the store's server: run corbie init and corbie init store as two commands", flag)
 		}
+	}
+	if !e.Given("name") {
+		name = ""
 	}
 	cfg, err := e.Config()
 	if err != nil {
 		return err
 	}
-	if !cfg.Has(identity.Controller) {
-		return fmt.Errorf("this config has no controller, and the store's server proves the controller's key: corbie init sets the controller up first, and a store on a computer of its own is a bucket")
-	}
 	recorded, err := cfg.ControllerStore()
 	if err != nil {
 		return err
 	}
-	if err := servable(listen, cmp.Or(e.store, recorded)); err != nil {
+	// With no --listen the address saved stays.
+	saved, err := cfg.StoreListen()
+	if err != nil {
 		return err
+	}
+	if !set.listened {
+		listen = cmp.Or(saved, storeListen)
+	}
+	address := cmp.Or(e.store, recorded)
+	asked := []bool{set.card, set.admit != "", set.join != "", set.remove != "", set.alone}
+	switch {
+	case len(slices.DeleteFunc(asked, func(is bool) bool { return !is })) > 1:
+		return Mistake("store: --card, --admit, --join, --remove and --alone are one at a time")
+	case set.card:
+		return storeCard(e, cfg, name)
+	case set.join != "":
+		return storeJoin(e, cfg, cmp.Or(address, filepath.Join(cfg.Dir, "store")), listen, set.join)
+	}
+	if !cfg.Has(identity.Controller) {
+		return fmt.Errorf("this config has no controller, and the store's server proves the controller's key: corbie init sets the controller up first, and a store on a computer of its own is a bucket")
+	}
+	switch {
+	case set.alone:
+		return storeAlone(e, cfg, address)
+	case set.remove != "":
+		return storeRemove(e, cfg, address, set.remove)
+	case set.admit != "":
+		return storeAdmit(e, cfg, address, set.admit)
+	}
+	if err := servable(listen, address); err != nil {
+		return err
+	}
+	self, err := memberCard(e, cfg)
+	if err != nil {
+		return err
+	}
+	var members []store.MemberAt
+	if dir, err := store.DirectoryAt(address); err == nil {
+		members, _ = store.MembersOf(dir)
+	}
+	if len(members) > 0 && listen == "" {
+		return fmt.Errorf("this computer is the store's member %s, and a member is reached by the others: corbie init store --remove %s on another member removes it", self.Name, self.Name)
 	}
 	if err := cfg.SetStoreListen(listen); err != nil {
 		return err
 	}
+	type row3 struct {
+		Name    string `json:"name"`
+		Address string `json:"address"`
+		State   string `json:"state"`
+	}
 	done := struct {
-		Served string `json:"served,omitzero"`
+		Served  string `json:"served,omitzero"`
+		Name    string `json:"name,omitzero"`
+		Members []row3 `json:"members,omitzero"`
 	}{}
+	moved := false
 	if listen != "" {
 		if done.Served, err = servedAt(listen); err != nil {
 			return err
+		}
+		done.Name = self.Name
+		if was, _ := servedAt(cmp.Or(saved, listen)); len(members) > 0 && was != done.Served {
+			moved = true
+		}
+	}
+	if len(members) > 0 {
+		states, err := memberStates(e, cfg, members)
+		if err != nil {
+			return err
+		}
+		for i, member := range members {
+			done.Members = append(done.Members, row3{member.Name, member.Address, states[i]})
 		}
 	}
 	return e.Print(done, func() string {
 		if done.Served == "" {
 			return "This computer serves its store directory to no other computer.\n"
 		}
-		return "Other computers reach the directory at " + done.Served + " while corbie start runs here.\n"
+		said := "Other computers reach the directory at " + done.Served + " while corbie start runs here.\n"
+		if moved {
+			said += "The other members are told this address when corbie start next runs here.\n"
+		}
+		if len(done.Members) > 0 {
+			name, at := 0, 0
+			for _, member := range done.Members {
+				name, at = max(name, len(member.Name)), max(at, len(member.Address))
+			}
+			said += "The store's members:\n"
+			for _, member := range done.Members {
+				said += fmt.Sprintf("  %-*s   %-*s   %s\n", name, member.Name, at, member.Address, member.State)
+			}
+		}
+		return said
+	})
+}
+
+// memberCard gives this computer's own card among a store's members, made
+// with the computer's host name where it has none yet.
+func memberCard(e *Env, cfg identity.Config) (*identity.Identity, error) {
+	return cfg.Make(e.ctx, identity.Member, hostName())
+}
+
+// given reads what a flag was given: the words themselves, or with - what
+// standard input holds.
+func (e *Env) given(words, what string) (string, error) {
+	if words == "-" {
+		data, err := io.ReadAll(e.In)
+		if err != nil {
+			return "", err
+		}
+		words = string(data)
+	}
+	if strings.TrimSpace(words) == "" {
+		return "", Mistake("nothing was given: %s was expected (the step before in the pipe may have failed)", what)
+	}
+	return words, nil
+}
+
+// The states corbie init store prints of a member.
+const (
+	memberLeads   = "leads"
+	memberFollows = "follows the leader"
+	memberNoLead  = "knows of no leader"
+	memberSilent  = "does not answer"
+	memberJoining = "joining, and not yet counted"
+)
+
+// memberStates asks every member at once who leads the store, as the
+// controller, and gives what each answered.
+func memberStates(e *Env, cfg identity.Config, members []store.MemberAt) ([]string, error) {
+	ctl, err := cfg.Load(e.ctx, identity.Controller)
+	if err != nil {
+		return nil, err
+	}
+	proof, err := ctl.Proof()
+	if err != nil {
+		return nil, err
+	}
+	states := make([]string, len(members))
+	var wg sync.WaitGroup
+	for i, member := range members {
+		wg.Go(func() {
+			leads, leader, err := store.Leader(e.ctx, member.Address, ctl.Name, proof, ctl.Card.SignKey())
+			switch {
+			case err != nil:
+				states[i] = memberSilent
+			case member.Joining:
+				states[i] = memberJoining
+			case leads:
+				states[i] = memberLeads
+			case leader != "":
+				states[i] = memberFollows
+			default:
+				states[i] = memberNoLead
+			}
+		})
+	}
+	wg.Wait()
+	return states, nil
+}
+
+// membersDirectory gives the directory of a store that has members.
+func membersDirectory(address string) (string, error) {
+	if address == "" || !store.IsDirectory(address) {
+		return "", Mistake("a store has members where it is a directory on this computer, set up by corbie init")
+	}
+	dir, err := store.DirectoryAt(address)
+	if err != nil {
+		return "", err
+	}
+	if !store.HasMembers(dir) {
+		return "", fmt.Errorf("the store in %s has one member: this computer", dir)
+	}
+	return dir, nil
+}
+
+// storeCard is corbie init store --card: it prints this computer's own card
+// among a store's members, and makes it first where there is none.
+func storeCard(e *Env, cfg identity.Config, name string) error {
+	if name != "" {
+		if err := identity.CheckName(name); err != nil {
+			return Mistake("store: --name: %v", err)
+		}
+	}
+	self, err := cfg.Make(e.ctx, identity.Member, cmp.Or(name, hostName()))
+	if err != nil {
+		return err
+	}
+	if name != "" && self.Name != name {
+		return fmt.Errorf("this computer's card is named %s, and a card's name is not changed", self.Name)
+	}
+	e.Say("this computer's card is %s  (%s)", self.Name, self.Fingerprint())
+	return e.Print(map[string]string{"card": self.Card.String()}, func() string { return self.Card.String() + "\n" })
+}
+
+// storeAdmit is corbie init store --admit: on a computer that serves the
+// store, it seals the controller's identity to the card of a computer that
+// is to become a member, and prints it with the members' address.
+func storeAdmit(e *Env, cfg identity.Config, address, given string) error {
+	text, err := e.given(given, "the card corbie init store --card printed")
+	if err != nil {
+		return err
+	}
+	card, err := identity.ParseCard(text)
+	if err != nil {
+		return err
+	}
+	if card.Kind != identity.Member {
+		return fmt.Errorf("this is the card of a %s, and the card corbie init store --card prints is needed", card.Kind)
+	}
+	ctl, err := cfg.Load(e.ctx, identity.Controller)
+	if err != nil {
+		return err
+	}
+	listen, err := cfg.StoreListen()
+	if err != nil {
+		return err
+	}
+	if listen == "" {
+		return fmt.Errorf("this computer's store's server is not set up, and a computer joins the members that serve the store: corbie init store sets it up")
+	}
+	at, err := servedAt(listen)
+	if err != nil {
+		return err
+	}
+	self, err := memberCard(e, cfg)
+	if err != nil {
+		return err
+	}
+	taken := card.Name == self.Name
+	if dir, err := store.DirectoryAt(address); err == nil {
+		if members, _ := store.MembersOf(dir); len(members) > 0 {
+			addresses, _ := store.AddressesOf(dir)
+			at = store.ServedScheme + strings.Join(addresses, ",")
+			taken = taken || slices.ContainsFunc(members, func(m store.MemberAt) bool { return m.Name == card.Name })
+		}
+	}
+	if taken {
+		return fmt.Errorf("%s is a member of the store already: corbie init store --remove %s removes it, and a computer then joins under the name", card.Name, card.Name)
+	}
+	admitted, err := ctl.Admit(card, at, time.Now())
+	if err != nil {
+		return err
+	}
+	e.Say("admitted the member %s  (%s)", card.Name, card.Fingerprint())
+	e.Say("this controller is %s  (%s)", ctl.Name, ctl.Fingerprint())
+	return e.Print(map[string]string{"admitted": string(admitted)}, func() string { return string(admitted) })
+}
+
+// storeJoin is corbie init store --join: it sets this computer up to become
+// a member of the store whose controller admitted its card. It saves the
+// controller's identity, and corbie start then asks the members to take
+// this computer, and copies their directory.
+func storeJoin(e *Env, cfg identity.Config, address, listen, given string) error {
+	if listen == "" {
+		return Mistake("store: a member is reached by the others, and --listen \"\" serves the directory to no other computer")
+	}
+	if err := servable(listen, address); err != nil {
+		return err
+	}
+	text, err := e.given(given, "what corbie init store --admit printed")
+	if err != nil {
+		return err
+	}
+	if !cfg.Has(identity.Member) {
+		return fmt.Errorf("this computer has no card yet: corbie init store --card prints it, and corbie init store --admit on a member takes it")
+	}
+	self, err := cfg.Load(e.ctx, identity.Member)
+	if err != nil {
+		return err
+	}
+	ctl, members, err := self.Admitted([]byte(text))
+	if err != nil {
+		return err
+	}
+	asked, err := store.ServedHosts(members)
+	if err != nil {
+		return err
+	}
+	dir, err := store.DirectoryAt(address)
+	if err != nil {
+		return err
+	}
+	at, err := servedAt(listen)
+	if err != nil {
+		return err
+	}
+	own := strings.TrimPrefix(at, store.ServedScheme)
+	switch {
+	case slices.Contains(asked, own):
+		return fmt.Errorf("%s is the address of a member already: give this computer its own with --listen", own)
+	case store.HasMembers(dir):
+		return fmt.Errorf("the directory %s is a member's copy already: corbie start has it take its place", dir)
+	}
+	// The members' directory takes the place of whatever this one holds.
+	if entries, err := os.ReadDir(dir); err == nil && len(entries) > 0 {
+		return fmt.Errorf("the directory %s is not empty, and a computer that joins copies the members' directory in place of its own: name an empty directory with --store", dir)
+	}
+	if cfg.Has(identity.Controller) {
+		have, err := cfg.Load(e.ctx, identity.Controller)
+		if err != nil {
+			return err
+		}
+		if !have.Card.Same(ctl.Card) {
+			return fmt.Errorf("this config holds the controller %s, and the store's controller is %s: a member holds its store's controller and no other, so join with a config that holds none", have.Name, ctl.Name)
+		}
+	} else if err := cfg.Keep(ctl); err != nil {
+		return err
+	}
+	if err := errors.Join(cfg.SetControllerStore(dir), cfg.SetStoreListen(listen)); err != nil {
+		return err
+	}
+	if err := store.SetJoining(dir, self.Name, own, asked); err != nil {
+		return err
+	}
+	e.Say("this computer's card is %s  (%s)", self.Name, self.Fingerprint())
+	e.Say("the store's controller is %s  (%s)", ctl.Name, ctl.Fingerprint())
+	done := struct {
+		Name   string   `json:"name"`
+		Store  string   `json:"store"`
+		Served string   `json:"served"`
+		Joins  []string `json:"joins"`
+	}{self.Name, dir, at, asked}
+	return e.Print(done, func() string {
+		return fmt.Sprintf("This computer joins the store's members as %s when corbie start runs here: it asks %s to take it, copies the directory into %s, and counts as a member once its copy is whole.\nOther computers reach it at %s.\n",
+			self.Name, strings.Join(asked, ", "), dir, at)
+	})
+}
+
+// storeRemove is corbie init store --remove: it asks the members to remove
+// one of them, by its name, from another member.
+func storeRemove(e *Env, cfg identity.Config, address, name string) error {
+	dir, err := membersDirectory(address)
+	if err != nil {
+		return err
+	}
+	members, _ := store.MembersOf(dir)
+	if !slices.ContainsFunc(members, func(m store.MemberAt) bool { return m.Name == name }) {
+		var names []string
+		for _, member := range members {
+			names = append(names, member.Name)
+		}
+		return fmt.Errorf("%s is not a member of the store: its members are %s", name, strings.Join(names, ", "))
+	}
+	listen, err := cfg.StoreListen()
+	if err != nil {
+		return err
+	}
+	if listen == "" {
+		return fmt.Errorf("this computer's store's server is not set up, and a member is removed from another member")
+	}
+	at, err := servedAt(listen)
+	if err != nil {
+		return err
+	}
+	ctl, err := cfg.Load(e.ctx, identity.Controller)
+	if err != nil {
+		return err
+	}
+	proof, err := ctl.Proof()
+	if err != nil {
+		return err
+	}
+	self, err := memberCard(e, cfg)
+	if err != nil {
+		return err
+	}
+	member, err := store.OpenMember(dir, self.Name, store.MemberID(self.Card.SignKey()), strings.TrimPrefix(at, store.ServedScheme), proof)
+	if err != nil {
+		return err
+	}
+	ctx, cancel := context.WithTimeout(e.ctx, time.Minute)
+	defer cancel()
+	if err := member.Remove(ctx, name); err != nil {
+		return err
+	}
+	return e.Print(map[string]string{"removed": name}, func() string {
+		return name + " is no longer a member of the store. Its copy is not used again: a computer joins with an empty directory.\n"
+	})
+}
+
+// storeAlone is corbie init store --alone: this computer's copy becomes the
+// whole store, with one member.
+func storeAlone(e *Env, cfg identity.Config, address string) error {
+	dir, err := membersDirectory(address)
+	if err != nil {
+		return err
+	}
+	// A computer that is joining has not the whole of the store yet.
+	self, err := cfg.Load(e.ctx, identity.Member)
+	if err != nil {
+		return err
+	}
+	members, err := store.MembersOf(dir)
+	if err != nil {
+		return err
+	}
+	for _, member := range members {
+		if member.Name == self.Name && member.Joining {
+			return fmt.Errorf("this computer is joining the store's members, and its copy in %s is not the whole store: run corbie init store --alone on a member", dir)
+		}
+	}
+	// A store's server that runs here goes on as a member, and writes its
+	// log again.
+	listen, err := cfg.StoreListen()
+	if err != nil {
+		return err
+	}
+	if host, port, err := net.SplitHostPort(listen); err == nil {
+		if ip := net.ParseIP(host); ip != nil && ip.IsUnspecified() {
+			host = ""
+		}
+		if conn, err := net.DialTimeout("tcp", net.JoinHostPort(host, port), time.Second); err == nil {
+			conn.Close()
+			return fmt.Errorf("the store's server is running on this computer, and listens on %s: stop corbie start here, run this again, and then start it", listen)
+		}
+	}
+	if err := store.LeaveMembers(dir); err != nil {
+		return err
+	}
+	return e.Print(map[string]string{"store": dir}, func() string {
+		return "The copy in " + dir + " is now the whole store, with one member: this computer.\nIt may lack the last changes the store answered.\nNo other computer that was a member may serve its copy again: two stores would each answer.\n"
 	})
 }
 
@@ -189,14 +594,32 @@ func servable(listen, address string) error {
 	if listen == "" {
 		return nil
 	}
-	_, port, err := net.SplitHostPort(listen)
+	host, port, err := net.SplitHostPort(listen)
 	if n, perr := strconv.Atoi(port); err != nil || perr != nil || n < 1 || n > 65535 {
 		return Mistake("store --listen takes host:port, or :port for every network interface: :8372")
+	}
+	if ip, err := netip.ParseAddr(host); err == nil && (ip.Zone() != "" || ip.Is6() && ip.IsLinkLocalUnicast()) {
+		return Mistake("store --listen takes an address that every other computer connects to, and %s is an IPv6 link-local address: only a computer on the same link connects to it, and each writes it with the name of its own network interface", host)
 	}
 	if !store.IsDirectory(address) {
 		return Mistake("store is for a store that is a directory on this computer: a bucket is reached by every computer already")
 	}
 	return nil
+}
+
+// member is the address of this computer's member, as host:port, or
+// nothing where its directory is not served.
+func (e *Env) member() string {
+	cfg, err := e.Config()
+	if err != nil {
+		return ""
+	}
+	listen, _ := cfg.StoreListen()
+	if listen == "" {
+		return ""
+	}
+	at, _ := servedAt(listen)
+	return strings.TrimPrefix(at, store.ServedScheme)
 }
 
 // servedAt is the address other computers are given for a store's server that
@@ -222,12 +645,12 @@ func cmdInit(e *Env, args []string) error {
 	e.Flags.StringVar(&ceilingText, "ceiling", "", "")
 	e.Flags.Var(&deny, "deny", "")
 	e.Flags.StringVar(&name, "name", hostName(), "")
-	listen, shared, err := sharing(e, args)
+	listen, set, shared, err := sharing(e, args)
 	if err != nil {
 		return err
 	}
 	if shared {
-		return initStore(e, listen)
+		return initStore(e, listen, set, name)
 	}
 	cfg, err := e.Config()
 	if err != nil {
@@ -319,6 +742,21 @@ func (e *Env) setUp(cfg identity.Config, address, name, keys string, limit permi
 	s, err := store.Open(address)
 	if err != nil {
 		return nil, nil, nil, err
+	}
+	// In a directory with members, the controller of this config writes
+	// through the members' servers, as every party on a member does.
+	if dir, derr := store.DirectoryAt(address); derr == nil && store.HasMembers(dir) && cfg.Has(identity.Controller) {
+		id, err := cfg.Load(e.ctx, identity.Controller)
+		if err != nil {
+			return nil, nil, nil, err
+		}
+		proof, err := id.Proof()
+		if err != nil {
+			return nil, nil, nil, err
+		}
+		if s, err = store.OpenLocal(dir, e.member(), id.Name, proof, id.Card.SignKey()); err != nil {
+			return nil, nil, nil, err
+		}
 	}
 	if err := store.SetUp(e.ctx, s); err != nil {
 		return nil, nil, nil, err
@@ -492,8 +930,8 @@ func cmdEnrol(e *Env, args []string) error {
 		if card, err = identity.ParseCard(given[0]); err != nil {
 			return err
 		}
-		if card.Kind == identity.Controller {
-			return fmt.Errorf("this is the card of a controller, and a runner's or a client's is needed")
+		if card.Kind != identity.Runner && card.Kind != identity.Client {
+			return fmt.Errorf("this is the card of a %s, and a runner's or a client's is needed", card.Kind)
 		}
 		if card.Name == ctl.Card.Name {
 			return fmt.Errorf("%q is the controller's own name", card.Name)
@@ -560,6 +998,13 @@ func cmdEnrol(e *Env, args []string) error {
 	if listen, _ := cfg.StoreListen(); listen != "" && address == recorded {
 		if address, err = servedAt(listen); err != nil {
 			return err
+		}
+		// With members, every member is given: a party reaches the store
+		// while one of them is running.
+		if dir, err := store.DirectoryAt(recorded); err == nil {
+			if members, _ := store.AddressesOf(dir); len(members) > 0 {
+				address = store.ServedScheme + strings.Join(members, ",")
+			}
 		}
 	}
 	e.Say("enrolled the %s %s  (%s)", card.Kind, card.Name, card.Fingerprint())

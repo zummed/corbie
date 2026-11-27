@@ -94,6 +94,50 @@ func TestADirectoryServedToOtherMachines(t *testing.T) {
 	}
 }
 
+// A runner that trusts no controller yet waits for one, and takes jobs once
+// corbie runner trust has saved a controller's card.
+func TestARunnerStartedBeforeItTrustsAController(t *testing.T) {
+	d, address := desk(t, "controller", "store")
+	gpu := machine{t, filepath.Join(t.TempDir(), "gpu")}
+	card := gpu.ok("", "runner", "card", "--name", "gpu")
+	said, _ := gpu.stays("start", "runner", "--interval", "20ms")
+	until(t, "the runner to say that it trusts no controller", func() bool {
+		return strings.Contains(said.String(), "trusts no controller yet")
+	})
+	enrolled := d.ok(card, "controller", "enrol", "-", "--tags", "gpu")
+	if !strings.HasSuffix(strings.TrimSpace(enrolled), address) {
+		t.Fatalf("enrol printed %q", enrolled)
+	}
+	gpu.ok(enrolled, "runner", "trust", "-", "--ceiling", "all")
+	until(t, "the runner to serve the controller", func() bool {
+		return strings.Contains(said.String(), "serving the controller desk")
+	})
+	if status, f := d.check("--tag", "gpu"); status != 0 {
+		t.Fatalf("the check of a runner started before it trusted the controller found %+v", f)
+	}
+}
+
+// A runner whose card is made after corbie start is started when the card
+// is made, and takes jobs once it trusts the controller.
+func TestARunnerMadeAfterTheStart(t *testing.T) {
+	d := machine{t, filepath.Join(t.TempDir(), "desk")}
+	d.ok("", "init", "--store", filepath.Join(t.TempDir(), "store"), "--name", "desk", "--ceiling", "all")
+	d.ok("", "controller", "remove", "desk-runner")
+	if err := os.RemoveAll(filepath.Join(d.config, "runner")); err != nil {
+		t.Fatal(err)
+	}
+	said, _ := d.stays("start")
+	until(t, "corbie start to say that the computer has no runner", func() bool {
+		return strings.Contains(said.String(), "has no runner yet")
+	})
+	card := d.ok("", "runner", "card", "--name", "late")
+	until(t, "the runner to start", func() bool { return strings.Contains(said.String(), "runner late  (") })
+	d.ok(d.ok(card, "controller", "enrol", "-", "--tags", "late"), "runner", "trust", "-", "--ceiling", "all")
+	if status, f := d.check("--tag", "late"); status != 0 {
+		t.Fatalf("the check of a runner made after the start found %+v", f)
+	}
+}
+
 func TestServingIsTheControllersComputersAndADirectorysOnly(t *testing.T) {
 	// A machine that was never told where it serves does not serve.
 	plain := machine{t, filepath.Join(t.TempDir(), "plain")}
@@ -107,6 +151,12 @@ func TestServingIsTheControllersComputersAndADirectorysOnly(t *testing.T) {
 	}
 	if status, _, said := plain.run("", "init", "--store", filepath.Join(t.TempDir(), "s"), "store", "--listen", "8372"); status != 2 || !strings.Contains(said, "host:port") {
 		t.Fatalf("store --listen with no port: %d %s", status, said)
+	}
+	// An IPv6 link-local address is one no other link connects to.
+	for _, listen := range []string{"[fe80::2013:aaff:fe7a:f91d%Ethernet4]:8372", "[fe80::1]:8372"} {
+		if status, _, said := plain.run("", "init", "store", "--listen", listen); status != 2 || !strings.Contains(said, "IPv6 link-local address") {
+			t.Fatalf("store --listen %s: %d %s", listen, status, said)
+		}
 	}
 	// A machine with no controller serves nothing, and is told that.
 	only := machine{t, filepath.Join(t.TempDir(), "only")}

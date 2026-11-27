@@ -1,6 +1,7 @@
 package store
 
 import (
+	"bytes"
 	"context"
 	"crypto/ed25519"
 	"crypto/rand"
@@ -8,12 +9,14 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"net"
 	"net/http"
 	"path/filepath"
 	"runtime"
 	"strconv"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -104,7 +107,7 @@ func (f *servedDirectory) as(p Party) Store {
 // the party's and the key it takes to be the keeper's.
 func (f *servedDirectory) opened(address, name string, key ed25519.PrivateKey, keeper ed25519.PublicKey) Store {
 	f.t.Helper()
-	s, err := OpenServed(address, name, proofOf(f.t, key), keeper)
+	s, err := OpenServed(address, name, proofOf(f.t, key), keeper, nil)
 	if err != nil {
 		f.t.Fatal(err)
 	}
@@ -113,9 +116,16 @@ func (f *servedDirectory) opened(address, name string, key ed25519.PrivateKey, k
 
 func TestServedAddress(t *testing.T) {
 	for _, bad := range []string{"corbie://desk", "corbie://desk:8372/main", "corbie://key@desk:8372", "corbie://desk:8372?region=x", "corbie://"} {
-		if _, err := OpenServed(bad, "p", tls.Certificate{}, nil); err == nil {
+		if _, err := OpenServed(bad, "p", tls.Certificate{}, nil, nil); err == nil {
 			t.Errorf("%s was taken as a served directory's address", bad)
 		}
+	}
+	// A % in an address begins an escape, as in any URL.
+	if _, err := ServedHosts("corbie://[fe80::1%eth0]:8372"); err == nil || !strings.Contains(err.Error(), "%25") {
+		t.Errorf("an address with a %% not written %%25 gave %v", err)
+	}
+	if hosts, err := ServedHosts("corbie://[fe80::1%25eth0]:8372"); err != nil || len(hosts) != 1 {
+		t.Errorf("an address with a network interface's name after %%25 gave %v %v", hosts, err)
 	}
 	if _, err := Open("corbie://desk:8372"); err == nil || IsDirectory("corbie://desk:8372") {
 		t.Errorf("a served directory was opened with no party, or taken for a directory: %v", err)
@@ -568,5 +578,162 @@ func TestServedRefusalNamesNoParty(t *testing.T) {
 	}
 	if a, b := said("cli"), said("stranger"); a != b {
 		t.Errorf("a party's name was turned away with %q and a name that is none with %q", a, b)
+	}
+}
+
+// closing is a listener that says when the server has closed a connection.
+type closing struct {
+	net.Listener
+	closed chan struct{}
+}
+
+func (l closing) Accept() (net.Conn, error) {
+	conn, err := l.Listener.Accept()
+	return closingConn{conn, l.closed}, err
+}
+
+type closingConn struct {
+	net.Conn
+	closed chan struct{}
+}
+
+func (c closingConn) Close() error {
+	err := c.Conn.Close()
+	select {
+	case c.closed <- struct{}{}:
+	default:
+	}
+	return err
+}
+
+// locked is a log that a test reads while the server writes it.
+type locked struct {
+	mu   sync.Mutex
+	said bytes.Buffer
+}
+
+func (l *locked) Write(p []byte) (int, error) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.said.Write(p)
+}
+
+// A connection that ends before it proves a key asked nothing of the store,
+// and the server prints nothing of it: corbie init store --alone makes one
+// to find whether the server runs.
+func Test_store_served_a_connection_that_proves_no_key_is_not_logged(t *testing.T) {
+	was, logged := log.Writer(), &locked{}
+	log.SetOutput(logged)
+	t.Cleanup(func() { log.SetOutput(was) })
+	_, keeper, _ := ed25519.GenerateKey(rand.Reader)
+	l, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	listener := closing{l, make(chan struct{}, 1)}
+	directory, err := OpenDirectory(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	server := (&Server{Directory: directory}).HTTP()
+	go server.Serve(ServedListener(listener, proofOf(t, keeper)))
+	t.Cleanup(func() { server.Close() })
+	conn, err := net.Dial("tcp", l.Addr().String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	conn.Close()
+	select {
+	case <-listener.closed:
+	case <-time.After(10 * time.Second):
+		t.Fatal("the server kept a connection that was closed")
+	}
+	logged.mu.Lock()
+	defer logged.mu.Unlock()
+	if logged.said.Len() > 0 {
+		t.Fatalf("the server printed, of a connection that proved no key:\n%s", logged.said.String())
+	}
+}
+
+// quiet has a party take a silent member to be off sooner, for a test.
+func quiet(t *testing.T) {
+	silence, word := servedSilence, servedWord
+	servedSilence, servedWord = 300*time.Millisecond, 50*time.Millisecond
+	t.Cleanup(func() { servedSilence, servedWord = silence, word })
+}
+
+// A member that sends nothing is taken to be off after a moment, and the
+// party asks the next: one that takes a connection and proves no key, and
+// one that takes a request and sends no response. A request sent to it may
+// have been done, so a change that is not the same twice is reported as not
+// known. A server that takes long over a request says so meanwhile, and is
+// waited for.
+func Test_store_served_directory_a_silent_member_is_passed_over(t *testing.T) {
+	quiet(t)
+	f := newServedDirectory(t)
+	client := f.as(Party{Kind: Client, Name: "cli", Controller: "ctl"})
+	held := f.parties["cli"]
+	second := "," + strings.TrimPrefix(f.address, ServedScheme)
+	if _, err := f.directory.Write(ctx, "ctl/receipts/cli/r1", []byte("receipt"), OnlyIfNew); err != nil {
+		t.Fatal(err)
+	}
+	listen := func() net.Listener {
+		l, err := net.Listen("tcp", "127.0.0.1:0")
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { l.Close() })
+		return l
+	}
+	within := func(what string, began time.Time) {
+		t.Helper()
+		if took := time.Since(began); took > 3*time.Second {
+			t.Fatalf("%s took %s", what, took)
+		}
+	}
+
+	// It takes the connection and sends nothing: no request was sent, so
+	// any request goes to the next member.
+	mute := listen()
+	go func() {
+		for {
+			conn, err := mute.Accept()
+			if err != nil {
+				return
+			}
+			t.Cleanup(func() { conn.Close() })
+		}
+	}()
+	s := f.opened(ServedScheme+mute.Addr().String()+second, "cli", held.key, keyOf(f.keeper))
+	began := time.Now()
+	if done, err := s.Write(ctx, "ctl/inbox/cli/m1", []byte("start"), OnlyIfNew); !done || err != nil {
+		t.Fatalf("a write only-if-new with a member that proves no key: %v %v", done, err)
+	}
+	within("a write past a member that proves no key", began)
+
+	// It takes the request and sends no response.
+	stuck, release := listen(), make(chan struct{})
+	taking := &http.Server{Handler: http.HandlerFunc(func(http.ResponseWriter, *http.Request) { <-release })}
+	t.Cleanup(func() { close(release); taking.Close() })
+	go taking.Serve(ServedListener(stuck, proofOf(t, f.keeper)))
+	s = f.opened(ServedScheme+stuck.Addr().String()+second, "cli", held.key, keyOf(f.keeper))
+	began = time.Now()
+	if v, _ := read(t, s, "ctl/receipts/cli/r1"); v != "receipt" {
+		t.Fatalf("a read with a member that answers nothing: %q", v)
+	}
+	within("a read past a member that answers nothing", began)
+	s = f.opened(ServedScheme+stuck.Addr().String()+second, "cli", held.key, keyOf(f.keeper))
+	if done, err := s.Write(ctx, "ctl/inbox/cli/m2", []byte("start"), OnlyIfNew); done || !errors.Is(err, ErrUnknown) {
+		t.Fatalf("a write only-if-new sent to a member that answers nothing: %v %v", done, err)
+	}
+
+	// The server takes three times as long as a silent member is given.
+	who := f.server.Who
+	f.server.Who = func(ctx context.Context, name string) (Party, ed25519.PublicKey, error) {
+		time.Sleep(3 * servedSilence)
+		return who(ctx, name)
+	}
+	if v, _ := read(t, client, "ctl/receipts/cli/r1"); v != "receipt" {
+		t.Fatalf("a read the server took long over: %q", v)
 	}
 }

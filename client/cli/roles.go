@@ -32,20 +32,20 @@ import (
 // config records where it listens.
 func held(cfg identity.Config) ([]string, error) {
 	var names []string
-	for _, kind := range []identity.Kind{identity.Controller, identity.Runner} {
-		if cfg.Has(kind) {
-			names = append(names, string(kind))
-		}
+	if !cfg.Has(identity.Controller) && !cfg.Has(identity.Runner) {
+		return nil, fmt.Errorf("the config %s holds no controller and no runner: corbie init sets this computer up", cfg.Dir)
 	}
+	if cfg.Has(identity.Controller) {
+		names = append(names, string(identity.Controller))
+	}
+	// The runner is run whether or not its card is made yet.
+	names = append(names, string(identity.Runner))
 	listen, err := cfg.StoreListen()
 	if err != nil {
 		return nil, err
 	}
 	if listen != "" && cfg.Has(identity.Controller) {
 		names = append(names, "store")
-	}
-	if len(names) == 0 {
-		return nil, fmt.Errorf("the config %s holds no controller and no runner: corbie init sets this computer up", cfg.Dir)
 	}
 	return names, nil
 }
@@ -131,6 +131,10 @@ type setting struct {
 	oidc              oidc
 	listened          bool // --listen was written, if empty
 	timeout           time.Duration
+	join, remove      string // corbie init store --join and --remove
+	alone             bool   // corbie init store --alone
+	card              bool   // corbie init store --card
+	admit             string // corbie init store --admit
 }
 
 // roleFlags gives the flags written after a role, which set what the role
@@ -159,6 +163,11 @@ func roleFlags(role string, set *setting, every *string) *flag.FlagSet {
 	case "store":
 		flags.StringVar(&set.listen, "listen", "", "")
 		flags.DurationVar(&set.timeout, "timeout", time.Minute, "")
+		flags.StringVar(&set.join, "join", "", "")
+		flags.StringVar(&set.remove, "remove", "", "")
+		flags.BoolVar(&set.alone, "alone", false, "")
+		flags.BoolVar(&set.card, "card", false, "")
+		flags.StringVar(&set.admit, "admit", "", "")
 	}
 	return flags
 }
@@ -276,6 +285,21 @@ func (e *Env) start(cfg identity.Config, named []item, before func() error) erro
 	}
 	var running []role.Role
 	var programs []program
+	// The store's server starts first: in a directory with members, the
+	// other roles read the store through the members' servers.
+	for i, it := range named {
+		if it.name != "store" {
+			continue
+		}
+		if sets[i].join != "" || sets[i].remove != "" || sets[i].alone || sets[i].card || sets[i].admit != "" {
+			return Mistake("store: --card, --admit, --join, --remove and --alone change the store's members, with corbie init store")
+		}
+		stop, err := e.serve(sets[i].listen, sets[i].timeout)
+		if err != nil {
+			return err
+		}
+		defer stop()
+	}
 	for i, it := range named {
 		name, set := it.name, sets[i]
 		switch name {
@@ -290,57 +314,94 @@ func (e *Env) start(cfg identity.Config, named []item, before func() error) erro
 			running = append(running, role.Role{Name: name, Pass: pass, Interval: set.interval, Notice: notice})
 			e.Say("controller %s  (%s)", id.Name, id.Fingerprint())
 		case "runner":
-			id, err := cfg.Load(e.ctx, identity.Runner)
-			if err != nil {
-				return err
-			}
-			// Each controller has its own store and its own ceiling, read
-			// afresh from the config at every pass.
+			// A runner whose card is made after the start is started at the
+			// first pass that finds the card.
 			woken := make(chan struct{}, 1)
+			var pass role.Pass
 			stores := map[string]store.Store{}
-			trusted := func() ([]runner.Served, error) {
-				held, err := cfg.TrustList(identity.Runner)
+			begin := func() error {
+				id, err := cfg.Load(e.ctx, identity.Runner)
 				if err != nil {
-					return nil, err
+					return err
 				}
-				var serves []runner.Served
-				for _, t := range held {
-					if !t.Trusted() {
-						continue
+				// Each controller has its own store and its own ceiling, read
+				// afresh from the config at every pass.
+				started := false // a controller trusted after the start is printed
+				trusted := func() ([]runner.Served, error) {
+					held, err := cfg.TrustList(identity.Runner)
+					if err != nil {
+						return nil, err
 					}
-					s, opened := stores[t.Store]
-					if !opened {
-						if s, err = e.Open(t.Store, id, t.Card); err != nil {
-							return nil, fmt.Errorf("the store of the controller %q: %w", t.Card.Name, err)
+					var serves []runner.Served
+					for _, t := range held {
+						if !t.Trusted() {
+							continue
 						}
-						stores[t.Store] = s
-						notice, _ := s.Notice(store.Inbox(id.Name))
-						go func() {
-							for range notice {
-								select {
-								case woken <- struct{}{}:
-								default:
+						s, opened := stores[t.Store]
+						if !opened {
+							// The address the members now have, saved in the
+							// trust, is the store opened at the one before.
+							for at, was := range stores {
+								if store.ServedAddress(was) == t.Store {
+									delete(stores, at)
+									stores[t.Store], s, opened = was, was, true
 								}
 							}
-						}()
+						}
+						if !opened {
+							if s, err = e.Open(t.Store, id, t.Card); err != nil {
+								return nil, fmt.Errorf("the store of the controller %q: %w", t.Card.Name, err)
+							}
+							stores[t.Store] = s
+							if started {
+								e.Say("runner %s  serving the controller %s", id.Name, t.Card.Name)
+							}
+							notice, _ := s.Notice(store.Inbox(id.Name))
+							go func() {
+								for range notice {
+									select {
+									case woken <- struct{}{}:
+									default:
+									}
+								}
+							}()
+						}
+						serves = append(serves, runner.Served{Controller: t.Card, Ceiling: t.Ceiling, Prefixes: t.Prefixes, Store: s})
 					}
-					serves = append(serves, runner.Served{Controller: t.Card, Ceiling: t.Ceiling, Prefixes: t.Prefixes, Store: s})
+					return serves, nil
 				}
-				return serves, nil
+				serves, err := trusted()
+				if err != nil {
+					return err
+				}
+				started = true
+				r := runner.New(id, serves...)
+				r.Trusted = trusted
+				r.Jobs = set.jobs
+				r.Wrapper = strings.Fields(set.wrapper)
+				pass = r.Pass
+				e.Say("runner %s  (%s), serving %d controller(s), %d jobs at once", id.Name, id.Fingerprint(), len(serves), set.jobs)
+				if len(serves) == 0 {
+					e.Say("runner %s  trusts no controller yet, and takes jobs once it trusts one: corbie runner trust takes a controller's card", id.Name)
+				}
+				return nil
 			}
-			serves, err := trusted()
-			if err != nil {
+			if !cfg.Has(identity.Runner) {
+				e.Say("runner  this computer has no runner yet, and one starts once corbie runner card has made its card")
+			} else if err := begin(); err != nil {
 				return err
 			}
-			if len(serves) == 0 {
-				return fmt.Errorf("this runner trusts no controller yet: corbie runner trust takes a controller's card")
-			}
-			r := runner.New(id, serves...)
-			r.Trusted = trusted
-			r.Jobs = set.jobs
-			r.Wrapper = strings.Fields(set.wrapper)
-			running = append(running, role.Role{Name: name, Pass: e.warned(name, set.interval, r.Pass, stores), Interval: set.interval, Notice: woken})
-			e.Say("runner %s  (%s), serving %d controller(s), %d jobs at once", id.Name, id.Fingerprint(), len(serves), set.jobs)
+			running = append(running, role.Role{Name: name, Interval: set.interval, Notice: woken, Pass: e.warned(name, set.interval, func(ctx context.Context) (time.Time, error) {
+				if pass == nil {
+					if !cfg.Has(identity.Runner) {
+						return time.Time{}, nil
+					}
+					if err := begin(); err != nil {
+						return time.Time{}, err
+					}
+				}
+				return pass(ctx)
+			}, stores)})
 		case "gateway":
 			e.listen, e.tokenFile, e.clients = set.listen, set.tokenFile, set.clients
 			e.oidc = set.oidc
@@ -350,11 +411,6 @@ func (e *Env) start(cfg identity.Config, named []item, before func() error) erro
 			}
 			defer gateway()
 		case "store":
-			stop, err := e.serve(set.listen, set.timeout)
-			if err != nil {
-				return err
-			}
-			defer stop()
 		default:
 			programs = append(programs, found[i])
 		}
@@ -425,11 +481,11 @@ func (e *Env) start(cfg identity.Config, named []item, before func() error) erro
 // and after any pass by whose end the system has refused. It warns of a
 // store once. The pass may add to stores.
 func (e *Env) warned(name string, interval time.Duration, pass role.Pass, stores map[string]store.Store) role.Pass {
-	said := map[string]bool{}
+	said := map[store.Store]bool{}
 	look := func() {
-		for at, s := range stores {
-			if !said[at] {
-				said[at] = e.unreported(name, s, interval)
+		for _, s := range stores {
+			if !said[s] {
+				said[s] = e.unreported(name, s, interval)
 			}
 		}
 	}

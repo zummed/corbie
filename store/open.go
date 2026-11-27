@@ -32,15 +32,27 @@ func Open(address string) (Store, error) {
 	case IsServed(address):
 		return nil, fmt.Errorf("store: a served directory is opened by a party, with its identity, and there is none here")
 	}
+	dir, err := DirectoryAt(address)
+	if err != nil {
+		return nil, err
+	}
+	return OpenDirectory(dir)
+}
+
+// DirectoryAt gives the directory an address names, where it names one.
+func DirectoryAt(address string) (string, error) {
+	if !IsDirectory(address) {
+		return "", fmt.Errorf("store: %q is not a directory", address)
+	}
 	dir := strings.TrimPrefix(address, "file://")
 	if dir == "~" || strings.HasPrefix(dir, "~/") {
 		home, err := os.UserHomeDir()
 		if err != nil {
-			return nil, err
+			return "", err
 		}
 		dir = filepath.Join(home, dir[1:])
 	}
-	return OpenDirectory(dir)
+	return filepath.Abs(dir)
 }
 
 // IsDirectory says whether an address names a directory, which keeps no party out
@@ -62,6 +74,9 @@ func Check(ctx context.Context, s Store) error {
 	value, mark, err := s.Read(ctx, VersionName)
 	if err != nil {
 		return err
+	}
+	if l, ok := s.(*local); ok {
+		s = l.directory
 	}
 	if mark == None {
 		// A directory that is not there is said to be that, as a bucket that

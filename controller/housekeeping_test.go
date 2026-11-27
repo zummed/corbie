@@ -5,7 +5,9 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"fmt"
+	"slices"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -852,5 +854,64 @@ func Test_ctl_receipts_past_keeping_behind_running_calls_go(t *testing.T) {
 	}
 	if r := w.receipt("a-call-1000"); r == nil {
 		t.Fatal("the receipt of a call waiting for its result went")
+	}
+}
+
+// wakeReads notes how many wakes each read of them wakeReads for: a number for a
+// read of the first, and zero for a read of them all.
+type wakeReads struct {
+	store.Store
+	mu  sync.Mutex
+	got []int
+}
+
+func (a *wakeReads) note(under string, n int) {
+	if under == store.Wakes("ctl") {
+		a.mu.Lock()
+		a.got = append(a.got, n)
+		a.mu.Unlock()
+	}
+}
+
+func (a *wakeReads) List(ctx context.Context, under string) ([]store.Listed, error) {
+	a.note(under, 0)
+	return a.Store.List(ctx, under)
+}
+
+func (a *wakeReads) First(ctx context.Context, under string, n int) ([]store.Listed, error) {
+	a.note(under, n)
+	return a.Store.First(ctx, under, n)
+}
+
+// A pass reads the wakes as far as what is due and no further, so a store
+// that keeps many ended runs costs a pass no more than an empty one.
+func TestPassReadsWakesAsFarAsWhatIsDue(t *testing.T) {
+	w := newWorld(t)
+	wakes := &wakeReads{Store: w.ctrl.Store}
+	w.afresh(wakes)
+	// The wakes of runs that are gone: a pass deletes each one that is due.
+	set := func(n int, at time.Time) {
+		for i := range n {
+			name := store.Wake("ctl", at.Add(time.Duration(i)*time.Second), fmt.Sprintf("c1/gone-%d", i), "remove")
+			if _, err := w.owner.Write(ctx, name, []byte("\n"), store.OnlyIfNew); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	set(500, w.clock().Add(24*time.Hour))
+	w.pass()
+	if !slices.Equal(wakes.got, []int{10}) {
+		t.Fatalf("with 500 wakes and none due, a pass read the wakes as %v, and should have read the first 10", wakes.got)
+	}
+	// With more due than a batch, the pass reads on until it has them all.
+	set(25, w.clock().Add(-time.Hour))
+	wakes.got = nil
+	w.pass()
+	if !slices.Equal(wakes.got, []int{10, 100}) {
+		t.Fatalf("with 25 wakes due, a pass read the wakes as %v, and should have read the first 10 and then the first 100", wakes.got)
+	}
+	left := slices.DeleteFunc(w.list(store.Wakes("ctl")), func(name string) bool { return !strings.Contains(name, "/c1/gone-") })
+	if len(left) != 500 {
+		t.Fatalf("%d of the runs' wakes are left, and the 500 that are not due should be", len(left))
 	}
 }

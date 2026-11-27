@@ -83,9 +83,9 @@ The result
 
   reply           the model's last reply, as text or in the shape of `reply:`
   tokens          { input, output, cached }, counted over the agent's own turns
-  conversation    { turns, blobs, tasks }: a blob for each turn, each blob the
-                  model was shown by its handle's name, and each call that
-                  has not ended
+  conversation    { turns, blobs, opened, tasks }: a blob for each turn, each
+                  blob the model was shown by its handle's name, the list of
+                  each toolkit that is open, and each call that has not ended
 
 A reply that does not fit `reply:` is returned to the model, which takes
 another turn. A failed agent's output has `conversation` and `tokens`.
@@ -228,7 +228,14 @@ agent with many tools shows the model the ones it has opened.
 - A toolkit's list may hold a toolkit. The model opens it with the list's
   name, `{ list: github, name: review }`, and its tools are shown as
   `github_review_read`.
-- An agent given a `conversation` starts with every toolkit closed.
+- A list larger than 32 KiB is a blob: the list `toolkits` before the first
+  turn, and a toolkit's list in the result of its `open`. The model searches
+  it with the blob tools, then calls `open` with the list and an entry's
+  name. A tool it opens that way is offered from the next turn.
+- An agent given a `conversation` has open each toolkit in its `opened`
+  that the agent has, whose `when:` holds and that has no `approve: true`.
+  It runs no open for it, and gives no instructions again. The model opens
+  any other toolkit with `open`.
 
 A toolkit answers a call with `{ working, state }` where the work goes on,
 such as a task of an MCP server, or `{ requests, state }` where it needs

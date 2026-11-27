@@ -150,16 +150,125 @@ func TestAgentToolkitsAreOpenedByTheModel(t *testing.T) {
 		t.Errorf("with both open, the turn was offered: %s", got)
 	}
 	conversation := r.Output.(map[string]any)["conversation"].(map[string]any)
-	if got := strings.Join(slices.Sorted(maps.Keys(conversation)), " "); got != "blobs turns" {
+	if got := strings.Join(slices.Sorted(maps.Keys(conversation)), " "); got != "blobs opened turns" {
 		t.Errorf("the conversation holds: %s", got)
 	}
-	m2 := newModel(t, says("again"))
-	follow(t, l, startHelper(t, l, helper(m2.URL, "conversation: ${input.so}"), map[string]any{"question": "and?", "so": carried(conversation, r.ID)}))
-	if shown := jsonOf(m2.Calls[0]); !strings.Contains(shown, `"net_show"`) {
-		t.Errorf("the run that carried on was not shown the past call: %s", shown)
+	// A run that carries the conversation on has both open, and runs no open.
+	m2 := newModel(t, calls("c4", "net_show", `{"command": "show arp"}`), says("again"))
+	f := follow(t, l, startHelper(t, l, helper(m2.URL, "conversation: ${input.so}"), map[string]any{"question": "and?", "so": carried(conversation, r.ID)}))
+	if got := strings.Join(f.jobs, " "); got != "turn show turn#2" {
+		t.Errorf("the run that carried on had the script jobs: %s", got)
 	}
-	if got := offeredNames(m2.Calls[0].Tools); got != "add "+blobToolNames+" open" {
+	if got := offeredNames(m2.Calls[0].Tools); got != "add "+blobToolNames+" net_show payments_pay" {
 		t.Errorf("the run that carried on was offered: %s", got)
+	}
+	if shown := jsonOf(m2.Calls[0]); strings.Count(shown, "Run show commands only.") != 1 {
+		t.Errorf("the run that carried on was not shown the instructions once: %s", shown)
+	}
+	if shown := lastShown(m2.Calls[1]); !strings.Contains(shown, "shown: show arp") {
+		t.Errorf("the run that carried on ran net_show as: %s", shown)
+	}
+}
+
+// A conversation is input, written by whoever starts the run. It opens a
+// toolkit only where a call of open with no hook would: the agent has the
+// entry, as a toolkit, its when: holds, and it is not marked approve: true.
+func Test_agent_conversation_opens_only_what_open_would(t *testing.T) {
+	l := local(t, "all")
+	m := newModel(t, says("first"))
+	r := wait(t, l, startHelper(t, l, helper(m.URL, ""), map[string]any{"question": "q"}))
+	conversation := maps.Clone(r.Output.(map[string]any)["conversation"].(map[string]any))
+	list := func(entry, tool string) map[string]any {
+		return map[string]any{"entry": entry, "entries": []any{map[string]any{"kind": "tool", "name": tool, "description": "Claimed", "args": map[string]any{"type": "object"}}}}
+	}
+	conversation["opened"] = map[string]any{"net": list("net", "show"), "payments": list("payments", "pay"), "add": list("add", "more"),
+		"gone": list("gone", "x"), "other": list("net", "wipe"), "bad": "text"}
+	for name, c := range map[string]struct{ old, new, want string }{
+		"as it is":                {"", "", "add " + blobToolNames + " net_show other_wipe payments_pay"},
+		"net marked for approval": {`input: { asker: "${input.question}" } }`, `input: { asker: "${input.question}" }, approve: true }`, "add " + blobToolNames + " open payments_pay"},
+		"payments not offered":    {"payments: { machine: ./toolkits/payments.yaml }", `payments: { machine: ./toolkits/payments.yaml, when: "${input.question == 'pay'}" }`, "add " + blobToolNames + " net_show other_wipe"},
+	} {
+		m := newModel(t, calls("c1", "other_wipe", `{}`), says("done"))
+		def := helper(m.URL, "conversation: ${input.so}\n\t\thooks: { check: { before: ./ask.js, when: \"${job.approve}\" } }")
+		if c.old != "" {
+			def = strings.Replace(def, c.old, c.new, 1)
+		}
+		files := maps.Clone(toolkits)
+		files["ask.js"] = `return { ok: true }`
+		wait(t, l, startWith(t, l, def, files, map[string]any{"question": "and?", "so": carried(conversation, r.ID)}))
+		if got := offeredNames(m.Calls[0].Tools); got != c.want {
+			t.Errorf("%s: the first turn was offered: %s", name, got)
+		}
+		// A kept item that misdescribes a tool misleads the model, and the
+		// toolkit refuses the call.
+		if name == "as it is" {
+			if shown := lastShown(m.Calls[1]); !strings.Contains(shown, `the toolkit net has no tool \"wipe\"`) {
+				t.Errorf("a call of a tool the toolkit does not have was shown as: %s", shown)
+			}
+		}
+	}
+}
+
+// A list too large to show is a blob: the open gives its handle, the model
+// searches it with the blob tools, and opens a tool by its name. The tool
+// is offered from the next turn.
+func TestAgentListTooLargeToShowIsABlob(t *testing.T) {
+	files := maps.Clone(toolkits)
+	files["toolkits/net.yaml"] = "toolkit: net\ndescription: The firewall and the switch.\ninput: { asker: any }\njob: ./many.js\n"
+	files["toolkits/many.js"] = `
+		const r = input.request
+		if (r.do !== "open") return { result: "ran " + r.tool }
+		const entries = []
+		for (let i = 0; i < 80; i++) entries.push({ kind: "tool", name: "t" + i, description: "Tool " + i + " " + "x".repeat(600), args: { type: "object" } })
+		return { instructions: "Search first.", entries }`
+	m := newModel(t, calls("c1", "open", opens("net")), calls("c2", "blob_search", `{"blob": "blob1", "find": "Tool 42 "}`),
+		calls("c3", "open", `{"list": "net", "name": "t42"}`), calls("c4", "net_t42", `{}`), calls("c5", "net_t7", `{}`), says("done"))
+	l := local(t, "all")
+	r := wait(t, l, startWith(t, l, helper(m.URL, ""), files, map[string]any{"question": "q"}))
+	if r.Status != "done" {
+		t.Fatalf("the agent ended %s: %s", r.Status, r.Error)
+	}
+	if shown := strings.ReplaceAll(lastShown(m.Calls[1]), `\`, ""); !strings.Contains(shown, `"instructions":"Search first."`) || !strings.Contains(shown, `"blob":"blob1"`) ||
+		!strings.Contains(shown, `"items":80`) || !strings.Contains(shown, "then call open with this list") {
+		t.Errorf("the open of a long list was shown as: %.600s", shown)
+	}
+	if got := offeredNames(m.Calls[1].Tools); got != "add "+blobToolNames+" open" {
+		t.Errorf("after the open of a long list, the turn was offered: %s", got)
+	}
+	if got := openDescription(m.Calls[1].Tools); !strings.Contains(got, "- the list net is the blob blob1") {
+		t.Errorf("after the open of a long list, open says: %s", got)
+	}
+	if shown := strings.ReplaceAll(lastShown(m.Calls[2]), `\`, ""); !strings.Contains(shown, `"name":"t42"`) {
+		t.Errorf("the search gave: %.400s", shown)
+	}
+	if shown := lastShown(m.Calls[3]); !strings.Contains(shown, "Opened net_t42") {
+		t.Errorf("the open of a tool gave: %s", shown)
+	}
+	if got := offeredNames(m.Calls[3].Tools); got != "add "+blobToolNames+" net_t42 open" {
+		t.Errorf("after the open of a tool, the turn was offered: %s", got)
+	}
+	if shown := lastShown(m.Calls[4]); !strings.Contains(shown, "ran t42") {
+		t.Errorf("the call of the opened tool gave: %s", shown)
+	}
+	if shown := lastShown(m.Calls[5]); !strings.Contains(shown, `there is no tool named \"net_t7\"`) {
+		t.Errorf("the call of a tool not opened was shown as: %s", shown)
+	}
+	// The list of the agent's own toolkits is a blob where it is as large.
+	files = maps.Clone(toolkits)
+	files["toolkits/net.yaml"] = strings.Replace(toolkits["toolkits/net.yaml"], "The firewall and the switch.", "The firewall. "+strings.Repeat("y", 20<<10), 1)
+	files["toolkits/payments.yaml"] = strings.Replace(toolkits["toolkits/payments.yaml"], "Payments.", "Payments. "+strings.Repeat("z", 20<<10), 1)
+	m = newModel(t, calls("c1", "open", opens("net")), says("done"))
+	if r := wait(t, l, startWith(t, l, helper(m.URL, ""), files, map[string]any{"question": "q"})); r.Status != "done" {
+		t.Fatalf("the agent ended %s: %s", r.Status, r.Error)
+	}
+	if got := openDescription(m.Calls[0].Tools); !strings.Contains(got, "- the list toolkits is the blob blob1") || strings.Contains(got, "yyyy") {
+		t.Errorf("with a long list of toolkits, open says: %.300s", got)
+	}
+	if shown := strings.ReplaceAll(jsonOf(m.Calls[0]), `\`, ""); !strings.Contains(shown, `"list":"toolkits"`) || !strings.Contains(shown, `"items":2`) {
+		t.Errorf("the first turn was shown: %.600s", shown)
+	}
+	if got := offeredNames(m.Calls[1].Tools); got != "add "+blobToolNames+" net_show open" {
+		t.Errorf("after the open, the turn was offered: %s", got)
 	}
 }
 

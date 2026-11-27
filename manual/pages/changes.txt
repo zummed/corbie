@@ -37,7 +37,7 @@ toolkit, as `corbie manual agent` says.
   job.tool.entry and job.tool.name                            job.tool.toolkit and job.tool.name
   job.tool.description                                        gone
   a tool or a listed tool with a blob argument, in a toolkit  write the tool in the agent
-  conversation.opened                                         gone: a run that carries a conversation on opens its toolkits again
+  conversation.opened, a hash for each toolkit                the list of each toolkit that is open; no hash is checked
   the Toolkits page of `corbie ui`                            gone: a toolkit is a machine on the Machines page
 
 - A call of a toolkit's tool that ends `{ working, state }` or

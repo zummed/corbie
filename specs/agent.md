@@ -266,6 +266,19 @@ tools:
 - The agent's hooks run for the open and for each call, which are the agent's jobs. A toolkit's own hooks run for its tools' jobs, in its run (see [Toolkit](toolkit.md#authority)).
 - An answer with `working` or `requests` makes the call a task (see [A call that has not ended](#a-call-that-has-not-ended)). Any other answer with no `result` goes back to the model as an error.
 
+### Lists
+
+Every list the model chooses from is a list of entries: the agent's own toolkits, in the list `toolkits`, and the tools and toolkits an open toolkit gives, in a list named as the toolkit is. A list small enough to show is shown: `open` names each toolkit of it, and its tools are offered. A list whose JSON is larger than 32 KiB, the limit for a tool's result, is a blob.
+
+1. A job named `preview` stores the list as a blob of entries, `{ kind, name, description, args }`.
+2. The model is shown the blob's handle: for the list `toolkits` before the first turn, and for a toolkit's list in the result of its `open`, with its instructions.
+3. The model searches the blob with the blob tools.
+4. The model calls `open` with the list and an entry's name. A toolkit is opened as any is. A tool is offered from the next turn, and no job runs for it.
+
+- `open` names a list that is a blob with its blob, and not its entries.
+- A tool of such a list that the model has not opened is not offered, and a call of it goes back to the model as an error.
+- A list that could not be stored is shown as a short one is.
+
 A toolkit's list may hold a toolkit, as well as tools. The model opens it from the list of the toolkit that gave it:
 
 ```
@@ -340,17 +353,27 @@ An agent has a number of turns, twenty by default, and the model is told when fe
 
 The conversation is everything the model has been shown and has said: the prompt, each reply and tool call, and each call's result, error or denial. It is kept as its turns, each written once as the turn ends. Nothing is rewritten as the conversation grows.
 
-In a result the conversation is one value: its turns, the blobs the model was shown, each under the name the model knows it by, and the tasks that have not ended. With no task, `tasks` is left out.
+In a result the conversation is one value: its turns, the blobs the model was shown, each under the name the model knows it by, the lists of the toolkits that are open, and the tasks that have not ended. With none, `opened` or `tasks` is left out.
 
 ```
-conversation: { turns: [ turn 1, turn 2, … ], blobs: { blob1: …, blob2: … }, tasks: { task1: { entry, tool, args, state } } }
+conversation: { turns: [ turn 1, turn 2, … ], blobs: { blob1: …, blob2: … },
+                opened: { net: { entry, entries, blob, loaded } }, tasks: { task1: { entry, tool, args, state } } }
 ```
 
 An agent started with it carries on where the other stopped. Every name goes on meaning the blob it meant, and a blob the conversation has not shown takes a name it has not used.
 
-A run that carries a conversation on has every toolkit closed, and opens the entries with `open: true` again. The model opens any other toolkit with `open`.
+A run that carries a conversation on runs nothing for it at its start. The conversation is input, written by whoever starts the run, so the run checks each list in `opened` against its own definition, and keeps one only where a call of `open` that no hook holds would open it:
 
-The run keeps each task whose entry it has, as a toolkit that is offered, and the model resumes it by its name. The conversation is input, written by whoever starts the run, so a task's state is that writer's claim: the resume is the entry's job, which its hooks hold and its toolkit checks.
+- the list's `entry` is an entry the definition has, as a toolkit;
+- that entry's `when:` holds on the run's own input;
+- that entry is not marked `approve: true`;
+- a list that is a blob names a blob the conversation holds.
+
+A list that is kept is open from the first turn, as the model was shown it: its tools are offered, `open` does not name it, and its instructions are in the conversation and are not given again. A toolkit with `open: true` that is kept is not opened again. Any other list is passed over, and the model opens that toolkit with `open`.
+
+- Every call is the entry's job, which its hooks hold and the toolkit checks at its location. A kept list that misdescribes a tool misleads the model, and the toolkit refuses the call.
+- The run keeps each task whose entry it has, as a toolkit that is offered, and the model resumes it by its name. A task's state is the claim of whoever wrote the conversation.
+- The list of the agent's own toolkits is made again in each run.
 
 ## Blobs and the model
 
@@ -387,7 +410,7 @@ An agent's record holds these entries, under these names:
 | job named after a toolkit's tool, `net_show_status` | one call of that tool: the entry's job, with the request |
 | job `open`, `open.1` | an open of a toolkit: the entry's job, with the request |
 | job `resume`, `resume.1` | a resume or a cancel of a task: the entry's job, with the request |
-| job `preview`, `preview.1` | the preview of a blob before the model is first shown it |
+| job `preview`, `preview.1` | the preview of a blob before the model is first shown it, or a list stored as a blob |
 
 `stop` is `end`, `tools` or `length`.
 

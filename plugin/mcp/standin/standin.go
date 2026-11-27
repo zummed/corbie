@@ -24,6 +24,8 @@ const latest = "2026-07-28"
 //	delete_notes    deletes the notes with a text, once asked to confirm
 //	picture         gives a picture and its size as data
 //	locked          reports that it failed
+//	export_notes    exports the notes, as a task for a client that takes one
+//	archive_notes   archives the notes, as a task that asks to confirm
 type Server struct {
 	// Legacy is the earlier version the server speaks, after a handshake;
 	// empty, it speaks 2026-07-28 alone.
@@ -32,8 +34,10 @@ type Server struct {
 	// carry; Metadata is where a refusal says the server's metadata is.
 	Token    string
 	Metadata string
-	// Only, where set, are the tools it has; it has them all otherwise.
+	// Only, where set, are the tools it lists; it lists them all otherwise.
 	Only []string
+	// Slow is how many times an export is asked after and is still working.
+	Slow int
 
 	mu    sync.Mutex
 	notes []string
@@ -45,6 +49,17 @@ type Server struct {
 	Requests []http.Header
 	// Ended are the sessions a client ended.
 	Ended []string
+	// tasks are the tasks begun, by their ids.
+	tasks map[string]*task
+}
+
+// A task is a call that ends later. An export has ended when it is asked
+// after, or later for a slow server; an archive asks to confirm first.
+type task struct {
+	tool      string
+	asked     int
+	confirmed bool
+	cancelled bool
 }
 
 var tools = []any{
@@ -57,6 +72,8 @@ var tools = []any{
 		"type": "object", "properties": map[string]any{"text": map[string]any{"type": "string"}}}},
 	map[string]any{"name": "picture", "description": "Draw a picture", "inputSchema": map[string]any{"type": "object"}},
 	map[string]any{"name": "locked", "description": "Fail", "inputSchema": map[string]any{"type": "object"}},
+	map[string]any{"name": "export_notes", "description": "Export the notes", "inputSchema": map[string]any{"type": "object"}},
+	map[string]any{"name": "archive_notes", "description": "Archive the notes", "inputSchema": map[string]any{"type": "object"}},
 	// A tool whose header is on a property of a list's items cannot be
 	// carried, and a client over the web leaves it out.
 	map[string]any{"name": "badly_marked", "description": "Marked where no header can be", "inputSchema": map[string]any{
@@ -95,6 +112,7 @@ func (s *Server) Answer(m map[string]any, session string, web bool) map[string]a
 		}
 		return map[string]any{"jsonrpc": "2.0", "id": id, "result": r}
 	}
+	var meta map[string]any
 	if s.Legacy != "" {
 		started := s.initialized
 		if web {
@@ -108,7 +126,7 @@ func (s *Server) Answer(m map[string]any, session string, web bool) map[string]a
 			return failure(id, -32600, "the server is not initialized", nil)
 		}
 	} else {
-		meta, _ := params["_meta"].(map[string]any)
+		meta, _ = params["_meta"].(map[string]any)
 		version, _ := meta["io.modelcontextprotocol/protocolVersion"].(string)
 		switch {
 		case method == "initialize":
@@ -119,12 +137,38 @@ func (s *Server) Answer(m map[string]any, session string, web bool) map[string]a
 			return failure(id, -32022, "Unsupported protocol version", map[string]any{"supported": []any{latest}, "requested": version})
 		}
 	}
+	// tasked says the client takes a task as a call's answer.
+	can, _ := meta["io.modelcontextprotocol/clientCapabilities"].(map[string]any)
+	extensions, _ := can["extensions"].(map[string]any)
+	_, tasked := extensions["io.modelcontextprotocol/tasks"]
 	switch method {
 	case "server/discover":
 		if s.Legacy != "" {
 			return failure(id, -32601, "Method not found", nil)
 		}
-		return result(map[string]any{"supportedVersions": []any{latest}, "capabilities": map[string]any{"tools": map[string]any{}}})
+		return result(map[string]any{"supportedVersions": []any{latest}, "instructions": "Notes are kept on shelves.",
+			"capabilities": map[string]any{"tools": map[string]any{}, "extensions": map[string]any{"io.modelcontextprotocol/tasks": map[string]any{}}}})
+	case "tasks/get", "tasks/update", "tasks/cancel":
+		taskID, _ := params["taskId"].(string)
+		t := s.tasks[taskID]
+		switch {
+		case !tasked:
+			return failure(id, -32021, "Missing required client capability", nil)
+		case t == nil:
+			return failure(id, -32602, "Failed to retrieve task: Task not found", nil)
+		case method == "tasks/cancel":
+			t.cancelled = true
+			return result(map[string]any{})
+		case method == "tasks/update":
+			responses, _ := params["inputResponses"].(map[string]any)
+			confirm, _ := responses["confirm"].(map[string]any)
+			t.confirmed = t.confirmed || confirm["action"] == "accept"
+			return result(map[string]any{})
+		}
+		t.asked++
+		r := s.status(taskID, t)
+		r["resultType"] = "complete"
+		return result(r)
 	case "tools/list":
 		// Two tools a page.
 		from := 0
@@ -185,6 +229,22 @@ func (s *Server) Answer(m map[string]any, session string, web bool) map[string]a
 				map[string]any{"type": "image", "mimeType": "image/png", "data": base64.StdEncoding.EncodeToString([]byte("\x89PNG a picture"))},
 				map[string]any{"type": "resource_link", "uri": "notes://all", "name": "all notes"}},
 				"structuredContent": map[string]any{"width": 1, "height": 1}})
+		case "export_notes", "archive_notes":
+			name := params["name"].(string)
+			if !tasked && name == "archive_notes" {
+				return failure(id, -32021, "Missing required client capability", nil)
+			}
+			if !tasked {
+				return said("exported the notes")
+			}
+			if s.tasks == nil {
+				s.tasks = map[string]*task{}
+			}
+			taskID := fmt.Sprintf("task-%d", len(s.tasks)+1)
+			s.tasks[taskID] = &task{tool: name}
+			r := s.status(taskID, s.tasks[taskID])
+			r["resultType"] = "task"
+			return result(r)
 		case "locked":
 			r := said("the notes are locked")
 			r["result"].(map[string]any)["isError"] = true
@@ -193,6 +253,29 @@ func (s *Server) Answer(m map[string]any, session string, web bool) map[string]a
 		return failure(id, -32602, fmt.Sprintf("Unknown tool: %v", params["name"]), nil)
 	}
 	return failure(id, -32601, "Method not found", nil)
+}
+
+// status is a task as the server reports it.
+func (s *Server) status(id string, t *task) map[string]any {
+	r := map[string]any{"taskId": id, "status": "working", "statusMessage": "writing the notes out",
+		"createdAt": "2026-07-28T00:00:00Z", "lastUpdatedAt": "2026-07-28T00:00:00Z", "ttlMs": 60000, "pollIntervalMs": 10}
+	done := func(text string) {
+		r["status"] = "completed"
+		r["result"] = map[string]any{"content": []any{map[string]any{"type": "text", "text": text}}}
+	}
+	switch {
+	case t.cancelled:
+		r["status"] = "cancelled"
+	case t.tool == "export_notes" && t.asked > s.Slow:
+		done("exported the notes")
+	case t.tool == "archive_notes" && t.confirmed:
+		done("archived the notes")
+	case t.tool == "archive_notes":
+		r["status"] = "input_required"
+		r["inputRequests"] = map[string]any{"confirm": map[string]any{"method": "elicitation/create", "params": map[string]any{
+			"mode": "form", "message": "Archive the notes?", "requestedSchema": map[string]any{"type": "object"}}}}
+	}
+	return r
 }
 
 // Serve speaks over a program's standard streams: a message a line.
@@ -292,6 +375,9 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		reply(400, failure(m["id"], -32020, "Header mismatch: Mcp-Method", nil))
 		return
 	case method == "tools/call" && decoded(r.Header.Get("Mcp-Name")) != name:
+		reply(400, failure(m["id"], -32020, "Header mismatch: Mcp-Name", nil))
+		return
+	case strings.HasPrefix(method, "tasks/") && r.Header.Get("Mcp-Name") != params["taskId"]:
 		reply(400, failure(m["id"], -32020, "Header mismatch: Mcp-Name", nil))
 		return
 	case method == "tools/call" && name == "find_notes" && decoded(r.Header.Get("Mcp-Param-Shelf")) != shelf:

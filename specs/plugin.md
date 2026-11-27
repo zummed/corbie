@@ -63,9 +63,22 @@ A plugin's page in the manual is its specification. It lists each call, its opti
 | `secrets` | handles to secrets |
 | `machines` | defining a machine while a job runs |
 | `llm` | calling a model |
-| `mcp` | the tools of an MCP server, over the web or from a program it starts, and calls to them |
+| `mcp` | the tools of an MCP server, over the web or from a program it starts, calls to them, and calls that end later |
 
 `mcp` is a plugin so that a script uses any MCP server with one call: it speaks the protocol and its versions, signs in to a server on the web, and keeps a server it starts as a program open for several calls, which `exec` does not give a script.
+
+`server.toolkit(request)` answers one of four requests, so that one script serves a server's tools to any caller:
+
+| Request | Answer |
+|---|---|
+| `{ do: open }` | `{ instructions, entries }`: the server's instructions and its tools |
+| `{ do: call, tool, args }` | `{ result }`, `{ working, state }` or `{ requests, state }` |
+| `{ do: resume, tool, state, responses }` | the same three |
+| `{ do: cancel, tool, state }` | `{ result }` |
+
+- A server on the web may answer a call with a task, which ends later. The call gives `{ working, state }`, and a resume with that state, in the same job or another, asks the server once.
+- A call or a task that needs input gives `{ requests, state }`, and a resume with the responses answers it.
+- A program stops when its job ends, so the plugin waits in the job for a program's task.
 
 Corbie also comes with libraries written in script, among them the standard turn of an agent.
 

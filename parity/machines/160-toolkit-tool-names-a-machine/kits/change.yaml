@@ -1,0 +1,6 @@
+flow: change
+description: Change one file of a project.
+input: { project: string, path: string, text: string }
+stages:
+  change: { job: { script: echo.js, input: { changed: "${input}" } } }
+output: ${stages.change.output}

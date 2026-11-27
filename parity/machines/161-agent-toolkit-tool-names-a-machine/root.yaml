@@ -1,0 +1,15 @@
+# An agent opens a toolkit whose tools name machines. The model is shown
+# each tool with the machine's description and arguments, without the
+# project the tool fixes. change_file is marked in the toolkit, so the
+# agent's hook asks where the tool's meta says.
+agent: helper
+model: { name: scripted, service: anthropic }
+turn: ./turn.js
+prompt: Read a.txt and change it.
+input: { team: string }
+hooks:
+  team:
+    when: "${job.approve}"
+    before: { script: ./ask-in.js, input: { channel: "${job.meta.channel}", tool: "${job.tool.name}", args: "${job.tool.args}" } }
+tools:
+  orders: { machine: ./toolkits/orders.yaml, input: { team: "${input.team}" } }

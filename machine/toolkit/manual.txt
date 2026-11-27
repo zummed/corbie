@@ -39,6 +39,44 @@ A flow or a statechart names the toolkit by its file, or by its location with
     corbie test shop.yaml
       output: "added to a: eggs"
 
+A tool that names a machine
+---------------------------
+
+A tool written `machine:` or `call:` takes its description and its arguments
+from the machine it names, and has no `description:`, `args:` or `job:`.
+
+    # shelf.yaml
+    toolkit: shelf
+    description: The notes on shelf b.
+    tools:
+      add_note: { machine: ./add-note.yaml, input: { shelf: b } }
+
+    # add-note.yaml
+    flow: add-note
+    description: Add a note to a shelf.
+    input: { shelf: string, text: string }
+    stages:
+      add: { job: { script: ./add.js, input: { shelf: "${input.shelf}", text: "${input.text}" } } }
+    output: ${stages.add.output}
+
+    corbie test shelf.yaml --input '{"request": {"do": "open"}}'
+      output: {"entries":[{"args":{"additionalProperties":false,"properties":{"text":{"type":"string"}},"required":["text"],"type":"object"},"description":"Add a note to a shelf.","kind":"tool","name":"add_note"}],"instructions":""}
+
+    corbie test shelf.yaml --input '{"request": {"do": "call", "tool": "add_note", "args": {"text": "tea"}}}'
+      output: {"result":"added to b: tea"}
+
+  machine: ./add-note.yaml   the machine's file, which runs as a child run
+  call: notes/add            a location in the same tree, where it runs as a run of its own
+  input                      the names of the machine's input the tool fixes; it reads the toolkit's input
+  approve: true              marks the tool's job for approval
+  meta                       data hooks read as `job.meta`
+
+- The arguments are the machine's `input:` without the names the tool
+  fixes. A call that gives a fixed name, or any other name, does not fit.
+- A tool written `call:` has `send:` for its location.
+- The machine has a `description:`, and is no toolkit. One at a location is
+  transient, and the location is in the toolkit's own tree.
+
 A job that answers
 ------------------
 
@@ -73,7 +111,7 @@ Fields
   job            one job that answers every request, in place of
                  `instructions:` and `tools:`
 
-A tool has these fields.
+A tool has these fields, or names a machine, as above.
 
   description    what the tool is for
   args           the shape of its arguments

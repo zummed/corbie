@@ -1,0 +1,10 @@
+toolkit: orders
+description: The orders app.
+input: { team: string }
+tools:
+  read_file: { call: files/read, input: { project: "${input.team}/orders" } }
+  change_file:
+    call: files/change
+    input: { project: "${input.team}/orders" }
+    approve: true
+    meta: { channel: "#orders-team" }

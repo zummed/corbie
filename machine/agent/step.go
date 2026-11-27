@@ -766,7 +766,7 @@ func (s *stepper) recorded() map[string][]string {
 			continue
 		}
 		for _, w := range tool.read(s.in.Run.Recorded[tool.Call]) {
-			unread[name] = append(unread[name], place(name)+w.at+": "+w.text)
+			unread[name] = append(unread[name], place(name)+w.At+": "+w.Text)
 		}
 	}
 	return unread

@@ -50,12 +50,21 @@ type state struct {
 }
 
 // Tool is a named job a call runs, with its description and the shape of
-// its arguments, a JSON Schema of an object.
+// its arguments, a JSON Schema of an object. Written machine: or call: it
+// names a machine, whose description it takes, and its arguments are that
+// machine's input without the names the tool fixes.
 type Tool struct {
 	Description string           `json:"description"`
 	Args        map[string]any   `json:"args,omitzero"`
 	Job         *machine.JobSpec `json:"job"`
+	// Machine is the file of the machine the tool names, and Call its
+	// location. Job runs it with the input the tool fixes.
+	Machine string `json:"machine,omitzero"`
+	Call    string `json:"call,omitzero"`
 }
+
+// named says the tool names a machine, by its file or its location.
+func (t *Tool) named() bool { return t.Machine != "" || t.Call != "" }
 
 // What a request asks, as its do: says.
 const (
@@ -107,6 +116,13 @@ func (toolkitType) Shape() *machine.Shape {
 		{Name: "description", Kind: machine.KindText, Description: "what the tool is for, for the model to choose by"},
 		{Name: "args", Kind: machine.KindTypes, Description: "the shape of its arguments: each name with the type of its value, or a JSON Schema with type: object"},
 		{Name: "job", Kind: machine.KindJob, Description: "the job a call of the tool starts; it reads input and args"},
+		{Name: "machine", Kind: machine.KindWord, Path: true,
+			Description: "the file of a machine, in place of description, args and job: the description is that machine's, and the arguments are its input"},
+		{Name: "call", Kind: machine.KindWord, Description: "the location of a machine in the same tree, in place of machine:"},
+		{Name: "input", Kind: machine.KindValue,
+			Description: "of a tool with machine: or call:, the names of the machine's input the tool fixes; it reads the toolkit's input"},
+		{Name: "approve", Kind: machine.KindFlag, Description: "of a tool with machine: or call:, marks the tool's job for approval, so it starts only after a hook before it"},
+		{Name: "meta", Kind: machine.KindValue, Description: "of a tool with machine: or call:, data of any kind, which hooks read as job.meta and nothing else reads"},
 	}}
 	return &machine.Shape{Name: "toolkit", What: "a toolkit", Fields: []machine.Field{
 		{Name: "instructions", Kind: machine.KindText, Description: "the text an open gives; it reads the toolkit's input"},
@@ -156,16 +172,29 @@ func (toolkitType) Fill(p *machine.Parser, f *machine.Fields) any {
 		if tf == nil {
 			continue
 		}
-		tool := &Tool{Description: tf.Text("description")}
-		args, _ := tf.Map("args")
-		full, err := shortForm.Full(args)
-		if err != nil {
-			p.Problem(place+".args", "%v", err)
-			full = args
-		}
-		tool.Args = full
-		if job, ok := tf.Value("job"); ok {
-			tool.Job = p.Job(place+".job", job)
+		var tool *Tool
+		if tf.Has("machine") || tf.Has("call") {
+			tool = fillNamed(p, tf, place)
+		} else {
+			for _, field := range []string{"input", "approve", "meta"} {
+				if tf.Has(field) {
+					p.Problem(place+"."+field, "%s: belongs to a tool with machine: or call:; a tool with job: writes its input, approve and meta in the job", field)
+				}
+			}
+			tf.Value("input")
+			tf.Bool("approve")
+			tf.Value("meta")
+			tool = &Tool{Description: tf.Text("description")}
+			args, _ := tf.Map("args")
+			full, err := shortForm.Full(args)
+			if err != nil {
+				p.Problem(place+".args", "%v", err)
+				full = args
+			}
+			tool.Args = full
+			if job, ok := tf.Value("job"); ok {
+				tool.Job = p.Job(place+".job", job)
+			}
 		}
 		tf.Done()
 		if t.Tools == nil {
@@ -174,6 +203,52 @@ func (toolkitType) Fill(p *machine.Parser, f *machine.Fields) any {
 		t.Tools[name] = tool
 	}
 	return t
+}
+
+// fillNamed reads a tool written with machine: or call:. Nothing else of a
+// tool is written for it: its description is the machine's, its arguments
+// are the machine's input without the names the tool fixes, and its job
+// runs the machine. The machine is read with the definition, so it is a
+// file, or a location of the same tree.
+func fillNamed(p *machine.Parser, tf *machine.Fields, place string) *Tool {
+	for _, field := range []string{"description", "args", "job"} {
+		if tf.Has(field) {
+			p.Problem(place+"."+field, "a tool with machine: or call: has no %s: the description and arguments come from the machine it names", field)
+		}
+	}
+	tf.Text("description")
+	tf.Map("args")
+	tf.Value("job")
+	tool := &Tool{}
+	var target *machine.Definition
+	tool.Job, tool.Machine, tool.Call, target = p.Named(tf, place, "a tool")
+	at, the := ".machine", "the machine "+tool.Machine
+	if tool.Call != "" {
+		at, the = ".call", "the machine at "+tool.Call
+	}
+	if strings.HasPrefix(tool.Call, "/") {
+		p.Problem(place+at, "a toolkit's tool names a location of its own tree, written from the tree's prefix, and %s is written in full", tool.Call)
+	}
+	if target == nil {
+		return tool
+	}
+	tool.Description = target.Description
+	switch {
+	case target.Type == "toolkit":
+		p.Problem(place+at, "%s is a toolkit: a toolkit's tool names a machine that is no toolkit", the)
+	case target.Description == "":
+		p.Problem(place+at, "%s has no description:, which is the tool's", the)
+	}
+	if tool.Call != "" && target.Lifetime != machine.LifetimeTransient {
+		p.Problem(place+at, "%s is %s: a call starts a run only of a transient location", the, target.Lifetime)
+	}
+	fixed, _ := tool.Job.Input.(map[string]any)
+	var wrong []machine.Wrong
+	tool.Args, wrong = machine.Recorded{Input: target.Input}.Args(at, the, fixed)
+	for _, w := range wrong {
+		p.Problem(place+w.At, "%s", w.Text)
+	}
+	return tool
 }
 
 // Check reports what is wrong with a toolkit in full form.
@@ -202,6 +277,17 @@ func (toolkitType) Check(c *machine.Checker, def *machine.Definition) {
 		c.Name(place, name)
 		if tool == nil || tool.Job == nil {
 			c.Problem(place, "a tool needs a job")
+			continue
+		}
+		if tool.named() {
+			// What the machine gives was checked as it was read, and one
+			// that could not be read has its problem.
+			if tool.Args != nil {
+				if _, err := machine.CompileShape(tool.Args); err != nil {
+					c.Problem(place, "%v", err)
+				}
+			}
+			c.Job(place, tool.Job, "input")
 			continue
 		}
 		if tool.Description == "" {
@@ -407,6 +493,21 @@ func (t *Toolkit) start(in *machine.StepIn, r *request, input any) (any, *machin
 	}
 	if err := machine.Fits(schema, r.Args); err != nil {
 		return nil, nil, fmt.Errorf("the arguments do not fit the tool %q: %v", r.Tool, err)
+	}
+	if tool.named() {
+		// A tool that names a machine gives it the arguments as they were
+		// given, with the input the tool fixes over them.
+		job, err := tool.Job.Fill(eval, scope, "tools."+r.Tool, r.Tool)
+		if err != nil {
+			return nil, nil, err
+		}
+		input := map[string]any{}
+		given, _ := r.Args.(map[string]any)
+		maps.Copy(input, given)
+		fixed, _ := job.Input.(map[string]any)
+		maps.Copy(input, fixed)
+		job.Input = input
+		return nil, job, nil
 	}
 	scope["args"] = r.Args
 	job, err := tool.Job.Fill(eval, scope, "tools."+r.Tool+".job", r.Tool)

@@ -64,7 +64,51 @@ A toolkit with `tools:` answers a request itself.
 
 No job starts for any of these.
 
-A tool is written as an agent's tool is: `description:`, `args:` in the short form or in full, and `job:`. A `blob` in the short form is the blob itself, as in a machine's input; an agent offers it to the model as a name.
+A tool is written in place, as an agent's tool is, or names a machine by its file or by its location.
+
+```
+  description:, args:, job:    a tool written in place
+  machine: ./file.yaml         a machine named by its file
+  call: location               a machine named by its location
+```
+
+A tool written in place has `description:`, `args:` in the short form or in full, and `job:`. A `blob` in the short form is the blob itself, as in a machine's input; an agent offers it to the model as a name.
+
+## A tool that names a machine
+
+A tool written `machine:` or `call:` takes its description and its arguments from the machine it names, and has no `description:`, `args:` or `job:`.
+
+| Field | What it is |
+|---|---|
+| `machine:` | the machine's file, which runs as a child run of the toolkit's run |
+| `call:` | the machine's location in the same tree, where it runs as a run of its own |
+| `input:` | the names of the machine's input the tool fixes; it reads the toolkit's input |
+| `approve:` | `true` marks the tool's job for approval |
+| `meta:` | the `meta:` of the tool's job |
+
+```yaml
+# toolkits/orders.yaml
+toolkit: orders
+description: The orders app, and its settings.
+input: { team: string }
+tools:
+  read_file:   { call: gitlab/files/read,     input: { project: "${input.team}/orders" } }
+  change_file: { call: gitlab/commits/create, input: { project: "${input.team}/orders" }, approve: true, meta: { channel: "#orders-team" } }
+
+# gitlab/files/read.yaml
+flow: read
+description: Read one file of a project.
+input: { project: string, path: string, ref: "string?" }
+```
+
+1. An open gives the entry `read_file` with the description `Read one file of a project.` and the arguments `path` and `ref`.
+2. A call `{ path: a.txt }` is checked against those arguments. A fixed name, or a name the machine's input does not give, does not fit.
+3. The call starts a run of `gitlab/files/read` with `{ project: group/orders, path: a.txt }`, for a toolkit whose input gives the team `group`. The toolkit's run ends with `{ result }`, that run's result.
+
+- A tool written `call:` has `send:` for its location, and nothing else is written for it.
+- A hook reads the call as `job.tool`, as for a tool written in place.
+- The machine is read when the toolkit's definition is. What an agent's entry that names a machine in the same tree is refused for then, a tool is refused for (see [Agent](agent.md#an-entry-that-names-a-machine)).
+- A tool that names a toolkit is refused, as is a location written from `/`.
 
 ## A resume waits
 

@@ -4,7 +4,7 @@ The detailed rules behind the [Toolkit overview](../toolkit.md). Area code: `kit
 
 ## The definition
 
-**R-kit-01** A toolkit's definition has a `description:`, and either `tools:`, with `instructions:` if it gives any, or one `job:`. A toolkit with both, with neither, with no description or with `lifetime: singleton` is refused when the definition is checked. A tool has a `description:`, `args:` and a `job:`, and a job that reads an argument its `args:` does not name is refused.
+**R-kit-01** A toolkit's definition has a `description:`, and either `tools:`, with `instructions:` if it gives any, or one `job:`. A toolkit with both, with neither, with no description or with `lifetime: singleton` is refused when the definition is checked. A tool written in place has a `description:`, `args:` and a `job:`, and a job that reads an argument its `args:` does not name is refused.
 *Accept:* `TestToolkitDefinitionIsChecked`: each of these is refused, and the refusal names its place.
 
 ## Requests
@@ -29,6 +29,9 @@ The detailed rules behind the [Toolkit overview](../toolkit.md). Area code: `kit
 
 **R-kit-08** A toolkit with `files:` has the tool `read`, which takes `path`, one of the files as written from the toolkit's directory, and gives that file's text. Its job is a script of Corbie's own, which is sent the files and is allowed nothing. A tool the definition writes under the name `read` is refused.
 *Accept:* `TestAgentOpensASkillWrittenAsAToolkit`: a toolkit whose instructions include `SKILL.md` and whose `files:` name a checklist is opened with the text of `SKILL.md`, offers `read` with the one path, gives the checklist's text, and refuses the path `SKILL.md` as arguments that do not fit; a toolkit with `files:` and a tool `read` is refused.
+
+**R-kit-09** A tool written `machine:` or `call:` names a machine by its file, or by its location in the toolkit's tree, and has no `description:`, `args:` or `job:`. Its description is the machine's, and its arguments are the machine's `input:` without the names the tool's `input:` fixes, and no other name. A call starts the machine with the arguments and the fixed input over them, which reads the toolkit's input; the job carries the tool's `approve:` and `meta:`, and `send:` for a location. A machine that is a toolkit, a location written from `/`, and what R-agent-65 and R-agent-66 refuse of an entry that names one tool in the same tree are refused when the definition is read.
+*Accept:* parity case 160: the open gives each tool the description and the arguments of its machine without the project it fixes, each call runs its machine with the project filled from the toolkit's input, a call that gives the project fails, and the toolkit's hook reads the marked tool's `meta` and `job.tool`. Parity case 161: an agent's model is offered the same, and the agent's hook asks where the tool's `meta` says. `TestToolkitToolThatNamesAMachineIsChecked`: each refusal names its place.
 
 **C-kit-01** An entry in a job's answer to an open keeps its kind, its name, its description and, for a tool, the shape of its arguments, and nothing else. An entry that kept a field of its writer's could name a location or a job for a reader of the list to run. *Test:* `toolkit_entry_keeps_only_its_four_fields`
 

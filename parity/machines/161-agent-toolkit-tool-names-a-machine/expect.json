@@ -1,0 +1,27 @@
+{
+  "status": "done",
+  "note": "R-kit-09, R-agent-59: an agent's model is offered a toolkit's tool that names a machine with that machine's description and arguments, without the names the tool fixes. The tool's approve: and meta: are its job's, which the agent's hook reads, and a call that gives a fixed name does not fit.",
+  "record": [
+    {
+      "machine": "helper",
+      "emit": { "job": "turn#2", "name": "log", "data": { "<contains>": "orders_change_file(path,text): Change one file of a project.; orders_read_file(path,ref): Read one file of a project." } }
+    },
+    {
+      "machine": "orders",
+      "emit": { "job": "change_file.team", "name": "log", "data": { "<contains>": "asked in #orders-team: change_file {path:a.txt,text:new}" } }
+    },
+    { "machine": "orders", "ask": { "kind": "script", "name": "read_file.team" }, "absent": true },
+    {
+      "machine": "helper",
+      "emit": { "job": "turn#3", "name": "log", "data": { "<contains>": "orders_read_file gave {read:{path:a.txt,project:group/orders}}" } }
+    },
+    {
+      "machine": "helper",
+      "emit": { "job": "turn#3", "name": "log", "data": { "<contains>": "orders_change_file gave {changed:{path:a.txt,project:group/orders,text:new}}" } }
+    },
+    {
+      "machine": "helper",
+      "emit": { "job": "turn#3", "name": "log", "data": { "<contains>": "additional properties 'project' not allowed" } }
+    }
+  ]
+}

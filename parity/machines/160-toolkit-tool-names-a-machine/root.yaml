@@ -1,0 +1,26 @@
+# A flow opens the toolkit at /case/kits/orders and calls its two tools.
+# Each tool names a machine: read_file by its location, change_file by its
+# file. The tool's description and arguments are the machine's, without the
+# project each tool fixes from the toolkit's input, and a call that gives
+# the project does not fit.
+flow: caller
+allow: [send:kits/orders]
+stages:
+  open: { job: { call: { at: kits/orders }, input: { team: group, request: { do: open } } } }
+  read:
+    job:
+      call: { at: kits/orders }
+      input: { team: group, request: { do: call, tool: read_file, args: { path: a.txt } } }
+  change:
+    job:
+      call: { at: kits/orders }
+      input: { team: group, request: { do: call, tool: change_file, args: { path: a.txt, text: new } } }
+  other:
+    job:
+      call: { at: kits/orders }
+      input: { team: group, request: { do: call, tool: read_file, args: { path: a.txt, project: other/orders } } }
+output:
+  open: ${stages.open.output}
+  read: ${stages.read.output}
+  change: ${stages.change.output}
+  other: ${stages.other.error}

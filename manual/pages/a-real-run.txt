@@ -11,7 +11,8 @@ Set up
 
 `init` creates a controller, a runner and a client in the config directory,
 `~/.config/corbie`, and the store in it. `--name laptop` names them
-`laptop-controller`, `laptop-runner` and `laptop-client`. `--ceiling all` sets
+`laptop-controller`, `laptop-runner` and `laptop-client`, and a config set up
+under another name refuses it. `--ceiling all` sets
 the most any job on this computer may be allowed, and a job still gets only
 what its own `allow:` list grants.
 

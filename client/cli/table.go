@@ -66,7 +66,8 @@ ceiling with the one then given.
   --deny <entry>         a permission the ceiling refuses, whatever it
                          allows; repeatable
   --name <name>          names the three <name>-controller, <name>-runner and
-                         <name>-client; default this computer's host name
+                         <name>-client; default this computer's host name;
+                         only on a new config, or one with those names
 
 corbie init store sets up only the store's server, which gives other
 computers this computer's store directory, on a config that holds the

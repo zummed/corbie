@@ -233,6 +233,16 @@ func TestInitWithNoStoreSetsItUpInTheConfig(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(storeDir, "version")); err != nil {
 		t.Fatalf("the store was not set up in the config: %v", err)
 	}
+	// A party keeps its name: init again with another is refused, and with
+	// the same one or none it sets up the same three.
+	if status, _, said := m.run("", "init", "--name", "laptop"); status != 1 || !strings.Contains(said, "this config holds box-controller, and a party keeps the name it was made with") {
+		t.Fatalf("init with another name ended %d, and said:\n%s", status, said)
+	}
+	for _, again := range [][]string{{"init", "--name", "box"}, {"init"}} {
+		if out := m.ok("", again...); !strings.Contains(out, "box-client") {
+			t.Fatalf("corbie %s printed:\n%s", strings.Join(again, " "), out)
+		}
+	}
 	m.staying("start", "controller", "--interval", "20ms", "runner", "--interval", "20ms")
 	dir := files(t, map[string]string{"one.js": `return 1`})
 	if out := m.ok("", "run", "start", m.recorded(filepath.Join(dir, "one.js")), "--wait", "--json"); !strings.Contains(out, `"status":"done"`) || !strings.Contains(out, `"output":1`) {

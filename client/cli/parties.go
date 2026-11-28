@@ -659,6 +659,22 @@ func cmdInit(e *Env, args []string) error {
 	if err != nil {
 		return err
 	}
+	// A party keeps the name it was made with, so a name given is refused
+	// where the config holds a party under another.
+	if e.Given("name") {
+		for _, kind := range []identity.Kind{identity.Controller, identity.Runner, identity.Client} {
+			if !cfg.Has(kind) {
+				continue
+			}
+			id, err := cfg.Load(e.ctx, kind)
+			if err != nil {
+				return err
+			}
+			if id.Name != name+"-"+string(kind) {
+				return fmt.Errorf("this config holds %s, and a party keeps the name it was made with: leave out --name, or give another config with --config", id.Name)
+			}
+		}
+	}
 	// The store is the one named, or else the one the config records, so
 	// that init run again keeps it, or else the one CORBIE_STORE names; a
 	// config that records none has the directory store in it.

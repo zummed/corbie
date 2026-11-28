@@ -46,7 +46,7 @@ On one computer it is one command:
 corbie init --ceiling all
 ```
 
-This makes a controller, a runner and a client in the config, has each trust the others, and prints what it did. The store is the one `--store` names, a directory or a bucket, or else the one the config records; a new config has the directory `store` in it. `--ceiling` says what jobs on this computer may do: without it they may do nothing outside themselves, and the first refusal names the command that changes that. The client's ceiling holds `at:/**` beside what `--ceiling` names, so it may submit a tree at any prefix.
+This makes a controller, a runner and a client in the config, has each trust the others, and prints what it did. The store is the one `--store` names, a directory or a bucket, or else the one the config records; a new config has the directory `store` in it. `--ceiling` says what jobs on this computer may do: without it they may do nothing outside themselves, and the first refusal names the command that changes that. The client's ceiling holds `at:/**` beside what `--ceiling` names, so it may submit a tree at any prefix. `--name <name>` names the three `<name>-controller`, `<name>-runner` and `<name>-client`, by default with this computer's host name; given on a config that holds a party under another name, `init` is refused, since a party keeps the name it was made with.
 
 Across computers it is three steps, which join into one line because each reads the last one's output:
 

@@ -44,6 +44,8 @@ These are new.
 
 - `corbie run submit` prints `cancelled: <id>` for each run it cancelled, as
   `corbie run remove` does.
+- `corbie init --name` on a config that holds a party under another name is
+  refused, naming the party. It kept the old names before. Leave out `--name`.
 - `corbie test <file> --in <directory>` refuses a tree in which a file has a
   problem, and prints each one, as `corbie up` does. Correct the file, or list
   it in `.corbieignore`.

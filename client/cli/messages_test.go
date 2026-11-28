@@ -66,8 +66,8 @@ func TestCancelSendAndReplyTakeALife(t *testing.T) {
 	}
 }
 
-// With no controller running, a command that waits for a receipt, or for a
-// run it started to be taken, says once what it waits for and for how long.
+// With no controller running, a command that waits for a receipt says once
+// what it waits for and for how long.
 func TestAWaitForAControllerIsSaid(t *testing.T) {
 	m := machine{t, filepath.Join(t.TempDir(), "config")}
 	m.ok("", "init", "--store", filepath.Join(t.TempDir(), "store"), "--name", "box")
@@ -80,8 +80,8 @@ func TestAWaitForAControllerIsSaid(t *testing.T) {
 	if err := os.WriteFile(file, []byte("flow: one\nstages:\n  a: { job: { script: \"return 1\" } }\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	_, out, said = m.runFor(3*time.Second, "", "run", "start", file, "--wait")
+	_, out, said = m.runFor(3*time.Second, "", "run", "start", file)
 	if out != "" || strings.Count(said, line) != 1 {
-		t.Errorf("corbie run start --wait with no controller printed %q and said %q", out, said)
+		t.Errorf("corbie run start with no controller printed %q and said %q", out, said)
 	}
 }

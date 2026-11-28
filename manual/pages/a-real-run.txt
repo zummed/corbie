@@ -30,8 +30,9 @@ Submit a run
     corbie run start /title --input '{"url": "https://example.com"}'
 
 `run submit` records the definition and its script in the store, at
-the location `/title`. `run start` starts a run there with the input, prints the
-run's ID and exits. `<id>` below is that ID.
+the location `/title`. `run start` starts a run there with the input, and
+prints the run's ID once the controller has taken the start. `<id>` below is
+that ID.
 
     corbie run show <id> --wait
       input: {"url":"https://example.com"}
@@ -59,6 +60,7 @@ The store
 
 The record is files in `~/.config/corbie/store`, which `corbie run show` reads.
 Stop `corbie start` with Ctrl-C and `corbie run show <id>` prints the same
-result. A run submitted while no controller is running is shown as `waiting`.
+result. With no controller running, `run start` prints `waiting up to 15m for
+a controller to take it`, and fails if none takes the start in that time.
 
 Next: `corbie manual a-directory` records a directory of machines.

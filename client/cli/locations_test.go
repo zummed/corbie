@@ -66,7 +66,16 @@ states:
 	if status, out, said := m.run("", "run", "submit", filepath.Join(dir, "broken.yaml")); status != 1 || out != "" || !strings.Contains(said, "stages") {
 		t.Errorf("a file with a problem submitted alone ended %d, printed %q and said:\n%s", status, out, said)
 	}
-	if status, out, said := m.run("", "run", "start", "/broken", "--wait"); status != 1 || !strings.Contains(out+said, "/broken") {
-		t.Errorf("a start of a location where nothing was recorded ended %d, printed:\n%s\nand said:\n%s", status, out, said)
+	// A start where nothing is recorded is refused, with --wait and without.
+	for _, wait := range [][]string{nil, {"--wait"}} {
+		if status, out, said := m.run("", append([]string{"run", "start", "/broken"}, wait...)...); status != 1 || !strings.HasPrefix(out, "refused: nothing is recorded at /broken") || said != "" {
+			t.Errorf("a start of a location where nothing was recorded, with %v, ended %d, printed:\n%s\nand said:\n%s", wait, status, out, said)
+		}
+	}
+	// A start a permission refuses prints what was refused, the layer and
+	// the fix.
+	other := m.second("other", "network")
+	if status, out, said := other.run("", "run", "start", "/hello"); status != 1 || !regexp.MustCompile(`^refused: send:/hello\n  by: .+\n  fix: .+\n$`).MatchString(out) || said != "" {
+		t.Errorf("a start the ceiling refuses ended %d, printed:\n%s\nand said:\n%s", status, out, said)
 	}
 }

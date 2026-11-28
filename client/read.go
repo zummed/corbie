@@ -203,7 +203,7 @@ func (c *Client) Show(ctx context.Context, id string) (*Run, error) {
 // before it started, waiting to start, never taken up, or no run at all.
 // For one whose start was taken it gives nothing: that run has a record.
 func (c *Client) unstarted(ctx context.Context, id string) (*Run, error) {
-	receipt, err := c.Receipt(ctx, startMessage(id))
+	receipt, err := c.Receipt(ctx, StartMessage(id))
 	if err != nil {
 		return nil, err
 	}
@@ -384,7 +384,7 @@ func (c *Client) call(ctx context.Context, id, called string) (*Run, error) {
 // result reads what became of a run this client called, beside the call's
 // receipt: nil while the run is running.
 func (c *Client) result(ctx context.Context, id string) (*instance.CallResult, error) {
-	at := store.Result(c.ctl(), c.ID.Name, startMessage(id))
+	at := store.Result(c.ctl(), c.ID.Name, StartMessage(id))
 	data, mark, err := c.Store.Read(ctx, at)
 	if err != nil || mark == store.None {
 		return nil, err

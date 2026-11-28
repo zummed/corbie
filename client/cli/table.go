@@ -25,10 +25,10 @@ const starts = `
   --timeout <time>         the longest the run may take, such as 1h; it
                            cannot extend the definition's timeout
   --life <time>            how long the start message is valid while no
-                           controller takes it; default 5m. --wait and
-                           --watch wait that long and 10m more for it to
-                           be taken, for clocks that differ, and say so
-                           while they wait`
+                           controller takes it; default 5m. The command
+                           waits that long and 10m more for the answer,
+                           for clocks that differ, and says so while it
+                           waits`
 
 // scripts is the help for a script file given where a definition is.
 const scripts = `
@@ -325,8 +325,9 @@ Where the prefix holds no tree, it removes the secrets and values set there.
 `},
 		{Name: "run start", Usage: "<location> [--input <json>] [--wait | --watch]", Summary: "start a run of a transient location and print its ID", Run: cmdRunStart, Help: `
 It starts a run of the file recorded at the location: it uploads the input's
-files and sends the start message. It prints the run's ID and exits, unless
---wait or --watch is given.
+files and sends the start message. It prints the run's ID once a controller
+has taken the start, or the reason it was refused. It fails if the start is
+refused.
 ` + starts + `
   --wait                   wait until the run ends, then print it
   --watch                  print each entry of the run's record as it is

@@ -230,10 +230,19 @@ func (r *remote) start(ctx context.Context, start Start) (string, error) {
 		return "", err
 	}
 	defer resp.Body.Close()
+	// The gateway answers with the start's receipt, which WaitReceipt takes
+	// by the start's name.
 	var started struct {
+		instance.Receipt
 		ID string `json:"id"`
 	}
-	return started.ID, json.UnmarshalRead(resp.Body, &started)
+	if err := json.UnmarshalRead(resp.Body, &started); err != nil {
+		return "", err
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.receipts[StartMessage(started.ID)] = &started.Receipt
+	return started.ID, nil
 }
 
 func (r *remote) submit(ctx context.Context, tree *Tree, life time.Duration) (string, error) {

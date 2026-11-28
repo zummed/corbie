@@ -13,7 +13,7 @@ Routes
   GET /client                   which client and principal the token names: { "client", "principal" }, with no "principal" when it names none
   POST /trees                   submits a tree from a form; answers its receipt
   POST /trees/remove            removes a tree: { "at": "/house", "life": "10m" }; answers its receipt
-  POST /runs                    starts a run of a location from a form; answers { "id": "<id>" }
+  POST /runs                    starts a run of a location from a form; answers its receipt and { "id": "<id>" }
   GET /runs                     lists the client's runs in progress, as a JSON list
   GET /runs/<id>                one run
   GET /runs/<id>/record         the record so far, child runs included: { "entries": […], "run": {…} }
@@ -85,6 +85,7 @@ file is `multipart/form-data` with these parts.
   life       "10m": how long the start is valid if no controller reads it, default 5m
 
 - The machine is the file recorded at `at`. The gateway's client submits its tree, as `corbie manual a-directory` shows.
+- The answer is `{ "taken": true, "id": "<id>" }`. A refused start, with `?wait` or without, is `{ "taken": false, "refused": "<reason>", "id": "<id>" }`.
 - In a tree another client owns, the start is a call: `GET /runs/<id>` gives the status, the output or error and `called`, the run it started there, and the record has no entries. Its definition and a cancel are refused. It takes no `labels`, `allow` or `deny`.
 - A part can be sent as a form field or as a file.
 - With an `input:<name>` part, `input` is an object or absent, with no value under that name.
@@ -114,8 +115,8 @@ needs `?wait`. An error after a run has started has the run's ID, as `id`.
 Answers and status codes
 ------------------------
 
-A request to submit, cancel, send an event, answer a ticket or set a secret or
-a value stays open until a controller reads the message. `life` is how long the message is valid, default 5m.
+A request to submit, start, cancel, send an event, answer a ticket or set a
+secret or a value stays open until a controller reads the message. `life` is how long the message is valid, default 5m.
 
   { "taken": true }                           the controller acted on the message
   { "taken": true, "acted": false }           for an event: whether a rule of the machine matched it

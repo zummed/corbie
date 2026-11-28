@@ -202,8 +202,8 @@ and submits it.
 `receive:` lists the one agent that may call the tool, so the client
 `support` is refused:
 
-    corbie run start /netops/tools/ports --input '{"switch": "core-1"}' --watch --config ~/support
-      error: /netops/tools/ports does not receive a call from client:support
+    corbie run start /netops/tools/ports --input '{"switch": "core-1"}' --config ~/support
+      refused: /netops/tools/ports does not receive a call from client:support
 
 Next: `corbie manual install` covers running Corbie on several computers, on a
 bucket and as serverless functions.

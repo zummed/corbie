@@ -8,13 +8,18 @@ Commands
 --------
 
   corbie run submit <file or directory>   records a tree, and starts its singletons
-  corbie run start <location>             starts a run there and prints its ID
+  corbie run start <location>             starts a run there and prints its ID once a controller takes it
   corbie run ls                           lists the runs in progress of this client's trees and of files whose `read:` lists it
   corbie run show <id>                    prints one run's status, input and output
   corbie run cancel <id>                  cancels a run in this client's trees; a location cancels each run there, location#key one
   corbie run send <id> <event> [data]     sends an event to a run; a location, or location#key, names one too
   corbie run reply <id> <ticket> [value]  answers a ticket the run waits on
   corbie controller cancel <id>           cancels any run, with the controller's config
+
+`run start`, `run cancel`, `run send` and `run reply` wait for the
+controller's answer, for the message's life and 10m more: 15m by default.
+When the controller refuses, the command prints `refused:` and the reason, and
+fails.
 
 A run as JSON
 -------------

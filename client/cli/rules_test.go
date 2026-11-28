@@ -155,8 +155,8 @@ func Test_client_flag_without_effect_refused(t *testing.T) {
 	dir := files(t, map[string]string{"hello.yaml": hello, "greet.js": `return 1`,
 		"steady.yaml": "statechart: steady\nlifetime: singleton\ninitial: waiting\nstates:\n  waiting: {}\n", "a#b.yaml": hello})
 	definition := filepath.Join(dir, "hello.yaml")
-	// With no controller, the start waits.
-	id := strings.TrimSpace(m.ok("", "run", "start", "/hello", "--input", `{"name": "x"}`))
+	// A flag is read before the run is looked for.
+	const id = "box-client/20200101T000000.000Z-0000000000"
 	before := stored(t, storeDir)
 	for flag, mistaken := range map[string][]string{
 		// For a script file only: a definition gives its jobs their own.
@@ -285,23 +285,25 @@ func Test_client_results_on_stdout_progress_on_stderr(t *testing.T) {
 	}
 }
 
-// corbie run submit of a location with neither --wait nor --watch prints the
-// run's ID and nothing else. With no controller, the run waits.
+// corbie run start with neither --wait nor --watch prints the run's ID and
+// nothing else, once a controller has taken the start.
 func Test_client_submit_prints_only_the_id(t *testing.T) {
-	m := machine{t, filepath.Join(t.TempDir(), "config")}
-	m.ok("", "init", "--store", filepath.Join(t.TempDir(), "store"), "--name", "box")
+	m, _ := working(t, "all")
+	dir := files(t, map[string]string{"hello.yaml": hello, "greet.js": `return 1`})
+	m.ok("", "run", "submit", filepath.Join(dir, "hello.yaml"))
+	m.ok("", "run", "submit", filepath.Join(dir, "hello.yaml"), "--at", "/tools/double")
 	shape := regexp.MustCompile(`^box-client/\d{8}T\d{6}\.\d{3}Z-[0-9a-f]{10}\n$`)
 	for _, command := range [][]string{
 		{"run", "start", "/hello", "--input", `{"name": "x"}`},
 		{"run", "start", "/hello", "--input", `{"name": "x"}`, "--label", "team=ops", "--timeout", "1h", "--life", "10m", "--allow", "network"},
-		{"run", "start", "/tools/double", "--input", `{"n": 2}`, "--timeout", "5s"},
+		{"run", "start", "/tools/double", "--input", `{"name": "y"}`, "--timeout", "5s"},
 	} {
 		status, out, errOut := m.run("", command...)
 		if status != 0 || !shape.MatchString(out) || errOut != "" {
 			t.Fatalf("corbie %s ended %d, printed %q and said %q", strings.Join(command, " "), status, out, errOut)
 		}
 		// The ID is taken by other commands as it was printed.
-		if shown := m.ok("", "run", "show", strings.TrimSpace(out)); !strings.Contains(shown, strings.TrimSpace(out)+"  waiting") {
+		if shown := m.ok("", "run", "show", strings.TrimSpace(out)); !strings.HasPrefix(shown, strings.TrimSpace(out)+"  ") {
 			t.Fatalf("show of the ID printed %s", shown)
 		}
 	}
@@ -347,10 +349,10 @@ func Test_client_run_name_is_one_field_everywhere(t *testing.T) {
 	kind = form.FormDataContentType()
 	started := get("POST", "/runs", request.String())
 	kind = ""
-	var answer map[string]string
+	var answer map[string]any
 	json.Unmarshal([]byte(started), &answer)
-	two := answer["id"]
-	if two == "" || len(answer) != 1 {
+	two, _ := answer["id"].(string)
+	if two == "" || answer["taken"] != true || len(answer) != 2 {
 		t.Fatalf("a start over HTTP was answered %s", started)
 	}
 	m.ok("", "run", "show", two, "--wait")
@@ -733,10 +735,12 @@ func Test_client_store_flag_beats_environment_beats_config(t *testing.T) {
 	counts := func() [3]int {
 		return [3]int{len(stored(t, recorded)), len(stored(t, fromEnv)), len(stored(t, fromFlag))}
 	}
+	// No controller runs: each start is stopped while it waits for its
+	// receipt, and what it wrote stays.
 	submit := func(extra ...string) [3]int {
 		t.Helper()
 		before := counts()
-		m.ok("", append([]string{"run", "start", "/hello", "--input", `{"name": "x"}`}, extra...)...)
+		m.runFor(time.Second, "", append([]string{"run", "start", "/hello", "--input", `{"name": "x"}`}, extra...)...)
 		after := counts()
 		return [3]int{after[0] - before[0], after[1] - before[1], after[2] - before[2]}
 	}

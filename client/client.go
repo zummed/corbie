@@ -268,7 +268,7 @@ func (c *Client) Start(ctx context.Context, start Start) (string, error) {
 	msg := &instance.Message{Kind: instance.KindStart, Instance: run, Start: &instance.Start{
 		Location: start.At, InputBlob: written, Labels: start.Labels, Allow: start.Allow,
 		Timeout: machine.Duration(start.Timeout), Seed: seed}}
-	return run, c.send(ctx, startMessage(run), start.Life, msg)
+	return run, c.send(ctx, StartMessage(run), start.Life, msg)
 }
 
 // Submit records a tree at its prefix. Each machine of the tree is written
@@ -399,10 +399,10 @@ func shownFor(v map[string]any) (run, path string, ok bool) {
 	return run, path, true
 }
 
-// startMessage is the name of the message that starts a run: it follows
+// StartMessage is the name of the message that starts a run: it follows
 // from the run's name, so the answer to a start can be found by one who
 // knows only the run.
-func startMessage(run string) string {
+func StartMessage(run string) string {
 	_, id, _ := strings.Cut(run, "/")
 	return id
 }
@@ -421,7 +421,7 @@ func (c *Client) Cancel(ctx context.Context, run string, life time.Duration) (st
 	// A call's run is in the tree of the client called: only that client
 	// cancels it.
 	if c.mine(run) && store.CheckInstance(run) == nil {
-		receipt, err := c.Receipt(ctx, startMessage(run))
+		receipt, err := c.Receipt(ctx, StartMessage(run))
 		if err != nil {
 			return "", err
 		}

@@ -277,19 +277,25 @@ func TestCancelEventAndAnswerTakeALife(t *testing.T) {
 		}
 		return value.Until.Sub(value.Sent)
 	}
-	// A start takes one too.
-	id := c.start(map[string]any{"at": "/door", "life": "90s"})
-	if sent, err := store.Names(owner.List(ctx, store.Inbox("controller"))); err != nil || len(sent) != 1 || goodFor(sent[0]) != 90*time.Second {
-		t.Fatalf("a start with a life of 90s left %v in the inbox (%v)", sent, err)
-	}
 	// The first look for a receipt after a message is sent moves the clock
 	// on by the time a controller may take it: the life and twice the clock
 	// allowance.
-	var ahead atomic.Int64
+	var ahead, life atomic.Int64
 	local.Now = func() time.Time { return time.Now().Add(time.Duration(ahead.Load())) }
 	local.Store = sentThenLooking{local.Store, &atomic.Bool{}, func() {
-		ahead.Add(int64(200*time.Millisecond + 2*identity.ClockAllowance + time.Second))
+		ahead.Add(life.Load() + int64(2*identity.ClockAllowance+time.Second))
 	}}
+	// A start takes one too, and is answered with the run's ID.
+	life.Store(int64(90 * time.Second))
+	status, started, text := c.upload(form(c, map[string]any{"at": "/door", "life": "90s"})...)
+	id, _ := started["id"].(string)
+	if status != http.StatusGatewayTimeout || id == "" || !strings.Contains(text, "not taken up") {
+		t.Fatalf("a start with a life of 90s and no controller was answered %d %s", status, text)
+	}
+	if sent, err := store.Names(owner.List(ctx, store.Inbox("controller"))); err != nil || len(sent) != 1 || goodFor(sent[0]) != 90*time.Second {
+		t.Fatalf("a start with a life of 90s left %v in the inbox (%v)", sent, err)
+	}
+	life.Store(int64(200 * time.Millisecond))
 	for path, body := range map[string]string{
 		"/cancel":  `{"life": "200ms"}`,
 		"/events":  `{"event": "open", "life": "200ms"}`,

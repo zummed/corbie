@@ -127,6 +127,17 @@ func (c caller) start(request map[string]any) string {
 	return id
 }
 
+// waiting starts a run through the gateway's client, which does not wait for
+// the start's receipt: with no controller running, the run stays waiting.
+func (c caller) waiting(at string) string {
+	c.t.Helper()
+	id, err := c.client.Start(context.Background(), client.Start{At: at})
+	if err != nil {
+		c.t.Fatal(err)
+	}
+	return id
+}
+
 // events reads a stream to its end and gives each event's name and data.
 func (c caller) events(path string) (names []string, data []map[string]any) {
 	c.t.Helper()
@@ -388,7 +399,7 @@ func Test_client_gateway_unknown_run_is_not_found(t *testing.T) {
 		t.Fatalf("the answers for runs that do not exist took %v", took)
 	}
 	// With no controller running, a run just started is waiting.
-	id := c.start(map[string]any{"at": "/door"})
+	id := c.waiting("/door")
 	for _, route := range []string{"", "?wait=20ms"} {
 		if status, run, text := c.do("GET", "/runs/"+id+route, ""); status != 200 || run["status"] != "waiting" || run["id"] != id {
 			t.Errorf("GET /runs/%s%s for a run just started was answered %d %s", id, route, status, text)
@@ -430,14 +441,13 @@ func Test_client_wait_cut_short_answers_as_it_stands(t *testing.T) {
 		c *client.Client
 		caller
 	}{"waiting": {unsent, waiting}, "running": {local.Client, running}} {
-		// With no controller, nothing takes a submit: the start names a
-		// location that is not there, and is never taken up.
-		request := map[string]any{"at": "/door"}
-		if want == "running" {
-			request = map[string]any{"definition": door}
-		}
-		id := at.start(request)
-		if want == "running" {
+		// With no controller, nothing takes the start, and the run stays
+		// waiting.
+		var id string
+		if want == "waiting" {
+			id = at.waiting("/door")
+		} else {
+			id = at.start(map[string]any{"definition": door})
 			for deadline := time.Now().Add(5 * time.Second); ; time.Sleep(5 * time.Millisecond) {
 				if run, err := at.c.Show(context.Background(), id); err == nil && run.Status == "running" {
 					break

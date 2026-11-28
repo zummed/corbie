@@ -153,7 +153,7 @@ output: ${stages.copy.output}
 // package gives for it.
 func Test_client_package_gateway_message_not_taken(t *testing.T) {
 	_, local, c := aloneOn(t)
-	id := c.start(map[string]any{"at": "/door"})
+	id := c.waiting("/door")
 	// The first look for a receipt moves the clock past the time a
 	// controller may take the message.
 	var ahead atomic.Int64

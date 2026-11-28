@@ -20,6 +20,11 @@ state inside it. A state's `done` goes to that state only, and a holder's
 rule for `done` is taken when a final state inside it is reached.
 
   open: { on: { done: shipped } }   working: { job: ./w.js, on: { done: shipped } }
+Change a script that reads the ID `corbie run start` prints: the command waits
+up to 15m by default for a controller to take the start, and prints the ID
+then. A refused start prints `refused:` and the reason, and the command fails.
+`POST /runs` waits the same way, and answers a refused start with
+`{ "taken": false, "refused": "<reason>", "id": "<id>" }` and the status 200.
 
 These are new.
 

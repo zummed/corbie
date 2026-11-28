@@ -513,19 +513,39 @@ func cmdRunStart(e *Env, args []string) error {
 	return e.started(c, id, &s, start.Life)
 }
 
-// started prints the ID of a run that was started, or stays until it ends:
-// first for no longer than a controller may take its start, sent with the
-// life given.
+// started waits for a start's receipt, for no longer than a controller may
+// take a start sent with the life given. It prints the refusal, or the run's
+// ID, or with --wait or --watch stays until the run ends.
 func (e *Env) started(c *client.Client, id string, s *starting, life time.Duration) error {
+	receipt, err := e.receipt(c, client.StartMessage(id), life)
+	if err != nil {
+		return err
+	}
+	if !receipt.Taken {
+		if err := e.Print(receipt, func() string { return refusal(receipt) }); err != nil {
+			return err
+		}
+		return errRunFailed
+	}
 	if !s.wait && !s.watch {
 		// The ID and nothing else: other commands take it.
 		return e.Print(map[string]string{"id": id}, func() string { return id + "\n" })
 	}
 	e.Say("%s", id)
-	if err := e.waiting(life, func() error { return c.Taken(e.ctx, id, life, interval) }); err != nil {
-		return err
-	}
 	return e.await(c, id, s.watch, false)
+}
+
+// refusal is a refused start as text: the reason, and for a permission what
+// was refused, the layer that refused it and the fix.
+func refusal(receipt *instance.Receipt) string {
+	if d := receipt.Denied; d != nil {
+		return fmt.Sprintf("refused: %s\n  by: %s\n  fix: %s\n", d.Refused, d.Layer, d.Fix)
+	}
+	text := "refused: " + receipt.Refused + "\n"
+	if len(receipt.Problems) > 0 {
+		text += "  " + strings.ReplaceAll(receipt.Problems.Error(), "\n", "\n  ") + "\n"
+	}
+	return text
 }
 
 // directories tells whether the names are all directories, and refuses

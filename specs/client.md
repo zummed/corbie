@@ -117,9 +117,9 @@ Following from a terminal is one flag, `--watch`. It prints what the command pri
 
 `run show` prints a run's title, and `run ls` does not, since a listing reads only the heads. For a run another run started, `run show` prints `cause: <id> step <n>`. For a run a client's message started for a principal, it prints `principal:`, and `--record` writes the principal after each event a client sent for one. In `--json`, a listing's row and `run show` give `cause`, and each step of a record gives the cause of each event and the run's `state` (see instance.md). `run show` can also print one step, one job's input and output, or the definition, can save a result's files to a directory, and with `--wait` stays until the run ends and prints its result.
 
-`run start <location>` sends a start; `run start --wait` waits for the run it started and `run start --watch` follows it. The tree's client starts a transient location with no `send:` entry. Another client's start is a call: its ceiling needs `send:` for the location, the file's `receive:` must list `client:<its name>`, and the start takes no labels or `--allow`. Under the ID it printed, it is shown only the call's result: the run's status and its output or error, and the result's files. A cancel of that ID is refused, naming the run the call started and its tree's client, which alone cancels it.
+`run start <location>` sends a start. Once the start is taken it prints the run's ID; a refused start prints the refusal, as `refused:`, `by:` and `fix:` lines for a permission, and fails. `run start --wait` then waits for the run and `run start --watch` follows it. The tree's client starts a transient location with no `send:` entry. Another client's start is a call: its ceiling needs `send:` for the location, the file's `receive:` must list `client:<its name>`, and the start takes no labels or `--allow`. Under the ID it printed, it is shown only the call's result: the run's status and its output or error, and the result's files. A cancel of that ID is refused, naming the run the call started and its tree's client, which alone cancels it.
 
-A command that sends a message waits for its receipt, and `run start --wait` and `--watch` for the run to be taken, while a controller may still take the message: for the message's life, five minutes by default or the time given with `--life`, and twice the clock allowance. When neither has come after two seconds the command prints one line to standard error, `waiting up to 15m for a controller to take it`, and when neither comes at all it fails, saying the message was not taken up.
+A command that sends a message waits for its receipt while a controller may still take the message: for the message's life, five minutes by default or the time given with `--life`, and twice the clock allowance. When no receipt has come after two seconds the command prints one line to standard error, `waiting up to 15m for a controller to take it`, and when none comes at all it fails, saying the message was not taken up.
 
 A secret's value is never on the command line. It is read only from the source the command names, and a value not found there is a mistake that sends nothing:
 
@@ -458,9 +458,9 @@ client     editor
 principal  "alice@example.com"
 ```
 
-One request starts a run and is answered with the run:
+`POST /runs` waits for the start's receipt, as the other routes that send a message do, and answers it with the run's ID as `id`. One request starts a run and is answered with the run:
 
-- `POST /runs?wait` starts the run and answers when it has ended, with the run, as `GET /runs/<id>?wait` does. `?wait=30s` answers after 30 s at most.
+- `POST /runs?wait` starts the run and answers when it has ended, with the run, as `GET /runs/<id>?wait` does. A refused start is answered with its receipt. `?wait=30s` answers after 30 s at most.
 - A `wait` that is no length of time is answered 400, and no run is started.
 - An error after the run has started is answered with the run's ID, as `id` beside `error`.
 

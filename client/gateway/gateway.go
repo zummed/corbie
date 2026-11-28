@@ -361,12 +361,26 @@ func (g *Gateway) start(w http.ResponseWriter, r *http.Request, c *client.Client
 		return
 	}
 	id, err := c.Start(r.Context(), st)
-	if err == nil && r.URL.Query().Has("wait") {
+	if err != nil {
+		reply(w, nil, err)
+		return
+	}
+	receipt, err := c.WaitReceipt(r.Context(), client.StartMessage(id), st.Life, g.interval())
+	if err == nil && receipt.Taken && r.URL.Query().Has("wait") {
 		// The start and the wait are one request: its answer is the run.
 		g.shown(w, r, c, id, limit, nil)
 		return
 	}
-	reply(w, map[string]any{"id": id}, err)
+	if err != nil {
+		err = ofRun{id, err}
+	}
+	reply(w, started{receipt, id}, err)
+}
+
+// started is the answer to a start: its receipt, and the run's ID.
+type started struct {
+	*instance.Receipt
+	ID string `json:"id"`
 }
 
 // waitLimit is the limit a wait gives itself, as ?wait=30s, or none.

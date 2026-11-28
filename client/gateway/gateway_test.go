@@ -200,9 +200,17 @@ func TestGateway(t *testing.T) {
 		}
 	}
 
+	// A start where nothing is recorded is answered with its refusal, and
+	// with ?wait as well.
+	for _, query := range []string{"", "?wait"} {
+		status, refused, text := c.uploadTo("/runs"+query, form(c, map[string]any{"at": "/nowhere"})...)
+		if status != 200 || refused["taken"] != false || !strings.Contains(text, "nothing is recorded at /nowhere") || refused["id"] == nil {
+			t.Fatalf("a start%s at /nowhere was answered %d %s", query, status, text)
+		}
+	}
 	status, started, text := c.upload(form(c, map[string]any{"definition": door, "labels": map[string]string{"team": "ops"}, "input": nil})...)
 	id, _ := started["id"].(string)
-	if status != 200 || id == "" {
+	if status != 200 || id == "" || started["taken"] != true {
 		t.Fatalf("a start was answered %d %s", status, text)
 	}
 	// Follow its record as a stream, in the background.

@@ -49,7 +49,7 @@ The request is JSON with the location and the input.
   curl -H "Authorization: Bearer $TOKEN" http://127.0.0.1:8371/runs \
        -H "Content-Type: application/json" \
        -d '{"at": "/title", "input": {"url": "https://example.com"}}'
-    {"id":"laptop-client/20261013T185126.250Z-571d935912"}
+    {"taken":true,"id":"laptop-client/20261013T185126.250Z-571d935912"}
 
 Read the result
 ---------------

@@ -171,15 +171,24 @@ func TestInitRunSubmitStart(t *testing.T) {
 	stop()
 	<-roles
 
-	// With the controller stopped, a run started is waiting to start.
-	id := strings.TrimSpace(m.ok("", "run", "start", "/hello", "--input", `{"name": "directory"}`, "--label", "team=ops"))
-	if strings.ContainsAny(id, " \n") || !strings.HasPrefix(id, "box-client/") {
-		t.Fatalf("submit printed %q", id)
+	// With the controller stopped, a start waits for one to take it, and
+	// prints the run's ID once one has.
+	type ended struct {
+		status    int
+		out, said string
 	}
-	if out := m.ok("", "run", "show", id); !strings.Contains(out, "waiting") {
-		t.Fatalf("before any controller ran, show printed %s", out)
-	}
+	started := make(chan ended, 1)
+	go func() {
+		status, out, said := m.run("", "run", "start", "/hello", "--input", `{"name": "directory"}`, "--label", "team=ops")
+		started <- ended{status, out, said}
+	}()
+	time.Sleep(3 * time.Second)
 	start()
+	e := <-started
+	id := strings.TrimSpace(e.out)
+	if e.status != 0 || strings.ContainsAny(id, " \n") || !strings.HasPrefix(id, "box-client/") || e.said != "waiting up to 15m for a controller to take it\n" {
+		t.Fatalf("the start ended %d, printed %q and said %q", e.status, e.out, e.said)
+	}
 	if out := m.ok("", "run", "show", id, "--wait", "--json"); !strings.Contains(out, `"status":"done"`) || !strings.Contains(out, "hello directory") {
 		t.Fatalf("the run ended as %s", out)
 	}

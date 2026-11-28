@@ -222,7 +222,7 @@ A field that a value does not have reads as `undefined`, as with a stage that ha
 
 Everything else that varies from one run of a definition to the next comes in through `input`, and from one tree to the next through `values`.
 
-A value is read by its name, as `values.HUB`. `values[name]` and `values` alone are refused, so the values a file reads can be listed. An expression that reads a value not set at the run's location or above fails, naming the value and the location.
+A value is read by its name, as `values.HUB` or `values['HUB']`. `values[input.name]` and `values` alone are refused, so the values a file reads can be listed. An expression that reads a value not set at the run's location or above fails, naming the value and the location.
 
 Some fields are names, not values, and an expression in them is refused: a thing's name, a type, a permission's kind, a deny entry, a secret's name, a tag, a ticket's name. The path of a script or a machine is a name too, with one exception: it may be exactly one expression that gives a stored definition or script.
 

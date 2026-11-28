@@ -171,6 +171,8 @@ It may use JavaScript's operators, `? :`, arrow functions, methods such as
   may be absent, as `${input.user?.name}`.
 - `when:` is a condition on a flow's stage, a statechart's transition, and an
   entry of an agent's `tools:`.
+- A condition holds unless its value is false, null, zero or empty text. An
+  empty list holds: write `${input.a.length > 0}`.
 - An expression cannot change what it reads. It has no `eval`, `Function`,
   `Promise`, `require` or plugins, so it reads no file and makes no
   network connection.
@@ -180,10 +182,11 @@ It may use JavaScript's operators, `? :`, arrow functions, methods such as
   not a call to something built in that is under way.
 - In a permission's scope an expression reads `input` and `values` and nothing
   else.
-- A value is read by its name. `values[name]` and `values` alone are refused.
+- A value is read by its name, as `values.HUB` or `values['HUB']`.
+  `values[input.name]` and `values` alone are refused.
 - An expression that reads a value not set at the run's location or above
   fails, naming the value and the location.
-- Put a value that contains `${...}` in quotes when it is inside `{ }` or `[ ]`,
+- Put a value that contains `${…}` in quotes when it is inside `{ }` or `[ ]`,
   or when the expression has a colon followed by a space.
 - These take no expression: a name, a type, a permission's kind, a secret's
   name, a `deny:` or `approve:` entry, a description, a tag and a ticket's name.

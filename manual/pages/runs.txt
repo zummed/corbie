@@ -144,8 +144,9 @@ time there is work.
     corbie run cancel <id>
       taken
 
-The state `working` has no rule for `work`, so the statechart ignores an event
-that arrives while the job runs.
+Neither state has a rule for `pause`, so the statechart ignores it. The state
+`working` has no rule for `work`, so a `work` that arrives while the job runs
+is ignored the same way.
 
 Reference
 ---------

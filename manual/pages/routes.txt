@@ -10,7 +10,7 @@ answers a browser's `OPTIONS` request with no token, and reads no cookie.
 Routes
 ------
 
-  GET /client                   which client and principal the token names: { "client", "principal" }
+  GET /client                   which client and principal the token names: { "client", "principal" }, with no "principal" when it names none
   POST /trees                   submits a tree from a form; answers its receipt
   POST /trees/remove            removes a tree: { "at": "/house", "life": "10m" }; answers its receipt
   POST /runs                    starts a run of a location from a form; answers { "id": "<id>" }

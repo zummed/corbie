@@ -32,6 +32,10 @@ What a script has
   require("./data.yaml")   the data of one of the job's `files:` of YAML or JSON
   require("./prompt.md")   the text of one of the job's other text `files:`
 
+A script has JavaScript's own objects, such as `Math`, `JSON`, `Date` and
+`Map`, and none of a browser's or Node's: no `console`, `TextEncoder`, `URL` or
+`setTimeout`.
+
     # double.yaml
     flow: double
     input: { n: number }

@@ -49,7 +49,7 @@ return { title: html.parse(page.body).find("title").text }
 
 A script starts with nothing: no files, no network, no environment. Everything it can do is a call to a plugin, and every call that reaches outside is checked (see Permissions). Calls wait for their answer, so a script reads from top to bottom with no callbacks.
 
-Besides plugins, a script has a few things of its own:
+Besides plugins, a script has JavaScript's own objects, such as `Math`, `JSON`, `Date` and `Map`, and none of a browser's or Node's: no `console`, `TextEncoder`, `URL` or `setTimeout`. It has a few things of its own:
 
 - `emit(name, value)` sends a named value up while the script runs. `log(text)` and `progress(done, total)` are emits for a watcher's benefit. Emits are written to the record a few at a time, not one write each.
 - `job` says which request this is. Every attempt after a failure has the same request name, so a script can use it to avoid doing something twice. A restart after a job ended well has a new one.

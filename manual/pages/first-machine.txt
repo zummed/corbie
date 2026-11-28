@@ -34,13 +34,23 @@ Put these two files in a new directory and run the command.
     return { url: input.url, title }
 
     corbie test title.yaml --input '{"url": "https://example.com"}'
-      output: {"title":"Example Domain","url":"https://example.com"}
-      used: net:example.com:443
+      <id>  done  flow fetch-title  step 2
+        at: /title
+        input: {"url":"https://example.com"}
+        output: {"title":"Example Domain","url":"https://example.com"}
+        used: net:example.com:443
 
 The definition is a flow with one stage. The stage's job names the script,
 its input and its `allow:` list. `corbie test` runs a machine in one process,
-with nothing set up. `output:` is the flow's output, and `used:` lists each
-permission the script used.
+with nothing set up.
+
+  the first line   the run's ID, status, type, machine and latest step
+  at:              the machine's location
+  input:           the run's input
+  output:          the flow's output
+  used:            each permission the script used
+
+Other examples show only the printed lines they speak of.
 
 Remove the permission
 ---------------------

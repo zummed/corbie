@@ -88,6 +88,7 @@ func Test_run_error_position_matches_script_as_written(t *testing.T) {
 	wantError(t, script(t, l, "throw new Error('first line')", "timeout: 5s"), "error", "first line at line 1, column 7")
 	wantError(t, script(t, l, "const a = 1\n\n  throw new Error('third line')", "timeout: 5s"), "error", "third line at line 3, column 9")
 	wantError(t, script(t, l, "const a = 1\nconst b = = 2", "timeout: 5s"), "error", "line 2")
+	wantError(t, script(t, l, "const b = (1 +\nreturn b", "timeout: 5s"), "error", "the script cannot be read: Unexpected token return at line 2, column 1")
 }
 
 // A thrown error gives its message, with no "Error: " before it, so a
@@ -101,6 +102,7 @@ func TestThrownErrorGivesItsMessage(t *testing.T) {
 		t.Fatalf("the error is %q", r.Error)
 	}
 	wantError(t, script(t, l, `throw "plain text"`, "timeout: 5s"), "error", "plain text")
+	wantError(t, script(t, l, `throw new Error("first\nsecond")`, "timeout: 5s"), "error", "first second at line 1, column 7")
 }
 
 func Test_run_require_reads_only_listed_files(t *testing.T) {

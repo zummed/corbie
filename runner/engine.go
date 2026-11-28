@@ -160,11 +160,8 @@ func (e *engine) position(text string) string {
 	if line == 1 {
 		column -= len(scriptHead)
 	}
-	message := strings.TrimSpace(text[:m[0]])
+	message := strings.TrimSuffix(strings.TrimSpace(text[:m[0]]), ":")
 	message = strings.TrimSuffix(strings.TrimSuffix(message, "at script"), "script")
-	if i := strings.Index(message, "\n"); i >= 0 {
-		message = message[:i]
-	}
 	if strings.TrimSpace(strings.TrimSuffix(strings.TrimSpace(message), ":")) == "" {
 		// The engine says where first and what after.
 		message, _, _ = strings.Cut(strings.TrimSpace(text[m[1]:]), " (and ")

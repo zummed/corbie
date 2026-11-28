@@ -785,6 +785,37 @@ func TestTestRunsEachLifetime(t *testing.T) {
 	}
 }
 
+func TestTestEndsWhenNothingCanSend(t *testing.T) {
+	m := machine{t, t.TempDir()}
+	const waits = "each run still running waits on an event that nothing in this process sends"
+	dir := files(t, map[string]string{
+		"door.yaml":  "statechart: door\ninitial: closed\nstates:\n  closed: { on: { open: opened } }\n  opened: { end: done }\n",
+		"gate.yaml":  "statechart: gate\nlifetime: singleton\ninitial: closed\nstates:\n  closed: { on: { open: opened } }\n  opened: { end: done }\n",
+		"timer.yaml": "statechart: timer\ninitial: closed\nstates:\n  closed: { timers: { t: 2s }, on: { t: opened } }\n  opened: { end: done }\n",
+	})
+	for _, file := range []string{"door.yaml", "gate.yaml"} {
+		began := time.Now()
+		status, out, said := m.run("", "test", filepath.Join(dir, file))
+		if status != 1 || !strings.Contains(out, "  running  statechart ") || !strings.Contains(said, waits) || time.Since(began) > 10*time.Second {
+			t.Fatalf("%s ended %d after %s: %s%s", file, status, time.Since(began), out, said)
+		}
+	}
+	if out := m.ok("", "test", filepath.Join(dir, "timer.yaml")); !strings.Contains(out, "  done  statechart timer") {
+		t.Fatalf("a chart with a timer printed %s", out)
+	}
+	// The root waits for the reply of a singleton whose job failed.
+	tree := files(t, map[string]string{
+		"root.yaml":   "statechart: root\nallow: [send:worker]\ninitial: asking\nstates:\n  asking:\n    entry: { send: { to: { at: worker }, event: job } }\n    on: { result: finished }\n  finished: { end: done }\n",
+		"worker.yaml": "statechart: worker\nlifetime: singleton\ninitial: ready\nstates:\n  ready: { on: { job: working } }\n  working: { job: ./bad.js }\n",
+		"bad.js":      `throw new Error("the worker broke")`,
+	})
+	status, out, said := m.run("", "test", filepath.Join(tree, "root.yaml"), "--in", tree)
+	if status != 1 || !strings.Contains(out, "  running  statechart root") || !strings.Contains(out, "  failed (error)  statechart worker") ||
+		!strings.Contains(out, "the worker broke") || !strings.Contains(said, waits) {
+		t.Fatalf("a root waiting on a failed singleton ended %d: %s%s", status, out, said)
+	}
+}
+
 // corbie test --definition prints the definition written out, each value
 // with its file and line, and runs nothing; a flag of a start beside it is
 // a mistake.

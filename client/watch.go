@@ -348,7 +348,8 @@ type sent struct {
 // every instance below it, and ends when the run and everything below it
 // have ended, saying how the run ended. Each entry is read once. A look
 // that cannot reach the store is made again at the next interval. A follow
-// that is cut short gives the run as it stands.
+// that is cut short gives what is new in the record, then the run as it
+// stands.
 func (c *Client) Follow(ctx context.Context, id string, interval time.Duration, tell func(Entry)) (*Run, error) {
 	if c.remote != nil {
 		return c.remote.follow(ctx, id, tell)
@@ -370,7 +371,7 @@ func (c *Client) Follow(ctx context.Context, id string, interval time.Duration, 
 		run, err := c.look(ctx, id, all, tell)
 		switch {
 		case ctx.Err() != nil:
-			return c.Show(context.WithoutCancel(ctx), id)
+			return c.lastLook(ctx, id, all, tell)
 		case errors.Is(err, store.ErrUnreachable):
 			run = nil
 		case err != nil:
@@ -385,9 +386,19 @@ func (c *Client) Follow(ctx context.Context, id string, interval time.Duration, 
 			continue
 		}
 		if !pause(ctx, interval, notice) {
-			return c.Show(context.WithoutCancel(ctx), id)
+			return c.lastLook(ctx, id, all, tell)
 		}
 	}
+}
+
+// lastLook gives what is new in the record of a follow that was cut short,
+// then the run as it stands.
+func (c *Client) lastLook(ctx context.Context, id string, all map[string]*followed, tell func(Entry)) (*Run, error) {
+	ctx = context.WithoutCancel(ctx)
+	if run, err := c.look(ctx, id, all, tell); err != nil || run != nil {
+		return run, err
+	}
+	return c.Show(ctx, id)
 }
 
 // Record gives each entry of a run's record so far, with those of every

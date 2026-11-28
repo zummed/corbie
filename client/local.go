@@ -4,9 +4,11 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"reflect"
 	"slices"
+	"sync"
 	"time"
 
 	"github.com/zummed/corbie/controller"
@@ -31,6 +33,9 @@ type Local struct {
 	Runner     *runner.Runner
 	stop       context.CancelFunc
 	done       chan struct{}
+	// passing is held through each pass of the controller, so that what
+	// is still is read between two passes.
+	passing sync.Mutex
 }
 
 // NewLocal starts a controller and a runner in this process. The ceiling
@@ -74,10 +79,71 @@ func NewLocal(ctx context.Context, ceiling permission.Layer, report func(role st
 		defer stopInbox()
 		defer stopJobs()
 		role.Run(ctx, time.Now, report,
-			role.Role{Name: "controller", Pass: l.Controller.Pass, Interval: LocalInterval, Notice: inbox},
+			role.Role{Name: "controller", Pass: l.pass, Interval: LocalInterval, Notice: inbox},
 			role.Role{Name: "runner", Pass: l.Runner.Pass, Interval: LocalInterval, Notice: jobs})
 	}()
 	return l, nil
+}
+
+// pass is one pass of the controller.
+func (l *Local) pass(ctx context.Context) (time.Time, error) {
+	l.passing.Lock()
+	defer l.passing.Unlock()
+	return l.Controller.Pass(ctx)
+}
+
+// ErrStill is the cause of a context WhileMoving gave, once nothing can
+// move any run.
+var ErrStill = errors.New("each run still running waits on an event that nothing in this process sends")
+
+// Still says whether nothing can move any run in the store: the controller
+// has nothing to do but housekeeping, and no run waits on a ticket. Only a
+// client sends an event or an answer from outside the runs, and this
+// process's client sends none after its start; each job on the runner has
+// a wake for when its result is due.
+func (l *Local) Still(ctx context.Context) (bool, error) {
+	l.passing.Lock()
+	defer l.passing.Unlock()
+	idle, err := l.Controller.Idle(ctx)
+	if err != nil || !idle {
+		return false, err
+	}
+	runs, err := l.List(ctx, Filter{})
+	if err != nil {
+		return false, err
+	}
+	for _, run := range runs {
+		if len(run.Tickets) > 0 {
+			return false, nil
+		}
+	}
+	return true, nil
+}
+
+// WhileMoving gives a context that ends once nothing can move any run, with
+// ErrStill as its cause, or once a look at the store fails, with its error.
+func (l *Local) WhileMoving(ctx context.Context) (context.Context, context.CancelFunc) {
+	moving, cancel := context.WithCancelCause(ctx)
+	go func() {
+		for {
+			select {
+			case <-moving.Done():
+				return
+			case <-time.After(LocalInterval):
+			}
+			switch still, err := l.Still(moving); {
+			case moving.Err() != nil:
+				return
+			case err != nil:
+				cancel(err)
+				return
+			case still:
+				cancel(ErrStill)
+				return
+			}
+		}
+	}()
+	return moving, func() { cancel(nil) }
 }
 
 // LocalInterval is how long a role in one process sleeps when nothing is

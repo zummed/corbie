@@ -47,6 +47,11 @@ These are new.
 - `fs.list(dir)` with `fs.read:dir` gives every entry in `dir`; it gave only
   the entries the job could read before. With `deep`, it goes only into the
   directories the job may read, and `used:` lists each one.
+- `corbie test` stops when no run has a job, a timer, a timeout or a ticket
+  outstanding, prints each run still running, and fails: each waits on an
+  event that nothing in its process sends. It waited until it was stopped.
+- `corbie test` prints, after its run, each other run that failed and each run
+  at a singleton or keyed location. With `--json` each run is a line of its own.
 
 After 0.43.0
 ------------

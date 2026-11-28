@@ -252,6 +252,11 @@ memory, records the file as a tree of one file, starts it, waits until the run
 ends and prints it. It reads no config and keeps nothing. It fails unless the
 run ends with status done.
 
+In this process only the runs send events, and nothing answers a ticket. When
+no run has a job, a timer, a timeout or a ticket outstanding, it prints each
+run still running and fails. Beside the run, it prints each other run that failed, and
+each run the submit or a send started at a singleton or keyed location.
+
 A singleton is started by the submit, and takes no flag of a start. A keyed
 file is refused: its runs start when an event is sent to a key.
 

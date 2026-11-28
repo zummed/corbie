@@ -264,6 +264,17 @@ corbie up --store s3://…           a bucket as the store, when .corbie is set 
 
 `corbie test` is an ordinary run: the same roles, in one process, on a store in memory, with ceilings that allow everything. It records the file as a tree of one file and starts it. A singleton is started by that submit, so a flag of a start given with one is a mistake. A keyed file is refused: its runs start when an event is sent to a key. `corbie test <file> --in <dir>` records the directory as `corbie run submit <dir>` does, which starts its singletons, and runs the file at its location there, so its `call:` and `send:` reach the tree's machines. A file of the tree with a problem is reported, and nothing runs, as `corbie up` does. `corbie test <file> --definition` prints the machine as the client writes it out, each value with its file and line, runs nothing, and takes no flag of a start. With `--in <dir>` it reads the file at its location in that directory's tree, as a run with `--in` reads it.
 
+In `corbie test`'s process only the runs send events, and nothing answers a ticket. When no run has a job, a timer, a timeout or a ticket outstanding, nothing can move any of them, so `corbie test` stops, prints each run still running, and fails:
+
+```
+$ corbie test door.yaml
+client/…  running  statechart door  step 1
+  at: /door
+corbie test: each run still running waits on an event that nothing in this process sends
+```
+
+Beside the run it started, `corbie test` prints each other run of its store that failed, and each run the submit or a send started at a singleton or keyed location, as the store holds them when it stops.
+
 `corbie test` sets values and secrets at `/` of the controller in its process, read from the sources `controller value set` and `controller secret set` read:
 
 ```

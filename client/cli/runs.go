@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"context"
 	"encoding/json/v2"
 	"errors"
 	"flag"
@@ -376,7 +377,58 @@ func cmdTest(e *Env, args []string) error {
 	if err != nil {
 		return err
 	}
-	return e.await(local.Client, id, s.watch, isScript(files[0]))
+	moving, stop := local.WhileMoving(e.ctx)
+	defer stop()
+	run, err := e.wait(moving, local.Client, id, s.watch)
+	if err != nil {
+		return err
+	}
+	// A run that has not ended, and was not cut short by the person, waits
+	// on what nothing can move, or the look at the store failed.
+	still := false
+	if cause := context.Cause(moving); cause != nil && !run.HasEnded() && e.ctx.Err() == nil {
+		if !errors.Is(cause, client.ErrStill) {
+			return cause
+		}
+		still = true
+	}
+	if err := e.printRun(run, isScript(files[0])); err != nil {
+		return err
+	}
+	// Beside the run, the runs a person would not otherwise see: each one
+	// that failed, each one the submit or a send started at a singleton or
+	// keyed location, and, when nothing can move them, each one running.
+	lifetimes := map[string]string{}
+	for _, m := range tree.Machines {
+		lifetimes[m.Location] = m.Draft.Definition.Lifetime
+	}
+	ctx := context.WithoutCancel(e.ctx)
+	runs, err := local.List(ctx, client.Filter{Finished: true})
+	if err != nil {
+		return err
+	}
+	for _, other := range runs {
+		lifetime := lifetimes[other.Location]
+		started := other.Parent == "" && (lifetime == machine.LifetimeSingleton || lifetime == machine.LifetimeKeyed)
+		stuck := still && other.Status == instance.Running
+		if other.ID == id || !started && !stuck && other.Status != instance.Failed {
+			continue
+		}
+		shown, err := local.Show(ctx, other.ID)
+		if err != nil {
+			return err
+		}
+		if err := e.printRun(shown, false); err != nil {
+			return err
+		}
+	}
+	switch {
+	case still:
+		return client.ErrStill
+	case run.HasEnded() && run.Status != instance.Done:
+		return errRunFailed
+	}
+	return nil
 }
 
 // recordIn reads a directory as a tree, as a submit with no --at reads it,
@@ -879,13 +931,7 @@ func (e *Env) checkMachines(dirs []string) error {
 // way if asked to. A command that waits for a run fails on a run that
 // ended badly.
 func (e *Env) await(c *client.Client, id string, watch, script bool) error {
-	var run *client.Run
-	var err error
-	if watch {
-		run, err = c.Follow(e.ctx, id, interval, func(entry client.Entry) { e.entry(entry) })
-	} else {
-		run, err = c.Wait(e.ctx, id, interval)
-	}
+	run, err := e.wait(e.ctx, c, id, watch)
 	if err != nil {
 		return err
 	}
@@ -898,6 +944,15 @@ func (e *Env) await(c *client.Client, id string, watch, script bool) error {
 		return errRunFailed
 	}
 	return nil
+}
+
+// wait stays until a run ends, or the context does, and gives the run as it
+// stands, following its record on the way if asked to.
+func (e *Env) wait(ctx context.Context, c *client.Client, id string, watch bool) (*client.Run, error) {
+	if watch {
+		return c.Follow(ctx, id, interval, func(entry client.Entry) { e.entry(entry) })
+	}
+	return c.Wait(ctx, id, interval)
 }
 
 // printRun prints a run in the one shape.

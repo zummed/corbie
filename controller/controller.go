@@ -240,6 +240,29 @@ func (c *Controller) Pass(ctx context.Context) (next time.Time, err error) {
 	return p.next, err
 }
 
+// Idle says whether a pass has nothing to do but housekeeping: no message
+// is in the inbox, and every wake set is housekeeping's. Asked between two
+// passes, it says that nothing but a message from another party can move
+// an instance.
+func (c *Controller) Idle(ctx context.Context) (bool, error) {
+	ctl := c.ID.Name
+	inbox, err := store.Names(c.Store.List(ctx, store.Inbox(ctl)))
+	if err != nil || len(inbox) > 0 {
+		return false, err
+	}
+	wakes, err := store.Names(c.Store.List(ctx, store.Wakes(ctl)))
+	if err != nil {
+		return false, err
+	}
+	for _, name := range wakes {
+		_, inst, what, ok := store.ParseWake(ctl, name)
+		if ok && inst != store.House(ctl) && what != wakeTrim && what != wakeRemove {
+			return false, nil
+		}
+	}
+	return true, nil
+}
+
 // each does n things side by side, a bounded number at a time, and gives
 // the first error. One of them may itself do things side by side: what
 // bounds the pass is how many requests its store has open.

@@ -130,7 +130,8 @@ A shape written with `type: object` is JSON Schema, which can give a `default`.
       output: {"depth":2,"url":"https://example.com"}
 
 - A name that `input:` does not give is taken as it is, and a name the input
-  does not hold reads as `null`. A definition with no `input:` takes any input.
+  does not hold reads as `undefined`. A definition with no `input:` takes any
+  input.
 - A default is filled in the input and in each object that `properties` and
   `items` lead to. A `default` elsewhere, such as under `anyOf` or behind a
   `$ref`, is refused.
@@ -164,6 +165,10 @@ It may use JavaScript's operators, `? :`, arrow functions, methods such as
 `Array`, `String`, `Number`, `RegExp`, `Map` and `Set`.
 
 - A name that is not one of these is refused when the definition is checked.
+- A field that is absent reads as `undefined`. A value that is exactly such an
+  expression is `null`, and in text it is empty.
+- Reading a field of `undefined` fails the expression. `?.` reads a field that
+  may be absent, as `${input.user?.name}`.
 - `when:` is a condition on a flow's stage, a statechart's transition, and an
   entry of an agent's `tools:`.
 - An expression cannot change what it reads. It has no `eval`, `Function`,
@@ -411,7 +416,8 @@ A hook's expressions read `input`, `values` and `run` of the machine that names
 it, and `job`. After a job they read `output`, the job's output.
 
   job.name       the stage, state or tool that asked for the job
-  job.run        the run the job is a job of: { id, machine }
+  job.run        the run the job is a job of: { id, machine }, where machine
+                 is the name its definition gives, as report for `flow: report`
   job.input      the input the job is given
   job.allow      the permissions the job declares
   job.approve    true when the job is marked for approval

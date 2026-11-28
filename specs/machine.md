@@ -218,6 +218,8 @@ Expressions are JavaScript. They read `input`, which is what the machine was sta
 send: { to: { at: services/report }, event: make, data: { reply_to: "${run.address}" } }
 ```
 
+A field that a value does not have reads as `undefined`, as with a stage that has no output or a job with no `meta:`. A value that is exactly such an expression is null, and in text it is empty. Reading a field of `undefined` fails the expression, so `?.` reads a field that may be absent: `${stages.push.output?.url}`, `${job.meta?.limit}`.
+
 Everything else that varies from one run of a definition to the next comes in through `input`, and from one tree to the next through `values`.
 
 A value is read by its name, as `values.HUB`. `values[name]` and `values` alone are refused, so the values a file reads can be listed. An expression that reads a value not set at the run's location or above fails, naming the value and the location.
@@ -514,7 +516,7 @@ A hook's expressions read the `input`, `values` and `run` of the machine that de
 | `job.` | What it is |
 |---|---|
 | `name` | the stage, state or tool that asked for the job |
-| `run` | the run the job is a job of: `{ id, machine }` |
+| `run` | the run the job is a job of: `{ id, machine }`, where `machine` is the name its definition gives, as `report` for `flow: report` |
 | `input` | the input the job is given |
 | `allow` | the permissions the job declares |
 | `approve` | true when the job is marked for approval |

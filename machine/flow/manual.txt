@@ -54,7 +54,8 @@ A stage has these fields.
 
 An expression reads `input`, `values`, `run` and these.
 
-  stages.<name>.output     what the stage's job returned
+  stages.<name>.output     what the stage's job returned; `undefined` if the
+                           stage was skipped, or failed with no output
   stages.<name>.failed     true if the stage failed
   stages.<name>.error      the error's text, if it failed
   stages.<name>.skipped    true if the stage was skipped
@@ -111,6 +112,8 @@ A failed stage fails the flow, unless a stage handles it: a stage whose
   unless its `when:` reads that stage's `failed` or `error`.
 - A stage that reads or follows a skipped stage is skipped, unless its own
   `when:` reads that stage's `skipped`.
+- `output: ${stages.small.output ?? stages.big.output}` gives the output of
+  whichever of the two stages ran.
 - `output:` that reads a stage's `failed` or `error` handles its failure too.
 
 Once for each item

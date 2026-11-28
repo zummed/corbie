@@ -410,7 +410,8 @@ Errors:
   timeout     no whole response within timeout
   not_found   the host's name does not resolve
   bad_input   a call written wrongly, such as a body on GET or HEAD, or a body over 64 MiB
-              that is not a blob
+              that is not a blob; a body read as "json" that is not JSON, such as
+              the text of a 500, whose error does not hold the status
 
 Needs these permissions:
   net:host                           each host, those of redirects included

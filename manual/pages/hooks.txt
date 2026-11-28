@@ -76,7 +76,11 @@ and `job.approve` is true for it:
   hooks:
     approval: { before: { machine: ./approval.yaml }, when: "${job.approve}" }
 
-- A marked job that no `before` hook is for fails with status `denied`.
+- When a definition marks a job and neither it nor a machine above it has a
+  `before` hook, it is refused as it starts: its run fails with status
+  `error`, or none is started.
+- When no `before` hook's `when:` holds for a marked job, the job fails with
+  status `denied`.
 - A hook that is a statechart waits for a person, who answers with
   `corbie run reply`.
 - A job's `meta:` is data the hook reads as `job.meta`, such as who approves it.

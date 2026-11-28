@@ -91,8 +91,14 @@ The result
                   blob the model was shown by its handle's name, the list of
                   each toolkit that is open, and each call that has not ended
 
-A reply that does not fit `reply:` is returned to the model, which takes
-another turn. A failed agent's output has `conversation` and `tokens`.
+Each turn is a blob: `corbie run show <id> --save <dir>` writes it as
+`<dir>/turns-<n>`.
+
+- A reply that does not fit `reply:` is returned to the model, which takes
+  another turn.
+- An agent that fails at its turn limit, or because a turn failed, has
+  `conversation` and `tokens` as its output.
+- An agent whose timeout passes, or that is cancelled, has no output.
 
 Tools
 -----

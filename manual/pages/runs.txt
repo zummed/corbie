@@ -65,7 +65,8 @@ Files
 -----
 
 A blob is printed as `{ "$blob": <path>, "type", "size" }`. The path gives the
-blob's place in the run.
+blob's place in the run. `corbie run show <id> --save <dir>` writes each blob of
+the output to a file in `<dir>`, such as `pages-2` for `pages[2]`.
 
   report, pages[2]                      in the output
   file                                  the whole output, when it is one blob

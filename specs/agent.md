@@ -32,7 +32,7 @@ The tools the model picks in one turn all run at once, and the next turn starts 
 
 Corbie supplies the script that makes a turn. A definition may put its own in its place, and the supplied one can be called from it, which is how an agent's behaviour is wrapped or changed. There is no other hook.
 
-An agent's result is the model's last reply as text, or as data in the shape the definition gives. If the last reply does not fit the shape, or was cut short by the model's length limit, the model is told and takes another turn. The result always carries the conversation and a count of the tokens the agent's own turns used, and so does its error if it fails.
+An agent's result is the model's last reply as text, or as data in the shape the definition gives. If the last reply does not fit the shape, or was cut short by the model's length limit, the model is told and takes another turn. The result always carries the conversation and a count of the tokens the agent's own turns used, and so does its error when the agent itself fails, as at its turn limit or when a turn fails.
 
 An agent may be started with the conversation of an earlier agent's result, and carries on from it.
 
@@ -364,6 +364,8 @@ args:
 ## Limits
 
 An agent has a number of turns, twenty by default, and the model is told when few remain. At the limit the agent fails. Its error carries the conversation, so an agent started with that conversation carries on from where it stopped.
+
+The controller ends a run whose timeout passes, or that is cancelled, without the agent: it has no output, and no conversation.
 
 ## The conversation
 

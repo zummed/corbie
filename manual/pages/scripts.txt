@@ -104,6 +104,8 @@ sent with `emit`.
   no value                 null
   bytes                    a blob
   a Date                   text, such as 2026-10-13T20:00:00Z
+  NaN or Infinity          the job fails with status `error`
+  a BigInt or a Symbol     the job fails with status `error`
   a function               the job fails with status `error`
   a handle to a secret     the job fails with status `error`
   an error not caught      the job fails with status `error`; the error is its message and line

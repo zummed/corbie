@@ -3,6 +3,7 @@ package runner
 import (
 	"errors"
 	"fmt"
+	"math"
 	"path"
 	"reflect"
 	"regexp"
@@ -548,15 +549,24 @@ func (e *engine) toGo(v goja.Value, depth int) (any, error) {
 	}
 	obj, isObject := v.(*goja.Object)
 	if !isObject {
+		if _, symbol := v.(*goja.Symbol); symbol {
+			return nil, plugin.Errorf(plugin.BadInput, "a Symbol is not data")
+		}
 		switch x := v.Export().(type) {
-		case string, bool, float64:
+		case string, bool:
+			return x, nil
+		case float64:
+			if math.IsNaN(x) || math.IsInf(x, 0) {
+				return nil, plugin.Errorf(plugin.BadInput, "%s is not data", v.String())
+			}
 			return x, nil
 		case int64:
 			return float64(x), nil
 		case int:
 			return float64(x), nil
 		}
-		return v.String(), nil
+		// The one value left is a BigInt.
+		return nil, plugin.Errorf(plugin.BadInput, "a BigInt is not data")
 	}
 	// A value is asked its type; it is never first converted out of the
 	// engine to find out.

@@ -199,6 +199,21 @@ func Test_run_result_too_large_is_an_error_result(t *testing.T) {
 	}
 }
 
+func Test_run_value_that_is_not_data_fails_the_job(t *testing.T) {
+	l := local(t)
+	for source, holds := range map[string]string{
+		`return NaN`:                  "NaN is not data",
+		`return { a: [1, Infinity] }`: "Infinity is not data",
+		`return -1 / 0`:               "-Infinity is not data",
+		`emit("total", { n: NaN })`:   "NaN is not data",
+		`return 10n`:                  "a BigInt is not data",
+		`return Symbol("x")`:          "a Symbol is not data",
+		`return () => 1`:              "a function is not data",
+	} {
+		wantError(t, script(t, l, source, "timeout: 10s"), "error", holds)
+	}
+}
+
 func Test_run_script_cannot_swap_what_corbie_uses_of_the_language(t *testing.T) {
 	l := local(t)
 	r := script(t, l, `

@@ -57,6 +57,8 @@ Besides plugins, a script has JavaScript's own objects, such as `Math`, `JSON`, 
 
 A job's input and output pass through the store as JSON, so their maps reach the next script with their keys sorted.
 
+A value a script returns, emits or gives a plugin is data: text, a number, `true` or `false`, `null`, a list, a map, bytes, or a handle a plugin gave. `undefined` becomes `null`, and a `Date` becomes text. `NaN`, `Infinity`, a BigInt, a Symbol and a function are not data: the job fails with status `error`, and the error names the value.
+
 `Date` is the runner's clock, and its local time is UTC on every runner.
 
 A script cannot start a job. Deciding what runs is a machine's work.

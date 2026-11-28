@@ -157,6 +157,8 @@ The detailed rules behind the [Runner overview](../runner.md).
 
 **C-run-47** A file opened this way is held open until the job ends. A system gives a deleted file's identity to the next file made, so a file known only by its identity can be another file passing for the one that was checked. *Test:* `run_opened_file_held_until_job_ends`
 
+**C-run-60** A value a script returns, emits or gives a plugin that is not data (`NaN`, `Infinity`, a BigInt, a Symbol, a function) fails the job with status `error`, and the error names the value. JSON has no such value: let through, it becomes text the script did not write, or a result that cannot be sent and a job that ends with no reason. *Test:* `run_value_that_is_not_data_fails_the_job`
+
 ## Programs a job starts
 
 **R-run-48** Corbie checks which program is started and which secrets go to it; arguments and variables are matched against nothing.

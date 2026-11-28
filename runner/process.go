@@ -75,8 +75,14 @@ func JobMain() {
 	result := e.run()
 	limit.Stop()
 	job.End()
-	result.Job, result.Attempt, result.Used = b.Job.Name, b.Job.Attempt, job.Perms.Used()
-	w.send(&piece{Op: opResult, Result: result}, nil)
+	send := func(result *instance.Result) error {
+		result.Job, result.Attempt, result.Used = b.Job.Name, b.Job.Attempt, job.Perms.Used()
+		return w.send(&piece{Op: opResult, Result: result}, nil)
+	}
+	if err := send(result); err != nil {
+		// A result that cannot be sent is sent as an error that says why.
+		send(failed(&machine.Error{Status: machine.StatusError, Error: job.Mask("the job's result cannot be sent: " + err.Error())}))
+	}
 	os.Exit(0)
 }
 

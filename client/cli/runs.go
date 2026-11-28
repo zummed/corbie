@@ -980,6 +980,19 @@ func runText(run *client.Run, script bool) string {
 	if run.Title != "" {
 		fmt.Fprintf(&b, "  title: %s\n", run.Title)
 	}
+	if len(run.State.States) > 0 {
+		fmt.Fprintf(&b, "  states: %s\n", strings.Join(run.State.States, " "))
+	}
+	if len(run.State.Stages) > 0 {
+		var stages []string
+		for _, name := range slices.Sorted(maps.Keys(run.State.Stages)) {
+			stages = append(stages, name+" "+run.State.Stages[name])
+		}
+		fmt.Fprintf(&b, "  stages: %s\n", strings.Join(stages, ", "))
+	}
+	if run.State.Turn > 0 {
+		fmt.Fprintf(&b, "  turn: %d\n", run.State.Turn)
+	}
 	if waits := waitingOn(run); waits != "" && !run.HasEnded() {
 		fmt.Fprintf(&b, "  waiting on %s\n", waits)
 	}
@@ -1021,6 +1034,10 @@ func runText(run *client.Run, script bool) string {
 	if run.Input != nil {
 		in, _ := json.Marshal(run.Input, json.Deterministic(true))
 		fmt.Fprintf(&b, "  input: %s\n", in)
+	}
+	if run.State.Outputs != nil {
+		outputs, _ := json.Marshal(run.State.Outputs, json.Deterministic(true))
+		fmt.Fprintf(&b, "  outputs: %s\n", outputs)
 	}
 	if run.Output != nil {
 		out, _ := json.Marshal(run.Output, json.Deterministic(true))

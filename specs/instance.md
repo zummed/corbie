@@ -44,7 +44,7 @@ A watcher is shown, for each step, the run's `state`, in one shape for every typ
 | `states` | statechart | the active states, outermost first |
 | `turn` | agent | how many turns the agent has taken |
 
-A step read by its number has `outputs` in its `state` as well: the output so far of each stage of a flow, or of each state of a statechart, under its name. A run's latest step therefore gives what its stages or states have produced, whichever event that step took. A step given with the others of a record has no `outputs`, since each would hold them again.
+A step read by its number has `outputs` in its `state` as well: the output so far of each stage of a flow, or of each state of a statechart, under its name. A run's latest step therefore gives what its stages or states have produced, whichever event that step took, and a running run is shown with the `state` of its latest step, `outputs` included. A step given with the others of a record has no `outputs`, since each would hold them again.
 
 An **emit** entry is written by a job while it runs: a log line, a note of progress, a piece of a model's reply, a named value. The job's runner writes it straight into the record, in order, under the number the controller gave the job, and a watcher sees it as soon as it is there. If the machine has said it wants to act on values of that name, the runner also tells the controller, which costs one more message; otherwise the controller plays no part.
 

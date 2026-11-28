@@ -363,8 +363,9 @@ listed.
 
   corbie manual runs   a run as it is printed, and with --json`},
 		{Name: "run show", Usage: "<id> | <location>[#key] [--record | --watch | --wait | --tickets | --step n | --definition | --save <directory>]", Summary: "show one run: its status and its result", Run: cmdShow, Help: `
-It prints the run's status and input, and its output or its error when it has
-ended. A location, or a location and a key, names the one run of this
+It prints the run's status and input; while it runs, its states, stages or
+turn and the outputs so far, from its latest step; and its output or its error
+when it has ended. A location, or a location and a key, names the one run of this
 client's running there. It takes one of these flags at most.
 
   --record             print each entry of the run's record so far, child

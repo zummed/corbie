@@ -20,7 +20,7 @@ To a client a run is an instance: a root at a location in one of its trees, or o
 
 Wherever a run is shown, it has the same shape and the same words.
 
-A run shows its location, its key at a keyed location, and its cause: the step of another run, or the client's message, that started it. A run is `waiting` to start, `running`, `done`, `failed` or `cancelled`. A failed run says why: an `error`, a `timeout`, or `denied` with the refusal. A finished run has its output, and a list of the permissions it used, which for a machine are those of every job in it and below it.
+A run shows its location, its key at a keyed location, and its cause: the step of another run, or the client's message, that started it. A run is `waiting` to start, `running`, `done`, `failed` or `cancelled`. A failed run says why: an `error`, a `timeout`, or `denied` with the refusal. A running run has its `state` after its latest step, with the outputs so far (see instance.md). A finished run has its output, and a list of the permissions it used, which for a machine are those of every job in it and below it.
 
 A run waiting on a ticket shows the ticket's name. The ticket's value is in the record, which only the client of the run's tree and the clients its file's `read:` lists can read. Only those clients are shown the run's title, its input, its output, the failure's text and the permissions it used, and a client's `run ls` lists only the runs of its trees and those whose head lists it. Another client that asks for more than the run's status is told there is no such run of its own, and which client's tree the run is in. A client that called the run from outside the tree is shown its status and its output or error, from the call's result, and the run its call started (see instance.md).
 
@@ -85,16 +85,18 @@ Programs on PATH, which corbie <name> runs: console.
 - A command's usage line is in its own help, never in these rows.
 - The rows fit 80 columns: a text too long goes on below, under itself.
 
-`run show` prints where a run stands. `run show --record` prints what happened to it: each entry of its record so far, its children's included, and then the run as it stands.
+`run show` prints where a run stands: for a running run, its states, stages or turn and the outputs so far, from its latest step. `run show --record` prints what happened to it: each entry of its record so far, its children's included, and then the run as it stands.
 
 ```
 $ corbie run show <id>
 <id>  running  statechart door  step 1
+  states: closed
   waiting on ticket knock
 
 $ corbie run show <id> --record
 15:56:21 4efcf50f63  step 1  <- start
 <id>  running  statechart door  step 1
+  states: closed
   waiting on ticket knock
 ```
 
@@ -269,6 +271,7 @@ In `corbie test`'s process only the runs send events, and nothing answers a tick
 ```
 $ corbie test door.yaml
 client/…  running  statechart door  step 1
+  states: closed
   at: /door
 corbie test: each run still running waits on an event that nothing in this process sends
 ```

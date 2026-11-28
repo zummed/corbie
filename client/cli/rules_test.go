@@ -11,6 +11,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"reflect"
 	"regexp"
 	"slices"
 	"strings"
@@ -1246,6 +1247,41 @@ func TestShowRecordIsWatchWithoutStaying(t *testing.T) {
 		if record != watch || !strings.Contains(record, "done") {
 			t.Errorf("show --record %v printed:\n%s\nand show --watch:\n%s", as, record, watch)
 		}
+	}
+}
+
+// run show of a running run prints its state after its latest step and the
+// outputs so far, as text and as JSON; a run that has ended gives neither.
+func TestShowPrintsARunningRunsState(t *testing.T) {
+	m, _ := working(t, "all")
+	dir := files(t, map[string]string{"count.yaml": `statechart: count
+lifetime: singleton
+initial: idle
+states:
+  idle:
+    on: { tick: counting }
+  counting:
+    output: ${(states.counting.output ?? 0) + 1}
+    on: { done: idle }
+`})
+	m.ok("", "run", "submit", filepath.Join(dir, "count.yaml"))
+	shownAt(t, m, "/count")
+	m.ok("", "run", "send", "/count", "tick")
+	m.ok("", "run", "send", "/count", "tick")
+	if out := m.ok("", "run", "show", "/count"); !strings.Contains(out, "  step 3\n  states: idle\n  at: /count\n  outputs: {\"counting\":2}\n") {
+		t.Fatalf("show of the running chart printed:\n%s", out)
+	}
+	var run struct {
+		ID    string
+		State map[string]any
+	}
+	if err := json.Unmarshal([]byte(m.ok("", "run", "show", "/count", "--json")), &run); err != nil ||
+		!reflect.DeepEqual(run.State, map[string]any{"states": []any{"idle"}, "outputs": map[string]any{"counting": 2.0}}) {
+		t.Fatalf("show --json of the running chart gave the state %v (%v)", run.State, err)
+	}
+	m.ok("", "run", "cancel", run.ID)
+	if _, out, _ := m.run("", "run", "show", run.ID, "--wait"); !strings.Contains(out, "cancelled") || strings.Contains(out, "states:") || strings.Contains(out, "outputs:") {
+		t.Fatalf("show of the cancelled chart printed:\n%s", out)
 	}
 }
 

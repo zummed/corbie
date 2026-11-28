@@ -39,6 +39,10 @@ type Run struct {
 	// Used lists the permissions the run used: those of every job in it
 	// and below it.
 	Used []string `json:"used,omitzero"`
+	// State is a running run's state after its latest step: a flow's
+	// stages, a statechart's active states or an agent's turn, and the
+	// outputs so far.
+	State machine.Shown `json:"state,omitzero"`
 
 	Step    int       `json:"step,omitzero"`
 	Started time.Time `json:"started,omitzero"`
@@ -190,6 +194,13 @@ func (c *Client) Show(ctx context.Context, id string) (*Run, error) {
 		}
 	}
 	slices.Sort(run.Tickets)
+	if run.Status == instance.Running {
+		entry, err := stepEntry(id, latest)
+		if err != nil {
+			return nil, err
+		}
+		run.State = entry.Shown
+	}
 	if st.Error != nil {
 		run.Error, run.Refused, run.Layer, run.Fix = st.Error.Error, st.Error.Refused, st.Error.Layer, st.Error.Fix
 		if st.Status == instance.Failed {

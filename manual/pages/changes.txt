@@ -44,6 +44,8 @@ These are new.
 
 - `corbie run submit` prints `cancelled: <id>` for each run it cancelled, as
   `corbie run remove` does.
+- `corbie run show` of a running run prints its states, stages or turn and the
+  outputs so far, from its latest step. In JSON they are its `state`.
 - `corbie init --name` on a config that holds a party under another name is
   refused, naming the party. It kept the old names before. Leave out `--name`.
 - `corbie test <file> --in <directory>` refuses a tree in which a file has a

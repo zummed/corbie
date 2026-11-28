@@ -348,8 +348,9 @@ type Shown struct {
 	Turn int `json:"turn,omitzero"`
 	// Outputs are the outputs so far of a flow's stages or of a
 	// statechart's states, each under the name an expression reads it by.
-	// A step read by its number is shown with them; a step given among
-	// the others of a record is not, since each would hold them again.
+	// A step read by its number, and a running run shown alone, are
+	// shown with them; a step given among the others of a record is not,
+	// since each would hold them again.
 	Outputs map[string]any `json:"outputs,omitzero"`
 }
 

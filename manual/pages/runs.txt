@@ -10,7 +10,7 @@ Commands
   corbie run submit <file or directory>   records a tree, and starts its singletons
   corbie run start <location>             starts a run there and prints its ID once a controller takes it
   corbie run ls                           lists the runs in progress of this client's trees and of files whose `read:` lists it
-  corbie run show <id>                    prints one run's status, input and output
+  corbie run show <id>                    prints one run's status, state, input and output
   corbie run cancel <id>                  cancels a run in this client's trees; a location cancels each run there, location#key one
   corbie run send <id> <event> [data]     sends an event to a run; a location, or location#key, names one too
   corbie run reply <id> <ticket> [value]  answers a ticket the run waits on
@@ -52,6 +52,7 @@ here.
   jobs, timers          how many of its script jobs are on a runner, and how many timers it waits for
   tickets               the names of the tickets it waits on
   labels                the labels it was started with
+  state                 for a running run, its latest step's state and outputs, as below
 
   denied    a job was refused a permission, or a hook before a job refused it
   timeout   the run's timeout passed; a job that timed out fails its run with `error`
@@ -152,6 +153,32 @@ time there is work.
 Neither state has a rule for `pause`, so the statechart ignores it. The state
 `working` has no rule for `work`, so a `work` that arrives while the job runs
 is ignored the same way.
+
+`corbie run show` of a running run prints its state after its latest step,
+and the output so far of each state:
+
+    # count.yaml
+    statechart: count
+    lifetime: singleton
+    initial: idle
+    states:
+      idle:
+        on: { tick: counting }
+      counting:
+        output: ${(states.counting.output ?? 0) + 1}
+        on: { done: idle }
+
+    corbie run submit count.yaml
+      /count   singleton   started <id>
+    corbie run send /count tick
+      taken by <id>; the machine acted on it
+    corbie run send /count tick
+      taken by <id>; the machine acted on it
+    corbie run show /count
+      <id>  running  statechart count  step 3
+        states: idle
+        at: /count
+        outputs: {"counting":2}
 
 Reference
 ---------

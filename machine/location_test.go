@@ -120,7 +120,7 @@ func Test_mach_receive_says_who_may_send(t *testing.T) {
 	if got := d.Definition.Receive[""]; !slices.Equal(got, []string{"thermostats/*", "/work/**", "client:panel"}) {
 		t.Errorf("a list is stored as %v", d.Definition.Receive)
 	}
-	d = parsed(t, "probe: p\nreceive: { set: [thermostats/*, client:panel], stop: client:panel }\n", nil)
+	d = parsed(t, "probe: p\nreceive: { set: [thermostats/*, client:panel], stop: [client:panel] }\n", nil)
 	if got := d.Definition.Receive; len(got) != 2 || !slices.Equal(got["stop"], []string{"client:panel"}) {
 		t.Errorf("a mapping is stored as %v", got)
 	}

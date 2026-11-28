@@ -5,6 +5,16 @@ Each section lists what changed after one release, the newest first.
 compatible before version 1: a file or a command written the old way is
 refused.
 
+After 0.45.0
+------------
+
+A field that takes a list is refused when it is written as one text:
+`allow:`, `deny:`, a definition's `approve:`, `follows:`, `tags:`, `files:`,
+`read:`, `receive:`, `defer:` and a model's `own:`.
+
+  allow: net:example.com            allow: [net:example.com]
+  receive: { stop: client:panel }   receive: { stop: [client:panel] }
+
 After 0.43.0
 ------------
 

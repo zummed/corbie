@@ -14,7 +14,7 @@ The detailed rules behind the [Flow overview](../flow.md). Area code: `flow`. Wh
 *Accept:* a flow of three stages with no arrows between them asks for all three jobs in its first step.
 
 **R-flow-06** A flow with a cycle is refused.
-*Accept:* stage `a` reads `b`'s output and `b` has `follows: a`; the definition is refused when checked, and the refusal names both stages.
+*Accept:* stage `a` reads `b`'s output and `b` has `follows: [a]`; the definition is refused when checked, and the refusal names both stages.
 
 **R-flow-07** A flow's `output:` is its result, filled in once every stage has settled; it reads the flow's input and its stages. A flow of one stage that has no `each:`, with no `output:`, gives that stage's output, and any other flow with no `output:` ends well with no output.
 *Accept:* parity case 54. The digest flow's `output: ${stages.summarise.output}` gives the summary, and an `output:` of `${input.urls.length}` gives the number of addresses. Parity case 15. Parity case 141.

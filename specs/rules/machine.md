@@ -176,7 +176,7 @@ The detailed rules behind the [Machines overview](../machine.md). Area code: `ma
 *Accept:* a keyed chart and a transient chart with `runs: 50` are stored with 50; `runs: 0` and `runs:` on a singleton are refused at `limits.runs`. Parity case 138. *Test:* `mach_runs_limits_a_keyed_or_transient_file`
 
 **R-mach-156** A file's `receive:` is a list, for every event, or a mapping from an event's name to a list. An entry is a location pattern or `client:<name>`, written out; a pattern is read from the tree's prefix unless it starts with `/`, and holds no `..`, `.`, empty name, `+` name, `#`, backslash or control character. An event's name in it is written out and is none that Corbie gives a machine itself.
-*Accept:* `receive: [thermostats/*, /work/**, client:panel]` is stored for every event and `{ set: […], stop: client:panel }` by name; an entry with an expression, `client:`, `../up`, `a//b`, `x#y` or `+/z`, and the event `done`, are each refused at their place. *Test:* `mach_receive_says_who_may_send`
+*Accept:* `receive: [thermostats/*, /work/**, client:panel]` is stored for every event and `{ set: […], stop: [client:panel] }` by name; an entry with an expression, `client:`, `../up`, `a//b`, `x#y` or `+/z`, and the event `done`, are each refused at their place. *Test:* `mach_receive_says_who_may_send`
 
 **R-mach-164** A file's `read:` is a list of `client:<name>` entries, written out, each once.
 *Accept:* `read: [client:wall, client:phone]` is stored as written; `wall`, `client:`, `client:${input.who}` and a second `client:wall` are each refused at their place, and so is `read:` in a machine written in place and in one made while running. *Test:* `mach_read_names_clients`

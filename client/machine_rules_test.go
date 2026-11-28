@@ -539,6 +539,26 @@ func Test_mach_approve_is_a_list_on_a_definition_and_a_flag_on_a_job(t *testing.
 	}
 }
 
+// A field that takes a list is written as a list: one text in its place is
+// refused at that place.
+func TestListFieldWrittenAsOneTextIsRefused(t *testing.T) {
+	for def, want := range map[string]string{
+		"flow: f\nallow: net:example.com\nstages:\n  a: { job: ./add.js }\n":                                         "allow: this should be a list, and is text",
+		"flow: f\nstages:\n  a: { job: { script: ./add.js, deny: fs.read:/etc/hostname } }\n":                        "stages.a.job.deny: this should be a list, and is text",
+		"flow: f\nstages:\n  a: { job: ./add.js }\n  b: { follows: a, job: ./add.js }\n":                             "stages.b.follows: this should be a list, and is text",
+		"flow: f\nreceive: { stop: client:panel }\nstages:\n  a: { job: ./add.js }\n":                                "receive.stop: this should be a list of locations and client:<name>, and is text",
+		"flow: f\nallow: [net:example.com]\nstages:\n  a: { job: ./add.js }\n  b: { follows: [a], job: ./add.js }\n": "",
+	} {
+		_, err := machineParse(def, scripts)
+		switch {
+		case want == "" && err != nil:
+			t.Errorf("%s was refused: %v", def, err)
+		case want != "" && (err == nil || !strings.Contains(err.Error(), want)):
+			t.Errorf("%s was not refused with %q: %v", def, want, err)
+		}
+	}
+}
+
 // Every field named when, in every shape of every type, is a condition: one
 // expression, written ${…}.
 func Test_mach_every_when_is_a_condition(t *testing.T) {

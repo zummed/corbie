@@ -330,9 +330,6 @@ func (p *Parser) location(def *Definition, f, limits *Fields) {
 // mapping from an event's name to a list.
 func (p *Parser) receive(place string, written any) map[string][]string {
 	list := func(place string, v any) []string {
-		if text, ok := v.(string); ok {
-			return []string{text}
-		}
 		items, ok := v.([]any)
 		if !ok {
 			p.Problem(place, "this should be a list of locations and client:<name>, and is %s", describe(v))
@@ -1022,15 +1019,11 @@ func (f *Fields) Size(name string) int64 {
 	return 0
 }
 
-// Strings takes a field that is a list of texts; one text alone is a list
-// of one.
+// Strings takes a field that is a list of texts.
 func (f *Fields) Strings(name string) []string {
 	v, ok := f.take(name, KindList)
 	if !ok || v == nil {
 		return nil
-	}
-	if s, ok := v.(string); ok {
-		return []string{s}
 	}
 	list, ok := v.([]any)
 	if !ok {

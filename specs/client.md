@@ -10,6 +10,19 @@ It does two kinds of thing.
 
 It **sends**: submit a tree, remove a tree, start a run of a location, cancel runs, send an event, answer a ticket, set, remove and list its secrets and values. To submit a tree it reads every file, writes each machine out with its includes resolved and its short forms filled out, checks the whole and reports everything wrong at once, and uploads the definitions and the files they name side by side, a bounded number at a time. A start names a location and may carry input, labels, a list that narrows what the run may do, and a timeout. Any value in the input may be a file, and the start is sent once every file is in the store.
 
+A label is `name=value`, or `name` alone with the empty value. A name is 1 to 256 characters, with no whitespace and no `=`, and a start gives each name once. The package reads labels written as text, for the command line, the gateway and `corbie ui`, and refuses a name given twice, naming it.
+
+The command line and the gateway give a file at a place in the input, written as a run shows a blob's place:
+
+```
+corbie run start /thumbs --input '{"files": [{"name": "a"}, {"name": "b"}]}' \
+  --input-file 'files[0].file=a.txt' --input-file 'files[1].file=b.png'
+```
+
+- A map or a list on the way to the place is made where the input has none.
+- A list takes a new item at its end, and a place further on is refused.
+- A place that holds null takes the file, and a place that holds another value is refused.
+
 It **reads**: list runs and follow the list as it changes; show one run, where it stands and how it ended; read a run's record so far, children included, and follow it as it grows; fetch a file from a result; show the definition a run was started from.
 
 Reading is the one way of watching described under Instances. The package owns the awkward corners so that nothing built on it meets them: a head that is a moment behind its record, a run that has been sent and not yet taken up, a start that was refused, a receipt that arrives before the head does, a head that is moving from running to finished.
@@ -543,7 +556,7 @@ corbie run submit house --gateway https://corbie.example.com
 - The command uses no config and no store, and holds no key.
 - A command prints the same through a gateway as with the client's own config.
 - A submit sends each file the directory's machines read: the machines, their scripts, the files they include and `.corbieignore`.
-- A file given to a start is a value of the input's top level.
+- A file given to a start is at a place whose names are not empty and hold no `.`, `[` or `]`.
 - The gateway names the run a start starts.
 
 ## For a model

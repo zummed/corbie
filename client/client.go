@@ -108,7 +108,9 @@ type Start struct {
 	// run's ID> }, with or without the type and size it was shown with. The
 	// blob is copied into the new run's record, and the copy stands in the
 	// input.
-	Input  any
+	Input any
+	// Labels are the run's labels, each a name and its value, which may be
+	// empty. A name is 1 to 256 characters, with no whitespace and no "=".
 	Labels map[string]string
 	// Allow narrows what the run, and everything below it, may do.
 	Allow *permission.Layer
@@ -135,32 +137,6 @@ func (f InputFile) MarshalJSON() ([]byte, error) {
 	return nil, fmt.Errorf("%w: the file %q is not an InputFile in a map[string]any or a []any of the input", ErrStart, f.Name)
 }
 
-// WithFiles gives an input with each file standing under its name. The
-// input is a map of names, or nothing.
-func WithFiles(input any, files map[string]InputFile) (any, error) {
-	if len(files) == 0 {
-		return input, nil
-	}
-	if input == nil {
-		input = map[string]any{}
-	}
-	named, ok := input.(map[string]any)
-	if !ok {
-		return nil, fmt.Errorf("%w: a file is given as input under a name, and the input is not a map of names", ErrStart)
-	}
-	out := make(map[string]any, len(named)+len(files))
-	for name, value := range named {
-		out[name] = value
-	}
-	for name, file := range files {
-		if _, taken := named[name]; taken {
-			return nil, fmt.Errorf("%w: the input has a value under %q, and a file is given under that name too", ErrStart, name)
-		}
-		out[name] = file
-	}
-	return out, nil
-}
-
 // NewRun chooses the name of a run before it is started, so that an
 // application can note it before anything is sent.
 func (c *Client) NewRun() (string, error) {
@@ -177,6 +153,11 @@ func (c *Client) NewRun() (string, error) {
 // input itself, are written into the run's record first, and then the start
 // is sent. It gives the run's name.
 func (c *Client) Start(ctx context.Context, start Start) (string, error) {
+	for name := range start.Labels {
+		if err := checkLabel(name); err != nil {
+			return "", fmt.Errorf("%w: the label %q: %w", ErrStart, name, err)
+		}
+	}
 	if c.remote != nil {
 		return c.remote.start(ctx, start)
 	}

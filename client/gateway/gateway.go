@@ -152,13 +152,12 @@ func (g *Gateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			fail(w, http.StatusBadRequest, fmt.Errorf("status is %s", strings.Join(client.Statuses, ", ")))
 			return
 		}
-		for _, label := range query["label"] {
-			name, value, _ := strings.Cut(label, "=")
-			if filter.Labels == nil {
-				filter.Labels = map[string]string{}
-			}
-			filter.Labels[name] = value
+		labels, err := client.ParseLabels(query["label"])
+		if err != nil {
+			fail(w, http.StatusBadRequest, err)
+			return
 		}
+		filter.Labels = labels
 		if query.Has("watch") {
 			s := newStream(w)
 			err := c.Watch(ctx, filter, g.interval(), func(u client.Update) { s.send("run", u) })
@@ -271,12 +270,13 @@ func partsOf(form *multipart.Form) (map[string]part, error) {
 // start starts a run of a location from an upload form. Its parts are:
 //
 //	start           the location and everything else a start carries, as JSON
-//	input:<name>    a file given as input under that name; the part's file
-//	                name says what type of file it is
+//	input:<place>   a file given as input at that place, such as
+//	                files[0].file; the part's file name says what type of
+//	                file it is
 //
 // A part the gateway does not know is refused, and so is one given twice.
 func (g *Gateway) start(w http.ResponseWriter, r *http.Request, c *client.Client) {
-	const shape = "a start is JSON, or an upload form (multipart/form-data) whose parts are start and input:<name>"
+	const shape = "a start is JSON, or an upload form (multipart/form-data) whose parts are start and input:<place>"
 	var s start
 	var st client.Start
 	files := map[string]client.InputFile{}

@@ -74,11 +74,11 @@ Start a run
 file is `multipart/form-data` with these parts.
 
   start          JSON with the fields below
-  input:<name>   a file that a script reads as the blob `input.<name>`; its file name sets the type
+  input:<place>  a file at that place in the input, such as `report` or `files[0].file`; its file name sets the type
 
   at         "/title": the location the run starts at; required
   input      the run's input
-  labels     { "team": "ops" }
+  labels     { "team": "ops" }: a name is 1 to 256 characters, with no whitespace and no `=`
   allow      ["net:example.com"]: entries that limit every job of the run and its child runs
   deny       entries that are refused whatever `allow` has
   timeout    "1h": how long the run may take
@@ -88,7 +88,7 @@ file is `multipart/form-data` with these parts.
 - The answer is `{ "taken": true, "id": "<id>" }`. A refused start, with `?wait` or without, is `{ "taken": false, "refused": "<reason>", "id": "<id>" }`.
 - In a tree another client owns, the start is a call: `GET /runs/<id>` gives the status, the output or error and `called`, the run it started there, and the record has no entries. Its definition and a cancel are refused. It takes no `labels`, `allow` or `deny`.
 - A part can be sent as a form field or as a file.
-- With an `input:<name>` part, `input` is an object or absent, with no value under that name.
+- With an `input:<place>` part, `input` is an object or absent. A map or a list on the way to the place is made where `input` has none, and an item of a list goes at its end or where it holds null. A place that holds another value is refused.
 
 Query parameters
 ----------------
@@ -96,7 +96,7 @@ Query parameters
   GET /runs?all                 includes runs that have ended
   GET /runs?status=failed       only that status: running, done, failed or cancelled; needs no `all`
   GET /runs?parent=<id>         only the child runs of that run
-  GET /runs?label=team=ops      only runs with that label; `label=team` matches any value; repeatable
+  GET /runs?label=team=ops      only runs with that label; `label=team` matches any value, `label=team=` the empty value; repeatable
   GET /runs?at=<location>       only runs at that location
   GET /runs?at=<loc>&key=<key>  only the run with that key at a keyed location
   GET /runs?watch               a stream of the list

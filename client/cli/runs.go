@@ -167,33 +167,36 @@ func (s *starting) start(e *Env, script bool) (client.Start, error) {
 			return start, Mistake("--input is JSON, or @file naming a file of JSON: %v", err)
 		}
 	}
-	// A file is given as input under a name: --input-file report=report.pdf.
+	// A file is given as input at a place: --input-file files[0].file=a.pdf.
 	files := map[string]client.InputFile{}
 	for _, given := range s.files {
-		name, at, ok := strings.Cut(given, "=")
-		if !ok || name == "" || at == "" {
-			return start, Mistake("--input-file takes name=path: the name the file has in the input, and where the file is")
+		place, at, ok := strings.Cut(given, "=")
+		if !ok || place == "" || at == "" {
+			return start, Mistake("--input-file takes place=path: the place the file has in the input, such as report or files[0].file, and where the file is")
 		}
-		if _, twice := files[name]; twice {
-			return start, Mistake("--input-file gives two files under the name %q", name)
+		if _, twice := files[place]; twice {
+			return start, Mistake("--input-file gives two files at %q", place)
 		}
 		file, err := os.Open(at)
 		if err != nil {
 			return start, err
 		}
 		s.opened = append(s.opened, file)
-		files[name] = client.InputFile{Name: filepath.Base(at), Contents: file}
+		files[place] = client.InputFile{Name: filepath.Base(at), Contents: file}
 	}
 	var err error
 	if start.Input, err = client.WithFiles(start.Input, files); err != nil {
 		return start, err
 	}
-	for _, label := range s.labels {
-		name, value, _ := strings.Cut(label, "=")
+	labels, err := client.ParseLabels(s.labels)
+	if err != nil {
+		return start, Mistake("--label: %v", err)
+	}
+	for _, l := range labels {
 		if start.Labels == nil {
 			start.Labels = map[string]string{}
 		}
-		start.Labels[name] = value
+		start.Labels[l.Name] = l.Value
 	}
 	for flagName, text := range map[string]string{"--timeout": s.timeout, "--life": s.life} {
 		if text == "" {
@@ -1213,12 +1216,8 @@ func cmdLs(e *Env, args []string) error {
 	if len(rest) > 0 {
 		return Mistake("run ls takes no run; corbie run show <id> shows one")
 	}
-	for _, label := range labels {
-		name, value, _ := strings.Cut(label, "=")
-		if filter.Labels == nil {
-			filter.Labels = map[string]string{}
-		}
-		filter.Labels[name] = value
+	if filter.Labels, err = client.ParseLabels(labels); err != nil {
+		return Mistake("--label: %v", err)
 	}
 	if filter.Status != "" && !slices.Contains(client.Statuses, filter.Status) {
 		return Mistake("--status is %s", strings.Join(client.Statuses, ", "))

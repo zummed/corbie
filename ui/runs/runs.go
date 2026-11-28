@@ -154,7 +154,11 @@ func listParts(v listView) ListParts {
 }
 
 func (h *handler) listPage(w http.ResponseWriter, r *http.Request) {
-	n := narrowingOf(r.URL.Query())
+	n, err := narrowingOf(r.URL.Query())
+	if err != nil {
+		page.Error(w, http.StatusBadRequest, err.Error())
+		return
+	}
 	v, _ := h.listOf(r.Context(), n)
 	s := h.Shell
 	s.Title, s.Current, s.Stream, s.Script = "Runs", "Runs", "/runs/stream"+n.query(), "/runs/script.js"
@@ -162,7 +166,11 @@ func (h *handler) listPage(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *handler) listStream(w http.ResponseWriter, r *http.Request) {
-	n := narrowingOf(r.URL.Query())
+	n, err := narrowingOf(r.URL.Query())
+	if err != nil {
+		page.Error(w, http.StatusBadRequest, err.Error())
+		return
+	}
 	page.Stream(w, r, h.Interval, h.List.Changed, func(ctx context.Context) (any, error) { return h.listParts(ctx, n) })
 }
 

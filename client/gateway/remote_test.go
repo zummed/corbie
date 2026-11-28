@@ -15,7 +15,7 @@ import (
 )
 
 // The client package sends to a gateway what it otherwise does on a store:
-// a start with a file, a listing followed as it changes, a record followed
+// a start with a file in a list, a listing followed as it changes, a record followed
 // to the run's end, a file fetched, an event and a cancel with their
 // receipts. A refusal is the error the package gives for it.
 func Test_client_package_sends_to_a_gateway(t *testing.T) {
@@ -29,10 +29,10 @@ func Test_client_package_sends_to_a_gateway(t *testing.T) {
 
 	at := c.place(`
 flow: copies
-input: { note: any, name: any }
+input: { notes: any, name: any }
 stages:
   copy:
-    job: { script: ./copy.js, input: { note: "${input.note}", name: "${input.name}" } }
+    job: { script: ./copy.js, input: { note: "${input.notes[0].text}", name: "${input.name}" } }
 output: ${stages.copy.output}
 `, map[string]string{"./copy.js": `log("copying"); return { name: input.name, copy: blobs.make(blobs.read(input.note).toUpperCase()) }`})
 
@@ -45,7 +45,7 @@ output: ${stages.copy.output}
 		t.Fatalf("the first thing the listing gave is %+v", u)
 	}
 	id, err := remote.Start(ctx, client.Start{At: at, Labels: map[string]string{"team": "docs"}, Timeout: time.Minute,
-		Input: map[string]any{"name": "x", "note": client.InputFile{Name: "note.txt", Contents: strings.NewReader("a note")}}})
+		Input: map[string]any{"name": "x", "notes": []any{map[string]any{"text": client.InputFile{Name: "note.txt", Contents: strings.NewReader("a note")}}}}})
 	if err != nil || !strings.HasPrefix(id, "editor/") {
 		t.Fatalf("the start gave %q, %v", id, err)
 	}
@@ -135,10 +135,10 @@ output: ${stages.copy.output}
 	if _, err := client.Remote(c.url, "wrong").List(ctx, client.Filter{}); err == nil || !strings.Contains(err.Error(), "does not show a token") {
 		t.Errorf("a wrong token gave %v", err)
 	}
-	// A file is a value of the input's top level, and a tree is one that was
-	// read from files.
-	if _, err := remote.Start(ctx, client.Start{At: at, Input: map[string]any{"deep": map[string]any{"note": client.InputFile{Name: "n.txt", Contents: strings.NewReader("x")}}}}); !errors.Is(err, client.ErrStart) {
-		t.Errorf("a file below the input's top level gave %v", err)
+	// A file is at a place a part's name can give, and a tree is one that
+	// was read from files.
+	if _, err := remote.Start(ctx, client.Start{At: at, Input: map[string]any{"deep": map[string]any{"a.b": client.InputFile{Name: "n.txt", Contents: strings.NewReader("x")}}}}); !errors.Is(err, client.ErrStart) || !strings.Contains(err.Error(), `"deep.a.b"`) {
+		t.Errorf("a file under a name that holds a dot gave %v", err)
 	}
 	draft, err := machine.Parse([]byte("flow: made\nstages:\n  a: { job: { script: ./a.js } }\n"), machine.Given(map[string]string{"./a.js": "return 1"}))
 	if err != nil {

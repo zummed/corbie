@@ -102,7 +102,7 @@ The names and times come from the latest step of a run in a tree of the UI's cli
 
 ### Narrowing
 
-The page is narrowed by location prefix, `?at=/home`, and by label, as `--label` narrows `corbie run ls`. A prefix keeps the runs at it and below it: `/home` keeps `/home/rooms/thermostat` and not `/homes/x`. A root or ended run the narrowing leaves is listed with every run under it.
+The page is narrowed by location prefix, `?at=/home`, and by label, as `--label` narrows `corbie run ls`; a label that `corbie run ls` refuses is answered with the same refusal. A prefix keeps the runs at it and below it: `/home` keeps `/home/rooms/thermostat` and not `/homes/x`. A root or ended run the narrowing leaves is listed with every run under it.
 
 ### One location
 

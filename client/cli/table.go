@@ -14,10 +14,10 @@ const everywhere = "Every command takes --json, --config and --store: see corbie
 const starts = `
   --input <json>           the run's input; --input @file reads the JSON from
                            a file
-  --input-file name=path   a file as a blob in the input, under that name;
-                           repeatable
-  --label k=v              a label on the run, readable by anyone who can
-                           list runs; repeatable
+  --input-file place=path  a file as a blob at that place in the input, such
+                           as report or 'files[0].file'; repeatable
+  --label k=v              a label on the run, k=v or k, readable by anyone
+                           who can list runs; repeatable, each name once
   --allow <entry>          one permission the run's jobs may use; with
                            --allow or --deny they may use no other; repeatable
   --deny <entry>           one permission the run's jobs are refused,
@@ -352,8 +352,8 @@ read: lists it, child runs included. A run with status waiting, which no control
 listed.
 
   --all               include runs that have ended and are still in the store
-  --label k=v         only runs with this label; --label k takes any value;
-                      repeatable
+  --label k=v         only runs with this label; --label k takes any value
+                      and --label k= the empty value; repeatable
   --status <status>   only runs with this status: running, done, failed or
                       cancelled; the last three are of runs that have ended
   --parent <id>       only the child runs that this run started

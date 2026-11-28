@@ -3,6 +3,7 @@ package cli_test
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"slices"
@@ -77,6 +78,33 @@ func TestSubmitGivesAFileAsInput(t *testing.T) {
 	for _, name := range sent() {
 		if !slices.Contains(before, name) {
 			t.Fatalf("a refused command sent %s", name)
+		}
+	}
+}
+
+// --input-file gives a file at a place in the input, such as an item of a
+// list that --input gives: a list of files, each beside its name.
+func TestFilesAreGivenAtPlaces(t *testing.T) {
+	m, _ := working(t, "all")
+	dir := files(t, map[string]string{
+		"list.js": `return input.files.map(f => f.name + ": " + blobs.read(f.file) + " " + f.file.type)`,
+		"a.txt":   "alpha", "b.md": "beta",
+	})
+	at := m.recorded(filepath.Join(dir, "list.js"))
+	out := m.ok("", "run", "start", at, "--wait", "--json", "--input", `{"files": [{"name": "a"}, {"name": "b"}]}`,
+		"--input-file", "files[0].file="+filepath.Join(dir, "a.txt"), "--input-file", "files[1].file="+filepath.Join(dir, "b.md"))
+	run := lines(t, out)[0]
+	if got, _ := json.Marshal(run["output"]); run["status"] != "done" || string(got) != `["a: alpha text/plain","b: beta text/markdown"]` {
+		t.Fatalf("a list of files ended %s with %s", run["status"], got)
+	}
+	// A place past the end of a list, and one that holds a value, are refused.
+	for flags, says := range map[[2]string]string{
+		{`{"files": []}`, "files[1].file"}:            `nothing is at "files[0]"`,
+		{`{"files": [{"file": 1}]}`, "files[0].file"}: `has a value at "files[0].file"`,
+	} {
+		got, _, said := m.run("", "run", "start", at, "--input", flags[0], "--input-file", flags[1]+"="+filepath.Join(dir, "a.txt"))
+		if got != 1 || !strings.Contains(said, says) {
+			t.Errorf("--input %s --input-file %s ended %d: %s", flags[0], flags[1], got, said)
 		}
 	}
 }

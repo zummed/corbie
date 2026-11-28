@@ -181,7 +181,7 @@ func Test_runs_list_roots_by_section(t *testing.T) {
 		"a-client/02": {Tree: "/acme", Lifetime: "singleton"},
 		"a-client/04": {Tree: "/acme", Lifetime: "keyed"},
 	}
-	v := listOf(runs, noSteps, facts, narrowingOf(url.Values{}), at, "a-client")
+	v := listOf(runs, noSteps, facts, narrowedTo(t, url.Values{}), at, "a-client")
 	for _, c := range []struct {
 		s    section
 		want string
@@ -218,7 +218,7 @@ func Test_runs_list_roots_by_section(t *testing.T) {
 		parent := long[i].ID
 		long = append(long, run(fmt.Sprintf("a-client/%d", i+2), m, "flow", "running", time.Hour, 0, func(r *client.Run) { r.Parent = parent }))
 	}
-	l := listOf(long, noSteps, nil, narrowingOf(url.Values{}), at, "").Busy.Lines[0]
+	l := listOf(long, noSteps, nil, narrowedTo(t, url.Values{}), at, "").Busy.Lines[0]
 	if len(l.Front) != 1 || l.Between != "conversation › turn › support › approval › slack-chat-ask › press" || len(l.Back) != 1 || l.Back[0].Machine != "press" {
 		t.Errorf("a chain of six is shown as %v, %q and %v", l.Front, l.Between, l.Back)
 	}
@@ -244,7 +244,7 @@ func Test_runs_locations_are_listed_by_tree(t *testing.T) {
 		"lab-client/4": {Tree: "/home", Lifetime: "transient"},
 		"lab-client/5": {Tree: "/home"},
 	}
-	v := listOf(runs, noSteps, facts, narrowingOf(url.Values{}), at, "lab-client")
+	v := listOf(runs, noSteps, facts, narrowedTo(t, url.Values{}), at, "lab-client")
 	var got []string
 	for _, c := range v.Clients {
 		for _, tr := range c.Trees {
@@ -300,7 +300,7 @@ func Test_runs_line_unfolds_to_the_runs_its_root_started(t *testing.T) {
 		"a-client/28": {Events: []instance.Arrived{{Event: machine.Event{Name: "done", From: "answer"}}}},
 		"a-client/27": {State: instance.State{Error: &machine.Error{Error: "the model refused"}}},
 	}
-	l := listOf(runs, func(r *client.Run) *instance.Step { return steps[r.ID] }, nil, narrowingOf(url.Values{}), at, "a-client").Busy.Lines[0]
+	l := listOf(runs, func(r *client.Run) *instance.Step { return steps[r.ID] }, nil, narrowedTo(t, url.Values{}), at, "a-client").Busy.Lines[0]
 	if len(l.Rows) != 21 || !l.Rows[0].Own || l.Rows[0].Says != "child turn, timer" || l.More != 4 {
 		t.Fatalf("the line unfolds to %d rows, the first %+v, with %d more", len(l.Rows), l.Rows[0], l.More)
 	}
@@ -346,16 +346,24 @@ func Test_runs_narrowing_holds_for_the_whole_page(t *testing.T) {
 		run("ci-client/5", "other", "flow", "running", time.Hour, 0, func(r *client.Run) { r.Location, r.Labels, r.Jobs = "/workshop/x", data, 1 }),
 		run("laptop-client/4", "review", "statechart", "running", time.Hour, 0, func(r *client.Run) { r.Location, r.Labels, r.Tickets = "/home/review", data, []string{"verdict"} }),
 	}
-	v := listOf(runs, noSteps, nil, narrowingOf(url.Values{"at": {"/work"}, "label": {"team=data"}}), at, "")
+	v := listOf(runs, noSteps, nil, narrowedTo(t, url.Values{"at": {"/work"}, "label": {"team=data"}}), at, "")
 	if got := lineNames(v.Busy); len(got) != 1 || v.Busy.Lines[0].ID != "ci-client/1" || got[0] != "digest" || len(v.Ended.Lines) != 1 || len(v.Idle.Lines) != 0 {
 		t.Errorf("the page holds %v and %v", got, lineNames(v.Ended))
 	}
 	if v.Every.Current || v.Every.Href != "/runs?label=team%3Ddata" {
 		t.Errorf("every location is offered as %+v", v.Every)
 	}
-	v = listOf(runs, noSteps, nil, narrowingOf(url.Values{"label": {"team"}, "window": {"1h"}}), at, "")
+	v = listOf(runs, noSteps, nil, narrowedTo(t, url.Values{"label": {"team"}, "window": {"1h"}}), at, "")
 	if got := strings.Join(lineNames(v.Busy), " "); got != "/home/review /workshop/x /work/digest" || len(v.Ended.Lines) != 1 {
 		t.Errorf("narrowed to team in the last hour, the page holds %s and %v", got, lineNames(v.Ended))
+	}
+	// team= keeps only the empty value, and a name given twice is refused.
+	v = listOf(runs, noSteps, nil, narrowedTo(t, url.Values{"label": {"team="}}), at, "")
+	if len(v.Busy.Lines)+len(v.Ended.Lines) != 0 {
+		t.Errorf("narrowed to team=, the page holds %v and %v", lineNames(v.Busy), lineNames(v.Ended))
+	}
+	if _, err := narrowingOf(url.Values{"label": {"team=data team"}}); err == nil || !strings.Contains(err.Error(), `"team" is given twice`) {
+		t.Errorf("a narrowing to team twice gave %v", err)
 	}
 }
 
@@ -368,21 +376,21 @@ func Test_runs_keyed_runs_are_listed_by_key(t *testing.T) {
 		run("lab-client/3", "away", "flow", "running", time.Hour, 0, func(r *client.Run) { r.Location, r.Jobs = "/home/scenes/away", 1 }),
 	}
 	facts := map[string]fixed{"lab-client/1": {Tree: "/home", Lifetime: "keyed"}, "lab-client/2": {Tree: "/home", Lifetime: "keyed"}, "lab-client/3": {Tree: "/home", Lifetime: "transient"}}
-	v := listOf(runs, noSteps, facts, narrowingOf(url.Values{"at": {"/home/rooms/thermostat"}}), at, "lab-client")
+	v := listOf(runs, noSteps, facts, narrowedTo(t, url.Values{"at": {"/home/rooms/thermostat"}}), at, "lab-client")
 	if got := strings.Join(lineNames(v.Idle), " "); got != "a thermostat#hall thermostat#kitchen" || len(v.Busy.Lines) != 0 {
 		t.Errorf("the keyed runs are listed as %s", got)
 	}
 	if h := v.Here; h == nil || h.Location != "/home/rooms/thermostat" || h.Lifetime != "keyed" || h.Tree != "/home" || !h.Send || h.Start || h.Cancel == nil || h.Cancel.String() != "corbie run cancel /home/rooms/thermostat" {
 		t.Errorf("the location's head is %+v", v.Here)
 	}
-	v = listOf(runs, noSteps, facts, narrowingOf(url.Values{"at": {"/home"}}), at, "lab-client")
+	v = listOf(runs, noSteps, facts, narrowedTo(t, url.Values{"at": {"/home"}}), at, "lab-client")
 	if got := strings.Join(lineNames(v.Idle), " "); got != "a thermostat#hall rooms/thermostat#kitchen" || v.Here != nil || lineNames(v.Busy)[0] != "scenes/away" {
 		t.Errorf("at /home the runs are named %s and %v, with the head %+v", got, lineNames(v.Busy), v.Here)
 	}
-	if h := listOf(runs, noSteps, facts, narrowingOf(url.Values{"at": {"/home/scenes/away"}}), at, "lab-client").Here; h == nil || h.Send || !h.Start {
+	if h := listOf(runs, noSteps, facts, narrowedTo(t, url.Values{"at": {"/home/scenes/away"}}), at, "lab-client").Here; h == nil || h.Send || !h.Start {
 		t.Errorf("a transient location's head is %+v", h)
 	}
-	if h := listOf(runs, noSteps, nil, narrowingOf(url.Values{"at": {"/home/rooms/thermostat"}}), at, "ci-client").Here; h == nil || h.Cancel != nil || !h.Send || h.Start {
+	if h := listOf(runs, noSteps, nil, narrowedTo(t, url.Values{"at": {"/home/rooms/thermostat"}}), at, "ci-client").Here; h == nil || h.Cancel != nil || !h.Send || h.Start {
 		t.Errorf("another client's keyed location has the head %+v", h)
 	}
 }
@@ -1457,4 +1465,14 @@ func Test_runs_agent_marks_a_toolkits_jobs_as_its_entry(t *testing.T) {
 	if got := strings.Join(m.Going, " "); got != "net" {
 		t.Errorf("the jobs going are: %s", got)
 	}
+}
+
+// narrowedTo is the narrowing of an address that reads.
+func narrowedTo(t *testing.T, q url.Values) narrowing {
+	t.Helper()
+	n, err := narrowingOf(q)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return n
 }

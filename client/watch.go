@@ -22,9 +22,8 @@ import (
 // A Filter narrows a listing of runs, or widens it to take in those that
 // have ended.
 type Filter struct {
-	// Labels keeps runs that carry every one of these: a label with a
-	// value must match it, and one with none need only be there.
-	Labels map[string]string
+	// Labels keeps runs that carry every one of these.
+	Labels []Label
 	// Status keeps runs with this status.
 	Status string
 	// Parent keeps the runs this instance started.
@@ -59,8 +58,8 @@ func (f Filter) keeps(r *Run) bool {
 	if f.Key != "" && r.Key != f.Key {
 		return false
 	}
-	for name, want := range f.Labels {
-		if got, ok := r.Labels[name]; !ok || (want != "" && got != want) {
+	for _, l := range f.Labels {
+		if !l.Keeps(r.Labels) {
 			return false
 		}
 	}

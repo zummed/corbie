@@ -39,7 +39,7 @@ func TestStandingChartIsFoundAndUsed(t *testing.T) {
 		t.Fatal(err)
 	}
 	found := waitFor(t, l, func([]*client.Run) string {
-		runs, _ := l.List(ctx, client.Filter{Labels: map[string]string{"role": "nightly"}})
+		runs, _ := l.List(ctx, client.Filter{Labels: []client.Label{{Name: "role", Value: "nightly", Valued: true}}})
 		if len(runs) == 1 && runs[0].Status == "running" {
 			return runs[0].ID
 		}
@@ -48,7 +48,7 @@ func TestStandingChartIsFoundAndUsed(t *testing.T) {
 	if found != id {
 		t.Fatalf("the label found %s, want %s", found, id)
 	}
-	if runs, _ := l.List(ctx, client.Filter{Labels: map[string]string{"role": "other"}}); len(runs) != 0 {
+	if runs, _ := l.List(ctx, client.Filter{Labels: []client.Label{{Name: "role", Value: "other", Valued: true}}}); len(runs) != 0 {
 		t.Fatalf("another label found %d runs", len(runs))
 	}
 	for n := 1; n <= 2; n++ {

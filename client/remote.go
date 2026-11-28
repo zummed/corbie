@@ -181,6 +181,40 @@ func form(name string, value any, files map[string]io.Reader) (kind string, body
 	return w.FormDataContentType(), body, w.Close()
 }
 
+// formFiles gives a value with null at the place of each file, and puts
+// each file among the parts of the form, at its place. at is where v is in
+// the input, and plain says whether each name on the way to it can be
+// written in a place.
+func formFiles(v any, at string, plain bool, files map[string]io.Reader) (any, error) {
+	switch v := v.(type) {
+	case InputFile:
+		if !plain {
+			return nil, fmt.Errorf("%w: the file at %q cannot be sent to a gateway: a name on the way to it is empty or holds \".\", \"[\" or \"]\"", ErrStart, at)
+		}
+		files["input:"+at+"\x00"+v.Name] = v.Contents
+		return nil, nil
+	case map[string]any:
+		out := make(map[string]any, len(v))
+		for name, inner := range v {
+			var err error
+			if out[name], err = formFiles(inner, placeIn(at, name), plain && name != "" && !strings.ContainsAny(name, ".[]"), files); err != nil {
+				return nil, err
+			}
+		}
+		return out, nil
+	case []any:
+		out := make([]any, len(v))
+		for i, inner := range v {
+			var err error
+			if out[i], err = formFiles(inner, at+"["+strconv.Itoa(i)+"]", plain, files); err != nil {
+				return nil, err
+			}
+		}
+		return out, nil
+	}
+	return v, nil
+}
+
 func (r *remote) start(ctx context.Context, start Start) (string, error) {
 	if start.Run != "" {
 		return "", fmt.Errorf("%w: a gateway names the run it starts", ErrStart)
@@ -189,18 +223,9 @@ func (r *remote) start(ctx context.Context, start Start) (string, error) {
 	files := map[string]io.Reader{}
 	input := start.Input
 	if named, ok := input.(map[string]any); ok {
-		// A file is a part of the form, under its name in the input.
-		rest := map[string]any{}
-		for name, value := range named {
-			if file, isFile := value.(InputFile); isFile {
-				files["input:"+name+"\x00"+file.Name] = file.Contents
-			} else {
-				rest[name] = value
-			}
-		}
-		input = rest
-		if len(rest) == 0 && len(files) > 0 {
-			input = nil
+		var err error
+		if input, err = formFiles(named, "", true, files); err != nil {
+			return "", err
 		}
 	}
 	if input != nil {
@@ -316,11 +341,8 @@ func (f Filter) query() url.Values {
 	if f.Finished {
 		q.Set("all", "")
 	}
-	for name, value := range f.Labels {
-		if value != "" {
-			name += "=" + value
-		}
-		q.Add("label", name)
+	for _, l := range f.Labels {
+		q.Add("label", l.String())
 	}
 	return q
 }

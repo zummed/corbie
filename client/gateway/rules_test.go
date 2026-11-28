@@ -551,6 +551,10 @@ func TestStartIsJSONWhenItHasNoFile(t *testing.T) {
 	if status, _, text := c.send("POST", "/runs", "application/json", strings.NewReader(`{"at": "`+at+`", "definition": "x"}`)); status != 400 || !strings.Contains(text, "definition") {
 		t.Fatalf("a start that is JSON with a definition was answered %d %s", status, text)
 	}
+	// Its labels are checked as the command line's are.
+	if status, _, text := c.send("POST", "/runs", "application/json", strings.NewReader(`{"at": "`+at+`", "labels": {"bad label": "x"}}`)); status != 400 || !strings.Contains(text, `bad label`) {
+		t.Fatalf("a start that is JSON with the label name \"bad label\" was answered %d %s", status, text)
+	}
 }
 
 // failing is a store whose listings fail once it is told to.

@@ -443,7 +443,7 @@ func Test_inst_watch_reports_run_ended_between_looks(t *testing.T) {
 	var updates []client.Update
 	watching, stop := context.WithCancel(ctx)
 	defer stop()
-	go a.Watch(watching, client.Filter{Labels: map[string]string{"role": "out"}}, time.Millisecond, func(u client.Update) {
+	go a.Watch(watching, client.Filter{Labels: []client.Label{{Name: "role", Value: "out", Valued: true}}}, time.Millisecond, func(u client.Update) {
 		mu.Lock()
 		defer mu.Unlock()
 		if updates = append(updates, u); u.Listed {
@@ -600,7 +600,7 @@ func Test_inst_watch_reads_only_heads_that_changed(t *testing.T) {
 	var updates []client.Update
 	watching, stop := context.WithCancel(ctx)
 	defer stop()
-	go a.Watch(watching, client.Filter{Labels: map[string]string{"role": "out"}, Finished: true}, time.Millisecond, func(u client.Update) {
+	go a.Watch(watching, client.Filter{Labels: []client.Label{{Name: "role", Value: "out", Valued: true}}, Finished: true}, time.Millisecond, func(u client.Update) {
 		mu.Lock()
 		defer mu.Unlock()
 		updates = append(updates, u)

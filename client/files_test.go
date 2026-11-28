@@ -7,6 +7,7 @@ import (
 	"io"
 	"maps"
 	"path"
+	"reflect"
 	"slices"
 	"strings"
 	"sync"
@@ -362,8 +363,10 @@ func TestStartGivesAFileAsInput(t *testing.T) {
 	}
 }
 
-// Files given under names join an input that is a map of names, or none.
-func TestFilesJoinTheInputUnderTheirNames(t *testing.T) {
+// Files given at places join an input that is a map of names, or none: a
+// map or a list on the way is made where the input has none, and a place
+// that holds a value is refused.
+func TestFilesJoinTheInputAtTheirPlaces(t *testing.T) {
 	file := client.InputFile{Name: "report.pdf", Contents: strings.NewReader("pdf")}
 	files := map[string]client.InputFile{"report": file}
 	input, err := client.WithFiles(nil, files)
@@ -375,9 +378,44 @@ func TestFilesJoinTheInputUnderTheirNames(t *testing.T) {
 	if named, _ := input.(map[string]any); err != nil || len(named) != 2 || named["n"] != 3 || named["report"] != file || len(given) != 1 {
 		t.Errorf("files with an input give %v, and the input given is now %v: %v", input, given, err)
 	}
-	for what, input := range map[string]any{"a list": []any{1}, "a text": "text", "a value under the name": map[string]any{"report": 1}} {
-		if _, err := client.WithFiles(input, files); !errors.Is(err, client.ErrStart) {
-			t.Errorf("a file given with an input that is %s: %v", what, err)
+	// A list of files, each beside its name, the items given out of order.
+	a := client.InputFile{Name: "a.txt", Contents: strings.NewReader("a")}
+	b := client.InputFile{Name: "b.txt", Contents: strings.NewReader("b")}
+	given = map[string]any{"files": []any{map[string]any{"name": "a.txt"}}}
+	input, err = client.WithFiles(given, map[string]client.InputFile{"files[1].file": b, "files[0].file": a, "deep.er[0]": b})
+	want := map[string]any{
+		"files": []any{map[string]any{"name": "a.txt", "file": a}, map[string]any{"file": b}},
+		"deep":  map[string]any{"er": []any{b}},
+	}
+	if err != nil || !reflect.DeepEqual(input, want) || len(given["files"].([]any)[0].(map[string]any)) != 1 {
+		t.Errorf("files at places in a list give %v, and the input given is now %v: %v", input, given, err)
+	}
+	// A place that holds null takes the file.
+	if input, err := client.WithFiles(map[string]any{"report": nil}, files); err != nil || !reflect.DeepEqual(input, map[string]any{"report": file}) {
+		t.Errorf("a file at a place that holds null gives %v: %v", input, err)
+	}
+	for what, c := range map[string]struct {
+		input any
+		place string
+		says  string
+	}{
+		"an input that is a list":   {[]any{1}, "report", "not a map of names"},
+		"an input that is a text":   {"text", "report", "not a map of names"},
+		"a value at the place":      {map[string]any{"report": 1}, "report", `has a value at "report"`},
+		"a value deeper at it":      {map[string]any{"files": []any{map[string]any{"file": 1}}}, "files[0].file", `has a value at "files[0].file"`},
+		"an item past a list's end": {map[string]any{"files": []any{}}, "files[1]", `nothing is at "files[0]"`},
+		"an item of a map":          {map[string]any{"files": map[string]any{}}, "files[0]", `the input at "files" is not a list`},
+		"a name in a list":          {map[string]any{"files": []any{}}, "files.a", `the input at "files" is not a map`},
+		"a name in a text":          {map[string]any{"files": "x"}, "files.a", `the input at "files" is not a map or a list`},
+		"an empty name":             {nil, "files..a", "is not a place"},
+		"an item first":             {nil, "[0]", "is not a place"},
+		"an item that is no number": {nil, "files[x]", "is not a place"},
+		"an item not closed":        {nil, "files[0", "is not a place"},
+		"a name after an item":      {nil, "files[0]a", "is not a place"},
+	} {
+		_, err := client.WithFiles(c.input, map[string]client.InputFile{c.place: file})
+		if !errors.Is(err, client.ErrStart) || !strings.Contains(err.Error(), c.says) {
+			t.Errorf("a file at %q with %s: %v", c.place, what, err)
 		}
 	}
 }

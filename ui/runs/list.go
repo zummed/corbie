@@ -28,7 +28,7 @@ import (
 // ended.
 type narrowing struct {
 	At, Window string
-	Labels     []string
+	Labels     []client.Label
 }
 
 // A window is a length of time the ended runs are listed for.
@@ -39,12 +39,15 @@ type window struct {
 
 var windows = []window{{"1h", time.Hour}, {"6h", 6 * time.Hour}, {"24h", 24 * time.Hour}, {"7d", 7 * 24 * time.Hour}}
 
-func narrowingOf(q url.Values) narrowing {
-	n := narrowing{At: q.Get("at"), Window: q.Get("window"), Labels: strings.Fields(q.Get("label"))}
+// narrowingOf reads the narrowing of an address. Its labels are typed
+// with whitespace between them.
+func narrowingOf(q url.Values) (narrowing, error) {
+	labels, err := client.ParseLabels(strings.Fields(q.Get("label")))
+	n := narrowing{At: q.Get("at"), Window: q.Get("window"), Labels: labels}
 	if !slices.ContainsFunc(windows, func(w window) bool { return w.Name == n.Window }) {
 		n.Window = "6h"
 	}
-	return n
+	return n, err
 }
 
 func (n narrowing) long() time.Duration {
@@ -66,7 +69,7 @@ func (n narrowing) with(change func(*narrowing)) string {
 		}
 	}
 	set("at", n.At, "")
-	set("label", strings.Join(n.Labels, " "), "")
+	set("label", n.LabelText(), "")
 	set("window", n.Window, "6h")
 	if len(q) == 0 {
 		return "/runs"
@@ -75,7 +78,13 @@ func (n narrowing) with(change func(*narrowing)) string {
 }
 
 // LabelText is the labels narrowed to, as they are typed.
-func (n narrowing) LabelText() string { return strings.Join(n.Labels, " ") }
+func (n narrowing) LabelText() string {
+	texts := make([]string, len(n.Labels))
+	for i, l := range n.Labels {
+		texts[i] = l.String()
+	}
+	return strings.Join(texts, " ")
+}
 
 func (n narrowing) query() string {
 	if a := n.with(func(*narrowing) {}); strings.Contains(a, "?") {
@@ -85,16 +94,13 @@ func (n narrowing) query() string {
 }
 
 // keeps says whether a run is one the narrowing leaves: one at the prefix
-// or below it, with every label, where a label with a value must match it
-// and one with none need only be there, as `corbie ls --label` reads it.
+// or below it, with every label.
 func (n narrowing) keeps(r *client.Run) bool {
 	if n.At != "" && !under(r.Location, n.At) {
 		return false
 	}
 	for _, l := range n.Labels {
-		name, want, valued := strings.Cut(l, "=")
-		got, ok := r.Labels[name]
-		if !ok || (valued && got != want) {
+		if !l.Keeps(r.Labels) {
 			return false
 		}
 	}

@@ -40,6 +40,15 @@ keyed or transient file prints `changed`, and its `what` in JSON is
 `changed`, where it printed `restarted` or `recorded`. `restarted <id>` is
 printed only for a singleton.
 
+Change a label whose name is empty or holds whitespace, and a start or a
+listing that gives one name twice, which is refused. A name is 1 to 256
+characters, with no whitespace and no `=`. On `run ls`, `GET /runs` and the
+Runs page, `k=` keeps only the runs whose label `k` is empty, and `k` any value.
+
+Change an `--input-file` or an `input:` part whose name holds `.` or `[`. The
+name is a place in the input, as a run shows a blob's place: `a.b` is the name
+`b` inside `a`.
+
 These are new.
 
 - `corbie run submit` prints `cancelled: <id>` for each run it cancelled, as
@@ -48,6 +57,11 @@ These are new.
   outputs so far, from its latest step. In JSON they are its `state`.
 - `corbie init --name` on a config that holds a party under another name is
   refused, naming the party. It kept the old names before. Leave out `--name`.
+- `--input-file` and the gateway's `input:<place>` part give a file at a place
+  inside the `--input` JSON: `--input '{"files": [{"name": "a"}]}'
+  --input-file 'files[0].file=a.txt'` gives a list of files, each beside its
+  name. A place that holds a value is refused.
+- A Go client made with `client.Remote` sends a file at any place in the input.
 - `corbie test <file> --in <directory>` refuses a tree in which a file has a
   problem, and prints each one, as `corbie up` does. Correct the file, or list
   it in `.corbieignore`.

@@ -255,6 +255,9 @@ func TestGateway(t *testing.T) {
 	if status, text := c.listed("/runs?all&label=team=ops", id); status != 200 || !strings.Contains(text, id) {
 		t.Fatalf("the listing was answered %d %s", status, text)
 	}
+	if status, _, text := c.do("GET", "/runs?all&label=team=ops&label=team=web", ""); status != 400 || !strings.Contains(text, `team`) {
+		t.Fatalf("a listing narrowed to one label name twice was answered %d %s", status, text)
+	}
 	// A listing narrowed to a location, and to a key there, gives the runs
 	// and their IDs.
 	at, _ := run["location"].(string)

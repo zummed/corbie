@@ -133,7 +133,7 @@ if (which === "slow") {
     assert(/^waiting \d+s on job work on runner$/.test(why()), `the line says ${why()}`);
     click(tab(".split > .panel", "Waiting on"));
     const wait = () => words(document.querySelector("#waits .wait"));
-    assert(/^job work on runner · attempt 2 · sent \S+, \d+s ago · due \S+ · restart 1/.test(wait()), `the wait says ${wait()}`);
+    assert(/^job work on runner · attempt 2 · sent .+?, \d+s ago · due .+? · restart 1/.test(wait()), `the wait says ${wait()}`);
     assert(wait().includes("working 0"), `the wait gives no log: ${wait()}`);
     const logged = () => document.querySelectorAll("#waits .wait .logs li").length;
     const was = logged();

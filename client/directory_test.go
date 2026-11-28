@@ -132,8 +132,8 @@ func TestDrainLeavesRunsOnTheirDefinition(t *testing.T) {
 		t.Fatal(err)
 	}
 	write(t, dir, "waits.yaml", strings.Replace(waits, "%s", "new", 1))
-	if done := submitTree(t, l, dir, "/d"); len(done.Cancelled) > 0 {
-		t.Fatalf("a drain cancelled %v", done.Cancelled)
+	if done := submitTree(t, l, dir, "/d"); len(done.Cancelled) > 0 || done.Locations[0].What != "changed" {
+		t.Fatalf("a drain did %+v, and cancelled %v", done.Locations, done.Cancelled)
 	}
 	fresh, err := l.Start(ctx, client.Start{At: "/d/waits"})
 	if err != nil {

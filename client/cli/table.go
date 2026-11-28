@@ -300,7 +300,8 @@ location: its path under the prefix, without .yaml. It starts each singleton wit
 and cancels the runs at a location whose file has gone. A changed file's
 running runs do as its update: says. A file with a problem is reported, and its
 location keeps what was recorded before. It prints what it did at each
-location, and the secrets and values the files use that are not set.
+location, each run it cancelled, and the secrets and values the files use
+that are not set.
 
 Given a file, it records it as a tree of one file.
 

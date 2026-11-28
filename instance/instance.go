@@ -452,7 +452,7 @@ type Submitted struct {
 }
 
 // Recorded is what a submit did at one location: started, restarted,
-// recorded, removed or problem. Run is the run it started.
+// changed, recorded, removed or problem. Run is the run it started.
 type Recorded struct {
 	Location string `json:"location"`
 	Lifetime string `json:"lifetime,omitzero"`

@@ -336,8 +336,15 @@ func Test_ctl_a_moved_line_is_recorded(t *testing.T) {
 	if done.Locations[0].What != "recorded" || len(done.Cancelled) > 0 || w.head(before).Status != "running" {
 		t.Fatalf("the submit did %+v", done)
 	}
-	if after := start(); line(before) == line(after) {
+	after := start()
+	if line(before) == line(after) {
 		t.Fatalf("both runs have initial: at %s", line(after))
+	}
+	// A changed transient file with update: restart is changed, and its
+	// runs are cancelled and not started again.
+	done = w.submitTree(w.client, w.tree("/m", "", map[string]string{"/m": transient + "\ttitle: changed\n"}, nil)).Tree
+	if done.Locations[0] != (instance.Recorded{Location: "/m", Lifetime: "transient", What: "changed"}) || len(done.Cancelled) != 2 {
+		t.Fatalf("the changed file's submit did %+v", done)
 	}
 }
 

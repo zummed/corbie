@@ -726,6 +726,9 @@ func (e *Env) submit(tree *client.Tree) error {
 			}
 			fmt.Fprintf(&b, "%-*s   %-9s   %s\n", width, row.Location, row.Lifetime, what)
 		}
+		for _, id := range done.Cancelled {
+			fmt.Fprintf(&b, "cancelled: %s\n", id)
+		}
 		for _, m := range tree.Machines {
 			if m.Problem != nil {
 				fmt.Fprintf(&b, "%s\n", m.Path)

@@ -333,6 +333,19 @@ A submit does this, and exits when each run it cancelled has ended and each star
 4. It starts each singleton with no running run, and nothing else.
 5. It prints the names of values and secrets the files use that are not set at their locations or above. This is a reminder, not a refusal.
 
+It prints a row for each location, with its lifetime and what it did there:
+
+| Printed | At the location |
+|---|---|
+| `started <id>` | a singleton's run started |
+| `restarted <id>` | a changed singleton's run cancelled and started again |
+| `changed` | a changed keyed or transient file recorded, its runs left as its `update:` says |
+| `recorded` | a new keyed or transient file, or an unchanged file, recorded |
+| `removed` | a file gone from the tree, and its location removed |
+| `problem` | a file with a problem, and what was recorded before kept |
+
+After the rows it prints `cancelled: <id>` for each run it cancelled, as `corbie run remove` does.
+
 `.corbieignore`, at the top of the directory, lists what in it is no machine. Only the one at the top is read.
 
 - Each line is a path from the directory. A directory, with or without `/` at its end, lists everything below it.

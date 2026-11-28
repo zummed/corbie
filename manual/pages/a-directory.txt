@@ -90,6 +90,17 @@ What the submit does at a location:
   a file gone from the tree          cancels every run at its location
   a file with a problem              reports it, and the location keeps what was recorded before
 
+It prints each location's lifetime and one of these:
+
+  started <id>      a singleton's run started
+  restarted <id>    a changed singleton's run cancelled and started again
+  changed           a changed keyed or transient file
+  recorded          a new keyed or transient file, or one unchanged
+  removed           a file gone from the tree
+  problem           a file with a problem
+
+Then it prints cancelled: <id> for each run it cancelled.
+
 - `--at` is / and the directory's name by default. A tree is not inside or above another, and / is never a tree.
 - A tree belongs to the client that first submitted it. Only that client reads and cancels the runs at its locations.
 - The client's ceiling needs an at: entry for the prefix. `corbie init` gives its client at:/**.

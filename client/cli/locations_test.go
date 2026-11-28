@@ -1,12 +1,37 @@
 package cli_test
 
 import (
+	"os"
 	"path/filepath"
 	"regexp"
 	"runtime"
 	"strings"
 	"testing"
 )
+
+// A submit prints changed for a changed keyed or transient file, restarted
+// and the new run for a changed singleton, recorded for an unchanged file,
+// and each run it cancelled.
+func TestSubmitPrintsWhatChanged(t *testing.T) {
+	m, _ := working(t, "all")
+	steady := "statechart: steady\nlifetime: singleton\ninitial: waiting\nstates:\n  waiting: {}\n"
+	waits := "statechart: waits\ninitial: w\nstates:\n  w: {}\n"
+	dir := files(t, map[string]string{"steady.yaml": steady, "waits.yaml": waits, "same.yaml": waits})
+	first := regexp.MustCompile(`started (\S+)`).FindStringSubmatch(m.ok("", "run", "submit", dir, "--at", "/d"))
+	if first == nil {
+		t.Fatal("the first submit started no singleton")
+	}
+	for name, text := range map[string]string{"steady.yaml": steady + "title: changed\n", "waits.yaml": waits + "title: changed\n"} {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(text), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	out := m.ok("", "run", "submit", dir, "--at", "/d")
+	want := regexp.MustCompile(`^/d/same     transient   recorded\n/d/steady   singleton   restarted box-client/\S+\n/d/waits    transient   changed\ncancelled: ` + regexp.QuoteMeta(first[1]) + "\n$")
+	if !want.MatchString(out) || strings.Contains(out, "restarted "+first[1]) {
+		t.Fatalf("the second submit printed:\n%s", out)
+	}
+}
 
 // A file given alone is a tree of one file, whose location is its prefix,
 // and a location given is started there, with the run's ID printed and

@@ -112,6 +112,7 @@ type located struct {
 const (
 	didStart   = "started"
 	didRestart = "restarted"
+	didChange  = "changed"
 	didRecord  = "recorded"
 	didRemove  = "removed"
 	didProblem = "problem"
@@ -383,8 +384,13 @@ func (p *pass) plan(a *arrival, base string, before *treeEntry) (*treeEntry, err
 		// A file whose lifetime changed is one removed and one new.
 		restart := recorded && (was.Lifetime != lifetime || changed && (def.Update == machine.UpdateRestart || lifetime == machine.LifetimeSingleton))
 		done := instance.Recorded{Location: location, Lifetime: lifetime, What: didRecord}
+		if recorded && changed {
+			done.What = didChange
+		}
 		if restart {
 			d.Cancel = append(d.Cancel, location)
+		}
+		if restart && lifetime == machine.LifetimeSingleton {
 			done.What = didRestart
 		}
 		if lifetime == machine.LifetimeSingleton {

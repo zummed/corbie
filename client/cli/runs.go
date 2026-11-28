@@ -30,10 +30,10 @@ func (l *list) Set(v string) error { *l = append(*l, v); return nil }
 // starting is everything a start may be given on the command line, and
 // the secrets corbie test sets.
 type starting struct {
-	input, life, timeout, memory     string
-	labels, allow, deny, tags, files list
-	secrets, secretsFromEnv          list
-	wait, watch                      bool
+	input, life, timeout, memory          string
+	labels, allow, deny, tags, inputFiles list
+	files, secrets, secretsFromEnv        list
+	wait, watch                           bool
 	// opened are the files given as input, open until the start is sent.
 	opened []*os.File
 }
@@ -55,7 +55,7 @@ func (s *starting) flags(e *Env) {
 // startFlags sets the flags of a start.
 func (s *starting) startFlags(e *Env) {
 	e.Flags.StringVar(&s.input, "input", "", "")
-	e.Flags.Var(&s.files, "input-file", "")
+	e.Flags.Var(&s.inputFiles, "input-file", "")
 	e.Flags.Var(&s.labels, "label", "")
 	e.Flags.Var(&s.allow, "allow", "")
 	e.Flags.Var(&s.deny, "deny", "")
@@ -69,13 +69,14 @@ func (s *starting) startFlags(e *Env) {
 func (s *starting) jobFlags(e *Env) {
 	e.Flags.StringVar(&s.memory, "memory", "", "")
 	e.Flags.Var(&s.tags, "tag", "")
+	e.Flags.Var(&s.files, "files", "")
 }
 
 // startOnly lists the flags that are for starting a run, and scriptOnly
 // those that set a script file's job.
 var (
-	startOnly  = []string{"input", "input-file", "label", "allow", "deny", "life", "timeout", "memory", "tag", "watch"}
-	scriptOnly = []string{"allow", "deny", "timeout", "memory", "tag"}
+	startOnly  = []string{"input", "input-file", "label", "allow", "deny", "life", "timeout", "memory", "tag", "files", "watch"}
+	scriptOnly = []string{"allow", "deny", "timeout", "memory", "tag", "files"}
 )
 
 // given lists the flags given of those named, as they are written.
@@ -98,13 +99,13 @@ func isScript(file string) bool { return strings.HasSuffix(file, ".js") }
 // mistake.
 func (s *starting) job(file string) (client.ScriptJob, error) {
 	if !isScript(file) {
-		for name, given := range map[string]bool{"--memory": s.memory != "", "--tag": len(s.tags) > 0} {
+		for name, given := range map[string]bool{"--memory": s.memory != "", "--tag": len(s.tags) > 0, "--files": len(s.files) > 0} {
 			if given {
 				return client.ScriptJob{}, Mistake("%s applies only to a script file; a definition gives its jobs their own", name)
 			}
 		}
 	}
-	return client.ScriptJob{Allow: s.allow, Deny: s.deny, Timeout: s.timeout, Memory: s.memory, Tags: s.tags}, nil
+	return client.ScriptJob{Allow: s.allow, Deny: s.deny, Timeout: s.timeout, Memory: s.memory, Tags: s.tags, Files: s.files}, nil
 }
 
 // record reads a file as a tree of one file at the prefix at: by default /
@@ -169,7 +170,7 @@ func (s *starting) start(e *Env, script bool) (client.Start, error) {
 	}
 	// A file is given as input at a place: --input-file files[0].file=a.pdf.
 	files := map[string]client.InputFile{}
-	for _, given := range s.files {
+	for _, given := range s.inputFiles {
 		place, at, ok := strings.Cut(given, "=")
 		if !ok || place == "" || at == "" {
 			return start, Mistake("--input-file takes place=path: the place the file has in the input, such as report or files[0].file, and where the file is")

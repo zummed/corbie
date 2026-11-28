@@ -62,6 +62,10 @@ These are new.
   --input-file 'files[0].file=a.txt'` gives a list of files, each beside its
   name. A place that holds a value is refused.
 - A Go client made with `client.Remote` sends a file at any place in the input.
+- `corbie test` and `corbie run submit` given a script file take
+  `--files <path>`, repeatable: a file the script loads, its path as a job's
+  `files:` writes it. A script that requires `./lib.js` runs alone with
+  `--files ./lib.js`.
 - `corbie test <file> --in <directory>` refuses a tree in which a file has a
   problem, and prints each one, as `corbie up` does. Correct the file, or list
   it in `.corbieignore`.

@@ -163,6 +163,7 @@ func Test_client_flag_without_effect_refused(t *testing.T) {
 		// For a script file only: a definition gives its jobs their own.
 		"--memory applies only to a script file": {"run", "submit", definition, "--memory", "64MB"},
 		"--tag applies only to a script file":    {"run", "submit", definition, "--tag", "gpu"},
+		"--files applies only to a script file":  {"test", definition, "--files", "./greet.js"},
 		// A location's file gives its jobs their own, and a start carries no
 		// secret. A file is not a location.
 		"hello.yaml is not a location":               {"run", "start", "hello.yaml"},

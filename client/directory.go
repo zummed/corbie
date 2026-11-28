@@ -146,19 +146,16 @@ func ReadFile(dir, rel, at string, job ScriptJob) (*Tree, error) {
 	m := &Machine{Path: rel, Location: at}
 	t := &Tree{Prefix: at, Directory: dir, Machines: []*Machine{m}, Files: map[string][]byte{}, File: rel}
 	if strings.HasSuffix(rel, ".js") {
-		full := filepath.Join(dir, filepath.FromSlash(rel))
-		if err := inside(dir, full); err != nil {
+		load := loader(dir, t.Files)
+		// A script that cannot be read is no tree.
+		if _, err := load(rel); err != nil {
 			return nil, err
 		}
-		src, err := os.ReadFile(full)
-		if err != nil {
-			return nil, err
-		}
-		m.Draft, m.Problem = Script(path.Base(rel), src, job)
+		m.Draft, m.Problem = Script(rel, load, job)
 		// To a gateway the tree is the flow the script is wrapped in, as a
 		// file beside the script.
 		t.File = strings.TrimSuffix(rel, ".js") + ".yaml"
-		t.Files[rel] = src
+		var err error
 		if t.Files[t.File], err = scriptFlow(path.Base(rel), job); err != nil {
 			return nil, err
 		}
@@ -246,7 +243,19 @@ func ReadMachine(dir, rel string) (*machine.Draft, error) {
 // readMachine reads a machine, and notes each file it reads in read, where
 // it is given one.
 func readMachine(dir, rel string, read map[string][]byte, parse func(string, []byte, func(string) ([]byte, error)) (*machine.Draft, error)) (*machine.Draft, error) {
-	load := func(name string) ([]byte, error) {
+	load := loader(dir, read)
+	src, err := load(rel)
+	if err != nil {
+		return nil, err
+	}
+	return parse(rel, src, load)
+}
+
+// loader gives a file of the context dir by its path from it, and notes
+// each file it gives in read, where it is given one. A path may name any
+// file inside dir and none outside.
+func loader(dir string, read map[string][]byte) func(string) ([]byte, error) {
+	return func(name string) ([]byte, error) {
 		full := filepath.Join(dir, filepath.FromSlash(name))
 		if err := inside(dir, full); err != nil {
 			return nil, err
@@ -257,11 +266,6 @@ func readMachine(dir, rel string, read map[string][]byte, parse func(string, []b
 		}
 		return src, err
 	}
-	src, err := load(rel)
-	if err != nil {
-		return nil, err
-	}
-	return parse(rel, src, load)
 }
 
 // secretsOf gives the names of the secrets a draft's jobs and its child

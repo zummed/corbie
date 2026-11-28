@@ -2,6 +2,7 @@ package client
 
 import (
 	"encoding/json/v2"
+	"path"
 	"strings"
 
 	"github.com/zummed/corbie/machine"
@@ -18,17 +19,22 @@ type ScriptJob struct {
 	Timeout     string // a length of time, such as 7s
 	Memory      string // a size, such as 64MB
 	Tags        []string
+	// Files are the files the script loads, each path as a job's files:
+	// writes it.
+	Files []string
 }
 
-// Script wraps a script in a flow of one stage, whose job runs it with
-// the run's input and whose output is the flow's. name is the script's
-// file name, and the flow is named after it. Nothing is sent.
-func Script(name string, script []byte, job ScriptJob) (*machine.Draft, error) {
-	src, err := scriptFlow(name, job)
+// Script wraps the script file at file, a path from the context, in a flow
+// of one stage, whose job runs it with the run's input and whose output is
+// the flow's. The flow is named after the file, and read as a definition
+// beside it. load gives a file by its path from the context: the script and
+// each of job.Files. Nothing is sent.
+func Script(file string, load func(path string) ([]byte, error), job ScriptJob) (*machine.Draft, error) {
+	src, err := scriptFlow(path.Base(file), job)
 	if err != nil {
 		return nil, err
 	}
-	return machine.Parse(src, machine.Given(map[string]string{"./" + name: string(script)}))
+	return machine.ParseIn(strings.TrimSuffix(file, ".js")+".yaml", src, load)
 }
 
 // scriptFlow writes the flow a script is wrapped in. It is JSON, which is
@@ -49,6 +55,9 @@ func scriptFlow(name string, job ScriptJob) ([]byte, error) {
 	}
 	if len(job.Tags) > 0 {
 		written["tags"] = job.Tags
+	}
+	if len(job.Files) > 0 {
+		written["files"] = job.Files
 	}
 	return json.Marshal(map[string]any{
 		"flow":   sanitize(strings.TrimSuffix(name, ".js")),

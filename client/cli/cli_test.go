@@ -143,6 +143,41 @@ func TestAScriptFileIsSubmittedAsItIs(t *testing.T) {
 	}
 }
 
+// A script file given --files loads them, each path read as a job's files:
+// reads it, and runs alone.
+func TestAScriptFileLoadsItsFiles(t *testing.T) {
+	m := machine{t, t.TempDir()}
+	dir := files(t, map[string]string{"sub/double.js": `return require("./lib.js").double(input.n)`,
+		"sub/lib.js": `exports.double = (n) => n * 2`})
+	script := filepath.Join(dir, "sub", "double.js")
+	if out := m.ok("", "test", script, "--files", "./lib.js", "--input", `{"n": 21}`, "--json"); !strings.Contains(out, `"output":42`) {
+		t.Fatalf("a script given --files ./lib.js printed %s", out)
+	}
+	// ./ is the script's directory, and a path with no ./ is from the
+	// directory the command runs in.
+	from, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chdir(dir); err != nil {
+		t.Fatal(err)
+	}
+	defer os.Chdir(from)
+	for _, given := range []string{"./lib.js", "sub/lib.js"} {
+		if out := m.ok("", "test", "sub/double.js", "--files", given, "--input", `{"n": 21}`, "--json"); !strings.Contains(out, `"output":42`) {
+			t.Fatalf("a script in sub/ given --files %s printed %s", given, out)
+		}
+	}
+	// Without it, the script may not load the file.
+	if status, out, _ := m.run("", "test", script, "--input", `{"n": 21}`); status != 1 || !strings.Contains(out, "not among the files the job lists") {
+		t.Fatalf("a script given no --files ended %d: %s", status, out)
+	}
+	// A file that is not there is a problem of the script, and nothing runs.
+	if status, out, said := m.run("", "test", script, "--files", "./missing.js"); status != 1 || !strings.Contains(said, "missing.js") || out != "" {
+		t.Fatalf("a script given --files ./missing.js ended %d: %s%s", status, out, said)
+	}
+}
+
 func TestInitRunSubmitStart(t *testing.T) {
 	m := machine{t, filepath.Join(t.TempDir(), "config")}
 	storeDir := filepath.Join(t.TempDir(), "store")
@@ -206,6 +241,11 @@ func TestInitRunSubmitStart(t *testing.T) {
 	// With no ceiling, a script that reads a file is denied, and the fix
 	// names the command that changes it. The script's own list allowed it,
 	// so nothing is said of adding to the command line.
+	// A script file submitted with --files loads them where it runs.
+	loads := files(t, map[string]string{"double.js": `return require("./lib.js").double(input.n)`, "lib.js": `exports.double = (n) => n * 2`})
+	if out := m.ok("", "run", "start", m.recorded(filepath.Join(loads, "double.js"), "--files", "./lib.js"), "--input", `{"n": 21}`, "--wait", "--json"); !strings.Contains(out, `"output":42`) {
+		t.Fatalf("a script submitted with --files ./lib.js ended as %s", out)
+	}
 	reads := files(t, map[string]string{"reads.js": `return fs.read("/etc/hostname")`})
 	_, out, _ = m.run("", "run", "start", m.recorded(filepath.Join(reads, "reads.js"), "--allow", "disk"), "--wait")
 	if !strings.Contains(out, "denied") || !strings.Contains(out, "corbie controller enrol box-client --allow fs.read:/etc/hostname") || strings.Contains(out, "add to the command") {

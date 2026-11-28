@@ -154,7 +154,8 @@ func Test_client_commands_through_a_gateway(t *testing.T) {
 		"house/.corbieignore":       "shared\n",
 		"house/shared/base.yaml":    "input: { name: any }\n",
 		"house/bad.yaml":            "flow: bad\nstages: 3\n",
-		"double.js":                 `return input.n * 2`,
+		"double.js":                 `return input.n * require("./two.js").two`,
+		"two.js":                    `exports.two = 2`,
 	})
 	_, saying := m.staying("start", "gateway", "--listen", "127.0.0.1:0", "--client", editor.config, "--token-file", filepath.Join(dir, "tokens"))
 	listening := regexp.MustCompile(`listening on (http://\S+)`)
@@ -185,8 +186,8 @@ func Test_client_commands_through_a_gateway(t *testing.T) {
 		t.Fatalf("the submit ended %d, printed:\n%sand said:\n%s", status, out, said)
 	}
 	boiler := started[1]
-	// A script file, with what its job may do.
-	if out := sent("run", "submit", filepath.Join(dir, "double.js"), "--timeout", "30s"); !strings.Contains(out, "/double   transient   recorded") {
+	// A script file, with what its job may do and the files it loads.
+	if out := sent("run", "submit", filepath.Join(dir, "double.js"), "--timeout", "30s", "--files", "./two.js"); !strings.Contains(out, "/double   transient   recorded") {
 		t.Fatalf("the submit of a script printed %s", out)
 	}
 	if out := sent("run", "start", "/double", "--input", `{"n": 21}`, "--wait"); !strings.Contains(out, "output: 42") {

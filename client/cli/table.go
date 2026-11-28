@@ -35,13 +35,16 @@ const scripts = `
 
 A script file (.js) can be given in place of a definition. Corbie wraps it in
 a flow of one stage, and these flags set that stage's job. With a definition,
---memory and --tag are refused.
+--memory, --tag and --files are refused.
 
   --allow, --deny    the job's allow and deny lists
   --timeout <time>   the job's timeout; default 5m
   --memory <size>    the most memory the job may use, such as 256MB; default
                      no limit
   --tag <tag>        a tag the job's runner must have; repeatable
+  --files <path>     a file the script loads with require, its path as the
+                     job's files: writes it, with ./ from the script's
+                     directory; repeatable
 
   corbie manual permissions   the entries --allow and --deny take
   corbie manual runs          a run as JSON, and one run's file as another

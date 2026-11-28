@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/zummed/corbie/client"
+	"github.com/zummed/corbie/machine"
 	"github.com/zummed/corbie/machine/flow"
 	"github.com/zummed/corbie/plugin"
 	"github.com/zummed/corbie/store"
@@ -40,7 +41,7 @@ func wantError(t *testing.T, r *client.Run, failure, holds string) {
 func TestScriptIsWrappedInAFlowOfOneStage(t *testing.T) {
 	job := client.ScriptJob{Allow: []string{"fs.read:/etc/hostname"}, Deny: []string{"net:example.com"},
 		Timeout: "7s", Memory: "64MB", Tags: []string{"gpu"}}
-	draft, err := client.Script("9-double.me.js", []byte("return input * 2"), job)
+	draft, err := client.Script("9-double.me.js", machine.Given(map[string]string{"9-double.me.js": "return input * 2"}), job)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -62,7 +63,7 @@ func TestScriptIsWrappedInAFlowOfOneStage(t *testing.T) {
 	}
 	// Started with no tag, which no runner here has, it runs the script.
 	job.Tags = nil
-	if draft, err = client.Script("double.js", []byte("return input * 2"), job); err != nil {
+	if draft, err = client.Script("double.js", machine.Given(map[string]string{"double.js": "return input * 2"}), job); err != nil {
 		t.Fatal(err)
 	}
 	l := local(t)

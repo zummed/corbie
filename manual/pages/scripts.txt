@@ -52,6 +52,12 @@ A script has JavaScript's own objects, such as `Math`, `JSON`, `Date` and
     corbie test double.yaml --input '{"n": 21}'
       output: 42
 
+`corbie test` runs the script alone, given each file it loads with `--files`,
+its path as `files:` writes it:
+
+    corbie test double.js --files ./lib.js --input '{"n": 21}'
+      output: 42
+
 A path given to `require` is read from the directory of the file that calls
 it. A loaded file has the plugins and `require`, and not `input`, `job`,
 `emit`, `log` or `progress`.

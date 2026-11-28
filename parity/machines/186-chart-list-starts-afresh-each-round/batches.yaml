@@ -1,0 +1,22 @@
+# Each round starts at first, so the list open gives holds only that round's
+# messages. sent keeps every round's list, for the case to check.
+statechart: batches
+initial: idle
+states:
+  idle:
+    on: { message: first, stop: finished }
+  first:
+    output: "${[event.data]}"
+    on: { done: open }
+  open:
+    output: "${event.data}"
+    on: { message: adding, close: sent }
+  adding:
+    output: "${states.open.output.concat([event.data])}"
+    on: { done: open }
+  sent:
+    output: "${(states.sent.output ?? []).concat([states.open.output])}"
+    on: { done: idle }
+  finished:
+    end: done
+    output: ${states.sent.output}

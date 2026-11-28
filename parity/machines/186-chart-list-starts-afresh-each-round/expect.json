@@ -1,0 +1,5 @@
+{
+  "status": "done",
+  "output": [["a", "b", "c"], ["d", "e"]],
+  "note": "R-chart-39, R-chart-86: an output stays until its state gives another, so a list started in the state each round enters first holds only that round's items."
+}

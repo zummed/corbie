@@ -71,14 +71,25 @@ A state with no job that gives `output:` is done as it is entered:
 
 ```yaml
 states:
-  listening:
-    on: { message: gathering }
-  gathering:
-    output: "${(states.gathering.output ?? []).concat(event.data)}"
-    on: { done: listening }
+  idle:
+    on: { message: first }
+  first:
+    output: "${[event.data]}"
+    on: { done: open }
+  open:
+    output: "${event.data}"
+    on: { message: adding, close: sending }
+  adding:
+    output: "${states.open.output.concat([event.data])}"
+    on: { done: open }
+  sending:
+    job: { machine: ./send.yaml, input: { messages: "${states.open.output}" } }
+    on: { done: idle, failed: idle }
 ```
 
-Each `message` adds its data to the list `states.gathering.output` holds. A value built up over a loop is kept this way, or goes through a script: in as its input and out as its output.
+Each round of messages starts at `first`, which gives a list of the round's first message. `open` gives the list so far, and `adding` gives it with one message more. An output stays until its state gives another, so a state whose list reads its own output, as `${(states.adding.output ?? []).concat([event.data])}`, keeps every earlier round's messages.
+
+A value that needs more than a short expression is computed by a script job: it is given the value so far in its input, and gives the new value as its output.
 
 ## Sending
 

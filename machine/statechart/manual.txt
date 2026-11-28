@@ -191,6 +191,15 @@ its `entry:` and its `output:`. A final state returns a ticket's answer with
 
 A statechart has no variables. A state with no job may give `output:`: the
 value is filled in as the state is entered and is the state's output, and the
-state is then given `done`. To build a value over a loop, enter such a state
-on each round with `output: "${(states.gathering.output ?? []).concat(event.data)}"`,
-or pass the value through a script job.
+state is then given `done`. An output stays until its state gives another, so
+a list is started afresh in the state that each round enters first:
+
+- `first` gives `output: "${[event.data]}"`, the round's first item, and goes
+  to `open` on `done`.
+- `open` gives `output: "${event.data}"`, the list so far, and goes to
+  `adding` on the next item.
+- `adding` gives `output: "${states.open.output.concat([event.data])}"`, and
+  goes to `open` on `done`.
+
+A value that needs more than a short expression is computed by a script job,
+which is given the value so far in its input.

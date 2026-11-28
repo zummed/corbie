@@ -1,0 +1,21 @@
+# The parent sends the batches chart two rounds of messages, each ended by
+# close: a, b and c, then d and e.
+statechart: parent
+initial: talking
+states:
+  talking:
+    job: { machine: ./batches.yaml }
+    entry:
+      send:
+        - { to: talking, event: message, data: a }
+        - { to: talking, event: message, data: b }
+        - { to: talking, event: message, data: c }
+        - { to: talking, event: close }
+        - { to: talking, event: message, data: d }
+        - { to: talking, event: message, data: e }
+        - { to: talking, event: close }
+        - { to: talking, event: stop }
+    on: { done: finished }
+  finished:
+    end: done
+    output: ${event.data}

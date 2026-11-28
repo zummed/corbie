@@ -131,8 +131,10 @@ machines-together`.
 - A send that no run takes is noted in the record as undelivered, and fails
   nothing.
 
-- An event that the active state has no transition for goes to the state it
-  is inside, and so on outward.
+- A state's `done` goes to that state only. With no transition for it, the
+  state stays, inside a state with a transition for `done` too.
+- An event other than `done` that the active state has no transition for
+  goes to the state it is inside, and so on outward.
 - A job's failure that no state has a transition for fails the statechart.
 - Any other event that no state has a transition for is dropped, unless an
   active state names it under `defer:`. A chart keeps at most 100 events.

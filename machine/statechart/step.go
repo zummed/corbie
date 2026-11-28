@@ -169,8 +169,7 @@ func (s *stepper) handle(i int, event machine.Event) error {
 			s.event = event
 		}
 		s.setOutput(name, event.Data)
-		_, err := s.offer(name, machine.Done)
-		return err
+		return s.done(name)
 	case machine.Timer:
 		at, ok := s.st.Timers[event.From]
 		due, _ := event.Data.(string)
@@ -236,6 +235,14 @@ func (s *stepper) failed(name string, event machine.Event) error {
 	e := machine.Unhandled(event.From, event.Data)
 	s.end(&machine.Ending{Error: e})
 	return nil
+}
+
+// done gives a state its own done. Its holders are not offered it, and
+// with no rule for it the state stays.
+func (s *stepper) done(name string) error {
+	n := s.all[name]
+	_, err := s.take(name, n.place+".on."+machine.Done, n.state.On[machine.Done])
+	return err
 }
 
 // offer gives the current event to a state's rule for it and, where none
@@ -498,7 +505,7 @@ func (s *stepper) settle() error {
 		n := s.all[name]
 		if n.state.End == "" {
 			s.event = machine.Event{Name: machine.Done, From: name, Data: s.st.Outputs[name]}
-			if _, err := s.offer(name, machine.Done); err != nil {
+			if err := s.done(name); err != nil {
 				return err
 			}
 			continue
@@ -516,7 +523,7 @@ func (s *stepper) settle() error {
 		default:
 			s.setOutput(n.parent, output)
 			s.event = machine.Event{Name: machine.Done, From: n.parent, Data: output}
-			if _, err := s.offer(n.parent, machine.Done); err != nil {
+			if err := s.done(n.parent); err != nil {
 				return err
 			}
 		}

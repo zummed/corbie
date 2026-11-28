@@ -1079,9 +1079,9 @@ func Test_chart_send_to_is_checked(t *testing.T) {
 	}
 }
 
-// A state with no job gives its output as it is entered and is done. A
-// holder's rule for done takes it. With no rule for done it stays, and takes
-// a later event; entered again, it reads its own earlier output.
+// A state with no job gives its output as it is entered and is done. With
+// no rule for done it stays, and takes a later event, inside a holder with a
+// rule for done too; entered again, it reads its own earlier output.
 func TestStateWithNoJobGivesAnOutput(t *testing.T) {
 	c := newChart(t, `statechart: gathers
 initial: listening
@@ -1140,7 +1140,8 @@ states:
 		t.Fatalf("the chart ended with %+v, want the held output", ending)
 	}
 
-	// Inside a holder with a rule for done, the holder's rule takes it.
+	// Inside a holder with a rule for done, the state stays: the holder's
+	// rule is taken when a final state inside it is reached.
 	c = newChart(t, `statechart: held
 initial: open
 states:
@@ -1150,10 +1151,17 @@ states:
 		states:
 			paid:
 				output: { paid: true }
-				on: { pack: paid }
+				on: { pack: packed }
+			packed:
+				end: done
+				output: { packed: "${states.paid.output.paid}" }
 	delivered:
 		end: done
 		output: "${event.data}"
 `)
-	c.want(c.give(start()), "end map[paid:true]")
+	c.want(c.give(start()))
+	if got := c.active(); !slices.Equal(got, []string{"open", "paid"}) {
+		t.Fatalf("inside a holder with a rule for done the chart is in %v, want open and paid", got)
+	}
+	c.want(c.give(machine.Event{Name: "pack"}), "end map[packed:true]")
 }

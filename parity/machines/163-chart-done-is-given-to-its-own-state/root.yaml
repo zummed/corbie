@@ -1,0 +1,24 @@
+# A state's own done is given to that state only. paid gives its output and
+# waits for its ticket. box's job ends and box waits for its timer. open's
+# rule for done is taken when packed, a final state inside it, is reached.
+statechart: order
+initial: open
+states:
+  open:
+    initial: paid
+    on: { done: delivered }
+    states:
+      paid:
+        output: { paid: true }
+        ticket: pack
+        on: { pack: box }
+      box:
+        job: { script: ./box.js }
+        timers: { packed_by: 1s }
+        on: { packed_by: packed }
+      packed:
+        end: done
+        output: { packed: true }
+  delivered:
+    end: done
+    output: { came_by: "${event.name}", from: "${event.from}", data: "${event.data}", paid: "${states.paid.output}" }

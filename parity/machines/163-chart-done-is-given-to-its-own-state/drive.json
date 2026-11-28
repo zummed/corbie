@@ -1,0 +1,11 @@
+[
+  {
+    "wait": {
+      "machine": "order",
+      "ticket": "pack"
+    },
+    "do": "reply",
+    "value": {},
+    "taken": true
+  }
+]

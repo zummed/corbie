@@ -55,8 +55,8 @@ The detailed rules behind the [Statechart overview](../statechart.md). Area code
 **R-chart-31** A rule may be written as a bare state name, as one transition, or as a list of transitions.
 *Accept:* `on: { done: waiting }`, `on: { done: { go: waiting } }` and `on: { done: [{ go: waiting }] }` give the same stored definition.
 
-**R-chart-32** An event the current state has no rule for is offered to the state that holds it, and so on outward; a failure nobody takes fails the chart, and any other event nobody takes is dropped, unless an active state names it under `defer:`.
-*Accept:* offered outward: parity case 18 for a failure and parity case 21 for an answer. Parity case 17: the failure nobody takes fails the chart. Parity case 33: the event the parent has no rule for is received and changes nothing.
+**R-chart-32** A state's `done` is offered to that state only. Any other event the current state has no rule for is offered to the state that holds it, and so on outward; a failure nobody takes fails the chart, and any other event nobody takes is dropped, unless an active state names it under `defer:`.
+*Accept:* offered outward: parity case 18 for a failure and parity case 21 for an answer. Parity case 17: the failure nobody takes fails the chart. Parity case 33: the event the parent has no rule for is received and changes nothing. Parity case 163: a state's `done`, from its `output:` and from its job, is not taken by its holder's rule for `done`, which is taken when a final state inside it is reached.
 
 **R-chart-35** An event is taken by one rule at most.
 *Accept:* parity case 34 with two named jobs in the child's state: the parent sends one event, the rule on that state stays and sends `poked`, and the parent receives `poked` once.
@@ -76,7 +76,7 @@ The detailed rules behind the [Statechart overview](../statechart.md). Area code
 *Accept:* a chart written with a field that sets or stores a value is refused when checked.
 
 **R-chart-86** A state with no job and no states inside it may give `output:`. As it is entered the value is filled in, reading the event that entered it and each state's earlier output, its own included; the value is the state's output, and the state is given `done` with it. `output:` on a state with a job or with states inside it is refused.
-*Accept:* parity case 140: a state reads the input, the next reads that state's output and the `done` event, a state entered twice adds to its own earlier output, and the final state reads all three. A state that gives `output:`, with no rule for `done` in it or in a state holding it, stays, and takes a later event; inside a holder with a rule for `done`, the holder's rule takes it. *Test:* `TestStateWithNoJobGivesAnOutput`
+*Accept:* parity case 140: a state reads the input, the next reads that state's output and the `done` event, a state entered twice adds to its own earlier output, and the final state reads all three. A state that gives `output:` and has no rule for `done` stays, and takes a later event, inside a holder with a rule for `done` too. *Test:* `TestStateWithNoJobGivesAnOutput`
 
 **R-chart-39** Each state's latest output is remembered and can be read by name from any expression; a job that fails leaves it as it was, and a state that has produced no output reads as nothing.
 *Accept:* parity case 20: the final state reads the output of `inner`, a state held by another and left earlier. Parity case 16: after the third round's job fails, the output read for `working` is the second round's. Parity case 26: the output read for `leaving_on_emit`, whose job was cancelled, is null.

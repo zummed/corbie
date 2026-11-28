@@ -51,7 +51,9 @@ A transition names the state to go to, and may have a condition and may send eve
 
 A transition to the state that has the rule, or to a state holding it, leaves that state and enters it again: its jobs and timers start afresh, and it has a new ticket.
 
-An event is taken by at most one rule. One the current state has no rule for is offered to the state that holds it, and so on outward. A failure nobody takes fails the chart. Any other event nobody takes is dropped.
+An event is taken by at most one rule. A state's `done` is offered to that state only, so a holder's rule for `done` is taken when a final state inside it is reached. Any other event the current state has no rule for is offered to the state that holds it, and so on outward.
+
+A failure nobody takes fails the chart. Any other event nobody takes is dropped.
 
 One event may set off a chain of transitions. A chain that does not come to rest fails the chart.
 
@@ -65,7 +67,7 @@ A state with no job that gives `output:` is done as it is entered:
 
 1. Its `output:` is filled in, reading the event that entered it and every state's earlier output, its own included.
 2. That value is the state's output.
-3. The state is given `done` with the value as its data. With no rule for `done`, a holder's rule for `done` takes it, as for any event. With neither, the state stays, and waits as any state does.
+3. The state is given `done` with the value as its data. With no rule for `done` it stays, and waits as any state does.
 
 ```yaml
 states:

@@ -15,6 +15,12 @@ Change a field that takes a list and is written as one text, which is refused:
   allow: net:example.com            allow: [net:example.com]
   receive: { stop: client:panel }   receive: { stop: [client:panel] }
 
+Change a statechart in which a state's rule for `done` takes the `done` of a
+state inside it. A state's `done` goes to that state only, and a holder's
+rule for `done` is taken when a final state inside it is reached.
+
+  open: { on: { done: shipped } }   working: { job: ./w.js, on: { done: shipped } }
+
 These are new.
 
 - `corbie test <file> --in <directory>` refuses a tree in which a file has a

@@ -243,10 +243,14 @@ func TestHostReadsIdentityFromBucket(t *testing.T) {
 			t.Fatalf("the config records %q for the %s", recorded, kind)
 		}
 	}
-	// Run again, also with another name, init keeps the identities.
+	// Run again, init keeps the identities; with another name it is
+	// refused, and keeps them too.
 	before := string(held.values["keys/controller/identity"])
-	if status, said := corbie(ctx, "init", "--config", config, "--name", "other", "--identity", keys); status != 0 || string(held.values["keys/controller/identity"]) != before {
+	if status, said := corbie(ctx, "init", "--config", config, "--identity", keys); status != 0 || string(held.values["keys/controller/identity"]) != before {
 		t.Fatalf("corbie init run again ended %d and kept the identity %v: %s", status, string(held.values["keys/controller/identity"]) == before, said)
+	}
+	if status, said := corbie(ctx, "init", "--config", config, "--name", "other", "--identity", keys); status == 0 || !strings.Contains(said, "keeps the name it was made with") || string(held.values["keys/controller/identity"]) != before {
+		t.Fatalf("corbie init with another name ended %d and kept the identity %v: %s", status, string(held.values["keys/controller/identity"]) == before, said)
 	}
 	// On the host the controller reads its identity from the bucket, and
 	// takes the host's call and the submit that was waiting.

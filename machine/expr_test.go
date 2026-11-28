@@ -118,6 +118,32 @@ func TestTimeAndRandom(t *testing.T) {
 	}
 }
 
+// The fields of a mapping are filled in the order of their names, so the
+// step taken again gives each field the same random number and fails at
+// the same field.
+func TestFillOrderIsFixed(t *testing.T) {
+	scope := Scope{"input": nil}
+	draws := map[string]any{"a": "${Math.random()}", "b": "${Math.random()}", "c": "${Math.random()}", "d": "${Math.random()}"}
+	first, err := eval(t).Fill(draws, scope, "input")
+	if err != nil {
+		t.Fatal(err)
+	}
+	fails := map[string]any{"a": "${input.x.y}", "b": "${input.x.y}", "c": "${input.x.y}", "d": "${input.x.y}"}
+	_, firstErr := eval(t).Fill(fails, scope, "input")
+	for range 20 {
+		again, err := eval(t).Fill(draws, scope, "input")
+		if err != nil || !reflect.DeepEqual(again, first) {
+			t.Fatalf("the step taken again filled %v, not %v (%v)", again, first, err)
+		}
+		if _, err := eval(t).Fill(fails, scope, "input"); err == nil || err.Error() != firstErr.Error() {
+			t.Fatalf("the step taken again failed with %v, not %v", err, firstErr)
+		}
+	}
+	if !strings.Contains(firstErr.Error(), "input.a") {
+		t.Fatalf("the fill failed with %v, not at input.a", firstErr)
+	}
+}
+
 // An expression on a computer set to a zone nine hours east reads the
 // step's time in UTC. The test runs itself again in that zone.
 func TestLocalTimeIsUTC(t *testing.T) {

@@ -514,8 +514,8 @@ func (e *Evaluator) Fill(value any, scope Scope, place string) (any, error) {
 		return e.Text(v, scope, place)
 	case map[string]any:
 		out := make(map[string]any, len(v))
-		for k, item := range v {
-			filled, err := e.Fill(item, scope, place+"."+k)
+		for _, k := range slices.Sorted(maps.Keys(v)) {
+			filled, err := e.Fill(v[k], scope, place+"."+k)
 			if err != nil {
 				return nil, err
 			}

@@ -1034,6 +1034,11 @@ func runText(run *client.Run, script bool) string {
 				fmt.Fprintf(&b, "  for a script file, add to the command: --allow %s\n", run.Refused)
 			}
 		}
+		// What the error says past the refusal, such as the stages that
+		// read the failure and were skipped, is printed on its own line.
+		if _, more, _ := strings.Cut(run.Error, "To allow it: "+run.Fix+"; "); more != "" {
+			fmt.Fprintf(&b, "  %s\n", more)
+		}
 	}
 	if run.Input != nil {
 		in, _ := json.Marshal(run.Input, json.Deterministic(true))

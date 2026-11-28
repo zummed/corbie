@@ -590,6 +590,36 @@ output: { failed: "${stages.read.failed}" }
 	}
 }
 
+// A denial that no stage handled, because the stage that reads it was
+// skipped, prints that stage under the refusal.
+func TestDeniedRunPrintsTheSkippedHandler(t *testing.T) {
+	m := machine{t, t.TempDir()}
+	dir := files(t, map[string]string{
+		"reads.js": `return fs.read("/etc/hostname")`,
+		"echo.js":  `return input`,
+		"order.yaml": `flow: order
+stages:
+  read:
+    job: { script: ./reads.js }
+  off:
+    when: ${false}
+    job: { script: ./echo.js }
+  handler:
+    when: ${stages.read.failed}
+    job: { script: ./echo.js, input: { off: "${stages.off.output}" } }
+`})
+	for _, command := range [][]string{
+		{"test", filepath.Join(dir, "order.yaml")},
+		{"test", filepath.Join(dir, "order.yaml"), "--watch"},
+	} {
+		status, out, errOut := m.run("", command...)
+		if status != 1 || strings.Count(out, "refused: fs.read:/etc/hostname") != 1 ||
+			!strings.Contains(out, "\n  the stage that reads it was skipped: handler\n") {
+			t.Errorf("corbie %s ended %d and printed:\n%s%s", strings.Join(command, " "), status, out, errOut)
+		}
+	}
+}
+
 // Saving a result's files checks every name before it writes any file.
 func Test_client_saved_file_names_checked_first(t *testing.T) {
 	m, _ := working(t, "all")

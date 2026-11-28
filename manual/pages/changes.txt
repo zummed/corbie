@@ -104,7 +104,7 @@ These are new.
   does. It was absent before.
 - When the only stages that handle a flow's failure are skipped, the run's
   error names them: `bad: failed on purpose; the stage that reads it was
-  skipped: handler`.
+  skipped: handler`. A denied run prints that line below `fix:`.
 
 After 0.43.0
 ------------

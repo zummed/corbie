@@ -56,7 +56,7 @@ func read(job *plugin.Job, first any, opt plugin.Options) (any, error) {
 		return nil, plugin.FileError(err, given)
 	}
 	if info.Size() > maxWhole {
-		return nil, plugin.Errorf(plugin.BadInput, "%s is %d bytes, too large to hold whole: read it as a blob, with { as: \"blob\" }", given, info.Size())
+		return nil, plugin.TooLarge(given)
 	}
 	data, err := os.ReadFile(real)
 	if err != nil {

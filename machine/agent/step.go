@@ -324,9 +324,9 @@ func (s *stepper) goesOn(c *call, t *task, output any) (result any, ended bool) 
 	t.State, t.Requests = state, requests
 	s.st.Tasks[name] = t
 	if asks {
-		c.Result = s.shown(map[string]any{"task": name, "requests": requests})
+		c.Result = s.names(map[string]any{"task": name, "requests": requests})
 	} else {
-		c.Result = s.shown(map[string]any{"task": name, "working": working})
+		c.Result = s.names(map[string]any{"task": name, "working": working})
 	}
 	return nil, false
 }
@@ -370,8 +370,8 @@ func (s *stepper) done(c *call, output any) {
 		result, _ := output.(map[string]any)
 		output = result["reply"]
 	}
-	c.Result = s.shown(output)
-	text, _ := json.Marshal(c.Result)
+	c.Result = s.names(output)
+	text, _ := json.Marshal(s.shown(c.Result, nil))
 	c.Large = len(text) > s.show()
 }
 
@@ -389,7 +389,7 @@ func (s *stepper) preview() error {
 			// A list too large to show is stored, and the model searches it.
 			s.list(&preview{Call: i + 1, List: c.Open.List})
 		case c.Large:
-			s.look(&preview{Call: i + 1}, map[string]any{"value": c.Result})
+			s.look(&preview{Call: i + 1}, map[string]any{"value": s.shown(c.Result, nil)})
 		}
 	}
 	s.st.Waiting = previewJob
@@ -464,11 +464,10 @@ func (s *stepper) stored(p *preview, event machine.Event, found map[string]any) 
 		return
 	}
 	told := map[string]any{"list": p.List}
-	if _, searched := blob.AsRef(found["blob"]); searched {
-		handle, _ := s.shown(found["blob"]).(map[string]any)
-		p.Handle, _ = handle["blob"].(string)
+	if ref, searched := blob.AsRef(found["blob"]); searched {
+		p.Handle = s.named(ref)
 		s.st.Fresh = slices.DeleteFunc(s.st.Fresh, func(name string) bool { return name == p.Handle })
-		told["entries"], told["how"] = handle, howToSearch(p.List)
+		told["entries"], told["how"] = found["blob"], howToSearch(p.List)
 	} else if names, shown := found["names"].([]any); shown && p.List != toolkitsList {
 		told["entries"], told["how"] = names, howToChoose(p.List)
 	} else {
@@ -502,13 +501,12 @@ func (s *stepper) previewed(p *preview, event machine.Event) {
 	} else if p.Call > 0 {
 		c := s.st.Calls[p.Call-1]
 		c.Large = false
-		if _, stored := blob.AsRef(found["blob"]); event.Name != machine.Done || !stored {
+		ref, stored := blob.AsRef(found["blob"])
+		if event.Name != machine.Done || !stored {
 			c.Result, c.Error = nil, "the result was too large to show, and could not be stored as a blob"
 			return
 		}
-		handle, _ := s.shown(found["blob"]).(map[string]any)
-		c.Result = handle
-		p.Handle, _ = handle["blob"].(string)
+		c.Result, p.Handle = found["blob"], s.named(ref)
 		// This one has its preview already.
 		s.st.Fresh = slices.DeleteFunc(s.st.Fresh, func(name string) bool { return name == p.Handle })
 	}
@@ -523,12 +521,12 @@ func (s *stepper) previewed(p *preview, event machine.Event) {
 	}
 	// A preview is made from a blob's contents, which may hold another
 	// blob's reference: it is shown as any value is.
-	p.Shown = s.shown(found["preview"])
+	p.Shown = s.shown(found["preview"], nil)
 }
 
 // ready starts the next turn once every preview is made. What the turn
-// adds to the conversation shows each blob as its handle, and a blob shown
-// for the first time with its preview.
+// adds to the conversation is shown here, so each handle says what its
+// preview found.
 func (s *stepper) ready() error {
 	for _, p := range s.st.Previews {
 		if !p.Done {
@@ -561,50 +559,9 @@ func (s *stepper) ready() error {
 			first[p.Handle] = p.Shown
 		}
 	}
-	s.st.Next, _ = s.handles(s.st.Next, first).([]any)
+	s.st.Next, _ = s.shown(s.st.Next, first).([]any)
 	s.st.Previews = nil
 	return s.turn()
-}
-
-// handles gives a value with each handle in it saying what the model
-// needs to know how to read the blob: how many items it has, roughly
-// what reading it would cost, and, the first time, its preview.
-func (s *stepper) handles(v any, first map[string]any) any {
-	switch v := v.(type) {
-	case map[string]any:
-		out := make(map[string]any, len(v)+3)
-		for k, item := range v {
-			out[k] = s.handles(item, first)
-		}
-		name, ok := s.handle(v)
-		if !ok {
-			return out
-		}
-		size, _ := v["size"].(float64)
-		items, counted := s.st.Items[name]
-		switch {
-		case counted && items >= 0:
-			// Text costs about a token for every four bytes.
-			out["items"] = items
-			out["cost"] = fmt.Sprintf("about %.0f tokens to read whole", size/4)
-			if items > 0 {
-				out["cost"] = fmt.Sprintf("about %.0f tokens to read whole, %.0f an item", size/4, max(size/4/items, 1))
-			}
-		case counted:
-			out["cost"] = "it has no items: it is not text, a table or a list"
-		}
-		if shown, ok := first[name]; ok {
-			out["preview"] = shown
-		}
-		return out
-	case []any:
-		out := make([]any, len(v))
-		for i, item := range v {
-			out[i] = s.handles(item, first)
-		}
-		return out
-	}
-	return v
 }
 
 // handle says whether a value is a handle the model was shown, and gives
@@ -654,7 +611,7 @@ func (s *stepper) begin() error {
 		return err
 	}
 	if prompt != nil {
-		s.st.Next = []any{map[string]any{"role": "user", "content": s.shown(prompt)}}
+		s.st.Next = []any{map[string]any{"role": "user", "content": s.names(prompt)}}
 	}
 	if err := s.offer(scope); err != nil {
 		return err
@@ -1140,7 +1097,7 @@ func (s *stepper) turn() error {
 	}
 	given := map[string]any{
 		"model":  map[string]any{"name": s.a.Model.Name, "service": s.a.Model.serviceOf(), "address": s.a.Model.addressOf(), "secret": s.a.Model.Secret, "effort": s.a.Model.Effort, "reply_tokens": float64(s.a.Model.ReplyTokens), "own": own, "tool_changes": s.a.Model.ToolChanges},
-		"system": system, "tools": tools, "turns": s.st.Turns, "add": add, "shape": s.a.Reply,
+		"system": s.shown(system, nil), "tools": tools, "turns": s.st.Turns, "add": add, "shape": s.a.Reply,
 		// The blobs the model has been shown, by name: those its service
 		// takes as content are sent to it as they are.
 		"blobs": s.st.Handles,
@@ -1469,34 +1426,65 @@ func (s *stepper) fit(shape map[string]any, data any) (map[string]any, error) {
 	return given, nil
 }
 
-// shown gives a value as the model is shown it: each blob is a handle, a
-// short name with its type and size, and no key reaches the model. A
-// reference written out inside a text is shown the same way.
-func (s *stepper) shown(v any) any {
+// shown gives a value as the model is shown it: each blob is a handle,
+// and no key reaches the model. A handle is a short name with the blob's
+// type and size, how many items it has and roughly what reading it would
+// cost, once its preview has counted them, and the preview first gives,
+// for a blob shown for the first time. A reference written out inside a
+// text is shown the same way.
+func (s *stepper) shown(v any, first map[string]any) any {
 	shown, _ := blob.Shown(v, func(_ string, ref blob.Ref) (any, error) {
-		name := ""
-		for existing, held := range s.st.Handles {
-			if r, _ := blob.AsRef(held); r.At == ref.At {
-				name = existing
+		name := s.named(ref)
+		size := float64(ref.Size)
+		handle := map[string]any{"blob": name, "type": ref.Type, "size": size}
+		items, counted := s.st.Items[name]
+		switch {
+		case counted && items >= 0:
+			// Text costs about a token for every four bytes.
+			handle["items"] = items
+			handle["cost"] = fmt.Sprintf("about %.0f tokens to read whole", size/4)
+			if items > 0 {
+				handle["cost"] = fmt.Sprintf("about %.0f tokens to read whole, %.0f an item", size/4, max(size/4/items, 1))
 			}
+		case counted:
+			handle["cost"] = "it has no items: it is not text, a table or a list"
 		}
-		if name == "" {
-			// A name is never one the conversation has used.
-			for n := len(s.st.Handles) + 1; ; n++ {
-				if _, used := s.st.Handles[fmt.Sprintf("blob%d", n)]; !used {
-					name = fmt.Sprintf("blob%d", n)
-					break
-				}
-			}
-			if s.st.Handles == nil {
-				s.st.Handles = map[string]any{}
-			}
-			s.st.Handles[name] = ref.Value()
-			s.st.Fresh = append(s.st.Fresh, name)
+		if preview, ok := first[name]; ok {
+			handle["preview"] = preview
 		}
-		return map[string]any{"blob": name, "type": ref.Type, "size": float64(ref.Size)}, nil
+		return handle, nil
 	})
 	return shown
+}
+
+// names gives each blob in a value the name the model is shown it under,
+// and gives the value unchanged: it is shown when the next turn starts.
+func (s *stepper) names(v any) any {
+	s.shown(v, nil)
+	return v
+}
+
+// named gives the name the model is shown a blob under. A blob not shown
+// before is given a new one, and is previewed before the next turn.
+func (s *stepper) named(ref blob.Ref) string {
+	for existing, held := range s.st.Handles {
+		if r, _ := blob.AsRef(held); r.At == ref.At {
+			return existing
+		}
+	}
+	// A name is never one the conversation has used.
+	name := ""
+	for n := len(s.st.Handles) + 1; name == ""; n++ {
+		if _, used := s.st.Handles[fmt.Sprintf("blob%d", n)]; !used {
+			name = fmt.Sprintf("blob%d", n)
+		}
+	}
+	if s.st.Handles == nil {
+		s.st.Handles = map[string]any{}
+	}
+	s.st.Handles[name] = ref.Value()
+	s.st.Fresh = append(s.st.Fresh, name)
+	return name
 }
 
 // real gives a value with each handle in it turned back into the blob's

@@ -30,7 +30,7 @@ func Test_blob_reference_inside_contents_hides_key(t *testing.T) {
 	sent := func(turn int) string { return strings.ReplaceAll(lastShown(m.Calls[turn]), `\`, "") }
 	for turn, what := range map[int]string{2: "the preview", 3: "the items", 4: "what the code gave back"} {
 		// The blob inside is the handle the model already knows.
-		if shown := sent(turn); !strings.Contains(shown, `{"inner":{"blob":"blob1","size":10,"type":"text/plain"}`) || !strings.Contains(shown, "second") {
+		if shown := sent(turn); !strings.Contains(shown, `{"inner":{"blob":"blob1","cost":"about 2 tokens to read whole, 2 an item","items":1,"size":10,"type":"text/plain"}`) || !strings.Contains(shown, "second") {
 			t.Errorf("%s was shown as: %s", what, shown)
 		}
 	}

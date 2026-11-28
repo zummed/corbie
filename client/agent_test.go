@@ -617,6 +617,42 @@ func Test_agent_preview_shows_no_key(t *testing.T) {
 	}
 }
 
+// A blob written inside a text is shown as a handle there: in the prompt
+// with its items, its cost and its preview, in the system text as well,
+// and with no key in either.
+func TestBlobInATextIsShownAsItsHandle(t *testing.T) {
+	reader := newModel(t, says("Read."))
+	m := newModel(t, calls("c1", "make", `{"text": "hello world\nline two\n"}`), calls("c2", "read", `{"doc": "blob1"}`), says("done"))
+	l := local(t, "all")
+	def := strings.Replace(inside(m), "tools:\n", `tools:
+		  read:
+		    description: Have a reader read a file
+		    args: { doc: blob }
+		    job: { machine: ./reader.yaml, input: { doc: "${args.doc}" } }
+`, 1)
+	r := runAgent(t, l, def, map[string]string{"add.js": scripts["add.js"], "make.js": insideFiles["make.js"], "wrap.js": insideFiles["wrap.js"],
+		"reader.yaml": strings.ReplaceAll(`
+			agent: reader
+			input: { doc: blob }
+			model: { name: test-model, service: anthropic, address: ADDRESS, secret: TEST_KEY }
+			system: You read ${input.doc}.
+			prompt: Read ${input.doc}.
+		`, "ADDRESS", reader.URL)})
+	if r.Status != "done" {
+		t.Fatalf("the agent ended %s: %s", r.Status, r.Error)
+	}
+	const handle = `{"blob":"blob1","cost":"about 5 tokens to read whole, 3 an item","items":2,`
+	if prompt := strings.ReplaceAll(lastShown(reader.Calls[0]), `\`, ""); !strings.Contains(prompt, "Read "+handle+`"preview":["hello world","line two"],"size":21,"type":"text/plain"}.`) {
+		t.Fatalf("the prompt was shown as: %s", prompt)
+	}
+	if system := reader.Calls[0].System; !strings.Contains(system, "You read "+handle+`"size":21,"type":"text/plain"}.`) {
+		t.Fatalf("the system text was shown as: %s", system)
+	}
+	if all := jsonOf(reader.Calls); strings.Contains(all, `key\"`) || strings.Contains(all, `$blob`) {
+		t.Fatalf("a blob's reference reached the model: %s", all)
+	}
+}
+
 func Test_agent_code_tool_hides_reference_from_model_code(t *testing.T) {
 	// The model's code looks for anything but the items: the tool's input,
 	// what the thing it was handed is made of, and what it is as text.

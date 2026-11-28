@@ -8,17 +8,14 @@ refused.
 After 0.45.0
 ------------
 
-A field that takes a list is refused when it is written as one text:
+Change a field that takes a list and is written as one text, which is refused:
 `allow:`, `deny:`, a definition's `approve:`, `follows:`, `tags:`, `files:`,
 `read:`, `receive:`, `defer:` and a model's `own:`.
 
   allow: net:example.com            allow: [net:example.com]
   receive: { stop: client:panel }   receive: { stop: [client:panel] }
 
-After 0.43.0
-------------
-
-This is new.
+These are new.
 
 - `corbie test <file> --in <directory>` refuses a tree in which a file has a
   problem, and prints each one, as `corbie up` does. Correct the file, or list
@@ -27,16 +24,22 @@ This is new.
   in its tree, as a definition with a `call:` entry needs.
 - A script that returns or emits `NaN`, `Infinity`, a BigInt or a Symbol
   fails with status `error`. Return a number or text in its place.
-- A toolkit's tool is written `machine:` or `call:`, as an agent's entry is:
-  `read_file: { call: gitlab/files/read, input: { project: group/orders } }`.
-  Its description and arguments are the machine's, as `corbie manual toolkit`
-  says.
 - A call counts against `limits: { runs: }` in the step that makes it, as a
   send does: of two calls in one step to a location with `runs: 1`, the
   second fails with the reason.
 - A flow's `output:` that reads a part a stage does not have, such as
   `${stages.fetch.status}`, is refused when the definition is checked. It
   read as null before. A stage has output, failed, error, skipped and emitted.
+
+After 0.43.0
+------------
+
+This is new.
+
+- A toolkit's tool is written `machine:` or `call:`, as an agent's entry is:
+  `read_file: { call: gitlab/files/read, input: { project: group/orders } }`.
+  Its description and arguments are the machine's, as `corbie manual toolkit`
+  says.
 
 After 0.42.0
 ------------

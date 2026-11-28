@@ -1,8 +1,8 @@
 {
   "status": "done",
   "output": {
-    "ship_skipped": true,
+    "ship": { "failed": false, "error": null, "error_is_null": true, "status": null, "skipped": true },
     "apologise": { "ship_failed": false, "ship_error": null }
   },
-  "note": "R-flow-11: a skip spreads only to a stage that reads the skipped stage's output, follows it or follows its emits; a when: that reads .failed of a skipped stage is evaluated."
+  "note": "R-flow-11: a skip spreads only to a stage that reads the skipped stage's output, follows it or follows its emits; a when: that reads .failed of a skipped stage is evaluated. A skipped stage's failed, error, status and skipped read false, null, null and true."
 }

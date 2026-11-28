@@ -57,7 +57,7 @@ An expression reads `input`, `values`, `run` and these.
   stages.<name>.output     what the stage's job returned; `undefined` if the
                            stage was skipped, or failed with no output
   stages.<name>.failed     true if the stage failed
-  stages.<name>.error      the error's text, if it failed
+  stages.<name>.error      the error's text; null if the stage did not fail
   stages.<name>.status     the failed job's status: error, timeout, denied or
                            cancelled; null if the stage did not fail
   stages.<name>.skipped    true if the stage was skipped
@@ -119,8 +119,9 @@ runs.
   unless its `when:` reads that stage's `failed`, `error` or `status`.
 - A stage that reads the output of a skipped stage, or follows it, is skipped,
   unless its own `when:` reads that stage's `skipped`. Its `failed` reads
-  false, so `${stages.a.failed || stages.b.failed}` runs when `a` fails and
-  `b`, which reads `a`'s output, is skipped.
+  false and its `error` and `status` null, so
+  `${stages.a.failed || stages.b.failed}` runs when `a` fails and `b`, which
+  reads `a`'s output, is skipped.
 - `output: ${stages.small.output ?? stages.big.output}` gives the output of
   whichever of the two stages ran.
 - `output:` that reads a stage's `failed`, `error` or `status` handles its

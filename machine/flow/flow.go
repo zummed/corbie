@@ -806,12 +806,9 @@ func (s *stepper) items(name string, stage *Stage, st *stageState) (bool, error)
 func (s *stepper) scope(item any) machine.Scope {
 	stages := make(map[string]any, len(s.st.Stages))
 	for name, st := range s.st.Stages {
-		entry := map[string]any{"failed": st.Status == failed, "skipped": st.Status == skipped, "status": st.JobStatus}
+		entry := map[string]any{"failed": st.Status == failed, "error": st.Error, "status": st.JobStatus, "skipped": st.Status == skipped}
 		if st.Output != nil {
 			entry["output"] = st.Output
-		}
-		if st.Error != nil {
-			entry["error"] = st.Error
 		}
 		if st.Emitted != nil {
 			entry["emitted"] = st.Emitted

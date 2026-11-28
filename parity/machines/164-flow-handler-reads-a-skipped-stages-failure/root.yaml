@@ -1,6 +1,7 @@
 # `charge` fails, so `ship`, which reads its output, is skipped. The skip
 # does not spread to `apologise`, whose when: reads only whether each
-# failed: it is evaluated, and runs.
+# failed: it is evaluated, and runs. Of the skipped stage, failed, error,
+# status and skipped read false, null, null and true.
 flow: order
 stages:
   charge:
@@ -11,5 +12,10 @@ stages:
     when: ${stages.charge.failed || stages.ship.failed}
     job: { script: ./echo.js, input: { ship_failed: "${stages.ship.failed}", ship_error: "${stages.ship.error}" } }
 output:
-  ship_skipped: ${stages.ship.skipped}
+  ship:
+    failed: ${stages.ship.failed}
+    error: ${stages.ship.error}
+    error_is_null: ${stages.ship.error === null}
+    status: ${stages.ship.status}
+    skipped: ${stages.ship.skipped}
   apologise: ${stages.apologise.output}

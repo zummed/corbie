@@ -100,6 +100,8 @@ These are new.
   `timeout`, `denied` or `cancelled`, and null if the stage did not fail. A
   `when:` that reads it handles the failure, as `failed` does:
   `when: ${stages.live.status == 'timeout'}`.
+- A flow stage's `error` reads null if the stage did not fail, as `status`
+  does. It was absent before.
 - When the only stages that handle a flow's failure are skipped, the run's
   error names them: `bad: failed on purpose; the stage that reads it was
   skipped: handler`.

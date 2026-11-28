@@ -29,7 +29,7 @@ A flow's `output:` is its result, filled in once every stage has settled. It rea
 
 `when:` makes a stage optional: it runs only if its condition holds. A stage that depends on a skipped stage for its output, by reading its output or emitted items, naming it in `follows:` or following its emits, is skipped as well, unless its own condition asks whether that stage was skipped. A skipped stage has no output, so `${stages.small.output ?? stages.big.output}` gives the output of the one that ran.
 
-A stage that reads only a skipped stage's `failed`, `error`, `status` or `skipped` is not skipped for it. Its `failed` reads false, `status` null and `skipped` true, and it has no `error`, so `when: ${stages.charge.failed || stages.ship.failed}` runs when `charge` fails and `ship` is skipped.
+A stage that reads only a skipped stage's `failed`, `error`, `status` or `skipped` is not skipped for it. Its `failed` reads false, `error` and `status` null, and `skipped` true, so `when: ${stages.charge.failed || stages.ship.failed}` runs when `charge` fails and `ship` is skipped.
 
 ## Failure
 

@@ -164,6 +164,10 @@ It may use JavaScript's operators, `? :`, arrow functions, methods such as
 `map` and `filter`, and objects such as `Math`, `JSON`, `Date`, `Object`,
 `Array`, `String`, `Number`, `RegExp`, `Map` and `Set`.
 
+An expression reads values and picks among them. A computation goes in a
+script: the job's own, or one in a stage or a state before the job or the
+send that needs its result.
+
 - A name that is not one of these is refused when the definition is checked.
 - A field that is absent reads as `undefined`. A value that is exactly such an
   expression is `null`, and in text it is empty. In a list or a map it is

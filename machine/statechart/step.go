@@ -169,7 +169,7 @@ func (s *stepper) handle(i int, event machine.Event) error {
 			s.event = event
 		}
 		s.setOutput(name, event.Data)
-		_, err := s.offer(name, func(st *State) []Transition { return st.On[machine.Done] })
+		_, err := s.offer(name, machine.Done)
 		return err
 	case machine.Timer:
 		at, ok := s.st.Timers[event.From]
@@ -185,7 +185,7 @@ func (s *stepper) handle(i int, event machine.Event) error {
 			return nil
 		}
 		s.event = machine.Event{Name: timer, From: name}
-		_, err := s.offer(name, func(st *State) []Transition { return st.On[timer] })
+		_, err := s.offer(name, timer)
 		return err
 	}
 	// Any other event: an answer to a ticket goes to the state that issued
@@ -205,7 +205,7 @@ func (s *stepper) handle(i int, event machine.Event) error {
 		s.ignore(i)
 		return nil
 	}
-	taken, err := s.offer(from, func(st *State) []Transition { return st.On[event.Name] })
+	taken, err := s.offer(from, event.Name)
 	switch {
 	case err != nil || taken:
 		return err
@@ -229,7 +229,7 @@ func (s *stepper) ignore(i int) {
 // takes fails the chart, whose error names the job and then gives the
 // job's error.
 func (s *stepper) failed(name string, event machine.Event) error {
-	taken, err := s.offer(name, func(st *State) []Transition { return st.On[machine.Failed] })
+	taken, err := s.offer(name, machine.Failed)
 	if err != nil || taken {
 		return err
 	}
@@ -238,12 +238,12 @@ func (s *stepper) failed(name string, event machine.Event) error {
 	return nil
 }
 
-// offer gives the current event to a state and, where it has no rule that
+// offer gives the current event to a state's rule for it and, where none
 // is taken, to the state that holds it, and so on outward.
-func (s *stepper) offer(name string, rules func(*State) []Transition) (bool, error) {
+func (s *stepper) offer(name, event string) (bool, error) {
 	for name != "" {
 		n := s.all[name]
-		if taken, err := s.take(name, n.place, rules(n.state)); err != nil || taken {
+		if taken, err := s.take(name, n.place+".on."+event, n.state.On[event]); err != nil || taken {
 			return taken, err
 		}
 		name = n.parent
@@ -498,7 +498,7 @@ func (s *stepper) settle() error {
 		n := s.all[name]
 		if n.state.End == "" {
 			s.event = machine.Event{Name: machine.Done, From: name, Data: s.st.Outputs[name]}
-			if _, err := s.offer(name, func(st *State) []Transition { return st.On[machine.Done] }); err != nil {
+			if _, err := s.offer(name, machine.Done); err != nil {
 				return err
 			}
 			continue
@@ -516,7 +516,7 @@ func (s *stepper) settle() error {
 		default:
 			s.setOutput(n.parent, output)
 			s.event = machine.Event{Name: machine.Done, From: n.parent, Data: output}
-			if _, err := s.offer(n.parent, func(st *State) []Transition { return st.On[machine.Done] }); err != nil {
+			if _, err := s.offer(n.parent, machine.Done); err != nil {
 				return err
 			}
 		}

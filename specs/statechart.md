@@ -65,7 +65,7 @@ A state with no job that gives `output:` is done as it is entered:
 
 1. Its `output:` is filled in, reading the event that entered it and every state's earlier output, its own included.
 2. That value is the state's output.
-3. The state is given `done` with the value as its data. With no rule for `done` it stays, and waits as any state does.
+3. The state is given `done` with the value as its data. With no rule for `done`, a holder's rule for `done` takes it, as for any event. With neither, the state stays, and waits as any state does.
 
 ```yaml
 states:
@@ -86,7 +86,7 @@ A send made on entering a state to that state's own child is delivered once the 
 
 An event sent to a chart goes to the chart and to nothing below it. A child hears only what its parent chooses to send on.
 
-`to:` is `parent`, a state or a named job, or an address as machine.md says. `to: "${event.from}"` replies to the sender of the event being taken.
+`to:` is `parent`, a state or a named job, or an address as machine.md says. Of an event sent by address, `to: "${event.from}"` replies to the sender. Of a job's `done` or `failed`, a timer or the parent's event, `event.from` is a name, and a send to it fails the chart.
 
 ```yaml
 # house/thermostats/kitchen.yaml        location /home/thermostats/kitchen

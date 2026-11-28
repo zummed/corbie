@@ -90,6 +90,7 @@ states:
       script: ./boiler.js
       input: { target: "${event.data.target}" }
       allow: ["secret:BOILER_PASSWORD@net:boiler.lan:443"]
+    defer: [set]
     on: { done: idle, failed: idle }
 
 # house/thermostats/kitchen.yaml       location /home/thermostats/kitchen
@@ -116,6 +117,7 @@ corbie run submit house --at /home
 ```
 
 - Only jobs of runs at `/home/devices/boiler` get `BOILER_PASSWORD`.
+- `defer: [set]` keeps a `set` that arrives while the boiler is applying, and `idle` takes it.
 - The controller writes the sender into `event.from`, here `{ at: /home/thermostats/kitchen, run: <ID> }`. A reply is a send to that address.
 - A send to a transient location's `{ at }` starts a new run with the event's data as its input, as a send to a key no one else names does. A statechart is then given the event; any other machine takes no sent event and is given only the start.
 - A send the sender's own layers refuse is `denied`. A send the receiver refuses is noted in the sender's record and fails nothing.

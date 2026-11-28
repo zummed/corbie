@@ -307,7 +307,7 @@ for the result.
 
   job: { send: { to: { at: devices/boiler }, event: set, data: { target: 12 } } }
   job: { call: { at: services/weather }, input: { days: 2 } }
-  send: { to: "${event.from}", event: applied }    a reply to the sender
+  send: { to: "${event.from}", event: applied }    a reply to a sent event's sender
 
 - A location is read from the tree's prefix, or in full when it starts with
   `/`. A name in it is not empty, `.`, `..` or `+`, and holds no `#`,
@@ -339,7 +339,9 @@ A send or a call needs the sender's permissions, a send or call job's own
 - A call is checked against a list. A mapping takes a call only from the
   tree's client.
 - The run reads the sender as `event.from`: `{ at, run }`, with `key` for a
-  keyed run, or `{ client }`. A run reads its own address as
+  keyed run, or `{ client }`. Of a job's `done` or `failed`, a timer or the
+  parent's event, `event.from` is a name, and a send to it fails the
+  statechart. A run reads its own address as
   `${run.address}`, and its key as `${run.key}`, which is null except at a keyed
   location.
 - The run reads the principal a client sent an event for as

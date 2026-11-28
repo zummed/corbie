@@ -1023,6 +1023,26 @@ states:
 	}
 }
 
+// Of a job's failed, event.from is the job's name, which is no address: a
+// reply to it fails the step, naming the rule's event in its place.
+func Test_chart_reply_to_a_name_fails_naming_its_rule(t *testing.T) {
+	c := newChart(t, `
+statechart: worker
+initial: working
+states:
+	working:
+		job: ./w.js
+		on:
+			failed: { go: working, send: { to: "${event.from}", event: result } }
+`)
+	c.give(start())
+	_, err := chartType{}.Step(&machine.StepIn{Definition: c.def, State: c.state, Events: []machine.Event{failed("working")},
+		Input: map[string]any{}, Time: c.at, Seed: []byte("seed")})
+	if err == nil || !strings.Contains(err.Error(), "states.working.on.failed[0].send[0].to: ${event.from} gives text") {
+		t.Fatalf("a reply to a job's name gave %v", err)
+	}
+}
+
 // A chart owns the names of its timers and tickets: no sender may take one.
 func Test_chart_owns_its_timer_and_ticket_names(t *testing.T) {
 	def, err := parse(t, `
@@ -1059,9 +1079,9 @@ func Test_chart_send_to_is_checked(t *testing.T) {
 	}
 }
 
-// A state with no job gives its output as it is entered and is done. With
-// no rule for done it stays, and takes a later event; entered again, it
-// reads its own earlier output.
+// A state with no job gives its output as it is entered and is done. A
+// holder's rule for done takes it. With no rule for done it stays, and takes
+// a later event; entered again, it reads its own earlier output.
 func TestStateWithNoJobGivesAnOutput(t *testing.T) {
 	c := newChart(t, `statechart: gathers
 initial: listening
@@ -1119,4 +1139,21 @@ states:
 	if ending == nil || fmt.Sprint(ending.Output) != "map[n:1]" {
 		t.Fatalf("the chart ended with %+v, want the held output", ending)
 	}
+
+	// Inside a holder with a rule for done, the holder's rule takes it.
+	c = newChart(t, `statechart: held
+initial: open
+states:
+	open:
+		initial: paid
+		on: { done: delivered }
+		states:
+			paid:
+				output: { paid: true }
+				on: { pack: paid }
+	delivered:
+		end: done
+		output: "${event.data}"
+`)
+	c.want(c.give(start()), "end map[paid:true]")
 }

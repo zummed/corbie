@@ -76,7 +76,7 @@ The detailed rules behind the [Statechart overview](../statechart.md). Area code
 *Accept:* a chart written with a field that sets or stores a value is refused when checked.
 
 **R-chart-86** A state with no job and no states inside it may give `output:`. As it is entered the value is filled in, reading the event that entered it and each state's earlier output, its own included; the value is the state's output, and the state is given `done` with it. `output:` on a state with a job or with states inside it is refused.
-*Accept:* parity case 140: a state reads the input, the next reads that state's output and the `done` event, a state entered twice adds to its own earlier output, and the final state reads all three. A state that gives `output:` and has no rule for `done` stays, and takes a later event. *Test:* `TestStateWithNoJobGivesAnOutput`
+*Accept:* parity case 140: a state reads the input, the next reads that state's output and the `done` event, a state entered twice adds to its own earlier output, and the final state reads all three. A state that gives `output:`, with no rule for `done` in it or in a state holding it, stays, and takes a later event; inside a holder with a rule for `done`, the holder's rule takes it. *Test:* `TestStateWithNoJobGivesAnOutput`
 
 **R-chart-39** Each state's latest output is remembered and can be read by name from any expression; a job that fails leaves it as it was, and a state that has produced no output reads as nothing.
 *Accept:* parity case 20: the final state reads the output of `inner`, a state held by another and left earlier. Parity case 16: after the third round's job fails, the output read for `working` is the second round's. Parity case 26: the output read for `leaving_on_emit`, whose job was cancelled, is null.
@@ -92,8 +92,8 @@ The detailed rules behind the [Statechart overview](../statechart.md). Area code
 **R-chart-76** `to:` may be an address, `{ at }`, `{ at, key }` or `{ at, run }`, or exactly one expression that gives one, filled in as the send is made. A key with no location, a key and a run both, a location with `..` or an empty name, and an expression that is not the whole address are refused when the definition is checked.
 *Accept:* parity case 108. *Test:* `chart_send_fills_each_address_form` and `chart_send_to_is_checked`
 
-**R-chart-77** `event.from` of an event sent to the run by its address is the sender's address, as the controller wrote it: `{ at, run }`, with `key` for a keyed run, or `{ client }`. Of any other event it is the parent, the job or the state it came from. `to: "${event.from}"` replies to the sender.
-*Accept:* parity cases 108, 114 and 121. *Test:* `chart_reply_to_event_from_gives_the_senders_address` and `chart_event_from_is_unchanged_for_jobs_timers_tickets_and_parent`
+**R-chart-77** `event.from` of an event sent to the run by its address is the sender's address, as the controller wrote it: `{ at, run }`, with `key` for a keyed run, or `{ client }`. Of any other event it is the parent, the job or the state it came from. `to: "${event.from}"` replies to the sender of an event sent by address; of any other event the send fails the chart.
+*Accept:* parity cases 108, 114 and 121. A reply to `${event.from}` in the rule for a job's `failed` fails the chart, naming `states.working.on.failed[0].send[0].to`. *Test:* `chart_reply_to_event_from_gives_the_senders_address`, `chart_event_from_is_unchanged_for_jobs_timers_tickets_and_parent` and `chart_reply_to_a_name_fails_naming_its_rule`
 
 **R-chart-78** A send to an address that a layer of the chart does not allow with `send:` ends the chart as failed with the status `denied`, and nothing after the send in that step is done.
 *Accept:* parity case 118. `Test_ctl_send_denied_by_a_layer_fails_the_chart`.

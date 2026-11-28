@@ -1702,7 +1702,7 @@ func (b *build) narrowed(s *instance.Start, start *arrival) {
 	}
 	layer := *s.Allow
 	layer.Name = "the list the run was started with"
-	layer.Fix = "start the run with %s in its list as well (corbie run submit --allow)"
+	layer.Fix = "start the run with %s in its list as well (corbie run start --allow)"
 	b.st.Above.Layers = []permission.Layer{layer}
 }
 

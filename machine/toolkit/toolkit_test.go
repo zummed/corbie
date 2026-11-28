@@ -186,8 +186,10 @@ func TestToolkitResumeWaitIsHeldToItsLimit(t *testing.T) {
 		}
 		return out.Requests[0]
 	}
-	if r := answers(0.001); r.Timer == nil || !r.Timer.At.Equal(time.Unix(1, 0)) {
-		t.Errorf("a wait of a millisecond asked for %+v", r)
+	for _, short := range []float64{0.001, 0, -3} {
+		if r := answers(short); r.Timer == nil || !r.Timer.At.Equal(time.Unix(1, 0)) {
+			t.Errorf("a wait of %v seconds asked for %+v", short, r)
+		}
 	}
 	for _, long := range []float64{601, 1e12, 1e300} {
 		if r := answers(long); r.End == nil {

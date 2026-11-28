@@ -202,13 +202,23 @@ func Test_mach_expression_value_that_is_not_data_fails(t *testing.T) {
 		"n is ${-1 / 0}":        "stages.total.job.input.total: ${-1 / 0}: -Infinity is not data",
 		"${10n}":                "stages.total.job.input.total: ${10n}: a BigInt is not data",
 		"${input.n > 0 || NaN}": "stages.total.job.input.total: ${input.n > 0 || NaN}: NaN is not data",
+		"${ {f: () => 1} }":     "stages.total.job.input.total: ${{f: () => 1}}: a function is not data",
+		"${[Math.max]}":         "stages.total.job.input.total: ${[Math.max]}: a function is not data",
+		"${Symbol('x')}":        "stages.total.job.input.total: ${Symbol('x')}: a Symbol is not data",
+		"${ {s: Symbol()} }":    "stages.total.job.input.total: ${{s: Symbol()}}: a Symbol is not data",
 	} {
 		if got, err := e.Fill(text, scope, "stages.total.job.input.total"); err == nil || err.Error() != want {
 			t.Errorf("%s gave %v (%v)\nwant: %s", text, got, err, want)
 		}
 	}
-	if got, err := e.Fill("${input.missing}", scope, "place"); err != nil || got != nil {
-		t.Fatalf("undefined gave %v (%v), want null", got, err)
+	for text, want := range map[string]any{
+		"${input.missing}":                    nil,
+		"${ {u: input.missing, n: 1} }":       map[string]any{"u": nil, "n": 1.0},
+		"${[undefined, {a: {b: undefined}}]}": []any{nil, map[string]any{"a": map[string]any{"b": nil}}},
+	} {
+		if got, err := e.Fill(text, scope, "place"); err != nil || !reflect.DeepEqual(got, want) {
+			t.Errorf("%s gave %v (%v), want %v", text, got, err, want)
+		}
 	}
 }
 

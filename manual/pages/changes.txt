@@ -44,9 +44,11 @@ These are new.
   in its tree, as a definition with a `call:` entry needs.
 - A script that returns or emits `NaN`, `Infinity`, a BigInt or a Symbol
   fails with status `error`. Return a number or text in its place.
-- An expression whose value holds `NaN` or `Infinity` fails, as a script's
-  value does. It gave null before. Read a field that may be absent as
-  `${input.qty ?? 1}`.
+- An expression whose value holds `NaN`, `Infinity`, a function or a Symbol
+  fails, as a script's value does. It gave null, or dropped the key, before.
+  Read a field that may be absent as `${input.qty ?? 1}`.
+- A key of an expression's map whose value is `undefined` is kept, with the
+  value null, as a script's is. It was dropped before.
 - A step whose expressions fail reports every one, each with its place. It
   reported only one before.
 - A call counts against `limits: { runs: }` in the step that makes it, as a

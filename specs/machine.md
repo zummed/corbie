@@ -218,9 +218,9 @@ Expressions are JavaScript. They read `input`, which is what the machine was sta
 send: { to: { at: services/report }, event: make, data: { reply_to: "${run.address}" } }
 ```
 
-A field that a value does not have reads as `undefined`, as with a stage that has no output or a job with no `meta:`. A value that is exactly such an expression is null, and in text it is empty. Reading a field of `undefined` fails the expression, so `?.` reads a field that may be absent: `${stages.push.output?.url}`, `${job.meta?.limit}`.
+A field that a value does not have reads as `undefined`, as with a stage that has no output or a job with no `meta:`. A value that is exactly such an expression is null, and in text it is empty; in a list or a map it is null, and the map keeps its key, as in a script. Reading a field of `undefined` fails the expression, so `?.` reads a field that may be absent: `${stages.push.output?.url}`, `${job.meta?.limit}`.
 
-A value that holds `NaN`, `Infinity` or a BigInt is not data, as in a script, and the expression fails, naming its place and the value. With the input `{ price: 3 }`, a stage `total` whose input is `total: "${input.price * input.qty}"` fails with `stages.total.job.input.total: ${input.price * input.qty}: NaN is not data`, and `${input.price * (input.qty ?? 1)}` gives 3.
+A value that holds `NaN`, `Infinity`, a BigInt, a Symbol or a function is not data, as in a script, and the expression fails, naming its place and the value. With the input `{ price: 3 }`, a stage `total` whose input is `total: "${input.price * input.qty}"` fails with `stages.total.job.input.total: ${input.price * input.qty}: NaN is not data`, and `${input.price * (input.qty ?? 1)}` gives 3.
 
 A step that cannot fill in its values fails with the error of every expression that failed, one to a line, as the check reports its problems. Each names its place, a mapping's keys in sorted order and a list's items by position. Started with `{}`, a stage `s` whose input is `{ x: "${input.a.b}", y: "${input.c.d}" }` fails with:
 

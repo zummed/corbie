@@ -480,9 +480,6 @@ func (e *Evaluator) run(program *goja.Program, args []goja.Value) (text string, 
 		stringify, _ := goja.AssertFunction(e.vm.Get("JSON").ToObject(e.vm).Get("stringify"))
 		var out goja.Value
 		if out, err = stringify(goja.Undefined(), result, e.vm.ToValue(e.data)); err == nil {
-			if goja.IsUndefined(out) {
-				return "null", nil
-			}
 			return out.String(), nil
 		}
 	}
@@ -499,12 +496,22 @@ func (e *Evaluator) run(program *goja.Program, args []goja.Value) (text string, 
 	return "", err
 }
 
-// data is the replacer an expression's value is written out with: NaN,
-// Infinity and a BigInt are refused, as a script's are.
+// data is the replacer an expression's value is written out with, as a
+// script's value is turned into data: undefined is null, and NaN,
+// Infinity, a BigInt, a Symbol and a function are refused.
 func (e *Evaluator) data(call goja.FunctionCall) goja.Value {
 	v := call.Argument(1)
+	if _, isFunction := goja.AssertFunction(v); isFunction {
+		panic(e.vm.ToValue("a function is not data"))
+	}
 	if _, isObject := v.(*goja.Object); isObject {
 		return v
+	}
+	if goja.IsUndefined(v) {
+		return goja.Null()
+	}
+	if _, isSymbol := v.(*goja.Symbol); isSymbol {
+		panic(e.vm.ToValue("a Symbol is not data"))
 	}
 	switch x := v.Export().(type) {
 	case float64:

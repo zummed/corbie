@@ -88,7 +88,7 @@ The detailed rules behind the [Machines overview](../machine.md). Area code: `ma
 **R-mach-29** An expression may run for one second.
 *Accept:* a stage's input holds an expression that loops for ever; the instance fails after about a second with an error that names the expression's place.
 
-**C-mach-171** An expression whose value holds `NaN`, `Infinity` or a BigInt fails, and the error names the expression's place and the value, as `NaN is not data`. JSON has no such value: let through, `NaN` and `Infinity` become null and the run goes on with a value nothing wrote. *Test:* `mach_expression_value_that_is_not_data_fails`
+**C-mach-171** An expression whose value holds `NaN`, `Infinity`, a BigInt, a Symbol or a function fails, and the error names the expression's place and the value, as `NaN is not data`. JSON has no such value: let through, `NaN` and `Infinity` become null, a function is dropped, and the run goes on with a value nothing wrote. `undefined` in a list or a map is null, and the map keeps its key, as in a script's value. *Test:* `mach_expression_value_that_is_not_data_fails`
 
 **R-mach-172** A step that cannot fill in its values fails with the error of every expression that failed, each naming its place, in the same order every time the step is taken.
 *Accept:* parity case 172: a stage whose input holds two expressions that fail fails with both errors, `x` before `y`. A job whose `timeout:`, input mapping and input list hold failing expressions gives every one, with the same text on every fill. *Test:* `mach_step_reports_every_failing_expression`

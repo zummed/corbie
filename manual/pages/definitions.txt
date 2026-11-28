@@ -166,12 +166,14 @@ It may use JavaScript's operators, `? :`, arrow functions, methods such as
 
 - A name that is not one of these is refused when the definition is checked.
 - A field that is absent reads as `undefined`. A value that is exactly such an
-  expression is `null`, and in text it is empty.
+  expression is `null`, and in text it is empty. In a list or a map it is
+  `null`, and the map keeps its key.
 - Reading a field of `undefined` fails the expression. `?.` reads a field that
   may be absent, as `${input.user?.name}`.
-- A value that holds `NaN`, `Infinity` or a BigInt fails the expression, and
-  the error names the value, as `NaN is not data`. `${input.price * input.qty}`
-  with no `qty` fails; `${input.price * (input.qty ?? 1)}` does not.
+- A value that holds `NaN`, `Infinity`, a BigInt, a Symbol or a function fails
+  the expression, and the error names the value, as `NaN is not data`.
+  `${input.price * input.qty}` with no `qty` fails;
+  `${input.price * (input.qty ?? 1)}` does not.
 - A step whose expressions fail reports every one, one to a line, each with
   its place.
 - `when:` is a condition on a flow's stage, a statechart's transition, and an

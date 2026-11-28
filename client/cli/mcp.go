@@ -121,11 +121,12 @@ func cmdMCP(e *Env, args []string) error {
 const briefing = `Corbie runs machines. A machine is a YAML definition of type flow, statechart, agent, decision or toolkit, and each of its jobs is a JavaScript script, a machine, or a send. A person has asked you to write, change, run or set up a machine.
 
 1. Read the manual with the manual tool before you write or change a definition or a script. Read the pages "corbie" and "first-machine" first. Then read "definitions", "scripts", "permissions", the page of the machine type ("flow", "statechart", "agent", "decision" or "toolkit"), the page of each plugin the script calls, and "a-directory" when you write more than one machine. The manual gives every field and every call, so never guess one.
-2. Give each job only the permissions it needs, in its allow list, and tell the person what you allowed.
-3. Write an expression only to read values and pick among them. Put a computation in a script: the job's own, or one in a stage or a state before the job or the send that needs its result.
-4. Run what you wrote with the corbie tool and read the result. The command "test" runs a definition or a script with no setup. Given a directory, it reads every machine in it, checks each send and call to a location in it, and starts nothing: run it on the directory after each change. A refusal names the line that allows what was refused.
-5. Run Corbie's commands with the corbie tool, not in a shell.
-6. Tell the person what the run printed.`
+2. Write each script to do one thing, as the section "How a script is written" of the page "scripts" says: lines of at most 100 characters, functions of at most about 20 lines, and a library for code that scripts share. Make a step that can fail on its own, whose result belongs on a line of its own in the run's record, or that needs other permissions a stage or a state of its own.
+3. Give each job only the permissions it needs, in its allow list, and tell the person what you allowed.
+4. Write an expression only to read values and pick among them. Put a computation in a script: the job's own, or one in a stage or a state before the job or the send that needs its result.
+5. Run what you wrote with the corbie tool and read the result. The command "test" runs a definition or a script with no setup. Given a directory, it reads every machine in it, checks each send and call to a location in it, and starts nothing: run it on the directory after each change. A refusal names the line that allows what was refused.
+6. Run Corbie's commands with the corbie tool, not in a shell.
+7. Tell the person what the run printed.`
 
 // briefing is what a model is told when it connects: corbie's briefing,
 // then the page named after each program it may run a command of, if the

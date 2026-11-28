@@ -122,6 +122,48 @@ it is an object with `type` and `size`, and the `blobs` plugin reads and makes
 them. A blob that a script returns or emits is stored in the run's record, and
 a later job reads it from its input.
 
+How a script is written
+-----------------------
+
+A script does one thing: the work of the job that names it. Each stage and
+state names its own script, so no script chooses its work from an input field
+such as `do`.
+
+  one thing     post.js posts, and poll.js polls
+  a file        beside the machine that runs it
+  a library     code that two scripts share, in each job's `files:`
+  a line        at most 100 characters, and a definition's too where it can be
+  a function    at most about 20 lines, under a one-line comment that says what it gives
+  a name        a plain word for what it gives, such as parts(text)
+
+A step is a stage or a state of its own, and not code in a script, in each
+of these cases:
+
+- The step can fail, or be tried again, apart from the rest.
+- The step's result belongs on a line of its own in the run's record.
+- The step needs other permissions than the rest.
+
+An expression reads values and picks among them, and a script computes.
+
+`corbie test` checks a library alone: it runs a script that loads the library,
+given with `--files`.
+
+    // text.js
+    // parts gives the text cut into parts of at most size characters.
+    exports.parts = function (text, size) {
+      const parts = []
+      for (let at = 0; at < text.length; at += size) parts.push(text.slice(at, at + size))
+      return parts
+    }
+
+    // text-check.js
+    const { parts } = require("./text.js")
+    if (parts("abcde", 2).join(" ") !== "ab cd e") throw new Error("abcde is not cut as ab cd e")
+    return "checked"
+
+    corbie test text-check.js --files ./text.js
+      output: "checked"
+
 Limits
 ------
 

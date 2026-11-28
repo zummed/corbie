@@ -90,6 +90,9 @@ func Test_run_error_position_matches_script_as_written(t *testing.T) {
 	wantError(t, script(t, l, "const a = 1\n\n  throw new Error('third line')", "timeout: 5s"), "error", "third line at line 3, column 9")
 	wantError(t, script(t, l, "const a = 1\nconst b = = 2", "timeout: 5s"), "error", "line 2")
 	wantError(t, script(t, l, "const b = (1 +\nreturn b", "timeout: 5s"), "error", "the script cannot be read: Unexpected token return at line 2, column 1")
+	loads := "flow: one\nstages:\n  it: { job: { script: ./it.js, files: [./top.js] } }\n"
+	files := map[string]string{"it.js": `require("./top.js")`, "top.js": `exports.one = 1; throw new Error("first line")`}
+	wantError(t, run(t, l, loads, files, nil), "error", "first line at top.js line 1, column 24")
 }
 
 // A thrown error gives its message, with no "Error: " before it, so a
@@ -104,6 +107,30 @@ func TestThrownErrorGivesItsMessage(t *testing.T) {
 	}
 	wantError(t, script(t, l, `throw "plain text"`, "timeout: 5s"), "error", "plain text")
 	wantError(t, script(t, l, `throw new Error("first\nsecond")`, "timeout: 5s"), "error", "first second at line 1, column 7")
+}
+
+// An error thrown in a file the script loads names that file and its line,
+// and one thrown in the script names only the line. A call of a plugin's
+// own library is passed over for the script's line that made it.
+func TestAnErrorInALoadedFileNamesIt(t *testing.T) {
+	l := local(t)
+	def := `
+		flow: one
+		stages:
+		  it: { job: { script: ./it.js, files: [./lib/sum.js] } }
+		output: ${stages.it.output}
+	`
+	files := map[string]string{
+		"lib/sum.js": "// sum gives the total of a list.\nexports.sum = function (list) {\n  return list.reduce((a, b) => a + b)\n}",
+	}
+	for source, want := range map[string]string{
+		"const { sum } = require(\"./lib/sum.js\")\nreturn sum([])": "No initial value at lib/sum.js line 3, column 21",
+		"const a = 1\nthrow new Error(\"own\")":                     "own at line 2, column 7",
+		"const a = 1\nreturn agents.conversation(null)":             "of undefined at line 2, column 27",
+	} {
+		files["it.js"] = source
+		wantError(t, run(t, l, def, files, nil), "error", want)
+	}
 }
 
 func Test_run_require_reads_only_listed_files(t *testing.T) {

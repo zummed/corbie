@@ -30,19 +30,20 @@ func Test_run_source_map_named_in_script_is_never_read(t *testing.T) {
 	}
 	naming := "\n//# sourceMappingURL=file://" + named
 	// Named in the script, in a file beside it, and in code the script
-	// makes as it runs, which starts two lines down: an error's place is
-	// where it was written each time.
+	// makes as it runs, which starts two lines down and whose place only
+	// its stack gives: an error's place is where it was written each time.
+	made := `new Function("throw new Error('as written')` + strings.ReplaceAll(naming, "\n", `\n`) + `")()`
 	for name, at := range map[string]struct{ source, place string }{
-		"in the script":    {`throw new Error("as written")` + naming, "line 1,"},
-		"in a file":        {`require("./lib.js").fail()`, "line 1,"},
-		"in code it makes": {`new Function("throw new Error('as written')` + strings.ReplaceAll(naming, "\n", `\n`) + `")()`, "line 3,"},
+		"in the script":    {`throw new Error("as written")` + naming, "as written at line 1,"},
+		"in a file":        {`require("./lib.js").fail()`, "as written at lib.js line 1,"},
+		"in code it makes": {`try { ` + made + ` } catch (e) { throw new Error(e.stack) }`, "as written at anonymous (<eval>:3:"},
 	} {
 		r := run(t, l, `
 			flow: one
 			stages:
 			  it: { job: { script: ./it.js, files: [./lib.js], timeout: 5s } }
 		`, map[string]string{"it.js": at.source, "lib.js": `exports.fail = function () { throw new Error("as written") }` + naming}, nil)
-		if r.Status != "failed" || !strings.Contains(r.Error, "as written at "+at.place) {
+		if r.Status != "failed" || !strings.Contains(r.Error, at.place) {
 			t.Errorf("a map named %s: the run ended %s with %q", name, r.Status, r.Error)
 		}
 	}

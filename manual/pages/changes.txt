@@ -66,6 +66,9 @@ These are new.
   `--files <path>`, repeatable: a file the script loads, its path as a job's
   `files:` writes it. A script that requires `./lib.js` runs alone with
   `--files ./lib.js`.
+- An error thrown in a file a script loads names the file, as
+  `no at lib.js line 2, column 9`. It gave a line of that file as the
+  script's before. An error in the script gives `at line 2, column 9`.
 - `corbie test <file> --in <directory>` refuses a tree in which a file has a
   problem, and prints each one, as `corbie up` does. Correct the file, or list
   it in `.corbieignore`.

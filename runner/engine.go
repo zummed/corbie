@@ -45,9 +45,13 @@ type engine struct {
 	modules map[string]goja.Value
 }
 
-// The start of the function a script is the body of. It has no line break,
-// so a script's lines are counted as they were written.
-const scriptHead = `(function(input,job,emit,log,progress,require){"use strict";`
+// The start of the function a script is the body of, and of the one a
+// loaded file is. Neither has a line break, so a file's lines are counted
+// as they were written.
+const (
+	scriptHead = `(function(input,job,emit,log,progress,require){"use strict";`
+	fileHead   = `(function(exports,require){"use strict";`
+)
 
 func newEngine(b *begin, job *plugin.Job, ch *channel) *engine {
 	vm := goja.New()
@@ -161,8 +165,7 @@ func (e *engine) position(text string) string {
 	if line == 1 {
 		column -= len(scriptHead)
 	}
-	message := strings.TrimSuffix(strings.TrimSpace(text[:m[0]]), ":")
-	message = strings.TrimSuffix(strings.TrimSuffix(message, "at script"), "script")
+	message := strings.TrimSuffix(strings.TrimSuffix(strings.TrimSpace(text[:m[0]]), ":"), "script")
 	if strings.TrimSpace(strings.TrimSuffix(strings.TrimSpace(message), ":")) == "" {
 		// The engine says where first and what after.
 		message, _, _ = strings.Cut(strings.TrimSpace(text[m[1]:]), " (and ")
@@ -171,6 +174,32 @@ func (e *engine) position(text string) string {
 }
 
 func oneLine(text string) string { return strings.Join(strings.Fields(text), " ") }
+
+// frame is one call of an error's stack: its file, line and column.
+var frame = regexp.MustCompile(`(?m)^\s*at (?:[^(\n]* \()?(.+):(\d+):(\d+)\(\d+\)\)?$`)
+
+// thrownAt gives where a stack says its error was thrown: the innermost call
+// in the script, or in one of the job's files, which it names. A call in a
+// plugin's library or in code made as the script runs is passed over.
+func (e *engine) thrownAt(stack string) string {
+	for _, m := range frame.FindAllStringSubmatch(stack, -1) {
+		file, head := m[1], fileHead
+		if _, listed := e.b.Files[file]; !listed && file != "script" {
+			continue
+		}
+		line, _ := strconv.Atoi(m[2])
+		column, _ := strconv.Atoi(m[3])
+		named := strings.TrimPrefix(file, "./") + " "
+		if file == "script" {
+			head, named = scriptHead, ""
+		}
+		if line == 1 {
+			column -= len(head)
+		}
+		return fmt.Sprintf(" at %sline %d, column %d", named, line, max(column, 1))
+	}
+	return ""
+}
 
 // failure turns what stopped a script into the job's result.
 func (e *engine) failure(err error) *instance.Result {
@@ -199,10 +228,8 @@ func (e *engine) failure(err error) *instance.Result {
 			}
 		}
 		message = e.job.Mask(message)
-		if m := where.FindStringSubmatch(strings.TrimPrefix(text, thrown.Value().String())); m != nil {
-			message = e.position(message + " at script" + m[0])
-		}
-		return failed(&machine.Error{Status: machine.StatusError, Error: oneLine(message)})
+		place := e.thrownAt(strings.TrimPrefix(text, thrown.Value().String()))
+		return failed(&machine.Error{Status: machine.StatusError, Error: oneLine(message) + place})
 	}
 	var overflow *goja.StackOverflowError
 	if errors.As(err, &overflow) {
@@ -272,7 +299,7 @@ func sortedCalls(calls map[string]*plugin.Call) []string {
 // load runs a library or a file written in script, which fills in exports.
 // Its require reads a relative path from its own directory.
 func (e *engine) load(name, source string, exports *goja.Object) error {
-	fn, err := e.vm.RunScript(name, "(function(exports,require){\"use strict\";"+source+"\n})")
+	fn, err := e.vm.RunScript(name, fileHead+source+"\n})")
 	if err != nil {
 		return fmt.Errorf("the file %q cannot be read: %s", name, oneLine(err.Error()))
 	}

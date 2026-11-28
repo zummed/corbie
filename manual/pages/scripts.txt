@@ -60,7 +60,8 @@ its path as `files:` writes it:
 
 A path given to `require` is read from the directory of the file that calls
 it. A loaded file has the plugins and `require`, and not `input`, `job`,
-`emit`, `log` or `progress`.
+`emit`, `log` or `progress`. An error thrown in a loaded file names it, as
+`no at lib.js line 2, column 9`.
 
 A file whose path ends in `.yaml`, `.yml` or `.json` gives its data, read as
 `corbie manual yaml` says. It needs no permission.

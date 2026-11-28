@@ -65,8 +65,8 @@ The detailed rules behind the [Runner overview](../runner.md).
 **R-run-20** When the script returns, the runner writes any blobs in its output into the instance's record and then sends the output to the controller as the job's result, along with the permissions it used.
 *Accept:* a script returns `{ a: 1, f: <a file> }` having read one file and connected to one host: when the result is in the controller's inbox, the blob is already complete in the instance's record; the machine receives `done` with `a` as 1 and `f` as a reference; and the result lists that read and that connection and nothing else.
 
-**R-run-23** If the script throws, or is refused something, or runs out of time, the result says so. A thrown error's text is its message, then the line and column where it was thrown.
-*Accept:* `throw new Error("no")` gives the machine `failed` with the error `no at line 1, column 7`. A script allowed nothing reads a file: the result has the status denied and carries the refusal. A script that never returns, in a job with a one-second time limit: the result has the status timeout.
+**R-run-23** If the script throws, or is refused something, or runs out of time, the result says so. A thrown error's text is its message, then the line and column where it was thrown, after the file's name when it was thrown in a file the script loads.
+*Accept:* `throw new Error("no")` gives the machine `failed` with the error `no at line 1, column 7`. A script that calls `sum([])` of `./lib/sum.js`, whose line 3 is `  return list.reduce((a, b) => a + b)`, gives `No initial value at lib/sum.js line 3, column 21`. A script allowed nothing reads a file: the result has the status denied and carries the refusal. A script that never returns, in a job with a one-second time limit: the result has the status timeout.
 
 **R-run-26** The runner deletes a job from its inbox only when the job's result is written.
 *Accept:* stop the runner after a script has returned and before its result is written: the job is still in the inbox. Let another job finish as usual: its result is in the controller's inbox, and the job is gone from the runner's.
@@ -141,7 +141,7 @@ The detailed rules behind the [Runner overview](../runner.md).
 
 **C-run-36** No plugin or library can take the name of one of a script's own things: `input`, `job`, `emit`, `log`, `progress`, `require`. An extension added later would silently stand in for one of them in every script. *Test:* `run_plugin_cannot_take_a_scripts_own_name`
 
-**C-run-38** A script's error gives the line and column in the script as it was written. The script is run inside a function Corbie adds, and positions that count the added part point at the wrong line. *Test:* `run_error_position_matches_script_as_written`
+**C-run-38** A script's error gives the line and column in the script, or in the file it loads, as it was written. Each is run inside a function Corbie adds, and positions that count the added part point at the wrong line. *Test:* `run_error_position_matches_script_as_written`
 
 **C-run-39** A source map named in a script is never read. Reading one opens whatever file the script names, outside every permission check. *Test:* `run_source_map_named_in_script_is_never_read`
 

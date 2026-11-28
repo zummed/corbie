@@ -8,6 +8,8 @@ import (
 	"errors"
 	"fmt"
 	"maps"
+	"math"
+	"math/big"
 	"reflect"
 	"slices"
 	"strconv"
@@ -477,7 +479,7 @@ func (e *Evaluator) run(program *goja.Program, args []goja.Value) (text string, 
 	if err == nil {
 		stringify, _ := goja.AssertFunction(e.vm.Get("JSON").ToObject(e.vm).Get("stringify"))
 		var out goja.Value
-		if out, err = stringify(goja.Undefined(), result); err == nil {
+		if out, err = stringify(goja.Undefined(), result, e.vm.ToValue(e.data)); err == nil {
 			if goja.IsUndefined(out) {
 				return "null", nil
 			}
@@ -495,6 +497,24 @@ func (e *Evaluator) run(program *goja.Program, args []goja.Value) (text string, 
 		return "", errors.New("it calls itself without end")
 	}
 	return "", err
+}
+
+// data is the replacer an expression's value is written out with: NaN,
+// Infinity and a BigInt are refused, as a script's are.
+func (e *Evaluator) data(call goja.FunctionCall) goja.Value {
+	v := call.Argument(1)
+	if _, isObject := v.(*goja.Object); isObject {
+		return v
+	}
+	switch x := v.Export().(type) {
+	case float64:
+		if math.IsNaN(x) || math.IsInf(x, 0) {
+			panic(e.vm.ToValue(v.String() + " is not data"))
+		}
+	case *big.Int:
+		panic(e.vm.ToValue("a BigInt is not data"))
+	}
+	return v
 }
 
 func scopeNames(scope Scope) []string {
@@ -585,7 +605,7 @@ func truthy(v any) bool {
 	case bool:
 		return v
 	case float64:
-		return v != 0 && v == v
+		return v != 0
 	case string:
 		return v != ""
 	}

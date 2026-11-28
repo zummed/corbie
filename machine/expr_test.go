@@ -193,6 +193,25 @@ func Test_mach_thrown_value_is_shown_within_the_limit(t *testing.T) {
 	}
 }
 
+func Test_mach_expression_value_that_is_not_data_fails(t *testing.T) {
+	e := eval(t)
+	scope := Scope{"input": map[string]any{"items": []any{map[string]any{"price": 4.0, "qty": 2.0}, map[string]any{"price": 3.0}}}}
+	for text, want := range map[string]string{
+		"${input.items.reduce((s, i) => s + i.price * i.qty, 0)}": "stages.total.job.input.total: ${input.items.reduce((s, i) => s + i.price * i.qty, 0)}: NaN is not data",
+		"${ {a: [1, 1 / 0]} }":  "stages.total.job.input.total: ${{a: [1, 1 / 0]}}: Infinity is not data",
+		"n is ${-1 / 0}":        "stages.total.job.input.total: ${-1 / 0}: -Infinity is not data",
+		"${10n}":                "stages.total.job.input.total: ${10n}: a BigInt is not data",
+		"${input.n > 0 || NaN}": "stages.total.job.input.total: ${input.n > 0 || NaN}: NaN is not data",
+	} {
+		if got, err := e.Fill(text, scope, "stages.total.job.input.total"); err == nil || err.Error() != want {
+			t.Errorf("%s gave %v (%v)\nwant: %s", text, got, err, want)
+		}
+	}
+	if got, err := e.Fill("${input.missing}", scope, "place"); err != nil || got != nil {
+		t.Fatalf("undefined gave %v (%v), want null", got, err)
+	}
+}
+
 func Test_mach_expression_depth_is_bounded(t *testing.T) {
 	e := eval(t)
 	_, err := e.Eval("(function f() { return f() })()", Scope{"input": nil})

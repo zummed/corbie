@@ -180,7 +180,7 @@ A refused call stops the job with the status denied. Every refusal says three th
 
 A definition may list in `approve:` permissions a job may use only after a yes. Before any job in that machine, or in a machine below it, starts, the permissions it declares are read against the list. A job that declares one of them, or a group that contains one, is marked for approval, exactly as a job with `approve: true` is: it starts only after a `before` hook (see Machines). Whether a job is marked depends on what it declares alone, before anything is sent for it.
 
-A called run takes only its own file's hooks, and its marked jobs are denied if it has no `before` hook for them. A call and a `job: { send: … }` are jobs, so the caller's `approve: [send:…]` marks them. Each declares only `send:` to the location it names, so `approve: [send:a]` marks a call to `a` and not one to `b` in the same machine. A statechart's send action is no job, and is never held.
+A called run takes only its own file's hooks: one that marks a job and has no `before` hook of its own is refused as it starts. A call and a `job: { send: … }` are jobs, so the caller's `approve: [send:…]` marks them. Each declares only `send:` to the location it names, so `approve: [send:a]` marks a call to `a` and not one to `b` in the same machine. A statechart's send action is no job, and is never held.
 
 Approval only ever holds. An approved job gets exactly what its layers already allowed, and no hook gives a job what a layer refuses. A job never stops halfway to wait for a person.
 

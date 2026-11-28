@@ -1,0 +1,6 @@
+{
+  "note": "R-mach-114: a child run whose definition marks a job, with no before hook in it or in a machine above it, is refused as it starts with status error, and its parent's stage fails.",
+  "status": "failed",
+  "failure": "error",
+  "error_contains": ["kid: ", "no hook runs before it"]
+}

@@ -309,7 +309,7 @@ The detailed rules behind the [Machines overview](../machine.md). Area code: `ma
 **R-mach-170** A job may write `meta:`, data of any kind, which hooks read as `job.meta` and nothing else reads. A job of a machine made while running gives hooks no `meta`.
 *Accept:* parity case 152: each tool says in `meta:` where it is approved, one hook asks there, and a marked tool with no `meta:` is denied, since the hook cannot be filled in. *Test:* `mach_made_machine_gives_hooks_no_meta`
 
-**R-mach-91** A job marked for approval, by `approve: true` or by a permission its machine or a machine above it lists in `approve:` (see Permissions, R-perm-42), starts only after a `before` hook. With no `before` hook for it, it is denied.
+**R-mach-91** A job marked for approval, by `approve: true` or by a permission its machine or a machine above it lists in `approve:` (see Permissions, R-perm-42), starts only after a `before` hook. With no `before` hook whose `when:` holds for it, it is denied.
 *Accept:* parity case 63. Parity case 148: the one hook's `when:` does not hold for the marked job, which is denied.
 
 **R-mach-109** A hook has no time limit of its own; its job's timeout is how long it may take.
@@ -321,8 +321,8 @@ The detailed rules behind the [Machines overview](../machine.md). Area code: `ma
 **R-mach-113** A job that starts a child is held like any other, before the child exists.
 *Accept:* parity case 96.
 
-**R-mach-114** A definition a client starts that marks a job for approval and has no `before` hook is refused when checked as it starts. A file in a tree is recorded all the same, since it may run as another machine's child, under that machine's hooks.
-*Accept:* a root flow that marks a stage for approval and writes no hook is refused when started, and nothing is started; submitted in a tree, it is recorded at its location.
+**R-mach-114** A run whose definition marks a job for approval, and that has no `before` hook in its definition or in a machine above it, is refused as it starts: a client's start starts nothing, and a child run, or one a call or a send starts, fails with status `error`. A machine made while running is the exception (R-mach-163). A file in a tree is recorded all the same, since it may run as another machine's child, under that machine's hooks.
+*Accept:* a root flow that marks a stage for approval and writes no hook is refused when started, and nothing is started; submitted in a tree, it is recorded at its location. Parity case 182: such a child under a parent with no hook fails as it starts, and the parent's stage fails. A called location with no hook of its own fails as it starts though its caller has a hook (`Test_ctl_called_run_takes_only_its_own_files_hooks`).
 
 **R-mach-115** A machine run as a hook takes no hook from above it, and the `approve:` lists above it mark none of its jobs: one that marks a job and has no `before` hook of its own is refused.
 *Accept:* parity case 77.

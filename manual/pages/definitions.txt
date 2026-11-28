@@ -467,9 +467,9 @@ A job is marked for approval in two cases.
   A call or a send job declares only `send:` for its location.
 
 A marked job starts only after a `before` hook, with no permission it did not
-have. One that no `before` hook is for fails with status `denied`, and a run of
-a definition that marks a job and has no `before` hook in it or above it is
-refused as it starts.
+have. One that no `before` hook's `when:` holds for fails with status
+`denied`, and a run of a definition that marks a job and has no `before` hook
+in it or above it is refused as it starts.
 
 A script hook runs alone under `corbie test`. This one refuses a job whose
 `allow:` list has an `fs.write` entry.

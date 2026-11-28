@@ -1,0 +1,7 @@
+# The root flow has no hook. Its child marks a job approve: true and has no
+# hook of its own, so the child is refused as it starts.
+flow: parent
+stages:
+  kid:
+    job: { machine: ./guarded-flow.yaml, input: { n: 1 } }
+output: ${stages.kid.output}

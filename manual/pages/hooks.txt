@@ -92,7 +92,8 @@ Which hooks run
 - Every hook whose `when:` holds runs, one at a time: the machine's own in the
   order of their names, then those of each machine above it.
 - A hook runs once for one job, and its job is named for both, as `refund.0.small`.
-- A run that a send or a call started takes only its own file's hooks.
+- A run that a send or a call started takes only its own file's hooks: when it
+  marks a job and its file has no `before` hook, it is refused as it starts.
 - A machine made while running writes no hooks, as `corbie manual definitions`
   says under Words from outside.
 

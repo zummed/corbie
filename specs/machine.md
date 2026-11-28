@@ -574,8 +574,9 @@ return { ok: true, input: { ...input.job.input, channel: "#test" } }
 A job can be made to wait for a yes before it starts. A job is marked for approval by `approve: true`, or when it declares a permission that its machine, or a machine above it, lists in `approve:` (see permission.md). Being approved gives a job nothing it was not already allowed.
 
 - `job.approve` is true for a marked job, so a hook with `when: "${job.approve}"` is for the jobs that wait for a yes.
-- A marked job that no `before` hook is for is denied.
-- A definition a client starts, which marks a job and has no `before` hook, is refused. A file in a tree is recorded all the same, since it may run as a child under another machine's hooks.
+- A marked job that no `before` hook's `when:` holds for is denied.
+- A run whose definition marks a job, and that has no `before` hook in it or in a machine above it, is refused as it starts. A client's start starts nothing, and a child run, or one a call or a send starts, fails with status `error`. A machine made while running is not refused: its marked job is denied when it is asked for.
+- A file in a tree that marks a job and has no `before` hook is recorded all the same, since it may run as a child under another machine's hooks.
 - A call or a `job: { send }` is a job, and declares only `send:` to the location it names, so `approve: [send:…]` marks it when the list names that location. A statechart's send action is no job, and takes no hook.
 
 Waiting for a person happens inside the hook, typically a statechart that issues a ticket and ends with `{ ok }`.

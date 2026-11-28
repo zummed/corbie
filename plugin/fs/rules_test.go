@@ -195,10 +195,38 @@ func TestUsedEntryForAScratchPathWorksInTheNextJob(t *testing.T) {
 	}
 }
 
-func TestListLeavesOutWhatTheJobMayNotRead(t *testing.T) {
+// A listing gives every entry of the directory asked for, and goes only into
+// the directories below that the job may read.
+func TestListGivesEveryEntryAndGoesIntoWhatTheJobMayRead(t *testing.T) {
 	job := newJob(t, []string{"fs.read:**"}, []string{"fs.read:tree/sub/keep/**", "fs.read:tree/z.txt"})
 	tree(t, job.Scratch, "tree/a.txt", "tree/sub/b.txt", "tree/sub/keep/c.txt", "tree/z.txt")
-	listed, err := do(job, "list", "tree", plugin.Options{"deep": true})
+	if got := names(t, job, "tree", true); got != "a.txt sub sub/b.txt sub/keep z.txt" {
+		t.Fatalf("the listing shows: %s", got)
+	}
+	// Each directory listed is noted as used.
+	if used := strings.Join(job.Perms.Used(), " "); used != "fs.read:tree fs.read:tree/sub" {
+		t.Fatalf("the listing is noted as having used %s", used)
+	}
+}
+
+// With the entries a listing used, a job lists the same again.
+func TestListWithWhatItUsedListsTheSame(t *testing.T) {
+	for _, deep := range []bool{false, true} {
+		first := newJob(t, []string{"all"}, nil)
+		tree(t, first.Scratch, "tree/a.txt", "tree/sub/b.txt", "tree/sub/deeper/c.txt")
+		listed := names(t, first, "tree", deep)
+		next := newJob(t, first.Perms.Used(), nil)
+		tree(t, next.Scratch, "tree/a.txt", "tree/sub/b.txt", "tree/sub/deeper/c.txt")
+		if again := names(t, next, "tree", deep); again != listed {
+			t.Fatalf("with deep %v, allowed %v, the listing %q became %q", deep, first.Perms.Used(), listed, again)
+		}
+	}
+}
+
+// names lists a directory and gives the entries' names.
+func names(t *testing.T, job *plugin.Job, dir string, deep bool) string {
+	t.Helper()
+	listed, err := do(job, "list", dir, plugin.Options{"deep": deep})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -206,14 +234,7 @@ func TestListLeavesOutWhatTheJobMayNotRead(t *testing.T) {
 	for _, entry := range listed.([]any) {
 		names = append(names, entry.(map[string]any)["name"].(string))
 	}
-	if got := strings.Join(names, " "); got != "a.txt sub sub/b.txt" {
-		t.Fatalf("the listing shows: %s", got)
-	}
-	// Only the directory asked for is noted as used: looking at what is in it
-	// used nothing.
-	if used := job.Perms.Used(); len(used) != 1 || used[0] != "fs.read:tree" {
-		t.Fatalf("the listing is noted as having used %v", used)
-	}
+	return strings.Join(names, " ")
 }
 
 func Test_plug_fs_write_keeps_mode(t *testing.T) {

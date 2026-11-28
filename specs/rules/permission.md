@@ -177,7 +177,7 @@ The detailed rules behind the [Permissions overview](../permission.md). Requirem
 *Accept:* a script reads `/srv/a`, connects to `api.github.com` on port 443, is refused a program and then throws. Its result is an error, and it lists an `fs.read` entry for `/srv/a` and a `net` entry for that host, and no `exec` entry. A job allowed `disk` and `network` that reads one file has a list holding the one read and no `net` entry.
 
 **R-perm-52** What a job used can be written into the definition in place of something looser.
-*Accept:* a job with `allow: [all, secret:K@*]` ends done. The entries its result lists are pasted in place of both, and the job started again with the same input ends done.
+*Accept:* a job with `allow: [all, secret:K@*]` ends done. The entries its result lists are pasted in place of both, and the job started again with the same input ends done with the same output. A job that lists a directory, with `deep` and without, gives the same listing again.
 
 ## A job allowed nothing
 

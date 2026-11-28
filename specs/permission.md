@@ -186,7 +186,7 @@ Approval only ever holds. An approved job gets exactly what its layers already a
 
 ## What a job used
 
-Every job's result lists the permissions it used. That gives a way to go from loose to strict: run with everything allowed, read what was used, and write that into the definition.
+Every job's result lists the permissions it used. That gives a way to go from loose to strict: run with everything allowed, read what was used, and write that into the definition. Those entries allow the job everything it did.
 
 ## A job allowed nothing
 

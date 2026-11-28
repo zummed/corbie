@@ -258,10 +258,9 @@ func (j *Job) Entry(path string) (string, error) {
 }
 
 // MayRead says whether the job may read what is at a path, given as it
-// really is, without noting it as used: a listing leaves out what the job
-// may not read.
+// really is, and notes the read as used when it may.
 func (j *Job) MayRead(real string) bool {
-	return j.Perms.Peek(permission.Read, filepath.ToSlash(real))
+	return j.Perms.Check(permission.Read, filepath.ToSlash(real)) == nil
 }
 
 // Whole checks that the job is allowed the whole of a group: "network",

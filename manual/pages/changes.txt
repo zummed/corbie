@@ -33,6 +33,9 @@ These are new.
 - A flow's `output:` that reads a part a stage does not have, such as
   `${stages.fetch.status}`, is refused when the definition is checked. It
   read as null before. A stage has output, failed, error, skipped and emitted.
+- `fs.list(dir)` with `fs.read:dir` gives every entry in `dir`; it gave only
+  the entries the job could read before. With `deep`, it goes only into the
+  directories the job may read, and `used:` lists each one.
 
 After 0.43.0
 ------------

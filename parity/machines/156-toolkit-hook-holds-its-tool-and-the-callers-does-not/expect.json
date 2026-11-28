@@ -1,14 +1,14 @@
 {
   "status": "done",
   "output": { "result": "added milk" },
-  "note": "R-kit-06, R-perm-69: a toolkit's hooks run for its tools' jobs and read job.tool; a caller's hooks do not.",
+  "note": "R-kit-06, R-perm-69: a toolkit's hooks run for its tools' jobs and read job.tool, with the request's said; a caller's hooks do not.",
   "record": [
     {
       "machine": "notes",
       "ask": {
         "kind": "script",
         "name": "add_note.team",
-        "job": { "input": { "tool": { "toolkit": "notes", "name": "add_note", "args": { "text": "milk" } } } }
+        "job": { "input": { "tool": { "toolkit": "notes", "name": "add_note", "args": { "text": "milk" }, "said": "we are out" } } }
       }
     },
     { "machine": "caller", "ask": { "kind": "script", "name": "add.approval" }, "absent": true }

@@ -1,5 +1,6 @@
 # The toolkit marks its tool's job for approval. The toolkit's own hook
-# runs for it, reads the call as job.tool, and says yes. The caller's hook,
+# runs for it, reads the call as job.tool, with what the caller said of it,
+# and says yes. The caller's hook,
 # which says no, does not run for it.
 flow: caller
 allow: [send:notes]
@@ -9,5 +10,5 @@ stages:
   add:
     job:
       call: { at: notes }
-      input: { request: { do: call, tool: add_note, args: { text: milk } } }
+      input: { request: { do: call, tool: add_note, args: { text: milk }, said: we are out } }
 output: ${stages.add.output}

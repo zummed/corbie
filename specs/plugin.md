@@ -79,6 +79,7 @@ A plugin's page in the manual is its specification. It lists each call, its opti
 - A server on the web may answer a call with a task, which ends later. The call gives `{ working, state }`, and a resume with that state, in the same job or another, asks the server once.
 - A call or a task that needs input gives `{ requests, state }`, and a resume with the responses answers it.
 - A program stops when its job ends, so the plugin waits in the job for a program's task.
+- The plugin sends the server nothing of a request's `said`.
 
 A server that has the Skills extension, `io.modelcontextprotocol/skills`, gives its skills as toolkits inside its own:
 

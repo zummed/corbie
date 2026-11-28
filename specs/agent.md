@@ -255,6 +255,7 @@ tools:
 | `call: location` | as runs at that location | that location's |
 
 - The entry's `input:` is the toolkit's input, with `request` added by the agent. A toolkit at another location is recorded in that tree, so the agent passes on only what its entry writes.
+- For an entry written `machine:`, the request of a call, a resume or a cancel carries `said`, what the model said in that turn. A hook that runs for the tool's job in the toolkit's run reads it as `job.tool.said`, as the agent's own hooks do.
 - The toolkit's `description:` is the machine's, which the model reads before it opens it.
 - The toolkit checks a call's arguments against the tool's shape. Arguments that do not fit fail the toolkit's run, and go back to the model as an error. The agent gives the arguments as the model gave them, with each blob's name turned into the blob.
 - A blob among a tool's arguments is offered to the model as `format: blob`, and the model gives the name it was shown, as for a tool written in place. A name the conversation has not shown goes back to the model as an error. A resume sends the same blobs again, and a hook reads the arguments of the call and of its resume as the model gave them.

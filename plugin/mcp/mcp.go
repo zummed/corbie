@@ -477,7 +477,8 @@ func (s *server) toolkit(job *plugin.Job, first any, _ plugin.Options) (any, err
 		return nil, err
 	}
 	for key := range request {
-		if !slices.Contains([]string{"do", "toolkit", "tool", "args", "state", "responses"}, key) {
+		// said is for the toolkit's hooks, and the server is not sent it.
+		if !slices.Contains([]string{"do", "toolkit", "tool", "args", "state", "responses", "said"}, key) {
 			return nil, plugin.Errorf(plugin.BadInput, "a request to a toolkit has no %s", key)
 		}
 	}
@@ -1015,7 +1016,7 @@ Options:
   { do: "cancel", tool, state }              gives { result }
   entries are the server's tools, each { kind: "tool", name, description,
   args }. result is what call gives. state is what the call ended with, and
-  responses are as for call.
+  responses are as for call. A request's said is not sent to the server.
 - A server with the Skills extension gives each skill in an open as
   { kind: "toolkit", name, description }. A request with toolkit: [name]
   is for that skill: an open gives its SKILL.md as the instructions and one

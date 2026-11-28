@@ -229,6 +229,10 @@ agent with many tools shows the model the ones it has opened.
   refuses opens nothing.
 - The agent's hooks run for the open and for each call. A toolkit's own
   `hooks:` run for its tools' jobs.
+- A toolkit written `machine:` runs at the agent's location, so the agent's
+  hooks run for its tools' jobs too. There `job.tool` is
+  `{ toolkit, name, args, said }`, where `toolkit` is the toolkit's own name.
+  A toolkit written `call:` is given nothing the model said.
 - A toolkit's list may hold a toolkit. The result of `open` names it, the
   model opens it with the list's name, `{ list: github, name: review }`,
   and its tools are shown as `github_review_read`.

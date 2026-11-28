@@ -84,10 +84,12 @@ func TestToolkitRefusesARequestItCannotRead(t *testing.T) {
 	}{
 		{nil, "a toolkit is given request: in its input"},
 		{map[string]any{"do": "list"}, "request.do: a request's do is open, call, resume or cancel"},
-		{map[string]any{"do": "open", "at": "/elsewhere"}, "request.at: a request holds do, toolkit, tool, args, state and responses"},
+		{map[string]any{"do": "open", "at": "/elsewhere"}, "request.at: a request holds do, toolkit, tool, args, state, responses and said"},
 		{map[string]any{"do": "call"}, "request.tool: a call names its tool"},
 		{map[string]any{"do": "resume", "tool": "add_note"}, "request.state: a resume gives the state its call ended with"},
 		{map[string]any{"do": "open", "toolkit": "inner"}, "request.toolkit: this is a list of the names"},
+		{map[string]any{"do": "call", "tool": "add_note", "said": 7}, "request.said: this is a text"},
+		{map[string]any{"do": "open", "said": "why"}, "request.said: this is a text"},
 	} {
 		for _, src := range []string{notes, server} {
 			out := step(t, src, c.request, machine.Event{Name: machine.Start})

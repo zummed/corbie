@@ -17,6 +17,9 @@ This is new.
 - A call counts against `limits: { runs: }` in the step that makes it, as a
   send does: of two calls in one step to a location with `runs: 1`, the
   second fails with the reason.
+- A flow's `output:` that reads a part a stage does not have, such as
+  `${stages.fetch.status}`, is refused when the definition is checked. It
+  read as null before. A stage has output, failed, error, skipped and emitted.
 
 After 0.42.0
 ------------

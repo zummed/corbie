@@ -60,6 +60,9 @@ An expression reads `input`, `values`, `run` and these.
   stages.<name>.skipped    true if the stage was skipped
   stages.<name>.emitted    the values its job has emitted so far
 
+A read of a stage the flow does not have, or of a part not in this list, is
+refused when the definition is checked.
+
 A stage whose job is `call: { at: services/weather }` starts a run of that
 transient location and waits. Its output is that run's result, and it fails
 when that run fails. A stage whose job is `send:` is done once the event is

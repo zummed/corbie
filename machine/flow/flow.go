@@ -249,6 +249,12 @@ func (flowType) Check(c *machine.Checker, def *machine.Definition) {
 			c.Problem(place, "there is no stage named %q", name)
 		}
 	}
+	read := func(place string, r machine.Read) {
+		known(place, r.Name)
+		if r.Part != "" && !slices.Contains(parts, r.Part) {
+			c.Problem(place, "\"stages.%s.%s\" reads a part a stage does not have: a stage has output, failed, error, skipped and emitted", r.Name, r.Part)
+		}
+	}
 	after := map[string][]string{}
 	for _, name := range names {
 		stage, place := flow.Stages[name], "stages."+name
@@ -284,16 +290,13 @@ func (flowType) Check(c *machine.Checker, def *machine.Definition) {
 		}
 		all, _ := stage.reads()
 		for _, r := range all {
-			known(place, r.Name)
-			if r.Part != "" && !slices.Contains(parts, r.Part) {
-				c.Problem(place, "\"stages.%s.%s\" reads a part a stage does not have: a stage has output, failed, error, skipped and emitted", r.Name, r.Part)
-			}
+			read(place, r)
 		}
 		after[name] = stage.needs().after
 	}
 	c.Value("output", flow.Output, "input", "stages")
 	for _, r := range machine.ReadsIn(flow.Output, "stages") {
-		known("output", r.Name)
+		read("output", r)
 	}
 	if flow.Emit != "" {
 		known("emit", flow.Emit)

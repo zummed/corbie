@@ -337,6 +337,19 @@ func Test_flow_reference_to_missing_stage_is_refused(t *testing.T) {
 		  a: { job: { script: ./add.js, input: { n: 1 } } }
 		output: ${stages["nowhere"].output}
 	`, scripts, `no stage named "nowhere"`)
+	// A part a stage does not have is refused in output: as in a stage.
+	flowRefused(t, `
+		flow: bad
+		stages:
+		  a: { job: { script: ./add.js, input: { n: 1 } } }
+		output: { status: "${stages.a.status}" }
+	`, scripts, `"stages.a.status" reads a part a stage does not have`)
+	flowRefused(t, `
+		flow: bad
+		stages:
+		  a: { job: { script: ./add.js, input: { n: 1 } } }
+		output: ${stages.a.done}
+	`, scripts, `"stages.a.done" reads a part a stage does not have`)
 	// A send's data and a call's location are read as an input is.
 	flowRefused(t, `
 		flow: bad

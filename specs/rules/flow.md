@@ -21,7 +21,7 @@ The detailed rules behind the [Flow overview](../flow.md). Area code: `flow`. Wh
 
 **C-flow-01** Two ways of writing one reference to a stage draw the same arrow. An arrow the check misses lets a stage run before the one it reads. *Test:* `flow_reference_spellings_draw_the_same_arrow`
 
-**C-flow-02** A reference to a stage the flow does not have is reported when the definition is checked. The arrows come from the data, and an arrow to nothing leaves a stage waiting for ever. *Test:* `flow_reference_to_missing_stage_is_refused`
+**C-flow-02** A reference to a stage the flow does not have, or to a part a stage does not have, is reported when the definition is checked, in a stage and in `output:`. The arrows come from the data, and an arrow to nothing leaves a stage waiting for ever; a part a stage does not have reads as null. *Test:* `flow_reference_to_missing_stage_is_refused`
 
 ## Skipping
 

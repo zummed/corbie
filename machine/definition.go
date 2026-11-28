@@ -179,6 +179,7 @@ func (s *AddressSpec) Fill(e *Evaluator, scope Scope, place string) (*Address, e
 			return nil, fmt.Errorf("%s: %s gives %s, and an address is { at }, { at, key }, { at, run } or { client }", place, s.Expr, describe(v))
 		}
 	} else {
+		var errs []error
 		for _, f := range []struct {
 			written string
 			into    *string
@@ -188,17 +189,16 @@ func (s *AddressSpec) Fill(e *Evaluator, scope Scope, place string) (*Address, e
 				continue
 			}
 			text, err := e.Key(f.written, scope, place+"."+f.name)
-			if err != nil {
-				return nil, err
-			}
+			errs = append(errs, err)
 			*f.into = text
 		}
 		if s.Key != "" {
 			key, err := e.Key(s.Key, scope, place+".key")
-			if err != nil {
-				return nil, err
-			}
+			errs = append(errs, err)
 			a.Key = &key
+		}
+		if err := errors.Join(errs...); err != nil {
+			return nil, err
 		}
 	}
 	if err := a.Check(); err != nil {
@@ -207,38 +207,31 @@ func (s *AddressSpec) Fill(e *Evaluator, scope Scope, place string) (*Address, e
 	return a, nil
 }
 
-// Fill gives the job with its values filled in from a scope.
+// Fill gives the job with its values filled in from a scope. A job that
+// cannot be filled gives the error of every part that failed.
 func (s *JobSpec) Fill(e *Evaluator, scope Scope, place, name string) (*Job, error) {
 	job := &Job{Name: name, Files: s.Files, Deny: s.Deny, Restart: s.Restart,
 		Memory: s.Memory, Tags: s.Tags, Approve: s.Approve, Meta: s.Meta, Alone: s.Alone}
+	var errs []error
 	var err error
-	if job.Input, err = e.Fill(s.Input, scope, place+".input"); err != nil {
-		return nil, err
-	}
-	if job.Timeout, err = e.Duration(s.Timeout, scope, place+".timeout"); err != nil {
-		return nil, err
-	}
+	job.Input, err = e.Fill(s.Input, scope, place+".input")
+	errs = append(errs, err)
+	job.Timeout, err = e.Duration(s.Timeout, scope, place+".timeout")
+	errs = append(errs, err)
 	if s.Send != nil {
 		to, err := s.Send.To.Fill(e, scope, place+".send.to")
-		if err != nil {
-			return nil, err
-		}
+		errs = append(errs, err)
 		data, err := e.Fill(s.Send.Data, scope, place+".send.data")
-		if err != nil {
-			return nil, err
-		}
+		errs = append(errs, err)
 		job.Send = &Send{At: to, Event: s.Send.Event, Data: data}
 	}
 	if s.Call != nil {
-		if job.Call, err = s.Call.Fill(e, scope, place+".call"); err != nil {
-			return nil, err
-		}
+		job.Call, err = s.Call.Fill(e, scope, place+".call")
+		errs = append(errs, err)
 	}
 	for i, entry := range s.Allow {
 		filled, err := e.Entry(entry, Scope{"input": scope["input"]}, fmt.Sprintf("%s.allow[%d]", place, i))
-		if err != nil {
-			return nil, err
-		}
+		errs = append(errs, err)
 		job.Allow = append(job.Allow, filled)
 	}
 	from, which := s.Script, "script"
@@ -247,16 +240,16 @@ func (s *JobSpec) Fill(e *Evaluator, scope Scope, place, name string) (*Job, err
 	}
 	if !HasExpr(from) {
 		job.Script, job.Machine = s.Script, s.Machine
-		return job, nil
+	} else if stored, err := e.Text(from, scope, place+"."+which); err != nil {
+		errs = append(errs, err)
+	} else if _, ok := blob.AsRef(stored); !ok || isDefinition(stored) != s.IsMachine() {
+		errs = append(errs, fmt.Errorf("%s.%s: %s did not give a stored %s", place, which, from, which))
+	} else {
+		job.Stored = stored
 	}
-	stored, err := e.Text(from, scope, place+"."+which)
-	if err != nil {
+	if err := errors.Join(errs...); err != nil {
 		return nil, err
 	}
-	if _, ok := blob.AsRef(stored); !ok || isDefinition(stored) != s.IsMachine() {
-		return nil, fmt.Errorf("%s.%s: %s did not give a stored %s", place, which, from, which)
-	}
-	job.Stored = stored
 	return job, nil
 }
 

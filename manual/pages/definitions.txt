@@ -172,6 +172,8 @@ It may use JavaScript's operators, `? :`, arrow functions, methods such as
 - A value that holds `NaN`, `Infinity` or a BigInt fails the expression, and
   the error names the value, as `NaN is not data`. `${input.price * input.qty}`
   with no `qty` fails; `${input.price * (input.qty ?? 1)}` does not.
+- A step whose expressions fail reports every one, one to a line, each with
+  its place.
 - `when:` is a condition on a flow's stage, a statechart's transition, and an
   entry of an agent's `tools:`.
 - A condition holds unless its value is false, null, zero or empty text. An

@@ -1,0 +1,7 @@
+# A stage's input holds two expressions that fail. The run's error names
+# both, each with its place.
+flow: two-wrong
+stages:
+  s:
+    job: { script: ./echo.js, input: { x: "${input.a.b}", y: "${input.c.d}" } }
+output: ${stages.s.output}

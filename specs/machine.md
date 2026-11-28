@@ -222,6 +222,13 @@ A field that a value does not have reads as `undefined`, as with a stage that ha
 
 A value that holds `NaN`, `Infinity` or a BigInt is not data, as in a script, and the expression fails, naming its place and the value. With the input `{ price: 3 }`, a stage `total` whose input is `total: "${input.price * input.qty}"` fails with `stages.total.job.input.total: ${input.price * input.qty}: NaN is not data`, and `${input.price * (input.qty ?? 1)}` gives 3.
 
+A step that cannot fill in its values fails with the error of every expression that failed, one to a line, as the check reports its problems. Each names its place, a mapping's keys in sorted order and a list's items by position. Started with `{}`, a stage `s` whose input is `{ x: "${input.a.b}", y: "${input.c.d}" }` fails with:
+
+```
+stages.s.job.input.x: ${input.a.b}: TypeError: Cannot read property 'b' of undefined
+stages.s.job.input.y: ${input.c.d}: TypeError: Cannot read property 'd' of undefined
+```
+
 Everything else that varies from one run of a definition to the next comes in through `input`, and from one tree to the next through `values`.
 
 A value is read by its name, as `values.HUB` or `values['HUB']`. `values[input.name]` and `values` alone are refused, so the values a file reads can be listed. An expression that reads a value not set at the run's location or above fails, naming the value and the location.

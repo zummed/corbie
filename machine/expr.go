@@ -527,29 +527,34 @@ func scopeNames(scope Scope) []string {
 }
 
 // Fill gives a value with every expression in it filled in. Place says
-// where in the definition the value is, for an error to name.
+// where in the definition the value is, for an error to name. A value
+// that cannot be filled gives the error of every expression that failed.
 func (e *Evaluator) Fill(value any, scope Scope, place string) (any, error) {
 	switch v := value.(type) {
 	case string:
 		return e.Text(v, scope, place)
 	case map[string]any:
 		out := make(map[string]any, len(v))
+		var errs []error
 		for _, k := range slices.Sorted(maps.Keys(v)) {
 			filled, err := e.Fill(v[k], scope, place+"."+k)
-			if err != nil {
-				return nil, err
-			}
+			errs = append(errs, err)
 			out[k] = filled
+		}
+		if err := errors.Join(errs...); err != nil {
+			return nil, err
 		}
 		return out, nil
 	case []any:
 		out := make([]any, len(v))
+		var errs []error
 		for i, item := range v {
 			filled, err := e.Fill(item, scope, fmt.Sprintf("%s[%d]", place, i))
-			if err != nil {
-				return nil, err
-			}
+			errs = append(errs, err)
 			out[i] = filled
+		}
+		if err := errors.Join(errs...); err != nil {
+			return nil, err
 		}
 		return out, nil
 	}
@@ -567,6 +572,7 @@ func (e *Evaluator) Text(text string, scope Scope, place string) (any, error) {
 		return nil, fmt.Errorf("%s: %w", place, err)
 	}
 	var b strings.Builder
+	var errs []error
 	for _, p := range parts {
 		if !p.expr {
 			b.WriteString(p.text)
@@ -574,7 +580,8 @@ func (e *Evaluator) Text(text string, scope Scope, place string) (any, error) {
 		}
 		v, err := e.Eval(p.text, scope)
 		if err != nil {
-			return nil, fmt.Errorf("%s: ${%s}: %w", place, shown(p.text), err)
+			errs = append(errs, fmt.Errorf("%s: ${%s}: %w", place, shown(p.text), err))
+			continue
 		}
 		if len(parts) == 1 {
 			return v, nil
@@ -585,6 +592,9 @@ func (e *Evaluator) Text(text string, scope Scope, place string) (any, error) {
 			shown, _ := json.Marshal(v, json.Deterministic(true))
 			b.Write(shown)
 		}
+	}
+	if err := errors.Join(errs...); err != nil {
+		return nil, err
 	}
 	return b.String(), nil
 }

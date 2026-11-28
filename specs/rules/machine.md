@@ -90,6 +90,9 @@ The detailed rules behind the [Machines overview](../machine.md). Area code: `ma
 
 **C-mach-171** An expression whose value holds `NaN`, `Infinity` or a BigInt fails, and the error names the expression's place and the value, as `NaN is not data`. JSON has no such value: let through, `NaN` and `Infinity` become null and the run goes on with a value nothing wrote. *Test:* `mach_expression_value_that_is_not_data_fails`
 
+**R-mach-172** A step that cannot fill in its values fails with the error of every expression that failed, each naming its place, in the same order every time the step is taken.
+*Accept:* parity case 172: a stage whose input holds two expressions that fail fails with both errors, `x` before `y`. A job whose `timeout:`, input mapping and input list hold failing expressions gives every one, with the same text on every fill. *Test:* `mach_step_reports_every_failing_expression`
+
 **R-mach-30** The time an expression sees is the time of the step, in UTC, taken from the step's inputs; random numbers differ from one expression to the next but are the same if the step is taken again.
 *Accept:* two expressions in one step read the time and get the same value, and each asks for a random number and gets a different one. The step taken again, by another copy of the controller at a later moment, gives the same time and the same two numbers. On a computer set to another zone, `new Date().getHours()` gives the step's hour in UTC.
 

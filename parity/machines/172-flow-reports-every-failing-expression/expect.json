@@ -1,0 +1,8 @@
+{
+  "status": "failed",
+  "failure": "error",
+  "error_contains": [
+    "stages.s.job.input.x: ${input.a.b}: TypeError: Cannot read property 'b' of undefined\nstages.s.job.input.y: ${input.c.d}: TypeError: Cannot read property 'd' of undefined"
+  ],
+  "note": "R-mach-172: a step that cannot fill its values reports every expression that failed, each naming its place, in the order of their places."
+}

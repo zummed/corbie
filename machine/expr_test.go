@@ -259,3 +259,23 @@ func Test_perm_filled_scope_refuses_missing_empty_nontext_nested(t *testing.T) {
 		}
 	}
 }
+
+func Test_mach_step_reports_every_failing_expression(t *testing.T) {
+	spec := &JobSpec{Script: "./a.js", Timeout: "${input.t.s}", Input: map[string]any{
+		"y": "${input.c.d}", "x": "${input.a.b}", "ok": "${input.n}",
+		"list": []any{"${1n}", "at ${input.e.f} and ${input.g.h}"}}}
+	want := strings.Join([]string{
+		`stages.s.job.input.list[0]: ${1n}: a BigInt is not data`,
+		`stages.s.job.input.list[1]: ${input.e.f}: TypeError: Cannot read property 'f' of undefined`,
+		`stages.s.job.input.list[1]: ${input.g.h}: TypeError: Cannot read property 'h' of undefined`,
+		`stages.s.job.input.x: ${input.a.b}: TypeError: Cannot read property 'b' of undefined`,
+		`stages.s.job.input.y: ${input.c.d}: TypeError: Cannot read property 'd' of undefined`,
+		`stages.s.job.timeout: ${input.t.s}: TypeError: Cannot read property 's' of undefined`,
+	}, "\n")
+	for range 5 {
+		_, err := spec.Fill(eval(t), Scope{"input": map[string]any{"n": 1.0}}, "stages.s.job", "s")
+		if err == nil || err.Error() != want {
+			t.Fatalf("the job's error reads\n%v\nwant\n%s", err, want)
+		}
+	}
+}

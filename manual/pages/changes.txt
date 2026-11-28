@@ -47,6 +47,8 @@ These are new.
 - An expression whose value holds `NaN` or `Infinity` fails, as a script's
   value does. It gave null before. Read a field that may be absent as
   `${input.qty ?? 1}`.
+- A step whose expressions fail reports every one, each with its place. It
+  reported only one before.
 - A call counts against `limits: { runs: }` in the step that makes it, as a
   send does: of two calls in one step to a location with `runs: 1`, the
   second fails with the reason.

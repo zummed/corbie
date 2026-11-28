@@ -664,3 +664,34 @@ func Test_ctl_call_restarts(t *testing.T) {
 		t.Fatalf("the caller called %v", callee)
 	}
 }
+
+// A step counts its calls against limits: { runs } as it counts its sends:
+// of three calls in one step to a location with limits: { runs: 1 }, the
+// first starts a run and the others fail with the reason.
+func Test_ctl_limit_runs_counts_calls_in_one_step(t *testing.T) {
+	w := newWorld(t)
+	run := w.calls(map[string]string{
+		"/t/caller": `
+	flow: caller
+	allow: ["send:lookup"]
+	stages:
+	  look: { each: [1, 2, 3], job: { call: { at: lookup }, input: "${item}" } }
+	output: ${stages.look.output}
+`,
+		"/t/lookup": strings.Replace(waiter, "limits: { timeout: 72h }", "limits: { timeout: 72h, runs: 1 }", 1),
+	}, nil)
+	var failed []string
+	for _, step := range w.steps(run) {
+		for _, ask := range step.Asks {
+			if ask.Kind == instance.AskFail {
+				failed = append(failed, ask.Error.Error)
+			}
+		}
+	}
+	if len(w.called(run)) != 1 || len(failed) != 2 || !strings.Contains(failed[0], "/t/lookup is at its limit of 1 runs") {
+		t.Fatalf("the caller called %v, and failed %q", w.called(run), failed)
+	}
+	if runs := w.runsOf("lookup"); len(runs) != 1 {
+		t.Fatalf("the runs of the lookup are %v", runs)
+	}
+}

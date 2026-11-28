@@ -1,0 +1,13 @@
+{
+  "status": "done",
+  "output": {
+    "calls": [
+      { "item": 1, "output": { "n": 1 } },
+      { "item": 2, "error": { "<contains>": "/case/busy is at its limit of 1 runs" } }
+    ]
+  },
+  "record": [
+    { "machine": "busy", "status": "done" }
+  ],
+  "note": "R-ctl-124: a call in a step is counted against limits: { runs }, as a send is."
+}

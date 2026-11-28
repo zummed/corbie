@@ -14,6 +14,9 @@ This is new.
   `read_file: { call: gitlab/files/read, input: { project: group/orders } }`.
   Its description and arguments are the machine's, as `corbie manual toolkit`
   says.
+- A call counts against `limits: { runs: }` in the step that makes it, as a
+  send does: of two calls in one step to a location with `runs: 1`, the
+  second fails with the reason.
 
 After 0.42.0
 ------------

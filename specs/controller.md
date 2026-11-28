@@ -249,7 +249,7 @@ An event sent to a key is the first event of its step. The events of a step afte
 
 An instance remembers the last message taken from each of its 64 most recent senders, and one that does not sort after it is a copy from a carry-out done again.
 
-`limits: { runs }` is checked while the sender's step is worked out, by listing the key files at the location, and again when a message moves on to start a run. At a transient location it is checked again as the run starts, for a send, a call and a client's start alike. Starts from several runs at once may each find room, so the count can pass the cap by a few.
+`limits: { runs }` is checked while the step of a run that sends or calls is worked out, by listing the key files at the location and counting the runs the step starts there, and again when a message moves on to start a run. At a transient location it is checked again as the run starts, for a send, a call and a client's start alike. Starts from several runs at once may each find room, so the count can pass the cap by a few.
 
 A send costs one read of the file, and one of the location's file when it starts a run. A send, and a run starting at a transient location, lists nothing when the location has no `limits: { runs }`. A step's files are read side by side, since a step that does not fit in a pass is never written. Taking a key costs a read and a write, and reading the run it names when another has it. Freeing one costs a read and a delete.
 

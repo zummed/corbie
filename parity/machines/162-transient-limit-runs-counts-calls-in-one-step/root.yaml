@@ -1,0 +1,11 @@
+# A step counts its calls against limits: { runs }: of two calls of a
+# location with limits: { runs: 1 }, made in one step, the first starts a
+# run and the second fails with the reason.
+flow: caller
+allow: [send:busy]
+stages:
+  calls:
+    each: [1, 2]
+    job: { call: { at: busy }, input: { n: "${item}" } }
+output:
+  calls: ${stages.calls.output}

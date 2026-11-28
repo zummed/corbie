@@ -402,17 +402,10 @@ func (b *build) aim(ask *instance.Ask, s *machine.Send, at, why string) {
 			return
 		}
 	}
-	if b.targets == nil {
-		b.targets = map[addressed]*target{}
-	}
-	t := b.targets[addressed{at, ask.Key}]
-	if t == nil {
-		var err error
-		if t, err = b.p.aimAt(at, ask.Key, false); err != nil {
-			b.err = err
-			return
-		}
-		b.targets[addressed{at, ask.Key}] = t
+	t, err := b.targetAt(at, ask.Key)
+	if err != nil {
+		b.err = err
+		return
 	}
 	to, starts, why := t.aim(at, keyed)
 	if why != "" {
@@ -430,14 +423,37 @@ func (b *build) aim(ask *instance.Ask, s *machine.Send, at, why string) {
 		if keyed {
 			t.holder = to
 		}
-		for place, other := range b.targets {
-			if place.at == at && other != nil {
-				other.runs++
-			}
-		}
+		b.counted(at)
 	}
 	ask.To = to
 	b.ask(*ask)
+}
+
+// targetAt gives what the store says of { at } or { at, key }, read once in
+// a step.
+func (b *build) targetAt(at, key string) (*target, error) {
+	if b.targets == nil {
+		b.targets = map[addressed]*target{}
+	}
+	if t := b.targets[addressed{at, key}]; t != nil {
+		return t, nil
+	}
+	t, err := b.p.aimAt(at, key, false)
+	if err != nil {
+		return nil, err
+	}
+	b.targets[addressed{at, key}] = t
+	return t, nil
+}
+
+// counted counts a run the step starts at a location, for every key the
+// step reads there, so a later send or call in the step finds it.
+func (b *build) counted(at string) {
+	for place, other := range b.targets {
+		if place.at == at && other != nil {
+			other.runs++
+		}
+	}
 }
 
 // sent takes an event sent to the run by its address.

@@ -85,8 +85,9 @@ func (b *build) sendJobTo(job *instance.Going) (*machine.Error, error) {
 
 // call starts the run a call job calls: a root of the location's tree
 // client, named from the message that starts it. A location with nothing
-// recorded, or one that is not transient, fails the job before anything is
-// sent.
+// recorded, one that is not transient, or one at its limit of runs, fails
+// the job before anything is sent. The run is counted in the step as a
+// send's is.
 func (b *build) call(job *instance.Going) {
 	at := job.Call.At
 	file, err := b.p.readLocated(at)
@@ -101,6 +102,18 @@ func (b *build) call(job *instance.Going) {
 	case file.Lifetime != machine.LifetimeTransient:
 		b.fail(job, "%s is %s: a call starts a run only of a transient location", at, file.Lifetime)
 		return
+	}
+	if file.Runs > 0 {
+		t, err := b.targetAt(at, "")
+		if err != nil {
+			b.err = err
+			return
+		}
+		if _, _, why := t.aim(at, false); why != "" {
+			b.fail(job, "%s", why)
+			return
+		}
+		b.counted(at)
 	}
 	message := b.message("call")
 	job.Called = store.RootInstance(file.Client, b.time, message)

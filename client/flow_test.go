@@ -342,8 +342,8 @@ func Test_flow_reference_to_missing_stage_is_refused(t *testing.T) {
 		flow: bad
 		stages:
 		  a: { job: { script: ./add.js, input: { n: 1 } } }
-		output: { status: "${stages.a.status}" }
-	`, scripts, `"stages.a.status" reads a part a stage does not have`)
+		output: { failure: "${stages.a.failure}" }
+	`, scripts, `"stages.a.failure" reads a part a stage does not have`)
 	flowRefused(t, `
 		flow: bad
 		stages:

@@ -1,0 +1,29 @@
+# Three stages fail in three ways, and a stage handles each by its status.
+# `wrong` asks for a status `refused` does not have, and is skipped. A stage
+# that did not fail has the status null.
+flow: statuses
+stages:
+  slow:
+    job: { script: ./spin.js, timeout: 1s }
+  refused:
+    job: { send: { to: { at: room }, event: set } }
+  broken:
+    job: { script: ./fail.js }
+  on_timeout:
+    when: ${stages.slow.status == 'timeout'}
+    job: { script: ./echo.js, input: { status: "${stages.slow.status}" } }
+  on_denied:
+    when: ${stages.refused.status == 'denied'}
+    job: { script: ./echo.js, input: { status: "${stages.refused.status}" } }
+  on_error:
+    when: ${stages.broken.status == 'error'}
+    job: { script: ./echo.js, input: { status: "${stages.broken.status}" } }
+  wrong:
+    when: ${stages.refused.status == 'timeout'}
+    job: { script: ./echo.js, input: { status: "${stages.refused.status}" } }
+output:
+  timeout: ${stages.on_timeout.output.status}
+  denied: ${stages.on_denied.output.status}
+  error: ${stages.on_error.output.status}
+  wrong_skipped: ${stages.wrong.skipped}
+  none_if_not_failed: ${stages.on_error.status === null}

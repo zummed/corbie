@@ -1,0 +1,15 @@
+# `charge` fails, so `ship`, which reads its output, is skipped. The skip
+# does not spread to `apologise`, whose when: reads only whether each
+# failed: it is evaluated, and runs.
+flow: order
+stages:
+  charge:
+    job: { script: ./fail.js }
+  ship:
+    job: { script: ./echo.js, input: { paid: "${stages.charge.output}" } }
+  apologise:
+    when: ${stages.charge.failed || stages.ship.failed}
+    job: { script: ./echo.js, input: { ship_failed: "${stages.ship.failed}", ship_error: "${stages.ship.error}" } }
+output:
+  ship_skipped: ${stages.ship.skipped}
+  apologise: ${stages.apologise.output}

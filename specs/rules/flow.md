@@ -28,25 +28,25 @@ The detailed rules behind the [Flow overview](../flow.md). Area code: `flow`. Wh
 **R-flow-10** A stage with `when:` runs only if its condition holds.
 *Accept:* parity case 02: `gate` is skipped and no job is asked for it.
 
-**R-flow-11** A skip spreads along the arrows, `follows:` included: a stage that needs something from a skipped stage is skipped as well, unless its own condition asks whether that stage was skipped, in which case it runs if its condition holds.
-*Accept:* parity case 02: the stage that reads `gate`'s output is skipped, so is the stage that reads that stage's, and the stage whose condition asks whether `gate` was skipped runs. The same written with `follows:`.
+**R-flow-11** A stage that depends on a skipped stage for its output, by reading its output or emitted items, naming it in `follows:` or following its emits, is skipped as well, unless its own condition asks whether that stage was skipped. A stage that reads only a skipped stage's `failed`, `error`, `status` or `skipped` is not skipped for it: the skipped stage's `failed` reads false, `status` null and `skipped` true, and it has no `error`.
+*Accept:* parity case 02: the stage that reads `gate`'s output is skipped, so is the stage that reads that stage's, so is the stage that names `gate` in `follows:`, and the stage whose condition asks whether `gate` was skipped runs. Parity case 164: `ship` reads the failed `charge`'s output and is skipped, and `apologise`, whose `when:` reads `stages.charge.failed || stages.ship.failed`, runs and reads `stages.ship.failed` as false.
 
 **R-flow-14** A skipped stage has settled, and a flow whose stages have all run or been skipped ends well.
 *Accept:* parity case 02: the flow ends well, and its output says which stages were skipped.
 
 ## Failure
 
-**R-flow-16** A stage handles another's failure when its `when:` reads whether that stage failed, or its error, and so does the flow's `output:` when it reads them; reading them elsewhere, such as in a stage's input, handles nothing.
-*Accept:* parity case 04. Parity case 05's flow is run; the only stage that reads the error reads it in its input, and the flow fails with `bad`'s error. A flow whose only reader of `bad`'s failure is its `output:`, which reads `stages.bad.error`, ends well with the error in its output.
+**R-flow-16** A stage handles another's failure when its `when:` reads whether that stage failed, its error, or its status, and so does the flow's `output:` when it reads them; reading them elsewhere, such as in a stage's input, handles nothing.
+*Accept:* parity case 04. Parity case 165: each failure is handled by a stage whose `when:` reads only its status. Parity case 05's flow is run; the only stage that reads the error reads it in its input, and the flow fails with `bad`'s error. A flow whose only reader of `bad`'s failure is its `output:`, which reads `stages.bad.error`, ends well with the error in its output.
 
-**R-flow-18** A failure counts as handled only when a stage whose `when:` reads it actually runs, or when the flow's `output:` reads it: if neither reads it, the flow fails the moment it arrives, and if only a stage does and it is then skipped, the flow fails then.
-*Accept:* parity case 03: the flow fails at once with an error that names the stage, and the child still running is cancelled. Parity case 29's flow is run and fails, with the failed stage's error. `bad` fails while `slow` is still running, and the only reader of the failure also needs the output of a stage that is skipped once `slow` has ended: the flow is still running until that stage is skipped, and fails then, with `bad`'s error.
+**R-flow-18** A failure counts as handled only when a stage whose `when:` reads it actually runs, or when the flow's `output:` reads it: if neither reads it, the flow fails the moment it arrives, and if only a stage does and it is then skipped, the flow fails then, with an error that names the skipped stages.
+*Accept:* parity case 03: the flow fails at once with an error that names the stage, and the child still running is cancelled. Parity case 29's flow is run and fails, with the failed stage's error and the name of the skipped `handler`. `bad` fails while `slow` is still running, and the only reader of the failure also needs the output of a stage that is skipped once `slow` has ended: the flow is still running until that stage is skipped, and fails then, with `bad`'s error.
 
 **R-flow-21** A stage that depends on a failed stage for its output, and whose `when:` does not read the failure, is skipped.
 *Accept:* parity cases 04 and 56.
 
-**R-flow-22** A stage that handles a failure can read the failed stage's error and whatever output it still gave.
-*Accept:* parity case 48's flow is run; the handling stage reads `reached gave_up` as the error and the failed final state's output as the output.
+**R-flow-22** A stage that handles a failure can read the failed stage's error, whatever output it still gave, and its status: the failed job's status, `error`, `timeout`, `denied` or `cancelled`.
+*Accept:* parity case 48's flow is run; the handling stage reads `reached gave_up` as the error and the failed final state's output as the output. Parity case 165: the stages read `timeout`, `denied` and `error`, and a `when:` that compares `denied` with `timeout` is false.
 
 ## Once per item
 

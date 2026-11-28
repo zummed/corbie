@@ -25,6 +25,13 @@ up to 15m by default for a controller to take the start, and prints the ID
 then. A refused start prints `refused:` and the reason, and the command fails.
 `POST /runs` waits the same way, and answers a refused start with
 `{ "taken": false, "refused": "<reason>", "id": "<id>" }` and the status 200.
+Change a flow's `when:` that reads a stage's `failed`, `error` or `skipped`
+and relied on being skipped with that stage. A stage is skipped with a
+skipped stage only when it reads that stage's output or emitted items, names
+it in `follows:` or follows its emits; any other `when:` is evaluated, and a
+skipped stage's `failed` reads false.
+
+  when: ${!stages.ship.failed}   when: ${!stages.ship.failed && !stages.ship.skipped}
 
 These are new.
 
@@ -52,6 +59,16 @@ These are new.
   event that nothing in its process sends. It waited until it was stopped.
 - `corbie test` prints, after its run, each other run that failed and each run
   at a singleton or keyed location. With `--json` each run is a line of its own.
+  `${stages.fetch.done}`, is refused when the definition is checked. It
+  read as null before. A stage has output, failed, error, status, skipped and
+  emitted.
+- A flow stage has the part `status`: the failed job's status, `error`,
+  `timeout`, `denied` or `cancelled`, and null if the stage did not fail. A
+  `when:` that reads it handles the failure, as `failed` does:
+  `when: ${stages.live.status == 'timeout'}`.
+- When the only stages that handle a flow's failure are skipped, the run's
+  error names them: `bad: failed on purpose; the stage that reads it was
+  skipped: handler`.
 
 After 0.43.0
 ------------

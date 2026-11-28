@@ -27,13 +27,15 @@ A flow's `output:` is its result, filled in once every stage has settled. It rea
 
 ## Skipping
 
-`when:` makes a stage optional: it runs only if its condition holds. A skip spreads along the arrows, `follows:` included. A stage that needs something from a skipped stage is skipped as well, unless its own condition asks whether that stage was skipped, in which case it runs if its condition holds. A skipped stage has no output, so `${stages.small.output ?? stages.big.output}` gives the output of the one that ran.
+`when:` makes a stage optional: it runs only if its condition holds. A stage that depends on a skipped stage for its output, by reading its output or emitted items, naming it in `follows:` or following its emits, is skipped as well, unless its own condition asks whether that stage was skipped. A skipped stage has no output, so `${stages.small.output ?? stages.big.output}` gives the output of the one that ran.
+
+A stage that reads only a skipped stage's `failed`, `error`, `status` or `skipped` is not skipped for it. Its `failed` reads false, `status` null and `skipped` true, and it has no `error`, so `when: ${stages.charge.failed || stages.ship.failed}` runs when `charge` fails and `ship` is skipped.
 
 ## Failure
 
 A stage fails when its job fails after whatever restarts it was given.
 
-A stage handles another's failure when its `when:` reads whether that stage failed, or its error. A failure counts as handled only when such a stage actually runs, or when the flow's `output:` reads it. If neither reads a failure, the flow fails the moment it arrives, and if only a stage does and it is then skipped, the flow fails then.
+A stage handles another's failure when its `when:` reads whether that stage failed, its error, or its status, which is the failed job's: `error`, `timeout`, `denied` or `cancelled`. A failure counts as handled only when such a stage actually runs, or when the flow's `output:` reads it. If neither reads a failure, the flow fails the moment it arrives, and if only a stage does and it is then skipped, the flow fails then, with an error that names the skipped stages.
 
 A stage that depends on a failed stage for its output, and whose `when:` does not read the failure, is skipped.
 

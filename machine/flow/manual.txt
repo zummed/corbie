@@ -58,6 +58,8 @@ An expression reads `input`, `values`, `run` and these.
                            stage was skipped, or failed with no output
   stages.<name>.failed     true if the stage failed
   stages.<name>.error      the error's text, if it failed
+  stages.<name>.status     the failed job's status: error, timeout, denied or
+                           cancelled; null if the stage did not fail
   stages.<name>.skipped    true if the stage was skipped
   stages.<name>.emitted    the values its job has emitted so far
 
@@ -73,7 +75,8 @@ Handling a failure
 ------------------
 
 A failed stage fails the flow, unless a stage handles it: a stage whose
-`when:` reads the failed stage's `failed` or `error`, and which runs.
+`when:` reads the failed stage's `failed`, `error` or `status`, and which
+runs.
 
     # report.yaml
     flow: report
@@ -108,13 +111,20 @@ A failed stage fails the flow, unless a stage handles it: a stage whose
   output.
 - Without the `when:`, nothing handles the failure and the run fails: reading
   `stages.summarise.error` in a stage's input handles nothing.
+- `when: ${stages.summarise.status == 'timeout'}` handles a timeout only. A
+  job that is denied or throws then fails the run.
+- When the stage that handles a failure is skipped, the run fails, and its
+  error names that stage.
 - A stage that reads the output of a failed stage, or follows it, is skipped,
-  unless its `when:` reads that stage's `failed` or `error`.
-- A stage that reads or follows a skipped stage is skipped, unless its own
-  `when:` reads that stage's `skipped`.
+  unless its `when:` reads that stage's `failed`, `error` or `status`.
+- A stage that reads the output of a skipped stage, or follows it, is skipped,
+  unless its own `when:` reads that stage's `skipped`. Its `failed` reads
+  false, so `${stages.a.failed || stages.b.failed}` runs when `a` fails and
+  `b`, which reads `a`'s output, is skipped.
 - `output: ${stages.small.output ?? stages.big.output}` gives the output of
   whichever of the two stages ran.
-- `output:` that reads a stage's `failed` or `error` handles its failure too.
+- `output:` that reads a stage's `failed`, `error` or `status` handles its
+  failure too.
 
 Once for each item
 ------------------

@@ -164,7 +164,7 @@ func (flowType) Fill(p *machine.Parser, f *machine.Fields) any {
 }
 
 // The parts of a stage an expression may read.
-var parts = []string{"output", "failed", "error", "skipped", "emitted"}
+var parts = []string{"output", "failed", "error", "status", "skipped", "emitted"}
 
 // needs is what one stage needs of the others, found from its data.
 type needs struct {
@@ -176,7 +176,8 @@ type needs struct {
 	failure []string
 	// skipped are the stages its own condition asks about being skipped.
 	skipped []string
-	// output are the stages whose output it reads.
+	// output are the stages whose output it reads or follows: a skip or a
+	// failure of one of them skips it.
 	output []string
 }
 
@@ -208,14 +209,14 @@ func (s *Stage) needs() needs {
 	for _, r := range all {
 		add(&n.after, r.Name)
 		switch r.Part {
-		case "failed", "error", "skipped":
+		case "failed", "error", "status", "skipped":
 		default:
 			add(&n.output, r.Name)
 		}
 	}
 	for _, r := range when {
 		switch r.Part {
-		case "failed", "error":
+		case "failed", "error", "status":
 			add(&n.failure, r.Name)
 		case "skipped":
 			add(&n.skipped, r.Name)
@@ -252,7 +253,7 @@ func (flowType) Check(c *machine.Checker, def *machine.Definition) {
 	read := func(place string, r machine.Read) {
 		known(place, r.Name)
 		if r.Part != "" && !slices.Contains(parts, r.Part) {
-			c.Problem(place, "\"stages.%s.%s\" reads a part a stage does not have: a stage has output, failed, error, skipped and emitted", r.Name, r.Part)
+			c.Problem(place, "\"stages.%s.%s\" reads a part a stage does not have: a stage has output, failed, error, status, skipped and emitted", r.Name, r.Part)
 		}
 	}
 	after := map[string][]string{}
@@ -364,7 +365,10 @@ type stageState struct {
 	Status string `json:"status,omitzero"`
 	Output any    `json:"output,omitzero"`
 	Error  any    `json:"error,omitzero"` // the error's text
-	Denial any    `json:"denial,omitzero"`
+	// JobStatus is the failed job's status: error, timeout, denied or
+	// cancelled.
+	JobStatus any `json:"job_status,omitzero"`
+	Denial    any `json:"denial,omitzero"`
 	// Emitted are the items the stage's job has sent up.
 	Emitted []any `json:"emitted,omitzero"`
 	// Items are the items of a stage that runs once for each.
@@ -466,7 +470,7 @@ func (s *stepper) arrive(event machine.Event) bool {
 				item.Denial = data
 			}
 		} else {
-			stage.Status, stage.Error, stage.Output = failed, data["error"], data["output"]
+			stage.Status, stage.Error, stage.Output, stage.JobStatus = failed, data["error"], data["output"], data["status"]
 			if data["status"] == machine.StatusDenied {
 				stage.Denial = data
 			}
@@ -492,7 +496,7 @@ func (s *stepper) read(name string, st *stageState, event machine.Event) bool {
 		st.Reading = done
 	case machine.Failed:
 		data, _ := event.Data.(map[string]any)
-		st.Reading, st.Status, st.Error = failed, failed, data["error"]
+		st.Reading, st.Status, st.Error, st.JobStatus = failed, failed, data["error"], data["status"]
 		if data["status"] == machine.StatusDenied {
 			st.Denial = data
 		}
@@ -526,13 +530,15 @@ func (s *stepper) advance() error {
 	}
 	// A failure counts as handled only when a stage whose condition reads
 	// it actually runs. If none reads it, the flow fails the moment it
-	// arrives; if one does and is then skipped, the flow fails then.
+	// arrives; if one does and is then skipped, the flow fails then, and
+	// its error names the skipped stages.
 	for _, name := range names {
 		st := s.st.Stages[name]
 		if st.Status != failed && !s.itemFailed(name) {
 			continue
 		}
 		handled, waiting := false, false
+		var skippedReaders []string
 		for _, reader := range names {
 			reads := s.need[reader].failure
 			if st.Status != failed {
@@ -545,20 +551,21 @@ func (s *stepper) advance() error {
 			case pending:
 				waiting = true
 			case skipped:
+				skippedReaders = append(skippedReaders, reader)
 			default:
 				handled = true
 			}
 		}
 		// The flow's own output is a reader too.
 		for _, r := range machine.ReadsIn(s.flow.Output, "stages") {
-			if r.Name == name && (st.Status != failed || r.Part == "failed" || r.Part == "error") {
+			if r.Name == name && (st.Status != failed || r.Part == "failed" || r.Part == "error" || r.Part == "status") {
 				handled = true
 			}
 		}
 		if handled || waiting {
 			continue
 		}
-		s.fail(name, st)
+		s.fail(name, st, skippedReaders)
 		return nil
 	}
 	for _, name := range names {
@@ -590,8 +597,9 @@ func (s *stepper) itemFailed(name string) bool {
 }
 
 // fail fails the flow with the error of a stage nobody handled the failure
-// of: the error names the stage and then gives the stage's own.
-func (s *stepper) fail(name string, st *stageState) {
+// of: the error names the stage, gives the stage's own, and names the
+// stages that read the failure and were skipped.
+func (s *stepper) fail(name string, st *stageState, skippedReaders []string) {
 	text := st.Error
 	denial := st.Denial
 	for i, item := range st.Items {
@@ -602,6 +610,13 @@ func (s *stepper) fail(name string, st *stageState) {
 	}
 	e := machine.Unhandled(name, denial)
 	e.Error = fmt.Sprintf("%s: %v", name, text)
+	switch len(skippedReaders) {
+	case 0:
+	case 1:
+		e.Error += "; the stage that reads it was skipped: " + skippedReaders[0]
+	default:
+		e.Error += "; the stages that read it were skipped: " + strings.Join(skippedReaders, ", ")
+	}
 	// A job asked for in the step that fails the flow would only be
 	// cancelled: none is started.
 	s.out.Requests = slices.DeleteFunc(s.out.Requests, func(r machine.Request) bool { return r.Job != nil })
@@ -637,9 +652,9 @@ func (s *stepper) move(name string) (bool, error) {
 		ot := s.st.Stages[other]
 		switch {
 		case ot == nil:
-		case ot.Status == skipped && !slices.Contains(need.skipped, other):
-			// A skip spreads along the arrows, unless the stage's own
-			// condition asks whether that stage was skipped.
+		case ot.Status == skipped && !slices.Contains(need.skipped, other) && (slices.Contains(need.output, other) || other == stage.Emits):
+			// It depends on a skipped stage for its output, and its own
+			// condition does not ask whether that stage was skipped.
 			st.Status = skipped
 			return true, nil
 		case ot.Status == failed && !slices.Contains(need.failure, other) && (slices.Contains(need.output, other) || other == stage.Emits):
@@ -786,11 +801,12 @@ func (s *stepper) items(name string, stage *Stage, st *stageState) (bool, error)
 }
 
 // scope is what a stage's expressions read: the flow's input, every
-// stage's output, failure and skip, and for a per-item stage its item.
+// stage's output, failure, status and skip, and for a per-item stage its
+// item.
 func (s *stepper) scope(item any) machine.Scope {
 	stages := make(map[string]any, len(s.st.Stages))
 	for name, st := range s.st.Stages {
-		entry := map[string]any{"failed": st.Status == failed, "skipped": st.Status == skipped}
+		entry := map[string]any{"failed": st.Status == failed, "skipped": st.Status == skipped, "status": st.JobStatus}
 		if st.Output != nil {
 			entry["output"] = st.Output
 		}

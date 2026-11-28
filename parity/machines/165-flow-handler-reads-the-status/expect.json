@@ -1,0 +1,11 @@
+{
+  "status": "done",
+  "output": {
+    "timeout": "timeout",
+    "denied": "denied",
+    "error": "error",
+    "wrong_skipped": true,
+    "none_if_not_failed": true
+  },
+  "note": "R-flow-16, R-flow-22: a stage's when: that reads a failed stage's status handles its failure, and the status is error, timeout or denied, or null for a stage that did not fail."
+}

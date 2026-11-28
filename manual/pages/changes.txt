@@ -10,6 +10,9 @@ After 0.43.0
 
 This is new.
 
+- `corbie test <file> --in <directory>` refuses a tree in which a file has a
+  problem, and prints each one, as `corbie up` does. Correct the file, or list
+  it in `.corbieignore`.
 - A toolkit's tool is written `machine:` or `call:`, as an agent's entry is:
   `read_file: { call: gitlab/files/read, input: { project: group/orders } }`.
   Its description and arguments are the machine's, as `corbie manual toolkit`

@@ -328,7 +328,7 @@ func cmdTest(e *Env, args []string) error {
 			m = tree.Machines[0]
 		}
 	} else {
-		tree, m, err = recordIn(files[0], in)
+		tree, m, err = recordIn(e, files[0], in)
 	}
 	if err != nil {
 		return err
@@ -380,8 +380,9 @@ func cmdTest(e *Env, args []string) error {
 }
 
 // recordIn reads a directory as a tree, as a submit with no --at reads it,
-// and gives the tree and the machine of a file in it.
-func recordIn(file, dir string) (*client.Tree, *client.Machine, error) {
+// and gives the tree and the machine of a file in it. A file of the tree
+// with a problem is printed, and fails the read.
+func recordIn(e *Env, file, dir string) (*client.Tree, *client.Machine, error) {
 	if isScript(file) {
 		return nil, nil, Mistake("--in reads a definition with its tree; a script file runs alone")
 	}
@@ -399,8 +400,9 @@ func recordIn(file, dir string) (*client.Tree, *client.Machine, error) {
 		return nil, nil, Mistake("%s is not in %s", file, dir)
 	case i < 0:
 		return nil, nil, Mistake("%s is no machine of the tree in %s: .corbieignore lists it", file, dir)
-	case tree.Machines[i].Problem != nil:
-		return nil, nil, tree.Machines[i].Problem
+	}
+	if err := reportProblems(e, tree); err != nil {
+		return nil, nil, err
 	}
 	return tree, tree.Machines[i], nil
 }

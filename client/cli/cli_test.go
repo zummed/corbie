@@ -685,6 +685,13 @@ func TestTestRunsAFileInItsTree(t *testing.T) {
 			t.Errorf("corbie test %s --in %s ended %d and said %q", c.file, c.in, status, said)
 		}
 	}
+	// A file of the tree with a problem is printed, and nothing runs.
+	if err := os.WriteFile(filepath.Join(dir, "helper.yaml"), []byte("description: shared\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if status, out, said := m.run("", "test", ask, "--in", dir); status != 1 || out != "" || !strings.Contains(said, "helper.yaml\n    it gives no type") || !strings.Contains(said, "1 of 3 files have problems, and nothing is started") {
+		t.Errorf("corbie test ask.yaml --in a tree with a problem ended %d: %s%s", status, out, said)
+	}
 }
 
 // corbie test given a directory checks each send and call to a location of

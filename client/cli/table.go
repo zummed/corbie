@@ -257,7 +257,8 @@ file is refused: its runs start when an event is sent to a key.
 
 With --in, it records the directory as corbie run submit does, which starts
 its singletons, and runs the definition at its location in that tree, where
-its call: and send: name the tree's machines.
+its call: and send: name the tree's machines. A file of the tree with a
+problem is printed, and nothing runs.
 
 The ceilings allow everything. Each job's own allow: list still applies.
 ` + starts + `

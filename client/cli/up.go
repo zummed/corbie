@@ -15,6 +15,25 @@ import (
 	"github.com/zummed/corbie/store"
 )
 
+// reportProblems prints each file of a tree that has a problem, with its
+// problem, and fails when one has, before anything starts.
+func reportProblems(e *Env, tree *client.Tree) error {
+	problems := 0
+	for _, m := range tree.Machines {
+		if m.Problem != nil {
+			problems++
+			e.Say("%s", m.Path)
+			for _, line := range strings.Split(m.Problem.Error(), "\n") {
+				e.Say("    %s", line)
+			}
+		}
+	}
+	if problems > 0 {
+		return fmt.Errorf("%d of %d files have problems, and nothing is started", problems, len(tree.Machines))
+	}
+	return nil
+}
+
 // cmdUp is corbie up: a controller, a runner, a client and a gateway in one
 // process, set up as corbie init sets them up, in the config .corbie of the
 // current directory with the store in it, and a directory submitted. A
@@ -55,19 +74,8 @@ func cmdUp(e *Env, args []string) error {
 	if err != nil {
 		return Mistake("%v", err)
 	}
-	// A file with a problem is found before anything starts.
-	problems := 0
-	for _, m := range tree.Machines {
-		if m.Problem != nil {
-			problems++
-			e.Say("%s", m.Path)
-			for _, line := range strings.Split(m.Problem.Error(), "\n") {
-				e.Say("    %s", line)
-			}
-		}
-	}
-	if problems > 0 {
-		return fmt.Errorf("%d of %d files have problems, and nothing is started", problems, len(tree.Machines))
+	if err := reportProblems(e, tree); err != nil {
+		return err
 	}
 	set, err := valuesGiven(values, valuesFromEnv)
 	if err != nil {

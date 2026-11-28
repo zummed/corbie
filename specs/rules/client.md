@@ -205,7 +205,7 @@ The detailed rules behind [the Client overview](../client.md).
 
 **R-client-149** A run reads the tree's directory as `run.context` and its location as `run.location`, and so does what it starts. A singleton is given no input, and a singleton file whose `input:` needs a value is a file with a problem. *Test:* `TestContextIsReadByARunAndItsChildren` and `mach_singleton_needing_input_refused`
 
-**R-client-166** `corbie test <file> --in <dir>` records the directory as a tree as `corbie run submit <dir>` does, singletons started, and runs the file at its location in that tree as `corbie test <file>` runs it. A script file, a file outside the directory and a file `.corbieignore` lists are refused. *Test:* `TestTestRunsAFileInItsTree`
+**R-client-166** `corbie test <file> --in <dir>` records the directory as a tree as `corbie run submit <dir>` does, singletons started, and runs the file at its location in that tree as `corbie test <file>` runs it. A file of the tree with a problem is reported and nothing runs, as `corbie up` reports it. A script file, a file outside the directory and a file `.corbieignore` lists are refused. *Test:* `TestTestRunsAFileInItsTree`
 
 **R-client-164** `corbie test <file> --definition` prints the machine as the client writes it out, in the order it is written, each value with its file and line, and runs nothing. *Test:* `Test_client_test_definition_prints_file_and_line`
 

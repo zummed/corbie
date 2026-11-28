@@ -98,7 +98,7 @@ Each turn is a blob: `corbie run show <id> --save <dir>` writes it as
   another turn.
 - An agent that fails at its turn limit, or because a turn failed, has
   `conversation` and `tokens` as its output.
-- An agent whose timeout passes, or that is cancelled, has no output.
+- An agent that runs past its timeout, or that is cancelled, has no output.
 
 Tools
 -----
@@ -117,8 +117,8 @@ machine named by its file or by its location.
   call         the location of a machine, in place of `machine:`
   input        with `machine:` or `call:`, the names of that machine's input
                the entry fixes
-  approve      with `machine:` or `call:`, `true` marks every job the entry
-               starts for approval
+  approve      with `machine:` or `call:`, `true` makes every job the entry
+               starts need approval
   meta         with `machine:` or `call:`, data hooks read as `job.meta`
   open         with a toolkit, `true` opens it before the first turn
   when         a condition on the agent's input, checked when the run
@@ -129,8 +129,8 @@ A shape is written as `input:` is, in `corbie manual definitions`:
 refused, and a blob is the name the model was shown.
 
 A shape written with `type: object` is JSON Schema, which can give an argument
-a `description`, an `enum` or fields of its own. `format: blob` marks a blob at
-any depth.
+a `description`, an `enum` or fields of its own. `format: blob` declares a blob
+at any depth.
 
 - A tool whose job has `approve: true` starts only after a `before` hook, as
   `corbie manual hooks` says. A hook reads the call as
@@ -181,9 +181,9 @@ arguments `path` and `ref`. A call `{ path: a.txt }` starts a run of
   the same tree is refused in a file read alone.
 
 A location written from `/` is read at the run's start, where a call from
-the run would pass: `send:` in every layer, the client's ceiling included,
+the run would be checked: `send:` in every layer, the client's ceiling included,
 and the machine's `receive:`. A run keeps what it read, so a change
-submitted there reaches the next run. When the entry is offered and the
+submitted there is read by the next run. When the entry is offered and the
 machine cannot be read, the agent fails at its start with the reason.
 
 A tool written in place runs at the agent's location, so its secret can be
@@ -229,7 +229,7 @@ agent with many tools shows the model the ones it has opened.
 - `open: true` opens the toolkit before the first turn, with a job named
   `open`. The first turn is offered its tools and shown its instructions. A
   toolkit that fails to open then fails the agent.
-- `approve: true` marks the open and every call for approval. A hook reads
+- `approve: true` makes the open and every call need approval. A hook reads
   `job.tool: { toolkit, name, args, said }`, where `toolkit` is the entry's
   name, and for an open `{ toolkit, open: true, said }`. An open a hook
   refuses opens nothing.

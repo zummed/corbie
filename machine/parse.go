@@ -86,7 +86,7 @@ func parse(src []byte, file string, load func(path string) ([]byte, error), loca
 	}
 	draft, needsHook := p.parse(src, "")
 	if draft != nil && needsHook && root {
-		p.Problem("", "a job is marked for approval, or a permission is listed in approve:, and no hook runs before it: give the definition a hook with before:")
+		p.Problem("", "a job needs approval, by approve: true or a permission listed in approve:, and no hook runs before it: give the definition a hook with before:")
 	}
 	if len(p.problems) > 0 {
 		return nil, p.problems
@@ -181,7 +181,7 @@ func (p *Parser) fill(written map[string]any, t Type, place string) (draft *Draf
 	def.Deny = f.Strings("deny")
 	if _, isFlag := f.m["approve"].(bool); isFlag {
 		f.take("approve", KindList)
-		p.Problem("approve", "at the top of a definition, this is a list of the permissions a job may use only after a yes, such as [exec]; approve: true marks one job, and is written in the job")
+		p.Problem("approve", "at the top of a definition, this is a list of the permissions a job may use only after a yes, such as [exec]; approve: true is written in the one job that needs approval")
 	} else {
 		def.Approve = f.Strings("approve")
 	}
@@ -254,7 +254,7 @@ func (p *Parser) fill(written map[string]any, t Type, place string) (draft *Draf
 		child := p.draft.Children[name]
 		if p.draft.hooks[name] {
 			if child.needsHook {
-				p.Problem("hooks", "a machine run as a hook marks a job for approval, or lists permissions in approve:, and has no hook before a job: a machine run as a hook takes no hook from above it")
+				p.Problem("hooks", "a machine run as a hook has a job that needs approval, or lists permissions in approve:, and has no hook before a job: a machine run as a hook takes no hook from above it")
 			}
 			continue
 		}

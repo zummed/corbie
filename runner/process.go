@@ -190,7 +190,7 @@ func (c *channel) Define(source string, files map[string]string) (blob.Ref, erro
 	if err != nil {
 		var problems machine.Problems
 		if errors.As(err, &problems) {
-			return blob.Ref{}, plugin.Errorf(plugin.BadInput, "the definition does not pass its check: %s", strings.ReplaceAll(problems.Error(), "\n", "; "))
+			return blob.Ref{}, plugin.Errorf(plugin.BadInput, "the definition fails its check: %s", strings.ReplaceAll(problems.Error(), "\n", "; "))
 		}
 		return blob.Ref{}, err
 	}

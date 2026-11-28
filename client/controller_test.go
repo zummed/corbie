@@ -239,7 +239,7 @@ func TestTimeout(t *testing.T) {
 		t.Fatal(err)
 	}
 	r := wait(t, l, id)
-	if r.Status != "failed" || r.Failure != "timeout" || !strings.Contains(r.Error, "timeout passed") {
+	if r.Status != "failed" || r.Failure != "timeout" || !strings.Contains(r.Error, "ran past its timeout") {
 		t.Fatalf("the root ended %s/%s: %s", r.Status, r.Failure, r.Error)
 	}
 	child := waitFor(t, l, func(runs []*client.Run) string {

@@ -2,6 +2,6 @@
   "status": "failed",
   "failure": "denied",
   "error_contains": [
-    "marked: the job is marked for approval and no hook runs before it"
+    "marked: the job needs approval and no hook runs before it"
   ]
 }

@@ -11,9 +11,9 @@ Routes
 ------
 
   GET /client                   which client and principal the token names: { "client", "principal" }, with no "principal" when it names none
-  POST /trees                   submits a tree from a form; answers its receipt
-  POST /trees/remove            removes a tree: { "at": "/house", "life": "10m" }; answers its receipt
-  POST /runs                    starts a run of a location from a form; answers its receipt and { "id": "<id>" }
+  POST /trees                   submits a tree from a form; answers whether a controller took it
+  POST /trees/remove            removes a tree: { "at": "/house", "life": "10m" }; answers whether a controller took it
+  POST /runs                    starts a run of a location from a form; answers whether a controller took it, and { "id": "<id>" }
   GET /runs                     lists the client's runs in progress, as a JSON list
   GET /runs/<id>                one run
   GET /runs/<id>/record         the record so far, child runs included: { "entries": […], "run": {…} }
@@ -56,7 +56,7 @@ The answer's `tree` holds `locations`, `cancelled` and `removed`, as `corbie run
 Secrets and values
 ------------------
 
-`POST /secrets` and `POST /values` take JSON with these fields, and answer the receipt.
+`POST /secrets` and `POST /values` take JSON with these fields, and answer whether a controller took the message.
 
   act     "set", "remove" or "list"; required
   at      "/house": the location; for set and remove

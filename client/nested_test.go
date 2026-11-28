@@ -126,7 +126,7 @@ func Test_perm_definition_stored_as_a_blob_is_checked_and_narrowed(t *testing.T)
 		t.Fatalf("a definition that allows all, stored as a blob: %s/%s refused %s by %s: %s", r.Status, r.Failure, r.Refused, r.Layer, r.Error)
 	}
 	r = run(t, l, maker, files, map[string]any{"dir": dir, "broken": true})
-	if r.Status != "failed" || !strings.Contains(r.Error, "the definition did not pass its check") || !strings.Contains(r.Error, "nothing") {
+	if r.Status != "failed" || !strings.Contains(r.Error, "the definition failed its check") || !strings.Contains(r.Error, "nothing") {
 		t.Fatalf("a broken definition stored as a blob: %s/%s: %s", r.Status, r.Failure, r.Error)
 	}
 }

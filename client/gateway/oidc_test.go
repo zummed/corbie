@@ -194,8 +194,8 @@ func Test_client_gateway_takes_an_issuers_tokens(t *testing.T) {
 		`the key \"unknown\", which the issuer does not`:                                      idp.token("RS256", "unknown", claims(nil)),
 		"it is from the issuer https://elsewhere, and the gateway's is http://127.0.0.1":      idp.token("RS256", "rsa-1", claims(map[string]any{"iss": "https://elsewhere"})),
 		"it is for the audience api://other":                                                  idp.token("RS256", "rsa-1", claims(map[string]any{"aud": "api://other"})),
-		"its time has passed#exp":                                                             idp.token("RS256", "rsa-1", claims(map[string]any{"exp": time.Now().Add(-2 * time.Minute).Unix()})),
-		"its time has passed#none":                                                            idp.token("RS256", "rsa-1", claims(map[string]any{"exp": nil})),
+		"it has expired#exp":                                                                  idp.token("RS256", "rsa-1", claims(map[string]any{"exp": time.Now().Add(-2 * time.Minute).Unix()})),
+		"it has expired#none":                                                                 idp.token("RS256", "rsa-1", claims(map[string]any{"exp": nil})),
 		"its time has not come":                                                               idp.token("RS256", "rsa-1", claims(map[string]any{"nbf": time.Now().Add(10 * time.Minute).Unix()})),
 		"its claim roles is admin, which names none of the gateway's clients: viewer, editor": idp.token("RS256", "rsa-1", claims(map[string]any{"roles": []string{"admin"}})),
 		"its claim roles is not there, which names none of the gateway's clients":             idp.token("RS256", "rsa-1", claims(map[string]any{"roles": nil})),
@@ -218,7 +218,7 @@ func Test_client_gateway_takes_an_issuers_tokens(t *testing.T) {
 		t.Fatalf("a token good for ten minutes was answered %d %s", status, text)
 	}
 	ahead.Store(int64(12 * time.Minute))
-	if status, _, text := short.do("GET", "/runs", ""); status != 401 || !strings.Contains(text, "its time has passed") {
+	if status, _, text := short.do("GET", "/runs", ""); status != 401 || !strings.Contains(text, "it has expired") {
 		t.Errorf("twelve minutes on, the token was answered %d %s", status, text)
 	}
 

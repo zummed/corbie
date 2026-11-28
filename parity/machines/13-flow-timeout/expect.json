@@ -1,7 +1,7 @@
 {
   "status": "failed",
   "failure": "timeout",
-  "error_contains": "timeout passed",
+  "error_contains": "ran past its timeout",
   "record": [
     {
       "machine": "sleeper",

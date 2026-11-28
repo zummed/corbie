@@ -3,7 +3,7 @@
   "output": {
     "mid": {
       "error": {
-        "<contains>": "timeout passed"
+        "<contains>": "ran past its timeout"
       },
       "name": "failed",
       "status": "timeout"

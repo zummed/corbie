@@ -230,7 +230,7 @@ type endText struct{ status, text string }
 func (b *build) ending(a *arrival) (string, endText) {
 	switch {
 	case a.wake && a.what == wakeTimeout && sameTime(b.st.TimeoutAt, a.at):
-		return instance.Failed, endText{machine.StatusTimeout, "the timeout passed"}
+		return instance.Failed, endText{machine.StatusTimeout, "the run ran past its timeout"}
 	case !a.wake && a.msg.Kind == instance.KindCancel && a.good(b.p.now) && b.mayCancel(a):
 		return instance.Cancelled, endText{machine.StatusCancelled, "cancelled"}
 	}
@@ -796,7 +796,7 @@ func (b *build) readDefinition(s *instance.Start) *stepOut {
 		// A marked job of a machine made while running is denied when it is
 		// asked for, if no hook above runs before it.
 		if len(problems) == 0 && marks && !st.Above.Made && !b.hasBefore() {
-			problems = machine.Problems{{Text: "a job is marked for approval, or a permission is listed in approve:, and no hook runs before it: neither this definition nor any machine above it has a hook with before:"}}
+			problems = machine.Problems{{Text: "a job needs approval, by approve: true or a permission listed in approve:, and no hook runs before it: neither this definition nor any machine above it has a hook with before:"}}
 		}
 		if read.Problems = problems; len(problems) > 0 {
 			return read
@@ -1084,7 +1084,7 @@ func (b *build) begin(req *machine.Job, earlier *instance.Going) error {
 			b.startHook(job, nil)
 		case b.marked(job):
 			b.ask(instance.Ask{Kind: instance.AskFail, Name: job.Full(), Message: b.message("fail"),
-				Error: &machine.Error{Status: machine.StatusDenied, Error: "the job is marked for approval and no hook runs before it: give a hook with before: a when: that holds for it"}})
+				Error: &machine.Error{Status: machine.StatusDenied, Error: "the job needs approval and no hook runs before it: give a hook with before: a when: that holds for it"}})
 		default:
 			b.launch(job)
 		}
@@ -1522,7 +1522,7 @@ func (b *build) first(s *instance.Start, start *arrival) (refused bool, err erro
 	case gone:
 		failure = "its machine is no longer in the store"
 	case len(problems) > 0:
-		failure = "the definition did not pass its check: " + strings.ReplaceAll(problems.Error(), "\n", "; ")
+		failure = "the definition failed its check: " + strings.ReplaceAll(problems.Error(), "\n", "; ")
 	case st.Above.Depth > st.Above.MaxDepth:
 		failure = fmt.Sprintf("depth limit reached: the run counts %d levels below the run that began its chain of sends and calls, and its file allows %d", st.Above.Depth, st.Above.MaxDepth)
 	}
@@ -1661,11 +1661,11 @@ func (b *build) above(def *machine.Definition) {
 func (b *build) refusedStart(start *arrival, call bool, problems machine.Problems) bool {
 	switch {
 	case start.callJob():
-		b.noCall(start, fmt.Sprintf("the definition did not pass its check: %s", strings.ReplaceAll(problems.Error(), "\n", "; ")))
+		b.noCall(start, fmt.Sprintf("the definition failed its check: %s", strings.ReplaceAll(problems.Error(), "\n", "; ")))
 		return true
 	case start.kind == identity.Client || call:
 		b.out.dropped = append(b.out.dropped, dropped{a: start, receipt: &instance.Receipt{
-			Refused: "the definition did not pass its check", Problems: problems}})
+			Refused: "the definition failed its check", Problems: problems}})
 		return true
 	}
 	return false

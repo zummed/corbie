@@ -274,7 +274,7 @@ func TestControllerRefusesWhatTheClientLetThroughInTheSameWords(t *testing.T) {
 		t.Fatalf("the client's check says: %v", err)
 	}
 	words := machine.Problem{Place: said[0].Place, Text: said[0].Text}.String()
-	if r.Status != "failed" || !strings.Contains(r.Error, "the definition did not pass its check") || !strings.Contains(r.Error, words) {
+	if r.Status != "failed" || !strings.Contains(r.Error, "the definition failed its check") || !strings.Contains(r.Error, words) {
 		t.Fatalf("the run ended %s: %s\nthe client's check says:\n%v", r.Status, r.Error, err)
 	}
 	runs, listErr := l.List(ctx, client.Filter{})

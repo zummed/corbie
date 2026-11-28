@@ -146,7 +146,7 @@ failed (denied) at stage read
   fix       add the line fs.read:/etc/hostname to the allow list of the job "read" in the definition of "denied"
 
 failed (error) at stage wait
-  error     the timeout passed
+  error     the run ran past its timeout
   timeout   1s
   child     statechart stuck failed (timeout)
 ```

@@ -89,7 +89,7 @@ func TestADirectoryServedToOtherMachines(t *testing.T) {
 
 	// A party the controller removes is turned away from then on.
 	d.ok("", "controller", "remove", "laptop")
-	if status, _, said := laptop.run("", "run", "ls"); status != 1 || !strings.Contains(said, "no party of this store's controller") {
+	if status, _, said := laptop.run("", "run", "ls"); status != 1 || !strings.Contains(said, "is not trusted by this store's controller") {
 		t.Fatalf("a removed client was answered: %d %s", status, said)
 	}
 }

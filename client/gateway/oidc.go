@@ -241,7 +241,7 @@ func (i *Issuer) Caller(ctx context.Context, token string) (*client.Client, erro
 	case !slices.Contains(texts(claims["aud"]), i.Audience):
 		return nil, fmt.Errorf("it is for the audience %v, and the gateway's is %s", claims["aud"], i.Audience)
 	case !timed || now.After(time.Unix(int64(expires), 0).Add(leeway)):
-		return nil, errors.New("its time has passed")
+		return nil, errors.New("it has expired")
 	case now.Add(leeway).Before(time.Unix(int64(begins), 0)):
 		return nil, errors.New("its time has not come")
 	}

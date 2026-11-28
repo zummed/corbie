@@ -1000,8 +1000,8 @@ Options:
 - The plugin speaks MCP 2026-07-28, and the earlier version a server has if
   it does not speak that one.
 - tools gives the server's tools. args is the tool's input schema as the
-  server wrote it. Over the web, a tool that marks an argument for a header where
-  no header can carry it is left out.
+  server wrote it. Over the web, a tool whose schema puts an argument in a
+  header where no header can carry it is left out.
 - call gives content as a list: text as text, an image, audio or a file as
   a blob, and a link as { link, name }. data is the tool's structured
   content, if it gave one.

@@ -737,7 +737,7 @@ func cmdInit(e *Env, args []string) error {
 		}
 		fmt.Fprintf(&b, "The store is %s.\n", address)
 		if store.IsDirectory(address) {
-			b.WriteString("A directory keeps no party out: everyone on this computer who can read it can read and write all of it.\n")
+			b.WriteString("A directory keeps no one out: everyone on this computer who can read it can read and write all of it.\n")
 		}
 		if len(limit.Allow) == 0 {
 			b.WriteString("The ceiling is empty: jobs on this computer may do nothing outside themselves.\nTo change that: corbie init --ceiling all   (or network, disk, exec, env, or single entries)\n")
@@ -789,7 +789,7 @@ func (e *Env) setUp(cfg identity.Config, address, name, keys string, limit permi
 			return nil, nil, nil, err
 		}
 		if len(held) > 0 {
-			return nil, nil, nil, fmt.Errorf("the name %q is taken on that store: another controller holds trust there under it. Give this computer's parties another name with --name", name+"-controller")
+			return nil, nil, nil, fmt.Errorf("the name %q is taken on that store: another controller holds trust there under it. Give this computer's controller, runner and client another name with --name", name+"-controller")
 		}
 	}
 	if keys != "" {
@@ -935,7 +935,7 @@ func cmdEnrol(e *Env, args []string) error {
 	if err != nil {
 		return err
 	}
-	given, err := e.read(rest, "a runner's or a client's card, or the name of a party already enrolled")
+	given, err := e.read(rest, "a runner's or a client's card, or the name of a runner or a client already enrolled")
 	if err != nil {
 		return err
 	}
@@ -1157,7 +1157,7 @@ func cmdRemove(e *Env, args []string) error {
 		return err
 	}
 	if len(rest) != 1 {
-		return Mistake("name the party to remove")
+		return Mistake("name the runner or the client to remove")
 	}
 	ctl, s, err := e.Controller()
 	if err != nil {
@@ -1717,7 +1717,7 @@ func cmdControllerCancel(e *Env, args []string) error {
 	if _, err := s.Write(e.ctx, name, data, store.OnlyIfNew); err != nil {
 		return err
 	}
-	e.Say("the cancel is in the controller's inbox; the controller acts on it at its next pass")
+	e.Say("the cancel is in the controller's inbox; the controller acts on it when it next reads its inbox")
 	return nil
 }
 
@@ -1753,7 +1753,7 @@ func cmdControllerTreeRemove(e *Env, args []string) error {
 	if _, err := s.Write(e.ctx, name, data, store.OnlyIfNew); err != nil {
 		return err
 	}
-	e.Say("the removal is in the controller's inbox; the controller acts on it at its next pass")
+	e.Say("the removal is in the controller's inbox; the controller acts on it when it next reads its inbox")
 	return nil
 }
 
@@ -1780,7 +1780,7 @@ func cmdPolicy(e *Env, args []string) error {
 		return err
 	}
 	if store.IsDirectory(address) {
-		return fmt.Errorf("the store is a directory, which keeps no party out of anything: a policy is for a bucket")
+		return fmt.Errorf("the store is a directory, which keeps no one out of anything: a policy is for a bucket")
 	}
 	party := store.Party{Kind: store.Viewer, Controller: ctl.Name}
 	// kind is which of this config's parties the policy is for, where it is
@@ -1816,7 +1816,7 @@ func cmdPolicy(e *Env, args []string) error {
 			}
 		}
 	default:
-		return Mistake("name one party, or give --viewer for one who may only see where runs stand")
+		return Mistake("name the controller, a runner or a client, or give --viewer for one who may only see the status of runs")
 	}
 	var kept string
 	if kind != "" {

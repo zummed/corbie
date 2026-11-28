@@ -27,7 +27,7 @@ const starts = `
   --life <time>            how long the start message is valid while no
                            controller takes it; default 5m. The command
                            waits that long and 10m more for the answer,
-                           for clocks that differ, and says so while it
+                           for clocks that differ, and prints that it
                            waits`
 
 // scripts is the help for a script file given where a definition is.
@@ -170,7 +170,7 @@ corbie start prints a warning that says why, and polls. In a bucket, only a
 controller and a runner in one process notify each other.
 
 The wrapper is started with these environment variables and with none that a
-script set. The variables a script gives a program are passed to it by the
+script set. The variables a script gives a program are given to it by the
 program env, which the wrapper must be able to start.
 
   CORBIE_SCRATCH   the job's scratch directory
@@ -397,7 +397,7 @@ running.
 
   --life <time>   how long the cancel is valid while no controller takes it;
                   default 5m. The command waits that long and 10m more for
-                  the answer, for clocks that differ, and says so while it
+                  the answer, for clocks that differ, and prints that it
                   waits`},
 		{Name: "run send", Usage: "<id> | <location>[#key] <event> [data] [--life 5m]", Summary: "send an event to a run by its address", Run: cmdSend, Help: `
 The address is the run's ID, a singleton's location, or a keyed location and
@@ -412,7 +412,7 @@ ceiling and client:<name> in the file's receive:.
 
   --life <time>   how long the event is valid while no controller takes it;
                   default 5m. The command waits that long and 10m more for
-                  the answer, for clocks that differ, and says so while it
+                  the answer, for clocks that differ, and prints that it
                   waits`},
 		{Name: "run reply", Usage: "<id> <ticket> [value] [--life 5m]", Summary: "answer a ticket that a run waits on", Run: cmdReply, Help: `
 The ticket is the value that corbie run show <id> --tickets prints, and <id>
@@ -425,7 +425,7 @@ is refused.
 
   --life <time>   how long the answer is valid while no controller takes it;
                   default 5m. The command waits that long and 10m more for
-                  the answer, for clocks that differ, and says so while it
+                  the answer, for clocks that differ, and prints that it
                   waits`},
 
 		{Name: "controller card", Usage: "--store <address> [--name <name>] [--identity <address>]", Summary: "create this computer's controller and print its card", Run: cmdCard(identity.Controller), Help: `
@@ -516,7 +516,7 @@ process reads and writes.
   <name>     the controller itself, or an enrolled runner or client
   --viewer   a key that can only list runs and read their status
 
-Where this config keeps a party's identity in a bucket, that party's policy
+Where this config keeps the identity of the one named in a bucket, its policy
 also allows reading it.
 
   corbie manual bucket   creating the keys`},

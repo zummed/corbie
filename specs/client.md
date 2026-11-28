@@ -399,7 +399,7 @@ The owner removes any client's tree, also one whose client was removed:
 
 ```
 $ corbie controller tree remove /home
-the removal is in the controller's inbox; the controller acts on it at its next pass
+the removal is in the controller's inbox; the controller acts on it when it next reads its inbox
 ```
 
 - The command fails when no tree is recorded at the prefix.

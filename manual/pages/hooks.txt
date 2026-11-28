@@ -69,18 +69,18 @@ In a hook's script, the job it runs for is `input.job`.
 Approval
 --------
 
-`approve: true` marks a job for approval, and so does a permission the
-definition lists in `approve:`. A marked job starts only after a `before` hook,
+A job needs approval when it has `approve: true`, or declares a permission the
+definition lists in `approve:`. Such a job starts only after a `before` hook,
 and `job.approve` is true for it:
 
   hooks:
     approval: { before: { machine: ./approval.yaml }, when: "${job.approve}" }
 
-- When a definition marks a job and neither it nor a machine above it has a
-  `before` hook, it is refused as it starts: its run fails with status
+- When a job needs approval and neither its definition nor a machine above it
+  has a `before` hook, the run is refused as it starts: it fails with status
   `error`, or none is started.
-- When no `before` hook's `when:` holds for a marked job, the job fails with
-  status `denied`.
+- When no `before` hook's `when:` holds for a job that needs approval, the job
+  fails with status `denied`.
 - A hook that is a statechart waits for a person, who answers with
   `corbie run reply`.
 - A job's `meta:` is data the hook reads as `job.meta`, such as who approves it.
@@ -92,8 +92,9 @@ Which hooks run
 - Every hook whose `when:` holds runs, one at a time: the machine's own in the
   order of their names, then those of each machine above it.
 - A hook runs once for one job, and its job is named for both, as `refund.0.small`.
-- A run that a send or a call started takes only its own file's hooks: when it
-  marks a job and its file has no `before` hook, it is refused as it starts.
+- A run that a send or a call started takes only its own file's hooks: when a
+  job of it needs approval and its file has no `before` hook, it is refused as
+  it starts.
 - A machine made while running writes no hooks, as `corbie manual definitions`
   says under Words from outside.
 

@@ -51,4 +51,4 @@ Used by:
 
 - **Client.** `corbie manual` and `corbie mcp` list and print the pages, and `corbie manual web` serves them to a browser.
 - **Plugins.** A plugin's page is its specification, and the tests of its examples are the plugin's own tests.
-- **Store, Permissions, Secrets.** Each carries a statement the manual must make: the bucket services tested and that a directory keeps no party out (R-store-50); what is not defended against (R-perm-60); where a secret's protection ends, as the Secrets overview says it.
+- **Store, Permissions, Secrets.** Each carries a statement the manual must make: the bucket services tested and that a directory keeps no one out (R-store-50); what is not defended against (R-perm-60); where a secret's protection ends, as the Secrets overview says it.

@@ -584,14 +584,14 @@ func (c *Client) Receipt(ctx context.Context, message string) (*instance.Receipt
 	}
 	var receipt instance.Receipt
 	if _, err := identity.Read(data, at, c.Controller, c.ID, &receipt); err != nil {
-		return nil, fmt.Errorf("the receipt for %s: %w", message, err)
+		return nil, fmt.Errorf("the answer to %s: %w", message, err)
 	}
 	return &receipt, nil
 }
 
 // ErrNotTaken is a message that stopped being good before a controller
 // answered it.
-var ErrNotTaken = errors.New("the message was not taken up: it is no longer good and no receipt has come (is a controller running?)")
+var ErrNotTaken = errors.New("the message was not taken up: it is no longer good and no answer has come (is a controller running?)")
 
 // WaitReceipt stays until the controller has answered a message this
 // client has just sent, and gives the receipt. life is the life the message

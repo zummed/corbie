@@ -45,7 +45,7 @@ It reads every *.yaml in the directory and below it as a machine, but for .git, 
 
   shared/       a directory, and everything below it
   notes.yaml    one file
-  # a note      passed over, as an empty line is
+  # a note      ignored, as an empty line is
 
 - A listed file has no location: nothing runs there, and nothing can be sent to it.
 - A machine still includes a listed file, runs it with machine:, and reads it with files:.

@@ -43,7 +43,7 @@ These are true of definitions.
   this to a controller that takes their definitions. Only a definition a client
   submitted runs in this process; one a job stored runs in a process of its own.
 - An owner's expression is read and compiled in the controller's own process,
-  and nothing stops that. Reading `=>` nested in what stands before another
+  and nothing stops that. Reading `=>` nested in what is written before another
   takes twice as long with each, and so does compiling a chain of `&&`, `||` or
   `??` whose left sides are fixed, so forty of either never finish. 4 MB of
   brackets ended a client for want of stack, and the controller reads an
@@ -82,7 +82,7 @@ These are true of sends and calls to addresses.
 - A run a send or a call starts counts as one level below its sender, and
   fails as it starts past its own file's `limits: { depth: }`, 16 by default.
 - `limits: { runs: }` is counted as a send or a call is made and as a run
-  starts, so starts from several runs at once can pass it by a few.
+  starts, so starts from several runs at once can go over it by a few.
 - A run remembers the last message of each of its 64 most recent senders. A
   controller stopped while it sends, with 64 others heard before it resumes,
   can deliver an event twice.

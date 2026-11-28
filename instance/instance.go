@@ -510,10 +510,10 @@ func ReadHead(ctx context.Context, s store.Store, ctl identity.Card, name string
 		}
 		var head Head
 		if _, err := identity.Read(data, at, ctl, nil, &head); err != nil {
-			return nil, store.None, fmt.Errorf("the head of %s: %w", name, err)
+			return nil, store.None, fmt.Errorf("the summary of %s: %w", name, err)
 		}
 		if head.Name != name {
-			return nil, store.None, fmt.Errorf("the head of %s: %w", name, identity.ErrAltered)
+			return nil, store.None, fmt.Errorf("the summary of %s: %w", name, identity.ErrAltered)
 		}
 		return &head, mark, nil
 	}

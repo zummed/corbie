@@ -877,7 +877,7 @@ func Test_ctl_made_machine_with_no_hook_above_is_denied(t *testing.T) {
 	w.settle()
 	st := w.latest(w.child(run)).State
 	if st.Status != instance.Failed || st.Error == nil || st.Error.Status != machine.StatusDenied ||
-		!strings.Contains(st.Error.Error, "the job is marked for approval and no hook runs before it") {
+		!strings.Contains(st.Error.Error, "the job needs approval and no hook runs before it") {
 		t.Errorf("the machine ended %s: %+v", st.Status, st.Error)
 	}
 	for _, msg := range w.inboxOf(r1) {

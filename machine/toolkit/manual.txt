@@ -68,7 +68,7 @@ from the machine it names, and has no `description:`, `args:` or `job:`.
   machine: ./add-note.yaml   the machine's file, which runs as a child run
   call: notes/add            a location in the same tree, where it runs as a run of its own
   input                      the names of the machine's input the tool fixes; it reads the toolkit's input
-  approve: true              marks the tool's job for approval
+  approve: true              the tool's job needs approval
   meta                       data hooks read as `job.meta`
 
 - The arguments are the machine's `input:` without the names the tool

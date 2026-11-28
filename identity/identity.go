@@ -55,12 +55,12 @@ var b64 = base64.RawURLEncoding
 // store's names, of letters, digits, dots, dashes and underscores.
 func CheckName(name string) error {
 	if err := store.CheckPart(name); err != nil || len(name) > 64 {
-		return fmt.Errorf("%q is not a name a party can have", name)
+		return fmt.Errorf("%q is not a name a controller, a runner or a client can have", name)
 	}
 	for _, r := range name {
 		ok := r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9' || r == '.' || r == '-' || r == '_'
 		if !ok {
-			return fmt.Errorf("%q is not a name a party can have: use letters, digits, '.', '-' and '_'", name)
+			return fmt.Errorf("%q is not a name a controller, a runner or a client can have: use letters, digits, '.', '-' and '_'", name)
 		}
 	}
 	return nil
@@ -146,7 +146,7 @@ func New(name string, kind Kind) (*Identity, error) {
 		return nil, err
 	}
 	if !kind.valid() {
-		return nil, fmt.Errorf("%q is not a kind of party", kind)
+		return nil, fmt.Errorf("%q is not a kind: the kinds are controller, runner and client", kind)
 	}
 	_, signKey, err := ed25519.GenerateKey(rand.Reader)
 	if err != nil {

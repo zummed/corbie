@@ -353,7 +353,7 @@ func (p *Parser) including(n *node, file, place string, chain []string) (string,
 		return "", false
 	}
 	if *p.includes++; *p.includes > mostIncludes {
-		p.problemIn(n, place, "more than %d includes are written out: a file reached by two routes counts each time", mostIncludes)
+		p.problemIn(n, place, "more than %d includes are written out: a file included by two routes counts each time", mostIncludes)
 		return "", false
 	}
 	return full, true

@@ -415,7 +415,7 @@ func Test_ctl_client_starts_its_own_transient_locations(t *testing.T) {
 		"/t/s":    "is a singleton: its run starts when its tree is submitted",
 		"/t/k":    "is keyed: a run starts there when an event is sent to a key",
 		"/t/none": "nothing is recorded at /t/none",
-		"/t/held": "the definition did not pass its check",
+		"/t/held": "the definition failed its check",
 	} {
 		if refused := start(w.client, at); !strings.Contains(refused, want) {
 			t.Errorf("the start of %s gave %q", at, refused)

@@ -182,7 +182,7 @@ func TestInitRunSubmitStart(t *testing.T) {
 	m := machine{t, filepath.Join(t.TempDir(), "config")}
 	storeDir := filepath.Join(t.TempDir(), "store")
 	out := m.ok("", "init", "--store", storeDir, "--name", "box")
-	for _, want := range []string{"box-controller", "box-runner", "box-client", "A directory keeps no party out", "The ceiling is empty"} {
+	for _, want := range []string{"box-controller", "box-runner", "box-client", "A directory keeps no one out", "The ceiling is empty"} {
 		if !strings.Contains(out, want) {
 			t.Fatalf("init printed nothing of %q:\n%s", want, out)
 		}

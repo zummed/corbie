@@ -30,7 +30,7 @@ func Open(address string) (Store, error) {
 	case strings.HasPrefix(address, "s3://"):
 		return openBucket(address)
 	case IsServed(address):
-		return nil, fmt.Errorf("store: a served directory is opened by a party, with its identity, and there is none here")
+		return nil, fmt.Errorf("store: a served directory is opened by a controller, a runner or a client, with its identity, and there is none here")
 	}
 	dir, err := DirectoryAt(address)
 	if err != nil {

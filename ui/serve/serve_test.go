@@ -198,7 +198,7 @@ func Test_serve_client_must_trust_the_configs_controller(t *testing.T) {
 	corbie(t, enrolled, "client", "trust", "-", "--config", a)
 	for _, args := range [][]string{{"client", "controller"}, nil} {
 		_, err := started(context.Background(), a, args...)
-		if err == nil || !strings.Contains(err.Error(), "b-controller") || !strings.Contains(err.Error(), "a-controller") || !strings.Contains(err.Error(), "name one party") {
+		if err == nil || !strings.Contains(err.Error(), "b-controller") || !strings.Contains(err.Error(), "a-controller") || !strings.Contains(err.Error(), "name one of client and controller") {
 			t.Errorf("a UI whose client trusts another controller, started with corbie ui %s, gave %v", strings.Join(args, " "), err)
 		}
 	}
@@ -254,8 +254,8 @@ func Test_serve_keeps_corbies_command_line(t *testing.T) {
 	}
 	for args, want := range map[string]string{
 		"--json":         "corbie ui: it prints no JSON",
-		"help":           `corbie ui: "help" is not a party the UI acts as: the parties are client and controller, or none, each named once`,
-		"frob":           `corbie ui: "frob" is not a party the UI acts as: the parties are client and controller, or none, each named once`,
+		"help":           `corbie ui: "help" is not one the UI acts as: name client and controller, or none, each once`,
+		"frob":           `corbie ui: "frob" is not one the UI acts as: name client and controller, or none, each once`,
 		"client --bogus": "corbie ui: flag provided but not defined: -bogus",
 	} {
 		if status, out, said := ui0(Commands, strings.Fields(args)...); status != 2 || out != "" || said != want+"\n\nusage: "+line+"\n" {

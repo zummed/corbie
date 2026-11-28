@@ -76,7 +76,7 @@ func serveLambda(ctx context.Context, api string, report func(string, error), ro
 				if report != nil {
 					report(r.Name, err)
 				}
-				answer[r.Name] = "the pass ended early: " + err.Error()
+				answer[r.Name] = "it ended early: " + err.Error()
 				continue
 			}
 			answer[r.Name] = "done"

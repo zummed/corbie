@@ -311,7 +311,7 @@ func (p *pass) carry(inst string, step *instance.Step, ask *instance.Ask) error 
 			return err
 		}
 		// A result that cannot be delivered fails the job it belongs to.
-		failure.Error = "the result could not be passed to its parent: " + failure.Error
+		failure.Error = "the result could not be given to its parent: " + failure.Error
 		msg.Result = &instance.Result{Job: ask.Name, Status: machine.StatusError, Error: failure, Final: true}
 		_, err = p.send(store.Message(p.ctl, p.ctl, ask.Message+".failed"), noEnd, msg, p.c.ID.Card)
 		return err
@@ -370,7 +370,7 @@ func (p *pass) send(name string, until time.Time, msg *instance.Message, to iden
 	}
 	if len(data) > MaxMessage {
 		return &machine.Error{Status: machine.StatusError,
-			Error: fmt.Sprintf("it is too large: it is %d bytes and a message may be %d; pass large values as blobs", len(data), MaxMessage)}, nil
+			Error: fmt.Sprintf("it is too large: it is %d bytes and a message may be %d; give large values as blobs", len(data), MaxMessage)}, nil
 	}
 	written, err := p.store.Write(p.ctx, name, data, store.OnlyIfNew)
 	if err != nil || written || to.Name != p.ctl {

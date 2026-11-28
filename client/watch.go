@@ -159,7 +159,7 @@ func (c *Client) lists(head *instance.Head) bool { return c.ID == nil || c.reads
 func (c *Client) listHeads(ctx context.Context, place string) ([]store.Listed, error) {
 	listed, err := c.Store.List(ctx, place)
 	if errors.Is(err, store.ErrRefused) {
-		return nil, fmt.Errorf("the store gave this party nothing to read")
+		return nil, fmt.Errorf("the store gave this client nothing to read")
 	}
 	return listed, err
 }

@@ -35,8 +35,8 @@ var Commands = []cli.Command{{
 	Summary: "serve the UI to a browser until stopped",
 	Run:     cmdUI,
 	Help: `
-It acts as the parties named, from the config: the config's client, its
-controller, or both. By default it acts as every party the config holds. As
+It acts as what is named, from the config: the config's client, its
+controller, or both. By default it acts as each of the two the config holds. As
 the client it shows that client's runs in full, and as the controller the
 machines the controller recorded. As none it is a viewer, whatever the
 config holds: it shows only the status of every run the store lets it read.
@@ -83,11 +83,11 @@ func parse(e *cli.Env, args []string) (options, error) {
 		case n == "none" && !o.asNone:
 			o.asNone = true
 		default:
-			return o, cli.Mistake("%q is not a party the UI acts as: the parties are client and controller, or none, each named once", n)
+			return o, cli.Mistake("%q is not one the UI acts as: name client and controller, or none, each once", n)
 		}
 	}
 	if o.asNone && (o.asClient || o.asController) {
-		return o, cli.Mistake("none names no party, and is not named beside client or controller")
+		return o, cli.Mistake("none is not named beside client or controller")
 	}
 	if o.interval != 0 && o.interval < 100*time.Millisecond {
 		return o, cli.Mistake("--interval is shorter than 100ms")
@@ -174,7 +174,7 @@ func start(ctx context.Context, e *cli.Env, o options) (*ui, error) {
 		o.asClient, o.asController = cfg.Has(identity.Client), cfg.Has(identity.Controller)
 	}
 	if !o.asNone && !loopback(o.listen) {
-		return nil, cli.Mistake("a UI listens on this computer only, and %s is not on it: its token acts as its parties, and it has no TLS; none makes it a viewer of runs alone", o.listen)
+		return nil, cli.Mistake("a UI listens on this computer only, and %s is not on it: its token acts as its client and controller, and it has no TLS; none makes it a viewer of runs alone", o.listen)
 	}
 	p, err := open(ctx, e, cfg, o.asClient, o.asController)
 	if err != nil {

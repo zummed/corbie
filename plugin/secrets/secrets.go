@@ -50,8 +50,8 @@ func init() {
 
 const page = `secrets: this plugin gives a script handles to the job's secrets.
 
-A handle stands for a secret's value, which the script never has. A plugin
-that is passed a handle sends the value in its place.
+A handle names a secret's value, which the script never has. A plugin
+given a handle sends the value in its place.
 ` + "`corbie manual using-secrets`" + ` shows how a secret is set and named in a job.
 
   secrets.get(name)                  returns the handle to a secret the job's allow list names

@@ -46,18 +46,18 @@ A function's code can be replaced while runs are in progress.
 Keep the private keys in a bucket
 ---------------------------------
 
-By default each package holds its party's private keys, in
-`config/<kind>/identity`. With `--identity`, `init` writes them to a bucket,
-and each package holds their address.
+By default each package holds the private keys of its controller, runner or
+client, in `config/<kind>/identity`. With `--identity`, `init` writes them to
+a bucket, and each package holds their address.
 
   corbie init --store 's3://my-bucket/main?region=eu-west-2' --identity 's3://my-keys/cloud?region=eu-west-2' --ceiling exec --name cloud
 
   the objects   cloud/controller/identity, cloud/runner/identity, cloud/client/identity
   the package   config/controller/identity-address, and no private key
-  the policy    `corbie controller policy` allows each party to read its own object
+  the policy    `corbie controller policy` allows each of the three to read its own object
 
 A function reads its keys each time it starts. Whoever may read an object has
-that party's keys, and Corbie does not check the key bucket's policy. To
+the keys in it, and Corbie does not check the key bucket's policy. To
 replace the keys, run `init` with a new config, a new `--identity` path and a
 new store.
 
@@ -174,7 +174,7 @@ The first command prints the URL, which is `https`. Check it with the token.
     {"client":"cloud-client"}
 
 - A request's time ends ten seconds before the function's timeout. `?wait`
-  then answers with the run as it stands, and a `?watch` stream closes.
+  then answers with the run as it is then, and a `?watch` stream closes.
 - A stream runs until then, also after its caller has left, and Lambda bills
   that time.
 - Lambda refuses a request over 6 MB. A submit of 4 MB of files was taken, and

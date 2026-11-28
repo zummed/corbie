@@ -14,7 +14,7 @@ Fields every type takes
   limits: { timeout: 1h }      how much a run may use, as below
   allow: [net:example.com]     permissions of every script job in the definition
   deny: [exec]                 what no script job in the definition may do
-  approve: [disk]              permissions that mark a job for approval
+  approve: [disk]              permissions a job needs approval to use
   hooks: { small: { before: ./small.js } }    jobs that run before or after other jobs, as below
   title: "${input.topic}"      a run's title, filled in when it starts, as below
   meta: { owner: alice }        data Corbie keeps and never reads; no expression in it is filled in
@@ -72,7 +72,7 @@ file or a list. A name may end in `#path` to take one part of a file.
   writes replaces the included one whole.
 - To take only part of a file, name each part with `#path`.
   `tools: { read: { include: ./tools.yaml#read } }` takes one tool, and a tool
-  added to tools.yaml later does not reach it.
+  added to tools.yaml later is not taken.
 - A file's values win over those of the files it includes, and an earlier
   file's over a later one's.
 - A file may take its type and name from a file it includes, as
@@ -86,7 +86,7 @@ file or a list. A name may end in `#path` to take one part of a file.
   read. A script reads a file with `require`, as `corbie manual scripts` shows.
 - A problem in a file names the file.
 - More than 1,000 includes written out by one definition are refused. A file
-  reached by two routes counts each time, though its values are merged once.
+  included by two routes counts each time, though its values are merged once.
 - `corbie test <file> --definition` prints the definition written out, each
   value with its file and line, and runs nothing. With `--in <directory>` it
   reads the file in that directory's tree.
@@ -222,7 +222,7 @@ of its own whose result is the job's output.
   timeout: 5m                  for a script, how long it may run, default 5m;
                                for a machine, the child run's timeout
   restart: { limit: 2 }        what happens when the job ends, as below; with none it runs once
-  approve: true                marks the job for approval: it starts only after a `before` hook
+  approve: true                the job needs approval: it starts only after a `before` hook
   meta: { team: orders }       data hooks read as `job.meta`, and nothing else reads
   files: [./lib.js]            script only: files the script loads with require("./lib.js")
   memory: 256MB                script only: the most memory it may use, in B, KB, MB or GB
@@ -436,7 +436,7 @@ it, and `job`. After a job they read `output`, the job's output.
                  is the name its definition gives, as report for `flow: report`
   job.input      the input the job is given
   job.allow      the permissions the job declares
-  job.approve    true when the job is marked for approval
+  job.approve    true when the job needs approval
   job.meta       the job's `meta:`
   job.script, job.machine, job.call or job.send    what the job runs
   job.tool       for an agent's tool call: { name, args, said }, with `toolkit`
@@ -459,17 +459,17 @@ Which hooks run for a job:
   hook's job is cancelled.
 - A hook has no time limit of its own: its job's `timeout:` is how long it may take.
 
-A job is marked for approval in two cases.
+A job needs approval in two cases.
 
 - The job has `approve: true`.
 - The job's `allow:` list declares a permission that `approve:` lists, in
   kind and their scopes match a common value, or when one is a group of that kind.
   A call or a send job declares only `send:` for its location.
 
-A marked job starts only after a `before` hook, with no permission it did not
-have. One that no `before` hook's `when:` holds for fails with status
-`denied`, and a run of a definition that marks a job and has no `before` hook
-in it or above it is refused as it starts.
+A job that needs approval starts only after a `before` hook, with no
+permission it did not have. One that no `before` hook's `when:` holds for
+fails with status `denied`, and a run of a definition with such a job and no
+`before` hook in it or above it is refused as it starts.
 
 A script hook runs alone under `corbie test`. This one refuses a job whose
 `allow:` list has an `fs.write` entry.

@@ -174,7 +174,7 @@ document is text, bytes or a blob, and holds one YAML document.
 - parse gives maps, lists, text, numbers, true or false, and null. A map's
   keys are in the order the document writes them.
 - A value YAML would read as a date or a time stays the text written.
-- An alias gives a copy of what its anchor marks. A merge key, <<, is an
+- An alias gives a copy of the value its anchor names. A merge key, <<, is an
   ordinary key.
 - write writes a map's keys in order, with an indent of two spaces, and puts
   text in quotes where it would otherwise read as another value.

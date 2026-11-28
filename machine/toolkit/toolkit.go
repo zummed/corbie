@@ -121,7 +121,7 @@ func (toolkitType) Shape() *machine.Shape {
 		{Name: "call", Kind: machine.KindWord, Description: "the location of a machine in the same tree, in place of machine:"},
 		{Name: "input", Kind: machine.KindValue,
 			Description: "of a tool with machine: or call:, the names of the machine's input the tool fixes; it reads the toolkit's input"},
-		{Name: "approve", Kind: machine.KindFlag, Description: "of a tool with machine: or call:, marks the tool's job for approval, so it starts only after a hook before it"},
+		{Name: "approve", Kind: machine.KindFlag, Description: "of a tool with machine: or call:, the tool's job needs approval, so it starts only after a hook before it"},
 		{Name: "meta", Kind: machine.KindValue, Description: "of a tool with machine: or call:, data of any kind, which hooks read as job.meta and nothing else reads"},
 	}}
 	return &machine.Shape{Name: "toolkit", What: "a toolkit", Fields: []machine.Field{

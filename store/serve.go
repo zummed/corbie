@@ -170,7 +170,7 @@ func said(status int, format string, args ...any) servedAnswer {
 // with another key in the same words, so that neither says which names are
 // parties.
 func notParty(name string) servedAnswer {
-	return said(http.StatusUnauthorized, "%s is no party of this store's controller, or the connection was not made with its key", name)
+	return said(http.StatusUnauthorized, "%s is not trusted by this store's controller, or the connection was not made with its key", name)
 }
 
 // unhurried is the value of a request, read with the server's timeout begun
@@ -289,7 +289,7 @@ func (s *Server) answer(r *http.Request) servedAnswer {
 	ctx := r.Context()
 	name := r.Header.Get(headParty)
 	if CheckPart(name) != nil {
-		return said(http.StatusUnauthorized, "the request names no party")
+		return said(http.StatusUnauthorized, "the request names no controller, runner or client")
 	}
 	// A member that does not lead says who does before anything else: its
 	// own copy may not yet hold a party the leader's does.

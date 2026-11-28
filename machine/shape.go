@@ -144,7 +144,7 @@ var shared = []Field{
 	{Name: "keep", Kind: KindDuration, Description: "how long its instances are kept after they end (a week)"},
 	{Name: "allow", Kind: KindList, Description: "permissions for every script the definition runs"},
 	{Name: "deny", Kind: KindList, Description: "what no script the definition runs may do"},
-	{Name: "approve", Kind: KindList, Description: "permissions that mark a job for approval: a job that declares one starts only after a hook before it"},
+	{Name: "approve", Kind: KindList, Description: "permissions a job needs approval to use: a job that declares one starts only after a hook before it"},
 	{Name: "hooks", Kind: KindNamed, Of: hookShape, Description: "jobs that run before or after the jobs of the machine and of the machines below it, by name"},
 	{Name: "title", Kind: KindText, Description: "what a run is called, filled in from its input when it starts; only the client of its tree sees it"},
 	{Name: "meta", Kind: KindValue, Description: "data of any kind, which Corbie keeps with the definition and never reads"},
@@ -206,7 +206,7 @@ var JobShape = &Shape{Name: "job", What: "a job", Fields: []Field{
 	{Name: "restart", Kind: KindFields, Description: "what happens when the job ends", Of: restartShape},
 	{Name: "memory", Kind: KindSize, Description: "the most memory the job may use"},
 	{Name: "tags", Kind: KindList, Description: "chooses runners: one that has every tag"},
-	{Name: "approve", Kind: KindFlag, Description: "marks the job for approval: it starts only after a hook before it"},
+	{Name: "approve", Kind: KindFlag, Description: "the job needs approval: it starts only after a hook before it"},
 	{Name: "meta", Kind: KindValue, Description: "data of any kind, which hooks read as job.meta and nothing else reads"},
 }}
 

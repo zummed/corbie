@@ -257,7 +257,7 @@ func (e *Env) start(cfg identity.Config, named []item, before func() error) erro
 				return err
 			}
 			if it.name == "gateway" && role.Serverless() && len(named) > 1 && !e.whole {
-				return fmt.Errorf("on a serverless host a gateway is a function of its own: the host calls it for each request, and a controller or a runner for each pass")
+				return fmt.Errorf("on a serverless host a gateway is a function of its own: the host calls it for each request, and a controller or a runner when it has work")
 			}
 			continue
 		}

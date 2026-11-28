@@ -58,7 +58,7 @@ func open(ctx context.Context, e *cli.Env, cfg identity.Config, asClient, asCont
 			return nil, fmt.Errorf("this computer's client trusts no controller yet: corbie init sets one computer up, and corbie client trust takes a controller's card")
 		}
 		if asController && (held.Card.Name != card.Name || held.Card.Fingerprint() != card.Fingerprint()) {
-			return nil, fmt.Errorf("the config's client trusts the controller %s, not the config's own %s: name one party, client or controller", held.Card.Name, card.Name)
+			return nil, fmt.Errorf("the config's client trusts the controller %s, not the config's own %s: name one of client and controller", held.Card.Name, card.Name)
 		}
 		card, recorded = held.Card, held.Store
 	}

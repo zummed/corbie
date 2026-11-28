@@ -102,8 +102,8 @@ Each rule here is checked on the memory store opened as the party named, and on 
 **R-store-48** In a directory every value is one plain file, at a path that follows from its name, and every party on the computer can read and write all of it.
 *Accept:* after a run on a directory store, find the run's head and its step entries with a file listing and print them with ordinary tools, using nothing of Corbie's. A process acting as a runner reads a head, a step entry and a trust entry, and deletes a message in the controller's inbox: none is refused.
 
-**R-store-50** Corbie says that a directory keeps no party out of anything.
-*Accept:* `corbie init` with a directory store prints, among what it did, that a directory keeps no party out. The manual's page on the store says the same.
+**R-store-50** Corbie says that a directory keeps no one out of anything.
+*Accept:* `corbie init` with a directory store prints, among what it did, that a directory keeps no one out. The manual's page on the store says the same.
 
 **R-store-67** A process waiting on a path of a store is told at once of each name its own process writes or deletes under the path. In a directory it is told as well of a message in an inbox and of a running head that any other process on the computer writes or deletes under the path; the operating system reports them, and Corbie writes nothing for it. Any other write is found at the process's interval. Where the system refuses to report them, `corbie start` prints a warning that says why.
 *Accept:* a process waits on a controller's inbox, on the controller's area and on its records, in a directory that holds nothing yet. Another process writes a message, deletes it, writes a second, and writes a running head twice: the first process is told each time, within a moment. The other process writes a step and a finished head: the first is told nothing. Two stores opened on one bucket by one process: a write through one is told to a wait on the other, and a write the bucket answers "already there" is not. On Linux with `fs.inotify.max_user_watches` at 0, `corbie start controller` prints a warning with the system's error and the names of the two limits, and takes a message another process writes at its interval.
@@ -278,4 +278,4 @@ Used by:
 - **Machines**: a draft's files and definitions are written side by side, under the store's bound, among a submit's uploads or into a record.
 - **Secrets**: secrets and values are under `locations/<location>/+/secrets/` and `values/`, sealed to the controller.
 - **Plugins**: an extension may add a kind of store, which must pass the checks of R-store-13.
-- **Manual**: carries the list of bucket services Corbie is tested against and the statement that a directory keeps no party out.
+- **Manual**: carries the list of bucket services Corbie is tested against and the statement that a directory keeps no one out.

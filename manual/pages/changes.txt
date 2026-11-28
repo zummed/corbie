@@ -230,10 +230,10 @@ Change `ask:` to a hook, as `corbie manual hooks` says.
   the nearest ask above a job             every hook above a job runs, the job's own machine's first
   a stage, state or tool named ask        allowed
 
-`approve: true` and `approve: [exec]` mark a job, as before. A definition that
-marks a job, with no `before` hook in it or a machine above it, is refused as
-it starts. A marked job that no `before` hook's `when:` holds for fails with
-status `denied`.
+With `approve: true` or `approve: [exec]`, a job needs approval, as before. A
+definition with such a job, and no `before` hook in it or a machine above it,
+is refused as it starts. A job that needs approval and that no `before` hook's
+`when:` holds for fails with status `denied`.
 
 After 0.32.0
 ------------

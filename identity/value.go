@@ -40,7 +40,7 @@ var (
 	// found under a name it was not signed for.
 	ErrAltered = errors.New("the value has been altered or moved")
 	// ErrNotForUs is a sealed value this identity cannot open.
-	ErrNotForUs = errors.New("the value is not sealed to this party")
+	ErrNotForUs = errors.New("the value is not sealed to this identity")
 )
 
 const sealInfo = "corbie seal 1"
@@ -156,14 +156,14 @@ const wrappedLen = 32 + 32 + 16
 
 func seal(plain, frame []byte, to []Card) ([]byte, error) {
 	if len(to) > 255 {
-		return nil, errors.New("sealed to too many parties")
+		return nil, errors.New("sealed to too many identities")
 	}
 	key := make([]byte, 32)
 	rand.Read(key)
 	out := []byte{byte(len(to))}
 	for _, card := range to {
 		if card.IsZero() {
-			return nil, errors.New("sealing to a party with no card")
+			return nil, errors.New("sealing to an identity with no card")
 		}
 		pub, err := hpke.NewDHKEMPublicKey(card.seal)
 		if err != nil {

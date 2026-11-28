@@ -173,7 +173,7 @@ func why(leg, status, controller, runner string) string {
 	case leg == legJob:
 		return "The job went to " + runner + ". On a computer, that runner is busy or its --interval is long. On a serverless host, the bucket does not call the runner's function when something is written under " + runInbox + ", and another call found the job."
 	case leg == legResult && status == legNever:
-		return "The runner had the job and no result reached the controller. The runner stopped, or its key may not write under " + ctlInbox + " (corbie controller policy " + runner + " prints what it needs)."
+		return "The runner had the job and the controller has no result from it. The runner stopped, or its key may not write under " + ctlInbox + " (corbie controller policy " + runner + " prints what it needs)."
 	case leg == legTimer:
 		return "On a serverless host, nothing calls the controller's function once a minute, and a timer is noticed only by that call."
 	}

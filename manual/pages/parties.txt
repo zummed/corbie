@@ -1,4 +1,4 @@
-Parties: a controller, its runners and its clients trust each other by exchanging cards.
+Cards: a controller, its runners and its clients trust each other by exchanging cards.
 
 A controller, a runner and a client each have two private keys, in a file of
 the config that only its owner can read, and a card that holds the two public

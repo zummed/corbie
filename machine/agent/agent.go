@@ -307,7 +307,7 @@ func (agentType) Shape() *machine.Shape {
 			Description: "the location of a machine, in place of machine:. One in the same tree is written from its prefix and read with the tree; one written in full from / is read when the run starts"},
 		{Name: "input", Kind: machine.KindValue,
 			Description: "of an entry with machine: or call:, the names of the machine's input the entry fixes, which the model is not given; it reads the agent's input"},
-		{Name: "approve", Kind: machine.KindFlag, Description: "of an entry with machine: or call:, marks every job the entry starts for approval, so each starts only after a hook before it"},
+		{Name: "approve", Kind: machine.KindFlag, Description: "of an entry with machine: or call:, every job the entry starts needs approval, so each starts only after a hook before it"},
 		{Name: "meta", Kind: machine.KindValue, Description: "of an entry with machine: or call:, data of any kind, which hooks read as job.meta and nothing else reads"},
 		{Name: "open", Kind: machine.KindFlag, Description: "of an entry that names a toolkit: the toolkit is opened before the first turn"},
 		{Name: "when", Kind: machine.KindWord,

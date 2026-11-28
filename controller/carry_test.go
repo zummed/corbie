@@ -634,7 +634,7 @@ func TestEventTooLargeToSendFailsItsJob(t *testing.T) {
 		last := w.latest(run)
 		if head := w.head(run); head.Status != instance.Failed || last.State.Error == nil ||
 			!strings.Contains(last.State.Error.Error, "the event big could not be sent: it is too large") ||
-			!strings.Contains(last.State.Error.Error, "pass large values as blobs") {
+			!strings.Contains(last.State.Error.Error, "give large values as blobs") {
 			t.Fatalf("%s: the parent is %s with %+v; its last step took %q", direction, head.Status, last.State.Error, events(last))
 		}
 		if head := w.head(kid); head.Status != instance.Cancelled {

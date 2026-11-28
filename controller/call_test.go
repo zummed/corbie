@@ -449,7 +449,7 @@ func Test_ctl_client_call_is_refused(t *testing.T) {
 		t.Fatalf("a call with an allow list gave %q", why)
 	}
 	// A run that is refused as it starts tells the client in the receipt.
-	if why := refused(c2, client.Start{At: "/t/held"}); !strings.Contains(why, "did not pass its check") {
+	if why := refused(c2, client.Start{At: "/t/held"}); !strings.Contains(why, "failed its check") {
 		t.Fatalf("a call of a location whose run is refused as it starts gave %q", why)
 	}
 	if why := refused(c2, client.Start{At: "/t/lookup"}); why != "" {

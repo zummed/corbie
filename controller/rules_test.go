@@ -494,7 +494,7 @@ func TestJobThatCannotBeBuiltFails(t *testing.T) {
 	`
 	for job, want := range map[string]string{
 		`{ script: ./work.js, allow: ["secret:NONE@net:api.example"] }`:                                  `NONE is not set at /unbuilt-`,
-		`{ machine: { statechart: kid, states: { k: { end: done } } }, input: "${'x'.repeat(300000)}" }`: "pass large values as blobs",
+		`{ machine: { statechart: kid, states: { k: { end: done } } }, input: "${'x'.repeat(300000)}" }`: "give large values as blobs",
 		`{ send: { to: { at: devices/boiler }, event: set } }`:                                           `was refused by the job "s"`,
 		`{ call: { at: services/weather }, input: { days: 2 }, allow: ["send:**"] }`:                     "nothing is recorded at /unbuilt-",
 	} {

@@ -43,6 +43,7 @@ A run of a toolkit is given `request:` in its input, beside what the toolkit's `
 - An entry is `{ kind, name, description, args }`. `kind` is `tool` or `toolkit`, and `args` is the shape of a tool's arguments.
 - `{ working, state }` says the work has not ended, and `{ requests, state }` that it needs input. A resume gives `state` back, with `responses` to the requests.
 - `toolkit:` in a request is a list of names that lead to a toolkit inside this one.
+- `said:` in a call, a resume or a cancel is a text: what the caller says of the call. A hook reads it as `job.tool.said`.
 - A request of any other form fails the run, and the error names the field.
 
 ## Tools written in the toolkit
@@ -200,7 +201,7 @@ A toolkit's run is a run like any other, so the machine area gives all of this:
 
 - A call needs `send:` for the location in the caller's layers, and the toolkit's `receive:` to accept the caller.
 - A secret set at the toolkit's location is sent to its jobs, and not to its caller's.
-- A toolkit writes `hooks:`, as any machine does. A hook reads the call as `job.tool`: `{ toolkit, name, args }`, with the toolkit's own name. It is set on a tool's job, and on the job that answers a call, a resume or a cancel.
+- A toolkit writes `hooks:`, as any machine does. A hook reads the call as `job.tool`: `{ toolkit, name, args }`, with the toolkit's own name, and `said` where the request gives it. It is set on a tool's job, and on the job that answers a call, a resume or a cancel.
 - A caller's hooks run for its call job, and for nothing in a run started by `call:`.
 
 ```yaml

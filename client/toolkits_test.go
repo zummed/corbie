@@ -383,6 +383,24 @@ func TestAgentToolkitHooksAreItsOwn(t *testing.T) {
 	}
 }
 
+// A toolkit named by its file runs at the agent's location, where the
+// agent's hooks run for its tools' jobs. Such a hook reads what the model
+// said as it called, as it does for a tool of the agent's own.
+func TestAgentHookReadsWhatTheModelSaidInAToolkitsRun(t *testing.T) {
+	files := maps.Clone(toolkits)
+	files["toolkits/net.yaml"] = strings.Replace(toolkits["toolkits/net.yaml"],
+		`input: { command: "${args.command}" } }`, `input: { command: "${args.command}" }, approve: true }`, 1)
+	files["lead.js"] = `return { ok: false, note: "the lead read " + JSON.stringify(input.job.tool) }`
+	m := newModel(t, calls("c1", "open", opens("net")), calls("c2", "net_show", `{"command": "a"}`), says("done"))
+	l := local(t, "all")
+	def := helper(m.URL, `hooks: { lead: { before: ./lead.js, when: "${job.approve}" } }`)
+	r := wait(t, l, startWith(t, l, def, files, map[string]any{"question": "q"}))
+	want := `the lead read {\"args\":{\"command\":\"a\"},\"name\":\"show\",\"said\":\"let me see\",\"toolkit\":\"net\"}`
+	if shown := lastShown(m.Calls[2]); r.Status != "done" || !strings.Contains(shown, "denied") || !strings.Contains(shown, want) {
+		t.Errorf("the agent ended %s (%s), and the call was shown as: %s", r.Status, r.Error, shown)
+	}
+}
+
 // A when: on an entry is a condition on the agent's input, checked once
 // when the run starts. An entry whose when: does not hold is not offered:
 // open does not name its toolkit, and a call of it runs nothing.

@@ -514,7 +514,7 @@ A hook's expressions read the `input`, `values` and `run` of the machine that de
 | `approve` | true when the job is marked for approval |
 | `meta` | the job's `meta:` |
 | `script`, `machine`, `call` or `send` | what the job runs |
-| `tool` | for an agent's tool call, `{ name, args, said }`, with `toolkit` for a toolkit's tool and `open` for an open (see agent.md); for a job of a toolkit, `{ toolkit, name, args }` (see toolkit.md) |
+| `tool` | for an agent's tool call, `{ name, args, said }`, with `toolkit` for a toolkit's tool and `open` for an open (see agent.md); for a job of a toolkit, `{ toolkit, name, args }`, and `said` where its request gives it (see toolkit.md) |
 
 A hook's `allow:` scopes are filled from the declaring machine's input and values, and never from `job`. A hook's job is a job of the definition that declares it, for every job it runs for: a script, a call or a send has that definition's `allow:` and `deny:` with its own, and it runs with the layers of that machine.
 

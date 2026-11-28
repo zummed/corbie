@@ -316,6 +316,7 @@ type request struct {
 	Do   string
 	Tool string
 	Args any
+	Said string // what the caller says of the call, which a hook reads
 }
 
 // requestOf reads the request from a run's input, and says what is wrong
@@ -327,8 +328,8 @@ func requestOf(input any) (*request, error) {
 		return nil, fmt.Errorf("a toolkit is given request: in its input, as { do: open } or { do: call, tool, args }")
 	}
 	for _, name := range sortedNames(written) {
-		if !slices.Contains([]string{"do", "toolkit", "tool", "args", "state", "responses"}, name) {
-			return nil, fmt.Errorf("request.%s: a request holds do, toolkit, tool, args, state and responses", name)
+		if !slices.Contains([]string{"do", "toolkit", "tool", "args", "state", "responses", "said"}, name) {
+			return nil, fmt.Errorf("request.%s: a request holds do, toolkit, tool, args, state, responses and said", name)
 		}
 	}
 	r := &request{Args: written["args"]}
@@ -341,6 +342,13 @@ func requestOf(input any) (*request, error) {
 		return nil, fmt.Errorf("request.tool: a %s names its tool", r.Do)
 	case (r.Do == Resume || r.Do == Cancel) && written["state"] == nil:
 		return nil, fmt.Errorf("request.state: a %s gives the state its call ended with", r.Do)
+	}
+	if said, written := written["said"]; written {
+		text, isText := said.(string)
+		if !isText || r.Do == Open {
+			return nil, fmt.Errorf("request.said: this is a text, what the caller says of a call, a resume or a cancel")
+		}
+		r.Said = text
 	}
 	if path, written := written["toolkit"]; written {
 		names, isList := path.([]any)
@@ -393,7 +401,11 @@ func (toolkitType) Step(in *machine.StepIn) (*machine.StepOut, error) {
 			fail(err)
 		case job != nil:
 			if r.Do != Open {
-				job.Tool = map[string]any{"toolkit": in.Definition.Name, "name": r.Tool, "args": r.Args}
+				tool := map[string]any{"toolkit": in.Definition.Name, "name": r.Tool, "args": r.Args}
+				if r.Said != "" {
+					tool["said"] = r.Said
+				}
+				job.Tool = tool
 			}
 			out.Requests = append(out.Requests, machine.Request{Job: job})
 		default:

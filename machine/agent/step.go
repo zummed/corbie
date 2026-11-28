@@ -814,6 +814,11 @@ func (s *stepper) ask(name, jobName string, request, shown map[string]any) (*mac
 	input := map[string]any{}
 	fixed, _ := job.Input.(map[string]any)
 	maps.Copy(input, fixed)
+	// A toolkit named by its file runs at the agent's location, so its
+	// request carries what the model said, for the hooks that run there.
+	if said, _ := shown["said"].(string); said != "" && job.IsMachine() && request["do"] != toolkit.Open {
+		request["said"] = said
+	}
 	input["request"] = request
 	job.Input, job.Tool = input, shown
 	return job, nil

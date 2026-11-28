@@ -142,7 +142,8 @@ Requests
   `limits: { resume: 10m }`, ten minutes by default, it ends with
   `{ working, state }`.
 - A hook of the toolkit reads a call's tool as `job.tool`:
-  `{ toolkit, name, args }`.
+  `{ toolkit, name, args }`, and `said`, a text, where the request gives
+  `said:`, what the caller says of the call.
 - A toolkit is transient: each request is a run.
 - An agent names a toolkit as an entry of its `tools:`, and opens it and
   calls its tools for its model, as `corbie manual agent` says.

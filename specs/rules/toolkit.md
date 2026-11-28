@@ -9,8 +9,8 @@ The detailed rules behind the [Toolkit overview](../toolkit.md). Area code: `kit
 
 ## Requests
 
-**R-kit-02** A run of a toolkit reads `request:` in its input. Its `do:` is `open`, `call`, `resume` or `cancel`; a request holds `do`, `toolkit`, `tool`, `args`, `state` and `responses` and no other field; every request but an open names its `tool`; a resume and a cancel give `state`. A request of any other form fails the run with an error that names the field, and no job starts.
-*Accept:* `TestToolkitRefusesARequestItCannotRead`: a run with no request, with `do: list`, with a field `at`, a call with no tool and a resume with no state each end failed with no job asked for.
+**R-kit-02** A run of a toolkit reads `request:` in its input. Its `do:` is `open`, `call`, `resume` or `cancel`; a request holds `do`, `toolkit`, `tool`, `args`, `state`, `responses` and `said` and no other field; every request but an open names its `tool`; a resume and a cancel give `state`; `said` is a text, and an open has none. A request of any other form fails the run with an error that names the field, and no job starts.
+*Accept:* `TestToolkitRefusesARequestItCannotRead`: a run with no request, with `do: list`, with a field `at`, a call with no tool, a resume with no state, a call whose `said` is a number and an open with `said` each end failed with no job asked for.
 
 **R-kit-03** A toolkit with `tools:` answers an open with `{ instructions, entries }`: its `instructions:` filled from the input, and one entry `{ kind: tool, name, description, args }` for each tool, in the order of their names, `args` in full form.
 *Accept:* parity case 153: the open gives the instructions with the shelf filled in, and the entry of `add_note` with the full shape of its arguments.
@@ -21,8 +21,8 @@ The detailed rules behind the [Toolkit overview](../toolkit.md). Area code: `kit
 **R-kit-05** A toolkit with `job:` starts that job for every request, with the toolkit's input or the `input:` the job writes, and the job's output is the answer. An answer to an open is `{ instructions, entries }`; to a call or a resume, `{ result }`, `{ working, state }` or `{ requests, state }`; to a cancel, `{ result }`. An answer of any other form fails the run.
 *Accept:* parity case 154: the open, a call that gives a result and a call that gives `{ working, state }` each end with the job's answer, and an answer of `{ result, at }` fails the run.
 
-**R-kit-06** The job a toolkit starts for a call, a resume or a cancel carries `job.tool`, `{ toolkit, name, args }`: the toolkit's name, the request's tool and its arguments. The toolkit's hooks read it.
-*Accept:* parity case 156: the toolkit's hook, whose `when:` reads `job.tool.name`, is given `{ toolkit: notes, name: add_note, args: { text: milk } }`, and the caller's hook does not run for the tool's job.
+**R-kit-06** The job a toolkit starts for a call, a resume or a cancel carries `job.tool`, `{ toolkit, name, args }`: the toolkit's name, the request's tool and its arguments, with `said` where the request gives it. The hooks that run for the job read it.
+*Accept:* parity case 156: the toolkit's hook, whose `when:` reads `job.tool.name`, is given `{ toolkit: notes, name: add_note, args: { text: milk }, said: we are out }` for a request with that `said`, and the caller's hook does not run for the tool's job.
 
 **R-kit-07** A resume whose job answers `{ working, state }` sets a timer for `working.wait` seconds, 5 by default and 1 at the least, and at the timer starts the job again with that state as the request's. It ends with the first answer that is not `working`, or with `{ working, state }` where the wait would end after `limits: { resume: }`, ten minutes by default. A call ends with `working` at once.
 *Accept:* parity case 159: a resume of work that ends at the third ask starts the job twice and ends with the result, and the same resume of a toolkit with `limits: { resume: 1s }` starts it once and ends working.

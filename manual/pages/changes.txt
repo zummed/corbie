@@ -87,9 +87,10 @@ These are new.
   `${stages.fetch.done}`, is refused when the definition is checked. It
   read as null before. A stage has output, failed, error, status, skipped and
   emitted.
-- `fs.list(dir)` with `fs.read:dir` gives every entry in `dir`; it gave only
-  the entries the job could read before. With `deep`, it goes only into the
-  directories the job may read, and `used:` lists each one.
+- `fs.list(dir)` with `fs.read:dir` gives every entry in `dir` but those a
+  `deny:` entry names; it gave only the entries the job could read before.
+  With `deep`, it goes only into the directories the job may read, and
+  `used:` lists each one.
 - `corbie test` stops when no run has a job, a timer, a timeout or a ticket
   outstanding, prints each run still running, and fails: each waits on an
   event that nothing in its process sends. It waited until it was stopped.

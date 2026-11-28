@@ -172,6 +172,11 @@ func list(job *plugin.Job, first any, opt plugin.Options) (any, error) {
 				continue
 			}
 			full := filepath.Join(dir, e.Name())
+			// An entry a deny entry names is left out: the entry itself, a
+			// link not followed.
+			if job.DeniesRead(full) {
+				continue
+			}
 			out = append(out, entry(prefix+e.Name(), info))
 			// Going into a directory below is a read of it. A link to a
 			// directory is not gone through.
@@ -354,9 +359,9 @@ Needs these permissions, at the path's real location after links are followed:
   it points to.
 - A directory removed or moved needs fs.write:path for every entry inside, at
   the old path and the new. If one is refused, nothing is removed or moved.
-- fs.list(path) is a read of path, and gives every entry in it. With deep, it
-  goes only into the directories below that the job may read, and each is a
-  read of that directory.
+- fs.list(path) is a read of path, and gives every entry in it but those a
+  deny entry names. With deep, it goes only into the directories below that
+  the job may read, and each is a read of that directory.
 
 This script writes a blob to a file and reads the file as a blob.
 

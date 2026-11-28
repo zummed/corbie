@@ -132,6 +132,8 @@ The detailed rules behind the [Plugins overview](../plugin.md). Requirements are
 
 **C-plug-26** Removing a directory and all inside it checks `fs.write` for every entry, and removes nothing if one is refused. Removing a parent must not reach past a deny inside it. *Test:* `plug_fs_remove_checks_every_entry`
 
+**C-plug-32** A listing leaves out every entry a deny entry names, and lists an entry that is only not allowed. Listing a directory must not show a name inside it that a deny keeps from the job. *Test:* `plug_fs_list_leaves_out_what_is_denied`
+
 **C-plug-28** A program named by a path with no leading `/` is found from the job's scratch directory and never from the root of the disk. A path joined to an empty directory name becomes a path from the root, and `bin/x` then means `/bin/x`. *Test:* `plug_exec_relative_program_from_scratch`
 
 **C-plug-29** `ssh` checks the other computer's key against one the script gives; a call that gives none fails, unless it says outright that the key is not to be checked, and when the key shown is not the one given, the failure shows the fingerprint of the key that was shown. Trusting whatever key is shown first hands the sign-in to whoever answers, and the reader needs the fingerprint to tell a changed key from a wrong computer. *Test:* `plug_ssh_host_key_given_or_waived_outright`

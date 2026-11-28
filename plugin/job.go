@@ -263,6 +263,12 @@ func (j *Job) MayRead(real string) bool {
 	return j.Perms.Check(permission.Read, filepath.ToSlash(real)) == nil
 }
 
+// DeniesRead says whether a deny entry of the job's names reading what is at
+// a path, given as it really is, without noting anything as used.
+func (j *Job) DeniesRead(real string) bool {
+	return j.Perms.Denied(permission.Read, filepath.ToSlash(real)) != nil
+}
+
 // Whole checks that the job is allowed the whole of a group: "network",
 // "disk" or "all". It is for something a plugin starts that does its own
 // reaching, which Corbie cannot hold to a scope: it may be had only where

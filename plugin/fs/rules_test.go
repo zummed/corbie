@@ -195,12 +195,13 @@ func TestUsedEntryForAScratchPathWorksInTheNextJob(t *testing.T) {
 	}
 }
 
-// A listing gives every entry of the directory asked for, and goes only into
-// the directories below that the job may read.
-func TestListGivesEveryEntryAndGoesIntoWhatTheJobMayRead(t *testing.T) {
-	job := newJob(t, []string{"fs.read:**"}, []string{"fs.read:tree/sub/keep/**", "fs.read:tree/z.txt"})
-	tree(t, job.Scratch, "tree/a.txt", "tree/sub/b.txt", "tree/sub/keep/c.txt", "tree/z.txt")
-	if got := names(t, job, "tree", true); got != "a.txt sub sub/b.txt sub/keep z.txt" {
+// A listing gives every entry of the directory asked for but those a deny
+// entry names, and goes only into the directories below that the job may
+// read. An entry that is only not allowed is listed.
+func Test_plug_fs_list_leaves_out_what_is_denied(t *testing.T) {
+	job := newJob(t, []string{"fs.read:tree", "fs.read:tree/sub"}, []string{"fs.read:tree/sub/keep/**", "fs.read:tree/z.txt"})
+	tree(t, job.Scratch, "tree/a.txt", "tree/other/d.txt", "tree/sub/b.txt", "tree/sub/keep/c.txt", "tree/z.txt")
+	if got := names(t, job, "tree", true); got != "a.txt other sub sub/b.txt" {
 		t.Fatalf("the listing shows: %s", got)
 	}
 	// Each directory listed is noted as used.

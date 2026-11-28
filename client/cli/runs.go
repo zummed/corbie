@@ -303,9 +303,9 @@ func cmdTest(e *Env, args []string) error {
 	if err != nil {
 		return err
 	}
-	ofAStart := append(slices.Clone(startOnly), "value", "value-env", "secret", "secret-env", "in")
+	ofAStart := append(slices.Clone(startOnly), "value", "value-env", "secret", "secret-env")
 	if dirs {
-		if given := given(e, append(ofAStart, "definition")); len(given) > 0 {
+		if given := given(e, append(ofAStart, "in", "definition")); len(given) > 0 {
 			return Mistake("%s applies to one definition; a directory takes no flag of a start", strings.Join(given, ", "))
 		}
 		return e.checkMachines(files)
@@ -314,7 +314,7 @@ func cmdTest(e *Env, args []string) error {
 		return Mistake("name directories, or one definition, or one script file")
 	}
 	if definition {
-		return e.printDefinition(files[0], given(e, ofAStart))
+		return e.printDefinition(files[0], in, given(e, ofAStart))
 	}
 	set, err := valuesGiven(values, valuesFromEnv)
 	if err != nil {
@@ -408,21 +408,30 @@ func recordIn(e *Env, file, dir string) (*client.Tree, *client.Machine, error) {
 }
 
 // printDefinition prints a definition file written out, each value with
-// its file and line, and runs nothing.
-func (e *Env) printDefinition(file string, starts []string) error {
+// its file and line, and runs nothing. Given a directory in, it reads the
+// file in that directory's tree.
+func (e *Env) printDefinition(file, in string, starts []string) error {
 	if len(starts) > 0 {
 		return Mistake("%s applies to a run; --definition runs nothing", strings.Join(starts, ", "))
 	}
 	if isScript(file) {
 		return Mistake("--definition prints a definition written out, and %s is a script file", file)
 	}
-	context, rel, err := contextOf(file)
-	if err != nil {
-		return err
-	}
-	draft, err := client.ReadMachine(context, rel)
-	if err != nil {
-		return err
+	var draft *machine.Draft
+	if in != "" {
+		_, m, err := recordIn(e, file, in)
+		if err != nil {
+			return err
+		}
+		draft = m.Draft
+	} else {
+		context, rel, err := contextOf(file)
+		if err != nil {
+			return err
+		}
+		if draft, err = client.ReadMachine(context, rel); err != nil {
+			return err
+		}
 	}
 	return e.Print(draft.Definition, func() string { return string(draft.WrittenOut()) })
 }

@@ -88,7 +88,8 @@ file or a list. A name may end in `#path` to take one part of a file.
 - More than 1,000 includes written out by one definition are refused. A file
   reached by two routes counts each time, though its values are merged once.
 - `corbie test <file> --definition` prints the definition written out, each
-  value with its file and line, and runs nothing.
+  value with its file and line, and runs nothing. With `--in <directory>` it
+  reads the file in that directory's tree.
 
 Input
 -----

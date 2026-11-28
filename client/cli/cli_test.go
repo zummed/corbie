@@ -805,4 +805,17 @@ func Test_client_test_definition_prints_file_and_line(t *testing.T) {
 	if status, _, said := m.run("", "test", dir, "--definition"); status != 2 || !strings.Contains(said, "--definition applies to one definition") {
 		t.Fatalf("a directory with --definition ended %d: %s", status, said)
 	}
+	// A call: entry names a location of the tree, which --in gives.
+	tree := files(t, map[string]string{
+		"a.yaml":    "agent: a\nmodel: { service: anthropic, name: m, secret: K }\nprompt: hi\ntools:\n  look: { call: look }\n",
+		"look.yaml": "flow: look\ndescription: look at things\nstages:\n  s: { job: ./look.js }\n",
+		"look.js":   "return 1",
+	})
+	agent := filepath.Join(tree, "a.yaml")
+	if status, _, said := m.run("", "test", agent, "--definition"); status != 1 || !strings.Contains(said, "give the tree's directory, as in corbie test <file> --in <dir>") {
+		t.Fatalf("a call: entry with --definition alone ended %d: %s", status, said)
+	}
+	if out := m.ok("", "test", agent, "--in", tree, "--definition"); !strings.Contains(out, "call: look") || !strings.Contains(out, "# a.yaml:5") {
+		t.Fatalf("--definition --in printed:\n%s", out)
+	}
 }

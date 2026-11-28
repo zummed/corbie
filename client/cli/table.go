@@ -246,7 +246,7 @@ The check reads only the store, so it is the same wherever Corbie runs.
                   default 90s
 
   corbie manual functions   the calls a serverless host must make`},
-		{Name: "test", Usage: "<definition or script> [--input <json>] [--value NAME=VALUE] [--watch] | <definition> --in <directory> | <definition> --definition | <directory>...", Summary: "run a definition or a script in this process, with no setup", Stays: true, Run: cmdTest, Help: `
+		{Name: "test", Usage: "<definition or script> [--input <json>] [--value NAME=VALUE] [--watch] | <definition> --in <directory> | <definition> [--in <directory>] --definition | <directory>...", Summary: "run a definition or a script in this process, with no setup", Stays: true, Run: cmdTest, Help: `
 It runs a controller, a runner and a client in this process with the store in
 memory, records the file as a tree of one file, starts it, waits until the run
 ends and prints it. It reads no config and keeps nothing. It fails unless the
@@ -278,7 +278,8 @@ The ceilings allow everything. Each job's own allow: list still applies.
   --in <directory>         the directory whose tree the definition is in
 
 With --definition, it prints the definition as the client writes it out,
-each value with its file and line, and runs nothing.
+each value with its file and line, and runs nothing. With --in as well, it
+reads the definition at its location in that directory's tree.
 
 Given directories, it reads every machine in them as corbie run submit does,
 prints each one ok or its problems and each path .corbieignore lists, and

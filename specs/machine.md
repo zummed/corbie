@@ -54,6 +54,12 @@ line 9: tools.tell.does: "does" is not a field that belongs here: a tool takes d
 line 3: model.colour: "colour" is not a field that belongs here: a model with service: anthropic takes name, secret, service, address, effort, reply_tokens
 ```
 
+Another kind of value written where a mapping should be is refused the same way. A job whose `call:` is text is refused for that alone:
+
+```
+line 5: stages.c.job.call: this should be a mapping of fields, and is text: a call takes at
+```
+
 A definition may take values from other files with `include:`, which names a file or a list of them. A name may end in `#path` to take one part of a file: `base.yaml#allow`, `base.yaml#tools.read_file`.
 
 ```yaml

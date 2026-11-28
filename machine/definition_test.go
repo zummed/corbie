@@ -197,6 +197,24 @@ func Test_mach_unknown_or_repeated_field_is_refused(t *testing.T) {
 	if got := problems(t, "probe: p\nwork:\n  a: { script: ./a.js, retries: 3 }\n", map[string]string{"a.js": ""}); !strings.Contains(got, `"retries" is not a field that belongs here: a job takes script, files, machine, send, call, input, allow, deny, timeout, restart, memory, tags, approve`) {
 		t.Fatalf("an unknown field of a job: %s", got)
 	}
+	// A value written where a mapping should be is refused the same way.
+	// What the check would say of the job follows from it, and is not said.
+	got := problems(t, "probe: p\nwork:\n  a: { call: services/weather }\n  b: { send: x }\n  c: 5\n  d: { restart: 3 }\n", nil)
+	want := []string{
+		"work.a.call: this should be a mapping of fields, and is text: a call takes at",
+		"work.b.send: this should be a mapping of fields, and is text: an event a job sends takes to, event, data",
+		"work.c: this should be a mapping of fields, and is a number: a job takes script, files, machine, send, call, input, allow, deny, timeout, restart, memory, tags, approve, meta",
+		"work.d.restart: this should be a mapping of fields, and is a number: a job's restart policy takes after, limit, delay",
+		"work.d: a job writes one of script:, machine:, call: and send:, and this one writes none",
+	}
+	if lines := strings.Split(got, "\n"); len(lines) != len(want) {
+		t.Fatalf("a value that is no mapping gave:\n%s", got)
+	}
+	for _, w := range want {
+		if !strings.Contains(got, w) {
+			t.Errorf("the mistake %q is not said in:\n%s", w, got)
+		}
+	}
 	// A stored definition is held to the same: the controller does not
 	// take a client's word for what it stores.
 	for _, stored := range []string{

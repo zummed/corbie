@@ -40,6 +40,9 @@ type Parser struct {
 	// that it was made while a machine runs: neither is a file at a
 	// location.
 	inPlace, made bool
+	// misshapen is each place where a mapping should be and another kind
+	// of value is written.
+	misshapen []string
 }
 
 // Parse reads a written definition, fills it out, and checks it. load gives
@@ -236,10 +239,14 @@ func (p *Parser) fill(written map[string]any, t Type, place string) (draft *Draf
 		return nil, false
 	}
 	// The whole is checked whatever the filling-out found, so that
-	// everything wrong is reported together.
+	// everything wrong is reported together. A value that should have been
+	// a mapping was not read, and what the check says of it follows from
+	// that.
 	problems, approves := Check(def)
 	for _, problem := range problems {
-		p.Problem(problem.Place, "%s", problem.Text)
+		if !inOrBelow(problem.Place, p.misshapen) {
+			p.Problem(problem.Place, "%s", problem.Text)
+		}
 	}
 	// A child takes its parent's hooks. A machine run as a hook takes none
 	// from above it.
@@ -255,6 +262,16 @@ func (p *Parser) fill(written map[string]any, t Type, place string) (draft *Draf
 	}
 	p.draft.needsHook = approves && !HasBefore(def.Hooks)
 	return p.draft, p.draft.needsHook
+}
+
+// inOrBelow says whether a place is one of the places or below one.
+func inOrBelow(place string, places []string) bool {
+	for _, at := range places {
+		if place == at || strings.HasPrefix(place, at+".") || strings.HasPrefix(place, at+"[") {
+			return true
+		}
+	}
+	return false
 }
 
 // hookMachine notes the machine a hook runs, which takes no hook from above.
@@ -388,10 +405,14 @@ func (p *Parser) Job(place string, written any) *JobSpec {
 		s.Send = &SendSpec{To: p.Address(placeOf(place, "send.to"), to), Event: sf.Text("event")}
 		s.Send.Data, _ = sf.Value("data")
 		sf.Done()
+	} else if _, ok := f.m["send"]; ok {
+		s.Send = &SendSpec{}
 	}
 	if cf := f.Fields("call"); cf != nil {
 		s.Call = &AddressSpec{At: cf.Text("at")}
 		cf.Done()
+	} else if _, ok := f.m["call"]; ok {
+		s.Call = &AddressSpec{}
 	}
 	s.Input, _ = f.Value("input")
 	s.Allow = f.Strings("allow")
@@ -807,7 +828,9 @@ type Fields struct {
 func (p *Parser) Fields(place string, v any, shape *Shape) *Fields {
 	m, ok := v.(map[string]any)
 	if !ok {
-		p.Problem(place, "this should be a mapping of fields, and is %s", describe(v))
+		p.misshapen = append(p.misshapen, place)
+		what, names := (&Fields{shape: shape}).takes()
+		p.Problem(place, "this should be a mapping of fields, and is %s: %s takes %s", describe(v), what, strings.Join(names, ", "))
 		return nil
 	}
 	return &Fields{p: p, place: place, shape: shape, m: m, taken: map[string]bool{}, asked: map[string]bool{}}

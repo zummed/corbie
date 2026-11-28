@@ -97,7 +97,7 @@ func waitsFor(s *flow.Stage) []wait {
 		}
 	}
 	for _, n := range s.Follows {
-		add(n, "follows: "+n)
+		add(n, "follows: ["+n+"]")
 	}
 	add(s.Emits, "each: { emitted: "+s.Emits+" }")
 	return waits

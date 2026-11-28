@@ -487,7 +487,7 @@ const limited = `flow: limited
 stages:
   find: { job: ./w.js }
   tell:
-    job: { script: ./w.js, input: "${stages.find.output}", timeout: 5s, tags: [gpu], allow: [network], restart: { limit: 2 in 1h, delay: 2s } }
+    job: { script: ./w.js, input: "${stages.find.output}", timeout: 5s, tags: [gpu], allow: [network, disk], restart: { limit: 2 in 1h, delay: 2s to 1m } }
   after: { job: ./w.js, follows: [tell] }
   sum: { each: { emitted: find }, job: ./w.js }
 `
@@ -530,8 +530,8 @@ func Test_drawing_card_gives_its_line(t *testing.T) {
 	}
 }
 
-// A card's tooltip gives its job's limits, with lengths of time as a
-// definition writes them, and a flow gives why each stage waits for
+// A card's tooltip gives its job's limits as a definition writes them,
+// lengths of time and lists among them, and a flow gives why each stage waits for
 // another: what it reads, follows: or each: { emitted: … }.
 func Test_drawing_tooltips_give_limits_and_why_a_stage_waits(t *testing.T) {
 	s := scene(t, definition(t, limited, given), nil)
@@ -539,14 +539,14 @@ func Test_drawing_tooltips_give_limits_and_why_a_stage_waits(t *testing.T) {
 	for _, st := range s.Flow.Stages {
 		stages[st.Card.Name] = st
 	}
-	if got, want := stages["tell"].Card.Title, "timeout: 5s\nrestart: { after: failure, limit: 2 in 1h, delay: 2s }\ntags: gpu\nallow: network"; got != want {
+	if got, want := stages["tell"].Card.Title, "timeout: 5s\nrestart: { after: failure, limit: 2 in 1h, delay: 2s to 1m }\ntags: [gpu]\nallow: [network, disk]"; got != want {
 		t.Errorf("the tooltip of a job with limits is %q, not %q", got, want)
 	}
 	if got := stages["find"].Card.Title; got != "" {
 		t.Errorf("the tooltip of a job with no limits is %q", got)
 	}
 	why := map[string]string{"tell": stages["tell"].Why["find"], "after": stages["after"].Why["tell"], "sum": stages["sum"].Why["find"]}
-	if want := map[string]string{"tell": "reads find.output", "after": "follows: tell", "sum": "each: { emitted: find }"}; !maps.Equal(why, want) {
+	if want := map[string]string{"tell": "reads find.output", "after": "follows: [tell]", "sum": "each: { emitted: find }"}; !maps.Equal(why, want) {
 		t.Errorf("the stages wait %v, not %v", why, want)
 	}
 }

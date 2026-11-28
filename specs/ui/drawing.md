@@ -37,13 +37,13 @@ The pointer on a card lights its arrows and their chips, and the pointer on an a
 
 Every card has one width and one corner radius: an icon for what its job is, its name, and one line for each fact about the job, such as `script: ./find.js` or `flow: people-find`, with `approve: true` where the job has it. A holder is drawn round cards: a statechart's state that holds states, an agent's tools, and each of its toolkits.
 
-A card's tooltip gives its `when:`, a tool's `description:`, and the job's limits where the definition sets them:
+A card's tooltip gives its `when:`, a tool's `description:`, and the job's limits where the definition sets them, each written as a definition writes it:
 
 ```
 timeout: 5s
 restart: { after: failure, limit: 2 in 1h }
-tags: gpu
-allow: network, send:devices/boiler
+tags: [gpu]
+allow: [network, send:devices/boiler]
 ```
 
 Where a page gives lines an address, a card's name links to the line of the first value written under it, such as `support.yaml:14` for a stage whose key is on line 13, in the file most of its values are in, and its tooltip gives that file and line; the rest of a card that is a link follows its own link. A card a page can pick, which is no link, is picked by a click or by Enter. A page can give a card a count, such as how many runs are in that state now, which is drawn at the card's top right.
@@ -65,7 +65,7 @@ An arrow goes straight down. Arrows from one card run along one line, so a branc
 
 - A stage is a card.
 - An arrow goes to a stage from each stage it waits for: each stage an expression of it reads, whether its output, its error, whether it failed or was skipped, or its emitted items; each stage it names in `follows:`; and the stage it names in `each: { emitted: … }`. No arrow is drawn from a stage it waits for through another.
-- An arrow's tooltip says why the stage waits: `reads find.output`, `follows: find`, `each: { emitted: find }`.
+- An arrow's tooltip says why the stage waits: `reads find.output`, `follows: [find]`, `each: { emitted: find }`.
 - Stages are placed top to bottom in the order the arrows give, and stages that run at the same time are placed side by side.
 - A stage with `each:` is drawn as a stack of cards, and a stage with `when:` has a dashed border.
 

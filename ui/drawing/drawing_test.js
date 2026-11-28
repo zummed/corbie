@@ -186,7 +186,7 @@ test("drawing_toolkit_is_its_request_its_tools_and_its_answer", async () => {
   v = await draw("orders-kit-held");
   equal([classes(card(v, "refund")), classes(card(v, "find")), classes(card(v, "team"))], ["state tool held", "state tool never", "state hook when now"], "the tool a run called, held for the toolkit's hook");
   v = await draw("server-kit");
-  equal([texts(v, "text.title"), card(v, "job").querySelector("title").textContent], [["job", "request", "answer"], "answers every request\nallow: net:notes.example.com"], "a toolkit with one job");
+  equal([texts(v, "text.title"), card(v, "job").querySelector("title").textContent], [["job", "request", "answer"], "answers every request\nallow: [net:notes.example.com]"], "a toolkit with one job");
 });
 
 // extent gives where a text's letters run across, by its anchor and the
@@ -460,9 +460,9 @@ test("drawing_card_name_links_to_its_line", async () => {
 test("drawing_tooltips_are_drawn_on_cards_and_arrows", async () => {
   const v = await drawWith("limited");
   const tip = card(v, "tell").querySelector(":scope > title").textContent;
-  equal(tip, "timeout: 5s\nrestart: { after: failure, limit: 2 in 1h, delay: 2s }\ntags: gpu\nallow: network", "the tooltip of tell");
+  equal(tip, "timeout: 5s\nrestart: { after: failure, limit: 2 in 1h, delay: 2s to 1m }\ntags: [gpu]\nallow: [network, disk]", "the tooltip of tell");
   const why = all(v, "path.edge").map(e => e.querySelector("title")?.textContent).sort();
-  equal(why, ["each: { emitted: find }", "follows: tell", "reads find.output"], "the tooltips of the arrows");
+  equal(why, ["each: { emitted: find }", "follows: [tell]", "reads find.output"], "the tooltips of the arrows");
 });
 
 // The page lights cards by their paths, with their arrows, as the pointer

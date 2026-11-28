@@ -375,15 +375,15 @@ func limits(job *machine.JobSpec) []string {
 		case r.Delay == r.Longest:
 			fields = append(fields, "delay: "+short(time.Duration(r.Delay)))
 		default:
-			fields = append(fields, "delay: "+short(time.Duration(r.Delay))+" "+short(time.Duration(r.Longest)))
+			fields = append(fields, "delay: "+short(time.Duration(r.Delay))+" to "+short(time.Duration(r.Longest)))
 		}
 		out = append(out, "restart: { "+strings.Join(fields, ", ")+" }")
 	}
 	if len(job.Tags) > 0 {
-		out = append(out, "tags: "+strings.Join(job.Tags, ", "))
+		out = append(out, "tags: ["+strings.Join(job.Tags, ", ")+"]")
 	}
 	if len(job.Allow) > 0 {
-		out = append(out, "allow: "+strings.Join(job.Allow, ", "))
+		out = append(out, "allow: ["+strings.Join(job.Allow, ", ")+"]")
 	}
 	return out
 }

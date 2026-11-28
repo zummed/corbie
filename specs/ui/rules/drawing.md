@@ -46,7 +46,7 @@ The rules behind [the Drawing overview](../drawing.md). Area code: `drawing`.
 
 **R-drawing-13** On a run's page, the drawing of a run a job started, as the page gives it, is drawn inside that job's card with its own marks. *Test:* `drawing_child_run_is_inside_its_card`, `drawing_camera_follows_the_run`
 
-**R-drawing-15** A card's tooltip gives its job's `timeout`, `restart`, `tags` and `allow:` where the definition sets them, and a flow's arrow gives why one stage waits for the other. *Test:* `drawing_tooltips_give_limits_and_why_a_stage_waits`, `drawing_tooltips_are_drawn_on_cards_and_arrows`
+**R-drawing-15** A card's tooltip gives its job's `timeout`, `restart`, `tags` and `allow:` where the definition sets them, each written as a definition writes it, a list in brackets, and a flow's arrow gives why one stage waits for the other. *Test:* `drawing_tooltips_give_limits_and_why_a_stage_waits`, `drawing_tooltips_are_drawn_on_cards_and_arrows`
 
 **R-drawing-16** Where the page gives a card's line an address, the card's name links to the line of the first value written under it, in the file most of its values are in, and the rest of a card that is a link follows its own link; a card is never a link inside another. *Test:* `drawing_card_gives_its_line`, `drawing_card_name_links_to_its_line`
 

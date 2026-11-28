@@ -1,0 +1,21 @@
+# One run per key. set keeps a value until delete, or until ttl passes with
+# no set; get replies to its sender.
+statechart: kv
+lifetime: keyed
+allow: ["send:**"]
+initial: empty
+states:
+  empty:
+    on:
+      set: holding
+      get: { go: over, send: { to: "${event.from}", event: value, data: { found: false } } }
+      delete: over
+  holding:
+    output: "${event.data.value}"
+    timers: { expire: "${event.data.ttl ?? '30d'}" }
+    on:
+      set: holding
+      get: { send: { to: "${event.from}", event: value, data: { found: true, value: "${states.holding.output}" } } }
+      delete: over
+      expire: over
+  over: { end: done }

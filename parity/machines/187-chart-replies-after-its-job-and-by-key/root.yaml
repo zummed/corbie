@@ -1,0 +1,47 @@
+# The asker sends squares 3, then x, which squares keeps under defer: until
+# the first job is done. Then it sets ann and bob in kv, bob with a ttl of
+# 1s, reads ann and deletes it, and two seconds later reads both again.
+statechart: asker
+allow: [send:squares, send:kv]
+initial: asking
+states:
+  asking:
+    entry:
+      send:
+        - { to: { at: squares }, event: work, data: 3 }
+        - { to: { at: squares }, event: work, data: x }
+    on: { square: squared }
+  squared:
+    output: "${event.data}"
+    on: { no_square: refused }
+  refused:
+    output: "${event.data}"
+    on: { done: storing }
+  storing:
+    entry:
+      send:
+        - { to: { at: kv, key: ann }, event: set, data: { value: { cart: [fig] } } }
+        - { to: { at: kv, key: bob }, event: set, data: { value: { cart: [] }, ttl: 1s } }
+        - { to: { at: kv, key: ann }, event: get }
+    on: { value: found }
+  found:
+    output: "${event.data}"
+    entry: { send: { to: { at: kv, key: ann }, event: delete } }
+    timers: { later: 2s }
+    on: { later: again }
+  again:
+    entry:
+      send:
+        - { to: { at: kv, key: ann }, event: get }
+        - { to: { at: kv, key: bob }, event: get }
+    on: { value: one_more }
+  one_more:
+    output: "${event.data}"
+    on: { value: finished }
+  finished:
+    end: done
+    output:
+      square: "${states.squared.output}"
+      no_square: "${states.refused.output}"
+      found: "${states.found.output}"
+      later: ["${states.one_more.output}", "${event.data}"]

@@ -145,24 +145,30 @@ Corbie has no scheduler. Work that recurs is done by a chart that waits on a tim
 
 ## A chart that waits for work
 
-A chart with `lifetime: singleton` starts when its tree is submitted and runs until it ends. Senders address it by its location. On each event it moves to a state that runs the work as a child, and comes back when the child is done.
+A chart with `lifetime: singleton` starts when its tree is submitted and runs until it ends. Senders address it by its location. On each event it moves to a state that runs the work as a child, replies to the sender when the child is done or has failed, and comes back.
 
 ```yaml
-# work/reports/nightly.yaml             location /work/reports/nightly
-statechart: nightly-report
+# work/squares.yaml                    location /work/squares
+statechart: squares
 lifetime: singleton
+allow: ["send:**"]
 initial: ready
 
 states:
   ready:
-    on: { work: working }
+    on: { work: taken }
+  taken:
+    output: { from: "${event.from}", n: "${event.data}" }
+    on: { done: working }
   working:
-    job: { machine: ./report.yaml, input: "${event.data}" }
+    job: { machine: ./square.yaml, input: { n: "${states.taken.output.n}" } }
     defer: [work]
     on:
-      done: ready
-      failed: ready
+      done: { go: ready, send: { to: "${states.taken.output.from}", event: square, data: "${event.data}" } }
+      failed: { go: ready, send: { to: "${states.taken.output.from}", event: no_square, data: "${event.data.error}" } }
 ```
+
+`taken` keeps the sender: in the job's `done` and `failed`, `event.from` names the state. `send:**` lets the chart reply to a sender anywhere in its tree.
 
 Such a chart does one piece of work at a time. An event that arrives while it is busy finds no rule and is dropped, unless an active state names it under `defer:`. A client sender's receipt says so; a run sender is told nothing.
 
@@ -209,3 +215,34 @@ The bridge sends `send: { to: { at: agents/chat, key: "${event.data.thread}" }, 
 - `limits: { runs: N }` caps how many of the location's runs are running at once, as it does at a transient location (see machine.md). With the cap reached, a send to a new key is not delivered and is noted in the sender's record; sends to running keys still go through. There is no default cap.
 - A run started by a send counts one level below its sender, and fails as it starts if that passes its own file's depth limit.
 - The run's authority comes from its location. The sender adds nothing to it and takes nothing away (see permission.md).
+
+A keyed chart keeps data by key. This one keeps a value for each key until `delete`, or until its `ttl`, by default 30 days, passes with no `set`, and replies to `get`:
+
+```yaml
+# shop/kv.yaml                          location /shop/kv
+statechart: kv
+lifetime: keyed
+allow: ["send:**"]
+initial: empty
+states:
+  empty:
+    on:
+      set: holding
+      get: { go: over, send: { to: "${event.from}", event: value, data: { found: false } } }
+      delete: over
+  holding:
+    output: "${event.data.value}"
+    timers: { expire: "${event.data.ttl ?? '30d'}" }
+    on:
+      set: holding
+      get: { send: { to: "${event.from}", event: value, data: { found: true, value: "${states.holding.output}" } } }
+      delete: over
+      expire: over
+  over: { end: done }
+```
+
+A sender in the tree writes `send: { to: { at: kv, key: ann }, event: set, data: { value: { cart: [fig] }, ttl: 1d } }`, and the chart answers a `get` to the key with the event `value`.
+
+- A `set` enters `holding` again, which starts its timer afresh.
+- A `get` or a `delete` to a key with no value starts a run that ends at once.
+- Only a chart takes the reply, so a flow or an agent reads a key through a child chart that sends `get` and waits for `value`.

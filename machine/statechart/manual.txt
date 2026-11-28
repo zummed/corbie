@@ -61,6 +61,59 @@ A ticket is a random value that lets whoever holds it answer once.
 - A statechart run as a child hands the ticket to its parent with a send,
   such as `send: { to: parent, event: review_wanted, data: "${tickets.verdict}" }`.
 
+Replying after a job
+--------------------
+
+A statechart with `lifetime: singleton` runs until it ends, and takes work
+sent to its location.
+
+1. `work` enters `taken`, whose output keeps the sender and the number.
+2. `working` squares the number. A `work` sent meanwhile is kept under `defer:`.
+3. On `done` or `failed`, the statechart replies to the kept sender and goes
+   back to `ready`.
+
+    # work/squares.yaml
+    statechart: squares
+    lifetime: singleton
+    allow: ["send:**"]
+    initial: ready
+
+    states:
+      ready:
+        on: { work: taken }
+      taken:
+        output: { from: "${event.from}", n: "${event.data}" }
+        on: { done: working }
+      working:
+        job: { script: ./square.js, input: { n: "${states.taken.output.n}" } }
+        defer: [work]
+        on:
+          done: { go: ready, send: { to: "${states.taken.output.from}", event: square, data: "${event.data}" } }
+          failed: { go: ready, send: { to: "${states.taken.output.from}", event: no_square, data: "${event.data.error}" } }
+
+    // work/square.js
+    return input.n * input.n
+
+    # work/asker.yaml
+    statechart: asker
+    allow: [send:squares]
+    initial: asking
+
+    states:
+      asking:
+        entry: { send: { to: { at: squares }, event: work, data: 7 } }
+        on: { square: answered, no_square: answered }
+      answered: { end: done, output: "${event.data}" }
+
+    corbie test work/asker.yaml --in work --watch
+      step 1  -> send work to /work/squares · <id>
+      step 2  <- square from /work/squares <id> 49
+      output: 49
+
+- In the job's `done` and `failed`, `event.from` names the state `working`, so
+  the sender is read from `taken`.
+- `send:**` lets the statechart reply to a sender anywhere in its tree.
+
 Fields
 ------
 

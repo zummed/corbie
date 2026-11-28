@@ -1,0 +1,14 @@
+{
+  "status": "done",
+  "output": {
+    "square": 9,
+    "no_square": { "<contains>": "x is not a number" },
+    "found": { "found": true, "value": { "cart": ["fig"] } },
+    "later": [{ "found": false }, { "found": false }]
+  },
+  "record": [
+    { "machine": "squares", "status": "running" },
+    { "machine": "kv", "status": "done" }
+  ],
+  "note": "R-chart-77, R-chart-72, R-chart-86: a state with no job keeps the sender, and the rules for done and failed reply to it after the job. A keyed chart keeps a value by key, replies to get, and ends on delete or when its timer is due."
+}

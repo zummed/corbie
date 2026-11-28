@@ -1,0 +1,18 @@
+# A singleton that waits for work. taken keeps the sender, so the rule for
+# done or failed replies to it after the job.
+statechart: squares
+lifetime: singleton
+allow: ["send:**"]
+initial: ready
+states:
+  ready:
+    on: { work: taken }
+  taken:
+    output: { from: "${event.from}", n: "${event.data}" }
+    on: { done: working }
+  working:
+    job: { script: ./square.js, input: { n: "${states.taken.output.n}" } }
+    defer: [work]
+    on:
+      done: { go: ready, send: { to: "${states.taken.output.from}", event: square, data: "${event.data}" } }
+      failed: { go: ready, send: { to: "${states.taken.output.from}", event: no_square, data: "${event.data.error}" } }
